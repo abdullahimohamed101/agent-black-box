@@ -596,3 +596,43 @@ def test_gzip_expansion_is_capped_while_decompressing_not_after() -> None:
         tracemalloc.stop()
     assert exc.value.status_code == 413
     assert peak < 16 * 1024 * 1024, f"peak memory {peak} bytes: the bomb was expanded"
+
+
+async def test_extreme_timestamps_are_rejected_per_event_not_as_a_server_error(api: Api) -> None:
+    """Found by independent verification: 0001-01-01T00:00:00+14:00 overflowed UTC conversion."""
+    good = wire_event(make_run_ids(), 1)
+    events = [
+        good,
+        wire_event(make_run_ids(), 2, occurred_at="0001-01-01T00:00:00+14:00"),
+        wire_event(make_run_ids(), 3, occurred_at="9999-12-31T23:59:59-14:00"),
+    ]
+    response = await api.post_batch(events)
+    assert response.status_code == 202
+    body = response.json()
+    assert (body["accepted"], body["rejected"]) == (1, 2)
+    assert {e["issues"][0]["code"] for e in body["errors"]} == {"timestamp_out_of_range"}
+
+
+async def test_an_unexpected_crash_while_validating_one_event_rejects_only_that_event(
+    api: Api, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A poison event must not become a retryable 500 that an SDK would resend forever."""
+    from abb_event_schema.parse import parse_event_in as real
+
+    poison = wire_event(make_run_ids(), 2)
+
+    def flaky(raw: Any) -> Any:
+        if isinstance(raw, dict) and raw.get("event_id") == poison["event_id"]:
+            raise OverflowError("a bug in validation")
+        return real(raw)
+
+    monkeypatch.setattr("abb_api.ingestion.service.parse_event_in", flaky)
+    events = [wire_event(make_run_ids(), 1), poison, wire_event(make_run_ids(), 3)]
+    with caplog.at_level(logging.ERROR):
+        response = await api.post_batch(events)
+    assert response.status_code == 202
+    body = response.json()
+    assert (body["accepted"], body["rejected"]) == (2, 1)
+    assert body["errors"][0]["index"] == 1 and body["errors"][0]["event_id"] == poison["event_id"]
+    assert "a bug in validation" not in response.text  # internals stay in the server log
+    assert any("event validation crashed" in r.getMessage() for r in caplog.records)

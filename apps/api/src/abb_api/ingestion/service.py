@@ -93,6 +93,24 @@ class IngestionService:
                 )
             except EventValidationError as exc:
                 errors.append(self._error_out(index, raw, exc))
+            except Exception as exc:
+                # A bug in validation must reject this one event, not 500 the batch: SDKs retry
+                # server errors, so a single poison event would otherwise be resent forever.
+                logger.error(
+                    "event validation crashed",
+                    extra={"error_type": type(exc).__name__},
+                    exc_info=True,
+                )
+                errors.append(
+                    EventErrorOut(
+                        index=index,
+                        event_id=self._event_id_hint(raw),
+                        code="EVENT_INVALID",
+                        issues=[
+                            IssueOut(loc=[], code="validation_failed", message="Event rejected.")
+                        ],
+                    )
+                )
             else:
                 valid.append((index, event))
 
@@ -158,16 +176,17 @@ class IngestionService:
         return batch_id, events
 
     @staticmethod
-    def _error_out(index: int, raw: Any, exc: EventValidationError) -> EventErrorOut:
+    def _event_id_hint(raw: Any) -> str | None:
+        """The event's id if it is readable and well formed (never echoes anything else)."""
         candidate = raw.get("event_id") if isinstance(raw, dict) else None
-        event_id = (
-            candidate
-            if isinstance(candidate, str) and _EVENT_ID_HINT.fullmatch(candidate)
-            else None
-        )
+        ok = isinstance(candidate, str) and _EVENT_ID_HINT.fullmatch(candidate)
+        return candidate if ok else None
+
+    @staticmethod
+    def _error_out(index: int, raw: Any, exc: EventValidationError) -> EventErrorOut:
         return EventErrorOut(
             index=index,
-            event_id=event_id,
+            event_id=IngestionService._event_id_hint(raw),
             code=exc.code.value,
             issues=[IssueOut(loc=list(i.loc), code=i.code, message=i.message) for i in exc.issues],
         )

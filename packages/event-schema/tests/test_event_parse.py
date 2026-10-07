@@ -420,6 +420,8 @@ def test_constructing_directly_validates_too() -> None:
         ("2026-10-06T20:13:60Z", "timestamp_format_invalid"),
         ("2026-10-06T20:13:22", "timestamp_timezone_required"),
         ("2026-10-06T20:13:22.5", "timestamp_timezone_required"),
+        ("0001-01-01T00:00:00+14:00", "timestamp_out_of_range"),  # no UTC representation
+        ("9999-12-31T23:59:59-14:00", "timestamp_out_of_range"),
     ],
 )
 def test_timestamps_must_be_canonical_rfc3339(value: str, code: str) -> None:
