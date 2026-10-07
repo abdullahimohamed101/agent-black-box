@@ -1,4 +1,4 @@
-.PHONY: schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
+.PHONY: seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -53,6 +53,11 @@ typecheck:
 	cd $(SCHEMA) && uv run mypy
 	cd $(API) && uv run mypy
 	pnpm --filter @abb/web typecheck
+
+# Local development only: workspace "local", project "demo" and a dev API key in .local/dev-api-key
+# (owner-only file, gitignored). Safe to repeat; it keeps a still-valid key.
+seed:
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run python -m abb_api.cli seed --key-file $(CURDIR)/.local/dev-api-key
 
 # Regenerate the committed JSON Schema and TypeScript types from the Pydantic models.
 schema:

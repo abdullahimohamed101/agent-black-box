@@ -194,3 +194,26 @@ async def test_concurrent_authentication_is_safe(engine: AsyncEngine) -> None:
 
     results = await asyncio.gather(*[once() for _ in range(20)])
     assert set(results) == {created.stored.key_id}
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        None,
+        "garbage",
+        "abb_live_" + "z" * 12 + "." + "A" * 43,  # well-formed but unknown key id
+    ],
+)
+async def test_failed_lookups_still_pay_for_one_constant_time_comparison(
+    engine: AsyncEngine, token: str | None
+) -> None:
+    """Unknown or malformed keys must cost the same as a wrong secret (no timing oracle)."""
+    import hmac
+    from unittest import mock
+
+    spy = mock.Mock(wraps=hmac.compare_digest)
+    with mock.patch.object(hmac, "compare_digest", spy):
+        async with engine.begin() as conn:
+            with pytest.raises(AppError):
+                await authenticate(conn, token, Tick())
+    assert spy.call_count == 1

@@ -10,8 +10,15 @@ approval authority, trace history, user identity. Boundaries: customer agent pro
 ingestion edge | control plane | database/object storage | human approvers.
 
 ## Requirements (enforced by tests where stated)
-- API keys: `abb_live_<prefix>.<secret>`; store prefix + hash only; secret shown once; scopes
-  (`events:write`, `runs:read`, `artifacts:write`, `policy:check`); revocation; `last_used_at`. (Phase 2)
+- API keys (implemented, Phase 2): `abb_live_<key_id>.<secret>`; `key_id` is public and indexed, `secret` is 32 random
+  bytes shown once; only `sha256(secret)` is stored and compared in constant time (a dummy comparison runs for unknown
+  keys). Scopes `events:write`, `runs:read`, `artifacts:write`, `policy:check` (database CHECK constraint); optional expiry;
+  revocation; `last_used_at` written at most once a minute. A project-bound key reads and writes its project only; a
+  workspace-wide key (no project) can read across projects but cannot ingest. Unknown, malformed, wrong-secret, revoked and
+  expired keys all produce the same 401 (`API_KEY_INVALID`); a valid key missing a scope gets 403 with the required scope.
+  Keys are issued only by the CLI (`python -m abb_api.cli create-key`); the secret goes to stdout once and is never logged.
+  `make seed` writes a dev key to the gitignored, owner-only `.local/dev-api-key` and refuses to run when
+  `ABB_ENVIRONMENT=production`.
 - Tenancy: workspace ID on every record and repository call; cross-workspace tests per
   endpoint (Phases 2, 15); optional Postgres RLS as defence in depth (§73.4).
 - Redaction: SDK-side before export, server-side backstop, payload modes FULL/METADATA_ONLY/DISABLED. (Phases 3, 13)
