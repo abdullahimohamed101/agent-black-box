@@ -455,3 +455,96 @@ def test_option_bounds_are_inclusive() -> None:
     c2 = offline(batch_size=1000).config
     assert c2.batch_size == 1000
     assert offline(batch_size=1001).config.batch_size == 100  # out of range: default
+
+
+class Hostile:
+    def __str__(self) -> str:
+        raise RuntimeError("hostile __str__")
+
+    __repr__ = __str__
+
+
+HOSTILE: list[Any] = [
+    None,
+    5,
+    2.5,
+    float("nan"),
+    True,
+    "text",
+    b"bytes",
+    ["a", 1, None],
+    ("x",),
+    {"a": 1},
+    {1: 2},
+    {frozenset(): 1},
+    {"k": object()},
+    [[]],
+    [{}],
+    {()},
+    object(),
+    Hostile(),
+    print,
+    type,
+    lambda: 1,
+    10**30,
+    "x" * 100_000,
+    "\x00",
+    {"a": {"b": {"c": [Hostile()]}}},
+]  # includes unhashable values (lists, dicts, sets) and objects with hostile __str__
+
+
+def test_hostile_arguments_never_raise_from_any_public_call() -> None:
+    bb = offline(payload_mode="full")
+    for bad in HOSTILE:
+        with bb.run(bad, metadata=bad, agent_id=bad, tags=bad) as run:
+            run.end(bad)
+            sp = run.span(bad, kind=bad, attributes=bad, parent=bad)
+            with sp:
+                sp.set_attribute(bad, bad)
+                sp.set_attributes(bad)
+                sp.set_payload(bad)
+                sp.event(bad, bad, payload=bad, status=bad)
+            sp.end(bad, bad)
+            llm = run.llm_call(bad, bad, temperature=bad, max_tokens=bad, attributes=bad)
+            with llm:
+                llm.record_usage(bad, bad, cached_input_tokens=bad, cost_usd=bad)
+                llm.set_attribute(bad, bad)
+            run.event(bad, bad, payload=bad, status=bad)
+        bb.event(bad, bad, payload=bad, status=bad)
+
+        @bb.observe(kind=bad, name=bad)
+        def traced() -> int:
+            return 1
+
+        with bb.run("r"):
+            assert traced() == 1
+        assert bb.flush(bad) in (True, False) and isinstance(bb.stats(), dict)
+    assert bb.shutdown(bad) in (True, False)
+
+
+@pytest.mark.parametrize("bad", HOSTILE)
+def test_hostile_constructor_options_never_raise(bad: Any) -> None:
+    for name in (
+        "api_key",
+        "project",
+        "endpoint",
+        "mode",
+        "agent_id",
+        "agent_version",
+        "local_path",
+        "batch_size",
+        "flush_interval",
+        "max_queue",
+        "http_timeout",
+        "max_attempts",
+        "payload_mode",
+        "deny_keys",
+        "allow_keys",
+        "redactor",
+        "tags",
+        "wait",
+    ):
+        bb = BlackBox(**{name: bad})
+        with bb.run("r") as run:
+            run.event("custom.x")
+        bb.shutdown(0.2)

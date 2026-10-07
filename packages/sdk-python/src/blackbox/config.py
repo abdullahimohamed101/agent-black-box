@@ -3,11 +3,12 @@
 import logging
 import os
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
+from blackbox.events import as_strings
 from blackbox.redaction import DEFAULT_DENY_KEYS, Callback, PayloadMode
 
 log = logging.getLogger("blackbox")
@@ -19,7 +20,8 @@ _AGENT_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 def agent_slug(value: str | None, default: str = "agent") -> str:
     """Coerce free text into the contract's agent slug (lowercase, `[a-z0-9._-]`, <= 64)."""
-    text = re.sub(r"[^a-z0-9._-]+", "-", (value or "").strip().lower()).strip("-._")[:64]
+    raw = value if isinstance(value, str) else ""
+    text = re.sub(r"[^a-z0-9._-]+", "-", raw.strip().lower()).strip("-._")[:64]
     return text if _AGENT_RE.fullmatch(text) else default
 
 
@@ -79,17 +81,23 @@ class Config:
         """Merge arguments with BLACKBOX_* environment variables; never raises."""
         env = os.environ
         c = cls()
-        c.api_key = given.get("api_key") or env.get("BLACKBOX_API_KEY") or None
-        c.endpoint = str(given.get("endpoint") or env.get("BLACKBOX_ENDPOINT") or DEFAULT_ENDPOINT)
-        mode = str(given.get("mode") or env.get("BLACKBOX_MODE") or "http").lower()
+        key = given.get("api_key") or env.get("BLACKBOX_API_KEY")
+        c.api_key = key if isinstance(key, str) and key else None
+        endpoint = given.get("endpoint") or env.get("BLACKBOX_ENDPOINT") or DEFAULT_ENDPOINT
+        c.endpoint = endpoint if isinstance(endpoint, str) else DEFAULT_ENDPOINT
+        raw_mode = given.get("mode") or env.get("BLACKBOX_MODE") or "http"
+        mode = raw_mode.lower() if isinstance(raw_mode, str) else ""
         if mode not in MODES:
             log.warning("blackbox: unknown mode %r; telemetry disabled", mode)
             mode = "disabled"
         c.mode = mode
-        c.project = given.get("project")
+        project = given.get("project")
+        c.project = project if isinstance(project, str) else None
         c.agent_id = agent_slug(given.get("agent_id") or c.project)
-        c.agent_version = given.get("agent_version")
-        c.local_path = given.get("local_path") or env.get("BLACKBOX_LOCAL_PATH")
+        version = given.get("agent_version")
+        c.agent_version = version if isinstance(version, str) else None
+        path = given.get("local_path") or env.get("BLACKBOX_LOCAL_PATH")
+        c.local_path = path if isinstance(path, str) and path else None
         c.batch_size = int(_bounded("batch_size", given.get("batch_size", 100), 100, 1, 1000))
         c.flush_interval = _bounded(
             "flush_interval", given.get("flush_interval", 0.25), 0.25, 0.01, 60
@@ -119,12 +127,15 @@ class Config:
             c.payload_mode = PayloadMode(given.get("payload_mode", PayloadMode.METADATA_ONLY))
         except ValueError:
             log.warning("blackbox: unknown payload_mode; using metadata_only")
-        deny: Iterable[str] = given.get("deny_keys") or ()
-        c.deny_keys = DEFAULT_DENY_KEYS + tuple(deny)  # additive: callers cannot weaken the default
-        c.allow_keys = tuple(given.get("allow_keys") or ())
-        c.redactor = given.get("redactor")
-        c.tags = tuple(given.get("tags") or ())
-        c.wait = given.get("wait")
+        c.deny_keys = DEFAULT_DENY_KEYS + as_strings(
+            given.get("deny_keys")
+        )  # additive: callers cannot weaken the default
+        c.allow_keys = as_strings(given.get("allow_keys"))
+        callback = given.get("redactor")
+        c.redactor = callback if callable(callback) else None
+        c.tags = as_strings(given.get("tags"))
+        waiter = given.get("wait")
+        c.wait = waiter if callable(waiter) else None
         if c.mode == "http" and not _endpoint_ok(c.endpoint):
             log.warning("blackbox: endpoint is not a valid http(s) URL; telemetry disabled")
             c.mode = "disabled"

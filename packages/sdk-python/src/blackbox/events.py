@@ -8,6 +8,7 @@ validate everything built here with `abb_event_schema` (ADR-013).
 import json
 import math
 import re
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
@@ -66,6 +67,7 @@ def _clean_scalar(value: Any) -> Any:
 
 def clean_attributes(attributes: dict[str, Any] | None, stats: Stats) -> dict[str, Any]:
     """Keep legal keys with scalar / flat-list values; count what had to be dropped."""
+    attributes = as_mapping(attributes)
     if not attributes:
         return {}
     out: dict[str, Any] = {}
@@ -97,16 +99,37 @@ def clean_attributes(attributes: dict[str, Any] | None, stats: Stats) -> dict[st
     return out
 
 
-def clean_tags(tags: tuple[str, ...] | list[str] | None) -> list[str]:
-    return [t.replace("\x00", "")[:MAX_TAG_LENGTH] for t in (tags or ())[:MAX_TAGS] if t]
+def as_mapping(value: Any) -> dict[Any, Any]:
+    """Hostile-argument guard (INV-4): a copy of a mapping, else an empty dict."""
+    try:
+        return dict(value) if isinstance(value, Mapping) else {}
+    except Exception:
+        return {}
+
+
+def as_strings(value: Any) -> tuple[str, ...]:
+    """A flat tuple of strings from a str or an iterable of strs; anything else is ignored."""
+    if isinstance(value, str):
+        return (value,)
+    try:
+        return tuple(v for v in value if isinstance(v, str))
+    except Exception:
+        return ()
+
+
+def clean_tags(tags: Any) -> list[str]:
+    return [t.replace("\x00", "")[:MAX_TAG_LENGTH] for t in as_strings(tags)[:MAX_TAGS] if t]
 
 
 def name_attr(value: Any, limit: int = 256) -> str:
-    return str(value).replace("\x00", "")[:limit] or "unnamed"
+    try:
+        return str(value).replace("\x00", "")[:limit] or "unnamed"
+    except Exception:  # a hostile __str__
+        return "unnamed"
 
 
-def span_kind(value: str) -> str:
-    return value if value in _SPAN_KINDS else "custom"
+def span_kind(value: Any) -> str:
+    return value if isinstance(value, str) and value in _SPAN_KINDS else "custom"
 
 
 def check_payload(payload: dict[str, Any], stats: Stats) -> dict[str, Any] | None:

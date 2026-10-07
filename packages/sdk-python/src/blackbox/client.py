@@ -24,6 +24,8 @@ from blackbox.config import Config, agent_slug
 from blackbox.context import _current_run, _current_span
 from blackbox.events import (
     EVENT_TYPE_RE,
+    as_mapping,
+    as_strings,
     build_event,
     check_payload,
     clean_attributes,
@@ -88,12 +90,13 @@ class Span:
     ) -> None:
         self.run = run
         self.name = name_attr(name)
+        parent = parent if isinstance(parent, Span) else None
         self.kind = span_kind(kind)
         self.span_id = ids.new_id(ids.SPAN)
         self._parent = parent
-        self._types = _TYPED_SPANS.get(self.kind, _GENERIC_SPAN)
+        self._types = _TYPED_SPANS.get(self.kind, _GENERIC_SPAN)  # kind is always a str here
         self._base = self._base_attributes()
-        self._attrs: dict[str, Any] = dict(attributes or {})
+        self._attrs: dict[str, Any] = as_mapping(attributes)
         self._payload: dict[str, Any] | None = None
         self._t0 = 0.0
         self._started = False
@@ -109,14 +112,15 @@ class Span:
     # -- recording ---------------------------------------------------------------------------------
 
     def set_attribute(self, key: str, value: Any) -> None:
-        self._attrs[key] = value
+        if isinstance(key, str):
+            self._attrs[key] = value
 
     def set_attributes(self, attributes: dict[str, Any]) -> None:
-        self._attrs.update(attributes)
+        self._attrs.update({k: v for k, v in as_mapping(attributes).items() if isinstance(k, str)})
 
     def set_payload(self, payload: dict[str, Any]) -> None:
         """Attach a payload to the closing event. Only sent in `PayloadMode.FULL`."""
-        self._payload = payload
+        self._payload = dict(payload) if isinstance(payload, dict) else None
 
     def event(
         self,
@@ -150,6 +154,7 @@ class Span:
         return self
 
     def end(self, status: str = _SUCCESS, exc: BaseException | None = None) -> None:
+        status = status if isinstance(status, str) else _SUCCESS
         if not self._started:
             self.start()
         with self._lock:
@@ -219,7 +224,7 @@ class LlmCall(Span):
         attributes: dict[str, Any] | None = None,
     ) -> None:
         self.provider, self.model = name_attr(provider), name_attr(model)
-        given = dict(attributes or {})
+        given = as_mapping(attributes)
         if temperature is not None:
             given["llm.temperature"] = temperature
         if max_tokens is not None:
@@ -266,11 +271,15 @@ class Run:
         tags: tuple[str, ...],
     ) -> None:
         self._bb = bb
-        self.name = name
+        self.name = name if isinstance(name, str) else None
         self.run_id = ids.new_id(ids.RUN)
         self.trace_id = ids.new_id(ids.TRACE)
-        self.agent_id = agent_slug(agent_id, bb.config.agent_id) if agent_id else bb.config.agent_id
-        self._tags = clean_tags(bb.config.tags + tags)
+        self.agent_id = (
+            agent_slug(agent_id, bb.config.agent_id)
+            if isinstance(agent_id, str) and agent_id
+            else bb.config.agent_id
+        )
+        self._tags = clean_tags(tuple(bb.config.tags) + as_strings(tags))
         self._seq = itertools.count(1)  # next() on a C counter is atomic: no lock on the hot path
         self._t0 = time.monotonic()
         self._ended = False
@@ -278,10 +287,10 @@ class Run:
         self._token: contextvars.Token[Run | None] | None = None
         self._span_token: contextvars.Token[Span | None] | None = None
         attributes: dict[str, Any] = {}
-        if name:
-            attributes["run.name"] = name_attr(name)
-        for key, value in (metadata or {}).items():
-            attributes[f"metadata.{str(key).lower()}"] = value
+        if self.name:
+            attributes["run.name"] = name_attr(self.name)
+        for key, value in as_mapping(metadata).items():
+            attributes[f"metadata.{name_attr(key, 100).lower()}"] = value
         self._emit("run.started", attributes=attributes)
 
     # -- instrumentation ---------------------------------------------------------------------------
@@ -294,7 +303,7 @@ class Run:
         *,
         parent: Span | None = None,
     ) -> Span:
-        return Span(self, name, kind, attributes, parent)
+        return Span(self, name, kind, attributes, parent)  # arguments are coerced, never raised on
 
     def llm_call(
         self,
@@ -338,6 +347,8 @@ class Run:
     ) -> None:
         if not isinstance(event_type, str):
             event_type = ""
+        status = status if isinstance(status, str) else None
+        payload = payload if isinstance(payload, dict) else None
         if "." not in event_type and event_type:
             event_type = f"custom.{event_type}"
         if not EVENT_TYPE_RE.match(event_type) or len(event_type) > 64:
@@ -353,7 +364,9 @@ class Run:
             if self._ended:
                 return
             self._ended = True
-        event_type, event_status = _RUN_END.get(status, _RUN_END[_SUCCESS])
+        event_type, event_status = _RUN_END.get(
+            status if isinstance(status, str) else _SUCCESS, _RUN_END[_SUCCESS]
+        )
         self._emit(
             event_type,
             status=event_status,
@@ -524,7 +537,7 @@ class BlackBox:
         """
 
         def decorate(func: F) -> F:
-            label = str(name or getattr(func, "__qualname__", "function"))
+            label = name_attr(name or getattr(func, "__qualname__", "function"))
 
             if inspect.iscoroutinefunction(func):
 
