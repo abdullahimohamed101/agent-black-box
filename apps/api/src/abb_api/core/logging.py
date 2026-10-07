@@ -6,7 +6,7 @@ import sys
 from datetime import UTC, datetime
 from typing import Any
 
-from abb_api.core.request_context import get_request_id
+from abb_api.core.request_context import get_caller, get_request_id
 
 # Attributes every LogRecord has; anything else was passed via `extra=` and is emitted as a field.
 _RESERVED = set(vars(logging.makeLogRecord({}))) | {"message", "asctime", "taskName"}
@@ -26,6 +26,7 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
             "request_id": get_request_id(),
         }
+        entry.update(get_caller())
         for key, value in record.__dict__.items():
             if key not in _RESERVED and not key.startswith("_"):
                 entry[key] = value

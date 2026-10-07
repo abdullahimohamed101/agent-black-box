@@ -46,6 +46,7 @@ class AppError(Exception):
         status_code: int,
         retryable: bool = False,
         details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -54,6 +55,7 @@ class AppError(Exception):
         self.status_code = status_code
         self.retryable = retryable
         self.details = details or {}
+        self.headers = headers or {}
 
 
 def error_response(error: AppError) -> JSONResponse:
@@ -69,8 +71,10 @@ def error_response(error: AppError) -> JSONResponse:
     }
     request_id = get_request_id()
     # Set here too: unhandled-exception responses are produced outside the request-ID middleware.
-    headers = {"X-Request-ID": request_id} if request_id else None
-    return JSONResponse(body, status_code=error.status_code, headers=headers)
+    headers = dict(error.headers)
+    if request_id:
+        headers["X-Request-ID"] = request_id
+    return JSONResponse(body, status_code=error.status_code, headers=headers or None)
 
 
 def install_error_handlers(app: FastAPI) -> None:

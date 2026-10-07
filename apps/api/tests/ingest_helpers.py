@@ -76,3 +76,21 @@ def build_event(
         project_id=tenant.projects[project],
         received_at=RECEIVED,
     )
+
+
+def wire_event(run: dict[str, str], n: int, **overrides: Any) -> dict[str, Any]:
+    """An event as an SDK would send it (no tenant fields, no received_at)."""
+    event: dict[str, Any] = {
+        "schema_version": "1.0",
+        "event_id": new_id(IdKind.EVENT),
+        "run_id": run["run_id"],
+        "trace_id": run["trace_id"],
+        "span_id": new_id(IdKind.SPAN),
+        "agent_id": "coding-agent",
+        "event_type": "tool.call.completed",
+        "occurred_at": (T0 + timedelta(seconds=n)).isoformat().replace("+00:00", "Z"),
+        "sequence": n,
+        "attributes": {"tool.name": "github"},
+    }
+    event.update(overrides)
+    return {k: v for k, v in event.items() if v is not ...}

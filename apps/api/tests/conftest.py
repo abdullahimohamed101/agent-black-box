@@ -118,3 +118,7 @@ async def client(database_url: str) -> AsyncIterator[httpx.AsyncClient]:
 async def client_db_down() -> AsyncIterator[httpx.AsyncClient]:
     async for c in _client(create_app(make_settings(UNREACHABLE_DATABASE_URL))):
         yield c
+
+
+# Registered last: api_fixtures imports helpers defined above, so the import cannot be at the top.
+from tests.api_fixtures import api  # noqa: E402, F401  (re-exported so pytest finds the fixture)
