@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RunDetail } from "@/components/RunDetail";
 import type { EventOut } from "@/lib/api/types";
 import { runningRun, successRun } from "@/fixtures/runs";
+import { fixtureReply } from "@/fixtures/api";
 import { BASE, stubApi } from "./helpers";
 
 /** A browser EventSource we can drive: open, deliver frames, drop, fail. */
@@ -94,6 +95,26 @@ async function running() {
   const view = renderLive(run.id);
   await waitFor(() => expect(sources()).toHaveLength(1));
   return { calls, run, events, view };
+}
+
+/** Serves the fixture API, except the run record reports whatever event_count `grow` says. */
+function stubGrowingRun(runId: string, grow: { count: number }) {
+  const calls: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: Request | string) => {
+      const url = new URL(typeof input === "string" ? input : input.url);
+      calls.push(url.pathname + url.search);
+      const segs = url.pathname.replace(/^\/api\/abb\//, "").split("/");
+      const r = fixtureReply(segs, url.searchParams);
+      if (url.pathname.endsWith(`/v1/runs/${runId}`)) {
+        const body = r.body as { summary: Record<string, unknown> };
+        body.summary = { ...body.summary, event_count: grow.count };
+      }
+      return Response.json(r.body, { status: r.status });
+    }),
+  );
+  return calls;
 }
 
 describe("live run detail", () => {
@@ -215,9 +236,11 @@ describe("live run detail", () => {
     await waitFor(() => expect(sources()).toHaveLength(1));
     newest().open();
     const runFetches = () => calls.filter((c) => c.endsWith(`/v1/runs/${run.id}`)).length;
-    const before = runFetches();
+    const eventFetches = () => calls.filter((c) => c.includes("/events?")).length;
+    const before = [runFetches(), eventFetches()];
     newest().end();
-    await waitFor(() => expect(runFetches()).toBeGreaterThan(before));
+    await waitFor(() => expect(runFetches()).toBeGreaterThan(before[0]!));
+    await waitFor(() => expect(eventFetches()).toBeGreaterThan(before[1]!)); // final reconciliation
     expect(newest().closed).toBe(true);
     expect(screen.queryByTestId("live-status")).toBeNull();
     await new Promise((r) => setTimeout(r, 50));
@@ -267,5 +290,65 @@ describe("live run detail", () => {
     const bar = await screen.findByTestId("live-status");
     expect(within(bar).getByText(/unavailable/i)).toBeInTheDocument();
     expect(screen.getByTestId("partial-data")).toBeInTheDocument();
+  });
+
+  it("waits for a multi-page history to finish before it starts streaming", async () => {
+    const { run, events } = runningRun();
+    const half = Math.ceil(events.length / 2);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Request | string) => {
+        const url = new URL(typeof input === "string" ? input : input.url);
+        const segs = url.pathname.replace(/^\/api\/abb\//, "").split("/");
+        if (url.pathname.endsWith(`/v1/runs/${run.id}/events`)) {
+          const second = url.searchParams.has("cursor");
+          if (second) await gate;
+          return Response.json({
+            items: second ? events.slice(half) : events.slice(0, half),
+            next_cursor: second ? null : "page-2",
+            ordering_mode: "sequence",
+          });
+        }
+        const r = fixtureReply(segs, url.searchParams);
+        return Response.json(r.body, { status: r.status });
+      }),
+    );
+    renderLive(run.id);
+    await screen.findByTestId("headline");
+    await waitFor(() => expect(screen.getAllByRole("option").length).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(sources()).toHaveLength(0); // the first page is on screen, but the history is incomplete
+    release();
+    await waitFor(() => expect(sources()).toHaveLength(1));
+    expect(newest().url).toContain(`last_event_id=${events.at(-1)!.event_id}`);
+  });
+
+  it("while streaming, a growing run record does not trigger event reloads; without a stream it does", async () => {
+    const { run } = runningRun();
+    const grow = { count: 5 };
+    const calls = stubGrowingRun(run.id, grow);
+    const { client, unmount } = renderLive(run.id);
+    await waitFor(() => expect(sources()).toHaveLength(1));
+    newest().open();
+    const eventLists = () => calls.filter((c) => c.includes("/events?")).length;
+    const before = eventLists();
+    grow.count = 9;
+    await act(() => client.invalidateQueries({ queryKey: ["run", run.id] }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(eventLists()).toBe(before);
+    unmount();
+
+    // same growth with streaming off: the run record is the only signal, so the events reload
+    const polled = stubGrowingRun(run.id, grow);
+    const second = renderLive(run.id, { live: false });
+    await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
+    const start = polled.filter((c) => c.includes("/events?")).length;
+    grow.count = 12;
+    await act(() => second.client.invalidateQueries({ queryKey: ["run", run.id] }));
+    await waitFor(() =>
+      expect(polled.filter((c) => c.includes("/events?")).length).toBeGreaterThan(start),
+    );
   });
 });

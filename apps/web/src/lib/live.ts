@@ -58,7 +58,6 @@ export function useLiveEvents(
   useEffect(() => {
     if (!enabled || !restComplete) return;
     let lostAt: number | null = null;
-    let previous: StreamState | null = null;
     const handle = openRunStream({
       runId,
       lastEventId: newestArrival(rest.current),
@@ -67,14 +66,13 @@ export function useLiveEvents(
         setState(s);
         const t = callbacks.current.now();
         if (s === "live") {
-          if (lostAt !== null && previous !== "connecting" && t - lostAt > RECONCILE_GAP_MS) {
+          if (lostAt !== null && t - lostAt > RECONCILE_GAP_MS) {
             callbacks.current.reconcile();
           }
           lostAt = null;
         } else if (s === "reconnecting" || s === "unavailable") {
           lostAt ??= t;
         }
-        previous = s;
       },
       onEnd: () => {
         callbacks.current.reconcile();
