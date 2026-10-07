@@ -10,7 +10,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gen:api": "openapi-typescript ../api/openapi.json -o src/lib/api/schema.d.ts",
+    "gen:api:check": "mkdir -p .next && openapi-typescript ../api/openapi.json -o .next/abb-schema-check.d.ts && diff -q .next/abb-schema-check.d.ts src/lib/api/schema.d.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.1",

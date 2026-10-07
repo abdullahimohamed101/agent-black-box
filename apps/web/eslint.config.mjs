@@ -5,7 +5,15 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "next-env.d.ts", "coverage/**"]),
+  globalIgnores([
+    "src/lib/api/schema.d.ts",
+    "playwright-report/**",
+    "test-results/**",
+    ".next/**",
+    "out/**",
+    "next-env.d.ts",
+    "coverage/**",
+  ]),
   {
     rules: {
       // Trace payloads are untrusted; they must only ever be rendered as text.
