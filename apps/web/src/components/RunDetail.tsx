@@ -138,7 +138,7 @@ export function RunDetail({
   }, [hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
 
   const restEvents = useMemo(() => ev.data?.pages.flatMap((p) => p.items) ?? [], [ev.data]);
-  const restComplete = ev.isSuccess && !hasNextPage && !isFetchingNextPage;
+  const restComplete = ev.isSuccess && !hasNextPage;
   const refetchRun = run.refetch;
   const stream = useLiveEvents(runId, {
     enabled: live && active && !!run.data,

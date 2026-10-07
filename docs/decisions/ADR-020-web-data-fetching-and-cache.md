@@ -17,12 +17,17 @@ into the same data. Options: React server components with `fetch` caching; clien
 - Defaults: `staleTime` 5 s for lists, 60 s for immutable data (events of a terminal run), no retry on 4xx, two retries with
   backoff otherwise; running runs refetch every 3 s until Phase 5 replaces polling with SSE.
 
-## Interim live-run behaviour (until Phase 5 SSE)
-- The events query key is the run id only. A finished run's events are immutable (INV-1): `staleTime: Infinity`, never refetched.
-- For an active run the run record is polled every 3 s; the events are refetched (all pages, sequentially) only when the run's
-  `event_count` or status changes, so an idle live run costs one small request per poll and a finished run costs none.
-  This is O(pages) per change and is acceptable only for the interim; Phase 5 replaces it with incremental merge keyed by `event_id`.
-- `409 CURSOR_STALE` (ordering mode changed while paging) drops the partial pages and restarts from page 1, at most three times.
+## Live runs (Phase 5, replaces the interim polling design)
+- History comes through REST as before (`useRunEvents`, 500 per page, a finished run is immutable and never refetched).
+- A running run additionally opens an SSE stream (`useLiveEvents`, ADR-022) once the history is complete, resuming after the newest
+  event received. Streamed events are merged into the REST list by `event_id` in canonical order (`mergeEvents`, parity-tested against the
+  Python `sort_events`), once per animation frame. Duplicates and the server's resume overlap are harmless.
+- While the stream is connecting, live or reconnecting the events list is **not** refetched when the run's `event_count` changes (the old
+  O(pages) behaviour). The run record is still polled every 3 s for the summary figures.
+- Fallbacks: if streaming is off (fixture data), unsupported, or `unavailable` after repeated failures, the old rule applies: reload the
+  events when the run's `event_count` or status changes. After a gap of more than 20 s in live delivery, and when the run ends, the events
+  and the run record are reloaded once (reconciliation).
+- `409 CURSOR_STALE` (ordering mode changed while paging) still drops the partial pages and restarts from page 1, at most three times.
 
 ## Consequences
 Three runtime dependencies in the web app (the SDK's near-zero budget does not apply to the web). Each is widely used,
