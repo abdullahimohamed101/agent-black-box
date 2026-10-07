@@ -24,7 +24,7 @@ None.
 
 ## Next actions (exact)
 1. With approval: open the Phase 2 PR (`feature/phase-2-ingestion` -> `main`), confirm CI green, merge.
-2. Branch `feature/phase-3-python-sdk` from updated `main`; `plan-change` for Phase 3 (`docs/IMPLEMENTATION_PLAN.md`). The plan must decide:
+2. Branch `feature/phase-3-python-sdk` from updated `main`; `plan-change` for Phase 3 (`docs/IMPLEMENTATION_PLAN.md`). The plan must include **KI-020** (database roles; issue #4, target Phase 3) and decide:
    pydantic in the SDK vs a stdlib builder validated by contract tests (Phase 1 R3), the exporter's retry/backoff against `429`/`503`
    `Retry-After`, and how it uses `POST /v1/events/batch` (gzip, <= 1000 events, 5 MiB). Read `docs/architecture/api-v1.md` first.
 
@@ -33,7 +33,7 @@ None.
 - How the Phase 4 web UI authenticates to the read API before Phase 15 (server-side `runs:read` key in the Next.js backend is the likely answer).
 
 ## Known technical debt
-`docs/KNOWN_ISSUES.md` (KI-008, KI-010, KI-013 to KI-026): notably full recomputation of very large active runs (KI-016), no DB privilege
+`docs/KNOWN_ISSUES.md` (severity, target and GitHub issue per item): notably full recomputation of very large active runs (KI-016), no DB privilege
 separation yet (KI-020), no quotas (KI-018), no failed-auth throttling (KI-019).
 
 ## Last verified test status

@@ -12,7 +12,8 @@ Run only after `verify-change` and `review-change` have no open P0/P1 findings.
    `FAIL`. A phase with a FAIL or an unverified *required* criterion is not complete.
 2. Run `scripts/quality.sh full`; record test counts and duration.
 3. Validate migrations: empty -> head, and previous head -> new head.
-4. Update `docs/PROJECT_STATE.md`, `docs/IMPLEMENTATION_PLAN.md` (status), README phase
+4. Update `docs/KNOWN_ISSUES.md` first (move fixed rows to Resolved and close their GitHub issues;
+   every new deferral needs a severity, a target and an issue), then update `docs/PROJECT_STATE.md`, `docs/IMPLEMENTATION_PLAN.md` (status), README phase
    table, `ARCHITECTURE.md` component statuses, `docs/KNOWN_ISSUES.md`, and relevant docs.
 5. Set the plan's Status to Completed and move it to `docs/plans/completed/`.
 6. Emit the report:

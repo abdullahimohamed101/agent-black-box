@@ -27,6 +27,7 @@ Product-specific checks:
 - **Immutability**: no UPDATE of accepted event rows.
 - **Scale creep**: no Kafka/ClickHouse/Redis/K8s without a measured trigger and ADR.
 
-Classify findings P0 critical, P1 must fix before merge, P2 should fix, P3 optional.
+Classify findings P0 critical, P1 must fix before merge, P2 should fix, P3 optional. Anything
+not fixed in the phase goes into `docs/KNOWN_ISSUES.md` with a severity (S1-S3), a target and a GitHub issue.
 For each: severity, exact location, problem, impact, suggested correction.
 If there are no substantive issues, say so explicitly.

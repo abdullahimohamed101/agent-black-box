@@ -19,7 +19,7 @@ Every session, in order, before editing anything:
 
 1. Read `docs/PROJECT_STATE.md` (where we are, exact next task, failing tests).
 2. Read the active plan in `docs/plans/active/` (there is at most one).
-3. Read `ARCHITECTURE.md` and the spec sections the plan cites
+3. Read `ARCHITECTURE.md`, the spec sections the plan cites, and the open S1 items in `docs/KNOWN_ISSUES.md`
    (`docs/architecture/agent-black-box-spec.md`; sections are written `§N`).
 4. Read the newest ADRs in `docs/decisions/`.
 5. Run `git status`, `git log -5`, then `scripts/quality.sh quick`.
