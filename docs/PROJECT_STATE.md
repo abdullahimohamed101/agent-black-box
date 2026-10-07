@@ -7,7 +7,7 @@ Phases 0-3 are merged to `main` (CI green). Phase 4 (core web product) is comple
 Phases 3 and 4 were built in parallel in separate worktrees (`../abb-worktrees/`); each kept its own plan file.
 
 ## Current milestone
-M1 data plane and SDK done. M2 (usable product) lands when Phase 4 merges; Phase 5 (live streaming) and Phase 6 (coding-agent demo) complete it.
+M1 is complete once Phase 4 merges and Phase 5 (live streaming) lands; M2 starts with Phase 6 (coding-agent demo).
 
 ## Completed work
 - Phase 0 foundation, Phase 1 event contract, Phase 2 ingestion/outbox/query API: see `docs/plans/completed/`.
