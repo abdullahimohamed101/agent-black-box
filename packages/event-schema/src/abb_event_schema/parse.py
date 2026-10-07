@@ -25,7 +25,14 @@ def _to_bytes(raw: str | bytes | dict[str, Any]) -> bytes:
     if isinstance(raw, bytes):
         return raw
     if isinstance(raw, str):
-        return raw.encode("utf-8")
+        try:
+            return raw.encode("utf-8")
+        except UnicodeEncodeError:  # e.g. an unpaired surrogate: not valid text on the wire
+            raise EventValidationError(
+                ErrorCode.EVENT_INVALID,
+                "Event is not valid UTF-8 text.",
+                [Issue((), "json_invalid", "Event is not valid UTF-8 text.")],
+            ) from None
     try:
         return json.dumps(raw, separators=(",", ":"), allow_nan=False).encode("utf-8")
     except (TypeError, ValueError):

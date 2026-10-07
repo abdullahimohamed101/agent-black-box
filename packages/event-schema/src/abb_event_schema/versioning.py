@@ -11,7 +11,7 @@ _VERSION_RE = re.compile(r"^(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})$")
 
 
 def parse_schema_version(value: str) -> tuple[int, int]:
-    match = _VERSION_RE.match(value)
+    match = _VERSION_RE.fullmatch(value)
     if not match:
         raise EventValidationError(
             ErrorCode.EVENT_SCHEMA_UNSUPPORTED,

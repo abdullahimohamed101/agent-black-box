@@ -441,3 +441,30 @@ def test_timestamps_must_be_canonical_rfc3339(value: str, code: str) -> None:
 )
 def test_valid_rfc3339_forms_normalise_to_utc(value: str, expected: datetime) -> None:
     assert parse_event_in(make_event(occurred_at=value)).occurred_at == expected
+
+
+# Python's `$` also matches before a trailing newline; every pattern must reject it.
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"event_id": evt(1) + "\n"},
+        {"run_id": make_event()["run_id"] + "\n"},
+        {"event_type": "tool.call.completed\n"},
+        {"schema_version": "1.0\n"},
+        {"occurred_at": "2026-10-06T20:13:22Z\n"},
+        {"agent_id": "coding-agent\n"},
+        {"payload_ref": "artifact://a/b\n"},
+        {"attributes": {"tool.name": "t", "vendor.key\n": 1}},
+    ],
+)
+def test_trailing_newline_is_never_accepted(mutation: dict[str, Any]) -> None:
+    assert rejected(make_event(**mutation)).issues
+
+
+def test_text_that_cannot_be_utf8_is_a_validation_error_not_a_crash() -> None:
+    assert rejected('{"a":"\ud800"}').code is ErrorCode.EVENT_INVALID
+
+
+def test_validation_error_carries_args() -> None:
+    err = rejected({})
+    assert err.args and err.args[0] in {"EVENT_INVALID", "EVENT_SCHEMA_UNSUPPORTED"}

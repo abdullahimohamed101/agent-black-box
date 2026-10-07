@@ -111,7 +111,7 @@ def parse_id(value: str, expected: IdKind | None = None) -> ParsedId:
 
     Only the canonical (uppercase) spelling is accepted so one id has exactly one string form.
     """
-    match = _ID_RE.match(value)
+    match = _ID_RE.fullmatch(value)
     if not match:
         raise ValueError("not a valid Agent Black Box id")
     try:

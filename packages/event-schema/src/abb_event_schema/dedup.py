@@ -37,17 +37,22 @@ class DedupResult:
 
 
 def dedupe(events: Iterable[Event | EventIn]) -> DedupResult:
-    """Collapse repeated event ids within one batch, keeping the first occurrence in order."""
-    seen: dict[str, str] = {}
+    """Collapse repeated events within one batch, keeping the first occurrence in order.
+
+    Identity is `(workspace_id, event_id)` (INV-3): the same event id in two workspaces is two
+    different events, never a duplicate. Client events without a tenant yet share one namespace.
+    """
+    seen: dict[tuple[str | None, str], str] = {}
     result = DedupResult()
     for event in events:
         digest = content_hash(event)
-        previous = seen.get(event.event_id)
+        key = (event.workspace_id, event.event_id)
+        previous = seen.get(key)
         if previous is None:
-            seen[event.event_id] = digest
+            seen[key] = digest
             result.unique.append(event)
         elif previous == digest:
             result.duplicates += 1
         else:
-            result.conflicts.append(event.event_id)
+            result.conflicts.append(event.event_id)  # tenant is implied by the batch
     return result

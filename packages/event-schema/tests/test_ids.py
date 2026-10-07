@@ -64,6 +64,7 @@ def test_randomness_overflow_carries_into_the_timestamp() -> None:
         "EVT_01ARZ3NDEKTSV4RRFFQ69G5FAV",
         "xyz_01ARZ3NDEKTSV4RRFFQ69G5FAV",  # unknown prefix
         "01ARZ3NDEKTSV4RRFFQ69G5FAV",  # no prefix
+        "evt_01ARZ3NDEKTSV4RRFFQ69G5FAV\n",  # trailing newline
     ],
 )
 def test_malformed_ids_are_rejected(bad: str) -> None:

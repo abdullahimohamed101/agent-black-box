@@ -31,6 +31,9 @@ class EventValidationError(Exception):
     message: str
     issues: list[Issue] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        super().__init__(self.code.value, self.message)
+
     def __str__(self) -> str:
         return f"{self.code.value}: {self.message}"
 

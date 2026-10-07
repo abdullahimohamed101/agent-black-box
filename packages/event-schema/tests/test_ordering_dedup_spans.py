@@ -260,3 +260,12 @@ def test_span_in_two_traces_is_reported() -> None:
         ),
     ]
     assert "span_in_multiple_traces" in {i.code for i in check_span_relationships(events)}
+
+
+def test_same_event_id_in_two_workspaces_is_not_a_duplicate() -> None:
+    other_ws = "ws_01J9YYYYYYYYYYYYYYYYYYYYYY"
+    a = finalize(ev(1), workspace_id=WS, project_id=PRJ, received_at=T0)
+    b = finalize(ev(1), workspace_id=other_ws, project_id=PRJ, received_at=T0)
+    result = dedupe([a, b, a])
+    assert [e.workspace_id for e in result.unique] == [WS, other_ws]
+    assert result.duplicates == 1 and result.conflicts == []

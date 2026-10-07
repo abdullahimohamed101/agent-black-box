@@ -2,7 +2,11 @@
 
 `EventIn` is what a client sends: an SDK only knows its API key, so `workspace_id` and
 `project_id` are optional and, if present, must match the key. `Event` is the canonical stored
-form with both set and the server's `received_at`. Events are immutable (INV-1).
+form with both set and the server's `received_at`.
+
+Immutability (INV-1) is a storage rule: persisted events are never updated. The models are only
+shallowly frozen (fields cannot be reassigned) but `attributes`, `payload` and `tags` are plain
+containers, so treat them as read-only and compute `content_hash` from what was received.
 """
 
 import json
@@ -68,7 +72,7 @@ def _parse_rfc3339(value: Any) -> Any:
     """
     if not isinstance(value, str):
         return value
-    match = _TIMESTAMP_RE.match(value)
+    match = _TIMESTAMP_RE.fullmatch(value)
     if match is None:
         raise _fail(
             "timestamp_format_invalid", "Timestamps must be RFC 3339, e.g. 2026-10-06T20:13:22Z."
@@ -175,7 +179,7 @@ def _check_attributes(attributes: dict[str, Any]) -> dict[str, Any]:
     if len(attributes) > limits.MAX_ATTRIBUTES:
         raise _fail("attributes_too_many", "Too many attributes.", ("attributes",))
     for key, value in attributes.items():
-        if len(key) > limits.MAX_ATTRIBUTE_KEY_LENGTH or not _ATTR_KEY_RE.match(key):
+        if len(key) > limits.MAX_ATTRIBUTE_KEY_LENGTH or not _ATTR_KEY_RE.fullmatch(key):
             # The key itself is not echoed: keys are caller-controlled text.
             raise _fail("attribute_key_invalid", "An attribute key is malformed.", ("attributes",))
         _check_scalar(key, value, allow_list=True)

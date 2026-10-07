@@ -20,7 +20,7 @@ ATTRIBUTE_KEY_PATTERN = r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$"
 
 
 def is_valid_event_type_name(value: str) -> bool:
-    return len(value) <= MAX_EVENT_TYPE_LENGTH and bool(_EVENT_TYPE_RE.match(value))
+    return len(value) <= MAX_EVENT_TYPE_LENGTH and bool(_EVENT_TYPE_RE.fullmatch(value))
 
 
 class SpanRole(str, Enum):
