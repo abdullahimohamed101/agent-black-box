@@ -63,8 +63,9 @@ will map schema errors onto. No `packages/` directory exists.
   accepted (minors only add optional fields, §64.5); other majors are rejected with
   `EVENT_SCHEMA_UNSUPPORTED`. Unknown top-level fields are ignored by validation (not persisted by
   the typed model); unknown attribute keys are preserved.
-- **D11 Ordering** exactly per §65.1: `sequence` (events with a sequence first), then `occurred_at`,
-  `received_at`, `event_id`. Pure function `event_sort_key`. Timestamps must be timezone-aware and
+- **D11 Ordering** per §65.1, refined: if every event has a `sequence`, order by `(sequence, occurred_at,
+  received_at, event_id)`; otherwise by `(occurred_at, sequence, received_at, event_id)` so events lacking a
+  sequence are not exiled to the end. Pure function `event_sort_key`. Timestamps must be timezone-aware and
   are normalized to UTC; naive timestamps are rejected.
 - **D12 Dedup semantics** (ADR-006): identity is `(workspace_id, event_id)`. First write wins
   (INV-1). `canonical_hash(event)` (SHA-256 of canonical JSON, excluding `received_at`) lets the
