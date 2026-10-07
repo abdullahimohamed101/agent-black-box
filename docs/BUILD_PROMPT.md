@@ -223,6 +223,6 @@ with a dashboard.
 
 ## 11. Start
 
-When the user approves this documentation set: create the repository skeleton from it, open
-`feature/phase-0-foundation`, execute `docs/plans/active/phase-0-foundation.md`, and continue
-phase by phase per section 2.2.
+Follow `docs/PROJECT_STATE.md` to the current phase, open its `feature/phase-N-*` branch, execute the
+plan in `docs/plans/active/` (or create it with `plan-change`), and continue phase by phase per
+section 2.2.
