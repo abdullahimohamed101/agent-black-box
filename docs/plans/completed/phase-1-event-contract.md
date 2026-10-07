@@ -1,6 +1,6 @@
 # Phase 1 - Canonical Telemetry Contract
 
-Status: Planned (not started); branch `feature/phase-1-event-contract` from `main` @ 93d1f80
+Status: Completed on branch `feature/phase-1-event-contract` (merge and CI run pending user approval to push)
 Owner: coding agent
 Depends on: Phase 0 (merged, CI green)
 Spec: §7, §15, §16, §57.6, §62-66, §67.4 (priority classes), §101.2/§130 (error taxonomy), §141, §150, §153; ADR-001, ADR-006, ADR-007 (written this phase)
@@ -163,11 +163,43 @@ every valid/invalid example so the schema and the Pydantic models agree; `verify
 
 ## Ordered Steps (one commit each)
 
-1. [ ] Scaffold `packages/event-schema` (pyproject, tooling, empty package, one test), wire Makefile,
+1. [x] Scaffold `packages/event-schema` (pyproject, tooling, empty package, one test), wire Makefile,
    `quality.sh`, CI, `.gitignore`.
-2. [ ] `ids.py`, `limits.py`, `versioning.py`, `enums.py` with tests.
-3. [ ] `registry.py`, `event.py`, `errors.py`, `parse.py` with tests (valid/malformed/missing/unknown/version).
-4. [ ] `ordering.py`, `dedup.py`, `spans.py` with tests.
-5. [ ] Examples, JSON Schema + TS generation, `make schema`/`schema-check`, cross-validation tests, independence test.
-6. [ ] Docs: `events.md`, ADR-001/006/007, DECISIONS, TESTING, README, ARCHITECTURE.
-7. [ ] `verify-change`, `review-change`, `harden-change`, `complete-phase` (move plan to completed, update state).
+2. [x] `ids.py`, `limits.py`, `versioning.py`, `enums.py` with tests.
+3. [x] `registry.py`, `event.py`, `errors.py`, `parse.py` with tests (valid/malformed/missing/unknown/version).
+4. [x] `ordering.py`, `dedup.py`, `spans.py` with tests.
+5. [x] Examples, JSON Schema + TS generation, `make schema`/`schema-check`, cross-validation tests, independence test.
+6. [x] Docs: `events.md`, ADR-001/006/007, DECISIONS, TESTING, README, ARCHITECTURE.
+7. [x] `verify-change`, `review-change`, `harden-change`, `complete-phase` (move plan to completed, update state).
+
+## Evidence (2026-10-07)
+
+1. PASS `cd packages/event-schema && uv run pytest`: 335 passed (also 323/335 earlier build on Python 3.10 via
+   `uv run --python 3.10 --isolated`; the `requires-python >=3.10` claim was exercised, not assumed). Covers valid events
+   (all 43 registered types), malformed events, missing envelope/per-type attributes, unknown attributes and top-level
+   fields, schema versions, parent/child and cycles, duplicate ids (retry vs conflict vs cross-tenant), shuffled ordering.
+2. PASS `make schema-check` (python `--check` + regenerated TS, `git diff --exit-code`); staleness detection proven by
+   changing a limit (exit 2) and restoring (exit 0). 26 invalid fixtures fail with their expected codes, and the
+   generated JSON Schema agrees with the models (`test_json_schema_agrees_where_it_can`).
+3. PASS independence: clean-interpreter import test (no fastapi/sqlalchemy/openai/anthropic/langgraph/httpx/otel) and
+   metadata test (only `pydantic`).
+4. PASS README example executed as a test.
+5. PASS `ruff`, `mypy --strict` clean; `scripts/quality.sh full` OK (schema 335, api 15, web 7).
+   UNVERIFIED (env) CI run on GitHub: the branch is not pushed (pushing needs approval).
+6. PASS ADR-001, ADR-006, ADR-007 written; `docs/DECISIONS.md` and `docs/architecture/events.md` updated.
+7. PASS error output never echoes submitted values (13 mutation cases, asserted).
+
+### Independent verify and review (found and fixed)
+- verify: 30,000-case mutation fuzz found the models accepted `occurred_at: "1.0"` (read as a Unix timestamp) and
+  space/lowercase RFC 3339 variants, and the generated schema was looser than the models in three places. Fixed;
+  fuzz is now a permanent seeded test and fails if the fix is reverted.
+- review (P1): `dedupe` ignored the workspace, so the same `event_id` in two workspaces collapsed into one (INV-3);
+  Python's `$` accepted trailing newlines in attribute keys, IDs, versions and timestamps. Both fixed with
+  regression tests, each proven by a failing mutant.
+- review (P2/P3): `parse_event_in` raised `UnicodeEncodeError` for text with a lone surrogate; the error class dropped its
+  args. Fixed. Models are only shallowly frozen (documented; INV-1 is enforced by storage in Phase 2).
+
+## Notes for later phases
+- Phase 2 must decide whether to retain the raw accepted JSON: unknown top-level fields are dropped by the typed model.
+- The JSON Schema cannot express: NUL characters, lone surrogates, integer-vs-float range splits, impossible calendar
+  dates, self-parenting. These are model-only rules (fixtures marked `jsonschema_rejects: false`).
