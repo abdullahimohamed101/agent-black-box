@@ -357,6 +357,25 @@ select {
   border-radius: 6px;
   margin: 0.75rem 0;
 }
+.live-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  margin: 0.5rem 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.live-conn {
+  font-weight: 600;
+}
+.live-partial {
+  color: var(--warn);
+}
+.live-bar[data-tone="bad"] .live-now {
+  color: var(--bad);
+}
 .banner-bad {
   background: var(--bad-bg);
   border: 1px solid var(--bad);

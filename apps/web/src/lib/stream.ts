@@ -173,7 +173,13 @@ export function openRunStream(options: StreamOptions): StreamHandle {
     };
   };
 
-  connect();
+  if (!options.eventSource && typeof EventSource === "undefined") {
+    // No SSE in this environment: say so, and the caller polls.
+    closed = true;
+    onState("unavailable");
+  } else {
+    connect();
+  }
   return {
     close: () => {
       if (closed) return;
