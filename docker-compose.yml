@@ -13,6 +13,7 @@ x-api: &api
     # Overridable so load tests can measure capacity without the per-project limiter in the way.
     ABB_RATE_LIMIT_EVENTS_PER_SECOND: ${ABB_RATE_LIMIT_EVENTS_PER_SECOND:-2000}
     ABB_RATE_LIMIT_BURST_EVENTS: ${ABB_RATE_LIMIT_BURST_EVENTS:-10000}
+    ABB_SUMMARY_DEBOUNCE_SECONDS: ${ABB_SUMMARY_DEBOUNCE_SECONDS:-1}
 
 services:
   postgres:

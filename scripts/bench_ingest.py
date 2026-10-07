@@ -11,7 +11,6 @@ import asyncio
 import json
 import statistics
 import time
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -106,6 +105,11 @@ async def main() -> None:
     parser.add_argument("--key-file", type=Path, required=True)
     parser.add_argument("--batches", type=int, default=300)
     parser.add_argument("--batch-size", type=int, default=100)
+    parser.add_argument(
+        "--run-events", type=int, default=0,
+        help="start a new run every N events in the sequential case (default: one run for all)",
+    )  # fmt: skip
+    parser.add_argument("--ingest-only", action="store_true", help="skip the read/freshness cases")
     parser.add_argument("--json", type=Path, help="also write raw results here")
     args = parser.parse_args()
     key = args.key_file.read_text().strip()
@@ -120,8 +124,12 @@ async def main() -> None:
         latencies, failures = [], 0
         run = {"run_id": new_id(IdKind.RUN), "trace_id": new_id(IdKind.TRACE)}
         wall = time.perf_counter()
+        per_run = max(1, args.run_events // args.batch_size) if args.run_events else 0
         for i in range(args.batches):
-            ms, status = await post_batch(client, make_events(run, i * args.batch_size + 1, args.batch_size))
+            if per_run and i and i % per_run == 0:
+                run = {"run_id": new_id(IdKind.RUN), "trace_id": new_id(IdKind.TRACE)}
+            first = (i % per_run if per_run else i) * args.batch_size + 1
+            ms, status = await post_batch(client, make_events(run, first, args.batch_size))
             latencies.append(ms)
             failures += status != 202
         seconds = time.perf_counter() - wall
@@ -148,6 +156,9 @@ async def main() -> None:
             results.append(summarize(f"ingest: {clients} clients, concurrent", flat,
                                      f"{len(flat) * args.batch_size / seconds:,.0f} ev/s, non-202={bad}"))  # fmt: skip
 
+        if args.ingest_only:
+            return _finish(args, results)
+
         # 3. reads on a run with 2,000 events
         big = {"run_id": new_id(IdKind.RUN), "trace_id": new_id(IdKind.TRACE)}
         for i in range(20):
@@ -168,9 +179,12 @@ async def main() -> None:
             print(f"summary freshness after the last ack, {events:>6,} events: {ms:,.0f} ms (includes up to 500 ms poll)")
             results.append({"case": f"freshness {events} events", "ms": round(ms, 1)})
         print(f"(first 2,000-event run was current {fresh_2k:,.0f} ms after its last ack)")
+    _finish(args, results)
+
+
+def _finish(args: argparse.Namespace, results: list[dict[str, Any]]) -> None:
     if args.json:
         args.json.write_text(json.dumps(results, indent=2))
-    print(f"\nrun id prefix for cleanup reference: bench-{uuid.uuid4().hex[:6]}")
 
 
 if __name__ == "__main__":
