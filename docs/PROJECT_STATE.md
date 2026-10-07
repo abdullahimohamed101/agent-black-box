@@ -3,11 +3,10 @@
 Last updated: 2026-10-07
 
 ## Current phase
-Phases 0-3 are merged to `main` (CI green). Phase 4 (core web product) is complete on `feature/phase-4-web-product`, `main` merged in, PR #26 awaiting CI and merge.
-Phases 3 and 4 were built in parallel in separate worktrees (`../abb-worktrees/`); each kept its own plan file.
+Phases 0-4 are merged to `main` (CI green). Phase 5 (live streaming) is planned on `feature/phase-5-live-streaming`: plan `docs/plans/active/phase-5-live-streaming.md`, awaiting confirmation of decisions D1-D6.
 
 ## Current milestone
-M1 is complete once Phase 4 merges and Phase 5 (live streaming) lands; M2 starts with Phase 6 (coding-agent demo).
+M1 is complete once Phase 5 lands; M2 starts with Phase 6 (coding-agent demo).
 
 ## Completed work
 - Phase 0 foundation, Phase 1 event contract, Phase 2 ingestion/outbox/query API: see `docs/plans/completed/`.
@@ -17,16 +16,15 @@ M1 is complete once Phase 4 merges and Phase 5 (live streaming) lands; M2 starts
   (ADR-020, ADR-021), CSP/security headers, Playwright e2e (fixtures and real run), axe checks. Plan: `docs/plans/completed/phase-4-web-product.md`.
 
 ## In-progress work
-None.
+Phase 5 planning (no production code yet).
 
 ## Blocked work
-- Phase 4 merge needs the user's approval; GitHub CI on the merged Phase 4 branch not yet observed.
+None. Waiting for the user to confirm the Phase 5 decisions.
 
 ## Next actions (exact)
-1. Confirm CI green on PR #26 and merge it (user merges).
-2. Branch `feature/phase-5-live-streaming` from updated `main`; `plan-change` for Phase 5 (SSE, `Last-Event-ID` resume, reorder buffer). Read
-   `docs/KNOWN_ISSUES.md` first: KI-029 (web key exposure, S1) and ADR-020's interim live-run refetch section are the direct inputs.
-3. Phase 6 follows (needs SDK and UI). Phases 7 (analytics; resolves KI-028) and 8 (integrations) can run in parallel after that.
+1. Confirm D1-D6 in the Phase 5 plan (or amend), then execute its ordered steps from step 1.
+2. Then Phase 6 (needs SDK, UI and streaming for its E2E). Phases 7 (analytics; resolves KI-028) and 8 (integrations) can run in parallel with 5/6
+   in separate worktrees.
 
 ## Open decisions
 - Remove the `Co-Authored-By` trailers from the 5 earliest commits (needs a force-push; not done).
