@@ -273,11 +273,16 @@ class Exporter:
     def _drain(self) -> None:
         assert self._sink is not None
         while not self._abort.is_set():
+            with self._cv:
+                # Counted before the events leave the buffer, so flush() can never observe
+                # "buffer empty and nothing in flight" while a batch is between the two.
+                self._inflight += 1
             batch = self._buffer.take(self._c.batch_size)
             if not batch:
+                with self._cv:
+                    self._inflight -= 1
+                    self._cv.notify_all()
                 break
-            with self._cv:
-                self._inflight += 1
             try:
                 self._sink.deliver(batch, self._abort)
             except Exception:

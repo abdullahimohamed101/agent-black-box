@@ -328,3 +328,47 @@ def test_flush_on_an_idle_or_offline_client_returns_immediately() -> None:
         pass
     assert bb.flush(5) is False  # offline: queued events are never delivered
     assert time.monotonic() - t0 < 1
+
+
+def test_flush_cannot_return_while_a_batch_is_between_the_buffer_and_the_sink() -> None:
+    import threading as th
+
+    from blackbox.buffer import EventBuffer
+    from blackbox.config import Config
+    from blackbox.exporter import Exporter
+    from blackbox.stats import Stats
+
+    stats = Stats()
+    taken, release = th.Event(), th.Event()
+
+    class SlowTake(EventBuffer):
+        def take(self, limit: int) -> list[dict[str, Any]]:
+            out = super().take(limit)
+            if out:
+                taken.set()
+                release.wait(2)  # the window: events left the buffer, sink not called yet
+            return out
+
+    delivered: list[int] = []
+
+    class Sink:
+        def deliver(self, events: list[dict[str, Any]], abort: th.Event) -> None:
+            delivered.append(len(events))
+
+        def close(self) -> None:
+            return None
+
+    config = Config.build(api_key="k", flush_interval=0.01)
+    buf = SlowTake(100, stats)
+    exporter = Exporter(config, buf, stats, Sink())
+    buf.put({"event_id": "a", "event_type": "run.started"}, 0)
+    exporter.start()
+    assert taken.wait(2)
+    result: list[bool] = []
+    flusher = th.Thread(target=lambda: result.append(exporter.flush(0.3)))
+    flusher.start()
+    flusher.join()
+    assert result == [False] and delivered == []  # flush did not claim success early
+    release.set()
+    assert exporter.flush(2) and delivered == [1]
+    exporter.shutdown(1)
