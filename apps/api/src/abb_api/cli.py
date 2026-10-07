@@ -5,6 +5,8 @@
     python -m abb_api.cli create-key --workspace acme --project coding-agent \
         --scopes events:write runs:read
     python -m abb_api.cli revoke-key --workspace acme --key-id <key_id>
+    python -m abb_api.cli jobs-list --status dead_letter
+    python -m abb_api.cli jobs-retry [--id <job uuid>]   # after fixing the cause
     python -m abb_api.cli seed            # local development only
 
 A new key's secret is written to stdout exactly once; everything else goes to stderr so the key can
@@ -16,6 +18,7 @@ import asyncio
 import os
 import stat
 import sys
+import uuid
 from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
@@ -32,6 +35,7 @@ from abb_api.core.config import Settings, get_settings
 from abb_api.core.domain import AlreadyExistsError, DomainError, NotFoundError
 from abb_api.core.errors import AppError
 from abb_api.db import create_engine
+from abb_api.jobs.outbox import JobQueue
 from abb_api.projects.repository import ProjectRepository
 from abb_api.tenancy import TenantContext
 from abb_api.workspaces import Workspace, WorkspaceProvisioning
@@ -70,6 +74,17 @@ def build_parser() -> argparse.ArgumentParser:
     revoke = sub.add_parser("revoke-key")
     revoke.add_argument("--workspace", required=True, help="workspace slug")
     revoke.add_argument("--key-id", required=True)
+
+    jobs_list = sub.add_parser("jobs-list", help="show background jobs (default: dead letters)")
+    jobs_list.add_argument(
+        "--status", default="dead_letter", choices=["pending", "running", "done", "dead_letter"]
+    )
+    jobs_list.add_argument("--limit", type=int, default=50)
+
+    jobs_retry = sub.add_parser(
+        "jobs-retry", help="give dead-lettered jobs a fresh set of attempts"
+    )
+    jobs_retry.add_argument("--id", type=uuid.UUID, help="a single job; default: all dead letters")
 
     seed = sub.add_parser("seed", help="create a local workspace, project and dev key")
     seed.add_argument("--key-file", type=Path, default=DEFAULT_KEY_FILE)
@@ -197,6 +212,16 @@ async def run(
                 if not revoked:
                     raise NotFoundError(f"no active key '{args.key_id}' in workspace '{ws.slug}'")
                 print(f"revoked key {args.key_id}", file=err)
+            elif args.command == "jobs-list":
+                for job in await JobQueue(conn).list_jobs(args.status, args.limit):
+                    error = (job["last_error"] or "").replace("\n", " ")[:120]
+                    print(
+                        f"{job['id']}  {job['job_type']}  attempts={job['attempt_count']}  {error}",
+                        file=out,
+                    )
+            elif args.command == "jobs-retry":
+                revived = await JobQueue(conn).requeue_dead_letters(clock(), args.id)
+                print(f"requeued {revived} job(s)", file=err)
             elif args.command == "seed":
                 await _seed(conn, args.key_file, settings, clock, out, err)
     except (DomainError, ValueError) as exc:

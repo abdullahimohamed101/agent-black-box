@@ -202,3 +202,29 @@ def test_deriving_twice_is_stable_and_the_version_is_recorded() -> None:
 def test_no_events_is_a_programming_error() -> None:
     with pytest.raises(ValueError, match="no events"):
         derive_run([])
+
+
+def order_sensitive_run() -> list[Event]:
+    """Facts that depend on which event comes first: the first terminal event wins, and the
+    earliest events decide the run's agent and name."""
+    run = make_run_ids()
+    return [
+        ev(run, 1, "run.started", agent_id="planner", attributes={"run.name": "first name"}),
+        ev(run, 2, "run.started", agent_id="coder", attributes={"run.name": "second name"}),
+        ev(run, 3, "tool.call.completed", agent_id="coder"),
+        ev(run, 4, "run.failed", agent_id="coder"),
+        ev(run, 5, "run.completed", agent_id="coder"),  # contradicts run.failed, arrives "later"
+        ev(run, 6, "run.cancelled", agent_id="coder"),
+    ]
+
+
+@pytest.mark.parametrize("seed", range(30))
+def test_first_terminal_event_agent_and_name_do_not_depend_on_arrival_order(seed: int) -> None:
+    events = order_sensitive_run()
+    expected = derive_run(events)
+    assert expected.status is RunStatus.FAILED  # the earliest terminal event decides
+    assert expected.agent_slug == "planner" and expected.name == "first name"
+    assert expected.completed_at == events[3].occurred_at
+    shuffled = events[:]
+    random.Random(seed).shuffle(shuffled)
+    assert derive_run(shuffled) == expected

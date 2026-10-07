@@ -120,3 +120,33 @@ async def test_seed_creates_the_expected_tenant(
         assert workspace is not None
         project = await ProjectRepository(conn, TenantContext(workspace.id)).get_by_slug("demo")
         assert project is not None
+
+
+async def test_operators_can_list_and_requeue_dead_letters(
+    database_url: str, engine: AsyncEngine
+) -> None:
+    from sqlalchemy import insert, select
+
+    from abb_api.db import tables as t
+    from tests.factories import make_workspace, uid
+
+    settings = make_settings(database_url)
+    async with engine.begin() as conn:
+        ws = await make_workspace(conn)
+        dead = uid()
+        for job_id, status in ((dead, "dead_letter"), (uid(), "done")):
+            await conn.execute(
+                insert(t.outbox_jobs).values(
+                    id=job_id, job_type="summarize_run", workspace_id=ws, dedupe_key=str(job_id),
+                    status=status, attempt_count=5, last_error="ValueError: boom\nsecond line",
+                )
+            )  # fmt: skip
+    code, out, _ = await invoke(settings, "jobs-list")
+    assert code == 0 and str(dead) in out and "ValueError: boom second line" in out
+    assert out.count("\n") == 1  # only the dead letter, one line each
+    code, _, err = await invoke(settings, "jobs-retry", "--id", str(dead))
+    assert code == 0 and "requeued 1" in err
+    async with engine.connect() as conn:
+        row = (await conn.execute(select(t.outbox_jobs).where(t.outbox_jobs.c.id == dead))).one()
+    assert row.status == "pending" and row.attempt_count == 0
+    assert (await invoke(settings, "jobs-list"))[1] == ""
