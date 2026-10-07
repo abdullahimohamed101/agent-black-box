@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 
 from abb_api.auth import scopes
 from abb_api.auth.dependencies import require_principal
+from abb_api.core.errors import ErrorEnvelope
 from abb_api.ingestion.service import project_key_required
 from abb_api.runs.schemas import (
     CreateRunRequest,
@@ -26,10 +27,15 @@ router = APIRouter(prefix="/v1/runs", tags=["runs"])
 Reader = Annotated[Principal, Depends(require_principal(scopes.RUNS_READ))]
 Writer = Annotated[Principal, Depends(require_principal(scopes.EVENTS_WRITE))]
 
-_ERRORS: dict[int | str, dict[str, Any]] = {
+_ERROR_TEXT: dict[int | str, dict[str, Any]] = {
     401: {"description": "Missing, malformed, unknown, revoked or expired API key."},
     403: {"description": "The key lacks the required scope."},
     404: {"description": "Not found, or not visible to this key (never reveals other tenants)."},
+    422: {"description": "A parameter or the request body is invalid."},
+    503: {"description": "A dependency is unavailable; retry with backoff."},
+}
+_ERRORS: dict[int | str, dict[str, Any]] = {
+    status: {**spec, "model": ErrorEnvelope} for status, spec in _ERROR_TEXT.items()
 }
 
 
@@ -42,7 +48,11 @@ def _service(request: Request) -> RunService:
     "",
     response_model=RunOut,
     status_code=201,
-    responses={**_ERRORS, 200: {"description": "The run already existed (idempotent)."}},
+    responses={
+        **_ERRORS,
+        200: {"description": "The run already existed (idempotent)."},
+        409: {"description": "That run id belongs to another project.", "model": ErrorEnvelope},
+    },
     summary="Create a run explicitly",
     description=(
         "Optional: the first event for an unseen run id creates the run anyway. Idempotent on "
@@ -99,7 +109,13 @@ async def get_run(run_id: str, request: Request, principal: Reader) -> RunOut:
 @router.get(
     "/{run_id}/events",
     response_model=EventPage,
-    responses={**_ERRORS, 409: {"description": "CURSOR_STALE: restart paging from the start."}},
+    responses={
+        **_ERRORS,
+        409: {
+            "description": "CURSOR_STALE: restart paging from the start.",
+            "model": ErrorEnvelope,
+        },
+    },
     summary="List a run's events in canonical order",
     description=(
         "Ordered by sequence when every event of the run has one, otherwise by time "

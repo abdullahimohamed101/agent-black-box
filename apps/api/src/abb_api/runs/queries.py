@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, literal, select, tuple_
+from sqlalchemy import Select, func, literal, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
@@ -119,17 +119,34 @@ class RunQueries:
         rows = await self._conn.execute(statement.order_by(*order).limit(limit))
         return [_record(r) for r in rows]
 
-    async def processing(self, run_ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:
-        """Runs with a summarize job still waiting or running: their summary is not current."""
+    async def summary_states(self, run_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """`processing` while a summarize job waits or runs; `failed` if the newest finished job
+        was dead-lettered (an operator must look); otherwise `current`."""
         if not run_ids:
-            return set()
+            return {}
         keys = {f"{self._tenant.workspace_id}:{run_id}": run_id for run_id in run_ids}
+        j = t.outbox_jobs.c
         rows = await self._conn.execute(
-            select(t.outbox_jobs.c.dedupe_key).where(
-                t.outbox_jobs.c.workspace_id == self._tenant.workspace_id,
-                t.outbox_jobs.c.job_type == SUMMARIZE_RUN,
-                t.outbox_jobs.c.status.in_(("pending", "running")),
-                t.outbox_jobs.c.dedupe_key.in_(list(keys)),
+            select(j.dedupe_key, j.status, func.max(j.updated_at).label("at"))
+            .where(
+                j.workspace_id == self._tenant.workspace_id,
+                j.job_type == SUMMARIZE_RUN,
+                j.dedupe_key.in_(list(keys)),
             )
+            .group_by(j.dedupe_key, j.status)
         )
-        return {keys[r.dedupe_key] for r in rows}
+        by_key: dict[str, dict[str, datetime]] = {}
+        for row in rows:
+            by_key.setdefault(row.dedupe_key, {})[row.status] = row.at
+        states: dict[uuid.UUID, str] = {}
+        for key, run_id in keys.items():
+            seen = by_key.get(key, {})
+            if "pending" in seen or "running" in seen:
+                states[run_id] = "processing"
+            elif "dead_letter" in seen and (
+                "done" not in seen or seen["dead_letter"] > seen["done"]
+            ):
+                states[run_id] = "failed"
+            else:
+                states[run_id] = "current"
+        return states

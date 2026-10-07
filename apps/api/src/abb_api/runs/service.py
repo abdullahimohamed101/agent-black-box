@@ -48,8 +48,7 @@ def _event_out(event: Event, has_payload: bool, *, with_payload: bool) -> EventO
     return EventOut(**wire, has_payload=has_payload)
 
 
-def _run_out(record: RunRecord, workspace_id: uuid.UUID, processing: bool) -> RunOut:
-    del workspace_id
+def _run_out(record: RunRecord, state: str) -> RunOut:
     return RunOut(
         id=from_uuid(IdKind.RUN, record.id),
         project_id=from_uuid(IdKind.PROJECT, record.project_id),
@@ -63,7 +62,7 @@ def _run_out(record: RunRecord, workspace_id: uuid.UUID, processing: bool) -> Ru
         ordering_mode=record.ordering_mode,  # type: ignore[arg-type]
         summary=record.summary,
         summary_version=record.summary_version,
-        summary_state="processing" if processing else "current",
+        summary_state=state,  # type: ignore[arg-type]
         metadata=record.metadata,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -132,7 +131,7 @@ class RunService:
                 )
             record = await RunQueries(conn, principal.tenant, principal.project_id).get(run_id)
         assert record is not None
-        return _run_out(record, principal.workspace_id, processing=False), created
+        return _run_out(record, "current"), created
 
     # ---------------------------------------------------------------- reads
 
@@ -164,7 +163,7 @@ class RunService:
                 after=after_key,
             )
             page = records[:limit]
-            processing = await queries.processing([r.id for r in page])
+            states = await queries.summary_states([r.id for r in page])
         next_cursor = None
         if len(records) > limit:
             last = page[-1]
@@ -172,17 +171,17 @@ class RunService:
                 cursors.Cursor("runs", [last.started_at.isoformat(), str(last.id)])
             )
         return RunPage(
-            items=[_run_out(r, principal.workspace_id, r.id in processing) for r in page],
+            items=[_run_out(r, states[r.id]) for r in page],
             next_cursor=next_cursor,
         )
 
     async def get_run(self, principal: Principal, run_id: str) -> RunOut:
         async with self._engine.connect() as conn:
             record = await self._visible_run(conn, principal, run_id)
-            processing = await RunQueries(conn, principal.tenant, principal.project_id).processing(
+            states = await RunQueries(conn, principal.tenant, principal.project_id).summary_states(
                 [record.id]
             )
-        return _run_out(record, principal.workspace_id, record.id in processing)
+        return _run_out(record, states[record.id])
 
     async def list_events(
         self,

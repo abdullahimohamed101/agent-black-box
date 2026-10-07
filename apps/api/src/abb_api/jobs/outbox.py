@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -37,6 +37,11 @@ class Job:
 def backoff_seconds(attempt: int, base: float, cap: float) -> float:
     """Delay before retry number `attempt` (1-based): base, 2*base, 4*base ... up to cap."""
     return float(min(cap, base * (2 ** (attempt - 1))))
+
+
+def _at(now: datetime | None) -> Any:
+    """An explicit time (tests) or the database clock."""
+    return now if now is not None else func.now()
 
 
 def _truncate(error: str) -> str:
@@ -89,29 +94,44 @@ class JobQueue:
     def __init__(self, conn: AsyncConnection) -> None:
         self._conn = conn
 
-    async def claim(self, *, owner: str, limit: int, lease: timedelta, now: datetime) -> list[Job]:
-        """Take up to `limit` runnable jobs. Concurrent claimers never receive the same job."""
+    async def claim(
+        self, *, owner: str, limit: int, lease: timedelta, now: datetime | None = None
+    ) -> list[Job]:
+        """Take up to `limit` runnable jobs. Concurrent claimers never receive the same job.
+
+        `now=None` (production) uses the database clock, the single time source for scheduling:
+        `available_at` is written by `now()` in the database, so comparing it with a host clock
+        that is a few milliseconds off would hide fresh jobs. Tests pass an explicit time.
+        """
         claimed = await self._conn.execute(
             text(
                 """
-                WITH picked AS (
+                WITH clock AS (SELECT COALESCE(CAST(:now AS timestamptz), now()) AS t),
+                picked AS (
                     SELECT id FROM outbox_jobs
-                    WHERE (status = 'pending' AND available_at <= :now)
-                       OR (status = 'running' AND lease_expires_at < :now)
+                    WHERE (status = 'pending' AND available_at <= (SELECT t FROM clock))
+                       OR (status = 'running' AND lease_expires_at < (SELECT t FROM clock))
                     ORDER BY available_at, created_at, id
                     LIMIT :limit
                     FOR UPDATE SKIP LOCKED
                 )
                 UPDATE outbox_jobs AS j
-                SET status = 'running', lease_owner = :owner, lease_expires_at = :expires,
-                    attempt_count = j.attempt_count + 1, updated_at = :now
+                SET status = 'running', lease_owner = :owner,
+                    lease_expires_at = (SELECT t FROM clock)
+                        + make_interval(secs => :lease_seconds),
+                    attempt_count = j.attempt_count + 1, updated_at = (SELECT t FROM clock)
                 FROM picked
                 WHERE j.id = picked.id
                 RETURNING j.id, j.job_type, j.workspace_id, j.dedupe_key, j.payload,
                           j.attempt_count, j.lease_owner
                 """
             ),
-            {"now": now, "limit": limit, "owner": owner, "expires": now + lease},
+            {
+                "now": now,
+                "limit": limit,
+                "owner": owner,
+                "lease_seconds": lease.total_seconds(),
+            },
         )
         return [
             Job(
@@ -126,7 +146,7 @@ class JobQueue:
             for r in claimed
         ]
 
-    async def complete(self, job: Job, now: datetime) -> bool:
+    async def complete(self, job: Job, now: datetime | None = None) -> bool:
         """Mark done, but only if this worker still holds the lease. False means it was lost."""
         result = await self._conn.execute(
             update(t.outbox_jobs)
@@ -135,12 +155,12 @@ class JobQueue:
                 t.outbox_jobs.c.status == "running",
                 t.outbox_jobs.c.lease_owner == job.lease_owner,
             )
-            .values(status="done", lease_owner=None, lease_expires_at=None, updated_at=now)
+            .values(status="done", lease_owner=None, lease_expires_at=None, updated_at=_at(now))
         )
         return result.rowcount == 1
 
     async def fail(
-        self, job: Job, *, error: str, now: datetime, max_attempts: int, retry_in: float
+        self, job: Job, *, error: str, now: datetime | None, max_attempts: int, retry_in: float
     ) -> str:
         """Record a failed attempt: retry later, or dead-letter. Returns the new status."""
         guard = (
@@ -157,7 +177,7 @@ class JobQueue:
                     last_error=_truncate(error),
                     lease_owner=None,
                     lease_expires_at=None,
-                    updated_at=now,
+                    updated_at=_at(now),
                 )
             )
             return "dead_letter"
@@ -166,11 +186,11 @@ class JobQueue:
             .where(*guard)
             .values(
                 status="pending",
-                available_at=now + timedelta(seconds=retry_in),
+                available_at=_at(now) + timedelta(seconds=retry_in),
                 last_error=_truncate(error),
                 lease_owner=None,
                 lease_expires_at=None,
-                updated_at=now,
+                updated_at=_at(now),
             )
         )
         try:
@@ -188,12 +208,12 @@ class JobQueue:
                     last_error=_truncate(f"superseded after failure: {error}"),
                     lease_owner=None,
                     lease_expires_at=None,
-                    updated_at=now,
+                    updated_at=_at(now),
                 )
             )
             return "superseded"
 
-    async def dead_letter(self, job: Job, *, error: str, now: datetime) -> None:
+    async def dead_letter(self, job: Job, *, error: str, now: datetime | None = None) -> None:
         await self._conn.execute(
             update(t.outbox_jobs)
             .where(t.outbox_jobs.c.id == job.id, t.outbox_jobs.c.lease_owner == job.lease_owner)
@@ -202,17 +222,23 @@ class JobQueue:
                 last_error=_truncate(error),
                 lease_owner=None,
                 lease_expires_at=None,
-                updated_at=now,
+                updated_at=_at(now),
             )
         )
 
-    async def requeue_dead_letters(self, now: datetime, job_id: uuid.UUID | None = None) -> int:
+    async def requeue_dead_letters(
+        self, now: datetime | None = None, job_id: uuid.UUID | None = None
+    ) -> int:
         """Operator action after a fix: give dead-lettered jobs a fresh set of attempts."""
         statement = (
             update(t.outbox_jobs)
             .where(t.outbox_jobs.c.status == "dead_letter")
             .values(
-                status="pending", attempt_count=0, available_at=now, last_error=None, updated_at=now
+                status="pending",
+                attempt_count=0,
+                available_at=_at(now),
+                last_error=None,
+                updated_at=_at(now),
             )
         )
         if job_id is not None:

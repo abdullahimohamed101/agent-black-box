@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from abb_api.auth import scopes
 from abb_api.auth.dependencies import require_principal
-from abb_api.core.errors import AppError, ErrorCategory
+from abb_api.core.errors import AppError, ErrorCategory, ErrorEnvelope
 from abb_api.core.request_context import get_request_id
 from abb_api.ingestion.body import decode_body, read_body, require_json_content_type
 from abb_api.ingestion.schemas import BatchResponse, EventResponse
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/v1", tags=["ingestion"])
 
 Writer = Annotated[Principal, Depends(require_principal(scopes.EVENTS_WRITE))]
 
-_ERRORS: dict[int | str, dict[str, Any]] = {
+_ERROR_TEXT: dict[int | str, dict[str, Any]] = {
     400: {"description": "Malformed batch or unsupported schema version."},
     401: {"description": "Missing, malformed, unknown, revoked or expired API key."},
     403: {"description": "The key lacks `events:write` or is not bound to a project."},
@@ -28,6 +28,9 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     422: {"description": "The event is invalid (single-event endpoint)."},
     429: {"description": "Rate limit exceeded; honour `Retry-After`."},
     503: {"description": "A dependency is unavailable; retry with backoff."},
+}
+_ERRORS: dict[int | str, dict[str, Any]] = {
+    status: {**spec, "model": ErrorEnvelope} for status, spec in _ERROR_TEXT.items()
 }
 
 

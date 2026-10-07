@@ -37,8 +37,11 @@ class RunOut(BaseModel):
         description="Derived from events; see docs/architecture/api-v1.md."
     )
     summary_version: int
-    summary_state: Literal["current", "processing"] = Field(
-        description="`processing` while events are waiting to be folded into the summary."
+    summary_state: Literal["current", "processing", "failed"] = Field(
+        description=(
+            "`processing` while events wait to be folded into the summary; `failed` if "
+            "summarization was dead-lettered and needs an operator (`jobs-retry`)."
+        )
     )
     metadata: dict[str, Any]
     created_at: datetime

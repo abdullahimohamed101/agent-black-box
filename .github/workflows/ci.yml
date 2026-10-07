@@ -53,11 +53,10 @@ jobs:
         run: |
           cp .env.example .env
           docker compose --profile app up -d --build --wait
-      - name: Smoke
+      - name: Smoke (provision, ingest over gzip, worker derives, read back, negative cases)
         run: |
-          curl -fsS localhost:8000/healthz
-          curl -fsS localhost:8000/readyz
           curl -fsS localhost:3000/ >/dev/null
+          scripts/smoke.sh
       - name: Logs on failure
         if: failure()
         run: docker compose --profile app logs --no-color

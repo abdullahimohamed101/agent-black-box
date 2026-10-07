@@ -220,7 +220,7 @@ async def run(
                         file=out,
                     )
             elif args.command == "jobs-retry":
-                revived = await JobQueue(conn).requeue_dead_letters(clock(), args.id)
+                revived = await JobQueue(conn).requeue_dead_letters(None, args.id)
                 print(f"requeued {revived} job(s)", file=err)
             elif args.command == "seed":
                 await _seed(conn, args.key_file, settings, clock, out, err)

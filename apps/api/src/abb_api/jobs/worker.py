@@ -12,11 +12,11 @@ import os
 import signal
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from abb_api.clock import Clock, system_clock
+from abb_api.clock import Clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.logging import configure_logging
 from abb_api.db import create_engine
@@ -39,14 +39,18 @@ class Worker:
         handlers: Mapping[str, Handler],
         settings: Settings,
         *,
-        clock: Clock = system_clock,
+        clock: Clock | None = None,
         owner: str | None = None,
     ) -> None:
         self._engine = engine
         self._handlers = handlers
         self._settings = settings
+        # None: the database clock schedules everything (see JobQueue.claim). Tests inject one.
         self._clock = clock
         self.owner = owner or f"{os.uname().nodename}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+
+    def _now(self) -> datetime | None:
+        return self._clock() if self._clock is not None else None
 
     async def run_once(self) -> int:
         """Claim and process one batch of jobs; returns how many were claimed."""
@@ -55,7 +59,7 @@ class Worker:
                 owner=self.owner,
                 limit=self._settings.worker_batch_size,
                 lease=timedelta(seconds=self._settings.worker_lease_seconds),
-                now=self._clock(),
+                now=self._now(),
             )
         for job in jobs:
             await self._process(job)
@@ -81,7 +85,7 @@ class Worker:
         if handler is None:
             async with self._engine.begin() as conn:
                 await JobQueue(conn).dead_letter(
-                    job, error=f"no handler for job type '{job.job_type}'", now=self._clock()
+                    job, error=f"no handler for job type '{job.job_type}'", now=self._now()
                 )
             logger.error(
                 "job has no handler", extra={"job_id": str(job.id), "job_type": job.job_type}
@@ -90,7 +94,7 @@ class Worker:
         try:
             async with self._engine.begin() as conn:
                 await handler(job, conn)
-                if not await JobQueue(conn).complete(job, self._clock()):
+                if not await JobQueue(conn).complete(job, self._now()):
                     raise LeaseLostError  # rolls the handler's writes back
         except LeaseLostError:
             logger.warning(
@@ -106,7 +110,7 @@ class Worker:
             outcome = await JobQueue(conn).fail(
                 job,
                 error=message,
-                now=self._clock(),
+                now=self._now(),
                 max_attempts=s.worker_max_attempts,
                 retry_in=backoff_seconds(
                     job.attempt_count, s.worker_backoff_base_seconds, s.worker_backoff_max_seconds

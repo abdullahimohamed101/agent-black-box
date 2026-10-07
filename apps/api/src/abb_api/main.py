@@ -2,9 +2,11 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from abb_api import __version__
 from abb_api.clock import Clock, system_clock
@@ -19,6 +21,36 @@ from abb_api.ingestion.router import router as ingestion_router
 from abb_api.ingestion.service import IngestionService
 from abb_api.runs.router import router as runs_router
 from abb_api.runs.service import RunService
+
+
+def _install_openapi(app: FastAPI) -> None:
+    """Document bearer authentication on /v1 (it is parsed by hand, so FastAPI cannot infer it)."""
+
+    def build() -> dict[str, Any]:
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=(
+                "Agent Black Box ingestion and query API. Authenticate with a project API key: "
+                "`Authorization: Bearer abb_live_<key_id>.<secret>`."
+            ),
+            routes=app.routes,
+        )
+        schema.setdefault("components", {}).setdefault("securitySchemes", {})["bearerAuth"] = {
+            "type": "http",
+            "scheme": "bearer",
+            "description": "Project API key. Create one with `python -m abb_api.cli create-key`.",
+        }
+        for path, operations in schema["paths"].items():
+            if path.startswith("/v1/"):
+                for operation in operations.values():
+                    operation["security"] = [{"bearerAuth": []}]
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = build  # type: ignore[method-assign]
 
 
 def create_app(
@@ -64,6 +96,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(ingestion_router)
     app.include_router(runs_router)
+    _install_openapi(app)
     return app
 
 

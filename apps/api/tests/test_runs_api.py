@@ -1,6 +1,7 @@
 """The query API end to end: events in through the public API, state out through the public API."""
 
 import random
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -518,3 +519,50 @@ async def test_event_lists_never_select_the_payload_column(api: Api) -> None:
     for statement in event_selects:
         mentions = re.findall(r"events\.payload(?![_\w])( IS NOT NULL)?", statement)
         assert mentions == [" IS NOT NULL"], statement  # only the has_payload flag, never the body
+
+
+async def test_a_dead_lettered_summary_is_reported_as_failed_until_it_recovers(api: Api) -> None:
+    from datetime import UTC
+    from datetime import datetime as dt
+    from uuid import uuid4
+
+    from abb_event_schema.ids import to_uuid
+    from sqlalchemy import insert
+
+    from abb_api.db import tables as t
+    from abb_api.jobs.outbox import SUMMARIZE_RUN, JobQueue
+
+    run = make_run_ids()
+    await api.post_batch([wire_event(run, 1)])
+    await api.drain()
+    path = f"/v1/runs/{run['run_id']}"
+    assert (await api.get(path)).json()["summary_state"] == "current"
+
+    key = f"{api.tenant.context.workspace_id}:{to_uuid(run['run_id'])}"
+
+    async def add_job(status: str, when: dt) -> uuid.UUID:
+        job_id = uuid4()
+        async with api.engine.begin() as conn:
+            await conn.execute(
+                insert(t.outbox_jobs).values(
+                    id=job_id, job_type=SUMMARIZE_RUN, workspace_id=api.tenant.context.workspace_id,
+                    dedupe_key=key, status=status, attempt_count=5, last_error="boom",
+                    payload={"run_id": str(to_uuid(run["run_id"]))},
+                    updated_at=when, available_at=when,
+                )
+            )  # fmt: skip
+        return job_id
+
+    dead = await add_job("dead_letter", dt.now(UTC) + timedelta(minutes=5))
+    failed = (await api.get(path)).json()
+    assert failed["summary_state"] == "failed"
+    assert (await api.get("/v1/runs")).json()["items"][0]["summary_state"] == "failed"
+
+    async with api.engine.begin() as conn:  # an operator retries after fixing the cause
+        assert await JobQueue(conn).requeue_dead_letters(dt.now(UTC), dead) == 1
+    assert (await api.get(path)).json()["summary_state"] == "processing"
+    await api.drain()
+    assert (await api.get(path)).json()["summary_state"] == "current"
+
+    await add_job("dead_letter", dt.now(UTC) - timedelta(days=1))  # an old failure, long superseded
+    assert (await api.get(path)).json()["summary_state"] == "current"

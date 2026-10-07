@@ -13,6 +13,7 @@ step() { printf '\n==> %s\n' "$*"; }
 
 step "schema: ruff / mypy / pytest"; (cd packages/event-schema && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q)
 step "schema: generated artifacts are current"; make -s schema-check
+step "api: openapi.json is current"; (cd apps/api && uv run python -m abb_api.openapi --check)
 step "api: ruff check / format";   (cd apps/api && uv run ruff check . && uv run ruff format --check .)
 step "api: mypy";                  (cd apps/api && uv run mypy)
 step "web: eslint / prettier";     pnpm --filter @abb/web lint && pnpm --filter @abb/web format:check

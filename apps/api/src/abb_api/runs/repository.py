@@ -14,6 +14,8 @@ from abb_api.db import tables as t
 from abb_api.runs.summary import SUMMARY_VERSION, RunDerivation
 from abb_api.tenancy import TenantContext
 
+SPAN_CHUNK = 1000
+
 
 @dataclass(frozen=True)
 class RunSeed:
@@ -125,28 +127,33 @@ class RunRepository:
             }
             for s in sorted(derived.spans.values(), key=lambda s: to_uuid(s.span_id).bytes)
         ]
-        statement = insert(t.spans).values(rows)
-        excluded = statement.excluded
-        written = await self._conn.execute(
-            statement.on_conflict_do_update(
-                index_elements=["workspace_id", "id"],
-                set_={
-                    "trace_id": excluded.trace_id,
-                    "parent_span_id": excluded.parent_span_id,
-                    "name": excluded.name,
-                    "kind": excluded.kind,
-                    "agent_slug": excluded.agent_slug,
-                    "status": excluded.status,
-                    "started_at": excluded.started_at,
-                    "ended_at": excluded.ended_at,
-                    "duration_ms": excluded.duration_ms,
-                    "event_count": excluded.event_count,
-                },
-                # A span id that already belongs to another run is never taken over.
-                where=t.spans.c.run_id == excluded.run_id,
-            ).returning(t.spans.c.id)
-        )
-        return len(rows) - len(written.all())
+        skipped = 0
+        # Chunked: one statement may carry at most 32767 bind parameters (13 per span).
+        for start in range(0, len(rows), SPAN_CHUNK):
+            chunk = rows[start : start + SPAN_CHUNK]
+            statement = insert(t.spans).values(chunk)
+            excluded = statement.excluded
+            written = await self._conn.execute(
+                statement.on_conflict_do_update(
+                    index_elements=["workspace_id", "id"],
+                    set_={
+                        "trace_id": excluded.trace_id,
+                        "parent_span_id": excluded.parent_span_id,
+                        "name": excluded.name,
+                        "kind": excluded.kind,
+                        "agent_slug": excluded.agent_slug,
+                        "status": excluded.status,
+                        "started_at": excluded.started_at,
+                        "ended_at": excluded.ended_at,
+                        "duration_ms": excluded.duration_ms,
+                        "event_count": excluded.event_count,
+                    },
+                    # A span id that already belongs to another run is never taken over.
+                    where=t.spans.c.run_id == excluded.run_id,
+                ).returning(t.spans.c.id)
+            )
+            skipped += len(chunk) - len(written.all())
+        return skipped
 
     async def create_queued(
         self,

@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -57,6 +58,21 @@ class AppError(Exception):
         self.retryable = retryable
         self.details = details or {}
         self.headers = headers or {}
+
+
+class ErrorBody(BaseModel):
+    code: str = Field(description="Stable machine-readable code, e.g. RUN_NOT_FOUND.")
+    message: str
+    category: ErrorCategory
+    retryable: bool = Field(description="Whether retrying the same request may succeed.")
+    request_id: str | None = Field(description="Also in the X-Request-ID response header.")
+    details: dict[str, Any]
+
+
+class ErrorEnvelope(BaseModel):
+    """The one error shape of every non-2xx response (spec §101.2)."""
+
+    error: ErrorBody
 
 
 def dependency_unavailable() -> AppError:

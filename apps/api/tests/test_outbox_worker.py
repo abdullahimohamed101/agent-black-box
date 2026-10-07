@@ -375,3 +375,51 @@ async def test_the_loop_survives_an_error_and_keeps_working(
     stop.set()
     await asyncio.wait_for(task, timeout=2)
     assert len(handled) == 1
+
+
+async def test_the_worker_process_starts_processes_jobs_and_exits_cleanly_on_sigterm(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """The real entrypoint, as a subprocess: claims a job, handles SIGTERM, exits 0."""
+    import os
+    import signal
+    import sys
+
+    from tests.conftest import API_DIR
+
+    ws = await workspace(engine)
+    run_id = uuid.uuid4()
+    async with engine.begin() as conn:  # a summarize job for a run that does not exist: a no-op
+        job_id = await add_job(
+            conn, ws, job_type="summarize_run", payload={"run_id": str(run_id)},
+            available_at=datetime.now(UTC),
+        )  # fmt: skip
+    env = {
+        **os.environ,
+        "ABB_DATABASE_URL": database_url,
+        "ABB_WORKER_POLL_INTERVAL_SECONDS": "0.05",
+        "ABB_LOG_LEVEL": "INFO",
+    }
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-m",
+        "abb_api.worker",
+        cwd=API_DIR,
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    try:
+        for _ in range(100):  # wait for the other process to handle the job
+            if (await job_row(engine, job_id)).status == "done":
+                break
+            await asyncio.sleep(0.1)
+        assert (await job_row(engine, job_id)).status == "done"
+        process.send_signal(signal.SIGTERM)
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+    finally:
+        if process.returncode is None:
+            process.kill()
+    output = stdout.decode()
+    assert process.returncode == 0
+    assert "worker started" in output and "worker stopped" in output

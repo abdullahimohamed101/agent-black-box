@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from abb_api import __version__
-from abb_api.core.errors import AppError, ErrorCategory
+from abb_api.core.errors import AppError, ErrorCategory, ErrorEnvelope
 from abb_api.db import check_database
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,11 @@ async def healthz() -> HealthResponse:
     return HealthResponse(status="ok", version=__version__)
 
 
-@router.get("/readyz", response_model=ReadyResponse)
+@router.get(
+    "/readyz",
+    response_model=ReadyResponse,
+    responses={503: {"description": "The database is unreachable.", "model": ErrorEnvelope}},
+)
 async def readyz(request: Request) -> ReadyResponse:
     try:
         await check_database(request.app.state.engine)

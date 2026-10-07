@@ -384,3 +384,26 @@ async def test_a_span_id_that_belongs_to_another_run_is_never_taken_over(
     spans = await span_rows(engine, runs[0]["run_id"])
     assert [s.name for s in spans.values()] == ["first"]
     assert await span_rows(engine, runs[1]["run_id"]) == {}
+
+
+async def test_a_run_with_thousands_of_spans_is_summarized(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """Regression: one statement per run exceeded asyncpg's 32767 bind-parameter limit at about
+    2500 spans, so big runs failed, retried and were dead-lettered (found by the benchmark)."""
+    tenant, run = await make_tenant(engine, "acme"), make_run_ids()
+    events = [
+        build_event(
+            tenant, run, n=n, event_type="tool.call.completed", attributes={"tool.name": "t"}
+        )
+        for n in range(1, 3001)
+    ]
+    for start in range(0, len(events), 1000):
+        await ingest(engine, tenant, events[start : start + 1000])
+    await drain(worker_for(engine, database_url))
+    row = await run_row(engine, run["run_id"])
+    assert row.summary["event_count"] == 3000 and row.summary_version == SUMMARY_VERSION
+    assert len(await span_rows(engine, run["run_id"])) == 3000
+    async with engine.connect() as conn:
+        statuses = {r.status for r in await conn.execute(select(t.outbox_jobs.c.status))}
+    assert statuses == {"done"}
