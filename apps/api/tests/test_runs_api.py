@@ -629,3 +629,20 @@ async def test_a_cursor_with_well_formed_positions_still_pages_correctly(api: Ap
     first = (await api.get("/v1/runs", limit=2)).json()
     rest = (await api.get("/v1/runs", limit=10, cursor=first["next_cursor"])).json()
     assert [r["id"] for r in first["items"] + rest["items"]] == created[::-1]
+
+
+async def test_cursor_timestamps_must_be_aware_and_representable(api: Api) -> None:
+    uuid_ok = "00000000-0000-0000-0000-000000000001"
+    for stamp in (
+        "2026-10-07T12:00:00",
+        "2026-10-07",
+        "0001-01-01T00:00:00+14:00",
+        "9999-12-31T23:59:59-14:00",
+    ):
+        error(
+            await api.get("/v1/runs", cursor=_cursor("runs", [stamp, uuid_ok])),
+            400,
+            "CURSOR_INVALID",
+        )
+    ok = await api.get("/v1/runs", cursor=_cursor("runs", ["2026-10-07T12:00:00+00:00", uuid_ok]))
+    assert ok.status_code == 200
