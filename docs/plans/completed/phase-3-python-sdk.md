@@ -141,7 +141,7 @@ children could deadlock on a lock held by a vanished thread (now `os.register_at
 Security-sensitive parts: privileges (migration 0007), redaction. Checked: runtime role cannot create objects or change roles; password comes only from
 the environment and is applied by Alembic's connection (never stored in a migration); `NOLOGIN` without it. Redaction runs before buffering so a later
 serialization bug cannot leak; default mode drops payloads; API key never logged or in `repr`. Tenant scoping is unchanged (INV-3). Residual risks are in
-KNOWN_ISSUES KI-027..029.
+KNOWN_ISSUES KI-030..029.
 
 Decisions beyond the plan: `project=` is informational (the key decides the project); `llm_call` takes `temperature`/`max_tokens` named arguments; run `metadata`
 becomes flat `metadata.<key>` attributes (scalars only) so it survives the default payload mode; a failing redaction callback drops the event (P0: keeps structural attributes only).

@@ -15,9 +15,9 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 | --- | --- | --- | --- | --- | --- |
 | KI-018 | S1 | Agents, runs and spans per project are unbounded (a client can invent agent slugs, run ids, span ids) | storage growth and noisy lists; only the rate limit bounds it | Phase 19: per-project quotas and cardinality limits | [#5](https://github.com/abdullahimohamed101/agent-black-box/issues/5) |
 | KI-019 | S1 | Failed authentication is not throttled | an unauthenticated flood adds database load | Phase 19: edge or IP rate limiting | [#6](https://github.com/abdullahimohamed101/agent-black-box/issues/6) |
-| KI-027 | S3 | The Python SDK queue is in memory only: a killed process (SIGKILL, OOM) loses undelivered events | the last <= 250 ms of events of a crashed agent; `mode="local"` is the durable option | Phase 17 (TypeScript SDK) or on user demand: optional disk spool | (to file) |
-| KI-028 | S3 | The API, worker and CLI do not check at startup that they are not connected as the database owner/superuser (KI-020 separation is by configuration) | a misconfigured deployment silently loses the INV-1 privilege protection | Phase 19: startup check / readiness warning | (to file) |
-| KI-029 | S3 | SDK secret detection is best-effort patterns; secrets of unknown shape pass through in `FULL` payload mode | unredacted secrets in captured payloads (default mode drops payloads) | Phase 13: server-side detectors and policy | (to file) |
+| KI-030 | S3 | The Python SDK queue is in memory only: a killed process (SIGKILL, OOM) loses undelivered events | the last <= 250 ms of events of a crashed agent; `mode="local"` is the durable option | Phase 17 (TypeScript SDK) or on user demand: optional disk spool | [#22](https://github.com/abdullahimohamed101/agent-black-box/issues/22) |
+| KI-031 | S3 | The API, worker and CLI do not check at startup that they are not connected as the database owner/superuser (KI-020 separation is by configuration) | a misconfigured deployment silently loses the INV-1 privilege protection | Phase 19: startup check / readiness warning | [#23](https://github.com/abdullahimohamed101/agent-black-box/issues/23) |
+| KI-032 | S3 | SDK secret detection is best-effort patterns; secrets of unknown shape pass through in `FULL` payload mode | unredacted secrets in captured payloads (default mode drops payloads) | Phase 13: server-side detectors and policy | [#24](https://github.com/abdullahimohamed101/agent-black-box/issues/24) |
 | KI-016 | S2 | Full recomputation of a very large active run (30,000 events) stalls requests 1.7-2.6 s on a 2-vCPU VM | only runs of tens of thousands of events still receiving events (`docs/benchmarks/phase-2-ingestion.md`) | Trigger: a run exceeds ~10,000 active events or p99 ingest > 500 ms: incremental summarization | [#7](https://github.com/abdullahimohamed101/agent-black-box/issues/7) |
 | KI-022 | S2 | The summarizer loads every event of a run into memory, with no cap | a run of millions of events could exhaust worker memory (dead-lettered after repeated crashes, not looped) | Trigger: with KI-016, plus a cap | [#8](https://github.com/abdullahimohamed101/agent-black-box/issues/8) |
 | KI-017 | S2 | The rate limiter is per API process | N processes allow N times the configured rate | Phase 19: shared limiter | [#9](https://github.com/abdullahimohamed101/agent-black-box/issues/9) |
@@ -43,10 +43,10 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 
 | ID | Was | Resolved |
 | --- | --- | --- |
+| KI-020 | runtime DB role could UPDATE/DELETE `events` | Phase 3: migration 0007 `abb_runtime` role, owner-only migrations, tested as the role; [#4](https://github.com/abdullahimohamed101/agent-black-box/issues/4) closes on merge |
 | KI-001..005 | Node/pnpm, Docker, PostgreSQL, Python 3.12, uv missing | 2026-10-07: installed with approval (Docker via Colima) |
 | KI-007 | CI had never executed | 2026-10-07: PR #1 green |
 | KI-011 | migration tests shared one database | Phase 2: throwaway database per session |
 | KI-012 | compose did not run migrations | Phase 2: one-shot `migrate` service |
-| KI-020 | runtime DB role could UPDATE/DELETE `events` | Phase 3: migration 0007 `abb_runtime` role, owner-only migrations, tested as the role; [#4](https://github.com/abdullahimohamed101/agent-black-box/issues/4) closes on merge |
 
 Rule: an acceptance criterion that depends on something unavailable stays `UNVERIFIED (env)` and the gate stays open.
