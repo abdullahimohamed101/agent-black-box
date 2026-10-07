@@ -1,5 +1,6 @@
 """The query API end to end: events in through the public API, state out through the public API."""
 
+import json
 import random
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -566,3 +567,65 @@ async def test_a_dead_lettered_summary_is_reported_as_failed_until_it_recovers(a
 
     await add_job("dead_letter", dt.now(UTC) - timedelta(days=1))  # an old failure, long superseded
     assert (await api.get(path)).json()["summary_state"] == "current"
+
+
+# ------------------------------------------------------------------ hostile cursors
+
+
+def _cursor(kind: str, key: list[Any], mode: str | None = None) -> str:
+    import base64
+
+    raw = json.dumps({"v": 1, "k": kind, "key": key, "m": mode}, separators=(",", ":"))
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+_HOSTILE: list[Any] = [None, 1, -1, 10**30, 1e999, "x", "", [], {}, True, "\x00", "a" * 3000,
+            "0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-14:00", "2026-10-07",
+            "2026-10-07T12:00:00", "00000000-0000-0000-0000-000000000000"]  # fmt: skip
+
+
+async def test_forged_cursors_are_a_clean_400_or_409_never_a_server_error(api: Api) -> None:
+    """Found by independent verification: wrong-typed or out-of-range cursor elements were 500s."""
+    run, _ = await ingest_scenario(api)
+    rid = run["run_id"]
+    uuid_ok, stamp_ok = "00000000-0000-0000-0000-000000000001", "2026-10-07T12:00:00+00:00"
+    attempts: list[tuple[str, str]] = []
+    for a in _HOSTILE:
+        for b in _HOSTILE:
+            attempts.append(("/v1/runs", _cursor("runs", [a, b])))
+            attempts.append((f"/v1/runs/{rid}/spans", _cursor("spans", [a, b])))
+        for mode in ("sequence", "time"):
+            attempts.append(
+                (
+                    f"/v1/runs/{rid}/events",
+                    _cursor("events", [a, stamp_ok, stamp_ok, uuid_ok], mode),
+                )
+            )
+            attempts.append(
+                (
+                    f"/v1/runs/{rid}/events",
+                    _cursor("events", [stamp_ok, a, stamp_ok, uuid_ok], mode),
+                )
+            )
+            attempts.append(
+                (f"/v1/runs/{rid}/events", _cursor("events", [1, stamp_ok, a, uuid_ok], mode))
+            )
+            attempts.append(
+                (f"/v1/runs/{rid}/events", _cursor("events", [1, stamp_ok, stamp_ok, a], mode))
+            )
+    outcomes: dict[int, int] = {}
+    for path, cursor in attempts:
+        response = await api.get(path, cursor=cursor)
+        outcomes[response.status_code] = outcomes.get(response.status_code, 0) + 1
+        assert response.status_code < 500, (path, response.text[:200])
+        if response.status_code >= 400:
+            assert response.headers["x-request-id"] and set(response.json()) == {"error"}
+    # 422: oversized cursors are refused by the parameter limit before decoding
+    assert set(outcomes) <= {200, 400, 409, 422}, outcomes
+
+
+async def test_a_cursor_with_well_formed_positions_still_pages_correctly(api: Api) -> None:
+    created = await many_runs(api, 5)
+    first = (await api.get("/v1/runs", limit=2)).json()
+    rest = (await api.get("/v1/runs", limit=10, cursor=first["next_cursor"])).json()
+    assert [r["id"] for r in first["items"] + rest["items"]] == created[::-1]

@@ -287,10 +287,7 @@ class RunService:
         if token is None:
             return None
         key = cursors.decode(token, "runs", width=2).key
-        try:
-            return datetime.fromisoformat(key[0]), uuid.UUID(key[1])
-        except (TypeError, ValueError):
-            raise cursors.cursor_invalid() from None
+        return cursors.as_datetime(key[0]), cursors.as_uuid(key[1])
 
     @staticmethod
     def _event_cursor(token: str | None, mode: str) -> list[Any] | None:
@@ -299,34 +296,28 @@ class RunService:
         decoded = cursors.decode(token, "events", width=4)
         if decoded.mode != mode:
             raise cursors.cursor_stale()
-        try:
-            key = decoded.key
-            if mode == "sequence":
-                return [
-                    int(key[0]),
-                    datetime.fromisoformat(key[1]),
-                    datetime.fromisoformat(key[2]),
-                    uuid.UUID(key[3]),
-                ]
+        key = decoded.key
+        if mode == "sequence":
             return [
-                datetime.fromisoformat(key[0]),
-                int(key[1]),
-                datetime.fromisoformat(key[2]),
-                uuid.UUID(key[3]),
+                cursors.as_int64(key[0]),
+                cursors.as_datetime(key[1]),
+                cursors.as_datetime(key[2]),
+                cursors.as_uuid(key[3]),
             ]
-        except (TypeError, ValueError):
-            raise cursors.cursor_invalid() from None
+        return [
+            cursors.as_datetime(key[0]),
+            cursors.as_int64(key[1]),
+            cursors.as_datetime(key[2]),
+            cursors.as_uuid(key[3]),
+        ]
 
     @staticmethod
     def _span_cursor(token: str | None) -> tuple[datetime | None, uuid.UUID] | None:
         if token is None:
             return None
         key = cursors.decode(token, "spans", width=2).key
-        try:
-            started = datetime.fromisoformat(key[0]) if key[0] is not None else None
-            return started, uuid.UUID(key[1])
-        except (TypeError, ValueError):
-            raise cursors.cursor_invalid() from None
+        started = cursors.as_datetime(key[0]) if key[0] is not None else None
+        return started, cursors.as_uuid(key[1])
 
 
 def _event_key(event: Event, mode: str) -> list[Any]:
