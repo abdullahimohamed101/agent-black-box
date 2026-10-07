@@ -22,6 +22,10 @@ analytics (FR-ING-008). Spec §72 prescribes a PostgreSQL outbox before any mess
   lease; failures retry with exponential backoff and are dead-lettered after 5 attempts; completion only succeeds for the
   lease holder, in the same transaction as the handler's writes. A failed job that would collide with newer pending work
   is marked superseded. Operators use `jobs-list` / `jobs-retry`.
+- **Leases are kept alive while a handler runs** (heartbeat every third of the lease), so a slow job is not reclaimed and
+  run again in parallel; a job whose lease expires after its last allowed attempt is dead-lettered instead of reclaimed, so a
+  job that kills its worker cannot crash-loop the fleet (both found in review: without them a 2.5 s job under a 1 s lease ran
+  8 times, past the 5-attempt limit). Run listings find a run's job state through an index on the dedupe key.
 - **One writer per run at a time**: the handler takes `SELECT ... FOR NO KEY UPDATE` on the run row before reading events,
   so a job holding an older snapshot cannot overwrite newer state. `FOR NO KEY UPDATE`, not `FOR UPDATE`: the latter
   conflicts with the key-share lock event inserts take on their run, which would block ingestion for the duration of a

@@ -31,6 +31,7 @@ ingestion edge | control plane | database/object storage | human approvers.
   bytes (a 100 MB gzip bomb is rejected without being expanded, tested by peak memory); only gzip/identity encodings and
   `application/json` are accepted; validation errors never echo submitted values; NUL characters and lone surrogates are rejected
   at the boundary (PostgreSQL cannot store them); unhandled errors return a generic 500 without internals.
+- Response headers (implemented): every response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`; full secure-header policy is Phase 19.
 - Denial of service (partly implemented): per-project token buckets (per process), bounded batches, bounded cursors and page
   sizes, bounded metadata; a shared limiter and quotas are Phase 19.
 - Rendering: payloads displayed as text; sanitize any markup; no `dangerouslySetInnerHTML` on trace data.

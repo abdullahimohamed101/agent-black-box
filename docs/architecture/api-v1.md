@@ -42,7 +42,7 @@ Every non-2xx response, from every route, has this shape and an `X-Request-ID` h
 | `BATCH_INVALID` | 400 | not JSON, no `events` array, empty, too many events, bad `batch_id`, broken gzip |
 | `EVENT_INVALID` | 422 | single-event endpoint: the event failed validation (`details.issues`) |
 | `EVENT_SCHEMA_UNSUPPORTED` | 400 | single-event endpoint: unsupported `schema_version` major |
-| `PAYLOAD_TOO_LARGE` | 413 | body (compressed or decompressed) over 5 MiB, or an event over 256 KB |
+| `PAYLOAD_TOO_LARGE` | 413 | body (compressed or decompressed) over 5 MiB; on the single-event endpoint also an event over 256 KB (inside a batch an oversized event is a per-event `EVENT_TOO_LARGE` entry in `errors`) |
 | `UNSUPPORTED_MEDIA_TYPE` / `UNSUPPORTED_ENCODING` | 415 | not `application/json`; `Content-Encoding` other than gzip/identity |
 | `REQUEST_INVALID` | 422 | invalid query parameter or run-creation body |
 | `RATE_LIMITED` | 429 | retryable; honour `Retry-After` |
@@ -81,7 +81,8 @@ come from the key (an event naming another tenant is rejected, never overwritten
 idempotent on `run_id`; `metadata` is at most 16 KB and 8 levels deep.
 
 `GET /v1/runs` lists newest first (`sort=started_at` for oldest first) with `status` (repeatable), `agent_id`,
-`project_id`, `started_after`, `started_before` (RFC 3339 with offset), `limit` (1-200, default 50) and
+`project_id`, `started_after` (inclusive), `started_before` (exclusive) (RFC 3339 with offset; values with no UTC
+representation are `422`), `limit` (1-200, default 50) and
 `cursor`. Paging is keyset-based, so runs arriving between page requests never cause repeats or gaps.
 
 `GET /v1/runs/{id}` returns the run: `status`, `name`, `agent_id`, `trace_id`, `started_at`, `completed_at`,
@@ -114,7 +115,7 @@ once), `files_modified` (distinct `file.path` of created/modified/deleted), `mod
 `GET /v1/runs/{id}/events` returns events in **canonical order** (the same total order as
 `abb_event_schema.ordering.sort_events`): by `(sequence, occurred_at, received_at, event_id)` when the run's
 `ordering_mode` is `sequence`, otherwise by `(occurred_at, sequence, received_at, event_id)`. Filters:
-`event_type` (repeatable), `status` (repeatable), `span_id`; `limit` 1-500 (default 100). The page includes
+`event_type` (repeatable; well-formed names only), `status` (repeatable; `success|error|timeout|cancelled|blocked`), `span_id`; `limit` 1-500 (default 100). The page includes
 `ordering_mode`; cursors embed it, so a cursor from before a mode change gets `409 CURSOR_STALE`.
 Payloads are **not** in lists (`has_payload` says whether one exists); `GET /v1/runs/{id}/events/{event_id}`
 returns the full event with its inline payload.

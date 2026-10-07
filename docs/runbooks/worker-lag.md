@@ -7,7 +7,8 @@ events are visible but summaries and spans are not.
    If it is crash-looping, read its logs first (a missing `ABB_DATABASE_URL` or an unreachable database is typical).
 2. Queue state (see OPERATIONS.md query). Many `pending` rows with old `available_at`: workers are down or too slow.
    `running` rows with an expired `lease_expires_at`: a worker died; another reclaims them automatically after the
-   lease (60 s) and the attempt is counted.
+   lease (60 s) and the attempt is counted; after the last allowed attempt it is dead-lettered instead (see
+   dead-letters.md). A running handler extends its lease automatically, so slow is not the same as dead.
 3. One huge run dominating? A single run with tens of thousands of events is recomputed in full per job (KI-016,
    `docs/benchmarks/phase-2-ingestion.md`). Look at the largest `summary.event_count` among `processing` runs. Mitigation:
    raise `ABB_SUMMARY_DEBOUNCE_SECONDS`, add workers (they serialize per run but parallelize across runs), or ask the

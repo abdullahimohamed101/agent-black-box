@@ -29,7 +29,7 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 ## What to watch
 
 Structured JSON logs (one line per request with `request_id`, and `workspace_id`, `project_id`, `key_id` after
-authentication; payloads and secrets are never logged). Messages worth alerting on: `job failed` with
+authentication; payloads and secrets are never logged). Messages worth alerting on: `lease lost while running`, `spans left untouched`, `job failed` with
 `outcome: dead_letter`, `worker loop error`, `conflicting duplicate events ignored`, `authentication unavailable`,
 `ingest unavailable`. Application metrics (spec §116) arrive in Phase 19; until then use the logs and these queries:
 
