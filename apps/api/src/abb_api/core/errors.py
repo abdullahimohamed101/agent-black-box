@@ -72,7 +72,7 @@ def dependency_unavailable() -> AppError:
 
 def is_connectivity_error(exc: BaseException) -> bool:
     """Database trouble we report as 503 (retryable), not as a client or server bug."""
-    if isinstance(exc, (OperationalError, InterfaceError, ConnectionError, TimeoutError)):
+    if isinstance(exc, (OperationalError, InterfaceError, OSError)):  # OSError covers timeouts
         return True
     return isinstance(exc, DBAPIError) and exc.connection_invalidated
 
