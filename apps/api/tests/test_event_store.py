@@ -1,4 +1,4 @@
-"""The ingest transaction against a real PostgreSQL: idempotency, conflicts, tenancy, concurrency."""
+"""The ingest transaction against real PostgreSQL: idempotency, conflicts, tenancy, concurrency."""
 
 import asyncio
 import re
@@ -113,10 +113,12 @@ async def test_retrying_the_same_batch_changes_nothing(engine: AsyncEngine) -> N
     tenant, run = await make_tenant(engine, "acme"), make_run_ids()
     events = [build_event(tenant, run, n=n) for n in range(1, 4)]
     await ingest(engine, tenant, events)
+    async with engine.begin() as conn:  # a worker has summarized the run
+        await conn.execute(update(t.outbox_jobs).values(status="done"))
     again = await ingest(engine, tenant, events)
     assert (again.accepted, again.duplicates, again.conflicts) == (0, 3, 0)
     assert await scalar(engine, count_of(t.events)) == 3
-    assert await pending_jobs(engine) == 1  # a retry that adds nothing enqueues nothing new
+    assert await pending_jobs(engine) == 0  # a retry that adds nothing enqueues nothing
 
 
 async def test_partially_overlapping_retry_only_adds_the_new_events(engine: AsyncEngine) -> None:
@@ -257,6 +259,104 @@ async def test_overlapping_batches_in_opposite_order_do_not_deadlock(engine: Asy
     assert sum(o.accepted for o in outcomes) == len(events)
     assert await scalar(engine, count_of(t.events)) == len(events)
     assert await pending_jobs(engine) == 4
+
+
+def recorder(sent: list[tuple[str, tuple[object, ...]]]):  # type: ignore[no-untyped-def]
+    def record(conn, cursor, statement, parameters, context, executemany) -> None:  # type: ignore[no-untyped-def]
+        sent.append((statement, tuple(parameters)))
+
+    return record
+
+
+def uuid_params_in_order(
+    statements: list[tuple[str, tuple[object, ...]]], table: str
+) -> list[object]:
+    """UUID parameters of INSERT INTO <table> statements, in the order they were sent."""
+    import uuid
+
+    return [
+        value
+        for sql, params in statements
+        if sql.lstrip().startswith(f"INSERT INTO {table} ")
+        for value in params
+        if isinstance(value, uuid.UUID)
+    ]
+
+
+async def test_rows_are_written_in_a_stable_id_order_whatever_the_input_order(
+    engine: AsyncEngine,
+) -> None:
+    """Deterministic proof of the deadlock-avoidance rule: sorted writes, whatever arrives."""
+    from sqlalchemy import event as sa_event
+
+    tenant = await make_tenant(engine, "acme")
+    runs = [make_run_ids() for _ in range(5)]
+    events = [build_event(tenant, runs[n % 5], n=n) for n in range(1, 41)]
+    for batch in (events, events[::-1], events[7:] + events[:7]):
+        sent: list[tuple[str, tuple[object, ...]]] = []
+
+        record = recorder(sent)
+        sa_event.listen(engine.sync_engine, "before_cursor_execute", record)
+        try:
+            async with engine.begin() as conn:
+                await PgEventStore(conn, tenant.context).ingest(batch)
+        finally:
+            sa_event.remove(engine.sync_engine, "before_cursor_execute", record)
+        run_ids = {to_uuid(e.run_id) for e in batch}
+        event_ids = {to_uuid(e.event_id) for e in batch}
+        written_runs = [u for u in uuid_params_in_order(sent, "runs") if u in run_ids]
+        written_events = [u for u in uuid_params_in_order(sent, "events") if u in event_ids]
+        assert written_runs == sorted(set(written_runs), key=lambda u: u.bytes)  # type: ignore[attr-defined]
+        assert len(written_runs) == 5
+        assert written_events == sorted(set(written_events), key=lambda u: u.bytes)  # type: ignore[attr-defined]
+        # (the first batch inserts everything; later ones are duplicates but are still sent sorted)
+        assert len(written_events) == 40
+
+
+async def test_overlapping_large_batches_in_opposite_order_do_not_deadlock(
+    database_url: str, engine: AsyncEngine
+) -> None:
+    """Many warmed connections, each inserting the same 300 events in an opposite order.
+
+    Without a stable lock order two statements wait on each other's rows and PostgreSQL aborts
+    one with a deadlock error. Stable ordering of runs and events prevents it.
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    tenant = await make_tenant(engine, "acme")
+    runs = [make_run_ids() for _ in range(6)]
+    events = [build_event(tenant, runs[n % 6], n=n) for n in range(1, 301)]
+    pooled = create_async_engine(database_url, pool_size=12, max_overflow=0)
+    try:
+        warm = [await pooled.connect() for _ in range(12)]  # connect up front, then race
+        for conn in warm:
+            await conn.close()
+
+        async def one(batch: list[Event]) -> IngestOutcome:
+            async with pooled.begin() as conn:
+                return await PgEventStore(conn, tenant.context).ingest(batch)
+
+        batches = [events if i % 2 == 0 else events[::-1] for i in range(12)]
+        outcomes = await asyncio.wait_for(asyncio.gather(*[one(b) for b in batches]), timeout=60)
+    finally:
+        await pooled.dispose()
+    assert sum(o.accepted for o in outcomes) == len(events)
+    assert await scalar(engine, count_of(t.events)) == len(events)
+
+
+async def test_duplicate_detection_is_not_confused_by_another_tenants_copy(
+    engine: AsyncEngine,
+) -> None:
+    """Two tenants hold the same event id with different content; each retry is a duplicate."""
+    a, b = await make_tenant(engine, "acme"), await make_tenant(engine, "globex")
+    run = make_run_ids()
+    event_id = build_event(a, run, n=1).event_id
+    mine = build_event(a, run, n=1, event_id=event_id, status="success")
+    theirs = build_event(b, run, n=1, event_id=event_id, status="error")
+    await ingest(engine, a, [mine])
+    await ingest(engine, b, [theirs])
+    assert (await ingest(engine, a, [mine])).duplicates == 1
+    assert (await ingest(engine, b, [theirs])).duplicates == 1
 
 
 async def test_concurrent_batches_with_conflicting_content_have_exactly_one_winner(
