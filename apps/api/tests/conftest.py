@@ -88,7 +88,9 @@ def database_url() -> Iterator[str]:
         yield url
 
 
-RUNTIME_ROLE = "abb_runtime"
+# A per-session login role that inherits the migration's `abb_runtime` privileges. The dev stack's
+# own `abb_runtime` role (and its password) is never touched by the tests.
+RUNTIME_ROLE = f"abb_rt_test_{uuid.uuid4().hex[:8]}"
 RUNTIME_PASSWORD = "abb_runtime_test_only"
 
 
@@ -102,10 +104,16 @@ def runtime_url(database_url: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def runtime_database_url(database_url: str) -> str:
-    """Make the migrated role loginable on the test server and return its URL."""
-    asyncio.run(_admin(f"ALTER ROLE {RUNTIME_ROLE} LOGIN PASSWORD '{RUNTIME_PASSWORD}'"))
-    return runtime_url(database_url)
+def runtime_database_url(database_url: str) -> Iterator[str]:
+    asyncio.run(
+        _admin(
+            f"CREATE ROLE {RUNTIME_ROLE} LOGIN PASSWORD '{RUNTIME_PASSWORD}' IN ROLE abb_runtime"
+        )
+    )
+    try:
+        yield runtime_url(database_url)
+    finally:
+        asyncio.run(_admin(f"DROP ROLE IF EXISTS {RUNTIME_ROLE}"))
 
 
 @pytest.fixture

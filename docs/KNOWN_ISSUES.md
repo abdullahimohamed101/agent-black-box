@@ -43,7 +43,7 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 
 | ID | Was | Resolved |
 | --- | --- | --- |
-| KI-020 | runtime DB role could UPDATE/DELETE `events` | Phase 3: migration 0007 `abb_runtime` role, owner-only migrations, tested as the role; [#4](https://github.com/abdullahimohamed101/agent-black-box/issues/4) closes on merge |
+| KI-020 | runtime DB role could UPDATE/DELETE `events` (and delete them via run cascade) | Phase 3: migrations 0007-0008: `abb_runtime` role, RESTRICT foreign key, no DELETE on parents of events, tested as a role inheriting it; [#4](https://github.com/abdullahimohamed101/agent-black-box/issues/4) closes on merge |
 | KI-001..005 | Node/pnpm, Docker, PostgreSQL, Python 3.12, uv missing | 2026-10-07: installed with approval (Docker via Colima) |
 | KI-007 | CI had never executed | 2026-10-07: PR #1 green |
 | KI-011 | migration tests shared one database | Phase 2: throwaway database per session |

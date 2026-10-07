@@ -8,11 +8,11 @@ from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from tests.conftest import runtime_url
+from tests.conftest import RUNTIME_ROLE, runtime_url
 from tests.ingest_helpers import build_event, make_run_ids, make_tenant
 from tests.test_event_store import ingest
 
@@ -34,7 +34,7 @@ async def current_user(runtime_engine: AsyncEngine) -> str:
 async def test_the_runtime_engine_really_is_the_restricted_role(
     runtime_engine: AsyncEngine,
 ) -> None:
-    assert await current_user(runtime_engine) == "abb_runtime"
+    assert await current_user(runtime_engine) == RUNTIME_ROLE
     async with runtime_engine.connect() as conn:
         row = (
             await conn.execute(
@@ -96,4 +96,31 @@ async def test_every_table_except_events_is_fully_writable_by_the_runtime_role(
         )
         privileges = {r.relname: (r.can_update, r.can_delete, r.can_truncate) for r in rows}
     assert privileges.pop("events") == (False, False, False)
-    assert all(p[:2] == (True, True) for p in privileges.values()), privileges
+    deletes_blocked = {"runs", "agents", "projects", "workspaces"}  # parents of events (0008)
+    for name, (can_update, can_delete, _) in privileges.items():
+        assert can_update and can_delete == (name not in deletes_blocked), name
+
+
+@pytest.mark.parametrize("table", ["runs", "agents", "projects", "workspaces"])
+async def test_runtime_role_cannot_delete_a_parent_of_events_even_to_cascade(
+    engine: AsyncEngine, runtime_engine: AsyncEngine, table: str
+) -> None:
+    """INV-1: deleting a run/project/workspace must not be a back door to deleting events."""
+    tenant, run = await make_tenant(engine, "acme"), make_run_ids()
+    await ingest(runtime_engine, tenant, [build_event(tenant, run, n=1)])
+    with pytest.raises(ProgrammingError, match=r"permission denied"):
+        async with runtime_engine.begin() as conn:
+            await conn.execute(text("DELETE FROM " + table))  # noqa: S608  (fixed test names)
+    async with engine.connect() as conn:
+        assert (await conn.execute(text("SELECT count(*) FROM events"))).scalar_one() == 1
+
+
+async def test_even_the_owner_cannot_cascade_delete_events_through_a_run(
+    engine: AsyncEngine,
+) -> None:
+    """The foreign key is RESTRICT: removing history needs an explicit, deliberate events delete."""
+    tenant, run = await make_tenant(engine, "acme"), make_run_ids()
+    await ingest(engine, tenant, [build_event(tenant, run, n=1)])
+    with pytest.raises(IntegrityError):
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM runs"))

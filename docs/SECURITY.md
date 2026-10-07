@@ -40,7 +40,7 @@ ingestion edge | control plane | database/object storage | human approvers.
 - Dependencies: lockfiles, scheduled vulnerability scans, minimal SDK deps.
 - Database roles (KI-020, INV-1): migrations run as the database owner; the API, worker and CLI run as `abb_runtime`
   (migration `0007`), which has SELECT/INSERT on `events` and no UPDATE, DELETE, TRUNCATE or DDL anywhere. Enforced by
-  `apps/api/tests/test_runtime_role.py`, and the whole API test suite runs as that role. A superuser or the owner can still rewrite
+  `apps/api/tests/test_runtime_role.py`, and the whole API test suite runs as a role inheriting it. The deletion back door is closed too (migration 0008): `events` references `runs` with RESTRICT and the role cannot DELETE runs, agents, projects or workspaces, so events cannot vanish as a cascade. Retention (Phase 19) must be a privileged owner job. Caveats: a role with CREATEROLE/superuser or the owner can still alter privileges; `ALTER ROLE ... PASSWORD` is sent by `alembic upgrade` (set `log_statement` below `ddl` or keep migrations out of statement logs); Alembic only sets the password on an upgrade that ends at head. A superuser or the owner can still rewrite
   history: protect those credentials, and use `ABB_MIGRATION_DATABASE_URL` for the owner connection in deployments. Set
   `ABB_RUNTIME_DB_PASSWORD` for `alembic upgrade` to give the role a login; without it the role cannot log in.
 - Local/demo credentials are generated, documented as dev-only, never real.
