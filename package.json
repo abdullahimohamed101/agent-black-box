@@ -1,0 +1,7 @@
+{
+  "name": "agent-black-box",
+  "private": true,
+  "packageManager": "pnpm@12.9.1",
+  "engines": { "node": ">=22" },
+  "scripts": {}
+}

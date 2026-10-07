@@ -4,8 +4,8 @@ A flight recorder, observability, debugging, evaluation and (eventually) control
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell
 command, retry and failure, with cost and latency, live.
 
-> Status: **Phase 0 not started.** This repository currently holds the specification, the
-> agent operating guide, and the phase plans. See `docs/PROJECT_STATE.md`.
+> Status: **Phase 0 (foundation) complete pending CI.** The repo has a FastAPI skeleton, a Next.js
+> shell, a Compose stack and a quality gate; there is no telemetry pipeline yet. See `docs/PROJECT_STATE.md`.
 
 ## What it will do
 
@@ -35,14 +35,25 @@ contract, not any single datastore. Details: `ARCHITECTURE.md`.
 ## Repository Layout
 
 ```text
-apps/{api,web}  packages/{event-schema,sdk-python,...}  integrations/  processors/
-examples/  tests/  infrastructure/  scripts/  docs/
+apps/{api,web}  infrastructure/  scripts/  docs/        (exists now)
+packages/{event-schema,sdk-python,...}  integrations/  processors/  examples/  tests/   (later phases)
 ```
 Directories appear when their phase begins.
 
 ## Quick Start
 
-Not available yet; arrives with Phase 0. Tooling requirements: `docs/development/setup.md`.
+Requires Python 3.12 + `uv`, Node 22 + `pnpm`, and Docker (see `docs/development/setup.md`).
+
+```bash
+cp .env.example .env
+make setup      # Python env, JS deps, Postgres (Compose, host port 5433), migrations
+make dev        # API http://localhost:8000 and web http://localhost:3000
+curl localhost:8000/readyz
+make test lint typecheck
+```
+
+Whole stack in containers: `make up` (api + web + postgres), `make down` to stop.
+`scripts/quality.sh full` is the single gate used by CI and agents.
 
 ## Phase Status
 

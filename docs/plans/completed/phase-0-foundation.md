@@ -1,6 +1,6 @@
 # Phase 0 - Repository and Engineering Foundation
 
-Status: Drafted; awaiting approval of the documentation set (not started)
+Status: Completed on branch `feature/phase-0-foundation`; criterion 7 (CI run) is UNVERIFIED (env): no GitHub remote exists (KI-007)
 Owner: coding agent
 Depends on: none
 Spec: §57, §103, §106, §108, §111, §128-129, §131, §133-134, §145 (items 1-2, 5), ADR-003
@@ -58,8 +58,19 @@ Headers: `X-Request-ID` accepted/generated and echoed; included in every log lin
 7. CI workflow passes on a pull request (or `act`/local equivalent recorded as UNVERIFIED if no remote).
 8. Docs: README quickstart accurate; `PROJECT_STATE.md` updated; ADR-003 written.
 
-Criteria 1, 5, 6 need Node/pnpm/Docker (KI-001/002); until installed they are `UNVERIFIED (env)` and
-the phase is not complete.
+### Evidence (2026-10-07)
+1. PASS `make setup` in a fresh `git clone` (new venv, `pnpm install`, Postgres up, migrations applied).
+2. PASS `make test lint typecheck`: pytest 10 passed (real Postgres), vitest 6 passed, ruff/mypy/eslint/prettier/tsc clean.
+   `scripts/quality.sh full` OK (adds migration up/down/up on `abb_test`, `next build`, wheel build).
+3. PASS `alembic downgrade base && upgrade head` cycle (also asserted in `tests/test_migrations.py`).
+4. PASS `make dev` from the fresh clone: `/healthz` 200, `/readyz` 200 with request ID header and JSON log lines; with Postgres
+   stopped `/readyz` -> 503 `DEPENDENCY_UNAVAILABLE` (retryable, request_id, no internals); recovered after restart.
+   Missing `ABB_DATABASE_URL` fails startup naming `database_url`.
+5. PASS browser (built-in browser): `localhost:3000` shows loading -> "Ready (API v0.0.0, database connected)"; error state with
+   request ID with Postgres stopped; "API unreachable" with API stopped; console clean.
+6. PASS `docker compose --profile app up -d --build --wait`: postgres, api, web all healthy; containers run as uid 10001.
+7. UNVERIFIED (env) CI workflow has not run (no remote). The same steps ran locally.
+8. PASS README quickstart matches what was run; ADR-003 written; PROJECT_STATE updated.
 
 ## Verification Plan
 
@@ -73,12 +84,12 @@ exercise the failure paths (DB down, bad config, missing env var -> startup erro
 
 ## Ordered Steps
 
-1. [ ] `git init`, initial commit of the docs; branch `feature/phase-0-foundation`.
-2. [ ] Root tooling: Makefile, `scripts/quality.sh`, `.env.example`, editorconfig, CI skeleton.
-3. [ ] `apps/api`: pyproject, app factory, config, logging, request-id, typed errors, `/healthz` + tests.
-4. [ ] DB: async engine, session dependency, Alembic baseline, `/readyz` + repository-style tests on real Postgres.
-5. [ ] `docker-compose.yml` (Postgres, api profile) and API Dockerfile (multi-stage, non-root, healthcheck).
-6. [ ] `apps/web`: Next.js shell, health display, vitest + one component test, Dockerfile.
-7. [ ] CI workflow matching `quality.sh`; verify locally.
-8. [ ] Docs: README quickstart, setup.md, TESTING.md commands made real, ADR-003.
-9. [ ] `verify-change`, `review-change`, `complete-phase`; move plan to `completed/`.
+1. [x] `git init`, initial commit of the docs; branch `feature/phase-0-foundation`.
+2. [x] Root tooling: Makefile, `scripts/quality.sh`, `.env.example`, editorconfig, CI skeleton.
+3. [x] `apps/api`: pyproject, app factory, config, logging, request-id, typed errors, `/healthz` + tests.
+4. [x] DB: async engine, session dependency, Alembic baseline, `/readyz` + repository-style tests on real Postgres.
+5. [x] `docker-compose.yml` (Postgres, api profile) and API Dockerfile (multi-stage, non-root, healthcheck).
+6. [x] `apps/web`: Next.js shell, health display, vitest + one component test, Dockerfile.
+7. [x] CI workflow matching `quality.sh`; verify locally.
+8. [x] Docs: README quickstart, setup.md, TESTING.md commands made real, ADR-003.
+9. [x] `verify-change`, `review-change`, `complete-phase`; move plan to `completed/`.

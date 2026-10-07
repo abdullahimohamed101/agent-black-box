@@ -7,7 +7,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 
 | Phase | Name | Spec | Milestone | Status |
 | --- | --- | --- | --- | --- |
-| 0 | Repository and engineering foundation | §133-134, §145 | M0 | Not started |
+| 0 | Repository and engineering foundation | §133-134, §145 | M0 | Complete (CI run UNVERIFIED, KI-007) |
 | 1 | Canonical telemetry contract | §15, §62-66, §141 | M0 | Not started |
 | 2 | Data model, ingestion, run querying, outbox + summarizer | §60, §71-73, §78 | M0-M1 | Not started |
 | 3 | Python SDK | §67-68, §17 | M1 | Not started |

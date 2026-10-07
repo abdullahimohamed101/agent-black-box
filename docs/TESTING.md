@@ -1,6 +1,6 @@
 # Testing
 
-Pyramid and commands. Commands become real in Phase 0; until then this is the contract.
+Pyramid and commands. Commands below are real as of Phase 0 (`make test lint typecheck`, `scripts/quality.sh`); `make e2e` and load tests arrive later.
 
 | Layer | Scope | Tooling |
 | --- | --- | --- |
@@ -19,7 +19,10 @@ Commands (targets):
 make test        # unit + repository + contract (+ web unit)
 make lint        # ruff, eslint, prettier --check
 make typecheck   # mypy, tsc
-make e2e         # Playwright against the Compose stack
-scripts/quality.sh quick   # format check, lint, typecheck, fast tests
-scripts/quality.sh full    # quick + integration + migration check + builds
+scripts/quality.sh quick   # ruff, mypy, eslint, prettier, tsc, pytest, vitest
+scripts/quality.sh full    # quick + migration up/down/up on the TEST database + next build + wheel build
+```
+Database tests need Postgres (`make db`) and read `ABB_TEST_DATABASE_URL` (database `abb_test`).
+The dev database is never used for destructive migration checks.
+```text
 ```

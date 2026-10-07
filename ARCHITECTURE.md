@@ -21,8 +21,9 @@ Agent / Framework -> Adapter -> SDK -> [HTTP /v1/events/batch] -> Ingestion
    -> Query API / SSE -> Next.js web
 ```
 
-As of the current state (see `docs/PROJECT_STATE.md`) **nothing is implemented**: this
-repository contains the specification, process documents and plans only.
+As of Phase 0 the foundation exists (FastAPI skeleton with `/healthz` and `/readyz`, request IDs,
+structured logs, typed errors, Alembic baseline, Next.js shell, Compose stack, CI definition). There is
+no event schema, ingestion, SDK or product UI yet.
 
 ## Major Components
 
@@ -34,7 +35,7 @@ Depends on nothing else in the repo. Status: planned (Phase 1).
 Modules: `ingestion`, `runs`, `traces`, `analytics`, `evaluations`, `auth`, `policies`,
 `artifacts`; each exposes a service interface and owns its repositories. Control-plane query
 API and telemetry ingestion are separate routers so a slow query never sits on the SDK path.
-Status: planned (Phase 0 skeleton, Phase 2 data plane).
+Status: Phase 0 skeleton implemented (`core`, `health`, `db`); data-plane modules planned (Phase 2).
 
 ### Workers (`apps/api` worker entrypoint)
 PostgreSQL outbox + `SKIP LOCKED` leases, idempotent processors (summarizer, cost, detectors,
@@ -46,7 +47,7 @@ Never raises into the host agent. Status: planned (Phase 3).
 
 ### Web (`apps/web`)
 Next.js App Router. Server-fetched page data; client-side trace viewers (timeline, waterfall,
-diff, replay) with virtualization. Status: planned (Phase 0 shell, Phase 4 product).
+diff, replay) with virtualization. Status: Phase 0 shell implemented (API status panel); product UI planned (Phase 4).
 
 ### Integrations (`integrations/*`), Processors, Examples
 Adapters translate framework callbacks to SDK calls only; processors are pluggable derived-
@@ -79,8 +80,8 @@ api modules: routers -> services -> repositories -> db   (no cross-module table 
 
 | System | Purpose | Phase | Status |
 | --- | --- | --- | --- |
-| PostgreSQL | system of record: tenancy, runs, events, outbox | 0 | planned |
-| Docker Compose | reproducible local stack | 0 | planned |
+| PostgreSQL 16 | system of record: tenancy, runs, events, outbox | 0 | running in Compose; baseline migration only |
+| Docker Compose | reproducible local stack | 0 | implemented (`make up`) |
 | Object storage (S3-compatible) | artifacts at hosted scale | 18 | deferred (trigger) |
 | Redis | cache/pub-sub/rate limits | 18 | deferred (trigger) |
 | Kafka | durable event bus | 18 | deferred (trigger, spec §57.5) |
@@ -95,7 +96,6 @@ realistic payloads. See `docs/TESTING.md`.
 
 ## Known Architectural Risks
 
-- Tooling gaps on the development machine (`docs/KNOWN_ISSUES.md`) block verification of
-  the web, Docker and PostgreSQL paths until installed.
+- CI has never run (no remote); see `docs/KNOWN_ISSUES.md` KI-007.
 - Spec §15 and §64.3 disagree on event names; resolved in ADR-011 (dot-delimited).
 - Scale claims require recorded load tests (spec §158); none exist yet.
