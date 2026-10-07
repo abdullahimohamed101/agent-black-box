@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     ingest_max_body_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
     ingest_max_batch_events: int = Field(default=1000, ge=1)
     # Background worker (spec §72)
+    # Delay before a run's summary job becomes due. A burst of batches for one run coalesces into
+    # a single recomputation instead of one per batch (see docs/benchmarks/phase-2-ingestion.md).
+    summary_debounce_seconds: float = Field(default=1.0, ge=0)
     worker_poll_interval_seconds: float = Field(default=0.5, gt=0)
     worker_batch_size: int = Field(default=10, ge=1)
     worker_lease_seconds: float = Field(default=60.0, gt=0)

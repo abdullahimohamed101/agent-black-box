@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+from datetime import timedelta
 from typing import Any
 
 from abb_event_schema.errors import ErrorCode, EventValidationError
@@ -63,6 +64,7 @@ class IngestionService:
         self._limiter = limiter
         self._settings = settings
         self._clock = clock
+        self._summary_delay = timedelta(seconds=settings.summary_debounce_seconds)
 
     async def ingest_batch(self, principal: Principal, document: bytes) -> BatchResponse:
         if principal.project_id is None:
@@ -98,9 +100,9 @@ class IngestionService:
         if valid:
             try:
                 async with self._engine.begin() as conn:
-                    outcome = await PgEventStore(conn, principal.tenant).ingest(
-                        [event for _, event in valid]
-                    )
+                    outcome = await PgEventStore(
+                        conn, principal.tenant, summary_delay=self._summary_delay
+                    ).ingest([event for _, event in valid])
             except Exception as exc:
                 if is_connectivity_error(exc) or _is_transient_conflict(exc):
                     logger.warning("ingest unavailable", extra={"error_type": type(exc).__name__})

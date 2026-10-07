@@ -16,6 +16,7 @@ overlapping concurrent batches cannot deadlock on each other.
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Literal, Protocol
 
 from abb_event_schema.dedup import content_hash
@@ -80,9 +81,16 @@ class EventStore(Protocol):
 
 
 class PgEventStore:
-    def __init__(self, conn: AsyncConnection, tenant: TenantContext) -> None:
+    def __init__(
+        self,
+        conn: AsyncConnection,
+        tenant: TenantContext,
+        *,
+        summary_delay: timedelta = timedelta(0),
+    ) -> None:
         self._conn = conn
         self._tenant = tenant
+        self._summary_delay = summary_delay
 
     async def ingest(self, events: Sequence[Event]) -> IngestOutcome:
         if not events:
@@ -173,6 +181,7 @@ class PgEventStore:
                 job_type=SUMMARIZE_RUN,
                 dedupe_key=f"{workspace}:{run_id}",
                 payload={"run_id": str(run_id)},
+                delay=self._summary_delay,
             )
 
         results = []

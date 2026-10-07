@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from abb_event_schema.event import Event
 from abb_event_schema.ids import IdKind, new_id, to_uuid
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.db import tables as t
@@ -407,3 +407,68 @@ async def test_a_run_with_thousands_of_spans_is_summarized(
     async with engine.connect() as conn:
         statuses = {r.status for r in await conn.execute(select(t.outbox_jobs.c.status))}
     assert statuses == {"done"}
+
+
+# ------------------------------------------------------------------ debouncing
+
+
+async def test_a_burst_of_batches_is_summarized_once_after_the_debounce_delay(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """Measured need: recomputing a growing run after every batch starved ingestion of CPU."""
+    from datetime import timedelta
+
+    from abb_api.clock import system_clock
+
+    tenant, run = await make_tenant(engine, "acme"), make_run_ids()
+    events = [build_event(tenant, run, n=n) for n in range(1, 31)]
+    for start in range(0, 30, 10):  # three batches arrive close together
+        async with engine.begin() as conn:
+            await PgEventStore(conn, tenant.context, summary_delay=timedelta(seconds=30)).ingest(
+                events[start : start + 10]
+            )
+
+    async with engine.connect() as conn:
+        jobs = (
+            await conn.execute(select(t.outbox_jobs.c.status, t.outbox_jobs.c.available_at))
+        ).all()
+    assert len(jobs) == 1 and jobs[0].status == "pending"  # three batches, one job
+    assert jobs[0].available_at > system_clock() + timedelta(seconds=20)  # not due yet
+
+    worker = worker_for(engine, database_url)
+    assert await worker.run_once() == 0  # nothing is due: no recomputation happens early
+    assert (await run_row(engine, run["run_id"])).summary == {}
+
+    late = Worker(
+        engine,
+        HANDLERS,
+        make_settings(database_url),
+        clock=lambda: system_clock() + timedelta(seconds=31),
+    )
+    assert await late.run_once() == 1  # once due, a single recomputation covers all 30 events
+    assert (await run_row(engine, run["run_id"])).summary["event_count"] == 30
+    assert await late.run_once() == 0
+
+
+async def test_the_default_delay_applies_through_the_http_ingest_path(
+    database_url: str, engine: AsyncEngine
+) -> None:
+    from sqlalchemy import select as _select
+
+    from tests.api_fixtures import build_api
+    from tests.ingest_helpers import wire_event
+
+    settings = make_settings(database_url, summary_debounce_seconds=45.0)
+    async for api in build_api(database_url, engine, settings=settings):
+        run = make_run_ids()
+        assert (await api.post_batch([wire_event(run, 1)])).status_code == 202
+        assert await api.worker.run_once() == 0  # not due for 45 s
+        detail = (await api.get(f"/v1/runs/{run['run_id']}")).json()
+        assert detail["summary_state"] == "processing"
+        async with engine.connect() as conn:
+            (due,) = (
+                await conn.execute(
+                    _select(func.extract("epoch", t.outbox_jobs.c.available_at - func.now()))
+                )
+            ).one()
+        assert 30 < due < 46
