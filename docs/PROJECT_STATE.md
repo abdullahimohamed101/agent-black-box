@@ -3,7 +3,7 @@
 Last updated: 2026-10-07
 
 ## Current phase
-Phase 1 (canonical telemetry contract) complete locally on `feature/phase-1-event-contract`; not pushed, CI not yet run on it.
+Phase 1 (canonical telemetry contract) complete; PR #3 open. Phase 2 planned on `feature/phase-2-ingestion` (stacked on the Phase 1 branch).
 Phase 0 is merged to `main` (PRs #1, #2; CI green).
 
 ## Current milestone
@@ -22,10 +22,8 @@ None.
 - CI on the Phase 1 branch needs a push (approval). Nothing else.
 
 ## Next actions (exact)
-1. With approval: push `feature/phase-1-event-contract`, open a PR, confirm CI green, merge.
-2. Branch `feature/phase-2-ingestion` from updated `main`; run `plan-change` for Phase 2
-   (`docs/IMPLEMENTATION_PLAN.md` Phase 2). Phase 2 plan must: wire `abb-event-schema` into `apps/api`
-   (Docker build context moves to repo root), resolve KI-011/KI-012, decide raw-event retention, and use real PostgreSQL tests.
+1. PR #3 (Phase 1) is open; merge it on user approval once CI is green, then rebase `feature/phase-2-ingestion` onto `main`.
+2. Phase 2 plan is written: `docs/plans/active/phase-2-ingestion.md` (awaiting user review of the decisions D1-D19). Start at its step 1.
 
 ## Open decisions
 - Remove the `Co-Authored-By` trailers from the 5 early commits (needs a force-push; not done).
