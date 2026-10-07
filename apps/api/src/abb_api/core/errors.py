@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import DataError, DBAPIError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from abb_api.core.request_context import get_request_id
@@ -91,7 +92,8 @@ def dependency_unavailable() -> AppError:
 
 def is_connectivity_error(exc: BaseException) -> bool:
     """Database trouble we report as 503 (retryable), not as a client or server bug."""
-    if isinstance(exc, (OperationalError, InterfaceError, OSError)):  # OSError covers timeouts
+    # OSError covers socket errors and timeouts; PoolTimeoutError is "no free connection in time"
+    if isinstance(exc, (OperationalError, InterfaceError, OSError, PoolTimeoutError)):
         return True
     return isinstance(exc, DBAPIError) and exc.connection_invalidated
 

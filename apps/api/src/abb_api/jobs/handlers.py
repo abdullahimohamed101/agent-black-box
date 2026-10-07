@@ -1,5 +1,6 @@
 """Job handlers. Each must be idempotent (delivery is at-least-once)."""
 
+import logging
 import uuid
 from collections.abc import Awaitable, Callable
 
@@ -10,6 +11,8 @@ from abb_api.jobs.outbox import SUMMARIZE_RUN, Job
 from abb_api.runs.repository import RunRepository
 from abb_api.runs.summary import derive_run
 from abb_api.tenancy import TenantContext
+
+logger = logging.getLogger(__name__)
 
 
 async def summarize_run(job: Job, conn: AsyncConnection) -> None:
@@ -23,7 +26,12 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
     # committed before any job that ran ahead of us on the same run.
     events = await PgEventStore(conn, tenant).load_run(run_id)
     if events:
-        await runs.apply_derivation(run_id, derive_run(events))
+        skipped = await runs.apply_derivation(run_id, derive_run(events))
+        if skipped:
+            logger.warning(
+                "spans left untouched: ids already belong to another run",
+                extra={"run_id": str(run_id), "skipped": skipped},
+            )
 
 
 HANDLERS: dict[str, Callable[[Job, AsyncConnection], Awaitable[None]]] = {

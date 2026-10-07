@@ -7,6 +7,7 @@ Delivery is at-least-once: handlers must be idempotent.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -60,6 +61,7 @@ class Worker:
                 limit=self._settings.worker_batch_size,
                 lease=timedelta(seconds=self._settings.worker_lease_seconds),
                 now=self._now(),
+                max_attempts=self._settings.worker_max_attempts,
             )
         for job in jobs:
             await self._process(job)
@@ -91,6 +93,7 @@ class Worker:
                 "job has no handler", extra={"job_id": str(job.id), "job_type": job.job_type}
             )
             return
+        heartbeat = asyncio.create_task(self._keep_lease(job))
         try:
             async with self._engine.begin() as conn:
                 await handler(job, conn)
@@ -102,6 +105,31 @@ class Worker:
             )
         except Exception as exc:
             await self._record_failure(job, exc)
+        finally:
+            heartbeat.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await heartbeat
+
+    async def _keep_lease(self, job: Job) -> None:
+        """Extend the lease every third of its length while the handler runs.
+
+        Without this a legitimately slow job (a huge run) outlives its lease, is reclaimed and run
+        again in parallel, and its own result is discarded as a lost lease.
+        """
+        lease = timedelta(seconds=self._settings.worker_lease_seconds)
+        while True:
+            await asyncio.sleep(lease.total_seconds() / 3)
+            try:
+                async with self._engine.begin() as conn:
+                    if not await JobQueue(conn).extend_lease(job, lease, self._now()):
+                        logger.warning("lease lost while running", extra={"job_id": str(job.id)})
+                        return
+            except (
+                Exception
+            ):  # a database hiccup must not kill the heartbeat; the next beat retries
+                logger.warning(
+                    "lease heartbeat failed", extra={"job_id": str(job.id)}, exc_info=True
+                )
 
     async def _record_failure(self, job: Job, exc: Exception) -> None:
         s = self._settings

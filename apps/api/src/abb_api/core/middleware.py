@@ -29,7 +29,11 @@ class RequestContextMiddleware:
             nonlocal status
             if message["type"] == "http.response.start":
                 status = message["status"]
-                MutableHeaders(scope=message)["X-Request-ID"] = request_id
+                headers = MutableHeaders(scope=message)
+                headers["X-Request-ID"] = request_id
+                # API responses carry tenant data: never sniffed as HTML, never cached by proxies.
+                headers["X-Content-Type-Options"] = "nosniff"
+                headers["Cache-Control"] = "no-store"
             await send(message)
 
         try:

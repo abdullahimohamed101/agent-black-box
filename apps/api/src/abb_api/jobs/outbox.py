@@ -96,14 +96,40 @@ class JobQueue:
         self._conn = conn
 
     async def claim(
-        self, *, owner: str, limit: int, lease: timedelta, now: datetime | None = None
+        self,
+        *,
+        owner: str,
+        limit: int,
+        lease: timedelta,
+        now: datetime | None = None,
+        max_attempts: int | None = None,
     ) -> list[Job]:
         """Take up to `limit` runnable jobs. Concurrent claimers never receive the same job.
 
         `now=None` (production) uses the database clock, the single time source for scheduling:
         `available_at` is written by `now()` in the database, so comparing it with a host clock
         that is a few milliseconds off would hide fresh jobs. Tests pass an explicit time.
+
+        With `max_attempts`, a job whose lease expired after its last allowed attempt is
+        dead-lettered instead of reclaimed: a job that kills its worker (say, out of memory on a
+        huge run) must not crash a fresh worker every lease interval forever.
         """
+        if max_attempts is not None:
+            await self._conn.execute(
+                text(
+                    """
+                    UPDATE outbox_jobs
+                    SET status = 'dead_letter', lease_owner = NULL, lease_expires_at = NULL,
+                        last_error = 'lease expired after ' || attempt_count
+                            || ' attempts (the worker died or the job outlived its lease)',
+                        updated_at = COALESCE(CAST(:now AS timestamptz), now())
+                    WHERE status = 'running'
+                      AND lease_expires_at < COALESCE(CAST(:now AS timestamptz), now())
+                      AND attempt_count >= :max_attempts
+                    """
+                ),
+                {"now": now, "max_attempts": max_attempts},
+            )
         claimed = await self._conn.execute(
             text(
                 """
@@ -146,6 +172,19 @@ class JobQueue:
             )
             for r in claimed
         ]
+
+    async def extend_lease(self, job: Job, lease: timedelta, now: datetime | None = None) -> bool:
+        """Heartbeat: push the lease out while the handler still runs. False = already lost."""
+        result = await self._conn.execute(
+            update(t.outbox_jobs)
+            .where(
+                t.outbox_jobs.c.id == job.id,
+                t.outbox_jobs.c.status == "running",
+                t.outbox_jobs.c.lease_owner == job.lease_owner,
+            )
+            .values(lease_expires_at=_at(now) + lease, updated_at=_at(now))
+        )
+        return result.rowcount == 1
 
     async def complete(self, job: Job, now: datetime | None = None) -> bool:
         """Mark done, but only if this worker still holds the lease. False means it was lost."""

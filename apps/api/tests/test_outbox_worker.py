@@ -423,3 +423,92 @@ async def test_the_worker_process_starts_processes_jobs_and_exits_cleanly_on_sig
     output = stdout.decode()
     assert process.returncode == 0
     assert "worker started" in output and "worker stopped" in output
+
+
+# ------------------------------------------------------------------ leases and poison pills
+
+
+async def test_a_slow_job_keeps_its_lease_and_runs_exactly_once(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """Found by review: without a heartbeat a job outliving its lease ran 8 times (limit 5)."""
+    ws = await workspace(engine)
+    async with engine.begin() as conn:
+        job_id = await add_job(conn, ws, job_type="slow", available_at=datetime.now(UTC))
+    runs: list[str] = []
+
+    async def slow(job: Job, conn: AsyncConnection) -> None:
+        await asyncio.sleep(2.5)  # more than twice the lease
+        runs.append(job.lease_owner)
+
+    settings = make_settings(
+        database_url, worker_lease_seconds=1.0, worker_poll_interval_seconds=0.05
+    )
+    workers = [Worker(engine, {"slow": slow}, settings, owner=f"w{i}") for i in range(3)]
+    stop = asyncio.Event()
+    tasks = [asyncio.create_task(w.run_forever(stop)) for w in workers]
+    await asyncio.sleep(5)
+    stop.set()
+    await asyncio.gather(*tasks)
+    row = await job_row(engine, job_id)
+    assert len(runs) == 1 and row.status == "done" and row.attempt_count == 1
+
+
+async def test_the_heartbeat_stops_with_the_job_and_reports_a_lost_lease(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    ws = await workspace(engine)
+    async with engine.begin() as conn:
+        await add_job(conn, ws, job_type="quick", available_at=datetime.now(UTC))
+
+    async def quick(job: Job, conn: AsyncConnection) -> None:
+        return None
+
+    worker = Worker(
+        engine, {"quick": quick}, make_settings(database_url, worker_lease_seconds=0.3), owner="w"
+    )
+    await worker.run_once()
+    leftover = [task for task in asyncio.all_tasks() if "_keep_lease" in repr(task.get_coro())]
+    assert leftover == []  # no heartbeat outlives its job
+    async with engine.begin() as conn:  # extending a lease the caller does not hold is refused
+        (job,) = await _claim_fresh(conn, ws)
+        impostor = Job(**{**job.__dict__, "lease_owner": "someone-else"})
+        assert not await JobQueue(conn).extend_lease(impostor, LEASE)
+        assert await JobQueue(conn).extend_lease(job, LEASE)
+
+
+async def _claim_fresh(conn: AsyncConnection, ws: uuid.UUID) -> list[Job]:
+    await add_job(conn, ws, available_at=datetime.now(UTC) - timedelta(seconds=1))
+    return await JobQueue(conn).claim(owner="w2", limit=1, lease=LEASE)
+
+
+async def test_a_job_that_keeps_killing_its_worker_is_dead_lettered_not_reclaimed_forever(
+    engine: AsyncEngine,
+) -> None:
+    ws = await workspace(engine)
+    expired = T0 - timedelta(seconds=1)
+    async with engine.begin() as conn:
+        poison = await add_job(
+            conn,
+            ws,
+            status="running",
+            lease_owner="dead",
+            lease_expires_at=expired,
+            attempt_count=5,
+        )
+        retryable = await add_job(
+            conn,
+            ws,
+            status="running",
+            lease_owner="dead",
+            lease_expires_at=expired,
+            attempt_count=4,
+        )
+    async with engine.begin() as conn:
+        claimed = await JobQueue(conn).claim(
+            owner="w", limit=10, lease=LEASE, now=T0, max_attempts=5
+        )
+    assert [j.id for j in claimed] == [retryable]  # its fifth and last attempt
+    row = await job_row(engine, poison)
+    assert row.status == "dead_letter" and "lease expired after 5 attempts" in row.last_error
+    assert row.lease_owner is None

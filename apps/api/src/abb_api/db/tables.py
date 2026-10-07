@@ -287,6 +287,8 @@ outbox_jobs = Table(
     ),
     Index("ix_outbox_claim", "available_at", postgresql_where=text("status = 'pending'")),
     Index("ix_outbox_lease", "lease_expires_at", postgresql_where=text("status = 'running'")),
+    # Run listings look up each run's job state by key; without this they scan the whole history.
+    Index("ix_outbox_dedupe", "workspace_id", "job_type", "dedupe_key", "status"),
 )
 
 # ------------------------ skeletons (extended by later phases)

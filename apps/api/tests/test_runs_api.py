@@ -739,3 +739,60 @@ async def test_an_unexpected_error_during_authentication_is_a_generic_500(
     response = await api.get("/v1/runs")
     error(response, 500, "INTERNAL_ERROR")
     assert "internal-detail" not in response.text
+
+
+async def test_connection_pool_exhaustion_is_a_retryable_503(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found by review: SQLAlchemy's pool timeout is not a builtin TimeoutError, so it was a 500."""
+    from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+
+    from abb_api.runs.queries import RunQueries
+
+    async def exhausted(self: Any, *args: Any, **kwargs: Any) -> Any:
+        raise PoolTimeoutError("QueuePool limit of size 5 overflow 10 reached")
+
+    monkeypatch.setattr(RunQueries, "page", exhausted)
+    response = await api.get("/v1/runs")
+    body = error(response, 503, "DEPENDENCY_UNAVAILABLE")
+    assert body["retryable"] is True and response.headers["retry-after"] == "2"
+
+
+async def test_responses_are_never_sniffed_or_cached(api: Api) -> None:
+    for response in (
+        await api.get("/v1/runs"),
+        await api.get("/v1/runs/run_nope"),
+        await api.get("/v1/runs", token=None),
+        await api.client.get("/healthz"),
+    ):
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["cache-control"] == "no-store"
+
+
+async def test_run_listing_state_lookup_uses_the_dedupe_index(api: Api) -> None:
+    """Found by review: finished jobs are kept, so the lookup must not scan the whole history."""
+    from sqlalchemy import text
+
+    async with api.engine.begin() as conn:
+        await conn.execute(
+            text(
+                """INSERT INTO outbox_jobs
+                       (id, job_type, workspace_id, dedupe_key, status, attempt_count)
+                   SELECT gen_random_uuid(), 'summarize_run', CAST(:ws AS uuid),
+                          CAST(:ws AS text) || ':' || gen_random_uuid()::text, 'done', 1
+                   FROM generate_series(1, 30000)"""
+            ),
+            {"ws": str(api.tenant.context.workspace_id)},
+        )
+        await conn.execute(text("ANALYZE outbox_jobs"))
+        keys = [f"{api.tenant.context.workspace_id}:{uuid.uuid4()}" for _ in range(20)]
+        plan = await conn.execute(
+            text(
+                """EXPLAIN SELECT dedupe_key, status FROM outbox_jobs
+                   WHERE workspace_id = CAST(:ws AS uuid) AND job_type = 'summarize_run'
+                     AND dedupe_key = ANY(:keys) GROUP BY dedupe_key, status"""
+            ),
+            {"ws": str(api.tenant.context.workspace_id), "keys": keys},
+        )
+        text_plan = "\n".join(row[0] for row in plan)
+    assert "ix_outbox_dedupe" in text_plan and "Seq Scan" not in text_plan, text_plan
