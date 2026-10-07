@@ -38,6 +38,11 @@ ingestion edge | control plane | database/object storage | human approvers.
 - Approvals bound to the exact action hash, single use, atomic consume. (Phase 14)
 - Rate limits, size limits, bounded queues against telemetry flooding. (Phases 2, 19)
 - Dependencies: lockfiles, scheduled vulnerability scans, minimal SDK deps.
+- Database roles (KI-020, INV-1): migrations run as the database owner; the API, worker and CLI run as `abb_runtime`
+  (migration `0007`), which has SELECT/INSERT on `events` and no UPDATE, DELETE, TRUNCATE or DDL anywhere. Enforced by
+  `apps/api/tests/test_runtime_role.py`, and the whole API test suite runs as that role. A superuser or the owner can still rewrite
+  history: protect those credentials, and use `ABB_MIGRATION_DATABASE_URL` for the owner connection in deployments. Set
+  `ABB_RUNTIME_DB_PASSWORD` for `alembic upgrade` to give the role a login; without it the role cannot log in.
 - Local/demo credentials are generated, documented as dev-only, never real.
 
 ## Known gaps (tracked in KNOWN_ISSUES.md)

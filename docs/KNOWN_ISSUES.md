@@ -13,7 +13,6 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 
 | ID | Sev | Issue | Impact | Target | Issue |
 | --- | --- | --- | --- | --- | --- |
-| KI-020 | S1 | The runtime database role can UPDATE and DELETE `events`; INV-1 is enforced by code and a source-scanning test, not privileges | a bug or injection could rewrite history | **Phase 3** (pulled forward): separate migration and runtime roles, REVOKE UPDATE/DELETE on `events` | [#4](https://github.com/abdullahimohamed101/agent-black-box/issues/4) |
 | KI-018 | S1 | Agents, runs and spans per project are unbounded (a client can invent agent slugs, run ids, span ids) | storage growth and noisy lists; only the rate limit bounds it | Phase 19: per-project quotas and cardinality limits | [#5](https://github.com/abdullahimohamed101/agent-black-box/issues/5) |
 | KI-019 | S1 | Failed authentication is not throttled | an unauthenticated flood adds database load | Phase 19: edge or IP rate limiting | [#6](https://github.com/abdullahimohamed101/agent-black-box/issues/6) |
 | KI-016 | S2 | Full recomputation of a very large active run (30,000 events) stalls requests 1.7-2.6 s on a 2-vCPU VM | only runs of tens of thousands of events still receiving events (`docs/benchmarks/phase-2-ingestion.md`) | Trigger: a run exceeds ~10,000 active events or p99 ingest > 500 ms: incremental summarization | [#7](https://github.com/abdullahimohamed101/agent-black-box/issues/7) |
@@ -35,7 +34,7 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 | KI-006 | The in-repo spec is a mechanical extraction of the `.docx` (diagram layout degraded) | the `.docx` is kept alongside; ADRs amend |
 | KI-009 | `next dev` rewrites `tsconfig.json`, so Prettier ignores it | cosmetic |
 | KI-014 | The generated JSON Schema is looser than the models (NUL/surrogates, int-vs-float ranges, calendar validity, self-parenting) | documented in `docs/architecture/events.md`; fixtures flag `jsonschema_rejects` |
-| KI-015 | `Event` models are only shallowly frozen (`attributes`, `payload`, `tags` are mutable) | treat as read-only; storage enforces immutability (see KI-020 for the privilege side) |
+| KI-015 | `Event` models are only shallowly frozen (`attributes`, `payload`, `tags` are mutable) | treat as read-only; storage enforces immutability (the runtime role has no UPDATE/DELETE on `events`, KI-020) |
 
 ## Resolved
 
@@ -45,5 +44,6 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 | KI-007 | CI had never executed | 2026-10-07: PR #1 green |
 | KI-011 | migration tests shared one database | Phase 2: throwaway database per session |
 | KI-012 | compose did not run migrations | Phase 2: one-shot `migrate` service |
+| KI-020 | runtime DB role could UPDATE/DELETE `events` | Phase 3: migration 0007 `abb_runtime` role, owner-only migrations, tested as the role; [#4](https://github.com/abdullahimohamed101/agent-black-box/issues/4) closes on merge |
 
 Rule: an acceptance criterion that depends on something unavailable stays `UNVERIFIED (env)` and the gate stays open.
