@@ -140,6 +140,7 @@ async def test_unsubscribing_releases_the_subscription(hub: StreamHub) -> None:
     sub.close()
     sub.close()  # idempotent
     assert hub.subscriber_count == 0
+    assert hub.watched_runs == 0  # and the run's entry is gone, not left empty
 
 
 # ------------------------------------------------------------------ failure
@@ -179,6 +180,17 @@ async def test_an_unreachable_database_never_raises_and_subscribers_just_time_ou
     assert await sub.wait(0.3) is False
     assert hub.connected is False
     await asyncio.wait_for(hub.stop(), 2)
+
+
+async def test_reconnect_attempts_back_off_but_never_stop() -> None:
+    hub = StreamHub(
+        "postgresql+asyncpg://nobody:x@127.0.0.1:1/none", **FAST
+    )  # waits 0.05, 0.1, 0.2, 0.2 ...
+    hub.start()
+    await asyncio.sleep(1.5)
+    attempts = hub.connect_attempts
+    await hub.stop()
+    assert 4 <= attempts <= 20  # keeps trying, and does not spin
 
 
 async def test_stopping_closes_the_listener_connection(

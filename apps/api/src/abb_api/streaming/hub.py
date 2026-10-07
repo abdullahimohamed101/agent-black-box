@@ -69,6 +69,7 @@ class StreamHub:
         self._heartbeat = heartbeat_seconds
         self._subscribers: dict[StreamKey, set[Subscription]] = {}
         self._task: asyncio.Task[None] | None = None
+        self._attempts = 0
         self._connected = False
         self._connected_event = asyncio.Event()
 
@@ -86,6 +87,15 @@ class StreamHub:
         group.discard(subscription)
         if not group:
             del self._subscribers[key]
+
+    @property
+    def watched_runs(self) -> int:
+        """Runs with at least one subscriber (a leak shows up here as entries that never go away)."""
+        return len(self._subscribers)
+
+    @property
+    def connect_attempts(self) -> int:
+        return self._attempts
 
     @property
     def subscriber_count(self) -> int:
@@ -134,6 +144,7 @@ class StreamHub:
         delay = self._reconnect_min
         while True:
             conn: asyncpg.Connection | None = None
+            self._attempts += 1
             try:
                 conn = await asyncpg.connect(
                     self._dsn,
