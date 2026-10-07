@@ -1,50 +1,45 @@
 # Project State
 
-Last updated: 2026-10-07 (documentation set drafted, awaiting user approval)
+Last updated: 2026-10-07
 
 ## Current phase
-Pre-Phase 0. Process documents are drafted; no product code exists.
+Phase 0 complete (CI run UNVERIFIED, KI-007). Phase 1 (canonical telemetry contract) is next.
 
 ## Current milestone
-Finalize the agent harness and docs, then start Phase 0.
+M0: foundation done; event contract next.
 
 ## Completed work
-- Read the build prompt and the full engineering design specification.
-- Studied the ServerFlow repo (AGENTS.md, skills, plans, ADRs, CI) and adapted its process.
-- Drafted: AGENTS.md, CLAUDE.md, ARCHITECTURE.md, README.md, `.agents/skills/*` (9 skills),
-  `docs/BUILD_PROMPT.md` (v2), `docs/IMPLEMENTATION_PLAN.md`, `docs/plans/active/phase-0-foundation.md`,
-  `docs/DECISIONS.md` + ADR-011, KNOWN_ISSUES, SECURITY, RELIABILITY, TESTING, OPERATIONS,
-  `docs/development/setup.md`, in-repo copy of the spec.
+- Docs/process set (see git history); ADR-003.
+- Phase 0: FastAPI skeleton (`/healthz`, `/readyz`, request IDs, JSON logs, typed errors, config validation),
+  Alembic baseline, Next.js status shell, Compose (postgres/api/web), Makefile, `scripts/quality.sh`, CI workflow.
+  Evidence: `docs/plans/completed/phase-0-foundation.md`.
 
 ## In-progress work
 None.
 
 ## Blocked work
-Phase 0 verification is blocked on tooling (Node/pnpm, Docker, PostgreSQL, Python 3.12 venv);
-see `docs/KNOWN_ISSUES.md` KI-001..KI-004. Needs user approval to install.
+- CI verification needs a GitHub remote + push (outward-facing; needs user approval).
 
 ## Next actions (exact)
-1. User reviews/approves this documentation set and answers the open decisions below.
-2. Create the repo at the chosen location, `git init`, commit the docs on `main` (initial commit).
-3. Create `feature/phase-0-foundation`; start step 1 of `docs/plans/active/phase-0-foundation.md`.
+1. Ask user to approve creating a GitHub remote and pushing `feature/phase-0-foundation` to verify CI.
+2. `plan-change` for Phase 1 -> `docs/plans/active/phase-1-event-contract.md` (branch `feature/phase-1-event-contract`).
 
 ## Open decisions
-- Repository location and whether to `git init` + create a GitHub remote (push needs approval).
-- Install Homebrew packages: node, pnpm, postgresql@16 and/or Docker (Colima/Docker Desktop).
-- Commit policy: pre-authorize local commits on `feature/phase-*` branches (proposed) or ask each time.
-- Include the `BILLING` role (spec §91) in Phase 15 (proposed: yes).
+- Remote hosting / repo visibility (public vs private).
+- Merge `feature/phase-0-foundation` into `main` (needs approval; currently only on the feature branch).
 
 ## Known technical debt
-None yet.
+None logged beyond KNOWN_ISSUES.
 
 ## Last verified test status
-n/a (no code)
+2026-10-07: pytest 10 passed (real Postgres), vitest 6 passed; `scripts/quality.sh full` OK.
 
 ## Last verified build status
-n/a (no code)
+2026-10-07: `next build`, API wheel build, `docker compose --profile app up --wait` all OK.
 
 ## Commands to verify environment
 ```bash
-git status && git log -5          # once a repo exists
-scripts/quality.sh quick          # Phase 0 deliverable
+colima status || colima start --cpu 2 --memory 4
+cp -n .env.example .env && make setup
+scripts/quality.sh full
 ```
