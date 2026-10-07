@@ -4,7 +4,9 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from abb_event_schema.ids import IdKind, id_pattern
+from abb_event_schema.registry import EVENT_TYPE_PATTERN
 from fastapi import APIRouter, Depends, Query, Request, Response
+from pydantic import StringConstraints
 
 from abb_api.auth import scopes
 from abb_api.auth.dependencies import require_principal
@@ -23,6 +25,10 @@ from abb_api.runs.service import RunService
 from abb_api.tenancy import Principal
 
 router = APIRouter(prefix="/v1/runs", tags=["runs"])
+
+# Query values reach SQL: constrain them to what can match, so odd bytes never get that far.
+EventTypeParam = Annotated[str, StringConstraints(pattern=EVENT_TYPE_PATTERN, max_length=64)]
+EventStatusName = Literal["success", "error", "timeout", "cancelled", "blocked"]
 
 Reader = Annotated[Principal, Depends(require_principal(scopes.RUNS_READ))]
 Writer = Annotated[Principal, Depends(require_principal(scopes.EVENTS_WRITE))]
@@ -126,8 +132,8 @@ async def list_events(
     run_id: str,
     request: Request,
     principal: Reader,
-    event_type: Annotated[list[str] | None, Query(max_length=32)] = None,
-    status: Annotated[list[str] | None, Query(max_length=8)] = None,
+    event_type: Annotated[list[EventTypeParam] | None, Query(max_length=32)] = None,
+    status: Annotated[list[EventStatusName] | None, Query(max_length=8)] = None,
     span_id: Annotated[str | None, Query(pattern=id_pattern(IdKind.SPAN))] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     cursor: Annotated[str | None, Query(max_length=512)] = None,

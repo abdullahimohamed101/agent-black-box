@@ -1,6 +1,7 @@
 """The query API end to end: events in through the public API, state out through the public API."""
 
 import json
+import logging
 import random
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -646,3 +647,45 @@ async def test_cursor_timestamps_must_be_aware_and_representable(api: Api) -> No
         )
     ok = await api.get("/v1/runs", cursor=_cursor("runs", ["2026-10-07T12:00:00+00:00", uuid_ok]))
     assert ok.status_code == 200
+
+
+async def test_hostile_filters_and_timestamps_are_422_not_500(api: Api) -> None:
+    run, _ = await ingest_scenario(api)
+    events = f"/v1/runs/{run['run_id']}/events"
+    for params in (
+        {"started_after": "0001-01-01T00:00:00+14:00"},
+        {"started_before": "9999-12-31T23:59:59-14:00"},
+        {"started_after": "9999-12-31T23:59:59-14:00"},
+    ):
+        error(await api.get("/v1/runs", **params), 422, "REQUEST_INVALID")
+    nasty: list[dict[str, str]] = [
+        {"status": "\x00"},
+        {"status": "great"},
+        {"event_type": "x\x00y"},
+        {"event_type": "Bad Type"},
+        {"event_type": "x" * 5000},
+        {"event_type": "' OR 1=1 --"},
+    ]
+    for params in nasty:
+        assert (await api.get(events, **params)).status_code == 422, params
+
+
+async def test_a_value_the_database_refuses_is_a_logged_422_not_a_500(
+    api: Api, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from sqlalchemy.exc import DataError
+
+    from abb_api.runs.queries import RunQueries
+
+    class _Driver(Exception):
+        pass
+
+    async def refuse(self: Any, *args: Any, **kwargs: Any) -> Any:
+        raise DataError("select", {"secret_param": "SENSITIVE"}, _Driver("invalid byte sequence"))
+
+    monkeypatch.setattr(RunQueries, "page", refuse)
+    with caplog.at_level(logging.ERROR):
+        response = await api.get("/v1/runs")
+    error(response, 422, "REQUEST_INVALID")
+    messages = " ".join(r.getMessage() + str(getattr(r, "error_type", "")) for r in caplog.records)
+    assert "database rejected a request value" in messages and "SENSITIVE" not in messages

@@ -96,7 +96,17 @@ def _aware(value: datetime | None, name: str) -> datetime | None:
             category=ErrorCategory.VALIDATION,
             status_code=422,
         )
-    return value.astimezone(UTC) if value else None
+    if value is None:
+        return None
+    try:
+        return value.astimezone(UTC)
+    except OverflowError:  # e.g. 0001-01-01T00:00:00+14:00 has no UTC form
+        raise AppError(
+            "REQUEST_INVALID",
+            f"{name} is outside the supported range.",
+            category=ErrorCategory.VALIDATION,
+            status_code=422,
+        ) from None
 
 
 class RunService:

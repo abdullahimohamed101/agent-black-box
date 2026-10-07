@@ -1,5 +1,6 @@
 """Typed error taxonomy and the one error envelope (spec §101.2, §130)."""
 
+import logging
 from enum import StrEnum
 from typing import Any
 
@@ -7,10 +8,12 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+from sqlalchemy.exc import DataError, DBAPIError, InterfaceError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from abb_api.core.request_context import get_request_id
+
+logger = logging.getLogger(__name__)
 
 
 class ErrorCategory(StrEnum):
@@ -127,6 +130,23 @@ def install_error_handlers(app: FastAPI) -> None:
                 category=ErrorCategory.VALIDATION,
                 status_code=422,
                 details={"errors": fields},
+            )
+        )
+
+    @app.exception_handler(DataError)
+    async def _data_error(_: Request, exc: DataError) -> JSONResponse:
+        # A value the database cannot store (for example an invalid byte sequence) came from the
+        # caller. Validation should have stopped it earlier, so log it loudly (type only: the
+        # message would quote the value) and answer 422 instead of a retryable-looking 500.
+        logger.error(
+            "database rejected a request value", extra={"error_type": type(exc.orig).__name__}
+        )
+        return error_response(
+            AppError(
+                "REQUEST_INVALID",
+                "A value in the request cannot be stored.",
+                category=ErrorCategory.VALIDATION,
+                status_code=422,
             )
         )
 
