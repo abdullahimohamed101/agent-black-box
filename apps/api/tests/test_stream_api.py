@@ -204,6 +204,58 @@ async def test_late_events_after_completion_are_still_delivered_and_delay_the_en
         assert end[0]["data"]["reason"] == "run_finished"
 
 
+async def test_a_run_that_starts_again_is_not_ended(live: Live) -> None:
+    run = make_run_ids()
+    await send(live.api, run, 1, event_type="run.completed")
+    await send(live.api, run, 2, event_type="run.started")  # resumed: not finished any more
+    async with live.open(run["run_id"]) as response:
+        stream = messages(response)
+        await take(stream, 2)
+        with pytest.raises(TimeoutError):  # well past the 0.5 s quiet period: still open
+            await take(stream, 1, kinds=("run_end",), seconds=1.5)
+
+
+async def test_a_late_event_restarts_the_quiet_period(api: Api, runtime_database_url: str) -> None:
+    async for live in serve(api, runtime_database_url, stream_end_quiet_seconds=1.0):
+        run = make_run_ids()
+        await send(api, run, 1, event_type="run.completed")
+        async with live.open(run["run_id"]) as response:
+            stream = messages(response)
+            await take(stream, 1)
+            await asyncio.sleep(0.7)
+            await send(api, run, 2)
+            await take(stream, 1, seconds=3)
+            delivered = asyncio.get_running_loop().time()
+            await take(stream, 1, kinds=("run_end",), seconds=5)
+            assert asyncio.get_running_loop().time() - delivered >= 0.8  # a full quiet period later
+
+
+async def test_the_header_wins_over_the_query_parameter(
+    api: Api, runtime_database_url: str
+) -> None:
+    async for live in serve(api, runtime_database_url, stream_overlap_seconds=0):
+        run = make_run_ids()
+        sent = [await send(api, run, n) for n in (1, 2, 3)]
+        got = await events_of(
+            live,
+            run,
+            1,
+            headers={"Last-Event-ID": sent[2]["event_id"]},
+            last_event_id=sent[0]["event_id"],
+        )
+        assert [m["id"] for m in got] == [sent[2]["event_id"]]
+        # and nothing before the header's event follows it
+        async with live.open(
+            run["run_id"],
+            headers={"Last-Event-ID": sent[2]["event_id"]},
+            last_event_id=sent[0]["event_id"],
+        ) as response:
+            stream = messages(response)
+            await take(stream, 1)
+            with pytest.raises(TimeoutError):
+                await take(stream, 1, seconds=0.8)
+
+
 async def test_idle_streams_send_keepalive_comments(api: Api, runtime_database_url: str) -> None:
     async for live in serve(api, runtime_database_url, stream_keepalive_seconds=0.3):
         run = make_run_ids()
@@ -259,6 +311,12 @@ async def test_stream_limits_apply_per_key_and_per_server_and_free_up_on_close(
                 break
             await asyncio.sleep(0.1)
         assert live.app.state.streams.limiter.open_streams == 0
+        for _ in range(50):  # and the hub forgets them: no subscriber outlives its stream
+            if live.app.state.streams.hub.subscriber_count == 0:
+                break
+            await asyncio.sleep(0.1)
+        assert live.app.state.streams.hub.subscriber_count == 0
+        assert live.app.state.streams.hub.watched_runs == 0
         async with live.open(run["run_id"]) as again:
             assert again.status_code == 200
 

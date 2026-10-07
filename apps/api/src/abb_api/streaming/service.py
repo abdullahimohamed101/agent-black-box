@@ -46,6 +46,7 @@ class StreamService:
         self._hub = hub
         self._runs = runs
         self._settings = settings
+        self.hub = hub
         self.limiter = StreamLimiter(settings.stream_max_total, settings.stream_max_per_key)
 
     async def open(
