@@ -13,6 +13,9 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 
 | ID | Sev | Issue | Impact | Target | Issue |
 | --- | --- | --- | --- | --- | --- |
+| KI-029 | S1 | The web app reads the API through one server-side `runs:read` key (ADR-021); any visitor to the web app reads that workspace | web must not be publicly exposed before login | Phase 15: per-user sessions | [#21](https://github.com/abdullahimohamed101/agent-black-box/issues/21) |
+| KI-027 | S2 | No workspace/project lookup endpoint: web routes take a project id or `all`; the workspace URL segment is a label | cannot resolve slugs or list projects | Phase 15 (or an earlier minimal `GET /v1/projects`) | [#19](https://github.com/abdullahimohamed101/agent-black-box/issues/19) |
+| KI-028 | S2 | No aggregate endpoint: dashboard figures are computed in the browser over the latest 200 runs and labelled so | stats are a sample on busy projects | Phase 7 analytics API | [#20](https://github.com/abdullahimohamed101/agent-black-box/issues/20) |
 | KI-020 | S1 | The runtime database role can UPDATE and DELETE `events`; INV-1 is enforced by code and a source-scanning test, not privileges | a bug or injection could rewrite history | **Phase 3** (pulled forward): separate migration and runtime roles, REVOKE UPDATE/DELETE on `events` | [#4](https://github.com/abdullahimohamed101/agent-black-box/issues/4) |
 | KI-018 | S1 | Agents, runs and spans per project are unbounded (a client can invent agent slugs, run ids, span ids) | storage growth and noisy lists; only the rate limit bounds it | Phase 19: per-project quotas and cardinality limits | [#5](https://github.com/abdullahimohamed101/agent-black-box/issues/5) |
 | KI-019 | S1 | Failed authentication is not throttled | an unauthenticated flood adds database load | Phase 19: edge or IP rate limiting | [#6](https://github.com/abdullahimohamed101/agent-black-box/issues/6) |
