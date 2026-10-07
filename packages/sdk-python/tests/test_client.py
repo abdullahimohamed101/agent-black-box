@@ -548,3 +548,16 @@ def test_hostile_constructor_options_never_raise(bad: Any) -> None:
         with bb.run("r") as run:
             run.event("custom.x")
         bb.shutdown(0.2)
+
+
+def test_plain_http_to_a_remote_host_warns_but_localhost_does_not(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    BlackBox(api_key="k", endpoint="http://127.0.0.1:9", mode="offline")
+    BlackBox(api_key="k", endpoint="http://localhost:9")
+    assert "plain http" not in caplog.text
+    BlackBox(api_key="k", endpoint="http://ingest.example.com")
+    assert "plain http" in caplog.text
+    caplog.clear()
+    BlackBox(api_key="k", endpoint="https://ingest.example.com")
+    assert "plain http" not in caplog.text

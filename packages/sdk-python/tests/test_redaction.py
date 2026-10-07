@@ -191,3 +191,9 @@ def test_end_to_end_secrets_never_reach_the_queue() -> None:
             pass
     assert secret not in json.dumps(events_of(bb))
     assert bb.stats()["redactions"] >= 4
+
+
+def test_a_huge_wide_value_is_cut_after_a_node_budget() -> None:
+    wide = {f"k{i}": "v" for i in range(20_000)}
+    out = Redactor().redact_value(wide)
+    assert list(out.values()).count("[TRUNCATED]") > 10_000 and out["k0"] == "v"

@@ -33,6 +33,12 @@ def _endpoint_ok(endpoint: str) -> bool:
         return False
 
 
+def _insecure_remote(endpoint: str) -> bool:
+    parts = urlsplit(endpoint)
+    local = ("localhost", "127.0.0.1", "::1")
+    return parts.scheme == "http" and (parts.hostname or "") not in local
+
+
 def _bounded(name: str, value: Any, default: float, low: float, high: float) -> float:
     try:
         number = float(value)
@@ -139,6 +145,8 @@ class Config:
         if c.mode == "http" and not _endpoint_ok(c.endpoint):
             log.warning("blackbox: endpoint is not a valid http(s) URL; telemetry disabled")
             c.mode = "disabled"
+        if c.mode == "http" and c.api_key and _insecure_remote(c.endpoint):
+            log.warning("blackbox: the API key is sent over plain http to a non-local host")
         if c.mode == "http" and not c.api_key:
             log.warning("blackbox: no API key (api_key= or BLACKBOX_API_KEY); telemetry disabled")
             c.mode = "disabled"

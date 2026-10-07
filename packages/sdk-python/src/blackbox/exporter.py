@@ -83,6 +83,9 @@ def parse_retry_after(value: str | None, cap: float) -> float | None:
 
 
 class LocalSink:
+    """Appends JSON lines. Safe for one process; several processes appending to one file can
+    interleave large lines, so give each process its own path."""
+
     def __init__(self, path: str, stats: Stats) -> None:
         self._path, self._stats = path, stats
         self._lock = threading.Lock()
@@ -311,7 +314,10 @@ class Exporter:
         return True
 
     def shutdown(self, timeout: float) -> bool:
-        """Stop the thread after a final drain; whatever misses the deadline is dropped, counted."""
+        """Stop the thread after a final drain; whatever misses the deadline is dropped, counted.
+
+        Worst case it returns after `timeout + http_timeout + 0.5` seconds (the in-flight request).
+        """
         if self._thread is None:
             return True
         self._stopping = True

@@ -46,6 +46,20 @@ jobs:
       - name: Dependency audit
         run: make audit
 
+  sdk:
+    # The SDK promises Python >= 3.10 and no dependencies: test the oldest and a current version.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: |
+          cd packages/sdk-python
+          uv sync --frozen --python ${{ matrix.python }}
+          uv run pytest -q
+
   containers:
     runs-on: ubuntu-latest
     steps:

@@ -24,6 +24,7 @@ from typing import Any
 from blackbox.stats import Stats
 
 MAX_DEPTH = 16
+MAX_NODES = 5000  # values visited per event: a huge wide payload must not stall the caller
 # Strings are bounded before scanning so a huge value cannot stall the caller. One byte over the
 # inline payload limit: such a payload is later dropped as too large, never silently truncated.
 MAX_STRING = 64 * 1024 + 1
@@ -143,8 +144,15 @@ class Redactor:
             return False
         return any(d in k for d in self._deny)
 
-    def redact_value(self, value: Any, key: str = "", depth: int = 0) -> Any:
-        """Redact a JSON-like value. Non-JSON objects become `<TypeName>`; deep nesting is cut."""
+    def redact_value(
+        self, value: Any, key: str = "", depth: int = 0, budget: list[int] | None = None
+    ) -> Any:
+        """Redact a JSON-like value. Non-JSON objects become `<TypeName>`; deep or huge is cut."""
+        if budget is None:
+            budget = [MAX_NODES]
+        budget[0] -= 1
+        if budget[0] < 0:
+            return "[TRUNCATED]"
         if value is None or isinstance(value, (bool, int, float)):
             return value  # numbers and booleans cannot carry a credential
         denied = bool(key) and self._key_denied(key)
@@ -157,11 +165,11 @@ class Redactor:
             return "[TRUNCATED]"
         if isinstance(value, dict):
             return {
-                self.redact_string(str(k)): self.redact_value(v, str(k), depth + 1)
+                self.redact_string(str(k)): self.redact_value(v, str(k), depth + 1, budget)
                 for k, v in value.items()
             }
         if isinstance(value, (list, tuple)):
-            return [self.redact_value(v, key, depth + 1) for v in value]
+            return [self.redact_value(v, key, depth + 1, budget) for v in value]
         return f"<{type(value).__name__}>"
 
     # -- the pipeline -----------------------------------------------------------------------------
