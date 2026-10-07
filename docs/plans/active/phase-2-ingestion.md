@@ -206,7 +206,7 @@ auth, API keys and tenant scoping are security-sensitive), then `harden-change`,
 4. [x] `EventStore` ingest transaction (run/agent upserts, `ON CONFLICT DO NOTHING`, duplicate vs conflict classification, outbox enqueue); concurrency tests.
 5. [x] HTTP ingestion: body limits and gzip, auth dependency, rate limiter, `/v1/events`, `/v1/events/batch`, error codes; API tests.
 6. [x] Summary derivation (pure), span persistence, outbox worker (claim, lease, retry, dead-letter), `summarize_run`; equivalence tests.
-7. [ ] Query API: `POST/GET /v1/runs`, run detail, events (cursor, order mode) and event detail, spans; cross-workspace matrix.
+7. [x] Query API: `POST/GET /v1/runs`, run detail, events (cursor, order mode) and event detail, spans; cross-workspace matrix.
 8. [ ] OpenAPI export/check, compose `migrate` + `worker`, `make seed`/`make up` flow, benchmark note, manual evidence.
 9. [ ] Docs and ADRs (002, 012), SECURITY/OPERATIONS/TESTING/ARCHITECTURE, KNOWN_ISSUES (close KI-011/012).
 10. [ ] `verify-change`, `review-change` (+ security pass), `harden-change`, `complete-phase` (move plan to `completed/`).

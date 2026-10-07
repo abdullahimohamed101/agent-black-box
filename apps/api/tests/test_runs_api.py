@@ -211,6 +211,9 @@ async def test_listing_rejects_bad_parameters(api: Api) -> None:
 
 async def test_a_cursor_from_another_listing_is_rejected(api: Api) -> None:
     run, _ = await ingest_scenario(api)
+    spans = (await api.get(f"/v1/runs/{run['run_id']}/spans", limit=2)).json()
+    # a spans cursor has exactly the shape of a runs cursor: only its kind tells them apart
+    error(await api.get("/v1/runs", cursor=spans["next_cursor"]), 400, "CURSOR_INVALID")
     events = (await api.get(f"/v1/runs/{run['run_id']}/events", limit=2)).json()
     error(await api.get("/v1/runs", cursor=events["next_cursor"]), 400, "CURSOR_INVALID")
 
@@ -255,6 +258,26 @@ async def test_runs_without_sequences_are_ordered_by_time(api: Api) -> None:
     page = (await api.get(f"/v1/runs/{run['run_id']}/events")).json()
     by_time = sorted(events, key=lambda e: e["occurred_at"])
     assert [e["event_id"] for e in page["items"]] == [e["event_id"] for e in by_time]
+
+
+async def test_time_ordering_is_used_when_any_event_lacks_a_sequence(api: Api) -> None:
+    """Skewed sequences: by sequence b, a; by time (c has none) a, b, c."""
+    run = make_run_ids()
+    a = wire_event(run, 1, sequence=2)  # earlier clock time, later sequence number
+    b = wire_event(run, 2, sequence=1)
+    c = wire_event(run, 3, sequence=...)
+    await api.post_batch([c, b, a])
+    await api.drain()
+    page = (await api.get(f"/v1/runs/{run['run_id']}/events")).json()
+    assert page["ordering_mode"] == "time"
+    assert [e["event_id"] for e in page["items"]] == [a["event_id"], b["event_id"], c["event_id"]]
+    only_sequenced = make_run_ids()
+    x, y = wire_event(only_sequenced, 1, sequence=2), wire_event(only_sequenced, 2, sequence=1)
+    await api.post_batch([x, y])
+    await api.drain()
+    seq_page = (await api.get(f"/v1/runs/{only_sequenced['run_id']}/events")).json()
+    assert seq_page["ordering_mode"] == "sequence"
+    assert [e["event_id"] for e in seq_page["items"]] == [y["event_id"], x["event_id"]]
 
 
 async def test_a_late_unsequenced_event_makes_old_cursors_stale(api: Api) -> None:
@@ -469,3 +492,29 @@ async def test_the_same_run_id_in_two_workspaces_never_mixes_events_or_spans(api
     assert len((await api.get(f"{path}/spans")).json()["items"]) == 3
     mine_detail = await api.get(f"{path}/events/{theirs[0]['event_id']}")
     assert mine_detail.status_code == 404  # their event id does not exist in my workspace
+
+
+async def test_event_lists_never_select_the_payload_column(api: Api) -> None:
+    import re
+
+    from sqlalchemy import event as sa_event
+
+    run = make_run_ids()
+    await api.post_batch([wire_event(run, 1, payload={"secret": "x" * 1000})])
+    await api.drain()
+    statements: list[str] = []
+
+    def record(conn: Any, cursor: Any, statement: str, *rest: Any) -> None:
+        statements.append(statement)
+
+    app_engine = api.app.state.engine.sync_engine  # the engine the application itself uses
+    sa_event.listen(app_engine, "before_cursor_execute", record)
+    try:
+        await api.get(f"/v1/runs/{run['run_id']}/events")
+    finally:
+        sa_event.remove(app_engine, "before_cursor_execute", record)
+    event_selects = [s for s in statements if "FROM events" in s]
+    assert event_selects
+    for statement in event_selects:
+        mentions = re.findall(r"events\.payload(?![_\w])( IS NOT NULL)?", statement)
+        assert mentions == [" IS NOT NULL"], statement  # only the has_payload flag, never the body

@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.auth import scopes
@@ -41,6 +42,7 @@ class Api:
     clock: Tick
     tokens: dict[str, str]  # name -> bearer token
     worker: Worker
+    app: FastAPI
 
     def headers(self, token: str | None = "writer", **extra: str) -> dict[str, str]:
         headers = {"content-type": "application/json", **extra}
@@ -126,7 +128,7 @@ async def build_api(
     )
     worker = Worker(engine, HANDLERS, make_settings(database_url), owner="api-test")
     async for client in _client(app):
-        yield Api(client, engine, tenant, other, clock, tokens, worker)
+        yield Api(client, engine, tenant, other, clock, tokens, worker, app)
 
 
 @pytest.fixture
