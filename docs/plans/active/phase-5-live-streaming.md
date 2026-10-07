@@ -1,6 +1,6 @@
 # Phase 5 - Live execution streaming
 
-Status: Planned (awaiting confirmation of decisions D1-D6)
+Status: Active (decisions D1-D6 confirmed; steps 1-2 done)
 Owner: implementer agent
 Branch: `feature/phase-5-live-streaming` (from `main` fa4c346)
 Depends on: Phase 2 (ingestion, query API), Phase 4 (run detail, read proxy)
@@ -100,8 +100,8 @@ mutation checks on committed code (resume overlap, dedupe, comparator, limits); 
 - `received_at` overlap re-sends up to 30 s of rows on every reconnect: bounded by the page size and the light payload.
 
 ## Ordered steps (one commit each)
-1. Docs: correct `PROJECT_STATE.md`, ADR-022 draft, this plan confirmed.
-2. API: `after_arrival` query + watermark/overlap logic, tests.
+1. [x] Docs: correct `PROJECT_STATE.md`, ADR-022, this plan confirmed.
+2. [x] API: arrival-time queries (`arrival_of`, `arrived_since`) + `ArrivalCursor` overlap logic, 10 tests, 7 mutants killed.
 3. API: `pg_notify` on commit, listener hub with fan-out, fallback poll, reconnect, tests (incl. two processes).
 4. API: SSE endpoint (framing, keep-alive, run_end, limits, lifetime, disconnect handling), OpenAPI, tests.
 5. Web: proxy streaming + allowlist, `ordering.ts` with parity test, `stream.ts` client.
