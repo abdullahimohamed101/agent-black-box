@@ -150,7 +150,7 @@ class JobQueue:
                 FROM picked
                 WHERE j.id = picked.id
                 RETURNING j.id, j.job_type, j.workspace_id, j.dedupe_key, j.payload,
-                          j.attempt_count, j.lease_owner
+                          j.attempt_count, j.lease_owner, j.available_at, j.created_at
                 """
             ),
             {
@@ -160,6 +160,9 @@ class JobQueue:
                 "lease_seconds": lease.total_seconds(),
             },
         )
+        # UPDATE ... RETURNING does not preserve the CTE's ORDER BY: restore oldest-first so
+        # workers process (and tests observe) jobs in the order they became due.
+        rows = sorted(claimed, key=lambda r: (r.available_at, r.created_at, r.id))
         return [
             Job(
                 r.id,
@@ -170,7 +173,7 @@ class JobQueue:
                 r.attempt_count,
                 r.lease_owner,
             )
-            for r in claimed
+            for r in rows
         ]
 
     async def extend_lease(self, job: Job, lease: timedelta, now: datetime | None = None) -> bool:

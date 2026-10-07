@@ -9,7 +9,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | --- | --- | --- | --- | --- |
 | 0 | Repository and engineering foundation | §133-134, §145 | M0 | Complete (CI run UNVERIFIED, KI-007) |
 | 1 | Canonical telemetry contract | §15, §62-66, §141 | M0 | Complete (CI run pending push) |
-| 2 | Data model, ingestion, run querying, outbox + summarizer | §60, §71-73, §78 | M0-M1 | Not started |
+| 2 | Data model, ingestion, run querying, outbox + summarizer | §60, §71-73, §78 | M0-M1 | Complete (pending merge and CI) |
 | 3 | Python SDK | §67-68, §17 | M1 | Not started |
 | 4 | Core web product (fixtures first, then live API) | §95-100, §135 | M1 | Not started |
 | 5 | Live execution streaming (SSE) | §76, §21 | M1 | Not started |

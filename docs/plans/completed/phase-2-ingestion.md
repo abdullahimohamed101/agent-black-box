@@ -1,6 +1,6 @@
 # Phase 2 - Data Model, Ingestion, Run Querying
 
-Status: Planned (not started); branch `feature/phase-2-ingestion` from `main` (Phase 1 merged via PR #3). Awaiting user review of decisions D1-D19.
+Status: Completed on branch `feature/phase-2-ingestion`; pending merge (PR needs user approval) and a CI run on GitHub
 Owner: coding agent
 Depends on: Phase 1 (event contract)
 Spec: §19, §36, §60.1-60.2, §61.3, §65-66, §71-73, §78, §92, §101, §110, §130, §149, §153, §155; ADR-001, ADR-003, ADR-006, ADR-011 (written/finalised: ADR-002, ADR-012)
@@ -209,4 +209,55 @@ auth, API keys and tenant scoping are security-sensitive), then `harden-change`,
 7. [x] Query API: `POST/GET /v1/runs`, run detail, events (cursor, order mode) and event detail, spans; cross-workspace matrix.
 8. [x] OpenAPI export/check, compose `migrate` + `worker`, `make seed`/`make up` flow, benchmark note, manual evidence.
 9. [x] Docs and ADRs (002, 012), SECURITY/OPERATIONS/TESTING/ARCHITECTURE, KNOWN_ISSUES (close KI-011/012).
-10. [ ] `verify-change`, `review-change` (+ security pass), `harden-change`, `complete-phase` (move plan to `completed/`).
+10. [x] `verify-change`, `review-change` (+ security pass), `harden-change`, `complete-phase` (move plan to `completed/`).
+
+## Evidence (2026-10-07)
+
+1. **PASS** Migrations: `0001` to `0006` apply to an empty database; each revision upgrades, downgrades and upgrades again in its own
+   throwaway database; `head-1` to `head`; downgrade to base leaves no tables; `tables.py` and migrations are checked for drift;
+   `openapi.json` is current (`make openapi-check`, part of the gate). Clean-slate stack (`docker compose down -v`, `up --build --wait`):
+   `alembic_version = 0006`, 15 tables, `ix_outbox_dedupe` present.
+2. **PASS** Repository and store tests on real PostgreSQL: cross-tenant references rejected by composite keys; two workspaces may share
+   ids; 50 concurrent identical batches store each event once with one pending job; opposite-order overlapping batches do not deadlock
+   (proved deterministically by capturing the SQL write order); cursor pagination stays stable while runs arrive; shuffled ingestion yields
+   canonical order (`tests/test_event_store.py`, `test_schema_constraints.py`, `test_runs_api.py`).
+3. **PASS** Public-API acceptance: a 13-event run sent in shuffled, gzip-compressed, overlapping batches is reconstructed by
+   `GET /v1/runs/{id}`, `/events`, `/spans` with exactly the canonical order, parent/child spans, status `SUCCESS` and the derived summary
+   (`test_a_run_sent_in_shuffled_gzip_batches_is_reconstructed_exactly`). Same flow on real containers: `scripts/smoke.sh`.
+4. **PASS** Summary equivalence: for 12 seeds of random batching, order, duplication and worker timing the final run row and spans equal a
+   from-scratch derivation, and a replayed job changes nothing (`test_summarizer.py`).
+5. **PASS** Auth and limits matrix: 401 (identical body) for missing, malformed, unknown, wrong-secret, revoked and expired keys; 403 wrong
+   scope and workspace-wide key ingesting; 404 for other workspace or project on every read route; 413 for oversized bodies (compressed,
+   decompressed, streamed, zip bomb bounded by peak memory); 415, 400, 429 with `Retry-After`; no key, secret or payload text in logs.
+6. **PASS** Worker: two concurrent claimers receive disjoint jobs (`SKIP LOCKED`); failures retry with backoff then dead-letter; expired leases
+   are reclaimed; lost leases roll back; leases are kept alive for slow jobs; a job that kills its worker is dead-lettered, not looped;
+   1000 events of a run coalesce into one pending job; the real worker process starts, works and exits 0 on SIGTERM.
+7. **PASS** Error contract: every non-2xx response matches the envelope with `X-Request-ID`; OpenAPI documents the same envelope for every
+   error; 858 hostile requests (forged cursors, extreme timestamps, NUL bytes, odd paths, nested and oversized bodies) against the live API
+   give zero 5xx.
+8. **PASS** Manual evidence: `docker compose --profile app up --build --wait` (migrate, api, worker, web healthy); `make seed`; `scripts/smoke.sh`
+   provisions two workspaces, gzip-ingests a run, confirms a retry is all duplicates, waits for the worker, reads status, summary, ordered
+   pages and spans, and checks 401/401/404. The same script fails (as it should) with the worker stopped.
+9. **PASS (local)** `scripts/quality.sh full` exits 0: event-schema 337, api 329 (real PostgreSQL, 98% statement coverage with greenlet
+   tracing), web 7; a pristine clone passes it too. **UNVERIFIED (env)**: GitHub CI for this branch has not yet run on the final commit.
+10. **PASS** ADR-002 and ADR-012 written; `docs/architecture/api-v1.md`, three runbooks, SECURITY, OPERATIONS and TESTING updated;
+    benchmark recorded in `docs/benchmarks/phase-2-ingestion.md` (single exporter p50 27 ms, p95 44 ms on a 2-vCPU VM, within the 50/150 ms
+    targets; 8 concurrent clients saturate one API process; the large-run tail is documented as KI-016). A mechanical check found every
+    `make` target, link and CLI command in the docs exists, except deliberate references to future work.
+
+### Independent verification and review: defects found and fixed
+
+Benchmark (step 8): spans upsert exceeded the 32,767 bind-parameter limit for runs over about 2,500 spans (dead-lettered while the API said
+`current`); job scheduling mixed host and database clocks; recomputing after every batch starved ingestion (debounce added).
+
+`verify-change` (858-request hostile probe, repeated runs, coverage): `occurred_at` such as `0001-01-01T00:00:00+14:00` overflowed UTC
+conversion and made a poison event; a crash in one event could 500 the whole batch; forged or out-of-range cursor elements, extreme time
+filters and NUL bytes in filters produced 500s. Fixed at the root, with per-event isolation and a logged 422 safety net for database data errors.
+
+`review-change` incl. security pass (three hypotheses tested as experiments before classification): reclaimed jobs ignored `max_attempts`
+(a 2.5 s job under a 1 s lease ran 8 times; a worker-killing job would crash-loop forever); long jobs lost their own results to lease expiry
+(heartbeat added); SQLAlchemy pool exhaustion surfaced as 500 instead of a retryable 503; run listings scanned the whole outbox history
+(index added); responses lacked `nosniff` and `no-store`. Deferred with owners and triggers: KI-016 and KI-017-KI-026.
+
+Process notes: three times a fix was lost or a bad commit pushed because of my own tooling (a `git checkout` restoring uncommitted work;
+a chained commit that ignored a failing gate); mutation checks now run only on committed code and the gate's exit code is checked first.

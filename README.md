@@ -4,7 +4,7 @@ A flight recorder, observability, debugging, evaluation and (eventually) control
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell
 command, retry and failure, with cost and latency, live.
 
-> Status: Phases 0-1 done and merged; Phase 2 (ingestion, storage, run queries) implemented and under review.
+> Status: Phases 0-1 done and merged; Phase 2 (ingestion, storage, run queries) complete and awaiting merge.
 > You can already run the stack, ingest events over HTTP and read runs back; there is no SDK or product UI yet.
 > See `docs/PROJECT_STATE.md`.
 
@@ -69,7 +69,7 @@ API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operat
 
 ## Phase Status
 
-See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-1 complete, Phase 2 in review). Summary: Phases 0-7 build the MVP
+See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-1 merged, Phase 2 complete). Summary: Phases 0-7 build the MVP
 (foundation, event contract, ingestion, SDK, web, live streaming, coding-agent demo,
 analytics) followed by a human review gate; Phases 8-20 add integrations, multi-agent
 tracing, reliability intelligence, evaluations, replay, security, policy/approvals, RBAC,

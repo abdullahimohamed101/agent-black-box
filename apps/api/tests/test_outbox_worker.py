@@ -512,3 +512,25 @@ async def test_a_job_that_keeps_killing_its_worker_is_dead_lettered_not_reclaime
     row = await job_row(engine, poison)
     assert row.status == "dead_letter" and "lease expired after 5 attempts" in row.last_error
     assert row.lease_owner is None
+
+
+async def test_claimed_jobs_are_returned_oldest_first_however_the_database_orders_them(
+    engine: AsyncEngine,
+) -> None:
+    """Flaky in the gate until fixed: UPDATE ... RETURNING does not preserve ORDER BY."""
+    ws = await workspace(engine)
+    async with engine.begin() as conn:
+        ids = [
+            await add_job(conn, ws, available_at=T0 - timedelta(minutes=minutes))
+            for minutes in (3, 9, 1, 7, 5, 2, 8, 4, 6)  # inserted out of order on purpose
+        ]
+        due = dict(zip(ids, (3, 9, 1, 7, 5, 2, 8, 4, 6), strict=True))
+    for _ in range(5):  # claim and release repeatedly so the physical order keeps changing
+        async with engine.begin() as conn:
+            jobs = await JobQueue(conn).claim(owner="w", limit=9, lease=LEASE, now=T0)
+            assert [due[j.id] for j in jobs] == sorted(due.values(), reverse=True)
+            await conn.execute(
+                update(t.outbox_jobs).values(
+                    status="pending", lease_owner=None, lease_expires_at=None, attempt_count=0
+                )
+            )
