@@ -10,6 +10,8 @@ import {
   successRun,
   approvalRun,
 } from "@/fixtures/runs";
+import { fixtureReply } from "@/fixtures/api";
+import { stressRun } from "@/fixtures/runs";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -229,6 +231,15 @@ describe("EventDrawer kinds", () => {
     expect(document.querySelector("script, img")).toBeNull();
   });
 
+  it("truncates huge attribute values", () => {
+    const e = { ...successRun().events[0]!, attributes: { big: "x".repeat(50_000) } };
+    stubApi();
+    renderWithQuery(<EventDrawer runId="r" event={e} onClose={() => {}} />);
+    const text = screen.getByRole("dialog").textContent ?? "";
+    expect(text).toContain("(truncated)");
+    expect(text.length).toBeLessThan(4000);
+  });
+
   it("shows a payload error with retry", async () => {
     const run = successRun();
     const withPayload = run.events.find((x) => x.has_payload)!;
@@ -241,5 +252,73 @@ describe("EventDrawer kinds", () => {
     });
     renderWithQuery(<EventDrawer runId={run.run.id} event={withPayload} onClose={() => {}} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+  });
+});
+
+describe("event paging resilience", () => {
+  it("restarts from page 1 after 409 CURSOR_STALE instead of leaving a partial timeline", async () => {
+    const runId = stressRun().run.id;
+    let staleSent = false;
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Request) => {
+        const url = new URL(input.url);
+        calls.push(url.pathname + url.search);
+        if (url.pathname.endsWith("/events") && url.searchParams.has("cursor") && !staleSent) {
+          staleSent = true;
+          return Response.json(
+            {
+              error: {
+                code: "CURSOR_STALE",
+                message: "restart",
+                retryable: true,
+                request_id: "r",
+                category: "X",
+                details: {},
+              },
+            },
+            { status: 409 },
+          );
+        }
+        const r = fixtureReply(
+          url.pathname.replace(/^\/api\/abb\//, "").split("/"),
+          url.searchParams,
+        );
+        return Response.json(r.body, { status: r.status });
+      }),
+    );
+    renderWithQuery(<RunDetail runId={runId} base={BASE} />);
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("progress")).toHaveTextContent("10,000 of 10,000 events shown"),
+      { timeout: 20000 },
+    );
+    expect(staleSent).toBe(true);
+    // page 1 (no cursor) was requested again after the stale answer
+    expect(
+      calls.filter((c) => c.includes("/events?") && !c.includes("cursor=")).length,
+    ).toBeGreaterThanOrEqual(2);
+  }, 30000);
+
+  it("does not refetch a finished run's events when only the summary changes", async () => {
+    const calls = stubApi();
+    renderWithQuery(<RunDetail runId={successRun().run.id} base={BASE} />);
+    await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
+    expect(calls.filter((c) => c.includes("/events?")).length).toBe(1);
+  });
+
+  it("clears the selection when its row disappears", async () => {
+    stubApi();
+    const user = userEvent.setup();
+    renderWithQuery(<RunDetail runId={failureRetryRun().run.id} base={BASE} />);
+    const list = await screen.findByRole("listbox");
+    await waitFor(() => expect(screen.getAllByRole("option").length).toBeGreaterThan(5));
+    list.focus();
+    await user.keyboard("j");
+    expect(list).toHaveAttribute("aria-activedescendant");
+    await user.click(screen.getByLabelText("Run & agent"));
+    expect(screen.queryAllByRole("option", { selected: true })).toHaveLength(0);
+    expect(list).not.toHaveAttribute("aria-activedescendant");
   });
 });

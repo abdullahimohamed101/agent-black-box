@@ -42,3 +42,6 @@ Native `make dev` does not start the worker, so runs stay `processing` unless yo
 `pnpm --filter @abb/web dev` serves the UI on 3000 (`next dev --port 3100` for a second instance). It reads the API through a
 server-side proxy (ADR-021): set `ABB_WEB_API_KEY` (a workspace-wide `runs:read` key) and `ABB_API_INTERNAL_URL` in `.env`, or set
 `ABB_WEB_DATA_SOURCE=fixtures` to browse deterministic fixtures with no API. Open `/w/<workspace>/projects/all`.
+With Compose (`--profile app`) the web service gets `ABB_API_INTERNAL_URL=http://api:8000` and passes `ABB_WEB_API_KEY` through from
+your shell or `.env`; without a key it answers 503 `WEB_NOT_CONFIGURED`. `ABB_WEB_DATA_SOURCE=fixtures` is refused in production
+builds unless `ABB_WEB_ALLOW_FIXTURES=1` (Playwright sets it).

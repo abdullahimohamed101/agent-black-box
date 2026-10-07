@@ -73,6 +73,10 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
+    environment:
+      # Server-side only (ADR-021). Create the key with `python -m abb_api.cli create-key --scopes runs:read` and export it.
+      ABB_API_INTERNAL_URL: http://api:8000
+      ABB_WEB_API_KEY: ${ABB_WEB_API_KEY:-}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

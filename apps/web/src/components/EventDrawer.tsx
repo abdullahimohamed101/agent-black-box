@@ -15,6 +15,10 @@ export const drawerKind = (e: EventOut): DrawerKind => {
   return c === "llm" ? "llm" : c === "tool" ? "tool" : "generic";
 };
 
+const ATTR_CHARS = 2000;
+const clip = (v: string): string =>
+  v.length > ATTR_CHARS ? `${v.slice(0, ATTR_CHARS)}… (truncated)` : v;
+
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
 function Fields({ rows }: { rows: [string, React.ReactNode][] }) {
@@ -166,7 +170,8 @@ export function EventDrawer({
             rows={Object.entries(a)
               .sort(([x], [y]) => x.localeCompare(y))
               .map(
-                ([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)] as [string, string],
+                ([k, v]) =>
+                  [k, clip(typeof v === "string" ? v : JSON.stringify(v))] as [string, string],
               )}
           />
         )}

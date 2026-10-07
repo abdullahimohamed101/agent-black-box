@@ -1,7 +1,13 @@
 "use client";
 
-import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { api, unwrap } from "./api/client";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { api, ApiRequestError, unwrap } from "./api/client";
 import { isActive, type RunStatus } from "./api/types";
 
 export type RunFilters = {
@@ -53,13 +59,22 @@ export function useRun(runId: string) {
   });
 }
 
+const MAX_STALE_RESETS = 3;
+
 /**
  * All events of a run, 500 per page, in canonical order. Pages load back-to-back so a 10,000-event run is complete
  * after ~20 requests while the first screen renders after one.
+ *
+ * Interim live behaviour (ADR-020, replaced by SSE in Phase 5): the key does not include the event count. A finished
+ * run's events are immutable (INV-1) and never refetched; an active run is refetched by the caller only when its
+ * event_count or status changes. A `409 CURSOR_STALE` (ordering mode changed mid-paging) resets the query so paging
+ * restarts from page 1, at most MAX_STALE_RESETS times.
  */
-export function useRunEvents(runId: string, eventCount: number | undefined) {
-  return useInfiniteQuery({
-    queryKey: ["run-events", runId, eventCount ?? 0],
+export function useRunEvents(runId: string, active: boolean) {
+  const client = useQueryClient();
+  const resets = useRef(0);
+  const q = useInfiniteQuery({
+    queryKey: ["run-events", runId],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam, signal }) =>
       unwrap(
@@ -69,10 +84,25 @@ export function useRunEvents(runId: string, eventCount: number | undefined) {
         }),
       ),
     getNextPageParam: (last) => last.next_cursor ?? undefined,
-    // A changed event_count is a new key (the run grew); finished data is immutable (INV-1).
-    staleTime: 60_000,
+    staleTime: active ? 0 : Infinity,
+    refetchOnMount: active ? "always" : false,
     placeholderData: keepPreviousData,
   });
+  const err = q.error;
+  const refetch = q.refetch;
+  useEffect(() => {
+    if (
+      err instanceof ApiRequestError &&
+      err.code === "CURSOR_STALE" &&
+      resets.current < MAX_STALE_RESETS
+    ) {
+      resets.current += 1;
+      // Drop the partial pages, then page again from the start.
+      client.removeQueries({ queryKey: ["run-events", runId] });
+      void refetch();
+    }
+  }, [err, client, runId, refetch]);
+  return q;
 }
 
 export function useEventDetail(runId: string, eventId: string | null) {

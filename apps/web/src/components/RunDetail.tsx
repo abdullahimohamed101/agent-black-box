@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RunOut } from "@/lib/api/types";
+import { isActive, type RunOut } from "@/lib/api/types";
 import {
   formatCost,
   formatDuration,
@@ -70,13 +70,37 @@ export function headline(
 export function RunDetail({ runId, base }: { runId: string; base: Base }) {
   const run = useRun(runId);
   const eventCount = num(run.data?.summary["event_count"]) ?? undefined;
-  const ev = useRunEvents(runId, run.isSuccess ? eventCount : undefined);
-  const { hasNextPage, isFetchingNextPage, fetchNextPage, isError: evError } = ev;
+  const active = run.data ? isActive(run.data.status) : true;
+  const ev = useRunEvents(runId, active);
+  const {
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    isError: evError,
+    refetch: refetchEvents,
+  } = ev;
+
+  // Live runs (until Phase 5 SSE): refetch only when the run grew or changed state, never for a finished run.
+  const seen = useRef<string | null>(null);
+  const marker = run.data ? `${eventCount ?? ""}|${run.data.status}` : null;
+  useEffect(() => {
+    if (marker == null) return;
+    if (
+      seen.current !== null &&
+      seen.current !== marker &&
+      (active || seen.current.split("|")[1] !== run.data?.status)
+    ) {
+      void refetchEvents();
+    }
+    seen.current = marker;
+  }, [marker, active, refetchEvents, run.data?.status]);
 
   // Page the whole run in back-to-back; the first page renders as soon as it lands.
+  // pageCount is a dependency so a page that lands without an observed `isFetchingNextPage` toggle still triggers the next.
+  const pageCount = ev.data?.pages.length ?? 0;
   useEffect(() => {
     if (hasNextPage && !isFetchingNextPage && !evError) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, evError, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
 
   const events = useMemo(() => ev.data?.pages.flatMap((p) => p.items) ?? [], [ev.data]);
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
@@ -87,8 +111,14 @@ export function RunDetail({ runId, base }: { runId: string; base: Base }) {
 
   const filtered = useMemo(() => filterEvents(events, filters), [events, filters]);
   const rows = useMemo(() => buildRows(filtered, collapsed), [filtered, collapsed]);
-  const t0 = events[0] ? Date.parse(events[0].occurred_at) : 0;
+  // Earliest timestamp, not events[0]: sequence order can disagree with clocks.
+  const t0 = useMemo(
+    () => events.reduce((m, e) => Math.min(m, Date.parse(e.occurred_at)), Infinity),
+    [events],
+  );
   const err = useMemo(() => firstError(events), [events]);
+  // A filter or collapse can remove the selected row; never leave aria-activedescendant pointing at nothing.
+  const selectedKey = selected && rows.some((r) => r.key === selected) ? selected : null;
   const drawerEvent = drawerEventId ? events.find((e) => e.event_id === drawerEventId) : undefined;
 
   const focusTimeline = () =>
@@ -172,7 +202,8 @@ export function RunDetail({ runId, base }: { runId: string; base: Base }) {
         <Metric label="Files changed" value={formatInt(num(s["files_modified"]))} />
       </dl>
       <p className="muted meta">
-        Agent {r.agent_id ?? "—"} · started {formatTimestamp(r.started_at)} · run {r.id}
+        Agent {r.agent_id ?? "—"} · ordered by {ev.data?.pages[0]?.ordering_mode ?? r.ordering_mode}{" "}
+        · started {formatTimestamp(r.started_at)} · run {r.id}
         {Array.isArray(s["models"]) && s["models"].length > 0 && (
           <> · {(s["models"] as string[]).join(", ")}</>
         )}
@@ -246,7 +277,7 @@ export function RunDetail({ runId, base }: { runId: string; base: Base }) {
             <Timeline
               rows={rows}
               t0={t0}
-              selectedKey={selected}
+              selectedKey={selectedKey}
               firstErrorId={err?.event_id ?? null}
               onSelect={setSelected}
               onActivate={activate}
