@@ -10,7 +10,11 @@ dependencies = [
   "sqlalchemy[asyncio]>=2.0.36",
   "asyncpg>=0.30",
   "alembic>=1.14",
+  "abb-event-schema",
 ]
+
+[tool.uv.sources]
+abb-event-schema = { path = "../../packages/event-schema", editable = true }
 
 [dependency-groups]
 dev = [

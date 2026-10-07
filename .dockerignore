@@ -6,3 +6,14 @@ node_modules
 **/.venv
 .git
 .env
+__pycache__
+**/__pycache__
+.mypy_cache
+**/.mypy_cache
+.ruff_cache
+**/.ruff_cache
+.pytest_cache
+**/.pytest_cache
+.local
+agent-black-box
+docs

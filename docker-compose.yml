@@ -22,7 +22,8 @@ services:
   api:
     profiles: ["app"]
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
     environment:
       ABB_ENVIRONMENT: development
       ABB_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb

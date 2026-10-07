@@ -200,7 +200,7 @@ auth, API keys and tenant scoping are security-sensitive), then `harden-change`,
 
 ## Ordered Steps (one commit each)
 
-1. [ ] Wire `abb-event-schema` into `apps/api` (path dependency, Dockerfile root context, compose, CI), settings for limits; import test.
+1. [x] Wire `abb-event-schema` into `apps/api` (path dependency, Dockerfile root context, compose, CI), settings for limits; import test.
 2. [ ] DB layer: `tables.py`, migrations 0002-0005, throwaway-database test fixtures, per-revision migration tests (KI-011).
 3. [ ] Tenancy + clock; workspace/project/agent repositories; API key generation, hashing, verification; CLI (`create-*`, `seed`); tests.
 4. [ ] `EventStore` ingest transaction (run/agent upserts, `ON CONFLICT DO NOTHING`, duplicate vs conflict classification, outbox enqueue); concurrency tests.

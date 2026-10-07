@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     database_url: str = Field(min_length=1)
     cors_origins: str = "http://localhost:3000"
 
+    # Ingestion limits (spec §71.4). Per-event size comes from the event contract itself.
+    ingest_max_body_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
+    ingest_max_batch_events: int = Field(default=1000, ge=1)
+    # Per-project token buckets (spec §71.3, FR-ING-007). In-process only until Phase 19.
+    rate_limit_events_per_second: float = Field(default=2000.0, gt=0)
+    rate_limit_burst_events: int = Field(default=10000, ge=1)
+    rate_limit_bytes_per_second: float = Field(default=10 * 1024 * 1024.0, gt=0)
+    rate_limit_burst_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
