@@ -62,7 +62,7 @@ def row_to_event(row: Any) -> Event:
         "status": row.status,
         "duration_ms": row.duration_ms,
         "attributes": row.attributes,
-        "payload": row.payload,
+        "payload": getattr(row, "payload", None),
         "payload_ref": row.payload_ref,
         "tags": list(row.tags),
         "sdk": row.sdk,

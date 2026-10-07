@@ -240,11 +240,12 @@ events = Table(
     Column("status", Text),
     Column("duration_ms", Float),
     Column("attributes", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
-    Column("payload", JSONB),
+    # none_as_null: an absent payload is SQL NULL, not the JSON value `null`
+    Column("payload", JSONB(none_as_null=True)),
     Column("payload_ref", Text),
     Column("tags", ARRAY(Text), nullable=False, server_default=text("'{}'::text[]")),
     Column("schema_version", Text, nullable=False),
-    Column("sdk", JSONB),
+    Column("sdk", JSONB(none_as_null=True)),
     # SHA-256 of the canonical event (dedup.content_hash): separates a retry from a conflict.
     Column("content_hash", LargeBinary, nullable=False),
     PrimaryKeyConstraint("workspace_id", "event_id"),

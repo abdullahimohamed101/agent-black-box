@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from abb_api.core.request_context import get_request_id
@@ -56,6 +57,24 @@ class AppError(Exception):
         self.retryable = retryable
         self.details = details or {}
         self.headers = headers or {}
+
+
+def dependency_unavailable() -> AppError:
+    return AppError(
+        "DEPENDENCY_UNAVAILABLE",
+        "A required dependency is temporarily unavailable.",
+        category=ErrorCategory.DEPENDENCY,
+        status_code=503,
+        retryable=True,
+        headers={"Retry-After": "2"},
+    )
+
+
+def is_connectivity_error(exc: BaseException) -> bool:
+    """Database trouble we report as 503 (retryable), not as a client or server bug."""
+    if isinstance(exc, (OperationalError, InterfaceError, ConnectionError, TimeoutError)):
+        return True
+    return isinstance(exc, DBAPIError) and exc.connection_invalidated
 
 
 def error_response(error: AppError) -> JSONResponse:
@@ -110,7 +129,9 @@ def install_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled(_: Request, __: Exception) -> JSONResponse:
+    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
+        if is_connectivity_error(exc):  # the database went away mid-request: tell clients to retry
+            return error_response(dependency_unavailable())
         # Never expose internals to clients; the stack trace is logged by the middleware.
         return error_response(
             AppError(

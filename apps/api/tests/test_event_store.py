@@ -412,3 +412,19 @@ async def test_event_identity_uses_the_ulid_uuid_mapping(engine: AsyncEngine) ->
     async with engine.connect() as conn:
         row = (await conn.execute(select(t.events.c.event_id, t.events.c.run_id))).one()
     assert row.event_id == to_uuid(event.event_id) and row.run_id == to_uuid(event.run_id)
+
+
+async def test_absent_optional_json_is_sql_null_not_json_null(engine: AsyncEngine) -> None:
+    """JSONB would store Python None as the JSON value null; `payload IS NULL` must work."""
+    tenant, run = await make_tenant(engine, "acme"), make_run_ids()
+    await ingest(engine, tenant, [build_event(tenant, run, n=1)])
+    async with engine.connect() as conn:
+        row = (
+            await conn.execute(
+                select(
+                    t.events.c.payload.is_(None).label("payload_null"),
+                    t.events.c.sdk.is_(None).label("sdk_null"),
+                )
+            )
+        ).one()
+    assert row.payload_null and row.sdk_null

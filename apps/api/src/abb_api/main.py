@@ -17,6 +17,8 @@ from abb_api.health.router import router as health_router
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter, RateLimiter
 from abb_api.ingestion.router import router as ingestion_router
 from abb_api.ingestion.service import IngestionService
+from abb_api.runs.router import router as runs_router
+from abb_api.runs.service import RunService
 
 
 def create_app(
@@ -40,6 +42,7 @@ def create_app(
         engine = create_engine(settings.database_url)
         app.state.engine = engine
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
+        app.state.runs = RunService(engine, clock)
         try:
             yield
         finally:
@@ -60,6 +63,7 @@ def create_app(
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health_router)
     app.include_router(ingestion_router)
+    app.include_router(runs_router)
     return app
 
 

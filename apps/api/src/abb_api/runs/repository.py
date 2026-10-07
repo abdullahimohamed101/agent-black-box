@@ -147,3 +147,44 @@ class RunRepository:
             ).returning(t.spans.c.id)
         )
         return len(rows) - len(written.all())
+
+    async def create_queued(
+        self,
+        *,
+        run_id: uuid.UUID,
+        project_id: uuid.UUID,
+        trace_id: uuid.UUID,
+        name: str | None,
+        agent_slug: str | None,
+        metadata: dict[str, object],
+        now: datetime,
+    ) -> tuple[bool, uuid.UUID]:
+        """Create a QUEUED run; returns (created, owning project). Idempotent on the run id."""
+        created = (
+            await self._conn.execute(
+                insert(t.runs)
+                .values(
+                    workspace_id=self._tenant.workspace_id,
+                    id=run_id,
+                    project_id=project_id,
+                    trace_id=trace_id,
+                    name=name,
+                    agent_slug=agent_slug,
+                    status="QUEUED",
+                    started_at=now,
+                    metadata=metadata,
+                )
+                .on_conflict_do_nothing(index_elements=["workspace_id", "id"])
+                .returning(t.runs.c.id)
+            )
+        ).first()
+        if created is not None:
+            return True, project_id
+        owner = (
+            await self._conn.execute(
+                select(t.runs.c.project_id).where(
+                    t.runs.c.workspace_id == self._tenant.workspace_id, t.runs.c.id == run_id
+                )
+            )
+        ).one()
+        return False, owner.project_id

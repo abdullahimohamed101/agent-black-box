@@ -11,10 +11,14 @@ from abb_event_schema.ids import IdKind
 from abb_event_schema.parse import parse_event_in
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from abb_api.auth.dependencies import dependency_unavailable, is_connectivity_error
 from abb_api.clock import Clock
 from abb_api.core.config import Settings
-from abb_api.core.errors import AppError, ErrorCategory
+from abb_api.core.errors import (
+    AppError,
+    ErrorCategory,
+    dependency_unavailable,
+    is_connectivity_error,
+)
 from abb_api.core.request_context import get_request_id
 from abb_api.ids import public_id
 from abb_api.ingestion.body import batch_invalid

@@ -15,6 +15,8 @@ from abb_api.auth import scopes
 from abb_api.auth.repository import ApiKeyRepository
 from abb_api.core.config import Settings
 from abb_api.ingestion.ratelimit import RateLimiter
+from abb_api.jobs.handlers import HANDLERS
+from abb_api.jobs.worker import Worker
 from abb_api.main import create_app
 from tests.conftest import _client, make_settings
 from tests.ingest_helpers import RECEIVED, Tenant, make_tenant
@@ -38,12 +40,28 @@ class Api:
     other: Tenant
     clock: Tick
     tokens: dict[str, str]  # name -> bearer token
+    worker: Worker
 
     def headers(self, token: str | None = "writer", **extra: str) -> dict[str, str]:
         headers = {"content-type": "application/json", **extra}
         if token is not None:
             headers["authorization"] = f"Bearer {self.tokens.get(token, token)}"
         return headers
+
+    async def get(
+        self, path: str, *, token: str | None = "reader", **params: Any
+    ) -> httpx.Response:
+        headers = self.headers(token)
+        del headers["content-type"]
+        clean = {k: v for k, v in params.items() if v is not None}
+        return await self.client.get(path, params=clean, headers=headers)
+
+    async def drain(self) -> None:
+        """Run the background worker until it has nothing left to do."""
+        for _ in range(100):
+            if await self.worker.run_once() == 0:
+                return
+        raise AssertionError("worker never ran out of jobs")
 
     async def post_batch(
         self,
@@ -84,6 +102,15 @@ async def build_api(
             await keys.create(scopes=frozenset({scopes.RUNS_READ}), project_id=project)
         ).token
         tokens["wide"] = (await keys.create(scopes=rw)).token  # workspace-wide: cannot ingest
+        tokens["wide_reader"] = (
+            await keys.create(scopes=frozenset({scopes.RUNS_READ}))
+        ).token  # reads every project of the workspace
+        tokens["ingest_only"] = (
+            await keys.create(scopes=frozenset({scopes.EVENTS_WRITE}), project_id=project)
+        ).token
+        tokens["beta"] = (
+            await keys.create(scopes=rw, project_id=tenant.project_uuids["beta"])
+        ).token
         revoked = await keys.create(scopes=rw, project_id=project)
         await keys.revoke(revoked.stored.key_id, NOW - timedelta(days=1))
         tokens["revoked"] = revoked.token
@@ -97,8 +124,9 @@ async def build_api(
     app = create_app(
         settings or make_settings(database_url), clock=clock, rate_limiter=rate_limiter
     )
+    worker = Worker(engine, HANDLERS, make_settings(database_url), owner="api-test")
     async for client in _client(app):
-        yield Api(client, engine, tenant, other, clock, tokens)
+        yield Api(client, engine, tenant, other, clock, tokens, worker)
 
 
 @pytest.fixture

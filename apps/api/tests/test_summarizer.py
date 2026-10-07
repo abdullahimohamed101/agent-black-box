@@ -50,11 +50,21 @@ async def span_rows(engine: AsyncEngine, run_id: str) -> dict[uuid.UUID, Any]:
 
 
 def tool_span(
-    tenant: Tenant, run: dict[str, str], n: int, span: str, parent: str | None, name: str
+    tenant: Tenant,
+    run: dict[str, str],
+    n: int,
+    span: str,
+    parent: str | None,
+    name: str,
+    project: str = "p",
 ) -> list[Event]:
     """A started/completed pair for one tool span (two sequence numbers starting at n)."""
     attrs = {"tool.name": name}
-    common: dict[str, Any] = {"span_id": span, "parent_span_id": parent or ...}
+    common: dict[str, Any] = {
+        "span_id": span,
+        "parent_span_id": parent or ...,
+        "project": project,
+    }
     return [
         build_event(tenant, run, n=n, event_type="tool.call.started", attributes=attrs, **common),
         build_event(
@@ -64,21 +74,22 @@ def tool_span(
     ]  # fmt: skip
 
 
-def scenario(tenant: Tenant, run: dict[str, str]) -> list[Event]:
+def scenario(tenant: Tenant, run: dict[str, str], project: str = "p") -> list[Event]:
     """A run with nested spans, an LLM call, a failure, a retry, files, and a late event."""
     root = new_id(IdKind.SPAN)
     child_a, child_b, grandchild = (new_id(IdKind.SPAN) for _ in range(3))
     llm = {"llm.provider": "p", "llm.model": "m", "llm.input_tokens": 7, "cost.estimated_usd": 0.02}
 
     def ev(n: int, kind: str, attributes: dict[str, Any] | None = None, **kw: Any) -> Event:
+        kw.setdefault("project", project)
         return build_event(tenant, run, n=n, event_type=kind, attributes=attributes or {}, **kw)
 
     return [
         ev(1, "run.started", {"run.name": "Fix bug"}, span_id=...),
         ev(2, "agent.started", span_id=root),
-        *tool_span(tenant, run, 3, child_a, root, "github"),
+        *tool_span(tenant, run, 3, child_a, root, "github", project),
         ev(5, "llm.request.completed", llm, span_id=child_b, parent_span_id=root, status="success"),
-        *tool_span(tenant, run, 6, grandchild, child_b, "shell"),
+        *tool_span(tenant, run, 6, grandchild, child_b, "shell", project),
         ev(
             8,
             "tool.call.failed",
