@@ -4,7 +4,12 @@ import type { paths } from "./schema";
 /** Same-origin read proxy (ADR-021): the browser never holds an API key. */
 export const PROXY_BASE = "/api/abb";
 
-export const api = createClient<paths>({ baseUrl: PROXY_BASE });
+// Absolute URL and call-time `fetch` lookup: Request needs an absolute URL outside a real page, and tests stub global fetch.
+const origin = typeof location !== "undefined" ? location.origin : "http://localhost";
+export const api = createClient<paths>({
+  baseUrl: `${origin}${PROXY_BASE}`,
+  fetch: (request) => globalThis.fetch(request),
+});
 
 export class ApiRequestError extends Error {
   constructor(
