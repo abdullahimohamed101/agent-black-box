@@ -23,6 +23,7 @@ dev = [
   "httpx>=0.28",
   "ruff>=0.8",
   "mypy>=1.13",
+  "pytest-timeout>=2.4.0",
 ]
 
 [build-system]
@@ -57,4 +58,5 @@ plugins = []
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+timeout = 90  # a hung test (e.g. a deadlock) must fail fast, not stall CI
 testpaths = ["tests"]

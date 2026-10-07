@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     # Ingestion limits (spec §71.4). Per-event size comes from the event contract itself.
     ingest_max_body_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
     ingest_max_batch_events: int = Field(default=1000, ge=1)
+    # Background worker (spec §72)
+    worker_poll_interval_seconds: float = Field(default=0.5, gt=0)
+    worker_batch_size: int = Field(default=10, ge=1)
+    worker_lease_seconds: float = Field(default=60.0, gt=0)
+    worker_max_attempts: int = Field(default=5, ge=1)
+    worker_backoff_base_seconds: float = Field(default=5.0, ge=0)
+    worker_backoff_max_seconds: float = Field(default=300.0, ge=0)
+
     # Per-project token buckets (spec §71.3, FR-ING-007). In-process only until Phase 19.
     rate_limit_events_per_second: float = Field(default=2000.0, gt=0)
     rate_limit_burst_events: int = Field(default=10000, ge=1)

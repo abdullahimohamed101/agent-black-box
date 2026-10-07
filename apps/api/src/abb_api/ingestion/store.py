@@ -26,7 +26,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
-from abb_api.db.event_rows import event_to_row
+from abb_api.db.event_rows import event_to_row, row_to_event
 from abb_api.jobs.outbox import SUMMARIZE_RUN, OutboxRepository
 from abb_api.projects.repository import AgentRepository
 from abb_api.runs.repository import RunRepository, RunSeed
@@ -75,6 +75,8 @@ class EventStore(Protocol):
     """Storage contract (INV-7): ingestion depends on this, not on PostgreSQL."""
 
     async def ingest(self, events: Sequence[Event]) -> IngestOutcome: ...
+
+    async def load_run(self, run_id: uuid.UUID) -> list[Event]: ...
 
 
 class PgEventStore:
@@ -178,6 +180,16 @@ class PgEventStore:
             assert status[i] is not None
             results.append(EventResult(event.event_id, status[i], codes.get(i)))  # type: ignore[arg-type]
         return IngestOutcome(results)
+
+    async def load_run(self, run_id: uuid.UUID) -> list[Event]:
+        """Every stored event of one run (the summarizer's input), in no particular order."""
+        rows = await self._conn.execute(
+            select(t.events).where(
+                t.events.c.workspace_id == self._tenant.workspace_id,
+                t.events.c.run_id == run_id,
+            )
+        )
+        return [row_to_event(row) for row in rows]
 
     async def _stored_hashes(self, event_ids: list[uuid.UUID]) -> dict[uuid.UUID, bytes]:
         if not event_ids:
