@@ -114,7 +114,7 @@ async def test_insert_on_conflict_do_nothing_is_the_idempotent_write(engine: Asy
 async def test_a_run_with_events_cannot_be_deleted_until_retention_removes_them(
     engine: AsyncEngine,
 ) -> None:
-    """INV-1 (0008): events are never a side effect of deleting a run; derived spans still cascade."""
+    """INV-1 (0008): events never vanish as a side effect of deleting a run."""
     async with engine.begin() as conn:
         ws = await make_workspace(conn)
         project = await make_project(conn, ws)
