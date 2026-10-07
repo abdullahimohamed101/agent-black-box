@@ -5,6 +5,7 @@ import gzip
 import json
 import logging
 import random
+import tracemalloc
 import zlib
 from collections.abc import AsyncIterator
 from typing import Any
@@ -12,11 +13,15 @@ from typing import Any
 import pytest
 from abb_event_schema.ids import IdKind, new_id
 from sqlalchemy import func, select
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from abb_api.core.errors import AppError
 from abb_api.core.logging import JsonFormatter
 from abb_api.db import tables as t
+from abb_api.ingestion.body import decode_body
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter
+from abb_api.ingestion.store import PgEventStore
 from tests.api_fixtures import Api, build_api
 from tests.conftest import make_settings
 from tests.ingest_helpers import make_run_ids, wire_event
@@ -532,3 +537,62 @@ async def test_concurrent_requests_with_the_same_events_store_them_once(api: Api
     assert sum(r.json()["accepted"] for r in responses) == 10
     assert await count(api.engine, t.events) == 10
     assert new_id(IdKind.EVENT)  # ids still generate
+
+
+# ------------------------------------------------------------------ failures after authentication
+
+
+def _failing_store(error: BaseException) -> Any:
+    async def ingest(self: Any, events: Any) -> Any:
+        raise error
+
+    return ingest
+
+
+class _FakeDriverError(Exception):
+    sqlstate = "40P01"  # deadlock_detected
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError("connection reset"),
+        TimeoutError(),
+        OperationalError("stmt", {}, Exception("server closed the connection")),
+        DBAPIError("stmt", {}, _FakeDriverError("deadlock detected")),
+    ],
+)
+async def test_storage_trouble_after_auth_is_a_retryable_503(
+    api: Api, monkeypatch: pytest.MonkeyPatch, error: BaseException
+) -> None:
+    monkeypatch.setattr(PgEventStore, "ingest", _failing_store(error))
+    response = await api.post_batch([wire_event(make_run_ids(), 1)])
+    error_body = assert_error(response, 503, "DEPENDENCY_UNAVAILABLE")
+    assert error_body["retryable"] is True and response.headers["retry-after"] == "2"
+
+
+async def test_an_unexpected_bug_is_a_generic_500_without_internals(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        PgEventStore, "ingest", _failing_store(RuntimeError("secret-internal-detail"))
+    )
+    response = await api.post_batch([wire_event(make_run_ids(), 1)])
+    assert_error(response, 500, "INTERNAL_ERROR")
+    assert "secret-internal-detail" not in response.text
+
+
+def test_gzip_expansion_is_capped_while_decompressing_not_after() -> None:
+    """A 100 MB expansion must not be materialised just to be rejected (memory, not just size)."""
+    limit = 1024 * 1024
+    bomb = gzip.compress(b"\x00" * 100 * 1024 * 1024)
+    assert len(bomb) < limit
+    tracemalloc.start()
+    try:
+        with pytest.raises(AppError) as exc:
+            decode_body(bomb, "gzip", limit)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert exc.value.status_code == 413
+    assert peak < 16 * 1024 * 1024, f"peak memory {peak} bytes: the bomb was expanded"
