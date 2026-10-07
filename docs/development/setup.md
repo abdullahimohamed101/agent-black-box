@@ -37,3 +37,8 @@ cp .env.example .env && make setup
 | Latency baseline | `make seed && make bench` (read `docs/benchmarks/phase-2-ingestion.md` first) |
 
 Native `make dev` does not start the worker, so runs stay `processing` unless you start one (or use `make up`).
+
+## Web app against the API (Phase 4)
+`pnpm --filter @abb/web dev` serves the UI on 3000 (`next dev --port 3100` for a second instance). It reads the API through a
+server-side proxy (ADR-021): set `ABB_WEB_API_KEY` (a workspace-wide `runs:read` key) and `ABB_API_INTERNAL_URL` in `.env`, or set
+`ABB_WEB_DATA_SOURCE=fixtures` to browse deterministic fixtures with no API. Open `/w/<workspace>/projects/all`.

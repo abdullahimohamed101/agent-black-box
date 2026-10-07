@@ -50,3 +50,25 @@ vitest + Playwright (system Chrome, no browser download) against `next start` on
 
 ## Risks
 Read API lacks aggregates and project lookup: dashboard figures are computed over the latest 200 runs and labelled as such.
+
+## Evidence (2026-10-07)
+Status: **COMPLETE** on `feature/phase-4-web-product`; not pushed, no PR.
+
+| # | Criterion | Evidence |
+| --- | --- | --- |
+| 1 | Typed client from OpenAPI | VERIFIED `pnpm --filter @abb/web gen:api:check` exit 0 (also a `quality.sh` step) |
+| 2 | Fixtures | VERIFIED `tests/fixtures.test.ts`: determinism, six scenarios incl. exactly 10,000 events, unique ordered ids |
+| 3 | Component tests | VERIFIED vitest 75 passed: timeline ordering, filters, grouping, first error, drawers (llm/tool/error/generic), run states (success/failed/running/waiting/expensive), list filters + cursor pagination, dashboard, loading/empty/error/not-found |
+| 4 | Playwright fixtures + real run | VERIFIED `make e2e`: 8 passed. VERIFIED `scripts/e2e-web-real.sh`: API :8110 + worker on database `abb_p4`, 2 runs ingested over HTTP, derived by the worker, UI through the proxy, 2 passed |
+| 5 | 10,000 events, bounded DOM | VERIFIED Playwright: all 10,000 loaded, < 80 `option` rows in the DOM, `aria-setsize` > 5,000, End key reaches `run.completed` |
+| 6 | Accessibility | VERIFIED axe (WCAG A/AA) no serious/critical on dashboard, list, failed run with drawer open, real run; focus returns to the timeline after Escape; status is glyph + word |
+| 7 | Screenshots | VERIFIED `docs/screenshots/phase-4/*.png` (8 files, incl. mobile 375 px with no horizontal overflow) |
+| 8 | Quality gate | VERIFIED `scripts/quality.sh full` exit 0 (schema 337, api 330, web 75, migrations, `next build`, wheel) |
+
+Mutation checks on committed logic: proxy allowlist widened, 401->502 mapping removed, `findLast` for first error, timeout not an
+error, grouping disabled: each made a test fail (two survivors found first and fixed by new tests).
+
+Findings: port 8100 is taken on this machine (an `ssh` tunnel), so the real E2E uses :8110. `next start` warns about `output: standalone`
+but works for tests. UNVERIFIED (env): the containerised web service has no `ABB_WEB_API_KEY`/`ABB_API_INTERNAL_URL` in
+`docker-compose.yml` (not edited here to avoid clashing with Phase 3's compose changes); until added it answers 503
+`WEB_NOT_CONFIGURED`. Known issues added: KI-027, KI-028, KI-029.
