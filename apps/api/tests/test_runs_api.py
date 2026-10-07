@@ -689,3 +689,53 @@ async def test_a_value_the_database_refuses_is_a_logged_422_not_a_500(
     error(response, 422, "REQUEST_INVALID")
     messages = " ".join(r.getMessage() + str(getattr(r, "error_type", "")) for r in caplog.records)
     assert "database rejected a request value" in messages and "SENSITIVE" not in messages
+
+
+async def test_time_ordered_runs_page_correctly_with_cursors(api: Api) -> None:
+    """The keyset predicate for `time` mode (coverage found it never ran with a real cursor)."""
+    run = make_run_ids()
+    # sequences are absent on some events and contradict clock order on others
+    events = [
+        wire_event(run, n, sequence=(100 - n if n % 2 else ...)) for n in (4, 1, 6, 3, 2, 5, 7, 8)
+    ]
+    await api.post_batch(events)
+    await api.drain()
+    path = f"/v1/runs/{run['run_id']}/events"
+    assert (await api.get(f"/v1/runs/{run['run_id']}")).json()["ordering_mode"] == "time"
+    got: list[str] = []
+    cursor = None
+    for _ in range(10):
+        page = (await api.get(path, limit=3, cursor=cursor)).json()
+        got += [e["event_id"] for e in page["items"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    by_time = sorted(events, key=lambda e: e["occurred_at"])
+    assert got == [e["event_id"] for e in by_time]
+
+
+async def test_run_creation_metadata_rejects_nul_in_keys_and_nested_lists(api: Api) -> None:
+    bad_bodies: list[dict[str, Any]] = [
+        {"metadata": {"k\x00": 1}},
+        {"metadata": {"k": ["fine", "a\x00b"]}},
+        {"metadata": {"k": [{"deep": ["x\x00"]}]}},
+    ]
+    for body in bad_bodies:
+        response = await api.client.post("/v1/runs", json=body, headers=api.headers("writer"))
+        assert response.status_code == 422, body
+    fine = await api.client.post(
+        "/v1/runs", json={"metadata": {"k": ["a", {"b": [1, 2]}]}}, headers=api.headers("writer")
+    )
+    assert fine.status_code == 201
+
+
+async def test_an_unexpected_error_during_authentication_is_a_generic_500(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("internal-detail")
+
+    monkeypatch.setattr("abb_api.auth.dependencies.authenticate", boom)
+    response = await api.get("/v1/runs")
+    error(response, 500, "INTERNAL_ERROR")
+    assert "internal-detail" not in response.text

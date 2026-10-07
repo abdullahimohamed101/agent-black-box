@@ -61,7 +61,6 @@ class OutboxRepository:
         job_type: str,
         dedupe_key: str,
         payload: dict[str, Any],
-        available_at: datetime | None = None,
         delay: timedelta | None = None,
     ) -> bool:
         """Add a pending job unless an identical one is already pending (coalescing).
@@ -77,9 +76,7 @@ class OutboxRepository:
             "dedupe_key": dedupe_key,
             "payload": payload,
         }
-        if available_at is not None:
-            values["available_at"] = available_at
-        elif delay:  # relative to the database clock, like every other scheduling decision
+        if delay:  # relative to the database clock, like every other scheduling decision
             values["available_at"] = func.now() + delay
         result = await self._conn.execute(
             insert(t.outbox_jobs)
