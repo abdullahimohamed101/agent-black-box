@@ -3,7 +3,7 @@
 Last updated: 2026-10-07
 
 ## Current phase
-Phase 1 (canonical telemetry contract) complete; PR #3 open. Phase 2 planned on `feature/phase-2-ingestion` (stacked on the Phase 1 branch).
+Phase 1 merged to `main` (PR #3, CI green). Phase 2 is planned on `feature/phase-2-ingestion`.
 Phase 0 is merged to `main` (PRs #1, #2; CI green).
 
 ## Current milestone
@@ -22,8 +22,7 @@ None.
 - CI on the Phase 1 branch needs a push (approval). Nothing else.
 
 ## Next actions (exact)
-1. PR #3 (Phase 1) is open; merge it on user approval once CI is green, then rebase `feature/phase-2-ingestion` onto `main`.
-2. Phase 2 plan is written: `docs/plans/active/phase-2-ingestion.md` (awaiting user review of the decisions D1-D19). Start at its step 1.
+1. Phase 2 plan is written: `docs/plans/active/phase-2-ingestion.md` (awaiting user review of the decisions D1-D19). Start at its step 1.
 
 ## Open decisions
 - Remove the `Co-Authored-By` trailers from the 5 early commits (needs a force-push; not done).

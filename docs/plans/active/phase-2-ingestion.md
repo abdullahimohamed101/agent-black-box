@@ -1,6 +1,6 @@
 # Phase 2 - Data Model, Ingestion, Run Querying
 
-Status: Planned (not started); branch `feature/phase-2-ingestion`, stacked on `feature/phase-1-event-contract` (PR #3, awaiting merge). Rebase onto `main` once PR #3 merges.
+Status: Planned (not started); branch `feature/phase-2-ingestion` from `main` (Phase 1 merged via PR #3). Awaiting user review of decisions D1-D19.
 Owner: coding agent
 Depends on: Phase 1 (event contract)
 Spec: §19, §36, §60.1-60.2, §61.3, §65-66, §71-73, §78, §92, §101, §110, §130, §149, §153, §155; ADR-001, ADR-003, ADR-006, ADR-011 (written/finalised: ADR-002, ADR-012)
