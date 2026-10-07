@@ -5,6 +5,7 @@ satisfies the generated JSON Schema (the schema must never be stricter than the 
 survives a serialize/parse round trip unchanged.
 """
 
+import copy
 import json
 import random
 from pathlib import Path
@@ -21,6 +22,7 @@ VALIDATOR = Draft202012Validator(json.loads((ROOT / "schemas/1.0/event-in.json")
 JUNK: list[Any] = [
     None, True, False, 0, -1, 1, 2**53, 2**63, 1.5, "", " ", "x", "a\x00b", "\ud800",
     "é" * 5000, "T", "1.0", "2026-10-06 20:13:22Z", "2026-10-06t20:13:22z", "2026-10-06",
+    "0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-14:00", "0001-01-01T00:00:00Z",
     [], [1], [[1]], {}, {"a": 1}, {"a": {"b": {}}}, "evt_" + "0" * 26,
 ]  # fmt: skip
 ATTR_KEYS = ["llm.model", "shell.exit_code", "a.b", "UP", "x" * 130, "tool.name", "k"]
@@ -33,11 +35,11 @@ def mutate(rng: random.Random, event: dict[str, Any]) -> dict[str, Any]:
         if roll < 0.3:
             if not isinstance(event.get("attributes"), dict):
                 event["attributes"] = {}
-            event["attributes"][rng.choice(ATTR_KEYS)] = rng.choice(JUNK)
+            event["attributes"][rng.choice(ATTR_KEYS)] = copy.deepcopy(rng.choice(JUNK))
         elif roll < 0.5:
             event.pop(rng.choice(list(event)), None)
         else:
-            event[rng.choice([*event, "payload", "tags", "sdk"])] = rng.choice(JUNK)
+            event[rng.choice([*event, "payload", "tags", "sdk"])] = copy.deepcopy(rng.choice(JUNK))
     return event
 
 

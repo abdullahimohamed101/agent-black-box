@@ -10,7 +10,11 @@ dependencies = [
   "sqlalchemy[asyncio]>=2.0.36",
   "asyncpg>=0.30",
   "alembic>=1.14",
+  "abb-event-schema",
 ]
+
+[tool.uv.sources]
+abb-event-schema = { path = "../../packages/event-schema", editable = true }
 
 [dependency-groups]
 dev = [
@@ -19,6 +23,7 @@ dev = [
   "httpx>=0.28",
   "ruff>=0.8",
   "mypy>=1.13",
+  "pytest-timeout>=2.4.0",
 ]
 
 [build-system]
@@ -41,7 +46,8 @@ ignore = ["S101"]
 known-first-party = ["abb_api", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S105", "S106"]
+"tests/*" = ["S105", "S106", "S107", "S311"]
+"migrations/versions/*" = ["E501", "RUF012"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -52,4 +58,5 @@ plugins = []
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+timeout = 90  # a hung test (e.g. a deadlock) must fail fast, not stall CI
 testpaths = ["tests"]

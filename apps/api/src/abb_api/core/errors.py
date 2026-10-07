@@ -1,14 +1,20 @@
 """Typed error taxonomy and the one error envelope (spec §101.2, §130)."""
 
+import logging
 from enum import StrEnum
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from sqlalchemy.exc import DataError, DBAPIError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from abb_api.core.request_context import get_request_id
+
+logger = logging.getLogger(__name__)
 
 
 class ErrorCategory(StrEnum):
@@ -46,6 +52,7 @@ class AppError(Exception):
         status_code: int,
         retryable: bool = False,
         details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -54,6 +61,41 @@ class AppError(Exception):
         self.status_code = status_code
         self.retryable = retryable
         self.details = details or {}
+        self.headers = headers or {}
+
+
+class ErrorBody(BaseModel):
+    code: str = Field(description="Stable machine-readable code, e.g. RUN_NOT_FOUND.")
+    message: str
+    category: ErrorCategory
+    retryable: bool = Field(description="Whether retrying the same request may succeed.")
+    request_id: str | None = Field(description="Also in the X-Request-ID response header.")
+    details: dict[str, Any]
+
+
+class ErrorEnvelope(BaseModel):
+    """The one error shape of every non-2xx response (spec §101.2)."""
+
+    error: ErrorBody
+
+
+def dependency_unavailable() -> AppError:
+    return AppError(
+        "DEPENDENCY_UNAVAILABLE",
+        "A required dependency is temporarily unavailable.",
+        category=ErrorCategory.DEPENDENCY,
+        status_code=503,
+        retryable=True,
+        headers={"Retry-After": "2"},
+    )
+
+
+def is_connectivity_error(exc: BaseException) -> bool:
+    """Database trouble we report as 503 (retryable), not as a client or server bug."""
+    # OSError covers socket errors and timeouts; PoolTimeoutError is "no free connection in time"
+    if isinstance(exc, (OperationalError, InterfaceError, OSError, PoolTimeoutError)):
+        return True
+    return isinstance(exc, DBAPIError) and exc.connection_invalidated
 
 
 def error_response(error: AppError) -> JSONResponse:
@@ -69,8 +111,10 @@ def error_response(error: AppError) -> JSONResponse:
     }
     request_id = get_request_id()
     # Set here too: unhandled-exception responses are produced outside the request-ID middleware.
-    headers = {"X-Request-ID": request_id} if request_id else None
-    return JSONResponse(body, status_code=error.status_code, headers=headers)
+    headers = dict(error.headers)
+    if request_id:
+        headers["X-Request-ID"] = request_id
+    return JSONResponse(body, status_code=error.status_code, headers=headers or None)
 
 
 def install_error_handlers(app: FastAPI) -> None:
@@ -91,6 +135,23 @@ def install_error_handlers(app: FastAPI) -> None:
             )
         )
 
+    @app.exception_handler(DataError)
+    async def _data_error(_: Request, exc: DataError) -> JSONResponse:
+        # A value the database cannot store (for example an invalid byte sequence) came from the
+        # caller. Validation should have stopped it earlier, so log it loudly (type only: the
+        # message would quote the value) and answer 422 instead of a retryable-looking 500.
+        logger.error(
+            "database rejected a request value", extra={"error_type": type(exc.orig).__name__}
+        )
+        return error_response(
+            AppError(
+                "REQUEST_INVALID",
+                "A value in the request cannot be stored.",
+                category=ErrorCategory.VALIDATION,
+                status_code=422,
+            )
+        )
+
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         category = _HTTP_STATUS_CATEGORY.get(exc.status_code)
@@ -106,7 +167,9 @@ def install_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled(_: Request, __: Exception) -> JSONResponse:
+    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
+        if is_connectivity_error(exc):  # the database went away mid-request: tell clients to retry
+            return error_response(dependency_unavailable())
         # Never expose internals to clients; the stack trace is logged by the middleware.
         return error_response(
             AppError(

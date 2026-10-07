@@ -5,8 +5,6 @@ import asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
     create_async_engine,
 )
 
@@ -19,10 +17,6 @@ def create_engine(database_url: str) -> AsyncEngine:
     return create_async_engine(
         database_url, pool_pre_ping=True, pool_timeout=5, connect_args={"timeout": 3}
     )
-
-
-def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 READINESS_TIMEOUT_SECONDS = 2.5

@@ -11,6 +11,22 @@ Pyramid and commands. Commands below are real as of Phase 0 (`make test lint typ
 | Browser E2E | demo agent -> SDK -> API -> Postgres -> SSE -> UI; filters; drawers; reconnect | Playwright |
 | Load | realistic payloads, bursty starts, long-lived streams; results to `docs/benchmarks/` | locust/k6 (decide in Phase 18 plan) |
 
+What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
+
+- **Constraint tests** prove the database itself rejects cross-tenant references, duplicate events and bad enum values.
+- **Store tests** cover idempotency, same-id-different-content conflicts, 50-way concurrent identical batches, overlapping batches
+  (deterministic proof of stable write order by capturing the SQL), atomicity, and append-only code.
+- **API tests** go through the real application: authentication matrix, body/gzip limits (including a memory-bounded zip bomb),
+  partial rejection, rate limiting, post-auth failures, log hygiene, fuzzed batches, and the query API with tenancy matrices.
+- **Equivalence tests** assert that run state equals a from-scratch derivation under random batching, ordering, duplication and
+  worker timing; **order-sensitive** scenarios make sure ordering bugs cannot hide.
+- **Worker tests** cover claiming (`SKIP LOCKED` with two concurrent claimers), leases, retries, dead letters, lost leases, and the
+  real worker process (start, work, SIGTERM, exit 0).
+- **OpenAPI tests** keep `openapi.json` current and its auth/error documentation honest.
+- `make smoke` (containers) and `make bench` (latency baseline, `docs/benchmarks/`) are not part of `make test`.
+- Every test has a 90 s timeout so a deadlock fails fast. Security-relevant logic is **mutation-checked** during review
+  (change the code, confirm a test fails); tests that survive a mutant are strengthened, not kept.
+
 Rules: never skip/weaken a failing test; no mocks where a real Postgres test is feasible; UI
 changes are exercised in a browser; fixtures are deterministic (fixed IDs/timestamps).
 
@@ -20,10 +36,12 @@ make test        # event-schema + api (real Postgres) + web unit
 make schema-check # generated JSON Schema / TS types are current
 make lint        # ruff, eslint, prettier --check
 make typecheck   # mypy, tsc
-scripts/quality.sh quick   # ruff, mypy, eslint, prettier, tsc, pytest, vitest
+scripts/quality.sh quick   # schema + openapi currency, ruff, mypy, eslint, prettier, tsc, pytest, vitest
 scripts/quality.sh full    # quick + migration up/down/up on the TEST database + next build + wheel build
 ```
-Database tests need Postgres (`make db`) and read `ABB_TEST_DATABASE_URL` (database `abb_test`).
-The dev database is never used for destructive migration checks.
+Database tests need Postgres (`make db`). `ABB_TEST_DATABASE_URL` names the server and credentials; the
+test session creates and drops its own throwaway database (migrated to head), tables are truncated
+between tests, and migration tests create one database each. Neither the dev database nor `abb_test`
+holds test data.
 ```text
 ```

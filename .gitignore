@@ -22,3 +22,4 @@ docker-compose.override.yml
 .artifacts/
 next-env.d.ts
 *.tsbuildinfo
+.local/

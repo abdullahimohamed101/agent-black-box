@@ -97,7 +97,10 @@ def _parse_rfc3339(value: Any) -> Any:
 def _require_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise _fail("timestamp_timezone_required", "Timestamps must include a UTC offset.")
-    return value.astimezone(timezone.utc)
+    try:
+        return value.astimezone(timezone.utc)
+    except OverflowError:  # e.g. 0001-01-01T00:00:00+14:00 has no UTC representation
+        raise _fail("timestamp_out_of_range", "Timestamp is outside the supported range.") from None
 
 
 EventId = Annotated[str, StringConstraints(pattern=id_pattern(IdKind.EVENT))]

@@ -7,9 +7,10 @@ from alembic import context
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from abb_api.db.tables import metadata
+
 config = context.config
-# Phase 2 introduces SQLAlchemy models; until then there is no metadata to autogenerate from.
-target_metadata = None
+target_metadata = metadata
 
 
 def _database_url() -> str:

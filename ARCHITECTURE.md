@@ -21,9 +21,11 @@ Agent / Framework -> Adapter -> SDK -> [HTTP /v1/events/batch] -> Ingestion
    -> Query API / SSE -> Next.js web
 ```
 
-As of Phase 0 the foundation exists (FastAPI skeleton with `/healthz` and `/readyz`, request IDs,
-structured logs, typed errors, Alembic baseline, Next.js shell, Compose stack, CI definition). There is
-no event schema, ingestion, SDK or product UI yet.
+As of Phase 2 the data plane exists end to end: the canonical event contract (`packages/event-schema`), an
+ingestion API (`POST /v1/events[/batch]`, gzip, per-project rate limits, idempotent, tenant-bound), a PostgreSQL
+store with tenant-keyed tables, a worker that derives run status/summary/spans from events through a transactional
+outbox, and a query API (`/v1/runs`, events, spans) with cursors and project scoping. There is no SDK, live
+streaming or product UI beyond a status page yet. API reference: `docs/architecture/api-v1.md`.
 
 ## Major Components
 
@@ -32,14 +34,17 @@ The stable spine: envelope, event families, ID rules, JSON Schema, generated TS 
 Depends on nothing else in the repo. Status: implemented (Phase 1): IDs, envelope models (`EventIn`/`Event`), registry of 43 event types, strict parsing with value-free errors, ordering, content-hash dedup, span derivation, generated JSON Schema and TypeScript types. Reference: `docs/architecture/events.md`.
 
 ### API (`apps/api`) - modular monolith
-Modules: `ingestion`, `runs`, `traces`, `analytics`, `evaluations`, `auth`, `policies`,
-`artifacts`; each exposes a service interface and owns its repositories. Control-plane query
-API and telemetry ingestion are separate routers so a slow query never sits on the SDK path.
-Status: Phase 0 skeleton implemented (`core`, `health`, `db`); data-plane modules planned (Phase 2).
+Routers -> services -> repositories -> db, with modules `ingestion`, `runs`, `traces`, `jobs`, `auth`, `projects`
+(plus `core` and `db`); analytics, evaluations and policies arrive in later phases. Ingestion and query are separate
+routers so a slow query never sits on the SDK path. Repositories take a tenant context (INV-3) and tables are keyed
+`(workspace_id, id)` with composite foreign keys (ADR-002). Status: implemented (Phase 2): health, API-key auth, ingestion,
+run/event/span queries, provisioning CLI, OpenAPI contract (`apps/api/openapi.json`).
 
-### Workers (`apps/api` worker entrypoint)
-PostgreSQL outbox + `SKIP LOCKED` leases, idempotent processors (summarizer, cost, detectors,
-alert evaluator), dead-letter after bounded retries. Status: planned (Phase 2, grows later).
+### Workers (`abb_api.worker`, same image as the API)
+PostgreSQL outbox, `FOR UPDATE SKIP LOCKED` leases, retries with backoff, dead letters, one writer per run via a
+row lock, debounced and coalesced `summarize_run` jobs; run state is a pure function of the run's events
+(`runs/summary.py`) so it is rebuildable (ADR-012). Status: implemented (Phase 2); detectors, cost and alert jobs
+arrive in later phases.
 
 ### Python SDK (`packages/sdk-python`)
 Instrumentation API -> context manager -> builder/sanitizer -> bounded buffer -> exporter.
@@ -72,7 +77,10 @@ api modules: routers -> services -> repositories -> db   (no cross-module table 
 - **Raw events vs derived state**: events immutable; summaries/findings rebuildable.
 - **Tenant boundary**: workspace ID on every record and every repository call.
 - **Large payloads**: referenced via `payload_ref` -> `ArtifactStore`, not hot tables.
-- **Live path**: SSE for one-way updates; WebSockets only for approvals/cancel (Phase 14).
+- **Live path**: SSE for one-way updates; WebSockets only for approvals/cancel (Phase 14). Not built yet (Phase 5).
+- **Ingestion vs derived state**: ingestion commits events and a job; everything else about a run is derived
+  asynchronously and can lag by about a second (`summary_state` says so).
+- **One clock for scheduling**: job availability, leases and backoff use the database clock only.
 - **Storage behind contracts**: swapping in ClickHouse/object storage must not change the SDK
   contract or event schema.
 
@@ -96,6 +104,6 @@ realistic payloads. See `docs/TESTING.md`.
 
 ## Known Architectural Risks
 
-- CI has never run (no remote); see `docs/KNOWN_ISSUES.md` KI-007.
+- Full recomputation of very large active runs (KI-016); incremental summarization is the planned response.
 - Spec §15 and §64.3 disagree on event names; resolved in ADR-011 (dot-delimited).
 - Scale claims require recorded load tests (spec §158); none exist yet.

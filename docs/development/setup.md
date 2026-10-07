@@ -25,3 +25,15 @@ cp .env.example .env && make setup
 - Dev Postgres is published on 5433 so it never clashes with a native Postgres on 5432.
 - pnpm 12 fails installs on unreviewed dependency build scripts; decisions are in `pnpm-workspace.yaml` (`allowBuilds`).
 - Version pins that matter: TypeScript 6.x and ESLint 9.x (typescript-eslint / eslint-plugin-react do not yet support TS 7 / ESLint 10).
+
+## Running the pieces
+
+| Goal | Command |
+| --- | --- |
+| API + web natively (Postgres in Compose) | `make dev` |
+| Background worker natively | `cd apps/api && uv run python -m abb_api.worker` (needs `.env` exported) |
+| Everything in containers | `make up`, then `make smoke` |
+| Provision a tenant and key | `make seed` (local dev key) or `python -m abb_api.cli --help` |
+| Latency baseline | `make seed && make bench` (read `docs/benchmarks/phase-2-ingestion.md` first) |
+
+Native `make dev` does not start the worker, so runs stay `processing` unless you start one (or use `make up`).

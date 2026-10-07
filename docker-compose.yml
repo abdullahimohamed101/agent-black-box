@@ -1,6 +1,20 @@
 # Local development stack. `make db` starts only Postgres; `docker compose --profile app up` adds api + web.
 name: agent-black-box
 
+x-api: &api
+  image: agent-black-box-api:local
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+  environment:
+    ABB_ENVIRONMENT: development
+    ABB_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb
+    ABB_CORS_ORIGINS: http://localhost:3000
+    # Overridable so load tests can measure capacity without the per-project limiter in the way.
+    ABB_RATE_LIMIT_EVENTS_PER_SECOND: ${ABB_RATE_LIMIT_EVENTS_PER_SECOND:-2000}
+    ABB_RATE_LIMIT_BURST_EVENTS: ${ABB_RATE_LIMIT_BURST_EVENTS:-10000}
+    ABB_SUMMARY_DEBOUNCE_SECONDS: ${ABB_SUMMARY_DEBOUNCE_SECONDS:-1}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -19,24 +33,38 @@ services:
       timeout: 3s
       retries: 20
 
-  api:
+  # One image serves the api, the worker and the one-shot migration job.
+  migrate:
+    <<: *api
     profiles: ["app"]
-    build:
-      context: ./apps/api
-    environment:
-      ABB_ENVIRONMENT: development
-      ABB_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb
-      ABB_CORS_ORIGINS: http://localhost:3000
-    ports:
-      - "127.0.0.1:8000:8000"
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
+
+  api:
+    <<: *api
+    profiles: ["app"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  worker:
+    <<: *api
+    profiles: ["app"]
+    command: ["python", "-m", "abb_api.worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   web:
     profiles: ["app"]

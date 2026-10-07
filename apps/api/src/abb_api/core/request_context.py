@@ -24,6 +24,18 @@ def sanitize_inbound(value: str | None) -> str | None:
     return value
 
 
+_caller: ContextVar[dict[str, str] | None] = ContextVar("caller", default=None)
+
+
+def set_caller(**identifiers: str) -> None:
+    """Attach safe identifiers (workspace, project, key id) to later log lines of this request."""
+    _caller.set(identifiers)
+
+
+def get_caller() -> dict[str, str]:
+    return _caller.get() or {}
+
+
 def set_request_id(value: str) -> None:
     _request_id.set(value)
 
