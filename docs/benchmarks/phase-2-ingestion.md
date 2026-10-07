@@ -1,6 +1,6 @@
 # Phase 2 ingestion and read benchmark
 
-Measured 2026-10-07 on the code of commit `e23b075`. These
+Measured 2026-10-07 on the code of commit `85815f6` (the later commits only add this note and docs). These
 numbers are a **regression baseline for this repository on one laptop**, not a capacity claim. Re-measure
 on target hardware before quoting any figure externally (spec §158).
 
