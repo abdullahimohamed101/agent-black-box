@@ -19,15 +19,32 @@ ingestion edge | control plane | database/object storage | human approvers.
   Keys are issued only by the CLI (`python -m abb_api.cli create-key`); the secret goes to stdout once and is never logged.
   `make seed` writes a dev key to the gitignored, owner-only `.local/dev-api-key` and refuses to run when
   `ABB_ENVIRONMENT=production`.
-- Tenancy: workspace ID on every record and repository call; cross-workspace tests per
-  endpoint (Phases 2, 15); optional Postgres RLS as defence in depth (§73.4).
+- Tenancy (implemented, Phase 2): every tenant table is keyed `(workspace_id, id)` with composite foreign keys, so a row
+  cannot reference another tenant's parent (database-enforced, tested); repositories are built with a tenant and no method
+  takes a workspace argument; other tenants' and other projects' resources are indistinguishable from nonexistent (404, same
+  body). Cross-workspace and cross-project tests cover every read route. Optional Postgres RLS remains a later defence in depth (§73.4).
 - Redaction: SDK-side before export, server-side backstop, payload modes FULL/METADATA_ONLY/DISABLED. (Phases 3, 13)
-- Never log secrets or payload bodies; request IDs in logs; audit events not sampled.
+- Never log secrets or payload bodies (implemented): request logs carry method, path, status, duration, request id and the
+  safe identifiers `workspace_id`, `project_id`, `key_id`; a test posts secret-looking keys and payloads and asserts none
+  appear in any log record. The reason a key was rejected is logged server-side only.
+- Request hardening (implemented): body size limits are enforced while streaming for the compressed and the decompressed
+  bytes (a 100 MB gzip bomb is rejected without being expanded, tested by peak memory); only gzip/identity encodings and
+  `application/json` are accepted; validation errors never echo submitted values; NUL characters and lone surrogates are rejected
+  at the boundary (PostgreSQL cannot store them); unhandled errors return a generic 500 without internals.
+- Denial of service (partly implemented): per-project token buckets (per process), bounded batches, bounded cursors and page
+  sizes, bounded metadata; a shared limiter and quotas are Phase 19.
 - Rendering: payloads displayed as text; sanitize any markup; no `dangerouslySetInnerHTML` on trace data.
 - Approvals bound to the exact action hash, single use, atomic consume. (Phase 14)
 - Rate limits, size limits, bounded queues against telemetry flooding. (Phases 2, 19)
 - Dependencies: lockfiles, scheduled vulnerability scans, minimal SDK deps.
 - Local/demo credentials are generated, documented as dev-only, never real.
+
+## Known gaps (tracked in KNOWN_ISSUES.md)
+
+No dashboard users or RBAC yet (Phase 15): the read API is reached with a `runs:read` API key. No API key management
+endpoints (CLI only). Rate limits are per process. No audit log of administrative actions yet (CLI actions are not
+recorded in the database). Redaction and secret detection arrive in Phases 3 and 13: until then **clients are responsible for
+not sending secrets in events**, and inline payloads are stored as received.
 
 ## Process
 Security-sensitive changes require a `review-change` pass and a note in the phase plan.

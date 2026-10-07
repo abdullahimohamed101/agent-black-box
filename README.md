@@ -4,8 +4,9 @@ A flight recorder, observability, debugging, evaluation and (eventually) control
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell
 command, retry and failure, with cost and latency, live.
 
-> Status: Phases 0-1 done (foundation, canonical event contract; Phase 1 awaiting merge). There is no ingestion, SDK or
-> product UI yet. See `docs/PROJECT_STATE.md`.
+> Status: Phases 0-1 done and merged; Phase 2 (ingestion, storage, run queries) implemented and under review.
+> You can already run the stack, ingest events over HTTP and read runs back; there is no SDK or product UI yet.
+> See `docs/PROJECT_STATE.md`.
 
 ## What it will do
 
@@ -52,12 +53,23 @@ curl localhost:8000/readyz
 make test lint typecheck
 ```
 
-Whole stack in containers: `make up` (api + web + postgres), `make down` to stop.
+Whole stack in containers: `make up` (migrate, api, worker, web, postgres), `make down` to stop.
 `scripts/quality.sh full` is the single gate used by CI and agents.
+
+Try the data plane (needs `make up`):
+
+```bash
+make smoke                      # provisions a tenant, ingests a run over gzip HTTP, reads it back
+make seed                       # local workspace + project + dev key in .local/dev-api-key
+KEY=$(cat .local/dev-api-key)
+curl -s localhost:8000/v1/runs -H "Authorization: Bearer $KEY"
+```
+
+API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operations: `docs/OPERATIONS.md`.
 
 ## Phase Status
 
-See `docs/IMPLEMENTATION_PLAN.md` for the full table. Summary: Phases 0-7 build the MVP
+See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-1 complete, Phase 2 in review). Summary: Phases 0-7 build the MVP
 (foundation, event contract, ingestion, SDK, web, live streaming, coding-agent demo,
 analytics) followed by a human review gate; Phases 8-20 add integrations, multi-agent
 tracing, reliability intelligence, evaluations, replay, security, policy/approvals, RBAC,

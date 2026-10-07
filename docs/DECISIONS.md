@@ -8,7 +8,7 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR | Title | Written in phase | Status |
 | --- | --- | --- | --- |
 | ADR-001 | Canonical event schema owned by Agent Black Box | 1 | Accepted ([file](decisions/ADR-001-canonical-event-schema.md)) |
-| ADR-002 | PostgreSQL as MVP system of record | 2 | Accepted by spec; file pending |
+| ADR-002 | PostgreSQL as MVP system of record (Core, structural tenancy) | 2 | Accepted ([file](decisions/ADR-002-postgresql-system-of-record.md)) |
 | ADR-003 | FastAPI modular monolith for v1 | 0 | Accepted ([file](decisions/ADR-003-fastapi-modular-monolith.md)) |
 | ADR-004 | SSE as default live-stream transport | 5 | Accepted by spec; file pending |
 | ADR-005 | Large payloads stored as artifacts | 6 | Accepted by spec; file pending |
@@ -18,3 +18,4 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-009 | ClickHouse deferred until analytical-scale trigger | 18 | Accepted by spec; file pending |
 | ADR-010 | Client-side redaction before export | 3 | Accepted by spec; file pending |
 | ADR-011 | Build-process reconciliation (prompt vs spec, ServerFlow workflow) | pre-0 | Accepted ([file](decisions/ADR-011-build-process-reconciliation.md)) |
+| ADR-012 | Run state derived asynchronously through a transactional outbox | 2 | Accepted ([file](decisions/ADR-012-derived-run-state-and-outbox.md)) |
