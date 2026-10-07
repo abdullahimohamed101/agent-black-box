@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { api, ApiRequestError, unwrap } from "./api/client";
+import { api, unwrap } from "./api/client";
 import { isActive, type RunStatus } from "./api/types";
 
 export type RunFilters = {
@@ -13,10 +13,6 @@ export type RunFilters = {
 };
 
 const POLL_MS = 3000;
-// 4xx are deterministic answers (not found, bad cursor); only transient failures are retried.
-const retry = (count: number, err: unknown) =>
-  !(err instanceof ApiRequestError && err.status < 500 && err.status !== 429) && count < 2;
-
 export const runsKey = (f: RunFilters) => ["runs", f] as const;
 
 export function useRuns(f: RunFilters, limit = 50) {
@@ -44,7 +40,6 @@ export function useRuns(f: RunFilters, limit = 50) {
     staleTime: 5000,
     refetchInterval: POLL_MS * 5,
     placeholderData: keepPreviousData,
-    retry,
   });
 }
 
@@ -55,7 +50,6 @@ export function useRun(runId: string) {
       unwrap(await api.GET("/v1/runs/{run_id}", { signal, params: { path: { run_id: runId } } })),
     // Active runs poll until Phase 5 replaces this with SSE (ADR-020).
     refetchInterval: (q) => (q.state.data && isActive(q.state.data.status) ? POLL_MS : false),
-    retry,
   });
 }
 
@@ -78,7 +72,6 @@ export function useRunEvents(runId: string, eventCount: number | undefined) {
     // A changed event_count is a new key (the run grew); finished data is immutable (INV-1).
     staleTime: 60_000,
     placeholderData: keepPreviousData,
-    retry,
   });
 }
 
@@ -94,6 +87,5 @@ export function useEventDetail(runId: string, eventId: string | null) {
         }),
       ),
     staleTime: Infinity,
-    retry,
   });
 }

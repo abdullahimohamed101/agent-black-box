@@ -31,11 +31,13 @@ export function RunsList({
   filters,
   onFilters,
   now: nowProp,
+  pageSize = 50,
 }: {
   base: Base;
   filters: ListFilters;
   onFilters: (f: ListFilters) => void;
   now?: number;
+  pageSize?: number;
 }) {
   // Fixed at mount: a clock in the query key would refetch on every render.
   const [mounted] = useState(() => Date.now());
@@ -48,12 +50,15 @@ export function RunsList({
       span == null ? undefined : new Date(Math.floor((now - span) / 60_000) * 60_000).toISOString(),
     [span, now],
   );
-  const q = useRuns({
-    project: projectFilter(base.project),
-    statuses: filters.statuses,
-    agent,
-    startedAfter,
-  });
+  const q = useRuns(
+    {
+      project: projectFilter(base.project),
+      statuses: filters.statuses,
+      agent,
+      startedAfter,
+    },
+    pageSize,
+  );
   const runs = q.data?.pages.flatMap((p) => p.items) ?? [];
   const filtered = filters.statuses.length > 0 || filters.agent !== "" || filters.range !== "all";
 

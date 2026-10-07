@@ -182,10 +182,10 @@ export function Timeline({
                 {CLASS_LABELS[cls]}
               </span>
               <span className="tl-sum">
+                {e.event_id === firstErrorId && <span className="tag tag-bad">First error </span>}
+                {isRetry(e) && <span className="tag tag-warn">Retry </span>}
                 <span className="tl-type">{e.event_type}</span>{" "}
                 <span className="tl-desc">{describe(e)}</span>
-                {e.event_id === firstErrorId && <span className="tag tag-bad"> First error</span>}
-                {isRetry(e) && <span className="tag tag-warn"> Retry</span>}
               </span>
               <span className="tl-dur">{formatDuration(e.duration_ms)}</span>
               <span className="tl-status">

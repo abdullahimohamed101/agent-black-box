@@ -173,6 +173,8 @@ h2 {
 }
 .stat small {
   display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
 }
 .table-wrap {
   overflow-x: auto;

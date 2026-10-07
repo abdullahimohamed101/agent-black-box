@@ -15,8 +15,10 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   return (
     <div className="stat">
       <dt>{label}</dt>
-      <dd>{value}</dd>
-      {hint && <small className="muted">{hint}</small>}
+      <dd>
+        {value}
+        {hint && <small className="muted">{hint}</small>}
+      </dd>
     </div>
   );
 }
