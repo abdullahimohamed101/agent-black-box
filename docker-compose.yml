@@ -1,0 +1,59 @@
+# Local development stack. `make db` starts only Postgres; `docker compose --profile app up` adds api + web.
+name: agent-black-box
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: abb
+      POSTGRES_PASSWORD: ${ABB_POSTGRES_PASSWORD:-abb_dev_password}
+      POSTGRES_DB: abb
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres-init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abb -d abb"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    profiles: ["app"]
+    build:
+      context: ./apps/api
+    environment:
+      ABB_ENVIRONMENT: development
+      ABB_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb
+      ABB_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    profiles: ["app"]
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
