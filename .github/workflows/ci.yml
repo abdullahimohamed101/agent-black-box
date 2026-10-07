@@ -58,6 +58,11 @@ jobs:
         run: |
           curl -fsS localhost:3000/ >/dev/null
           scripts/smoke.sh
+      - uses: astral-sh/setup-uv@v5
+      - name: SDK end to end (real SDK -> real API -> read back)
+        run: |
+          (cd packages/sdk-python && uv sync --frozen)
+          scripts/sdk-e2e.sh
       - name: Logs on failure
         if: failure()
         run: docker compose --profile app logs --no-color

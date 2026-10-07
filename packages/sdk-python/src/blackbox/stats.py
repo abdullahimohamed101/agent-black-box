@@ -30,6 +30,10 @@ class Stats:
         self._lock = threading.Lock()
         self._values = dict.fromkeys(COUNTERS, 0)
 
+    def reinit_lock(self) -> None:
+        """After fork the lock may be held by a thread that no longer exists."""
+        self._lock = threading.Lock()
+
     def add(self, name: str, amount: int = 1) -> None:
         if amount:
             with self._lock:

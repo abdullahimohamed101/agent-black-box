@@ -40,6 +40,7 @@ class StubServer:
     script: list[tuple[int, dict[str, str], bytes]] = field(default_factory=list)
     received: list[Received] = field(default_factory=list)
     delay: float = 0.0
+    drop_idle: bool = False  # close the socket after each reply, without saying so
     lock: threading.Lock = field(default_factory=threading.Lock)
     server: ThreadingHTTPServer | None = None
 
@@ -99,6 +100,8 @@ def start_stub(
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+            if stub.drop_idle:
+                self.close_connection = True
 
         def log_message(self, *args: Any) -> None:
             return None

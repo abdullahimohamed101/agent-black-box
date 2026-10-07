@@ -15,6 +15,11 @@ _last_ms = -1
 _last_random = 0
 
 
+def reinit_lock() -> None:
+    global _lock
+    _lock = threading.Lock()
+
+
 def _encode(value: int) -> str:
     chars = []
     for _ in range(26):

@@ -197,6 +197,7 @@ class HttpSink:
         if len(body) >= self._c.gzip_min_bytes:
             body = gzip.compress(body, compresslevel=3)
             headers["Content-Encoding"] = "gzip"
+        reused = self._conn is not None
         try:
             if self._conn is None:
                 cls = http.client.HTTPSConnection if self._https else http.client.HTTPConnection
@@ -212,6 +213,10 @@ class HttpSink:
             return response.status, retry_after, data
         except Exception as exc:  # network errors, timeouts, protocol garbage: all retryable
             self._reset()
+            if reused and isinstance(exc, (ConnectionError, http.client.HTTPException)):
+                # A keep-alive connection the server closed while we were idle is not a failure:
+                # redo it once on a fresh connection without spending a retry attempt.
+                return self._post(parts, batch_id)
             self._log.warning("transport", "blackbox: export failed (%s)", type(exc).__name__)
             return None, None, b""
 
@@ -262,7 +267,7 @@ class Exporter:
                 self._drain()
             except Exception:  # the exporter must survive anything
                 self._stats.add("internal_errors")
-            if self._stopping and len(self._buffer) == 0:
+            if self._abort.is_set() or (self._stopping and len(self._buffer) == 0):
                 return
 
     def _drain(self) -> None:

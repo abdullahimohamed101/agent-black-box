@@ -9,7 +9,7 @@ import pytest
 
 from blackbox import BlackBox
 from blackbox.exporter import parse_retry_after
-from tests.helpers import StubServer, start_stub, stop_stub
+from tests.helpers import StubServer, offline, start_stub, stop_stub
 
 KEY = "abb_live_test.secret"
 
@@ -251,3 +251,21 @@ def test_threads_producing_concurrently_deliver_everything_exactly_once(stub: St
     for e in stub.events():
         by_run.setdefault(e["run_id"], []).append(e["sequence"])
     assert all(sorted(v) == list(range(1, 103)) for v in by_run.values())
+
+
+def test_a_connection_the_server_closed_while_idle_is_replaced_without_a_retry(
+    stub: StubServer,
+) -> None:
+    stub.drop_idle = True
+    bb = client(stub, flush_interval=5.0)
+    emit(bb, 1)
+    assert bb.flush(3)
+    emit(bb, 1)  # the kept-alive connection is now dead
+    assert bb.flush(3) and bb.shutdown(3)
+    assert len(stub.events()) == 6
+    assert bb.stats()["retries"] == 0 and bb.stats()["dropped_export_failed"] == 0
+
+
+def test_the_config_repr_never_shows_the_api_key() -> None:
+    bb = offline()
+    assert "abb_live_test" not in repr(bb.config)

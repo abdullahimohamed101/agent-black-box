@@ -46,7 +46,7 @@ def _bounded(name: str, value: Any, default: float, low: float, high: float) -> 
 
 @dataclass
 class Config:
-    api_key: str | None = None
+    api_key: str | None = field(default=None, repr=False)  # never show up in logs or tracebacks
     endpoint: str = DEFAULT_ENDPOINT
     mode: str = "http"
     project: str | None = None  # informational: the API key already determines the project

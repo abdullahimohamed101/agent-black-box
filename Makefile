@@ -1,4 +1,4 @@
-.PHONY: openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
+.PHONY: sdk-e2e openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -90,6 +90,10 @@ smoke:
 # Ingestion and read latency against the running stack (needs `make up` and `make seed`).
 bench:
 	cd $(API) && uv run python ../../scripts/bench_ingest.py --key-file $(CURDIR)/.local/dev-api-key
+
+# SDK end to end against the running stack (needs `make up`).
+sdk-e2e:
+	scripts/sdk-e2e.sh
 
 # Known-vulnerability scan (spec §111). JS: production dependencies only; dev-only findings are
 # tracked in docs/KNOWN_ISSUES.md. Python: whole locked set.

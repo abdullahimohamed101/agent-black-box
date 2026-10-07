@@ -423,6 +423,19 @@ class Run:
         self.__exit__(exc_type, exc, tb)
 
 
+_INSTANCES: "weakref.WeakSet[BlackBox]" = weakref.WeakSet()
+
+
+def _reinit_after_fork() -> None:
+    ids.reinit_lock()
+    for bb in list(_INSTANCES):
+        bb._after_fork()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reinit_after_fork)
+
+
 def _atexit_shutdown(ref: "weakref.ReferenceType[BlackBox]") -> None:
     bb = ref()
     if bb is not None:
@@ -459,10 +472,10 @@ class BlackBox:
         self._exporter = self._new_exporter()
         self._start_lock = threading.Lock()
         self._started = False
-        self._pid = os.getpid()
         self._closed = False
         if self._enabled:
             atexit.register(_atexit_shutdown, weakref.ref(self))
+            _INSTANCES.add(self)
 
     # -- public API --------------------------------------------------------------------------------
 
@@ -587,18 +600,20 @@ class BlackBox:
         return Exporter(self.config, self._buffer, self.stats_, sink)
 
     def _ensure_started(self) -> None:
-        if self._started and self._pid == os.getpid():
+        if self._started:
             return
         with self._start_lock:
-            if self._pid != os.getpid():  # forked: the parent's thread and events are not ours
-                self._pid = os.getpid()
-                self._buffer = EventBuffer(self.config.max_queue, self.stats_)
-                self._exporter = self._new_exporter()
-                self._start_lock = threading.Lock()
-                self._started = False
             if not self._started:
                 self._exporter.start()
                 self._started = True
+
+    def _after_fork(self) -> None:
+        """In a forked child the parent's exporter thread and queued events do not exist."""
+        self.stats_.reinit_lock()
+        self._start_lock = threading.Lock()
+        self._buffer = EventBuffer(self.config.max_queue, self.stats_)
+        self._exporter = self._new_exporter()
+        self._started = False
 
     def _emit(
         self,
