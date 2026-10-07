@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 from abb_event_schema.event import Event
@@ -73,3 +74,40 @@ class EventQueries:
             )
         ).first()
         return row_to_event(row) if row else None
+
+    async def arrival_of(self, run_id: uuid.UUID, event_id: uuid.UUID) -> datetime | None:
+        """When the server received an event of this run , else None."""
+        row = (
+            await self._conn.execute(
+                select(t.events.c.received_at).where(
+                    t.events.c.workspace_id == self._tenant.workspace_id,
+                    t.events.c.run_id == run_id,
+                    t.events.c.event_id == event_id,
+                )
+            )
+        ).first()
+        return None if row is None else row.received_at
+
+    async def arrived_since(
+        self,
+        run_id: uuid.UUID,
+        *,
+        since: datetime | None,
+        after: tuple[datetime, uuid.UUID] | None = None,
+        limit: int,
+    ) -> list[tuple[Event, bool]]:
+        """Up to `limit` events in arrival order (`received_at`, `event_id`): (event, has_payload).
+
+        `since` is inclusive (None: from the start). `after` continues from a page's last row.
+        """
+        statement = self._scoped(run_id)
+        if since is not None:
+            statement = statement.where(t.events.c.received_at >= since)
+        columns = [t.events.c.received_at, t.events.c.event_id]
+        if after is not None:
+            statement = statement.where(
+                tuple_(*columns)
+                > tuple_(literal(after[0], columns[0].type), literal(after[1], columns[1].type))
+            )
+        rows = await self._conn.execute(statement.order_by(*columns).limit(limit))
+        return [(row_to_event(r), bool(r.has_payload)) for r in rows]
