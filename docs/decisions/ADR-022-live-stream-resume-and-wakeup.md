@@ -17,7 +17,7 @@ spec's deferred list until a measured trigger.
   remembers "highest seen" silently skips the late row. **Why not canonical order:** a late event sorts before rows already sent.
 - **Known limit:** `received_at` is stamped per request before its transaction; a transaction open longer than the overlap can be
   missed by a live stream. The window is a setting; the REST list endpoint is always complete and the UI reconciles through it.
-- **Wake-up:** ingestion calls `pg_notify('abb_run_events', run_id)` inside its transaction (delivered on commit, run id only).
+- **Wake-up:** ingestion calls `pg_notify('abb_run_events', run_id)` inside its transaction (delivered on commit; ids only: `<workspace uuid>:<run uuid>`).
   One listener connection per API process fans out in-process; each stream then queries under its own tenant context. A fallback
   poll (2 s) covers lost notifications and listener reconnects. No new infrastructure, correct with several API processes.
 - **Payloads are never streamed** (same light shape as list endpoints); streams are bounded per process and per key and have a maximum lifetime.

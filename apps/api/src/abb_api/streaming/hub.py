@@ -90,7 +90,7 @@ class StreamHub:
 
     @property
     def watched_runs(self) -> int:
-        """Runs with at least one subscriber (a leak shows up here as entries that never go away)."""
+        """Runs with at least one subscriber (a leak shows up as entries that never go away)."""
         return len(self._subscribers)
 
     @property
