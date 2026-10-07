@@ -22,7 +22,7 @@ from typing import Literal, Protocol
 from abb_event_schema.dedup import content_hash
 from abb_event_schema.event import Event
 from abb_event_schema.ids import to_uuid
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -31,6 +31,7 @@ from abb_api.db.event_rows import event_to_row, row_to_event
 from abb_api.jobs.outbox import SUMMARIZE_RUN, OutboxRepository
 from abb_api.projects.repository import AgentRepository
 from abb_api.runs.repository import RunRepository, RunSeed
+from abb_api.streaming import notify
 from abb_api.tenancy import TenantContext
 
 INSERT_CHUNK = 500  # 22 columns x 500 rows stays far below the 32767 bind-parameter limit
@@ -171,7 +172,7 @@ class PgEventStore:
             else:
                 status[i] = "duplicate" if stored[event_id] == digests[i] else "conflict"
 
-        # 4. one coalesced job per run that gained events
+        # 4. one coalesced job per run that gained events, and one wake-up for its live streams
         outbox = OutboxRepository(self._conn, self._tenant)
         for run_id in sorted(
             {to_uuid(events[i].run_id) for i in insertable if status[i] == "accepted"},
@@ -182,6 +183,14 @@ class PgEventStore:
                 dedupe_key=f"{workspace}:{run_id}",
                 payload={"run_id": str(run_id)},
                 delay=self._summary_delay,
+            )
+            # Delivered only on commit (ADR-022): a rolled-back batch wakes nobody.
+            await self._conn.execute(
+                select(
+                    func.pg_notify(
+                        notify.CHANNEL, notify.encode((self._tenant.workspace_id, run_id))
+                    )
+                )
             )
 
         results = []
