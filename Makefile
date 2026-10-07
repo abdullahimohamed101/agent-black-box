@@ -1,4 +1,4 @@
-.PHONY: openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
+.PHONY: e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -103,3 +103,13 @@ up:
 
 down:
 	docker compose --profile app down
+
+# Web: typed client from the committed OpenAPI contract; Playwright on fixtures (port 3100) and on a real ingested run.
+web-client:
+	pnpm --filter @abb/web gen:api
+
+e2e:
+	pnpm --filter @abb/web build && pnpm --filter @abb/web test:e2e
+
+e2e-real:
+	pnpm --filter @abb/web build && scripts/e2e-web-real.sh

@@ -26,7 +26,7 @@ export default defineConfig({
             url: "http://localhost:3102",
             env: {
               ABB_WEB_API_KEY: process.env.E2E_REAL_API_KEY!,
-              ABB_API_INTERNAL_URL: process.env.E2E_REAL_API_URL ?? "http://localhost:8100",
+              ABB_API_INTERNAL_URL: process.env.E2E_REAL_API_URL ?? "http://localhost:8110",
             },
           },
         ]
