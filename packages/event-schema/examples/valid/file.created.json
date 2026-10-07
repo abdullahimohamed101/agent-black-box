@@ -1,0 +1,15 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "file.hash_after": "sha256:ab12",
+    "file.path": "src/auth/refresh.ts",
+    "file.size_after": 512
+  },
+  "event_id": "evt_01J90000000000000000000016",
+  "event_type": "file.created",
+  "occurred_at": "2026-10-06T20:13:16.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 16,
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

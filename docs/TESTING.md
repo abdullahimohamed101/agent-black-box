@@ -16,7 +16,8 @@ changes are exercised in a browser; fixtures are deterministic (fixed IDs/timest
 
 Commands (targets):
 ```bash
-make test        # unit + repository + contract (+ web unit)
+make test        # event-schema + api (real Postgres) + web unit
+make schema-check # generated JSON Schema / TS types are current
 make lint        # ruff, eslint, prettier --check
 make typecheck   # mypy, tsc
 scripts/quality.sh quick   # ruff, mypy, eslint, prettier, tsc, pytest, vitest

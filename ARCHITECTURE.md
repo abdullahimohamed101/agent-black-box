@@ -29,7 +29,7 @@ no event schema, ingestion, SDK or product UI yet.
 
 ### Event schema (`packages/event-schema`)
 The stable spine: envelope, event families, ID rules, JSON Schema, generated TS types.
-Depends on nothing else in the repo. Status: planned (Phase 1).
+Depends on nothing else in the repo. Status: implemented (Phase 1): IDs, envelope models (`EventIn`/`Event`), registry of 43 event types, strict parsing with value-free errors, ordering, content-hash dedup, span derivation, generated JSON Schema and TypeScript types. Reference: `docs/architecture/events.md`.
 
 ### API (`apps/api`) - modular monolith
 Modules: `ingestion`, `runs`, `traces`, `analytics`, `evaluations`, `auth`, `policies`,

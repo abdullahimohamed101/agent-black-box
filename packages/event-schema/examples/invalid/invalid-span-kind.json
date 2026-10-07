@@ -1,0 +1,25 @@
+{
+  "description": "span.kind must be a known kind",
+  "event": {
+    "agent_id": "coding-agent",
+    "attributes": {
+      "span.kind": "banana",
+      "span.name": "x"
+    },
+    "duration_ms": 843,
+    "event_id": "evt_01J90000000000000000000013",
+    "event_type": "span.started",
+    "occurred_at": "2026-10-06T20:13:13.029Z",
+    "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+    "schema_version": "1.0",
+    "sequence": 13,
+    "span_id": "spn_01J90000000000000000000012",
+    "status": "success",
+    "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+  },
+  "expect": {
+    "code": "EVENT_INVALID",
+    "issue": "span_kind_invalid"
+  },
+  "jsonschema_rejects": false
+}

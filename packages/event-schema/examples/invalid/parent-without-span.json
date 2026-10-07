@@ -1,0 +1,24 @@
+{
+  "description": "parent_span_id requires span_id",
+  "event": {
+    "agent_id": "coding-agent",
+    "attributes": {
+      "file.path": "a"
+    },
+    "duration_ms": 843,
+    "event_id": "evt_01J90000000000000000000013",
+    "event_type": "file.read",
+    "occurred_at": "2026-10-06T20:13:13.029Z",
+    "parent_span_id": "spn_01J90000000000000000000002",
+    "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+    "schema_version": "1.0",
+    "sequence": 13,
+    "status": "success",
+    "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+  },
+  "expect": {
+    "code": "EVENT_INVALID",
+    "issue": "parent_without_span"
+  },
+  "jsonschema_rejects": true
+}

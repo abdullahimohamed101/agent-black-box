@@ -4,8 +4,8 @@ A flight recorder, observability, debugging, evaluation and (eventually) control
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell
 command, retry and failure, with cost and latency, live.
 
-> Status: **Phase 0 (foundation) complete pending CI.** The repo has a FastAPI skeleton, a Next.js
-> shell, a Compose stack and a quality gate; there is no telemetry pipeline yet. See `docs/PROJECT_STATE.md`.
+> Status: Phases 0-1 done (foundation, canonical event contract; Phase 1 awaiting merge). There is no ingestion, SDK or
+> product UI yet. See `docs/PROJECT_STATE.md`.
 
 ## What it will do
 

@@ -1,0 +1,14 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "policy.id": "pol-ci-config",
+    "policy.reason": "Agent modified CI configuration"
+  },
+  "event_id": "evt_01J90000000000000000000035",
+  "event_type": "policy.warning",
+  "occurred_at": "2026-10-06T20:13:35.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 35,
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

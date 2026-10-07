@@ -1,0 +1,14 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "http.latency_ms": 143,
+    "http.status_code": 200
+  },
+  "event_id": "evt_01J90000000000000000000030",
+  "event_type": "http.response",
+  "occurred_at": "2026-10-06T20:13:30.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 30,
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

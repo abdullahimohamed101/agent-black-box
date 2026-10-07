@@ -1,0 +1,14 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "http.method": "GET",
+    "http.url": "https://api.example.com/v1/items"
+  },
+  "event_id": "evt_01J90000000000000000000029",
+  "event_type": "http.request",
+  "occurred_at": "2026-10-06T20:13:29.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 29,
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

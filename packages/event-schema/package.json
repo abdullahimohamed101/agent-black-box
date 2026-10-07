@@ -1,0 +1,13 @@
+{
+  "name": "@abb/event-schema",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generated TypeScript types for the Agent Black Box event contract",
+  "types": "ts/event.d.ts",
+  "scripts": {
+    "generate": "json2ts --input schemas/1.0/event-in.json --output ts/event-in.d.ts && json2ts --input schemas/1.0/event.json --output ts/event.d.ts"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^16.0.0"
+  }
+}

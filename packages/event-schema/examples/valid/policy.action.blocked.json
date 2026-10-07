@@ -1,0 +1,15 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "policy.capability": "filesystem.read",
+    "policy.id": "deny-env-read",
+    "policy.reason": "dotenv files are protected"
+  },
+  "event_id": "evt_01J90000000000000000000036",
+  "event_type": "policy.action.blocked",
+  "occurred_at": "2026-10-06T20:13:36.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 36,
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

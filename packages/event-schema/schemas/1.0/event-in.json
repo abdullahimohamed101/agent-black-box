@@ -1,0 +1,1328 @@
+{
+  "$defs": {
+    "EventStatus": {
+      "description": "Outcome carried by completion-style events. Point events may omit it.",
+      "enum": [
+        "success",
+        "error",
+        "timeout",
+        "cancelled",
+        "blocked"
+      ],
+      "title": "EventStatus",
+      "type": "string"
+    },
+    "SdkInfo": {
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "SdkInfo",
+      "type": "object"
+    }
+  },
+  "$id": "https://schemas.agentblackbox.dev/1.0/event-in.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "agent.started"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "agent.completed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "agent.state_changed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "agent.state"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "agent.spawned"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "agent.child_id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "llm.request.started"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "llm.model",
+              "llm.provider"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "llm.request.completed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "llm.model",
+              "llm.provider"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "llm.request.failed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "llm.model",
+              "llm.provider"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "tool.call.started"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "tool.name"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "tool.call.completed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "tool.name"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "tool.call.failed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "tool.name"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "file.read"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "file.path"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "file.created"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "file.path"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "file.modified"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "file.path"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "file.deleted"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "file.path"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "shell.command.started"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "shell.command"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "shell.command.completed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "shell.command"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "shell.command.failed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "shell.command"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "db.query.started"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "db.query.completed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "db.query.failed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "http.request"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "http.method"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "http.response"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "http.status_code"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "retry.attempted"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "retry.attempt"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "policy.action.blocked"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "policy.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "approval.requested"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "approval.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "approval.granted"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "approval.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "approval.denied"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "approval.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "span.started"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "span.kind",
+              "span.name"
+            ]
+          },
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributes",
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "span.completed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "span_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "span.failed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "span_id"
+        ]
+      }
+    }
+  ],
+  "dependentRequired": {
+    "parent_span_id": [
+      "span_id"
+    ]
+  },
+  "properties": {
+    "agent_id": {
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "agent_version": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Agent Version"
+    },
+    "attributes": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "maxLength": 4096,
+            "type": "string"
+          },
+          {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "items": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            "maxItems": 64,
+            "type": "array"
+          }
+        ]
+      },
+      "default": {},
+      "maxProperties": 64,
+      "properties": {
+        "agent.child_id": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "agent.state": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "approval.capability": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "approval.id": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "cost.estimated_usd": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "cost.pricing_version": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "db.latency_ms": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "db.operation": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "db.rows_returned": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "db.system": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "file.hash_after": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "file.hash_before": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "file.language": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "file.lines_added": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "file.lines_removed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "file.path": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "file.size_after": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "file.size_before": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "git.base_commit": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "git.branch": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "git.changed_files": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "git.commit_hash": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "git.head_commit": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "git.pr_number": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "git.push_target": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "git.repo": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "http.latency_ms": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "http.method": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "http.status_code": {
+          "minimum": 100,
+          "type": "integer"
+        },
+        "http.url": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "llm.cached_input_tokens": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "llm.error_type": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "llm.input_tokens": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "llm.latency_ms": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "llm.max_tokens": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "llm.model": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "llm.output_tokens": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "llm.provider": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "llm.temperature": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "loop.pattern": {
+          "items": {
+            "maxLength": 4096,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "loop.repetitions": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "policy.capability": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "policy.id": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "policy.reason": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "rate_limit.retry_after_ms": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "retry.attempt": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "retry.delay_ms": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "retry.of_event_id": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "retry.reason": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "run.name": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "secret.kind": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "shell.command": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "shell.cwd": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "shell.duration_ms": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "shell.exit_code": {
+          "type": "integer"
+        },
+        "shell.risk_class": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "span.kind": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "span.name": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "test.failed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "test.failing": {
+          "items": {
+            "maxLength": 4096,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "test.framework": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "test.passed": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "test.skipped": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "test.total": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "timeout.limit_ms": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "timeout.operation": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "tool.error_type": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "tool.latency_ms": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "tool.name": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "tool.operation": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "tool.result_count": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "propertyNames": {
+        "maxLength": 128,
+        "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
+      },
+      "type": "object"
+    },
+    "duration_ms": {
+      "anyOf": [
+        {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Duration Ms"
+    },
+    "event_id": {
+      "pattern": "^evt_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_type": {
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*){1,3}$",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?(Z|[+-]\\d{2}:\\d{2})$",
+      "type": "string"
+    },
+    "parent_span_id": {
+      "anyOf": [
+        {
+          "pattern": "^spn_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Parent Span Id"
+    },
+    "payload": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Payload"
+    },
+    "payload_ref": {
+      "anyOf": [
+        {
+          "pattern": "^artifact://[A-Za-z0-9._~:/-]{1,480}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Payload Ref"
+    },
+    "project_id": {
+      "anyOf": [
+        {
+          "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Project Id"
+    },
+    "run_id": {
+      "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "pattern": "^1\\.[0-9]{1,4}$",
+      "type": "string"
+    },
+    "sdk": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SdkInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "sequence": {
+      "anyOf": [
+        {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sequence"
+    },
+    "span_id": {
+      "anyOf": [
+        {
+          "pattern": "^spn_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Span Id"
+    },
+    "status": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventStatus"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tags": {
+      "items": {
+        "maxLength": 64,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 16,
+      "title": "Tags",
+      "type": "array"
+    },
+    "trace_id": {
+      "pattern": "^trc_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+      "title": "Trace Id",
+      "type": "string"
+    },
+    "workspace_id": {
+      "anyOf": [
+        {
+          "pattern": "^ws_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace Id"
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "run_id",
+    "trace_id",
+    "agent_id",
+    "event_type",
+    "occurred_at"
+  ],
+  "title": "EventIn",
+  "type": "object"
+}

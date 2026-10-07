@@ -1,0 +1,14 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "git.changed_files": 2,
+    "git.repo": "acme/web"
+  },
+  "event_id": "evt_01J90000000000000000000019",
+  "event_type": "git.diff",
+  "occurred_at": "2026-10-06T20:13:19.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 19,
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

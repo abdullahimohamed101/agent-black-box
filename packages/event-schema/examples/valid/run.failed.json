@@ -1,0 +1,14 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "run.name": "Fix login bug"
+  },
+  "event_id": "evt_01J90000000000000000000003",
+  "event_type": "run.failed",
+  "occurred_at": "2026-10-06T20:13:03.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 3,
+  "status": "error",
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

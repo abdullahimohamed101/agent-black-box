@@ -1,0 +1,19 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "file.hash_after": "sha256:bb",
+    "file.hash_before": "sha256:aa",
+    "file.lines_added": 3,
+    "file.lines_removed": 1,
+    "file.path": "src/auth/session.ts",
+    "file.size_after": 1960,
+    "file.size_before": 1900
+  },
+  "event_id": "evt_01J90000000000000000000017",
+  "event_type": "file.modified",
+  "occurred_at": "2026-10-06T20:13:17.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 17,
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}
