@@ -49,8 +49,8 @@ ingestion edge | control plane | database/object storage | human approvers.
 
 No dashboard users or RBAC yet (Phase 15): the read API is reached with a `runs:read` API key. No API key management
 endpoints (CLI only). Rate limits are per process. No audit log of administrative actions yet (CLI actions are not
-recorded in the database). Redaction and secret detection arrive in Phases 3 and 13: until then **clients are responsible for
-not sending secrets in events**, and inline payloads are stored as received.
+recorded in the database). The Python SDK redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads);
+server-side redaction arrives in Phase 13, so **other clients are responsible for not sending secrets**, and inline payloads are stored as received.
 
 ## Process
 Security-sensitive changes require a `review-change` pass and a note in the phase plan.

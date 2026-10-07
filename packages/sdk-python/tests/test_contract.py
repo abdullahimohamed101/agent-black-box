@@ -143,3 +143,13 @@ def test_attribute_count_and_tags_are_bounded() -> None:
     assert len(cleaned) == limits.MAX_ATTRIBUTES and stats["attributes_dropped"] == 136
     assert len(events.clean_tags(["t"] * 50)) == limits.MAX_TAGS
     assert all(len(t) <= limits.MAX_TAG_LENGTH for t in events.clean_tags(["x" * 500]))
+
+
+def test_id_generation_carries_into_the_timestamp_when_randomness_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    future = ids._last_ms + 10**9
+    monkeypatch.setattr(ids, "_last_ms", future)
+    monkeypatch.setattr(ids, "_last_random", (1 << 80) - 1)
+    ulid = ids.new_ulid()
+    assert parse_id(f"run_{ulid}").timestamp_ms == future + 1

@@ -269,3 +269,62 @@ def test_a_connection_the_server_closed_while_idle_is_replaced_without_a_retry(
 def test_the_config_repr_never_shows_the_api_key() -> None:
     bb = offline()
     assert "abb_live_test" not in repr(bb.config)
+
+
+def test_a_two_event_batch_that_is_too_big_is_split_into_single_events() -> None:
+    stub = start_stub([(413, {}, b"")])
+    try:
+        bb = client(stub, wait=Waits())
+        with bb.run("r"):
+            pass  # exactly two events
+        assert bb.shutdown(3)
+        assert [len(r.body["events"]) for r in stub.received] == [2, 1, 1]
+        assert bb.stats()["events_sent"] == 2 and bb.stats()["dropped_rejected"] == 0
+    finally:
+        stop_stub(stub)
+
+
+def test_a_single_event_that_is_too_big_is_dropped_not_looped() -> None:
+    stub = start_stub([(413, {}, b"")] * 3)
+    try:
+        bb = client(stub, wait=Waits(), batch_size=1)
+        with bb.run("r"):
+            pass
+        bb.shutdown(3)
+        assert bb.stats()["dropped_rejected"] >= 1 and len(stub.received) <= 4
+    finally:
+        stop_stub(stub)
+
+
+def test_each_batch_gets_its_own_batch_id(stub: StubServer) -> None:
+    bb = client(stub, batch_size=5)
+    emit(bb, 30)
+    bb.shutdown(3)
+    ids = [r.body["batch_id"] for r in stub.received]
+    assert len(ids) > 3 and len(set(ids)) == len(ids)
+
+
+def test_backoff_grows_exponentially_with_full_jitter_and_is_capped() -> None:
+    from blackbox.config import Config
+    from blackbox.exporter import HttpSink
+    from blackbox.stats import Stats
+
+    config = Config.build(api_key="k", backoff_base=0.5, backoff_max=3.0)
+    sink = HttpSink(config, Stats())
+    for attempt, ceiling in ((0, 0.5), (1, 1.0), (2, 2.0), (3, 3.0), (10, 3.0)):
+        samples = [sink._backoff(attempt) for _ in range(400)]
+        assert (
+            max(samples) <= ceiling
+            and max(samples) > ceiling * 0.8
+            and min(samples) < ceiling * 0.2
+        )
+
+
+def test_flush_on_an_idle_or_offline_client_returns_immediately() -> None:
+    bb = offline()
+    t0 = time.monotonic()
+    assert bb.flush(5) is True  # nothing queued
+    with bb.run("r"):
+        pass
+    assert bb.flush(5) is False  # offline: queued events are never delivered
+    assert time.monotonic() - t0 < 1

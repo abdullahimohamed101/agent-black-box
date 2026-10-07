@@ -24,7 +24,9 @@ from typing import Any
 from blackbox.stats import Stats
 
 MAX_DEPTH = 16
-MAX_STRING = 4096
+# Strings are bounded before scanning so a huge value cannot stall the caller. One byte over the
+# inline payload limit: such a payload is later dropped as too large, never silently truncated.
+MAX_STRING = 64 * 1024 + 1
 Event = dict[str, Any]
 Callback = Callable[[Event], "Event | None"]
 

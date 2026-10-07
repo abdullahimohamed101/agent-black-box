@@ -1,6 +1,6 @@
 # Phase 3 - Python SDK (and KI-020: database roles)
 
-Status: In progress on `feature/phase-3-python-sdk` (parallel with Phase 4; state docs are reconciled at merge)
+Status: Completed on branch `feature/phase-3-python-sdk` (not pushed; PR needs user approval). Built in parallel with Phase 4; `docs/PROJECT_STATE.md` and `docs/IMPLEMENTATION_PLAN.md` are reconciled by the coordinator at merge.
 Owner: coding agent
 Depends on: Phase 2 (ingestion API merged to `main`)
 Spec: §67 (buffering, priorities, redaction pipeline), §68 (public API), §70 (modes), §71 (ingestion), §156 (overhead target); INV-4, INV-5; ADR-006, ADR-010 (realised here), ADR-013 (new)
@@ -117,3 +117,31 @@ compose project name and ports; benchmark run on this machine; example run again
 7. Client API, context, observe, lifecycle.
 8. Example, benchmark, CI/quality/Makefile wiring.
 9. Review + hardening; mutation test; completion evidence and plan status.
+
+## Evidence (2026-10-07; VERIFIED = command run here, output observed)
+
+| Criterion | Status | Command / result |
+| --- | --- | --- |
+| A1 migration + privileges | VERIFIED | `cd apps/api && uv run pytest -q tests/test_runtime_role.py tests/test_migrations.py`: 11 role tests (connects as `abb_runtime`: UPDATE/DELETE/TRUNCATE/DROP/ALTER events, CREATE TABLE, `alembic_version`, `ALTER ROLE ... SUPERUSER` all `permission denied`; INSERT/SELECT and DML on other tables work; every non-events table fully writable) and per-revision up/down/up for 0007 pass |
+| A2 flow as runtime role | VERIFIED | the `api` fixture now runs the app and worker as `abb_runtime`; the whole API suite (342 tests) passes |
+| A3 containers | VERIFIED | separate compose project `abb-p3` (ports 5533/8100, own image tag): `migrate` exit 0, api/worker healthy, `SELECT current_user` = `abb_runtime`, `DELETE FROM events` = `permission denied for table events`, `scripts/smoke.sh`: SMOKE PASSED. Project and volume removed afterwards |
+| B1-B8 | VERIFIED | `cd packages/sdk-python && uv run pytest -q --cov`: 106 passed, coverage 94% (gate 90%), Python 3.10.22 (the minimum supported) |
+| B3 contract | VERIFIED | `tests/test_contract.py`: all emitted types validate through `EventIn` and the JSON Schema; limits, priority map, id patterns, event-type regex equal the contract's |
+| B9 benchmark | VERIFIED | `docs/benchmarks/phase-3-sdk.md`: 7-23 us mean per operation, p99 13-40 us, target 1 ms |
+| B10 example through the real API | VERIFIED | `scripts/sdk-e2e.sh` against the container stack: SDK example, 6 events, status SUCCESS, `summary_state` current, ordered events, 2 spans: SDK E2E PASSED |
+| B11 gate | VERIFIED | `scripts/quality.sh full` exit 0 (event-schema 337, sdk 106, api 342, web 7) |
+| Mutation test | VERIFIED | hand-rolled mutants over committed SDK logic (buffer eviction, retry/backoff/Retry-After/413 split, redaction rules, status mapping, bounds): first pass 11 of 44 survived; added tests for each real gap; final 1 of 44 survives and is behaviourally equivalent (`shutdown()` idempotence guard) |
+
+Defects found by the tests while building (fixed): a malformed endpoint (`http://[::1`) raised from the constructor (INV-4); payload strings were silently
+truncated to 4096 characters in `FULL` mode; a stale keep-alive connection cost a retry attempt and a random delay; `Config.__repr__` showed the API key; forked
+children could deadlock on a lock held by a vanished thread (now `os.register_at_fork`).
+
+## Review notes (self-review, `review-change` checklist)
+
+Security-sensitive parts: privileges (migration 0007), redaction. Checked: runtime role cannot create objects or change roles; password comes only from
+the environment and is applied by Alembic's connection (never stored in a migration); `NOLOGIN` without it. Redaction runs before buffering so a later
+serialization bug cannot leak; default mode drops payloads; API key never logged or in `repr`. Tenant scoping is unchanged (INV-3). Residual risks are in
+KNOWN_ISSUES KI-027..029.
+
+Decisions beyond the plan: `project=` is informational (the key decides the project); `llm_call` takes `temperature`/`max_tokens` named arguments; run `metadata`
+becomes flat `metadata.<key>` attributes (scalars only) so it survives the default payload mode; a failing redaction callback drops the event (P0: keeps structural attributes only).

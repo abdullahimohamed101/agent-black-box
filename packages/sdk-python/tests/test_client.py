@@ -411,3 +411,47 @@ def test_forked_children_start_with_a_clean_queue_and_their_own_exporter(tmp_pat
     ]
     assert names.count("parent") == 1 and names.count("child") == 1
     bb.shutdown(2)
+
+
+def test_an_explicit_parent_wins_over_the_current_span() -> None:
+    bb = offline()
+    with bb.run("r") as run:
+        a = run.span("a").start()
+        with run.span("b"):
+            with run.span("c", parent=a):
+                pass
+        a.end()
+    evs = events_of(bb)
+    c = next(e for e in by_type(evs, "span.started") if e["attributes"]["span.name"] == "c")
+    assert c["parent_span_id"] == a.span_id
+
+
+def test_a_span_never_adopts_a_parent_from_another_run() -> None:
+    bb = offline()
+    with bb.run("outer") as outer, outer.span("outer-span"):
+        other = bb.run("other")
+        with other.span("inner"):
+            pass
+    inner = next(
+        e for e in by_type(events_of(bb), "span.started") if e["attributes"]["span.name"] == "inner"
+    )
+    assert "parent_span_id" not in inner
+
+
+def test_oversized_payloads_are_dropped_but_the_event_survives() -> None:
+    bb = offline(payload_mode="full")
+    with bb.run("r") as run:
+        run.event("custom.big", payload={"text": "x" * 70_000})
+        run.event("custom.fine", payload={"text": "x" * 1_000})
+    evs = events_of(bb)
+    assert "payload" not in by_type(evs, "custom.big")[0]
+    assert "payload" in by_type(evs, "custom.fine")[0]
+    assert bb.stats()["payloads_dropped"] == 1
+
+
+def test_option_bounds_are_inclusive() -> None:
+    c = offline(batch_size=1, flush_interval=0.01, max_queue=10, http_timeout=0.1).config
+    assert (c.batch_size, c.flush_interval, c.max_queue, c.http_timeout) == (1, 0.01, 10, 0.1)
+    c2 = offline(batch_size=1000).config
+    assert c2.batch_size == 1000
+    assert offline(batch_size=1001).config.batch_size == 100  # out of range: default
