@@ -1,6 +1,6 @@
 # Phase 5 - Live execution streaming
 
-Status: Active (decisions D1-D6 confirmed; steps 1-4 done)
+Status: Active (decisions D1-D6 confirmed; steps 1-5 done)
 Owner: implementer agent
 Branch: `feature/phase-5-live-streaming` (from `main` fa4c346)
 Depends on: Phase 2 (ingestion, query API), Phase 4 (run detail, read proxy)
@@ -104,7 +104,7 @@ mutation checks on committed code (resume overlap, dedupe, comparator, limits); 
 2. [x] API: arrival-time queries (`arrival_of`, `arrived_since`) + `ArrivalCursor` overlap logic, 10 tests, 7 mutants killed.
 3. [x] API: `pg_notify` on commit (payload `<workspace uuid>:<run uuid>`), `StreamHub` listener with in-process fan-out, reconnect with backoff, wake-all on reconnect; 12 tests (two hubs as two processes, killed listener, unreachable DB, runtime role), 8 mutants killed. The fallback poll is the stream loop's `Subscription.wait(seconds)` timeout (step 4).
 4. [x] API: `GET /v1/runs/{id}/stream` (SSE framing, retry/keepalive, `run_end` after terminal event + quiet period, late events, `Last-Event-ID` header or `last_event_id`, 429 `STREAM_LIMIT` per key/server, max lifetime, write timeout, in-band `error` frame, no idle DB connection), OpenAPI + generated client; 19 socket-level tests, 16 mutants killed. New known issue KI-033 (streams are not re-authenticated).
-5. Web: proxy streaming + allowlist, `ordering.ts` with parity test, `stream.ts` client.
+5. [x] Web: proxy streams the upstream body (allowlist, `Last-Event-ID`, abort on disconnect, connect-only timeout; fixtures answer 404 `STREAM_NOT_AVAILABLE`), `ordering.ts` (BigInt microseconds; golden parity with `sort_events` generated in `packages/event-schema/tests/data/ordering-golden.json`, 60 cases), `stream.ts` EventSource client (frame batching, backoff reopen from the last event, `unavailable` after 8 failures). 99 new web tests; 22 mutants killed or equivalent.
 6. Web: incremental merge in `RunDetail`, status line, live/partial/reconnect states, remove interim refetch; component tests.
 7. E2E: `stream-e2e.sh`, Playwright specs, latency benchmark, screenshots.
 8. Docs: api-v1, RELIABILITY, OPERATIONS, runbook, ADR-020 amendment, DECISIONS index, known issues.
