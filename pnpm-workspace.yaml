@@ -1,4 +1,5 @@
 packages:
   - apps/web
+  - packages/event-schema
 allowBuilds:
   unrs-resolver: false

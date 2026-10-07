@@ -1,0 +1,15 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "retry.attempt": 1,
+    "retry.delay_ms": 1200,
+    "retry.reason": "tests_failed"
+  },
+  "event_id": "evt_01J90000000000000000000031",
+  "event_type": "retry.attempted",
+  "occurred_at": "2026-10-06T20:13:31.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 31,
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

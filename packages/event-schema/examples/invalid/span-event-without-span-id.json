@@ -1,0 +1,26 @@
+{
+  "description": "tool.call.completed closes a span, span_id required",
+  "event": {
+    "agent_id": "coding-agent",
+    "attributes": {
+      "tool.latency_ms": 1320,
+      "tool.name": "github",
+      "tool.operation": "search_issues",
+      "tool.result_count": 8
+    },
+    "duration_ms": 843,
+    "event_id": "evt_01J90000000000000000000013",
+    "event_type": "tool.call.completed",
+    "occurred_at": "2026-10-06T20:13:13.029Z",
+    "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+    "schema_version": "1.0",
+    "sequence": 13,
+    "status": "success",
+    "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+  },
+  "expect": {
+    "code": "EVENT_INVALID",
+    "issue": "span_id_required"
+  },
+  "jsonschema_rejects": true
+}

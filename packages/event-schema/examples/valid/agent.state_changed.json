@@ -1,0 +1,13 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "agent.state": "planning"
+  },
+  "event_id": "evt_01J90000000000000000000007",
+  "event_type": "agent.state_changed",
+  "occurred_at": "2026-10-06T20:13:07.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 7,
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

@@ -1,0 +1,18 @@
+{
+  "agent_id": "coding-agent",
+  "attributes": {
+    "tool.error_type": "timeout",
+    "tool.name": "github",
+    "tool.operation": "search_issues"
+  },
+  "duration_ms": 843,
+  "event_id": "evt_01J90000000000000000000014",
+  "event_type": "tool.call.failed",
+  "occurred_at": "2026-10-06T20:13:14.029Z",
+  "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+  "schema_version": "1.0",
+  "sequence": 14,
+  "span_id": "spn_01J90000000000000000000013",
+  "status": "error",
+  "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY"
+}

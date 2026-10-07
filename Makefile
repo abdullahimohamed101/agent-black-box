@@ -1,4 +1,4 @@
-.PHONY: audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
+.PHONY: schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -53,6 +53,17 @@ typecheck:
 	cd $(SCHEMA) && uv run mypy
 	cd $(API) && uv run mypy
 	pnpm --filter @abb/web typecheck
+
+# Regenerate the committed JSON Schema and TypeScript types from the Pydantic models.
+schema:
+	cd $(SCHEMA) && uv run python -m abb_event_schema.export
+	pnpm --filter @abb/event-schema generate
+
+# Fails if the committed schema/types differ from what the models generate.
+schema-check:
+	cd $(SCHEMA) && uv run python -m abb_event_schema.export --check
+	pnpm --filter @abb/event-schema generate
+	git diff --exit-code -- $(SCHEMA)/ts $(SCHEMA)/schemas
 
 # Known-vulnerability scan (spec §111). JS: production dependencies only; dev-only findings are
 # tracked in docs/KNOWN_ISSUES.md. Python: whole locked set.
