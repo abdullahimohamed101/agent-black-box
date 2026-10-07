@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from abb_event_schema import limits
-from abb_event_schema.event import Event, EventIn
+from abb_event_schema.event import TIMESTAMP_PATTERN, Event, EventIn
 from abb_event_schema.registry import (
     ATTRIBUTE_KEY_PATTERN,
     EVENT_TYPES,
@@ -26,15 +26,18 @@ from abb_event_schema.registry import (
 from abb_event_schema.versioning import SCHEMA_VERSION, SUPPORTED_MAJOR
 
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
-_TIMESTAMP_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"
 _SCALAR = {"type": ["string", "number", "boolean"]}
 
 _ATTR_JSON: dict[AttrType, dict[str, Any]] = {
-    AttrType.STRING: {"type": "string"},
+    AttrType.STRING: {"type": "string", "maxLength": limits.MAX_ATTRIBUTE_STRING_LENGTH},
     AttrType.INTEGER: {"type": "integer"},
     AttrType.NUMBER: {"type": "number"},
     AttrType.BOOLEAN: {"type": "boolean"},
-    AttrType.STRING_LIST: {"type": "array", "items": {"type": "string"}},
+    AttrType.STRING_LIST: {
+        "type": "array",
+        "items": {"type": "string", "maxLength": limits.MAX_ATTRIBUTE_STRING_LENGTH},
+        "maxItems": limits.MAX_ATTRIBUTE_LIST_ITEMS,
+    },
 }
 
 
@@ -79,6 +82,8 @@ def _per_type_rules() -> list[dict[str, Any]]:
             then["properties"] = {"attributes": {"required": sorted(spec.required_attributes)}}
         if spec.span_role in (SpanRole.OPEN, SpanRole.CLOSE):
             then.setdefault("required", []).append("span_id")
+            # present is not enough: an explicit null is still "no span"
+            then.setdefault("properties", {})["span_id"] = {"type": "string"}
         if not then:
             continue
         rules.append(
@@ -97,7 +102,7 @@ def _build(model: type[EventIn] | type[Event], name: str) -> dict[str, Any]:
     schema: dict[str, Any] = model.model_json_schema(mode="validation")
     props = schema["properties"]
     props["attributes"] = _attributes_schema()
-    props["occurred_at"] = {"type": "string", "format": "date-time", "pattern": _TIMESTAMP_PATTERN}
+    props["occurred_at"] = {"type": "string", "format": "date-time", "pattern": TIMESTAMP_PATTERN}
     if "received_at" in props:
         props["received_at"] = dict(props["occurred_at"])
     props["parent_span_id"].pop("default", None)

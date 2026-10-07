@@ -48,6 +48,9 @@ export type Event = {
     "llm.output_tokens"?: number;
     "llm.provider"?: string;
     "llm.temperature"?: number;
+    /**
+     * @maxItems 64
+     */
     "loop.pattern"?: string[];
     "loop.repetitions"?: number;
     "policy.capability"?: string;
@@ -68,6 +71,9 @@ export type Event = {
     "span.kind"?: string;
     "span.name"?: string;
     "test.failed"?: number;
+    /**
+     * @maxItems 64
+     */
     "test.failing"?: string[];
     "test.framework"?: string;
     "test.passed"?: number;

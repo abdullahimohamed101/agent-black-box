@@ -405,3 +405,39 @@ def test_constructing_directly_validates_too() -> None:
     with pytest.raises(ValidationError):
         EventIn.model_validate(make_event(event_id="nope"))
     assert evt(1) == EventIn.model_validate(make_event()).event_id
+
+
+@pytest.mark.parametrize(
+    ("value", "code"),
+    [
+        ("1.0", "timestamp_format_invalid"),  # pydantic would read this as a Unix timestamp
+        ("1790000000", "timestamp_format_invalid"),
+        ("2026-10-06 20:13:22Z", "timestamp_format_invalid"),
+        ("2026-10-06t20:13:22z", "timestamp_format_invalid"),
+        ("2026-10-06", "timestamp_format_invalid"),
+        ("2026-13-01T00:00:00Z", "timestamp_format_invalid"),
+        ("2026-02-30T00:00:00Z", "timestamp_format_invalid"),
+        ("2026-10-06T20:13:60Z", "timestamp_format_invalid"),
+        ("2026-10-06T20:13:22", "timestamp_timezone_required"),
+        ("2026-10-06T20:13:22.5", "timestamp_timezone_required"),
+    ],
+)
+def test_timestamps_must_be_canonical_rfc3339(value: str, code: str) -> None:
+    assert code in issue_codes(rejected(make_event(occurred_at=value)))
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2026-10-06T20:13:22Z", datetime(2026, 10, 6, 20, 13, 22, tzinfo=timezone.utc)),
+        ("2026-10-06T20:13:22.5Z", datetime(2026, 10, 6, 20, 13, 22, 500000, tzinfo=timezone.utc)),
+        (
+            "2026-10-06T20:13:22.123456789Z",
+            datetime(2026, 10, 6, 20, 13, 22, 123456, tzinfo=timezone.utc),
+        ),
+        ("2026-10-06T22:13:22+02:00", datetime(2026, 10, 6, 20, 13, 22, tzinfo=timezone.utc)),
+        ("2026-10-06T15:43:22-04:30", datetime(2026, 10, 6, 20, 13, 22, tzinfo=timezone.utc)),
+    ],
+)
+def test_valid_rfc3339_forms_normalise_to_utc(value: str, expected: datetime) -> None:
+    assert parse_event_in(make_event(occurred_at=value)).occurred_at == expected

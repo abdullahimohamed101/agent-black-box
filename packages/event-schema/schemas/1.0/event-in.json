@@ -50,6 +50,11 @@
         ]
       },
       "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
         "required": [
           "span_id"
         ]
@@ -67,6 +72,11 @@
         ]
       },
       "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
         "required": [
           "span_id"
         ]
@@ -138,6 +148,9 @@
               "llm.model",
               "llm.provider"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -164,6 +177,9 @@
               "llm.model",
               "llm.provider"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -190,6 +206,9 @@
               "llm.model",
               "llm.provider"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -215,6 +234,9 @@
             "required": [
               "tool.name"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -240,6 +262,9 @@
             "required": [
               "tool.name"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -265,6 +290,9 @@
             "required": [
               "tool.name"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -386,6 +414,9 @@
             "required": [
               "shell.command"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -411,6 +442,9 @@
             "required": [
               "shell.command"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -436,6 +470,9 @@
             "required": [
               "shell.command"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -456,6 +493,11 @@
         ]
       },
       "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
         "required": [
           "span_id"
         ]
@@ -473,6 +515,11 @@
         ]
       },
       "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
         "required": [
           "span_id"
         ]
@@ -490,6 +537,11 @@
         ]
       },
       "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
         "required": [
           "span_id"
         ]
@@ -681,6 +733,9 @@
               "span.kind",
               "span.name"
             ]
+          },
+          "span_id": {
+            "type": "string"
           }
         },
         "required": [
@@ -701,6 +756,11 @@
         ]
       },
       "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
         "required": [
           "span_id"
         ]
@@ -718,6 +778,11 @@
         ]
       },
       "then": {
+        "properties": {
+          "span_id": {
+            "type": "string"
+          }
+        },
         "required": [
           "span_id"
         ]
@@ -784,15 +849,19 @@
       "maxProperties": 64,
       "properties": {
         "agent.child_id": {
+          "maxLength": 4096,
           "type": "string"
         },
         "agent.state": {
+          "maxLength": 4096,
           "type": "string"
         },
         "approval.capability": {
+          "maxLength": 4096,
           "type": "string"
         },
         "approval.id": {
+          "maxLength": 4096,
           "type": "string"
         },
         "cost.estimated_usd": {
@@ -800,6 +869,7 @@
           "type": "number"
         },
         "cost.pricing_version": {
+          "maxLength": 4096,
           "type": "string"
         },
         "db.latency_ms": {
@@ -807,6 +877,7 @@
           "type": "number"
         },
         "db.operation": {
+          "maxLength": 4096,
           "type": "string"
         },
         "db.rows_returned": {
@@ -814,15 +885,19 @@
           "type": "integer"
         },
         "db.system": {
+          "maxLength": 4096,
           "type": "string"
         },
         "file.hash_after": {
+          "maxLength": 4096,
           "type": "string"
         },
         "file.hash_before": {
+          "maxLength": 4096,
           "type": "string"
         },
         "file.language": {
+          "maxLength": 4096,
           "type": "string"
         },
         "file.lines_added": {
@@ -834,6 +909,7 @@
           "type": "integer"
         },
         "file.path": {
+          "maxLength": 4096,
           "type": "string"
         },
         "file.size_after": {
@@ -845,9 +921,11 @@
           "type": "integer"
         },
         "git.base_commit": {
+          "maxLength": 4096,
           "type": "string"
         },
         "git.branch": {
+          "maxLength": 4096,
           "type": "string"
         },
         "git.changed_files": {
@@ -855,9 +933,11 @@
           "type": "integer"
         },
         "git.commit_hash": {
+          "maxLength": 4096,
           "type": "string"
         },
         "git.head_commit": {
+          "maxLength": 4096,
           "type": "string"
         },
         "git.pr_number": {
@@ -865,9 +945,11 @@
           "type": "integer"
         },
         "git.push_target": {
+          "maxLength": 4096,
           "type": "string"
         },
         "git.repo": {
+          "maxLength": 4096,
           "type": "string"
         },
         "http.latency_ms": {
@@ -875,6 +957,7 @@
           "type": "number"
         },
         "http.method": {
+          "maxLength": 4096,
           "type": "string"
         },
         "http.status_code": {
@@ -882,6 +965,7 @@
           "type": "integer"
         },
         "http.url": {
+          "maxLength": 4096,
           "type": "string"
         },
         "llm.cached_input_tokens": {
@@ -889,6 +973,7 @@
           "type": "integer"
         },
         "llm.error_type": {
+          "maxLength": 4096,
           "type": "string"
         },
         "llm.input_tokens": {
@@ -904,6 +989,7 @@
           "type": "integer"
         },
         "llm.model": {
+          "maxLength": 4096,
           "type": "string"
         },
         "llm.output_tokens": {
@@ -911,6 +997,7 @@
           "type": "integer"
         },
         "llm.provider": {
+          "maxLength": 4096,
           "type": "string"
         },
         "llm.temperature": {
@@ -919,8 +1006,10 @@
         },
         "loop.pattern": {
           "items": {
+            "maxLength": 4096,
             "type": "string"
           },
+          "maxItems": 64,
           "type": "array"
         },
         "loop.repetitions": {
@@ -928,12 +1017,15 @@
           "type": "integer"
         },
         "policy.capability": {
+          "maxLength": 4096,
           "type": "string"
         },
         "policy.id": {
+          "maxLength": 4096,
           "type": "string"
         },
         "policy.reason": {
+          "maxLength": 4096,
           "type": "string"
         },
         "rate_limit.retry_after_ms": {
@@ -949,21 +1041,27 @@
           "type": "number"
         },
         "retry.of_event_id": {
+          "maxLength": 4096,
           "type": "string"
         },
         "retry.reason": {
+          "maxLength": 4096,
           "type": "string"
         },
         "run.name": {
+          "maxLength": 4096,
           "type": "string"
         },
         "secret.kind": {
+          "maxLength": 4096,
           "type": "string"
         },
         "shell.command": {
+          "maxLength": 4096,
           "type": "string"
         },
         "shell.cwd": {
+          "maxLength": 4096,
           "type": "string"
         },
         "shell.duration_ms": {
@@ -974,12 +1072,15 @@
           "type": "integer"
         },
         "shell.risk_class": {
+          "maxLength": 4096,
           "type": "string"
         },
         "span.kind": {
+          "maxLength": 4096,
           "type": "string"
         },
         "span.name": {
+          "maxLength": 4096,
           "type": "string"
         },
         "test.failed": {
@@ -988,11 +1089,14 @@
         },
         "test.failing": {
           "items": {
+            "maxLength": 4096,
             "type": "string"
           },
+          "maxItems": 64,
           "type": "array"
         },
         "test.framework": {
+          "maxLength": 4096,
           "type": "string"
         },
         "test.passed": {
@@ -1012,9 +1116,11 @@
           "type": "number"
         },
         "timeout.operation": {
+          "maxLength": 4096,
           "type": "string"
         },
         "tool.error_type": {
+          "maxLength": 4096,
           "type": "string"
         },
         "tool.latency_ms": {
@@ -1022,9 +1128,11 @@
           "type": "number"
         },
         "tool.name": {
+          "maxLength": 4096,
           "type": "string"
         },
         "tool.operation": {
+          "maxLength": 4096,
           "type": "string"
         },
         "tool.result_count": {
@@ -1065,7 +1173,7 @@
     },
     "occurred_at": {
       "format": "date-time",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?(Z|[+-]\\d{2}:\\d{2})$",
       "type": "string"
     },
     "parent_span_id": {

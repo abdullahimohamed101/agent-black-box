@@ -8,12 +8,13 @@ form with both set and the server's `received_at`. Events are immutable (INV-1).
 import json
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from pydantic import (
     AfterValidator,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StringConstraints,
@@ -52,6 +53,43 @@ def _no_nul(value: str) -> str:
     return value
 
 
+TIMESTAMP_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$"
+_TIMESTAMP_RE = re.compile(
+    r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})?$"
+)
+
+
+def _parse_rfc3339(value: Any) -> Any:
+    """Accept timestamp *strings* only in canonical RFC 3339 form, and parse them ourselves.
+
+    Pydantic would otherwise read "1.0" as a Unix timestamp and accept space-separated or
+    lowercase variants that other languages and the JSON Schema reject. Parsing here also
+    keeps Python 3.10 happy (`fromisoformat` only learned "Z" in 3.11).
+    """
+    if not isinstance(value, str):
+        return value
+    match = _TIMESTAMP_RE.match(value)
+    if match is None:
+        raise _fail(
+            "timestamp_format_invalid", "Timestamps must be RFC 3339, e.g. 2026-10-06T20:13:22Z."
+        )
+    year, month, day, hour, minute, second, fraction, offset = match.groups()
+    if offset is None:
+        raise _fail("timestamp_timezone_required", "Timestamps must include a UTC offset.")
+    if offset == "Z":
+        tz = timezone.utc
+    else:
+        sign = -1 if offset[0] == "-" else 1
+        tz = timezone(sign * timedelta(hours=int(offset[1:3]), minutes=int(offset[4:6])))
+    micros = int((fraction or "0").ljust(9, "0")[:6])  # sub-microsecond digits are dropped
+    try:
+        return datetime(
+            int(year), int(month), int(day), int(hour), int(minute), int(second), micros, tz
+        )
+    except ValueError:
+        raise _fail("timestamp_format_invalid", "Timestamp is not a real date and time.") from None
+
+
 def _require_utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise _fail("timestamp_timezone_required", "Timestamps must include a UTC offset.")
@@ -72,7 +110,7 @@ EventTypeName = Annotated[
     str, StringConstraints(pattern=EVENT_TYPE_PATTERN, max_length=MAX_EVENT_TYPE_LENGTH)
 ]
 SchemaVersionStr = Annotated[str, StringConstraints(pattern=r"^[0-9]{1,4}\.[0-9]{1,4}$")]
-UtcDatetime = Annotated[datetime, AfterValidator(_require_utc)]
+UtcDatetime = Annotated[datetime, BeforeValidator(_parse_rfc3339), AfterValidator(_require_utc)]
 Tag = Name64  # limits.MAX_TAG_LENGTH == 64; asserted in tests
 PayloadRef = Annotated[str, StringConstraints(pattern=r"^artifact://[A-Za-z0-9._~:/-]{1,480}$")]
 
