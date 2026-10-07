@@ -7,6 +7,7 @@ worker) is claimable again.
 """
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -37,6 +38,12 @@ class Job:
 def backoff_seconds(attempt: int, base: float, cap: float) -> float:
     """Delay before retry number `attempt` (1-based): base, 2*base, 4*base ... up to cap."""
     return float(min(cap, base * (2 ** (attempt - 1))))
+
+
+def oldest_first(rows: Iterable[Any]) -> list[Any]:
+    """UPDATE ... RETURNING does not preserve the CTE's ORDER BY. Restore the order in which jobs
+    became due so that workers process them oldest first."""
+    return sorted(rows, key=lambda r: (r.available_at, r.created_at, r.id))
 
 
 def _at(now: datetime | None) -> Any:
@@ -160,9 +167,7 @@ class JobQueue:
                 "lease_seconds": lease.total_seconds(),
             },
         )
-        # UPDATE ... RETURNING does not preserve the CTE's ORDER BY: restore oldest-first so
-        # workers process (and tests observe) jobs in the order they became due.
-        rows = sorted(claimed, key=lambda r: (r.available_at, r.created_at, r.id))
+        rows = oldest_first(claimed)
         return [
             Job(
                 r.id,

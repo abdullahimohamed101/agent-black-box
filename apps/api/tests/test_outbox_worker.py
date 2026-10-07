@@ -10,7 +10,7 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from abb_api.db import tables as t
-from abb_api.jobs.outbox import Job, JobQueue, backoff_seconds
+from abb_api.jobs.outbox import Job, JobQueue, backoff_seconds, oldest_first
 from abb_api.jobs.worker import Worker
 from tests.api_fixtures import Tick
 from tests.conftest import make_settings
@@ -514,23 +514,22 @@ async def test_a_job_that_keeps_killing_its_worker_is_dead_lettered_not_reclaime
     assert row.lease_owner is None
 
 
-async def test_claimed_jobs_are_returned_oldest_first_however_the_database_orders_them(
-    engine: AsyncEngine,
-) -> None:
-    """Flaky in the gate until fixed: UPDATE ... RETURNING does not preserve ORDER BY."""
-    ws = await workspace(engine)
-    async with engine.begin() as conn:
-        ids = [
-            await add_job(conn, ws, available_at=T0 - timedelta(minutes=minutes))
-            for minutes in (3, 9, 1, 7, 5, 2, 8, 4, 6)  # inserted out of order on purpose
-        ]
-        due = dict(zip(ids, (3, 9, 1, 7, 5, 2, 8, 4, 6), strict=True))
-    for _ in range(5):  # claim and release repeatedly so the physical order keeps changing
-        async with engine.begin() as conn:
-            jobs = await JobQueue(conn).claim(owner="w", limit=9, lease=LEASE, now=T0)
-            assert [due[j.id] for j in jobs] == sorted(due.values(), reverse=True)
-            await conn.execute(
-                update(t.outbox_jobs).values(
-                    status="pending", lease_owner=None, lease_expires_at=None, attempt_count=0
-                )
-            )
+def test_claimed_rows_are_put_back_in_oldest_first_order_whatever_order_they_arrive() -> None:
+    """UPDATE ... RETURNING may return rows in any order (it did, once, in the gate)."""
+    import random
+    from types import SimpleNamespace
+
+    rows = [
+        SimpleNamespace(id=uuid.UUID(int=n), available_at=T0 - timedelta(minutes=m), created_at=T0)
+        for n, m in enumerate(
+            (3, 9, 1, 7, 5, 2, 8, 4, 6, 7)
+        )  # two share a due time: id breaks the tie
+    ]
+    expected = [r.id for r in oldest_first(rows)]
+    assert [(T0 - r.available_at).seconds // 60 for r in oldest_first(rows)] == sorted(
+        [(T0 - r.available_at).seconds // 60 for r in rows], reverse=True
+    )
+    for seed in range(20):
+        shuffled = rows[:]
+        random.Random(seed).shuffle(shuffled)
+        assert [r.id for r in oldest_first(shuffled)] == expected
