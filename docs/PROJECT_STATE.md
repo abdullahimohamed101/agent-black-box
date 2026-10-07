@@ -3,41 +3,40 @@
 Last updated: 2026-10-07
 
 ## Current phase
-Phase 2 (data model, ingestion, run querying) is complete on `feature/phase-2-ingestion`, pushed, awaiting a PR, CI and merge.
-Phases 0 and 1 are merged to `main`.
+Phases 0-3 are merged to `main` (CI green). Phase 4 (core web product) is complete on `feature/phase-4-web-product`, `main` merged in, PR #26 awaiting CI and merge.
+Phases 3 and 4 were built in parallel in separate worktrees (`../abb-worktrees/`); each kept its own plan file.
 
 ## Current milestone
-M1 data plane done once Phase 2 merges. Next: Phase 3 (Python SDK).
+M1 data plane and SDK done. M2 (usable product) lands when Phase 4 merges; Phase 5 (live streaming) and Phase 6 (coding-agent demo) complete it.
 
 ## Completed work
-- Phase 0 foundation, Phase 1 event contract: see `docs/plans/completed/`.
-- Phase 2: tenant-keyed schema and migrations 0001-0006, API keys and CLI, idempotent ingestion (`/v1/events[/batch]`, gzip, limits,
-  rate limiting), outbox worker (leases, heartbeats, retries, dead letters), derived runs and spans, query API (runs, events, spans,
-  cursors, project scoping), OpenAPI contract, compose `migrate`/`worker`, `make smoke`/`make bench`. Evidence and defects found:
-  `docs/plans/completed/phase-2-ingestion.md`. ADR-002, ADR-012. Benchmark: `docs/benchmarks/phase-2-ingestion.md`.
+- Phase 0 foundation, Phase 1 event contract, Phase 2 ingestion/outbox/query API: see `docs/plans/completed/`.
+- Phase 3: `packages/sdk-python` (stdlib only, ADR-013), 135 tests, overhead 7-23 us/op (`docs/benchmarks/phase-3-sdk.md`), `make sdk-e2e`.
+  KI-020 fixed: `abb_runtime` role (migrations 0007-0008) cannot UPDATE/DELETE `events` or delete their parents; events->runs FK is RESTRICT.
+- Phase 4: `apps/web` dashboard, runs list, run detail with virtualized timeline, generated typed client, fixtures, server-side read proxy
+  (ADR-020, ADR-021), CSP/security headers, Playwright e2e (fixtures and real run), axe checks. Plan: `docs/plans/completed/phase-4-web-product.md`.
 
 ## In-progress work
 None.
 
 ## Blocked work
-- Merging needs the user's approval for a PR; GitHub CI has not run on the final Phase 2 commit.
+- Phase 4 merge needs the user's approval; GitHub CI on the merged Phase 4 branch not yet observed.
 
 ## Next actions (exact)
-1. With approval: open the Phase 2 PR (`feature/phase-2-ingestion` -> `main`), confirm CI green, merge.
-2. Branch `feature/phase-3-python-sdk` from updated `main`; `plan-change` for Phase 3 (`docs/IMPLEMENTATION_PLAN.md`). The plan must include **KI-020** (database roles; issue #4, target Phase 3) and decide:
-   pydantic in the SDK vs a stdlib builder validated by contract tests (Phase 1 R3), the exporter's retry/backoff against `429`/`503`
-   `Retry-After`, and how it uses `POST /v1/events/batch` (gzip, <= 1000 events, 5 MiB). Read `docs/architecture/api-v1.md` first.
+1. Confirm CI green on PR #26 and merge it (user merges).
+2. Branch `feature/phase-5-live-streaming` from updated `main`; `plan-change` for Phase 5 (SSE, `Last-Event-ID` resume, reorder buffer). Read
+   `docs/KNOWN_ISSUES.md` first: KI-029 (web key exposure, S1) and ADR-020's interim live-run refetch section are the direct inputs.
+3. Phase 6 follows (needs SDK and UI). Phases 7 (analytics; resolves KI-028) and 8 (integrations) can run in parallel after that.
 
 ## Open decisions
 - Remove the `Co-Authored-By` trailers from the 5 earliest commits (needs a force-push; not done).
-- How the Phase 4 web UI authenticates to the read API before Phase 15 (server-side `runs:read` key in the Next.js backend is the likely answer).
+- Web auth before Phase 15: decided in ADR-021 (server-side `runs:read` key); the web app must not be publicly exposed (KI-029).
 
 ## Known technical debt
-`docs/KNOWN_ISSUES.md` (severity, target and GitHub issue per item): notably full recomputation of very large active runs (KI-016), no DB privilege
-separation yet (KI-020), no quotas (KI-018), no failed-auth throttling (KI-019).
+`docs/KNOWN_ISSUES.md` (severity, target and GitHub issue per item): notably full recomputation of very large active runs (KI-016), no quotas (KI-018), no failed-auth throttling (KI-019).
 
 ## Last verified test status
-2026-10-07: `scripts/quality.sh full` exit 0: event-schema 337, api 329 (98% coverage), web 7; pristine clone also passes.
+2026-10-07: `scripts/quality.sh full` exit 0 on Phase 4 with main merged: event-schema 337, sdk 135, api 348, web 81; e2e 9 passed; real-run e2e passed.
 
 ## Last verified build status
 2026-10-07: images build; clean-slate `docker compose up --wait` reaches alembic 0006 with 15 tables; `scripts/smoke.sh` passes;
