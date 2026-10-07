@@ -1,3 +1,5 @@
 """Agent Black Box canonical telemetry contract."""
 
-SCHEMA_VERSION = "1.0"
+from abb_event_schema.versioning import SCHEMA_VERSION
+
+__all__ = ["SCHEMA_VERSION"]
