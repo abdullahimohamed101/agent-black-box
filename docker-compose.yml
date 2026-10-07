@@ -1,19 +1,23 @@
 # Local development stack. `make db` starts only Postgres; `docker compose --profile app up` adds api + web.
 name: agent-black-box
 
-x-api: &api
-  image: agent-black-box-api:local
-  build:
-    context: .
-    dockerfile: apps/api/Dockerfile
-  environment:
+x-api-env: &api-env
     ABB_ENVIRONMENT: development
-    ABB_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb
+    # The API and worker connect as the least-privilege role (KI-020): it can append to `events` but
+    # never update or delete. Only the one-shot `migrate` job below uses the owner.
+    ABB_DATABASE_URL: postgresql+asyncpg://abb_runtime:${ABB_RUNTIME_DB_PASSWORD:-abb_runtime_dev_password}@postgres:5432/abb
     ABB_CORS_ORIGINS: http://localhost:3000
     # Overridable so load tests can measure capacity without the per-project limiter in the way.
     ABB_RATE_LIMIT_EVENTS_PER_SECOND: ${ABB_RATE_LIMIT_EVENTS_PER_SECOND:-2000}
     ABB_RATE_LIMIT_BURST_EVENTS: ${ABB_RATE_LIMIT_BURST_EVENTS:-10000}
     ABB_SUMMARY_DEBOUNCE_SECONDS: ${ABB_SUMMARY_DEBOUNCE_SECONDS:-1}
+
+x-api: &api
+  image: agent-black-box-api:local
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+  environment: *api-env
 
 services:
   postgres:
@@ -38,6 +42,10 @@ services:
     <<: *api
     profiles: ["app"]
     command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *api-env
+      ABB_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb
+      ABB_RUNTIME_DB_PASSWORD: ${ABB_RUNTIME_DB_PASSWORD:-abb_runtime_dev_password}
     restart: "no"
     depends_on:
       postgres:

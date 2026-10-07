@@ -37,6 +37,7 @@ jobs:
         run: |
           (cd apps/api && uv sync --frozen)
           (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
           pnpm install --frozen-lockfile
       - name: Create test database
         run: PGPASSWORD=abb_dev_password psql -h localhost -p 5433 -U abb -d abb -c 'CREATE DATABASE abb_test'
@@ -44,6 +45,20 @@ jobs:
         run: scripts/quality.sh full
       - name: Dependency audit
         run: make audit
+
+  sdk:
+    # The SDK promises Python >= 3.10 and no dependencies: test the oldest and a current version.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: |
+          cd packages/sdk-python
+          uv sync --frozen --python ${{ matrix.python }}
+          uv run pytest -q
 
   containers:
     runs-on: ubuntu-latest
@@ -57,6 +72,11 @@ jobs:
         run: |
           curl -fsS localhost:3000/ >/dev/null
           scripts/smoke.sh
+      - uses: astral-sh/setup-uv@v5
+      - name: SDK end to end (real SDK -> real API -> read back)
+        run: |
+          (cd packages/sdk-python && uv sync --frozen)
+          scripts/sdk-e2e.sh
       - name: Logs on failure
         if: failure()
         run: docker compose --profile app logs --no-color

@@ -1,0 +1,60 @@
+[project]
+name = "agent-black-box"
+version = "0.1.0"
+description = "Agent Black Box Python SDK: trace AI agents without ever harming them (standard library only)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []  # ADR-013: no runtime dependencies
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "jsonschema>=4.23",
+  "types-jsonschema>=4.26.0.20261006",
+  "abb-event-schema",  # contract tests only (ADR-013)
+]
+
+[tool.uv.sources]
+abb-event-schema = { path = "../event-schema", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/blackbox"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S311", "S310", "S113"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["blackbox", "tests"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+
+[tool.coverage.run]
+source = ["blackbox"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true

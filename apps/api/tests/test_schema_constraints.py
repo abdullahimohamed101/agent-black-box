@@ -111,8 +111,10 @@ async def test_insert_on_conflict_do_nothing_is_the_idempotent_write(engine: Asy
         assert original == hashlib.sha256(event_id.bytes).digest()  # first write wins
 
 
-async def test_deleting_a_run_removes_its_events_and_spans(engine: AsyncEngine) -> None:
-    """The retention path: derived and raw rows go with the run."""
+async def test_a_run_with_events_cannot_be_deleted_until_retention_removes_them(
+    engine: AsyncEngine,
+) -> None:
+    """INV-1 (0008): events never vanish as a side effect of deleting a run."""
     async with engine.begin() as conn:
         ws = await make_workspace(conn)
         project = await make_project(conn, ws)
@@ -123,8 +125,12 @@ async def test_deleting_a_run_removes_its_events_and_spans(engine: AsyncEngine) 
                 workspace_id=ws, id=uid(), run_id=run, trace_id=uid(), agent_slug="a"
             )
         )
+    with pytest.raises(IntegrityError):
+        async with engine.begin() as conn:
+            await conn.execute(delete(t.runs).where(t.runs.c.id == run))
+    async with engine.begin() as conn:  # the explicit, privileged retention path
+        await conn.execute(text("DELETE FROM events"))
         await conn.execute(delete(t.runs).where(t.runs.c.id == run))
-        assert await count(conn, t.events) == 0
         assert await count(conn, t.spans) == 0
 
 

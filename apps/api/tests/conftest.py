@@ -88,8 +88,36 @@ def database_url() -> Iterator[str]:
         yield url
 
 
+# A per-session login role that inherits the migration's `abb_runtime` privileges. The dev stack's
+# own `abb_runtime` role (and its password) is never touched by the tests.
+RUNTIME_ROLE = f"abb_rt_test_{uuid.uuid4().hex[:8]}"
+RUNTIME_PASSWORD = "abb_runtime_test_only"
+
+
+def runtime_url(database_url: str) -> str:
+    """The same database, connecting as the least-privilege application role (KI-020)."""
+    return (
+        make_url(database_url)
+        .set(username=RUNTIME_ROLE, password=RUNTIME_PASSWORD)
+        .render_as_string(hide_password=False)
+    )
+
+
+@pytest.fixture(scope="session")
+def runtime_database_url(database_url: str) -> Iterator[str]:
+    asyncio.run(
+        _admin(
+            f"CREATE ROLE {RUNTIME_ROLE} LOGIN PASSWORD '{RUNTIME_PASSWORD}' IN ROLE abb_runtime"
+        )
+    )
+    try:
+        yield runtime_url(database_url)
+    finally:
+        asyncio.run(_admin(f"DROP ROLE IF EXISTS {RUNTIME_ROLE}"))
+
+
 @pytest.fixture
-async def engine(database_url: str) -> AsyncIterator[AsyncEngine]:
+async def engine(database_url: str, runtime_database_url: str) -> AsyncIterator[AsyncEngine]:
     """A clean, migrated database for one test. NullPool: each test has its own event loop."""
     engine = create_async_engine(database_url, poolclass=NullPool)
     names = ", ".join(f'"{t.name}"' for t in metadata.sorted_tables)
@@ -110,8 +138,8 @@ async def _client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 
 
 @pytest.fixture
-async def client(database_url: str) -> AsyncIterator[httpx.AsyncClient]:
-    async for c in _client(create_app(make_settings(database_url))):
+async def client(runtime_database_url: str) -> AsyncIterator[httpx.AsyncClient]:
+    async for c in _client(create_app(make_settings(runtime_database_url))):
         yield c
 
 
