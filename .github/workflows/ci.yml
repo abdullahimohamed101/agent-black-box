@@ -37,6 +37,7 @@ jobs:
         run: |
           (cd apps/api && uv sync --frozen)
           (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
           pnpm install --frozen-lockfile
       - name: Create test database
         run: PGPASSWORD=abb_dev_password psql -h localhost -p 5433 -U abb -d abb -c 'CREATE DATABASE abb_test'
