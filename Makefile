@@ -1,6 +1,7 @@
 .PHONY: audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
+SCHEMA := packages/event-schema
 ENV_FILE := .env
 
 help:
@@ -10,6 +11,7 @@ help:
 setup:
 	@test -f $(ENV_FILE) || cp .env.example $(ENV_FILE)
 	cd $(API) && uv sync
+	cd $(SCHEMA) && uv sync
 	pnpm install --frozen-lockfile
 	$(MAKE) db
 	$(MAKE) migrate
@@ -33,18 +35,22 @@ dev: db
 	wait
 
 test:
+	cd $(SCHEMA) && uv run pytest -q
 	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run pytest -q
 	pnpm --filter @abb/web test
 
 lint:
+	cd $(SCHEMA) && uv run ruff check . && uv run ruff format --check .
 	cd $(API) && uv run ruff check . && uv run ruff format --check .
 	pnpm --filter @abb/web lint && pnpm --filter @abb/web format:check
 
 format:
+	cd $(SCHEMA) && uv run ruff check --fix . && uv run ruff format .
 	cd $(API) && uv run ruff check --fix . && uv run ruff format .
 	pnpm --filter @abb/web format
 
 typecheck:
+	cd $(SCHEMA) && uv run mypy
 	cd $(API) && uv run mypy
 	pnpm --filter @abb/web typecheck
 
