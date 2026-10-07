@@ -28,6 +28,26 @@ describe("read proxy", () => {
     expect(((await r.json()) as { items: unknown[] }).items).toHaveLength(1);
   });
 
+  it("refuses fixtures in production unless explicitly allowed", async () => {
+    vi.stubEnv("ABB_WEB_DATA_SOURCE", "fixtures");
+    vi.stubEnv("NODE_ENV", "production");
+    const r = await readThrough(["v1", "runs"], new URLSearchParams());
+    expect(r.status).toBe(503);
+    expect(((await r.json()) as { error: { code: string } }).error.code).toBe("FIXTURES_DISABLED");
+    vi.stubEnv("ABB_WEB_ALLOW_FIXTURES", "1");
+    expect((await readThrough(["v1", "runs"], new URLSearchParams())).status).toBe(200);
+  });
+
+  it("caps the query string and marks responses no-store/nosniff", async () => {
+    vi.stubEnv("ABB_WEB_DATA_SOURCE", "fixtures");
+    expect(
+      (await readThrough(["v1", "runs"], new URLSearchParams({ q: "x".repeat(3000) }))).status,
+    ).toBe(414);
+    const ok = await readThrough(["v1", "runs"], new URLSearchParams());
+    expect(ok.headers.get("cache-control")).toBe("no-store");
+    expect(ok.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
   it("fails closed without a key and never exposes it to the caller", async () => {
     vi.stubEnv("ABB_WEB_API_KEY", "");
     expect((await readThrough(["v1", "runs"], new URLSearchParams())).status).toBe(503);

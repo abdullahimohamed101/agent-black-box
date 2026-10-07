@@ -16,7 +16,7 @@ export default defineConfig({
       ...common,
       command: "pnpm exec next start --port 3100",
       url: "http://localhost:3100",
-      env: { ABB_WEB_DATA_SOURCE: "fixtures" },
+      env: { ABB_WEB_DATA_SOURCE: "fixtures", ABB_WEB_ALLOW_FIXTURES: "1" },
     },
     ...(real
       ? [

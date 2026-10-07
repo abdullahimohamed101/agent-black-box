@@ -129,3 +129,20 @@ test("mobile layout has no horizontal page scroll", async ({ page }) => {
   }
   await page.screenshot({ path: `${SHOTS}/run-mobile.png`, fullPage: true });
 });
+
+test("security headers are set and the CSP breaks nothing", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  page.on("pageerror", (e) => problems.push(e.message));
+  const res = await page.goto(`${BASE}/runs/${RUN(2)}`);
+  const h = res!.headers();
+  expect(h["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(h["content-security-policy"]).toContain("object-src 'none'");
+  expect(h["x-content-type-options"]).toBe("nosniff");
+  expect(h["referrer-policy"]).toBe("no-referrer");
+  await expect(page.getByTestId("first-error")).toBeVisible();
+  const api = await page.request.get("/api/abb/v1/runs");
+  expect(api.headers()["cache-control"]).toContain("no-store");
+  expect(api.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(problems).toEqual([]);
+});
