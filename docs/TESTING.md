@@ -23,7 +23,9 @@ make typecheck   # mypy, tsc
 scripts/quality.sh quick   # ruff, mypy, eslint, prettier, tsc, pytest, vitest
 scripts/quality.sh full    # quick + migration up/down/up on the TEST database + next build + wheel build
 ```
-Database tests need Postgres (`make db`) and read `ABB_TEST_DATABASE_URL` (database `abb_test`).
-The dev database is never used for destructive migration checks.
+Database tests need Postgres (`make db`). `ABB_TEST_DATABASE_URL` names the server and credentials; the
+test session creates and drops its own throwaway database (migrated to head), tables are truncated
+between tests, and migration tests create one database each. Neither the dev database nor `abb_test`
+holds test data.
 ```text
 ```

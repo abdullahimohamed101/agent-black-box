@@ -6,7 +6,7 @@ import pytest
 
 from abb_api import __version__
 from abb_api.main import create_app
-from tests.conftest import TEST_DATABASE_URL, _client, make_settings
+from tests.conftest import _client, make_settings
 
 
 async def test_healthz_needs_no_database(client_db_down: httpx.AsyncClient) -> None:
@@ -62,8 +62,10 @@ async def test_request_log_is_structured_with_request_id(
     assert response.headers["x-request-id"]
 
 
-async def test_unhandled_exception_returns_generic_500_with_request_id_header() -> None:
-    app = create_app(make_settings(TEST_DATABASE_URL))
+async def test_unhandled_exception_returns_generic_500_with_request_id_header(
+    database_url: str,
+) -> None:
+    app = create_app(make_settings(database_url))
 
     @app.get("/boom")
     async def boom() -> None:
@@ -97,8 +99,8 @@ async def test_cors_allows_configured_origin_only(client: httpx.AsyncClient) -> 
     assert "access-control-allow-origin" not in bad.headers
 
 
-async def test_readyz_is_bounded_when_pool_is_saturated() -> None:
-    app = create_app(make_settings(TEST_DATABASE_URL))
+async def test_readyz_is_bounded_when_pool_is_saturated(database_url: str) -> None:
+    app = create_app(make_settings(database_url))
     async for c in _client(app):
         engine = app.state.engine
         held = [await engine.connect() for _ in range(engine.pool.size() + 10)]
