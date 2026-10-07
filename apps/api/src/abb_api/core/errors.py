@@ -24,6 +24,16 @@ class ErrorCategory(StrEnum):
     INTERNAL = "INTERNAL"
 
 
+_HTTP_STATUS_CATEGORY = {
+    401: ErrorCategory.AUTHENTICATION,
+    403: ErrorCategory.AUTHORIZATION,
+    404: ErrorCategory.NOT_FOUND,
+    409: ErrorCategory.CONFLICT,
+    429: ErrorCategory.RATE_LIMIT,
+    504: ErrorCategory.TIMEOUT,
+}
+
+
 class AppError(Exception):
     """An error the API chooses to report. Retryability is explicit, never inferred."""
 
@@ -57,7 +67,10 @@ def error_response(error: AppError) -> JSONResponse:
             "details": error.details,
         }
     }
-    return JSONResponse(body, status_code=error.status_code)
+    request_id = get_request_id()
+    # Set here too: unhandled-exception responses are produced outside the request-ID middleware.
+    headers = {"X-Request-ID": request_id} if request_id else None
+    return JSONResponse(body, status_code=error.status_code, headers=headers)
 
 
 def install_error_handlers(app: FastAPI) -> None:
@@ -80,10 +93,12 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
-        category = ErrorCategory.NOT_FOUND if exc.status_code == 404 else ErrorCategory.INTERNAL
+        category = _HTTP_STATUS_CATEGORY.get(exc.status_code)
+        if category is None:
+            category = ErrorCategory.VALIDATION if exc.status_code < 500 else ErrorCategory.INTERNAL
         return error_response(
             AppError(
-                "NOT_FOUND" if exc.status_code == 404 else "HTTP_ERROR",
+                "NOT_FOUND" if exc.status_code == 404 else f"HTTP_{exc.status_code}",
                 str(exc.detail),
                 category=category,
                 status_code=exc.status_code,

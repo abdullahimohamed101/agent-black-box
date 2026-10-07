@@ -1,4 +1,4 @@
-.PHONY: setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
+.PHONY: audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
 ENV_FILE := .env
@@ -47,6 +47,12 @@ format:
 typecheck:
 	cd $(API) && uv run mypy
 	pnpm --filter @abb/web typecheck
+
+# Known-vulnerability scan (spec §111). JS: production dependencies only; dev-only findings are
+# tracked in docs/KNOWN_ISSUES.md. Python: whole locked set.
+audit:
+	pnpm audit --prod
+	cd $(API) && uv export --frozen --no-hashes --no-emit-project -o /tmp/abb-api-requirements.txt >/dev/null && uvx --python 3.12 pip-audit -r /tmp/abb-api-requirements.txt
 
 quality:
 	scripts/quality.sh quick
