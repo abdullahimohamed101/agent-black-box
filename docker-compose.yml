@@ -41,7 +41,8 @@ services:
   web:
     profiles: ["app"]
     build:
-      context: ./apps/web
+      context: .
+      dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:

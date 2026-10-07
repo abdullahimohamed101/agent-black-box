@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    env:
+      ABB_DATABASE_URL: postgresql+asyncpg://abb:abb_dev_password@localhost:5433/abb
+      ABB_TEST_DATABASE_URL: postgresql+asyncpg://abb:abb_dev_password@localhost:5433/abb_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          pnpm install --frozen-lockfile
+      - name: Create test database
+        run: PGPASSWORD=abb_dev_password psql -h localhost -p 5433 -U abb -d abb -c 'CREATE DATABASE abb_test'
+      - name: Quality gate (full)
+        run: scripts/quality.sh full
+
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the stack
+        run: |
+          cp .env.example .env
+          docker compose --profile app up -d --build --wait
+      - name: Smoke
+        run: |
+          curl -fsS localhost:8000/healthz
+          curl -fsS localhost:8000/readyz
+          curl -fsS localhost:3000/ >/dev/null
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile app logs --no-color
