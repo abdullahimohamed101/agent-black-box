@@ -250,7 +250,7 @@ events = Table(
     Column("content_hash", LargeBinary, nullable=False),
     PrimaryKeyConstraint("workspace_id", "event_id"),
     ForeignKeyConstraint(
-        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="RESTRICT"
     ),
     ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
     Index("ix_events_run_sequence", "workspace_id", "run_id", "sequence", "event_id"),

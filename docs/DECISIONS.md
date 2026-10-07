@@ -19,5 +19,6 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-010 | Client-side redaction before export | 3 | Accepted by spec; file pending |
 | ADR-011 | Build-process reconciliation (prompt vs spec, ServerFlow workflow) | pre-0 | Accepted ([file](decisions/ADR-011-build-process-reconciliation.md)) |
 | ADR-012 | Run state derived asynchronously through a transactional outbox | 2 | Accepted ([file](decisions/ADR-012-derived-run-state-and-outbox.md)) |
+| ADR-013 | Python SDK is standard-library only; contract tests replace pydantic | 3 | Accepted ([file](decisions/ADR-013-stdlib-python-sdk.md)) |
 | ADR-020 | Web data fetching: TanStack Query behind a same-origin read proxy | 4 | Accepted ([file](decisions/ADR-020-web-data-fetching-and-cache.md)) |
 | ADR-021 | Web reads the API through a server-side proxy holding a `runs:read` key | 4 | Accepted ([file](decisions/ADR-021-web-api-access-before-auth.md)) |

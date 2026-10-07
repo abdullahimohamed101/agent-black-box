@@ -10,7 +10,8 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from abb_api.auth import scopes
 from abb_api.auth.repository import ApiKeyRepository
@@ -19,7 +20,7 @@ from abb_api.ingestion.ratelimit import RateLimiter
 from abb_api.jobs.handlers import HANDLERS
 from abb_api.jobs.worker import Worker
 from abb_api.main import create_app
-from tests.conftest import _client, make_settings
+from tests.conftest import _client, make_settings, runtime_url
 from tests.ingest_helpers import RECEIVED, Tenant, make_tenant
 
 NOW = RECEIVED
@@ -123,15 +124,27 @@ async def build_api(
         tokens["other"] = (
             await other_keys.create(scopes=rw, project_id=other.project_uuids["p"])
         ).token
+    # The application and the worker run as the least-privilege role; `engine` (the owner) only
+    # seeds and truncates, so every API test also proves the runtime role is sufficient (KI-020).
     app = create_app(
-        settings or make_settings(database_url), clock=clock, rate_limiter=rate_limiter
+        settings.model_copy(update={"database_url": runtime_url(database_url)})
+        if settings
+        else make_settings(runtime_url(database_url)),
+        clock=clock,
+        rate_limiter=rate_limiter,
     )
-    worker = Worker(engine, HANDLERS, make_settings(database_url), owner="api-test")
-    async for client in _client(app):
-        yield Api(client, engine, tenant, other, clock, tokens, worker, app)
+    worker_engine = create_async_engine(runtime_url(database_url), poolclass=NullPool)
+    worker = Worker(worker_engine, HANDLERS, make_settings(database_url), owner="api-test")
+    try:
+        async for client in _client(app):
+            yield Api(client, engine, tenant, other, clock, tokens, worker, app)
+    finally:
+        await worker_engine.dispose()
 
 
 @pytest.fixture
-async def api(database_url: str, engine: AsyncEngine) -> AsyncIterator[Api]:
+async def api(
+    database_url: str, runtime_database_url: str, engine: AsyncEngine
+) -> AsyncIterator[Api]:
     async for instance in build_api(database_url, engine):
         yield instance

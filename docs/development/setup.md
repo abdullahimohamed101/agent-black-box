@@ -36,6 +36,10 @@ cp .env.example .env && make setup
 | Provision a tenant and key | `make seed` (local dev key) or `python -m abb_api.cli --help` |
 | Latency baseline | `make seed && make bench` (read `docs/benchmarks/phase-2-ingestion.md` first) |
 
+Database roles: Compose runs `migrate` as the owner (`abb`) and the API/worker as `abb_runtime` (cannot UPDATE/DELETE `events`). The native
+`.env` keeps using the owner for convenience; to try the restricted role natively, export `ABB_RUNTIME_DB_PASSWORD`, run `make migrate`, and point
+`ABB_DATABASE_URL` at `abb_runtime` (see `.env.example`), keeping `ABB_MIGRATION_DATABASE_URL` on the owner.
+
 Native `make dev` does not start the worker, so runs stay `processing` unless you start one (or use `make up`).
 
 ## Web app against the API (Phase 4)

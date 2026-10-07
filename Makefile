@@ -1,7 +1,8 @@
-.PHONY: e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
+.PHONY: sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
 SCHEMA := packages/event-schema
+SDK := packages/sdk-python
 ENV_FILE := .env
 
 help:
@@ -12,6 +13,7 @@ setup:
 	@test -f $(ENV_FILE) || cp .env.example $(ENV_FILE)
 	cd $(API) && uv sync
 	cd $(SCHEMA) && uv sync
+	cd $(SDK) && uv sync
 	pnpm install --frozen-lockfile
 	$(MAKE) db
 	$(MAKE) migrate
@@ -36,21 +38,25 @@ dev: db
 
 test:
 	cd $(SCHEMA) && uv run pytest -q
+	cd $(SDK) && uv run pytest -q
 	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run pytest -q
 	pnpm --filter @abb/web test
 
 lint:
 	cd $(SCHEMA) && uv run ruff check . && uv run ruff format --check .
+	cd $(SDK) && uv run ruff check . && uv run ruff format --check .
 	cd $(API) && uv run ruff check . && uv run ruff format --check .
 	pnpm --filter @abb/web lint && pnpm --filter @abb/web format:check
 
 format:
 	cd $(SCHEMA) && uv run ruff check --fix . && uv run ruff format .
+	cd $(SDK) && uv run ruff check --fix . && uv run ruff format .
 	cd $(API) && uv run ruff check --fix . && uv run ruff format .
 	pnpm --filter @abb/web format
 
 typecheck:
 	cd $(SCHEMA) && uv run mypy
+	cd $(SDK) && uv run mypy
 	cd $(API) && uv run mypy
 	pnpm --filter @abb/web typecheck
 
@@ -84,6 +90,10 @@ smoke:
 # Ingestion and read latency against the running stack (needs `make up` and `make seed`).
 bench:
 	cd $(API) && uv run python ../../scripts/bench_ingest.py --key-file $(CURDIR)/.local/dev-api-key
+
+# SDK end to end against the running stack (needs `make up`).
+sdk-e2e:
+	scripts/sdk-e2e.sh
 
 # Known-vulnerability scan (spec §111). JS: production dependencies only; dev-only findings are
 # tracked in docs/KNOWN_ISSUES.md. Python: whole locked set.
