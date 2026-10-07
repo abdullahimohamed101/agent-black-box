@@ -21,6 +21,9 @@ from abb_api.ingestion.router import router as ingestion_router
 from abb_api.ingestion.service import IngestionService
 from abb_api.runs.router import router as runs_router
 from abb_api.runs.service import RunService
+from abb_api.streaming.hub import StreamHub
+from abb_api.streaming.router import router as streams_router
+from abb_api.streaming.service import StreamService
 
 
 def _install_openapi(app: FastAPI) -> None:
@@ -75,9 +78,13 @@ def create_app(
         app.state.engine = engine
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
         app.state.runs = RunService(engine, clock)
+        hub = StreamHub(settings.database_url)
+        app.state.streams = StreamService(engine, hub, app.state.runs, settings)
+        hub.start()
         try:
             yield
         finally:
+            await hub.stop()
             await engine.dispose()
 
     app = FastAPI(title="Agent Black Box API", version=__version__, lifespan=lifespan)
@@ -96,6 +103,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(ingestion_router)
     app.include_router(runs_router)
+    app.include_router(streams_router)
     _install_openapi(app)
     return app
 

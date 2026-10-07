@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     rate_limit_bytes_per_second: float = Field(default=10 * 1024 * 1024.0, gt=0)
     rate_limit_burst_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
 
+    # Live streams (spec §76, ADR-022). Limits are per API process until Phase 19.
+    stream_max_total: int = Field(default=50, ge=1)
+    stream_max_per_key: int = Field(default=10, ge=1)
+    stream_max_lifetime_seconds: float = Field(default=900.0, gt=0)
+    stream_fallback_poll_seconds: float = Field(default=2.0, gt=0)
+    stream_keepalive_seconds: float = Field(default=15.0, gt=0)
+    stream_write_timeout_seconds: float = Field(default=10.0, gt=0)
+    stream_end_quiet_seconds: float = Field(default=5.0, ge=0)
+    stream_overlap_seconds: float = Field(default=30.0, ge=0)
+    stream_page_size: int = Field(default=200, ge=1, le=500)
+
     @model_validator(mode="after")
     def _bursts_fit_a_full_batch(self) -> "Settings":
         # A bucket smaller than one maximal batch could never admit it: fail at startup instead.
