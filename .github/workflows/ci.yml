@@ -41,6 +41,8 @@ jobs:
         run: PGPASSWORD=abb_dev_password psql -h localhost -p 5433 -U abb -d abb -c 'CREATE DATABASE abb_test'
       - name: Quality gate (full)
         run: scripts/quality.sh full
+      - name: Dependency audit
+        run: make audit
 
   containers:
     runs-on: ubuntu-latest

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchReadiness, type HealthResult } from "@/lib/api";
 
 type View = { state: "loading" } | HealthResult;
@@ -8,9 +8,14 @@ type View = { state: "loading" } | HealthResult;
 export function ApiHealth() {
   const [view, setView] = useState<View>({ state: "loading" });
 
+  const latest = useRef(0);
+
   const check = useCallback(async () => {
+    // Only the most recent check may update the view; rapid re-checks must not race.
+    const id = ++latest.current;
     setView({ state: "loading" });
-    setView(await fetchReadiness());
+    const result = await fetchReadiness();
+    if (id === latest.current) setView(result);
   }, []);
 
   useEffect(() => {

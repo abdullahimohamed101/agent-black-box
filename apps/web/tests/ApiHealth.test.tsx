@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiHealth } from "@/components/ApiHealth";
 
@@ -34,5 +34,21 @@ describe("ApiHealth", () => {
     vi.stubGlobal("fetch", () => Promise.reject(new Error("offline")));
     render(<ApiHealth />);
     expect(await screen.findByText(/API unreachable: offline/)).toBeInTheDocument();
+  });
+
+  it("ignores a stale response from a superseded check", async () => {
+    const resolvers: Array<(r: Response) => void> = [];
+    vi.stubGlobal("fetch", () => new Promise<Response>((resolve) => resolvers.push(resolve)));
+    render(<ApiHealth />);
+    fireEvent.click(screen.getByRole("button", { name: "Re-check" }));
+    const ok = (version: string) =>
+      new Response(JSON.stringify({ status: "ok", version, database: "ok" }));
+    // The second (latest) check answers first; the first, older answer arrives afterwards.
+    resolvers[1]!(ok("new"));
+    expect(await screen.findByText(/API vnew/)).toBeInTheDocument();
+    resolvers[0]!(ok("old"));
+    await Promise.resolve();
+    expect(screen.queryByText(/API vold/)).not.toBeInTheDocument();
+    expect(screen.getByText(/API vnew/)).toBeInTheDocument();
   });
 });
