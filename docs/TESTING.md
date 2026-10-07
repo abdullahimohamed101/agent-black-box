@@ -27,6 +27,18 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
 - Every test has a 90 s timeout so a deadlock fails fast. Security-relevant logic is **mutation-checked** during review
   (change the code, confirm a test fails); tests that survive a mutant are strengthened, not kept.
 
+### Web (Phase 4)
+- **Vitest + Testing Library** (`apps/web/tests`): pure timeline/dashboard/format logic, the read proxy (allowlist, key never forwarded
+  to the browser, upstream auth failure mapped to 502), the fixture API (cursor paging, filters), and components (run detail, runs list,
+  dashboard, drawers) with every loading / empty / error / not-found state, keyboard navigation and hostile payloads rendered as text.
+  The typed client stays honest through `pnpm --filter @abb/web gen:api:check` (part of `scripts/quality.sh`).
+- **Fixtures** (`apps/web/src/fixtures`): success, failure+retry, expensive, running, awaiting approval and a 10,000-event stress run,
+  deterministic and served by the same read routes when `ABB_WEB_DATA_SOURCE=fixtures`.
+- **Playwright** (`make e2e`, port 3100, system Chrome so no browser download): fixture smoke, axe (WCAG A/AA, no serious/critical),
+  focus return, a bounded DOM for 10,000 events, mobile overflow, screenshots to `docs/screenshots/phase-4/`.
+  `make e2e-real` (`scripts/e2e-web-real.sh`) starts an API (:8110) and worker against a dedicated `abb_p4` database, ingests runs over
+  HTTP and drives the UI through the web proxy (:3102). It never touches the shared dev/test databases.
+
 Rules: never skip/weaken a failing test; no mocks where a real Postgres test is feasible; UI
 changes are exercised in a browser; fixtures are deterministic (fixed IDs/timestamps).
 
