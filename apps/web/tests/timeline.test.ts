@@ -7,6 +7,7 @@ import {
   eventClass,
   filterEvents,
   firstError,
+  isError,
   groupKeys,
 } from "@/lib/timeline";
 
@@ -36,6 +37,19 @@ describe("firstError", () => {
     expect(first.event_id).toBe(all[0]!.event_id);
   });
   it("is undefined for a clean run", () => expect(firstError(successRun().events)).toBeUndefined());
+});
+
+describe("isError", () => {
+  const base = successRun().events[0]!;
+  it.each([
+    [{ status: "error" }, true],
+    [{ status: "timeout" }, true],
+    [{ status: "success" }, false],
+    [{ status: null }, false],
+    [{ status: null, event_type: "llm.request.failed" }, true],
+  ])("%j -> %s", (patch, expected) => {
+    expect(isError({ ...base, ...patch })).toBe(expected);
+  });
 });
 
 describe("filterEvents", () => {

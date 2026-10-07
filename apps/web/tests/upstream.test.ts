@@ -12,6 +12,9 @@ describe("read proxy", () => {
       ["v1", "events"],
       ["v1", "runs", "x", "delete"],
       ["admin"],
+      ["x", "v1", "runs"],
+      ["v1", "runs", "x", "events", "y", "z"],
+      ["v1", "runs", "a.b"],
       ["v1", "runs", "..", "keys"],
     ]) {
       expect((await readThrough(p, new URLSearchParams())).status).toBe(404);
