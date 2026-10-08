@@ -89,14 +89,45 @@ _RAW_RULES: tuple[tuple[re.Pattern[str], int, str, str], ...] = tuple(
         (r"--no-preserve-root", 4, DESTRUCTIVE, "disables the root safeguard"),
         (r"\b(shutdown|reboot|halt|poweroff)\b", 4, PROCESS_CONTROL, "stops the machine"),
         (
-            r"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z)?sh\b",
+            r"\b(curl|wget|fetch)\b[^|]*\|\s*(sudo\s+)?(env\s+)?(ba|z|da|k)?sh\b"
+            r"|\b(curl|wget|fetch)\b[^|]*\|\s*(sudo\s+)?(python[0-9.]*|perl|ruby|node|php|lua)\b",
             3,
             NETWORK,
-            "pipes a download to a shell",
+            "pipes a download to an interpreter",
         ),
+        (
+            r"\brm\s+(-[a-zA-Z]+\s+|--[a-z-]+\s+)*(--\s+)?(/|~|\$HOME|\*)(\s|$|;|\"|'|\))",
+            4,
+            DESTRUCTIVE,
+            "recursive or forced delete of a root, home or wildcard target",
+        ),
+        (r"\bchmod\s+(-[a-zA-Z]+\s+)*[0-7]{3,4}\s+/(\s|$)", 3, DESTRUCTIVE, "permissions on /"),
     )
 )
-_OPERATORS = frozenset({"&&", "||", "|", ";", "&", "|&", "\n"})
+_OPERATORS = frozenset({"&&", "||", "|", ";", "&", "|&", ";;"})
+_REDIRECT = re.compile(r"^[0-9]*(>>?|>\||&>>?|<>)$")
+_SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "fish"})
+_INTERPRETER_EVAL = {
+    "python": "-c", "python3": "-c", "node": "-e", "perl": "-e", "ruby": "-e", "php": "-r",
+}  # fmt: skip
+# Words that only introduce a command: `if cmd`, `then cmd`, `while cmd`, `do cmd` ...
+_LEAD_WORDS = frozenset("if then else elif do while until ! { time".split())
+_SKIP_WORDS = frozenset("fi done esac }".split())
+# Wrapper commands run their argument: value-taking options are skipped with their value.
+_WRAPPERS: dict[str, frozenset[str]] = {
+    "sudo": frozenset({"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "-T"}),
+    "doas": frozenset({"-u", "-C"}),
+    "env": frozenset({"-u", "-C", "-S"}),
+    "nohup": frozenset(), "command": frozenset(), "exec": frozenset(), "builtin": frozenset(),
+    "time": frozenset({"-f", "-o"}), "nice": frozenset({"-n"}), "ionice": frozenset({"-c", "-n"}),
+    "setsid": frozenset(), "stdbuf": frozenset({"-i", "-o", "-e"}), "chronic": frozenset(),
+    "timeout": frozenset({"-s", "-k"}), "watch": frozenset({"-n", "-d"}),
+    "xargs": frozenset({"-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a"}),
+}  # fmt: skip
+_GIT_GLOBAL_WITH_VALUE = frozenset(
+    {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
+)
+_MAX_DEPTH = 4
 
 
 def _bump(best: Classification | None, level: int, category: str, why: str) -> Classification:
@@ -117,22 +148,46 @@ def _rm_level(args: list[str]) -> tuple[int, str]:
     return 3, "deletes files" if not recursive else "recursive delete"
 
 
+def _flag_cluster(arg: str, letters: str) -> bool:
+    """Is `arg` a short-flag cluster (-fu, -xdf) containing any of `letters`?"""
+    return bool(re.fullmatch(r"-[A-Za-z]+", arg)) and any(c in arg[1:] for c in letters)
+
+
 def _git_level(args: list[str]) -> tuple[int, str, str]:
-    sub = next((a for a in args if not a.startswith("-")), "")
-    rest = args[args.index(sub) + 1 :] if sub in args else []
-    flat = " ".join(args)
+    rest_args = list(args)
+    while rest_args and rest_args[0].startswith(
+        "-"
+    ):  # git's own options come before the subcommand
+        opt = rest_args.pop(0)
+        if opt in _GIT_GLOBAL_WITH_VALUE and rest_args:
+            rest_args.pop(0)
+    sub = rest_args[0] if rest_args else ""
+    rest = rest_args[1:]
     if sub == "push":
-        forced = any(a in ("-f", "--force", "--force-with-lease", "--delete", "-d") for a in rest)
-        forced = forced or any(a.startswith("+") for a in rest) or "--mirror" in rest
+        forced = any(a in ("--force", "--force-with-lease", "--delete", "--mirror") for a in rest)
+        forced = forced or any(_flag_cluster(a, "fd") for a in rest)
+        forced = forced or any(a.startswith(("+", ":")) and len(a) > 1 for a in rest)
+        forced = forced or any(a.startswith("--force-with-lease=") for a in rest)
         return (3, NETWORK, "force/delete push") if forced else (2, NETWORK, "git push")
     if sub == "reset" and "--hard" in rest:
         return 3, DESTRUCTIVE, "git reset --hard discards work"
-    if sub == "clean" and any(a.startswith("-") and "f" in a for a in rest):
+    if sub == "clean" and any(_flag_cluster(a, "f") or a == "--force" for a in rest):
         return 3, DESTRUCTIVE, "git clean removes untracked files"
-    if sub == "branch" and any(a in ("-D", "-d", "--delete") for a in rest):
+    if sub == "branch" and any(a in ("--delete",) or _flag_cluster(a, "dD") for a in rest):
         return 3, DESTRUCTIVE, "deletes a branch"
-    if sub in ("checkout", "restore") and ("--" in rest or "." in rest) and "-b" not in rest:
-        return 3, DESTRUCTIVE, "discards working-tree changes"
+    if sub in ("checkout", "restore", "switch") and (
+        "--" in rest or "." in rest or any(_flag_cluster(a, "f") for a in rest) or "--force" in rest
+    ):
+        if "-b" not in rest and "-c" not in rest:
+            return 3, DESTRUCTIVE, "discards working-tree changes"
+    if sub in ("filter-branch", "filter-repo", "replace") or (
+        sub == "stash" and rest[:1] in (["drop"], ["clear"])
+    ):
+        return 3, DESTRUCTIVE, f"git {sub} rewrites or drops history"
+    if (sub == "reflog" and "expire" in rest) or (sub == "gc" and any("prune" in a for a in rest)):
+        return 3, DESTRUCTIVE, "git removes recoverable objects"
+    if sub == "update-ref" and any(a in ("-d", "--delete") for a in rest):
+        return 3, DESTRUCTIVE, "deletes a ref"
     if sub == "branch":
         listing = not [a for a in rest if not a.startswith("-")]
         return (
@@ -144,47 +199,87 @@ def _git_level(args: list[str]) -> tuple[int, str, str]:
         return 2, NETWORK, f"git {sub} contacts a remote"
     if sub in _GIT_LOCAL or sub == "remote":
         return 1, MODIFY_FILES, f"git {sub} changes local state"
-    return 1, MODIFY_FILES, f"unrecognised git command ({flat[:40]})"
+    return 1, MODIFY_FILES, f"unrecognised git command ({' '.join(args)[:40]})"
+
+
+def _unwrap(argv: list[str]) -> tuple[list[str], bool]:
+    """Strip VAR=value prefixes and wrapper commands; True if one of them elevates privileges."""
+    args, elevated = list(argv), False
+    while args:
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", args[0]):
+            args.pop(0)
+            continue
+        wrapper = os.path.basename(args[0])
+        if wrapper not in _WRAPPERS:
+            break
+        elevated = elevated or wrapper in ("sudo", "doas")
+        valued = _WRAPPERS[wrapper]
+        args.pop(0)
+        while args and (args[0].startswith("-") or re.fullmatch(r"\w+=.*", args[0])):
+            opt = args.pop(0)
+            if opt in valued and args:
+                args.pop(0)
+        if wrapper == "timeout" and args:
+            args.pop(0)  # the duration
+    return args, elevated
 
 
 def _classify_argv(argv: list[str], depth: int) -> tuple[int, str, str]:
-    args = list(argv)
-    while args and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", args[0]):
-        args.pop(0)  # leading VAR=value
-    elevated = False
-    while args and args[0] in ("sudo", "doas", "nohup", "time", "command", "exec", "nice", "env"):
-        elevated = elevated or args[0] in ("sudo", "doas")
-        args.pop(0)
-        while args and (args[0].startswith("-") or re.fullmatch(r"\w+=.*", args[0])):
-            args.pop(0)
+    args, elevated = _unwrap(argv)
     if not args:
-        level, cat, why = 0, READ_ONLY, "no command"
+        level, cat, why = (
+            (0, READ_ONLY, "no command") if not elevated else (3, PROCESS_CONTROL, "sudo")
+        )
     else:
-        exe = os.path.basename(args[0])
-        rest = args[1:]
-        level, cat, why = _classify_exe(exe, rest, depth)
+        level, cat, why = _classify_exe(os.path.basename(args[0]), args[1:], depth)
     if elevated and level < 3:
         return 3, PROCESS_CONTROL if cat == READ_ONLY else cat, "runs with elevated privileges"
     return level, cat, why
 
 
+def _inner(command: str, depth: int) -> tuple[int, str, str] | None:
+    if depth >= _MAX_DEPTH:
+        return 3, MODIFY_FILES, "nested commands too deep to classify (assumed risky)"
+    inner = classify_command(command, _depth=depth + 1)
+    return inner.level, inner.category, f"nested: {inner.reasons[0] if inner.reasons else ''}"
+
+
 def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]:
-    if exe in ("bash", "sh", "zsh") and "-c" in rest and depth < 3:
-        i = rest.index("-c")
-        if i + 1 < len(rest):
-            inner = classify_command(rest[i + 1], _depth=depth + 1)
-            return (
-                max(inner.level, 1),
-                inner.category,
-                f"shell -c: {inner.reasons[0] if inner.reasons else ''}",
-            )
+    if exe == "eval":
+        found = _inner(" ".join(rest), depth)
+        return (max(found[0], 1), found[1], found[2]) if found else (1, MODIFY_FILES, "eval")
+    if exe in _SHELLS:  # sh -c, bash -lc, zsh -ec ...
+        for i, a in enumerate(rest):
+            if (a == "-c" or _flag_cluster(a, "c")) and i + 1 < len(rest):
+                found = _inner(rest[i + 1], depth)
+                if found:
+                    return max(found[0], 1), found[1], found[2]
+        return 1, MODIFY_FILES, f"{exe} runs a script"
+    if exe in _INTERPRETER_EVAL and _INTERPRETER_EVAL[exe] in rest:
+        i = rest.index(_INTERPRETER_EVAL[exe])
+        code = rest[i + 1] if i + 1 < len(rest) else ""
+        found = None
+        if re.search(r"system|exec|popen|subprocess|`", code):  # code that starts commands
+            literals = re.findall(r"""['"]([^'"]{2,})['"]""", code) or [code]
+            levels = [_inner(lit, depth) for lit in literals]
+            found = max((f for f in levels if f), default=None)
+            floor = (2, MODIFY_FILES, f"{exe} code starts commands")
+            found = max(floor, found) if found else floor
+        return (max(found[0], 1), found[1], found[2]) if found else (1, MODIFY_FILES, f"{exe} -c")
+    if exe in ("awk", "gawk", "mawk", "nawk"):
+        program = " ".join(rest)
+        if "system(" in program or re.search(r"print[^;}]*[>|]", program):
+            found = _inner(" ".join(re.findall(r'"([^"]*)"', program)), depth)
+            floor = (1, MODIFY_FILES, "awk runs commands or writes files")
+            return max(floor, found) if found else floor
+        return 0, READ_ONLY, f"{exe} only reads"
     if exe == "git":
         return _git_level(rest)
     if exe in ("rm", "rmdir", "shred", "unlink"):
         level, why = _rm_level(rest)
         return level, DESTRUCTIVE, why
     if exe in ("chmod", "chown", "chgrp"):
-        recursive = any(a in ("-R", "-r", "--recursive") for a in rest)
+        recursive = any(a in ("-R", "-r", "--recursive") or _flag_cluster(a, "R") for a in rest)
         return (
             (3, DESTRUCTIVE, "recursive permission change") if recursive else (1, MODIFY_FILES, exe)
         )
@@ -194,8 +289,8 @@ def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]
         return 3, PROCESS_CONTROL, f"{exe} changes system state"
     if exe in _INSTALL and rest and rest[0] in _INSTALL[exe]:
         return 2, PACKAGE_INSTALL, f"{exe} {rest[0]} fetches and installs packages"
-    if (exe == "uv" and rest[:2] in (["pip", "install"], ["add"], ["sync"])) or (
-        exe == "uv" and rest[:1] == ["add"]
+    if exe == "uv" and (
+        rest[:2] == ["pip", "install"] or rest[:1] in (["add"], ["sync"], ["tool"])
     ):
         return 2, PACKAGE_INSTALL, "uv installs packages"
     if exe in ("curl", "wget", "http", "https"):
@@ -211,6 +306,7 @@ def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]
                 "-T",
                 "--upload-file",
             )
+            or a.startswith(("-d", "--data"))
             or (a in ("-X", "--request") and i + 1 < len(rest) and rest[i + 1].upper() != "GET")
             for i, a in enumerate(rest)
         )
@@ -234,47 +330,117 @@ def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]
     ):
         return 2, NETWORK, f"{exe} talks to an external system"
     if exe == "find":
-        if any(a in ("-delete", "-exec", "-execdir", "-ok", "-fprint") for a in rest):
+        if any(a in ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint") for a in rest):
             return 3, DESTRUCTIVE, "find with -delete/-exec"
         return 0, READ_ONLY, "find"
     if exe == "sed" and any(a == "-i" or a.startswith("-i") or a == "--in-place" for a in rest):
         return 1, MODIFY_FILES, "edits files in place"
+    if exe in ("perl", "ruby") and any(a.startswith("-i") for a in rest):
+        return 1, MODIFY_FILES, "edits files in place"
     if exe in ("tee", "touch", "mkdir", "cp", "mv", "ln", "install", "truncate", "patch"):
         return 1, MODIFY_FILES, f"{exe} writes files"
-    if exe in _R0_COMMANDS or exe in ("sed", "awk"):
+    if exe in _R0_COMMANDS or exe == "sed":
         return 0, READ_ONLY, f"{exe} only reads"
     if exe in _R1_RUNNERS:
         return 1, MODIFY_FILES, f"{exe} runs project code"
     return 1, MODIFY_FILES, "unrecognised command (assumed to modify local files)"
 
 
+def _mark_newlines(command: str) -> str:
+    """Turn unquoted newlines into `;` so each line is classified; quoted ones stay as they are."""
+    out, quote, escaped = [], "", False
+    for ch in command:
+        if escaped:
+            escaped = False
+        elif ch == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            quote = "" if ch == quote else quote
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "\n":
+            ch = " ; "
+        out.append(ch)
+    return "".join(out)
+
+
+def _tokens(command: str) -> list[str] | None:
+    try:
+        lexer = shlex.shlex(_mark_newlines(command), posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        return list(lexer)
+    except ValueError:
+        return None
+
+
+def _segments(tokens: list[str]) -> tuple[list[list[str]], bool]:
+    """Split on operators and group punctuation; report whether output goes to a file."""
+    segments: list[list[str]] = [[]]
+    redirects = False
+    skip_target = False
+    for token in tokens:
+        if skip_target:  # the file after a redirection is not a command word
+            skip_target = False
+            continue
+        if token in _OPERATORS or (token and set(token) <= set("&|;")) or set(token) <= set("()"):
+            segments.append([])
+        elif _REDIRECT.match(token):
+            redirects = True
+            skip_target = True
+        elif token in ("<", "<<", "<<<") or re.fullmatch(r"[0-9]*>&[0-9-]*|[0-9]*<&[0-9-]*", token):
+            skip_target = token in ("<", "<<", "<<<")
+        else:
+            segments[-1].append(token)
+    return [seg for seg in segments if seg], redirects
+
+
+def _redirect_targets_are_harmless(tokens: list[str]) -> bool:
+    """`> /dev/null` and `2>&1` do not modify files."""
+    for i, token in enumerate(tokens):
+        if _REDIRECT.match(token):
+            target = tokens[i + 1] if i + 1 < len(tokens) else ""
+            if target not in ("/dev/null", "/dev/stderr", "/dev/stdout") and not target.startswith(
+                "&"
+            ):
+                return False
+    return True
+
+
 def classify_command(command: str, *, _depth: int = 0) -> Classification:
     """Deterministic command risk class R0-R4 and spec §27 category. Compound commands take the
-    highest segment. Heuristic by nature: a shell string is not fully parseable (see ADR-031)."""
+    highest segment; unknown or unparseable input is classified higher, never lower (ADR-031).
+    Heuristic by nature: a shell string is not fully parseable."""
     if not isinstance(command, str) or not command.strip():
         return Classification("R0", READ_ONLY, ("empty command",))
     best: Classification | None = None
     for pattern, level, cat, why in _RAW_RULES:
         if pattern.search(command):
             best = _bump(best, level, cat, why)
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
-        return _bump(best, 1, MODIFY_FILES, "unparseable command (assumed to modify local files)")
-    segments: list[list[str]] = [[]]
-    for token in tokens:
-        if token in _OPERATORS or (set(token) <= set("&|;") and token):
-            segments.append([])
-        else:
-            segments[-1].append(token)
-    if "$(" in command or "`" in command:
-        best = _bump(best, 1, MODIFY_FILES, "command substitution")
+    tokens = _tokens(command)
+    if tokens is None:  # unbalanced quotes: classify the pieces crudely, and never below R2
+        best = _bump(best, 2, MODIFY_FILES, "unparseable command (assumed risky)")
+        pieces = re.split(r"[;&|\n(){}]+", command.replace("'", " ").replace('"', " "))
+        segments = [piece.split() for piece in pieces if piece.strip()]
+        redirects = False
+    else:
+        segments, redirects = _segments(tokens)
+        if redirects and not _redirect_targets_are_harmless(tokens):
+            best = _bump(best, 1, MODIFY_FILES, "redirects output to a file")
+    for sub in re.findall(r"\$\(([^()]*)\)|`([^`]*)`", command):
+        found = _inner(sub[0] or sub[1], _depth)
+        if found:
+            category = found[1] if found[0] > 1 else MODIFY_FILES
+            best = _bump(best, max(found[0], 1), category, "command substitution: " + found[2])
     for argv in segments:
-        if argv:
-            level, cat, why = _classify_argv(argv, _depth)
-            best = _bump(best, level, cat, why)
+        while argv and (argv[0] in _LEAD_WORDS or argv[0] == "{"):
+            argv = argv[1:]
+        if not argv or argv[0] in _SKIP_WORDS:
+            continue
+        if argv[0] in ("for", "select", "case", "function", "in"):
+            continue  # a loop header or a case pattern runs nothing by itself
+        argv = [t for t in argv if t not in ("}",)]
+        level, cat, why = _classify_argv(argv, _depth)
+        best = _bump(best, level, cat, why)
     return best or Classification("R0", READ_ONLY, ("empty command",))
 
 

