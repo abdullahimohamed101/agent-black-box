@@ -21,11 +21,12 @@ Agent / Framework -> Adapter -> SDK -> [HTTP /v1/events/batch] -> Ingestion
    -> Query API / SSE -> Next.js web
 ```
 
-As of Phase 2 the data plane exists end to end: the canonical event contract (`packages/event-schema`), an
+As of Phase 5 the product works end to end: the data plane below, a stdlib-only Python SDK (`packages/sdk-python`), a web UI
+(`apps/web`: dashboard, runs list, run detail with a virtualized timeline) and live runs over SSE (`GET /v1/runs/{id}/stream`, woken by
+Postgres `NOTIFY`; ADR-022). The data plane: the canonical event contract (`packages/event-schema`), an
 ingestion API (`POST /v1/events[/batch]`, gzip, per-project rate limits, idempotent, tenant-bound), a PostgreSQL
 store with tenant-keyed tables, a worker that derives run status/summary/spans from events through a transactional
-outbox, and a query API (`/v1/runs`, events, spans) with cursors and project scoping. There is no SDK, live
-streaming or product UI beyond a status page yet. API reference: `docs/architecture/api-v1.md`.
+outbox, and a query API (`/v1/runs`, events, spans) with cursors and project scoping. Analytics, cost, integrations and the coding-agent demo are later phases. API reference: `docs/architecture/api-v1.md`.
 
 ## Major Components
 

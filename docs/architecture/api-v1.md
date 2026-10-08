@@ -110,6 +110,34 @@ Events are put in canonical order, then folded:
 (`retry.attempted`), `error_count` (events with status `error`/`timeout` or a `*.failed` type, each counted
 once), `files_modified` (distinct `file.path` of created/modified/deleted), `models`, `first_event_at`, `last_event_at`.
 
+## Live streaming
+
+`GET /v1/runs/{id}/stream` (scope `runs:read`, same visibility rules as the other run reads) returns `text/event-stream`. Design and
+trade-offs: ADR-022.
+
+| Message | Meaning |
+| --- | --- |
+| `retry: 3000` | first line: the browser waits 3 s before reconnecting |
+| `id: evt_...` `event: trace_event` `data: {...}` | one event, in the list endpoint's shape **without payload** (`has_payload` says if one exists) |
+| `event: run_end` `data: {"reason":"run_finished"}` | the run has a terminal `run.*` event and nothing arrived for 5 s: do not reconnect |
+| `event: error` `data: {"error": {...}}` | `STREAM_UNAVAILABLE`, retryable: the stream ends, reconnect with `Last-Event-ID` |
+| `: keepalive` / `: open` / `: max-lifetime...` | comments: idle keep-alive every 15 s, stream opened, closed at the maximum lifetime (15 min) |
+
+**Order and duplicates.** Events arrive in *arrival* order, not canonical order. Clients must de-duplicate by `event_id` and sort
+themselves (`abb_event_schema.ordering`; the web app does, with a golden-file parity test). The server deliberately repeats a window of
+events it already sent (the last `ABB_STREAM_OVERLAP_SECONDS`, default 30 s) on every poll boundary and reconnect, because a transaction can
+become visible after a later one.
+
+**Resume.** Send `Last-Event-ID: evt_...` (browsers do this on reconnect) or, for a first connection, `?last_event_id=evt_...`; the header
+wins. The server re-reads from that event's arrival time minus the overlap. An id that is malformed, unknown or from another run means "from
+the start of the run". Without either, the whole run is replayed, then followed live.
+
+**Errors before the stream starts** are ordinary JSON envelopes: `401`, `403`, `404 RUN_NOT_FOUND`, `422`, and
+`429 STREAM_LIMIT` (with `Retry-After`; per key `ABB_STREAM_MAX_PER_KEY`=10, per API process `ABB_STREAM_MAX_TOTAL`=50).
+
+**Lifecycle.** A stream ends at `run_end`, at its maximum lifetime, when the client disconnects, or after a 10 s write timeout against a
+client that stopped reading. Late events after `run_end` appear on a new connection. An open stream is not re-authenticated (KI-033).
+
 ## Events and spans
 
 `GET /v1/runs/{id}/events` returns events in **canonical order** (the same total order as

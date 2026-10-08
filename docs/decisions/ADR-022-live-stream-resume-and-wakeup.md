@@ -1,6 +1,6 @@
 # ADR-022: Live Streams Resume by Arrival Time and Wake on Postgres NOTIFY
 
-Status: Accepted (implementation in progress, Phase 5)
+Status: Accepted (implemented in Phase 5)
 Date: 2026-10-07
 
 ## Context

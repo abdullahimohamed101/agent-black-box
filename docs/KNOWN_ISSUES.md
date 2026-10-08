@@ -24,7 +24,7 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 | KI-033 | S3 | An open live stream is not re-authenticated: a key revoked or expired mid-stream keeps receiving events until the stream's maximum lifetime (default 15 min) | a revoked key reads one run for up to 15 more minutes (new connections are refused at once) | Phase 15: per-session auth; until then lower `ABB_STREAM_MAX_LIFETIME_SECONDS` if that matters | [#27](https://github.com/abdullahimohamed101/agent-black-box/issues/27) |
 | KI-016 | S2 | Full recomputation of a very large active run (30,000 events) stalls requests 1.7-2.6 s on a 2-vCPU VM | only runs of tens of thousands of events still receiving events (`docs/benchmarks/phase-2-ingestion.md`) | Trigger: a run exceeds ~10,000 active events or p99 ingest > 500 ms: incremental summarization | [#7](https://github.com/abdullahimohamed101/agent-black-box/issues/7) |
 | KI-022 | S2 | The summarizer loads every event of a run into memory, with no cap | a run of millions of events could exhaust worker memory (dead-lettered after repeated crashes, not looped) | Trigger: with KI-016, plus a cap | [#8](https://github.com/abdullahimohamed101/agent-black-box/issues/8) |
-| KI-017 | S2 | The rate limiter is per API process | N processes allow N times the configured rate | Phase 19: shared limiter | [#9](https://github.com/abdullahimohamed101/agent-black-box/issues/9) |
+| KI-017 | S2 | The rate limiter, and the live-stream limits (`ABB_STREAM_MAX_*`), are per API process | N processes allow N times the configured rate | Phase 19: shared limiter | [#9](https://github.com/abdullahimohamed101/agent-black-box/issues/9) |
 | KI-026 | S2 | Request bodies (up to 5 MiB) are buffered with no global concurrency limit | memory pressure under many large concurrent batches | Phase 19 | [#10](https://github.com/abdullahimohamed101/agent-black-box/issues/10) |
 | KI-021 | S2 | Finished outbox jobs are never purged (an index keeps lookups fast) | slow table growth | Phase 19: retention job (spec §94) | [#11](https://github.com/abdullahimohamed101/agent-black-box/issues/11) |
 | KI-024 | S2 | CI actions are pinned by tag, base images by tag, not SHA/digest | supply-chain drift | Phase 19 (spec §106) | [#12](https://github.com/abdullahimohamed101/agent-black-box/issues/12) |
@@ -38,6 +38,7 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 
 | ID | Limitation | Why it is acceptable |
 | --- | --- | --- |
+| KI-034 | A live stream can miss an event whose transaction stays open longer than the resume overlap (30 s) after later events were delivered | the REST list is always complete and the run page reloads history after a long gap and at run end; the window is a setting (ADR-022, `docs/runbooks/stream-issues.md`) |
 | KI-006 | The in-repo spec is a mechanical extraction of the `.docx` (diagram layout degraded) | the `.docx` is kept alongside; ADRs amend |
 | KI-009 | `next dev` rewrites `tsconfig.json`, so Prettier ignores it | cosmetic |
 | KI-014 | The generated JSON Schema is looser than the models (NUL/surrogates, int-vs-float ranges, calendar validity, self-parenting) | documented in `docs/architecture/events.md`; fixtures flag `jsonschema_rejects` |
