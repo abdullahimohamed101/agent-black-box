@@ -55,7 +55,6 @@ class AnalyticsService:
             tenant=principal.tenant,
             start_day=start_day,
             end_day=end_day,
-            today=now.date(),
             project_id=project,
         )
 

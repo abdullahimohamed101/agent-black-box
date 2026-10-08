@@ -29,9 +29,9 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
 }
 _WINDOW = (
     "Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds "
-    "down and `to` rounds up. Default: the last 7 days; at most 92. Finished days come from "
-    "rollups refreshed within about a minute of a change; today is computed live. Percentiles "
-    "are approximate (about 5%). A project-bound key is confined to its project."
+    "down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily "
+    "rollups that lag changes by up to about a minute. Percentiles are approximate (about 5%). "
+    "A project-bound key is confined to its project."
 )
 
 ProjectParam = Annotated[str | None, Query(pattern=id_pattern(IdKind.PROJECT))]

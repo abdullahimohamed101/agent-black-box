@@ -1,7 +1,7 @@
 """PostgreSQL implementation of `AnalyticsStore` (ADR-041, ADR-043).
 
-Reads only derived tables (INV-7): the daily rollups for finished days and, for today, the same
-aggregates computed live from `runs`, `spans` and `cost_calculations`. Never `events`. Every
+Reads only derived tables (INV-7): the daily rollups, which the `refresh_analytics_day` job rewrites
+from `runs`, `spans` and `cost_calculations`. Never `events`. Every
 statement starts from the tenant's workspace id through `_source`, so a scope cannot be applied to
 one table and forgotten on another. Each call is one read-only transaction with a statement timeout.
 """
@@ -14,11 +14,10 @@ from decimal import Decimal
 from typing import Any
 
 from abb_event_schema.ids import IdKind, from_uuid
-from sqlalchemy import func, select, text, union_all
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from abb_api.analytics import rollup
 from abb_api.analytics.percentiles import percentile
 from abb_api.analytics.schemas import (
     Behaviour,
@@ -109,46 +108,38 @@ def _ms(value: float | None) -> float | None:
     return None if value is None else round(value, 3)
 
 
-def _source(
-    table: Any, columns: Sequence[str], live: Callable[..., Any], scope: AnalyticsScope
-) -> Any:
-    """The rows of one rollup kind for the scope: stored days before today plus today live."""
-    ws = scope.tenant.workspace_id
-    stored_end = min(scope.end_day, scope.today)
-    stored = select(*(table.c[c] for c in columns)).where(
-        table.c.workspace_id == ws,
+def _source(table: Any, columns: Sequence[str], scope: AnalyticsScope) -> Any:
+    """The stored rollup rows of one kind for the scope (tenant, days, optional project)."""
+    statement = select(*(table.c[c] for c in columns)).where(
+        table.c.workspace_id == scope.tenant.workspace_id,
         table.c.day >= scope.start_day,
-        table.c.day < stored_end,
+        table.c.day < scope.end_day,
     )
     if scope.project_id is not None:
-        stored = stored.where(table.c.project_id == scope.project_id)
-    live_start = max(scope.start_day, scope.today)
-    if live_start >= scope.end_day:
-        return stored.subquery()
-    fresh = live(ws, live_start, scope.end_day, scope.project_id).subquery()
-    return union_all(stored, select(*(fresh.c[c] for c in columns))).subquery()
+        statement = statement.where(table.c.project_id == scope.project_id)
+    return statement.subquery()
 
 
 class _Sources:
-    """The four rollup kinds for one scope, built lazily."""
+    """The rollup kinds for one scope."""
 
     def __init__(self, scope: AnalyticsScope) -> None:
         self._scope = scope
 
     def runs(self) -> Any:
-        return _source(t.analytics_runs_daily, RUNS_COLS, rollup.runs_select, self._scope)
+        return _source(t.analytics_runs_daily, RUNS_COLS, self._scope)
 
     def cost(self) -> Any:
-        return _source(t.analytics_cost_daily, COST_COLS, rollup.cost_select, self._scope)
+        return _source(t.analytics_cost_daily, COST_COLS, self._scope)
 
     def spans(self) -> Any:
-        return _source(t.analytics_spans_daily, SPANS_COLS, rollup.spans_select, self._scope)
+        return _source(t.analytics_spans_daily, SPANS_COLS, self._scope)
 
     def latency(self) -> Any:
-        return _source(t.analytics_latency_daily, LATENCY_COLS, rollup.latency_select, self._scope)
+        return _source(t.analytics_latency_daily, LATENCY_COLS, self._scope)
 
     def top(self) -> Any:
-        return _source(t.analytics_top_runs, TOP_COLS, rollup.top_runs_select, self._scope)
+        return _source(t.analytics_top_runs, TOP_COLS, self._scope)
 
 
 class _RunTotals:

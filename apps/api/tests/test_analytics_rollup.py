@@ -96,47 +96,28 @@ async def test_the_python_bucket_function_matches_the_sql_one(engine: AsyncEngin
             assert sql == bucket_of(v), v
 
 
-# ------------------------------------------------------------------ stored == live
+# ------------------------------------------------------------------ reads come from the rollups
 
 
-def scope(
-    api: Api, today: date, start: date | None = None, end: date | None = None
-) -> AnalyticsScope:
-    start, end = start or D6.date(), end or D7.date()
+def scope(api: Api, start: date | None = None, end: date | None = None) -> AnalyticsScope:
     ctx = TenantContext(api.tenant.context.workspace_id)
-    return AnalyticsScope(ctx, start, end, today)
+    return AnalyticsScope(ctx, start or D6.date(), end or D7.date() + timedelta(days=1))
 
 
-async def test_a_finished_day_reads_the_same_from_rollups_and_live(seeded: Api) -> None:
-    """Yesterday as stored rollup rows (today = D7) equals yesterday computed live (today = D6)."""
+async def test_reports_are_read_from_the_rollups_only(seeded: Api) -> None:
+    """With the rollups gone the answer is empty; rebuilt, it is identical again."""
     store = PostgresAnalyticsStore(seeded.engine)
-    stored, live = scope(seeded, D7.date()), scope(seeded, D6.date())
-    for method in ("summary", "cost", "reliability", "performance"):
-        a = await getattr(store, method)(stored, **({} if method == "summary" else {"top": 10}))
-        b = await getattr(store, method)(live, **({} if method == "summary" else {"top": 10}))
-        assert a.model_dump() == b.model_dump(), method
-    # and the day really was read from the stored rows
-    async with seeded.engine.connect() as conn:
-        n = (
-            await conn.execute(select(text("count(*)")).select_from(t.analytics_runs_daily))
-        ).scalar_one()
-    assert n > 0
-
-
-async def test_today_is_never_read_from_stored_rows(seeded: Api) -> None:
-    store = PostgresAnalyticsStore(seeded.engine)
+    full = await store.summary(scope(seeded))
+    assert full.runs.total == 7  # alpha 6 + beta 1
     async with seeded.engine.begin() as conn:
-        for table in TABLES:  # wipe every rollup row: stored days vanish, today is unaffected
+        for table in TABLES:
             await conn.execute(table.delete())
-    today_only = await store.summary(
-        scope(seeded, D7.date(), D7.date(), D7.date() + timedelta(days=1))
-    )
-    assert today_only.runs.total == 6  # alpha 5 + beta 1, workspace-wide
-    assert today_only.cost.total_usd == pytest.approx(9.25)
-    yesterday = await store.summary(scope(seeded, D7.date()))
-    assert (
-        yesterday.runs.total == 0
-    )  # stored rows are gone, proving that yesterday is read from them
+    empty = await store.summary(scope(seeded))
+    assert empty.runs.total == 0 and empty.cost.total_usd == 0
+    async with seeded.engine.begin() as conn:
+        for day in (D6.date(), D7.date()):
+            await refresh_day(conn, TenantContext(seeded.tenant.context.workspace_id), day)
+    assert (await store.summary(scope(seeded))).model_dump() == full.model_dump()
 
 
 # ------------------------------------------------------------------ rebuildable

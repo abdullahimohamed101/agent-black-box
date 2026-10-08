@@ -1,15 +1,8 @@
 """Daily rollups: SQL that aggregates the derived tables per (project, UTC day) (ADR-043).
 
-Used two ways:
-
-* `refresh_day` stores the aggregates of one day (delete + insert, so it is idempotent and a
-  rebuild reproduces it, INV-2).
-* The read path runs the same selects live for today, which is still changing and so is never
-  read from the stored tables.
-
-Every select returns columns named like the rollup table it feeds, so a stored row and a live
-row are interchangeable. Client-controlled names (agent slugs, models, tool names) are capped
-per day when stored.
+`refresh_day` stores the aggregates of one workspace-day (delete + insert, so it is idempotent
+and a rebuild reproduces it, INV-2). Every select returns columns named like the rollup table it
+feeds. Client-controlled names (agent slugs, models, tool names) are capped per day.
 """
 
 import uuid

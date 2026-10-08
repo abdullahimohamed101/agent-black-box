@@ -240,9 +240,7 @@ async def test_legacy_summaries_are_reported_as_unrebuilt(seeded: Api) -> None:
 
 async def test_a_slow_query_is_cut_off_and_reported_as_retryable(seeded: Api) -> None:
     store = PostgresAnalyticsStore(seeded.engine, timeout_seconds=0.05)
-    scope = AnalyticsScope(
-        TenantContext(seeded.tenant.context.workspace_id), D6.date(), D7.date(), D7.date()
-    )
+    scope = AnalyticsScope(TenantContext(seeded.tenant.context.workspace_id), D6.date(), D7.date())
 
     async def sleepy(conn: Any) -> None:
         await conn.execute(text("SELECT pg_sleep(2)"))

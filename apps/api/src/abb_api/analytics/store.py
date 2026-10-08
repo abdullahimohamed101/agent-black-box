@@ -26,14 +26,12 @@ MAX_TOP = 50
 class AnalyticsScope:
     """What a question is about: a tenant, whole UTC days, optionally one project.
 
-    `project_id` only narrows; the tenant never widens. `today` is the UTC day still changing: it is
-    aggregated live, earlier days come from the rollups (ADR-043).
+    `project_id` only narrows; the tenant never widens.
     """
 
     tenant: TenantContext
     start_day: date  # inclusive
     end_day: date  # exclusive
-    today: date
     project_id: uuid.UUID | None = None
 
 

@@ -450,7 +450,9 @@ async def test_a_burst_of_batches_is_summarized_once_after_the_debounce_delay(
     )
     assert await late.run_once() == 1  # once due, a single recomputation covers all 30 events
     assert (await run_row(engine, run["run_id"])).summary["event_count"] == 30
-    assert await late.run_once() == 1  # the summary enqueued one analytics refresh for the run's day
+    assert (
+        await late.run_once() == 1
+    )  # the summary enqueued one analytics refresh for the run's day
     assert await late.run_once() == 0
 
 

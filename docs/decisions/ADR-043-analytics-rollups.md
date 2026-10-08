@@ -1,4 +1,4 @@
-# ADR-043: Analytics Read Daily Rollups Plus a Live Today, Because Scanning Was Measured Too Slow
+# ADR-043: Analytics Read Daily Rollups, Because Scanning Was Measured Too Slow
 
 Status: Accepted
 Date: 2026-10-08
@@ -20,17 +20,18 @@ query tuning alone (typed columns, no join, one pass) was not enough for the spa
   enqueued by the summarizer for the day a run was in and the day it is in now, debounced (default 60 s, `ABB_ANALYTICS_REFRESH_DELAY_SECONDS`)
   and coalesced per workspace-day. They are derived state (INV-2): `python -m abb_api.cli refresh-analytics` rebuilds them from
   `runs`, `spans` and `cost_calculations`, which are themselves rebuilt from events; a test deletes them and compares the rebuild.
-- **Today is never read from the rollups.** The read path unions stored rows for days before today with the same aggregate SELECTs
-  run live for today (`analytics/rollup.py` is the single definition of both), so fresh data is exact and a stale rollup can only
-  affect a finished day, for at most the debounce interval after a late event.
+- **Reads touch only the rollups** (one `analytics_*_daily` read per kind, small tables). A first version also aggregated today
+  live and merged it with stored days; it measured 0.6-6 s on a 100,000-run day (each report statement re-aggregated the day), so
+  it was dropped: today is a rollup too, refreshed at most every debounce interval while runs change. Analytics therefore
+  lag the runs by up to that interval (default 60 s); the run list and run detail are always current.
 - **Windows are whole UTC days** (`from` rounds down, `to` up). This is the price of day-grain rollups and is stated in the API.
   The optional agent filter of ADR-041 is dropped (it would multiply span rollup rows by agents).
 - **Percentiles are approximate**: log-spaced histograms (160 buckets, 1 ms to 1 h, about 10% wide), read with `percentile_cont`
   semantics inside the bucket, within about 5% (tested against exact values). Rollup rows keep at most 200 distinct names (agent
   models, tools) per project and day (and kind); the rest fold into `(other)`, bounding storage against hostile cardinality (KI-018).
 - **Typed columns**: `runs` gets typed copies of the summary figures (cost, retry cost, counts) and `spans` gets `project_id` and
-  `run_started_at`, written with the run by the summarizer (migration 0041; backfilled from `summary`/`runs`), so the live part and
-  the refresh never parse JSONB or join. `ix_runs_workspace_started` also resolves KI-025.
+  `run_started_at`, written with the run by the summarizer (migration 0041; backfilled from `summary`/`runs`), so the refresh never
+  parses JSONB or joins. `ix_runs_workspace_started` also resolves KI-025.
 
 ## Alternatives
 - Covering indexes on `runs`/`spans`: index-only scans of 700k-6M rows still sort for percentiles and make every summarize write
@@ -40,14 +41,14 @@ query tuning alone (typed columns, no join, one pass) was not enough for the spa
 - A columnar store: the Stage A target is met without it (spec §57.4 trigger not met).
 
 ## Consequences
-Positive: dashboard reads a few thousand small rows plus one day live; all figures rebuildable. Negative: finished days can lag a
-late event by about a minute; windows snap to days; percentiles are approximate; one more job type and five tables; the live day
-still scans today's rows (bounded by one day of runs).
+Positive: reads cost milliseconds regardless of run volume; all figures rebuildable. Negative: analytics lag the runs by up to the
+refresh interval (about a minute); windows snap to days; percentiles are approximate; one more job type and five tables.
+
 
 ## Migration implications
 0041 backfills typed columns and span columns from existing rows (rewrites every span row once; run off-peak on large
 deployments). 0042 creates empty rollups; a deployment with existing runs runs `refresh-analytics` once per workspace.
 
 ## Revisit conditions
-Today's live aggregate exceeding the budget at more than Stage A volume (100,000 runs/day): add an hourly tier or a shorter-lived
-rollup for today. Exact percentiles needed: store t-digests. Stage B volumes (spec §61.4): columnar store (ADR-009 trigger).
+A day's refresh taking longer than the refresh interval at more than Stage A volume (100,000 runs/day): hourly rollup tiers or incremental
+updates. Exact percentiles needed: store t-digests. Stage B volumes (spec §61.4): columnar store (ADR-009 trigger).
