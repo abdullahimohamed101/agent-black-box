@@ -211,7 +211,7 @@ class Span:
 
 
 class LlmCall(Span):
-    """A model call. `record_usage` fills token counts and optional costs (the server prices tokens)."""
+    """A model call. `record_usage` fills token counts and optional costs."""
 
     def __init__(
         self,
@@ -244,7 +244,7 @@ class LlmCall(Span):
         cost_usd: float | None = None,
         provider_cost_usd: float | None = None,
     ) -> None:
-        """`cost_usd` is your estimate; `provider_cost_usd` is a provider-reported cost (ADR-040)."""
+        """`cost_usd` is your estimate; `provider_cost_usd` the provider's own (ADR-040)."""
         for key, value in (
             ("llm.input_tokens", input_tokens),
             ("llm.output_tokens", output_tokens),
