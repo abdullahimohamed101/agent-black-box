@@ -100,7 +100,7 @@ def _from_usage(usage: Any) -> tuple[int | None, int | None, int | None]:
 def usage_of(response: Any) -> tuple[int | None, int | None, int | None]:
     """(input, output, cached input) tokens of an `LLMResult`.
 
-    The normalised `message.usage_metadata` wins; the provider's raw `llm_output` is the fallback."""
+    Normalised `message.usage_metadata` wins; the raw `llm_output` is the fallback."""
     totals: list[int | None] = [None, None, None]
     generations = _get(response, "generations")
     if isinstance(generations, (list, tuple)):
