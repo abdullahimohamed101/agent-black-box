@@ -197,3 +197,48 @@ def test_a_huge_wide_value_is_cut_after_a_node_budget() -> None:
     wide = {f"k{i}": "v" for i in range(20_000)}
     out = Redactor().redact_value(wide)
     assert list(out.values()).count("[TRUNCATED]") > 10_000 and out["k0"] == "v"
+
+
+# -- artifact-text redaction: shell-shaped secrets (ADR-031) ---------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "secret"),
+    [
+        (
+            "echo AKIAABCDEFGHIJKLMNOP",
+            "AKIAABCDEFGHIJKLMNOP",
+        ),  # letters only: no digit, no punctuation
+        ("curl -u admin:hunter22 https://example.com", "hunter22"),
+        ("curl --user admin:hunter22 https://example.com", "hunter22"),
+        ("curl -H 'Authorization: Basic dXNlcjpwYXNzd29yZA==' x", "dXNlcjpwYXNzd29yZA"),
+        ("curl -H 'Authorization: Bearer abcdefghijklmnopqrstuvwx' x", "abcdefghijklmnopqrstuvwx"),
+        ("Authorization: token ghx_notapatternbutsecret", "ghx_notapatternbutsecret"),
+        (
+            "export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCY",
+            "wJalrXUtnFEMIK7MDENGbPxRfiCY",
+        ),
+        ("DB_PASSWORD='p@ss w0rd' ./run", "p@ss w0rd"),
+        ("GITHUB_TOKEN=notapattern123456 make", "notapattern123456"),
+        ("MY_API_KEY: s3cretvalue99", "s3cretvalue99"),
+        ("tool --password hunter2xyz run", "hunter2xyz"),
+        ("tool --token=abcd1234efgh run", "abcd1234efgh"),
+        ("tool --api-key abcd1234efgh run", "abcd1234efgh"),
+        ("git clone https://deploy:s3cr3tpw@github.com/o/r.git", "s3cr3tpw"),
+        (
+            "git clone https://ghx_abcdefghijklmnopqrstuv@github.com/o/r.git",
+            "ghx_abcdefghijklmnopqrstuv",
+        ),
+        ("tok \x1b[31mghp_\x1b[0m" + "a" * 36, "a" * 36),  # ANSI between the prefix and the body
+    ],
+)
+def test_shell_shaped_secrets_are_redacted_from_artifact_text(text: str, secret: str) -> None:
+    out = Redactor().redact_text(text)
+    assert secret not in out and "[REDACTED" in out
+
+
+def test_ordinary_text_survives_redaction() -> None:
+    plain = (
+        "KeyError: 'missing'\nAssertionError: 1 != 2\nRan 5 tests in 0.002s\nprocessed 1234 items"
+    )
+    assert Redactor().redact_text(plain) == plain

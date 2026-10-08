@@ -76,7 +76,31 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
             "[REDACTED:jwt]",
         ),
         ("bearer_token", r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{16,}", r"\g<1>[REDACTED:bearer]"),
+        (
+            "authorization",
+            r"(?i)(\bauthorization\s*[:=]\s*[\"']?(?:(?:basic|bearer|token|digest)\s+)?)(?!\[REDACTED|(?:basic|bearer|token|digest)\s+\[REDACTED)[^\s\"',;]{6,}",
+            r"\g<1>[REDACTED:authorization]",
+        ),
+        ("basic_auth", r"(?i)\b(basic\s+)[A-Za-z0-9+/]{12,}={0,2}", r"\g<1>[REDACTED:basic_auth]"),
+        (
+            "cli_user",
+            r"(?i)((?:^|\s)(?:-u|--user|--proxy-user)(?:\s+|=)[\"']?)(?!\[REDACTED)[^\s\"']+",
+            r"\g<1>[REDACTED:cli_user]",
+        ),
+        (
+            "cli_secret_flag",
+            r"(?i)(\s--(?:password|passwd|pass|token|secret|api[-_]?key|access[-_]?key|"
+            r"client[-_]secret|auth[-_]?token|private[-_]?key)(?:\s+|=))(?!\[REDACTED)(?:\"[^\"]*\"|'[^']*'|[^\s]+)",
+            r"\g<1>[REDACTED:cli_secret]",
+        ),
         ("url_credentials", r"(://)[^/\s:@]+:[^/\s@]+@", r"\g<1>[REDACTED:url_credentials]@"),
+        ("url_token_user", r"(://)[A-Za-z0-9_.%-]{16,}@", r"\g<1>[REDACTED:url_credentials]@"),
+        (
+            "secret_assignment",  # NAME=value, NAME ending in a secret word (AWS_SECRET_ACCESS_KEY)
+            r"(?i)(\b[A-Za-z0-9_]*(?:secret|token|key|password|passwd|passphrase|credentials?|dsn)"
+            r"(?:_[A-Za-z0-9_]*)?\s*[=:]\s*)(?!\[REDACTED)(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
+            r"\g<1>[REDACTED:credential]",
+        ),
         (
             "credential",
             r"(?i)(\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
@@ -85,7 +109,10 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
         ),
     )
 )
-_MAYBE_SECRET = re.compile(r"[-_=:@.]|\d")  # cheap pre-check: plain prose skips the regex pass
+# Cheap pre-check: plain prose skips the regex pass. A run of 16+ letters is kept in because some
+# credentials (AKIA... access keys) are letters only.
+_MAYBE_SECRET = re.compile(r"[-_=:@.]|\d|[A-Za-z]{16}")
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 
 # What a P0 event keeps if the user callback fails: structure, never free text.
 _STRUCTURAL_KEYS = frozenset(
@@ -140,7 +167,8 @@ class Redactor:
         many lines is matched. Bounded by `max_chars` (cut, never skipped), so a huge output
         cannot stall the caller.
         """
-        return self._scrub(text[:max_chars] if len(text) > max_chars else text)
+        text = _ANSI.sub("", text[:max_chars] if len(text) > max_chars else text)  # ghp_\x1b[0m...
+        return self._scrub(text)
 
     def _scrub(self, text: str) -> str:
         if len(text) < 8 or _MAYBE_SECRET.search(text) is None:

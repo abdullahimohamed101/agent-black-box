@@ -332,7 +332,7 @@ def test_artifacts_carry_redacted_output_and_diffs(
         and "ghp_" + "a" * 36 not in joined
         and "sk-" + "b" * 30 not in joined
     )
-    assert "[REDACTED:github_token]" in joined and "[REDACTED:credential]" in joined
+    assert "[REDACTED:" in joined and "password=[REDACTED:credential]" in joined
     assert {p.query["kind"][0] for p in server.received} == {"diff", "stdout", "stderr"}
     bb.shutdown()
 
