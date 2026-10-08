@@ -9,11 +9,15 @@ from pydantic import BaseModel, Field
 
 
 class Window(BaseModel):
-    start: datetime = Field(description="Inclusive. Runs are placed in the window by `started_at`.")
-    end: datetime = Field(description="Exclusive.")
+    start: datetime = Field(
+        description="Inclusive UTC midnight. Windows are whole UTC days; requests snap outward."
+    )
+    end: datetime = Field(description="Exclusive, UTC midnight.")
 
 
 class Percentiles(BaseModel):
+    """Approximate: read from duration histograms with about 10% wide buckets (ADR-043)."""
+
     count: int
     p50_ms: float | None
     p95_ms: float | None
@@ -204,7 +208,6 @@ class SlowOperation(BaseModel):
     calls: int
     p50_ms: float | None
     p95_ms: float | None
-    max_ms: float | None
 
 
 class PerformanceReport(BaseModel):

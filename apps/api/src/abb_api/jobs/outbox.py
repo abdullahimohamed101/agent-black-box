@@ -21,6 +21,7 @@ from abb_api.db import tables as t
 from abb_api.tenancy import TenantContext
 
 SUMMARIZE_RUN = "summarize_run"
+REFRESH_ANALYTICS_DAY = "refresh_analytics_day"
 MAX_ERROR_LENGTH = 2000
 
 

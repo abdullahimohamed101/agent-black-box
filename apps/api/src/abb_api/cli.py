@@ -11,6 +11,7 @@
         --input-per-million 3 --output-per-million 15 [--project p] [--valid-from 2026-10-01]
     python -m abb_api.cli list-pricing --workspace acme
     python -m abb_api.cli rebuild-costs --workspace acme [--project p] [--since 2026-10-01]
+    python -m abb_api.cli refresh-analytics --workspace acme [--since 2026-10-01]
     python -m abb_api.cli seed            # local development only
 
 A new key's secret is written to stdout exactly once; everything else goes to stderr so the key can
@@ -31,6 +32,7 @@ from typing import TextIO
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from abb_api.analytics.rollup import refresh_day
 from abb_api.auth import scopes as scope_names
 from abb_api.auth.keys import parse_key
 from abb_api.auth.repository import ApiKeyRepository
@@ -140,6 +142,13 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild.add_argument("--project", help="project slug")
     rebuild.add_argument("--since", type=_instant, help="only runs started at or after this")
     rebuild.add_argument("--limit", type=int, default=10_000)
+
+    refresh = sub.add_parser(
+        "refresh-analytics",
+        help="rebuild the daily analytics rollups of a workspace (after a restore or a backfill)",
+    )
+    refresh.add_argument("--workspace", required=True, help="workspace slug")
+    refresh.add_argument("--since", type=_instant, help="first day to rebuild (default: all)")
 
     seed = sub.add_parser("seed", help="create a local workspace, project and dev key")
     seed.add_argument("--key-file", type=Path, default=DEFAULT_KEY_FILE)
@@ -320,6 +329,13 @@ async def run(
                 )
                 queued = await OutboxRepository(conn, tenant).enqueue_summarize(run_ids)
                 print(f"queued {queued} of {len(run_ids)} run(s) for re-derivation", file=err)
+            elif args.command == "refresh-analytics":
+                ws = await _workspace(conn, args.workspace)
+                tenant = TenantContext(ws.id)
+                days = await RunRepository(conn, tenant).run_days(since=args.since)
+                for day in days:
+                    await refresh_day(conn, tenant, day)
+                print(f"rebuilt analytics for {len(days)} day(s)", file=err)
             elif args.command == "seed":
                 await _seed(conn, args.key_file, settings, clock, out, err)
     except (DomainError, ValueError) as exc:

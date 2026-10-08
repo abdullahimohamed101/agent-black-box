@@ -3,10 +3,12 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any
 
 from abb_event_schema.ids import to_uuid
-from sqlalchemy import func, select, update
+from sqlalchemy import Date, cast, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -15,6 +17,26 @@ from abb_api.runs.summary import SUMMARY_VERSION, RunDerivation
 from abb_api.tenancy import TenantContext
 
 SPAN_CHUNK = 1000
+_COUNT_FIGURES = (
+    "llm_calls",
+    "tool_calls",
+    "retry_count",
+    "retries_unattributed",
+    "files_modified",
+    "unpriced_calls",
+    "tool_spans_finished",
+    "tool_spans_ok",
+    "llm_spans_finished",
+    "llm_spans_ok",
+)
+
+
+def typed_figures(summary: dict[str, Any]) -> dict[str, Any]:
+    """The summary figures that analytics aggregate, as typed column values (ADR-043)."""
+    figures: dict[str, Any] = {name: int(summary.get(name) or 0) for name in _COUNT_FIGURES}
+    figures["cost_usd"] = Decimal(str(summary.get("estimated_cost_usd") or 0))
+    figures["retry_cost_usd"] = Decimal(str(summary.get("retry_cost_usd") or 0))
+    return figures
 
 
 @dataclass(frozen=True)
@@ -82,6 +104,27 @@ class RunRepository:
         )
         return [r.id for r in rows]
 
+    async def run_days(self, *, since: datetime | None = None) -> list[date]:
+        """The UTC days on which the tenant has runs (oldest first)."""
+        day = cast(func.timezone("UTC", t.runs.c.started_at), Date)
+        statement = select(day.label("day")).where(
+            t.runs.c.workspace_id == self._tenant.workspace_id
+        )
+        if since is not None:
+            statement = statement.where(t.runs.c.started_at >= since)
+        rows = await self._conn.execute(statement.distinct().order_by(day))
+        return [r.day for r in rows]
+
+    async def started_at(self, run_id: uuid.UUID) -> datetime | None:
+        row = (
+            await self._conn.execute(
+                select(t.runs.c.started_at).where(
+                    t.runs.c.workspace_id == self._tenant.workspace_id, t.runs.c.id == run_id
+                )
+            )
+        ).first()
+        return row.started_at if row else None
+
     async def lock(self, run_id: uuid.UUID) -> bool:
         """Take the run's row lock; False if the run does not exist.
 
@@ -101,7 +144,9 @@ class RunRepository:
         ).first()
         return row is not None
 
-    async def apply_derivation(self, run_id: uuid.UUID, derived: RunDerivation) -> int:
+    async def apply_derivation(
+        self, run_id: uuid.UUID, derived: RunDerivation, project_id: uuid.UUID
+    ) -> int:
         """Write the derived run row and its spans. Returns spans skipped as belonging elsewhere."""
         await self._conn.execute(
             update(t.runs)
@@ -118,6 +163,7 @@ class RunRepository:
                 name=func.coalesce(derived.name, t.runs.c.name),
                 summary=derived.summary,
                 summary_version=SUMMARY_VERSION,
+                **typed_figures(derived.summary),
                 updated_at=func.now(),
             )
         )
@@ -138,11 +184,13 @@ class RunRepository:
                 "ended_at": s.ended_at,
                 "duration_ms": s.duration_ms,
                 "event_count": s.event_count,
+                "project_id": project_id,
+                "run_started_at": derived.started_at,
             }
             for s in sorted(derived.spans.values(), key=lambda s: to_uuid(s.span_id).bytes)
         ]
         skipped = 0
-        # Chunked: one statement may carry at most 32767 bind parameters (13 per span).
+        # Chunked: one statement may carry at most 32767 bind parameters (15 per span).
         for start in range(0, len(rows), SPAN_CHUNK):
             chunk = rows[start : start + SPAN_CHUNK]
             statement = insert(t.spans).values(chunk)
@@ -161,6 +209,8 @@ class RunRepository:
                         "ended_at": excluded.ended_at,
                         "duration_ms": excluded.duration_ms,
                         "event_count": excluded.event_count,
+                        "project_id": excluded.project_id,
+                        "run_started_at": excluded.run_started_at,
                     },
                     # A span id that already belongs to another run is never taken over.
                     where=t.spans.c.run_id == excluded.run_id,

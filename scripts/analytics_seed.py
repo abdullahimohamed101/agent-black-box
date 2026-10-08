@@ -93,6 +93,25 @@ async def seed(url: str, runs_per_day: int, days: int, end: datetime, seed_value
             """,
             WORKSPACE_ID,
         )
+        # The typed copies of the summary figures (what the analytics aggregate), as the summarizer writes them.
+        await conn.execute(
+            """
+            UPDATE runs SET
+                cost_usd = (summary->>'estimated_cost_usd')::numeric,
+                retry_cost_usd = (summary->>'retry_cost_usd')::numeric,
+                llm_calls = (summary->>'llm_calls')::int, tool_calls = (summary->>'tool_calls')::int,
+                retry_count = (summary->>'retry_count')::int,
+                retries_unattributed = (summary->>'retries_unattributed')::int,
+                files_modified = (summary->>'files_modified')::int,
+                unpriced_calls = coalesce((summary->>'unpriced_calls')::int, 0),
+                tool_spans_finished = coalesce((summary->>'tool_spans_finished')::int, 0),
+                tool_spans_ok = coalesce((summary->>'tool_spans_ok')::int, 0),
+                llm_spans_finished = coalesce((summary->>'llm_spans_finished')::int, 0),
+                llm_spans_ok = coalesce((summary->>'llm_spans_ok')::int, 0)
+            WHERE workspace_id = $1
+            """,
+            WORKSPACE_ID,
+        )
         await conn.execute("ANALYZE runs; ANALYZE spans; ANALYZE cost_calculations;")
     finally:
         await conn.close()
@@ -160,7 +179,7 @@ async def one_day(
     await conn.execute(
         f"""
         INSERT INTO spans (workspace_id, id, run_id, trace_id, name, kind, agent_slug, status, started_at,
-                           ended_at, duration_ms, event_count)
+                           ended_at, duration_ms, event_count, project_id, run_started_at)
         SELECT r.workspace_id, md5('span/' || r.id || '/' || s.k)::uuid, r.id, r.trace_id,
                CASE WHEN s.k <= (r.summary->>'llm_calls')::int THEN 'example-provider/model-x'
                     ELSE 'tool-' || ({h("r.id::text || s.k", "tool", seed_value)} % {TOOLS}) END,
@@ -168,7 +187,8 @@ async def one_day(
                r.agent_slug,
                CASE WHEN {h("r.id::text || s.k", "ok", seed_value)} % 100 < 93 THEN 'success' ELSE 'error' END,
                r.started_at + s.k * interval '1 second',
-               r.started_at + s.k * interval '1 second' + d.dur * interval '1 millisecond', d.dur, 2
+               r.started_at + s.k * interval '1 second' + d.dur * interval '1 millisecond', d.dur, 2,
+               r.project_id, r.started_at
         FROM runs r,
         LATERAL generate_series(1, (r.summary->>'llm_calls')::int + (r.summary->>'tool_calls')::int) AS s(k),
         LATERAL (SELECT (20 + {h("r.id::text || s.k", "sd", seed_value)} % 4000)::double precision AS dur) d

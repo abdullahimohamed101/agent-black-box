@@ -26,6 +26,10 @@ from abb_api.core.config import Settings
 from abb_api.db.tables import metadata
 from abb_api.main import create_app
 
+# Analytics rollups are rewritten as soon as the worker runs in tests (production waits to coalesce
+# changes).
+os.environ.setdefault("ABB_ANALYTICS_REFRESH_DELAY_SECONDS", "0")
+
 API_DIR = Path(__file__).resolve().parents[1]
 SERVER_URL = os.environ.get(
     "ABB_TEST_DATABASE_URL",
@@ -150,4 +154,5 @@ async def client_db_down() -> AsyncIterator[httpx.AsyncClient]:
 
 
 # Registered last: api_fixtures imports helpers defined above, so the import cannot be at the top.
+from tests.analytics_fixtures import seeded  # noqa: E402, F401
 from tests.api_fixtures import api  # noqa: E402, F401  (re-exported so pytest finds the fixture)

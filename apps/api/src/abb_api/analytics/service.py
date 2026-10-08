@@ -36,24 +36,27 @@ class AnalyticsService:
         principal: Principal,
         *,
         project_id: str | None,
-        agent_id: str | None,
         start: datetime | None,
         end: datetime | None,
     ) -> AnalyticsScope:
-        end_at = _utc(end) if end else self._clock()
+        """Whole UTC days: start rounds down, end rounds up, so a window never shrinks."""
+        now = self._clock().astimezone(UTC)
+        end_at = _utc(end) if end else now
         start_at = _utc(start) if start else end_at - timedelta(days=DEFAULT_WINDOW_DAYS)
         if start_at >= end_at:
             raise _invalid("`from` must be earlier than `to`.")
-        if end_at - start_at > timedelta(days=MAX_WINDOW_DAYS):
+        start_day = start_at.date()
+        end_day = (end_at - timedelta(microseconds=1)).date() + timedelta(days=1)
+        if (end_day - start_day).days > MAX_WINDOW_DAYS:
             raise _invalid(f"The window may not exceed {MAX_WINDOW_DAYS} days.")
         async with self._engine.connect() as conn:
             project = await authorise_project(conn, principal, project_id)
         return AnalyticsScope(
             tenant=principal.tenant,
-            start=start_at,
-            end=end_at,
+            start_day=start_day,
+            end_day=end_day,
+            today=now.date(),
             project_id=project,
-            agent_slug=agent_id,
         )
 
     async def summary(self, scope: AnalyticsScope) -> Summary:

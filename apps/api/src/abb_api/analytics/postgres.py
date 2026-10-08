@@ -1,32 +1,25 @@
-"""PostgreSQL implementation of `AnalyticsStore` over derived tables only (ADR-041).
+"""PostgreSQL implementation of `AnalyticsStore` (ADR-041, ADR-043).
 
-Reads `runs`, `spans` and `cost_calculations`, never `events` (INV-7). Every statement is built
-from `_runs_where` / `_lines_from` / `_spans_from`, which always start from the tenant's workspace
-id, so a scope cannot be applied to one table and forgotten on another. Each call is one read-only
-transaction with a statement timeout.
+Reads only derived tables (INV-7): the daily rollups for finished days and, for today, the same
+aggregates computed live from `runs`, `spans` and `cost_calculations`. Never `events`. Every
+statement starts from the tenant's workspace id through `_source`, so a scope cannot be applied to
+one table and forgotten on another. Each call is one read-only transaction with a statement timeout.
 """
 
 import logging
-from collections.abc import Sequence
-from datetime import date
+from collections import defaultdict
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import Any
 
 from abb_event_schema.ids import IdKind, from_uuid
-from sqlalchemy import (
-    ColumnElement,
-    Numeric,
-    Select,
-    case,
-    cast,
-    func,
-    literal,
-    select,
-    text,
-)
+from sqlalchemy import func, select, text, union_all
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from abb_api.analytics import rollup
+from abb_api.analytics.percentiles import percentile
 from abb_api.analytics.schemas import (
     Behaviour,
     CostByAgent,
@@ -55,27 +48,39 @@ from abb_api.analytics.schemas import (
 from abb_api.analytics.store import AnalyticsScope
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.db import tables as t
-from abb_api.runs.summary import SUMMARY_VERSION
 
 logger = logging.getLogger(__name__)
 
 ACTIVE = ("QUEUED", "RUNNING", "WAITING", "WAITING_FOR_APPROVAL")
-FINISHED = (
-    "SUCCESS",
-    "FAILED",
-    "TIMED_OUT",
-    "BLOCKED",
-)  # cancelled runs are neither success nor failure
-NAMED_KINDS = (
-    "tool",
-    "llm",
-)  # other span names (shell commands, paths) are unbounded and may be sensitive
-SLOW_KINDS_EXCLUDED = ("agent",)
-MIN_SLOW_CALLS = 1
-
 R = t.runs.c
-L = t.cost_calculations.c
-S = t.spans.c
+
+RUNS_COLS = (
+    "project_id", "day", "agent_slug", "status", "runs", "cost_usd", "retry_cost_usd",
+    "retried_runs", "runs_with_retry_cost", "llm_calls", "tool_calls", "retry_count",
+    "retries_unattributed", "files_modified", "unpriced_calls", "tool_spans_finished",
+    "tool_spans_ok", "llm_spans_finished", "llm_spans_ok", "unrebuilt_runs",
+)  # fmt: skip
+COST_COLS = (
+    "project_id", "day", "agent_slug", "provider", "model", "source", "calls", "total_usd",
+    "input_tokens", "output_tokens",
+)  # fmt: skip
+RUN_SUM_FIELDS = (
+    "retried_runs", "runs_with_retry_cost", "llm_calls", "tool_calls", "retry_count",
+    "retries_unattributed", "files_modified", "unpriced_calls", "tool_spans_finished",
+    "tool_spans_ok", "llm_spans_finished", "llm_spans_ok", "unrebuilt_runs",
+)  # fmt: skip
+SPANS_COLS = ("project_id", "day", "kind", "name", "finished", "ok")
+LATENCY_COLS = ("project_id", "day", "series", "name", "bucket", "n")
+TOP_COLS = (
+    "project_id",
+    "day",
+    "kind",
+    "rank",
+    "run_id",
+    "cost_usd",
+    "retry_cost_usd",
+    "retry_count",
+)
 
 
 def analytics_timeout() -> AppError:
@@ -92,70 +97,144 @@ def _usd(value: Decimal | float | int | None) -> float:
     return round(float(value or 0), 9)
 
 
-def _rate(part: int | None, whole: int | None) -> float | None:
-    return round(part / whole, 6) if part is not None and whole else None
+def _rate(part: int | float | None, whole: int | float | None) -> float | None:
+    return round(float(part) / float(whole), 6) if part is not None and whole else None
 
 
-def _avg(value: Decimal | float | None) -> float | None:
-    return None if value is None else round(float(value), 4)
+def _avg(total: Decimal | float | int | None, count: int) -> float | None:
+    return round(float(total or 0) / count, 4) if count else None
 
 
-def _num(key: str) -> ColumnElement[Any]:
-    """A numeric field of the run summary, 0 when absent (older summaries lack newer fields)."""
-    return func.coalesce(cast(R.summary[key].astext, Numeric), 0)
+def _ms(value: float | None) -> float | None:
+    return None if value is None else round(value, 3)
 
 
-def _runs_where(scope: AnalyticsScope) -> list[ColumnElement[bool]]:
-    where = [
-        R.workspace_id == scope.tenant.workspace_id,
-        R.started_at >= scope.start,
-        R.started_at < scope.end,
-    ]
-    if scope.project_id is not None:
-        where.append(R.project_id == scope.project_id)
-    if scope.agent_slug is not None:
-        where.append(R.agent_slug == scope.agent_slug)
-    return where
-
-
-def _lines_from(scope: AnalyticsScope, *columns: Any) -> Select[Any]:
-    """Cost lines of the scope's runs; joins `runs` only when the agent filter needs it."""
-    statement = select(*columns).where(
-        L.workspace_id == scope.tenant.workspace_id,
-        L.run_started_at >= scope.start,
-        L.run_started_at < scope.end,
+def _source(
+    table: Any, columns: Sequence[str], live: Callable[..., Any], scope: AnalyticsScope
+) -> Any:
+    """The rows of one rollup kind for the scope: stored days before today plus today live."""
+    ws = scope.tenant.workspace_id
+    stored_end = min(scope.end_day, scope.today)
+    stored = select(*(table.c[c] for c in columns)).where(
+        table.c.workspace_id == ws,
+        table.c.day >= scope.start_day,
+        table.c.day < stored_end,
     )
     if scope.project_id is not None:
-        statement = statement.where(L.project_id == scope.project_id)
-    if scope.agent_slug is not None:
-        statement = statement.join(
-            t.runs, (t.runs.c.workspace_id == L.workspace_id) & (t.runs.c.id == L.run_id)
-        ).where(R.workspace_id == scope.tenant.workspace_id, R.agent_slug == scope.agent_slug)
-    return statement
+        stored = stored.where(table.c.project_id == scope.project_id)
+    live_start = max(scope.start_day, scope.today)
+    if live_start >= scope.end_day:
+        return stored.subquery()
+    fresh = live(ws, live_start, scope.end_day, scope.project_id).subquery()
+    return union_all(stored, select(*(fresh.c[c] for c in columns))).subquery()
 
 
-def _spans_from(scope: AnalyticsScope, *columns: Any) -> Select[Any]:
-    """Spans of the scope's runs (spans carry no project, so they always join their run)."""
-    return (
-        select(*columns)
-        .select_from(
-            t.spans.join(
-                t.runs, (t.runs.c.workspace_id == S.workspace_id) & (t.runs.c.id == S.run_id)
-            )
+class _Sources:
+    """The four rollup kinds for one scope, built lazily."""
+
+    def __init__(self, scope: AnalyticsScope) -> None:
+        self._scope = scope
+
+    def runs(self) -> Any:
+        return _source(t.analytics_runs_daily, RUNS_COLS, rollup.runs_select, self._scope)
+
+    def cost(self) -> Any:
+        return _source(t.analytics_cost_daily, COST_COLS, rollup.cost_select, self._scope)
+
+    def spans(self) -> Any:
+        return _source(t.analytics_spans_daily, SPANS_COLS, rollup.spans_select, self._scope)
+
+    def latency(self) -> Any:
+        return _source(t.analytics_latency_daily, LATENCY_COLS, rollup.latency_select, self._scope)
+
+    def top(self) -> Any:
+        return _source(t.analytics_top_runs, TOP_COLS, rollup.top_runs_select, self._scope)
+
+
+class _RunTotals:
+    """Run-level totals folded from per-status rollup rows."""
+
+    def __init__(self, rows: Sequence[Any]) -> None:
+        self.by_status: dict[str, int] = defaultdict(int)
+        self.cost = Decimal(0)
+        self.success_cost = Decimal(0)
+        self.retry_cost = Decimal(0)
+        self.fields: dict[str, int] = defaultdict(int)
+        for r in rows:
+            self.by_status[r.status] += int(r.runs)
+            self.cost += Decimal(r.cost_usd or 0)
+            self.retry_cost += Decimal(r.retry_cost_usd or 0)
+            if r.status == "SUCCESS":
+                self.success_cost += Decimal(r.cost_usd or 0)
+            for field in RUN_SUM_FIELDS:
+                self.fields[field] += int(getattr(r, field) or 0)
+
+    @property
+    def total(self) -> int:
+        return sum(self.by_status.values())
+
+    @property
+    def counts(self) -> RunCounts:
+        s = self.by_status
+        finished = s["SUCCESS"] + s["FAILED"] + s["TIMED_OUT"] + s["BLOCKED"]
+        return RunCounts(
+            total=self.total,
+            active=sum(s[a] for a in ACTIVE),
+            finished=finished,
+            success=s["SUCCESS"],
+            failed=s["FAILED"],
+            timed_out=s["TIMED_OUT"],
+            blocked=s["BLOCKED"],
+            cancelled=s["CANCELLED"],
         )
-        .where(S.workspace_id == scope.tenant.workspace_id, *_runs_where(scope))
+
+    @property
+    def rates(self) -> Rates:
+        c = self.counts
+        return Rates(
+            success_rate=_rate(c.success, c.finished),
+            failure_rate=_rate(c.failed + c.blocked, c.finished),
+            timeout_rate=_rate(c.timed_out, c.finished),
+            retry_rate=_rate(self.fields["retried_runs"], c.total),
+        )
+
+    @property
+    def headline(self) -> CostHeadline:
+        c = self.counts
+        return CostHeadline(
+            total_usd=_usd(self.cost),
+            per_run_usd=_usd(self.cost / c.total) if c.total else None,
+            per_successful_run_usd=(_usd(self.success_cost / c.success) if c.success else None),
+            retry_usd=_usd(self.retry_cost),
+            retry_share=round(float(self.retry_cost / self.cost), 6) if self.cost else None,
+            unpriced_calls=self.fields["unpriced_calls"],
+            unrebuilt_runs=self.fields["unrebuilt_runs"],
+        )
+
+
+def _histograms(rows: Sequence[Any], key: Callable[[Any], Any]) -> dict[Any, dict[int, int]]:
+    merged: dict[Any, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    for r in rows:
+        merged[key(r)][int(r.bucket)] += int(r.n)
+    return merged
+
+
+def _percentiles(counts: Mapping[int, int] | None) -> Percentiles:
+    counts = counts or {}
+    return Percentiles(
+        count=sum(counts.values()),
+        p50_ms=_ms(percentile(counts, 0.5)),
+        p95_ms=_ms(percentile(counts, 0.95)),
     )
 
 
-def _pct(column: ColumnElement[Any], q: float) -> ColumnElement[Any]:
-    return func.percentile_cont(q).within_group(column)
-
-
-def _percentiles(count: int | None, p50: float | None, p95: float | None) -> Percentiles:
-    return Percentiles(
-        count=count or 0,
-        p50_ms=None if p50 is None else round(float(p50), 3),
-        p95_ms=None if p95 is None else round(float(p95), 3),
+def _other(rest: Sequence[Any], cost_field: str, calls_field: str) -> OtherBucket | None:
+    if not rest:
+        return None
+    return OtherBucket(
+        groups=len(rest),
+        calls=sum(int(getattr(r, calls_field) or 0) for r in rest),
+        cost_usd=_usd(sum((Decimal(getattr(r, cost_field) or 0) for r in rest), Decimal(0))),
     )
 
 
@@ -186,90 +265,40 @@ class PostgresAnalyticsStore:
 
     @staticmethod
     def _window(scope: AnalyticsScope) -> Window:
-        return Window(start=scope.start, end=scope.end)
-
-    # ------------------------------------------------------------------ shared pieces
+        return Window(
+            start=datetime.combine(scope.start_day, time.min, tzinfo=UTC),
+            end=datetime.combine(scope.end_day, time.min, tzinfo=UTC),
+        )
 
     @staticmethod
-    async def _counts_and_cost(conn: AsyncConnection, scope: AnalyticsScope) -> Any:
-        cost, retry = _num("estimated_cost_usd"), _num("retry_cost_usd")
-        finished_duration = case((R.status.in_(FINISHED), R.duration_ms))
+    async def _totals(conn: AsyncConnection, sources: _Sources) -> _RunTotals:
+        u = sources.runs()
         statement = select(
-            func.count().label("total"),
-            func.count().filter(R.status.in_(ACTIVE)).label("active"),
-            func.count().filter(R.status == "SUCCESS").label("success"),
-            func.count().filter(R.status == "FAILED").label("failed"),
-            func.count().filter(R.status == "TIMED_OUT").label("timed_out"),
-            func.count().filter(R.status == "BLOCKED").label("blocked"),
-            func.count().filter(R.status == "CANCELLED").label("cancelled"),
-            func.sum(cost).label("cost"),
-            func.sum(cost).filter(R.status == "SUCCESS").label("success_cost"),
-            func.sum(retry).label("retry_cost"),
-            func.count().filter(_num("retry_count") > 0).label("retried_runs"),
-            func.count().filter(_num("retry_cost_usd") > 0).label("runs_with_retry_cost"),
-            func.sum(_num("retries_unattributed")).label("unattributed"),
-            func.sum(_num("unpriced_calls")).label("unpriced"),
-            func.sum(_num("tool_spans_finished")).label("tool_finished"),
-            func.sum(_num("tool_spans_ok")).label("tool_ok"),
-            func.sum(_num("llm_spans_finished")).label("llm_finished"),
-            func.sum(_num("llm_spans_ok")).label("llm_ok"),
-            func.avg(_num("llm_calls")).label("avg_llm"),
-            func.avg(_num("tool_calls")).label("avg_tool"),
-            func.avg(_num("retry_count")).label("avg_retries"),
-            func.avg(_num("files_modified")).label("avg_files"),
-            func.count(finished_duration).label("latency_count"),
-            _pct(finished_duration, 0.5).label("p50"),
-            _pct(finished_duration, 0.95).label("p95"),
-            func.count()
-            .filter((R.summary_version > 0) & (R.summary_version < SUMMARY_VERSION))
-            .label("unrebuilt"),
-        ).where(*_runs_where(scope))
-        return (await conn.execute(statement)).one()
+            u.c.status,
+            func.sum(u.c.runs).label("runs"),
+            func.sum(u.c.cost_usd).label("cost_usd"),
+            func.sum(u.c.retry_cost_usd).label("retry_cost_usd"),
+            *(func.sum(u.c[f]).label(f) for f in RUN_SUM_FIELDS),
+        ).group_by(u.c.status)  # fmt: skip
+        return _RunTotals((await conn.execute(statement)).all())
 
     @staticmethod
-    def _run_counts(row: Any) -> RunCounts:
-        finished = row.success + row.failed + row.timed_out + row.blocked
-        return RunCounts(
-            total=row.total,
-            active=row.active,
-            finished=finished,
-            success=row.success,
-            failed=row.failed,
-            timed_out=row.timed_out,
-            blocked=row.blocked,
-            cancelled=row.cancelled,
+    async def _latency(conn: AsyncConnection, sources: _Sources, *series: str) -> Sequence[Any]:
+        u = sources.latency()
+        statement = (
+            select(u.c.series, u.c.name, u.c.bucket, func.sum(u.c.n).label("n"))
+            .where(u.c.series.in_(series))
+            .group_by(u.c.series, u.c.name, u.c.bucket)
         )
-
-    @staticmethod
-    def _rates(row: Any, counts: RunCounts) -> Rates:
-        return Rates(
-            success_rate=_rate(counts.success, counts.finished),
-            failure_rate=_rate(counts.failed + counts.blocked, counts.finished),
-            timeout_rate=_rate(counts.timed_out, counts.finished),
-            retry_rate=_rate(row.retried_runs, counts.total),
-        )
-
-    def _headline(self, row: Any, counts: RunCounts) -> CostHeadline:
-        total = Decimal(row.cost or 0)
-        retry = Decimal(row.retry_cost or 0)
-        return CostHeadline(
-            total_usd=_usd(total),
-            per_run_usd=_usd(total / counts.total) if counts.total else None,
-            per_successful_run_usd=(
-                _usd(Decimal(row.success_cost or 0) / counts.success) if counts.success else None
-            ),
-            retry_usd=_usd(retry),
-            retry_share=round(float(retry / total), 6) if total else None,
-            unpriced_calls=int(row.unpriced or 0),
-            unrebuilt_runs=row.unrebuilt,
-        )
+        return (await conn.execute(statement)).all()
 
     # ------------------------------------------------------------------ summary
 
     async def summary(self, scope: AnalyticsScope) -> Summary:
         async def work(conn: AsyncConnection) -> Summary:
-            row = await self._counts_and_cost(conn, scope)
-            counts = self._run_counts(row)
+            sources = _Sources(scope)
+            totals = await self._totals(conn, sources)
+            run_hist = _histograms(await self._latency(conn, sources, "run"), lambda r: "run")
             agents = await conn.execute(
                 select(R.agent_slug)
                 .where(R.workspace_id == scope.tenant.workspace_id, R.status.in_(ACTIVE))
@@ -279,26 +308,26 @@ class PostgresAnalyticsStore:
                 .order_by(R.agent_slug)
                 .limit(10)
             )
-
+            f, n = totals.fields, totals.total
             return Summary(
                 window=self._window(scope),
-                runs=counts,
-                rates=self._rates(row, counts),
-                cost=self._headline(row, counts),
-                run_latency=_percentiles(row.latency_count, row.p50, row.p95),
+                runs=totals.counts,
+                rates=totals.rates,
+                cost=totals.headline,
+                run_latency=_percentiles(run_hist.get("run")),
                 behaviour=Behaviour(
-                    avg_llm_calls=_avg(row.avg_llm) if counts.total else None,
-                    avg_tool_calls=_avg(row.avg_tool) if counts.total else None,
-                    avg_retries=_avg(row.avg_retries) if counts.total else None,
-                    avg_files_modified=_avg(row.avg_files) if counts.total else None,
+                    avg_llm_calls=_avg(f["llm_calls"], n),
+                    avg_tool_calls=_avg(f["tool_calls"], n),
+                    avg_retries=_avg(f["retry_count"], n),
+                    avg_files_modified=_avg(f["files_modified"], n),
                 ),
                 tools=SpanRate(
-                    calls=int(row.tool_finished or 0),
-                    success_rate=_rate(int(row.tool_ok or 0), int(row.tool_finished or 0)),
+                    calls=f["tool_spans_finished"],
+                    success_rate=_rate(f["tool_spans_ok"], f["tool_spans_finished"]),
                 ),
                 llm=SpanRate(
-                    calls=int(row.llm_finished or 0),
-                    success_rate=_rate(int(row.llm_ok or 0), int(row.llm_finished or 0)),
+                    calls=f["llm_spans_finished"],
+                    success_rate=_rate(f["llm_spans_ok"], f["llm_spans_finished"]),
                 ),
                 active_agents=[a.agent_slug for a in agents],
             )
@@ -310,285 +339,255 @@ class PostgresAnalyticsStore:
 
     async def cost(self, scope: AnalyticsScope, *, top: int) -> CostReport:
         async def work(conn: AsyncConnection) -> CostReport:
-            row = await self._counts_and_cost(conn, scope)
-            counts = self._run_counts(row)
-            headline = self._headline(row, counts)
-            total = Decimal(row.cost or 0)
-            retry = Decimal(row.retry_cost or 0)
+            sources = _Sources(scope)
+            totals = await self._totals(conn, sources)
+            headline = totals.headline
 
-            day = func.date_trunc("day", func.timezone("UTC", R.started_at))
+            runs_u = sources.runs()
             by_day = [
                 CostByDay(
-                    day=r.day.date() if hasattr(r.day, "date") else r.day,
-                    cost_usd=_usd(r.cost),
-                    retry_usd=_usd(r.retry),
-                    runs=r.runs,
+                    day=r.day, cost_usd=_usd(r.cost), retry_usd=_usd(r.retry), runs=int(r.runs)
                 )
                 for r in await conn.execute(
                     select(
-                        day.label("day"),
-                        func.sum(_num("estimated_cost_usd")).label("cost"),
-                        func.sum(_num("retry_cost_usd")).label("retry"),
-                        func.count().label("runs"),
+                        runs_u.c.day,
+                        func.sum(runs_u.c.cost_usd).label("cost"),
+                        func.sum(runs_u.c.retry_cost_usd).label("retry"),
+                        func.sum(runs_u.c.runs).label("runs"),
                     )
-                    .where(*_runs_where(scope))
-                    .group_by(day)
-                    .order_by(day)
+                    .group_by(runs_u.c.day)
+                    .order_by(runs_u.c.day)
                 )
             ]
-
-            total_cost = func.sum(L.total)
-            agent_rows = (
-                await conn.execute(
-                    _lines_from(
-                        scope,
-                        L.agent_slug.label("agent"),
-                        total_cost.label("cost"),
-                        func.count().label("calls"),
-                        func.count().over().label("groups"),
-                    )
-                    .group_by(L.agent_slug)
-                    .order_by(total_cost.desc(), L.agent_slug)
-                    .limit(top)
-                )
-            ).all()
-            model_rows = (
-                await conn.execute(
-                    _lines_from(
-                        scope,
-                        L.provider,
-                        L.model,
-                        total_cost.label("cost"),
-                        func.count().label("calls"),
-                        func.sum(L.input_tokens).label("tin"),
-                        func.sum(L.output_tokens).label("tout"),
-                        func.count().filter(L.source == "unpriced").label("unpriced"),
-                    )
-                    .group_by(L.provider, L.model)
-                    .order_by(total_cost.desc(), L.model, L.provider)
-                    .limit(top)
-                )
-            ).all()
-            grand = (
-                await conn.execute(
-                    _lines_from(
-                        scope,
-                        total_cost.label("cost"),
-                        func.count().label("calls"),
-                        func.count(func.distinct(L.agent_slug)).label("agents"),
-                    )
-                )
-            ).one()
-            model_groups = (
-                await conn.execute(
-                    select(func.count()).select_from(
-                        _lines_from(scope, L.provider, L.model)
-                        .group_by(L.provider, L.model)
-                        .subquery()
-                    )
-                )
-            ).scalar_one()
-            sources = [
-                CostBySource(source=r.source, cost_usd=_usd(r.cost), calls=r.calls)
-                for r in await conn.execute(
-                    _lines_from(
-                        scope, L.source, total_cost.label("cost"), func.count().label("calls")
-                    )
-                    .group_by(L.source)
-                    .order_by(total_cost.desc(), L.source)
-                )
-            ]
-
-            projects: list[CostByProject] | None = None
+            by_project: list[CostByProject] | None = None
             if scope.project_id is None:
-                projects = [
+                by_project = [
                     CostByProject(
                         project_id=from_uuid(IdKind.PROJECT, r.project_id),
                         cost_usd=_usd(r.cost),
-                        runs=r.runs,
+                        runs=int(r.runs),
                     )
                     for r in await conn.execute(
                         select(
-                            R.project_id,
-                            func.sum(_num("estimated_cost_usd")).label("cost"),
-                            func.count().label("runs"),
+                            runs_u.c.project_id,
+                            func.sum(runs_u.c.cost_usd).label("cost"),
+                            func.sum(runs_u.c.runs).label("runs"),
                         )
-                        .where(*_runs_where(scope))
-                        .group_by(R.project_id)
-                        .order_by(func.sum(_num("estimated_cost_usd")).desc(), R.project_id)
+                        .group_by(runs_u.c.project_id)
+                        .order_by(func.sum(runs_u.c.cost_usd).desc(), runs_u.c.project_id)
                         .limit(top)
                     )
                 ]
 
-            expensive = [
-                _expensive(r)
-                for r in await conn.execute(
-                    select(
-                        R.id,
-                        R.project_id,
-                        R.name,
-                        R.agent_slug,
-                        R.status,
-                        R.started_at,
-                        _num("estimated_cost_usd").label("cost"),
-                        _num("retry_cost_usd").label("retry"),
-                        _num("retry_count").label("retries"),
-                    )
-                    .where(*_runs_where(scope), _num("estimated_cost_usd") > 0)
-                    .order_by(_num("estimated_cost_usd").desc(), R.id)
-                    .limit(top)
-                )
-            ]
+            cost_u = sources.cost()
+            total_usd = func.sum(cost_u.c.total_usd)
+            calls = func.sum(cost_u.c.calls)
 
+            async def grouped(*columns: Any) -> list[Any]:
+                return list(
+                    (
+                        await conn.execute(
+                            select(*columns, total_usd.label("cost"), calls.label("calls"),
+                                   func.sum(cost_u.c.input_tokens).label("tin"),
+                                   func.sum(cost_u.c.output_tokens).label("tout"))
+                            .group_by(*columns)
+                            .order_by(total_usd.desc(), *columns)
+                        )
+                    ).all()
+                )  # fmt: skip
+
+            agent_rows = await grouped(cost_u.c.agent_slug)
+            model_rows = await grouped(cost_u.c.provider, cost_u.c.model)
+            source_rows = await grouped(cost_u.c.source)
+            unpriced_by_model: dict[tuple[str, str], int] = {
+                (r.provider, r.model): int(r.calls)
+                for r in (
+                    await conn.execute(
+                        select(cost_u.c.provider, cost_u.c.model, calls.label("calls"))
+                        .where(cost_u.c.source == "unpriced")
+                        .group_by(cost_u.c.provider, cost_u.c.model)
+                    )
+                ).all()
+            }
+
+            top_u = sources.top()
+            expensive = await self._runs_from_top(conn, scope, top_u, "cost", top)
             return CostReport(
                 window=self._window(scope),
                 headline=headline,
                 retries=RetryBreakdown(
-                    total_usd=_usd(total),
-                    initial_usd=_usd(total - retry),
-                    retry_usd=_usd(retry),
+                    total_usd=headline.total_usd,
+                    initial_usd=_usd(totals.cost - totals.retry_cost),
+                    retry_usd=headline.retry_usd,
                     retry_share=headline.retry_share,
-                    runs_with_retry_cost=row.runs_with_retry_cost,
-                    retries_unattributed=int(row.unattributed or 0),
+                    runs_with_retry_cost=totals.fields["runs_with_retry_cost"],
+                    retries_unattributed=totals.fields["retries_unattributed"],
                 ),
                 by_day=by_day,
                 by_agent=[
-                    CostByAgent(agent=r.agent, cost_usd=_usd(r.cost), calls=r.calls)
-                    for r in agent_rows
+                    CostByAgent(
+                        agent=r.agent_slug or "(unknown)", cost_usd=_usd(r.cost), calls=int(r.calls)
+                    )
+                    for r in agent_rows[:top]
                 ],
-                by_agent_other=_other(agent_rows, grand.agents, grand.cost, grand.calls),
+                by_agent_other=_other(agent_rows[top:], "cost", "calls"),
                 by_model=[
                     CostByModel(
-                        provider=r.provider,
-                        model=r.model,
+                        provider=r.provider or None,
+                        model=r.model or None,
                         cost_usd=_usd(r.cost),
-                        calls=r.calls,
+                        calls=int(r.calls),
                         input_tokens=int(r.tin or 0),
                         output_tokens=int(r.tout or 0),
-                        unpriced_calls=r.unpriced,
+                        unpriced_calls=unpriced_by_model.get((r.provider, r.model), 0),
                     )
-                    for r in model_rows
+                    for r in model_rows[:top]
                 ],
-                by_model_other=_other(model_rows, model_groups, grand.cost, grand.calls),
-                by_source=sources,
-                by_project=projects,
-                expensive_runs=expensive,
+                by_model_other=_other(model_rows[top:], "cost", "calls"),
+                by_source=[
+                    CostBySource(source=r.source, cost_usd=_usd(r.cost), calls=int(r.calls))
+                    for r in source_rows
+                ],
+                by_project=by_project,
+                expensive_runs=[
+                    ExpensiveRun(
+                        **row,
+                        cost_usd=_usd(c),
+                        retry_usd=_usd(rc),
+                        retry_count=int(n),
+                    )
+                    for row, c, rc, n in expensive
+                ],
             )
 
         result: CostReport = await self._read(scope, work)
         return result
 
+    @staticmethod
+    async def _runs_from_top(
+        conn: AsyncConnection, scope: AnalyticsScope, top_u: Any, kind: str, limit: int
+    ) -> list[tuple[dict[str, Any], Any, Any, Any]]:
+        """The top `limit` stored/live ranked runs, joined to their run rows (tenant-scoped)."""
+        metric = top_u.c.cost_usd if kind == "cost" else top_u.c.retry_count
+        ranked = (
+            await conn.execute(
+                select(
+                    top_u.c.run_id, top_u.c.cost_usd, top_u.c.retry_cost_usd, top_u.c.retry_count
+                )
+                .where(top_u.c.kind == kind)
+                .order_by(metric.desc(), top_u.c.run_id)
+                .limit(limit)
+            )
+        ).all()
+        if not ranked:
+            return []
+        details = {
+            r.id: r
+            for r in await conn.execute(
+                select(R.id, R.project_id, R.name, R.agent_slug, R.status, R.started_at).where(
+                    R.workspace_id == scope.tenant.workspace_id,
+                    R.id.in_([r.run_id for r in ranked]),
+                )
+            )
+        }
+        out = []
+        for r in ranked:
+            d = details.get(r.run_id)
+            if d is None:  # a run removed since the rollup was written
+                continue
+            row = {
+                "run_id": from_uuid(IdKind.RUN, d.id),
+                "project_id": from_uuid(IdKind.PROJECT, d.project_id),
+                "name": d.name,
+                "agent": d.agent_slug,
+                "status": d.status,
+                "started_at": d.started_at,
+            }
+            out.append((row, r.cost_usd, r.retry_cost_usd, r.retry_count))
+        return out
+
     # ------------------------------------------------------------------ reliability
 
     async def reliability(self, scope: AnalyticsScope, *, top: int) -> ReliabilityReport:
         async def work(conn: AsyncConnection) -> ReliabilityReport:
-            row = await self._counts_and_cost(conn, scope)
-            counts = self._run_counts(row)
+            sources = _Sources(scope)
+            totals = await self._totals(conn, sources)
 
-            day = func.date_trunc("day", func.timezone("UTC", R.started_at))
-            trend = []
+            runs_u = sources.runs()
+            per_day: dict[date, dict[str, int]] = defaultdict(lambda: defaultdict(int))
             for r in await conn.execute(
                 select(
-                    day.label("day"),
-                    func.count().filter(R.status == "SUCCESS").label("success"),
-                    func.count().filter(R.status == "FAILED").label("failed"),
-                    func.count().filter(R.status == "TIMED_OUT").label("timed_out"),
-                    func.count().filter(R.status == "BLOCKED").label("blocked"),
-                )
-                .where(*_runs_where(scope))
-                .group_by(day)
-                .order_by(day)
+                    runs_u.c.day, runs_u.c.status, func.sum(runs_u.c.runs).label("runs")
+                ).group_by(runs_u.c.day, runs_u.c.status)
             ):
-                finished = r.success + r.failed + r.timed_out + r.blocked
+                per_day[r.day][r.status] += int(r.runs)
+            trend = []
+            for day in sorted(per_day):
+                s = per_day[day]
+                finished = s["SUCCESS"] + s["FAILED"] + s["TIMED_OUT"] + s["BLOCKED"]
                 trend.append(
                     FailureDay(
-                        day=_as_date(r.day),
+                        day=day,
                         finished=finished,
-                        success=r.success,
-                        failed=r.failed,
-                        timed_out=r.timed_out,
-                        blocked=r.blocked,
-                        failure_rate=_rate(r.failed + r.blocked + r.timed_out, finished),
+                        success=s["SUCCESS"],
+                        failed=s["FAILED"],
+                        timed_out=s["TIMED_OUT"],
+                        blocked=s["BLOCKED"],
+                        failure_rate=_rate(s["FAILED"] + s["BLOCKED"] + s["TIMED_OUT"], finished),
                     )
                 )
 
-            calls = func.count().filter(S.status.is_not(None))
+            spans_u = sources.spans()
             tool_rows = (
                 await conn.execute(
-                    _spans_from(
-                        scope,
-                        S.name,
-                        calls.label("calls"),
-                        func.count().filter(S.status == "success").label("ok"),
-                        _pct(S.duration_ms, 0.95).label("p95"),
-                        func.count().over().label("groups"),
+                    select(
+                        spans_u.c.name,
+                        func.sum(spans_u.c.finished).label("calls"),
+                        func.sum(spans_u.c.ok).label("ok"),
                     )
-                    .where(S.kind == "tool")
-                    .group_by(S.name)
-                    .order_by(calls.desc(), S.name)
-                    .limit(top)
+                    .where(spans_u.c.kind == "tool")
+                    .group_by(spans_u.c.name)
+                    .order_by(func.sum(spans_u.c.finished).desc(), spans_u.c.name)
                 )
             ).all()
-            tool_total = (
-                await conn.execute(
-                    _spans_from(
-                        scope,
-                        calls.label("calls"),
-                        func.count(func.distinct(S.name)).label("names"),
-                    ).where(S.kind == "tool")
+            tool_hist = _histograms(
+                [r for r in await self._latency(conn, sources, "tool")], lambda r: r.name
+            )
+            tools = [
+                ToolReliability(
+                    name=r.name or "(unnamed)",
+                    calls=int(r.calls),
+                    success_rate=_rate(r.ok, r.calls),
+                    p95_ms=_ms(percentile(tool_hist.get(r.name, {}), 0.95)),
                 )
-            ).one()
-
+                for r in tool_rows[:top]
+            ]
             heavy = [
                 RetryHeavyRun(
-                    run_id=from_uuid(IdKind.RUN, r.id),
-                    project_id=from_uuid(IdKind.PROJECT, r.project_id),
-                    name=r.name,
-                    agent=r.agent_slug,
-                    status=r.status,
-                    started_at=r.started_at,
-                    retry_count=int(r.retries),
-                    retry_usd=_usd(r.retry),
-                    cost_usd=_usd(r.cost),
+                    run_id=row["run_id"],
+                    project_id=row["project_id"],
+                    name=row["name"],
+                    agent=row["agent"],
+                    status=row["status"],
+                    started_at=row["started_at"],
+                    retry_count=int(n),
+                    retry_usd=_usd(rc),
+                    cost_usd=_usd(c),
                 )
-                for r in await conn.execute(
-                    select(
-                        R.id,
-                        R.project_id,
-                        R.name,
-                        R.agent_slug,
-                        R.status,
-                        R.started_at,
-                        _num("retry_count").label("retries"),
-                        _num("retry_cost_usd").label("retry"),
-                        _num("estimated_cost_usd").label("cost"),
-                    )
-                    .where(*_runs_where(scope), _num("retry_count") > 0)
-                    .order_by(_num("retry_count").desc(), R.started_at.desc(), R.id)
-                    .limit(top)
+                for row, c, rc, n in await self._runs_from_top(
+                    conn, scope, sources.top(), "retries", top
                 )
             ]
-            shown = sum(r.calls for r in tool_rows)
+            rest = tool_rows[top:]
             return ReliabilityReport(
                 window=self._window(scope),
-                runs=counts,
-                rates=self._rates(row, counts),
+                runs=totals.counts,
+                rates=totals.rates,
                 failure_trend=trend,
-                tools=[
-                    ToolReliability(
-                        name=r.name or "(unnamed)",
-                        calls=r.calls,
-                        success_rate=_rate(r.ok, r.calls),
-                        p95_ms=None if r.p95 is None else round(float(r.p95), 3),
-                    )
-                    for r in tool_rows
-                ],
+                tools=tools,
                 tools_other=(
-                    OtherBucket(
-                        groups=int(tool_total.names) - len(tool_rows),
-                        calls=int(tool_total.calls) - shown,
-                    )
-                    if int(tool_total.names) > len(tool_rows)
+                    OtherBucket(groups=len(rest), calls=sum(int(r.calls) for r in rest))
+                    if rest
                     else None
                 ),
                 retry_heavy_runs=heavy,
@@ -601,86 +600,37 @@ class PostgresAnalyticsStore:
 
     async def performance(self, scope: AnalyticsScope, *, top: int) -> PerformanceReport:
         async def work(conn: AsyncConnection) -> PerformanceReport:
-            row = await self._counts_and_cost(conn, scope)
-
-            def kind_stats(kind: str) -> Select[Any]:
-                return _spans_from(
-                    scope,
-                    func.count(S.duration_ms).label("n"),
-                    _pct(S.duration_ms, 0.5).label("p50"),
-                    _pct(S.duration_ms, 0.95).label("p95"),
-                ).where(S.kind == kind)
-
-            llm = (await conn.execute(kind_stats("llm"))).one()
-            tool = (await conn.execute(kind_stats("tool"))).one()
-
-            name = case((S.kind.in_(NAMED_KINDS), S.name), else_=literal(None))
-            p95 = _pct(S.duration_ms, 0.95)
+            sources = _Sources(scope)
+            latency = await self._latency_all(conn, sources)
+            by_series = _histograms(latency, lambda r: r.series)
+            by_operation = _histograms(latency, lambda r: (r.series, r.name))
             slow = [
                 SlowOperation(
-                    kind=r.kind,
-                    name=r.name,
-                    calls=r.calls,
-                    p50_ms=None if r.p50 is None else round(float(r.p50), 3),
-                    p95_ms=None if r.p95 is None else round(float(r.p95), 3),
-                    max_ms=None if r.max is None else round(float(r.max), 3),
+                    kind=series,
+                    name=name or None,
+                    calls=sum(counts.values()),
+                    p50_ms=_ms(percentile(counts, 0.5)),
+                    p95_ms=_ms(percentile(counts, 0.95)),
                 )
-                for r in await conn.execute(
-                    _spans_from(
-                        scope,
-                        S.kind,
-                        name.label("name"),
-                        func.count(S.duration_ms).label("calls"),
-                        _pct(S.duration_ms, 0.5).label("p50"),
-                        p95.label("p95"),
-                        func.max(S.duration_ms).label("max"),
-                    )
-                    .where(S.duration_ms.is_not(None), S.kind.not_in(SLOW_KINDS_EXCLUDED))
-                    .group_by(S.kind, name)
-                    .order_by(p95.desc(), S.kind, name)
-                    .limit(top)
-                )
+                for (series, name), counts in by_operation.items()
+                if series != "run"
             ]
+            slow.sort(key=lambda o: (-(o.p95_ms or 0), o.kind, o.name or ""))
             return PerformanceReport(
                 window=self._window(scope),
-                run=_percentiles(row.latency_count, row.p50, row.p95),
-                llm=_percentiles(llm.n, llm.p50, llm.p95),
-                tool=_percentiles(tool.n, tool.p50, tool.p95),
-                slow_operations=slow,
+                run=_percentiles(by_series.get("run")),
+                llm=_percentiles(by_series.get("llm")),
+                tool=_percentiles(by_series.get("tool")),
+                slow_operations=slow[:top],
             )
 
         result: PerformanceReport = await self._read(scope, work)
         return result
 
-
-def _as_date(value: Any) -> date:
-    result: date = value.date() if hasattr(value, "date") else value
-    return result
-
-
-def _expensive(r: Any) -> ExpensiveRun:
-    return ExpensiveRun(
-        run_id=from_uuid(IdKind.RUN, r.id),
-        project_id=from_uuid(IdKind.PROJECT, r.project_id),
-        name=r.name,
-        agent=r.agent_slug,
-        status=r.status,
-        started_at=r.started_at,
-        cost_usd=_usd(r.cost),
-        retry_usd=_usd(r.retry),
-        retry_count=int(r.retries),
-    )
-
-
-def _other(
-    shown: Sequence[Any], groups: int, total_cost: Decimal | None, total_calls: int
-) -> OtherBucket | None:
-    if groups <= len(shown):
-        return None
-    return OtherBucket(
-        groups=groups - len(shown),
-        calls=int(total_calls) - sum(r.calls for r in shown),
-        cost_usd=_usd(
-            Decimal(total_cost or 0) - sum((Decimal(r.cost or 0) for r in shown), Decimal(0))
-        ),
-    )
+    @staticmethod
+    async def _latency_all(conn: AsyncConnection, sources: _Sources) -> Sequence[Any]:
+        u = sources.latency()
+        statement = select(u.c.series, u.c.name, u.c.bucket, func.sum(u.c.n).label("n")).group_by(
+            u.c.series, u.c.name, u.c.bucket
+        )
+        return (await conn.execute(statement)).all()

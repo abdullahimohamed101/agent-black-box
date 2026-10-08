@@ -5,7 +5,7 @@ Every method takes an `AnalyticsScope`: no question can be asked without a works
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date
 from typing import Protocol
 
 from abb_api.analytics.schemas import (
@@ -24,13 +24,17 @@ MAX_TOP = 50
 
 @dataclass(frozen=True)
 class AnalyticsScope:
-    """What a question is about. `project_id` and `agent_slug` narrow; the tenant never widens."""
+    """What a question is about: a tenant, whole UTC days, optionally one project.
+
+    `project_id` only narrows; the tenant never widens. `today` is the UTC day still changing: it is
+    aggregated live, earlier days come from the rollups (ADR-043).
+    """
 
     tenant: TenantContext
-    start: datetime  # inclusive, on runs.started_at
-    end: datetime  # exclusive
+    start_day: date  # inclusive
+    end_day: date  # exclusive
+    today: date
     project_id: uuid.UUID | None = None
-    agent_slug: str | None = None
 
 
 class AnalyticsStore(Protocol):

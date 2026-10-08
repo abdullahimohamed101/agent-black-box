@@ -28,12 +28,13 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     code: {"description": text, "model": ErrorEnvelope} for code, text in _ERROR_TEXT.items()
 }
 _WINDOW = (
-    "Runs are placed in the window by `started_at` (UTC). Default: the last 7 days; at most 92. "
-    "A project-bound key is confined to its project."
+    "Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds "
+    "down and `to` rounds up. Default: the last 7 days; at most 92. Finished days come from "
+    "rollups refreshed within about a minute of a change; today is computed live. Percentiles "
+    "are approximate (about 5%). A project-bound key is confined to its project."
 )
 
 ProjectParam = Annotated[str | None, Query(pattern=id_pattern(IdKind.PROJECT))]
-AgentParam = Annotated[str | None, Query(pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$")]
 FromParam = Annotated[datetime | None, Query(alias="from")]
 ToParam = Annotated[datetime | None, Query(alias="to")]
 TopParam = Annotated[int, Query(ge=1, le=MAX_TOP, description="Groups listed before `other`.")]
@@ -48,13 +49,10 @@ async def _scope(
     request: Request,
     principal: Principal,
     project_id: str | None,
-    agent_id: str | None,
     start: datetime | None,
     end: datetime | None,
 ) -> AnalyticsScope:
-    return await _service(request).scope(
-        principal, project_id=project_id, agent_id=agent_id, start=start, end=end
-    )
+    return await _service(request).scope(principal, project_id=project_id, start=start, end=end)
 
 
 @router.get(
@@ -68,11 +66,10 @@ async def summary(
     request: Request,
     principal: Reader,
     project_id: ProjectParam = None,
-    agent_id: AgentParam = None,
     start: FromParam = None,
     end: ToParam = None,
 ) -> Summary:
-    scope = await _scope(request, principal, project_id, agent_id, start, end)
+    scope = await _scope(request, principal, project_id, start, end)
     return await _service(request).summary(scope)
 
 
@@ -90,12 +87,11 @@ async def cost(
     request: Request,
     principal: Reader,
     project_id: ProjectParam = None,
-    agent_id: AgentParam = None,
     start: FromParam = None,
     end: ToParam = None,
     top: TopParam = DEFAULT_TOP,
 ) -> CostReport:
-    scope = await _scope(request, principal, project_id, agent_id, start, end)
+    scope = await _scope(request, principal, project_id, start, end)
     return await _service(request).cost(scope, top)
 
 
@@ -110,12 +106,11 @@ async def reliability(
     request: Request,
     principal: Reader,
     project_id: ProjectParam = None,
-    agent_id: AgentParam = None,
     start: FromParam = None,
     end: ToParam = None,
     top: TopParam = DEFAULT_TOP,
 ) -> ReliabilityReport:
-    scope = await _scope(request, principal, project_id, agent_id, start, end)
+    scope = await _scope(request, principal, project_id, start, end)
     return await _service(request).reliability(scope, top)
 
 
@@ -133,10 +128,9 @@ async def performance(
     request: Request,
     principal: Reader,
     project_id: ProjectParam = None,
-    agent_id: AgentParam = None,
     start: FromParam = None,
     end: ToParam = None,
     top: TopParam = DEFAULT_TOP,
 ) -> PerformanceReport:
-    scope = await _scope(request, principal, project_id, agent_id, start, end)
+    scope = await _scope(request, principal, project_id, start, end)
     return await _service(request).performance(scope, top)

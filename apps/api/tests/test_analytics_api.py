@@ -4,118 +4,23 @@ Expected numbers are worked out by hand from the scenario below (not read back f
 test), including the tenant and project isolation rules.
 """
 
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from abb_event_schema.ids import IdKind, new_id
 from sqlalchemy import text
 
 from abb_api.analytics.postgres import PostgresAnalyticsStore, analytics_timeout
+from abb_api.analytics.rollup import refresh_day
 from abb_api.analytics.store import AnalyticsScope
 from abb_api.core.errors import AppError
 from abb_api.tenancy import TenantContext
+from tests.analytics_fixtures import D6, D7, RUNS, Seeder, X  # noqa: F401
 from tests.api_fixtures import Api
-from tests.ingest_helpers import make_run_ids, wire_event
-
-D7 = datetime(2026, 10, 7, 10, 0, 0, tzinfo=UTC)  # "today" in the scenario (the API clock is 12:05)
-D6 = D7 - timedelta(days=1)
-X = {"llm.provider": "example-provider", "llm.model": "model-x"}  # $3 in / $15 out per million
 
 
-RUNS: dict[str, str] = {}  # scenario run name -> run id (rebuilt by the fixture)
-
-
-class Seeder:
-    def __init__(self, api: Api, token: str) -> None:
-        self.api, self.token = api, token
-
-    async def run(
-        self,
-        start: datetime,
-        *,
-        agent: str = "a1",
-        end: str | None = "success",  # run.completed status; None = still running
-        seconds: int = 10,
-        llm: list[dict[str, Any]] | None = None,
-        tools: list[tuple[str, str, float]] | None = None,
-        retry_scope: bool = False,
-    ) -> str:
-        ids = make_run_ids()
-        n = 0
-        events: list[dict[str, Any]] = []
-
-        def add(kind: str, at: datetime, **kw: Any) -> None:
-            nonlocal n
-            n += 1
-            events.append(
-                wire_event(
-                    ids,
-                    n,
-                    event_type=kind,
-                    agent_id=agent,
-                    occurred_at=at.isoformat().replace("+00:00", "Z"),
-                    **kw,
-                )
-            )
-
-        add("run.started", start, span_id=..., attributes={})
-        scope = new_id(IdKind.SPAN)
-        if retry_scope:
-            add("tool.call.started", start, span_id=scope, attributes={"tool.name": "fix"})
-        for i, attrs in enumerate(llm or []):
-            if retry_scope and i == 1:  # the second call comes after a retry of the scope
-                add("retry.attempted", start, span_id=scope, attributes={"retry.attempt": 1})
-            add(
-                "llm.request.completed", start, status="success", duration_ms=2000,
-                span_id=new_id(IdKind.SPAN), parent_span_id=scope if retry_scope else ...,
-                attributes=attrs,
-            )  # fmt: skip
-        if retry_scope:
-            add("tool.call.completed", start, span_id=scope, status="success", duration_ms=50,
-                attributes={"tool.name": "fix"})  # fmt: skip
-        for name, status, ms in tools or []:
-            kind = "tool.call.completed" if status == "success" else "tool.call.failed"
-            add(kind, start, span_id=new_id(IdKind.SPAN), status=status, duration_ms=ms,
-                attributes={"tool.name": name})  # fmt: skip
-        if end is not None:
-            add("run.completed", start + timedelta(seconds=seconds), span_id=..., status=end,
-                attributes={})  # fmt: skip
-        response = await self.api.post_batch(events, token=self.token)
-        assert response.status_code == 202, response.text
-        return ids["run_id"]
-
-
-@pytest.fixture
-async def seeded(api: Api) -> Api:
-    alpha, beta, other = Seeder(api, "writer"), Seeder(api, "beta"), Seeder(api, "other")
-    t1 = {**X, "llm.input_tokens": 1_000_000}  # $3.00
-    half = {**X, "llm.input_tokens": 500_000}  # $1.50
-    mini = {
-        "llm.provider": "example-provider", "llm.model": "model-x-mini-1",
-        "llm.input_tokens": 1_000_000, "llm.output_tokens": 1_000_000,
-    }  # fmt: skip  # $0.25 + $1.25
-    odd = {
-        "llm.provider": "x",
-        "llm.model": "mystery",
-        "llm.input_tokens": 9,
-        "cost.estimated_usd": 0.25,
-    }
-    RUNS.clear()
-    RUNS["r1"] = await alpha.run(
-        D7, seconds=10, llm=[t1], tools=[("git", "success", 100), ("sh", "error", 300)]
-    )
-    RUNS["r2"] = await alpha.run(D7, end="error", seconds=20, llm=[half, half], retry_scope=True)
-    RUNS["r3"] = await alpha.run(D7, agent="a2", end="timeout", seconds=30, llm=[odd])
-    RUNS["r4"] = await alpha.run(
-        D6, agent="a2", seconds=40, llm=[mini], tools=[("git", "success", 200)]
-    )
-    RUNS["r5"] = await alpha.run(D7, end="cancelled")
-    RUNS["r6"] = await alpha.run(D7, agent="a3", end=None)
-    RUNS["r7"] = await beta.run(D7, llm=[t1])
-    await other.run(D7, llm=[{**X, "llm.input_tokens": 100_000_000}])
-    await api.drain()
-    return api
+def near(value: float | None, expected: float, tolerance: float = 0.07) -> bool:
+    """Percentiles come from ~10% wide histogram buckets: within ~5% of exact (ADR-043)."""
+    return value is not None and abs(value - expected) <= expected * tolerance
 
 
 def approx(value: float | None, expected: float) -> bool:
@@ -147,14 +52,15 @@ async def test_summary_figures_for_a_project_key(seeded: Api) -> None:
     assert approx(cost["retry_share"], 1.5 / 7.75)
     assert cost["unpriced_calls"] == 0 and cost["unrebuilt_runs"] == 0
     latency = body["run_latency"]
-    assert latency["count"] == 4 and latency["p50_ms"] == 25000 and approx(latency["p95_ms"], 38500)
+    assert latency["count"] == 4
+    assert near(latency["p50_ms"], 25000) and near(latency["p95_ms"], 38500)
     behaviour = body["behaviour"]
     assert approx(behaviour["avg_llm_calls"], 5 / 6) and approx(behaviour["avg_tool_calls"], 4 / 6)
     assert approx(behaviour["avg_retries"], 1 / 6) and behaviour["avg_files_modified"] == 0
     assert body["tools"] == {"calls": 4, "success_rate": 0.75}
     assert body["llm"] == {"calls": 5, "success_rate": 1.0}
     assert body["active_agents"] == ["a3"]
-    assert body["window"]["end"].startswith("2026-10-07T12:05")
+    assert body["window"] == {"start": "2026-09-30T00:00:00Z", "end": "2026-10-08T00:00:00Z"}
 
 
 async def test_cost_report_breakdowns_and_retry_share(seeded: Api) -> None:
@@ -211,15 +117,16 @@ async def test_reliability_report(seeded: Api) -> None:
 
 async def test_performance_report(seeded: Api) -> None:
     body = await get(seeded, "performance")
-    assert body["llm"] == {"count": 5, "p50_ms": 2000, "p95_ms": 2000}
-    assert body["tool"]["count"] == 4 and approx(body["tool"]["p95_ms"], 285.0)
+    assert body["llm"]["count"] == 5 and near(body["llm"]["p50_ms"], 2000)
+    assert near(body["llm"]["p95_ms"], 2000)
+    assert body["tool"]["count"] == 4 and near(body["tool"]["p95_ms"], 285.0)
     slow = body["slow_operations"]
     assert (slow[0]["kind"], slow[0]["name"]) == ("llm", "example-provider/model-x") or slow[0][
         "kind"
     ] == "llm"
     assert all(s["kind"] != "agent" for s in slow)
     sh = next(s for s in slow if s["name"] == "sh")
-    assert sh["p95_ms"] == 300 and sh["calls"] == 1
+    assert near(sh["p95_ms"], 300) and sh["calls"] == 1
 
 
 # ------------------------------------------------------------------ scoping and isolation
@@ -234,11 +141,6 @@ async def test_a_workspace_key_sees_every_project_and_can_narrow(seeded: Api) ->
     assert beta["runs"]["total"] == 1 and approx(beta["cost"]["total_usd"], 3.0)
     by_project = (await get(seeded, "cost", token="wide_reader"))["by_project"]
     assert len(by_project) == 2 and approx(by_project[0]["cost_usd"], 7.75)
-    agent = await get(seeded, "summary", token="wide_reader", agent_id="a2")
-    assert agent["runs"]["total"] == 2 and approx(agent["cost"]["total_usd"], 1.75)
-    # the agent filter reaches the line-based breakdowns too
-    cost = await get(seeded, "cost", token="wide_reader", agent_id="a2")
-    assert {a["agent"] for a in cost["by_agent"]} == {"a2"}
 
 
 async def test_a_project_key_cannot_read_or_probe_other_projects(seeded: Api) -> None:
@@ -273,7 +175,6 @@ async def test_access_and_validation_rules(seeded: Api) -> None:
         assert (await seeded.get(path, token="ingest_only")).status_code == 403
     bad: list[dict[str, Any]] = [
         {"project_id": "nonsense"},
-        {"agent_id": "Bad Agent!"},
         {"top": 0},
         {"top": 51},
         {"from": "2026-10-07T00:00:00Z", "to": "2026-10-06T00:00:00Z"},
@@ -332,12 +233,16 @@ async def test_grouped_results_are_bounded_by_top(api: Api) -> None:
 async def test_legacy_summaries_are_reported_as_unrebuilt(seeded: Api) -> None:
     async with seeded.engine.begin() as conn:
         await conn.execute(text("UPDATE runs SET summary_version = 1 WHERE project_id IS NOT NULL"))
+        for day in (D6.date(), D7.date()):  # the rollups are rewritten from the changed rows
+            await refresh_day(conn, seeded.tenant.context, day)
     assert (await get(seeded, "summary", token="wide_reader"))["cost"]["unrebuilt_runs"] == 7
 
 
 async def test_a_slow_query_is_cut_off_and_reported_as_retryable(seeded: Api) -> None:
     store = PostgresAnalyticsStore(seeded.engine, timeout_seconds=0.05)
-    scope = AnalyticsScope(TenantContext(seeded.tenant.context.workspace_id), D6, D7)
+    scope = AnalyticsScope(
+        TenantContext(seeded.tenant.context.workspace_id), D6.date(), D7.date(), D7.date()
+    )
 
     async def sleepy(conn: Any) -> None:
         await conn.execute(text("SELECT pg_sleep(2)"))
