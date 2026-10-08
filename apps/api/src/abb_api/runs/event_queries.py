@@ -88,6 +88,37 @@ class EventQueries:
         ).first()
         return None if row is None else row.received_at
 
+    async def count_window(
+        self, run_id: uuid.UUID, *, since: datetime | None, upto: tuple[datetime, uuid.UUID]
+    ) -> int:
+        """How many events arrived in [`since`, `upto`], inclusive: a cheap check for late rows."""
+        columns = [t.events.c.received_at, t.events.c.event_id]
+        statement = select(func.count()).where(
+            t.events.c.workspace_id == self._tenant.workspace_id,
+            t.events.c.run_id == run_id,
+            tuple_(*columns)
+            <= tuple_(literal(upto[0], columns[0].type), literal(upto[1], columns[1].type)),
+        )
+        if since is not None:
+            statement = statement.where(t.events.c.received_at >= since)
+        return int((await self._conn.execute(statement)).scalar_one())
+
+    async def last_lifecycle(self, run_id: uuid.UUID, kinds: Sequence[str]) -> str | None:
+        """The type of the run's most recently received event among `kinds`, if any."""
+        row = (
+            await self._conn.execute(
+                select(t.events.c.event_type)
+                .where(
+                    t.events.c.workspace_id == self._tenant.workspace_id,
+                    t.events.c.run_id == run_id,
+                    t.events.c.event_type.in_(list(kinds)),
+                )
+                .order_by(t.events.c.received_at.desc(), t.events.c.event_id.desc())
+                .limit(1)
+            )
+        ).first()
+        return None if row is None else str(row.event_type)
+
     async def arrived_since(
         self,
         run_id: uuid.UUID,

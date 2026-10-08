@@ -26,6 +26,7 @@ from abb_api.tenancy import Principal
 log = logging.getLogger("abb.streaming")
 
 TERMINAL = frozenset({"run.completed", "run.failed", "run.cancelled"})
+LIFECYCLE = (*sorted(TERMINAL), "run.started")
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class StreamService:
         self._runs = runs
         self._settings = settings
         self.hub = hub
+        self._db = asyncio.Semaphore(settings.stream_db_concurrency)
         self.limiter = StreamLimiter(settings.stream_max_total, settings.stream_max_per_key)
 
     async def open(
@@ -69,12 +71,18 @@ class StreamService:
         key = (stream.principal.workspace_id, stream.run_id)
         deadline = loop.time() + s.stream_max_lifetime_seconds
         last_write = last_fresh = loop.time()
-        terminal = False
         subscription = self._hub.subscribe(key)
         try:
             yield sse.retry_frame()
             yield sse.comment("open")
+            # A resume can start after the terminal event (outside the overlap): ask the database.
+            terminal = await self._last_lifecycle(stream) in TERMINAL
+            polled = loop.time() - s.stream_min_poll_seconds
             while True:
+                # A floor between polls: a burst of NOTIFYs must not turn into a burst of queries.
+                if (pause := s.stream_min_poll_seconds - (loop.time() - polled)) > 0:
+                    await asyncio.sleep(pause)
+                polled = loop.time()
                 async for batch in self._fresh_pages(stream, cursor):
                     for event, has_payload in batch:
                         yield sse.frame(
@@ -109,15 +117,48 @@ class StreamService:
         finally:
             subscription.close()
 
+    async def _last_lifecycle(self, stream: OpenStream) -> str | None:
+        async with self._db, self._engine.connect() as conn:
+            return await EventQueries(conn, stream.principal.tenant).last_lifecycle(
+                stream.run_id, LIFECYCLE
+            )
+
     async def _fresh_pages(
         self, stream: OpenStream, cursor: ArrivalCursor
     ) -> AsyncIterator[list[tuple[Event, bool]]]:
-        """New rows page by page; each page uses its own short database connection."""
-        since = cursor.lower_bound
-        after: tuple[datetime, uuid.UUID] | None = None
+        """Rows this connection has not sent, page by page (queries borrow a connection briefly).
+
+        Steady state is cheap: read strictly after the newest row sent (an index range scan), then
+        compare the number of rows in the overlap window with what was sent. Only a mismatch, which
+        means a row became visible late with an older arrival time, re-reads the window (ADR-022).
+        """
+        first = cursor.position is None
+        async for batch in self._read(stream, cursor, since=cursor.lower_bound if first else None):
+            yield batch
+        position = cursor.position
+        if first or position is None:
+            return
+        async with self._db, self._engine.connect() as conn:
+            arrived = await EventQueries(conn, stream.principal.tenant).count_window(
+                stream.run_id, since=cursor.lower_bound, upto=position
+            )
+        if arrived > cursor.window_size:
+            async for batch in self._read(stream, cursor, since=cursor.lower_bound, resume=False):
+                yield batch
+
+    async def _read(
+        self,
+        stream: OpenStream,
+        cursor: ArrivalCursor,
+        *,
+        since: datetime | None,
+        resume: bool = True,
+    ) -> AsyncIterator[list[tuple[Event, bool]]]:
+        """Keyset pages after the cursor's position (`resume`) or from `since`, deduplicated."""
         limit = self._settings.stream_page_size
+        after = cursor.position if resume else None
         while True:
-            async with self._engine.connect() as conn:
+            async with self._db, self._engine.connect() as conn:
                 rows = await EventQueries(conn, stream.principal.tenant).arrived_since(
                     stream.run_id, since=since, after=after, limit=limit
                 )

@@ -255,6 +255,8 @@ events = Table(
     ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
     Index("ix_events_run_sequence", "workspace_id", "run_id", "sequence", "event_id"),
     Index("ix_events_run_time", "workspace_id", "run_id", "occurred_at", "event_id"),
+    # Live streams follow a run in arrival order (ADR-022).
+    Index("ix_events_run_arrival", "workspace_id", "run_id", "received_at", "event_id"),
     Index("ix_events_type_time", "workspace_id", "event_type", text("occurred_at DESC")),
 )
 

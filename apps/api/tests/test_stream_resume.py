@@ -184,3 +184,103 @@ async def test_a_transaction_older_than_the_overlap_is_missed_and_that_is_the_do
             to_uuid(run["run_id"]), since=cursor.lower_bound, limit=10
         )
     assert stale.event_id not in {e.event_id for e, _ in got}
+
+
+# ------------------------------------------------------------------ position, window size, count
+
+
+async def test_the_cursor_tracks_its_position_and_window_size(engine: AsyncEngine) -> None:
+    tenant = await make_tenant(engine, "pos1")
+    run = make_run_ids()
+    a, b = arrives(tenant, run, 1, 0), arrives(tenant, run, 2, 1)
+    cursor = ArrivalCursor(None, OVERLAP)
+    assert cursor.position is None and cursor.window_size == 0
+    cursor.unseen(rows(b, a))  # delivered out of arrival order
+    assert cursor.position == (b.received_at, to_uuid(b.event_id))
+    assert cursor.window_size == 2
+    later = arrives(tenant, run, 3, 600)
+    cursor.unseen(rows(later))  # the older two fall out of the window
+    assert cursor.position == (later.received_at, to_uuid(later.event_id))
+    assert cursor.window_size == 1
+
+
+async def test_count_window_counts_up_to_a_position_inclusively_and_per_tenant(
+    engine: AsyncEngine,
+) -> None:
+    tenant, other = await make_tenant(engine, "cnt1"), await make_tenant(engine, "cnt2")
+    run = make_run_ids()
+    events = [arrives(tenant, run, n, n) for n in (1, 2, 3, 4)]
+    await ingest(engine, tenant, events)
+    await ingest(engine, other, [arrives(other, make_run_ids(), 1, 1)])
+    run_id = to_uuid(run["run_id"])
+    third = (events[2].received_at, to_uuid(events[2].event_id))
+    async with engine.connect() as conn:
+        mine = EventQueries(conn, tenant.context)
+        assert await mine.count_window(run_id, since=None, upto=third) == 3
+        assert await mine.count_window(run_id, since=events[1].received_at, upto=third) == 2
+        assert (
+            await EventQueries(conn, other.context).count_window(run_id, since=None, upto=third)
+            == 0
+        )
+
+
+async def test_last_lifecycle_is_the_most_recently_received_matching_event(
+    engine: AsyncEngine,
+) -> None:
+    tenant = await make_tenant(engine, "life1")
+    run = make_run_ids()
+    started = arrives(tenant, run, 1, 0)
+    done = build_event(tenant, run, n=2, event_type="run.completed").model_copy(
+        update={"received_at": RECEIVED + timedelta(seconds=5)}
+    )
+    again = build_event(tenant, run, n=3, event_type="run.started").model_copy(
+        update={"received_at": RECEIVED + timedelta(seconds=9)}
+    )
+    kinds = ("run.started", "run.completed", "run.failed", "run.cancelled")
+    run_id = to_uuid(run["run_id"])
+    await ingest(engine, tenant, [started])  # a tool event: not lifecycle
+    async with engine.connect() as conn:
+        assert await EventQueries(conn, tenant.context).last_lifecycle(run_id, kinds) is None
+    await ingest(engine, tenant, [done])
+    async with engine.connect() as conn:
+        assert (
+            await EventQueries(conn, tenant.context).last_lifecycle(run_id, kinds)
+            == "run.completed"
+        )
+    await ingest(engine, tenant, [again])
+    async with engine.connect() as conn:
+        assert (
+            await EventQueries(conn, tenant.context).last_lifecycle(run_id, kinds) == "run.started"
+        )
+
+
+async def test_the_planner_uses_the_arrival_index_for_stream_polls(engine: AsyncEngine) -> None:
+    """Without ix_events_run_arrival every poll would read and sort the whole run."""
+    from sqlalchemy import text
+
+    tenant = await make_tenant(engine, "plan1")
+    run = make_run_ids()
+    events = [arrives(tenant, run, n, n) for n in range(1, 301)]
+    for start in range(0, 300, 100):
+        await ingest(engine, tenant, events[start : start + 100])
+    run_id = to_uuid(run["run_id"])
+    last = events[-1]
+    async with engine.connect() as conn:
+        await conn.execute(text("ANALYZE events"))
+        plan = "\n".join(
+            r[0]
+            for r in await conn.execute(
+                text(
+                    "EXPLAIN SELECT event_id FROM events WHERE workspace_id = :w AND run_id = :r "
+                    "AND (received_at, event_id) > (:t, :e) "
+                    "ORDER BY received_at, event_id LIMIT 200"
+                ),
+                {
+                    "w": tenant.context.workspace_id,
+                    "r": run_id,
+                    "t": last.received_at,
+                    "e": to_uuid(last.event_id),
+                },
+            )
+        )
+    assert "ix_events_run_arrival" in plan and "Sort" not in plan, plan

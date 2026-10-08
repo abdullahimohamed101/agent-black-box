@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     stream_end_quiet_seconds: float = Field(default=5.0, ge=0)
     stream_overlap_seconds: float = Field(default=30.0, ge=0)
     stream_page_size: int = Field(default=200, ge=1, le=500)
+    # A floor between one stream's polls, and how many stream queries may use the database at once.
+    # The pool is shared with ingestion: streams queue here instead of starving it.
+    stream_min_poll_seconds: float = Field(default=0.1, ge=0)
+    stream_db_concurrency: int = Field(default=4, ge=1)
 
     @model_validator(mode="after")
     def _bursts_fit_a_full_batch(self) -> "Settings":

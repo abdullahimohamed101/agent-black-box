@@ -28,12 +28,23 @@ class ArrivalCursor:
         self._overlap = overlap
         self._lower: datetime | None = None if start is None else start - overlap
         self._newest: datetime | None = None
+        self._position: tuple[datetime, uuid.UUID] | None = None
         self._sent: dict[uuid.UUID, datetime] = {}
 
     @property
     def lower_bound(self) -> datetime | None:
         """Read events with `received_at >=` this; None means from the start of the run."""
         return self._lower
+
+    @property
+    def position(self) -> tuple[datetime, uuid.UUID] | None:
+        """The newest (received_at, event_id) sent so far: the tail poll reads strictly after it."""
+        return self._position
+
+    @property
+    def window_size(self) -> int:
+        """How many events of the current overlap window this connection has sent."""
+        return len(self._sent)
 
     def unseen(self, rows: Iterable[EventRow]) -> list[EventRow]:
         """The rows this connection has not sent yet, recorded as sent; advances the lower bound."""
@@ -46,6 +57,8 @@ class ArrivalCursor:
             fresh.append((event, has_payload))
             if self._newest is None or event.received_at > self._newest:
                 self._newest = event.received_at
+            if self._position is None or (event.received_at, key) > self._position:
+                self._position = (event.received_at, key)
         if self._newest is not None:
             self._lower = self._newest - self._overlap
             # Rows older than the lower bound are never read again, so they need no memory.

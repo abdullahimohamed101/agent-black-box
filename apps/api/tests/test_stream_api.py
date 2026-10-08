@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import Any
 
 import httpx
@@ -377,3 +378,116 @@ async def test_a_client_that_stops_reading_is_dropped_and_its_cleanup_runs() -> 
         await asyncio.wait_for(response(scope, receive, send_that_blocks_after_the_start), 5)
     assert closed == [True]
     assert httpx  # imported for the type of live fixtures above
+
+
+# ------------------------------------------------------------------ polling cost and correctness
+
+
+async def test_a_resume_after_the_terminal_event_still_ends_the_stream(live: Live) -> None:
+    """The terminal event is outside the overlap window: only the database knows the run is over."""
+    run = make_run_ids()
+    await send(live.api, run, 1, event_type="run.completed")
+    live.api.clock.now += timedelta(seconds=120)
+    late = await send(live.api, run, 2)  # a late event, long after completion
+    async with live.open(run["run_id"], last_event_id=late["event_id"]) as response:
+        seen = [m async for m in messages(response) if "event" in m]
+    assert [m["event"] for m in seen] == ["trace_event", "run_end"]
+
+
+async def test_a_late_committed_event_with_an_older_arrival_time_is_found_by_the_window_check(
+    live: Live,
+) -> None:
+    run = make_run_ids()
+    first = await send(live.api, run, 1)
+    async with live.open(run["run_id"]) as response:
+        stream = messages(response)
+        await take(stream, 1)
+        newer = await send(live.api, run, 2)  # arrives at +1 s
+        await take(stream, 1, seconds=3)
+        live.api.clock.now -= timedelta(
+            seconds=10
+        )  # a request that stamped its time earlier commits now
+        late = await send(live.api, run, 3)
+        got = await take(stream, 1, seconds=3)
+    assert got[0]["id"] == late["event_id"] and first["event_id"] != newer["event_id"]
+
+
+async def test_steady_state_polls_read_after_the_position_and_not_the_whole_window(
+    live: Live, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, Any]] = []
+    real = EventQueries.arrived_since
+
+    async def spy(self: EventQueries, run_id: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs)
+        return await real(self, run_id, **kwargs)
+
+    monkeypatch.setattr(EventQueries, "arrived_since", spy)
+    run = make_run_ids()
+    for n in range(1, 40):
+        await send(live.api, run, n)
+    async with live.open(run["run_id"]) as response:
+        stream = messages(response)
+        await take(stream, 39)
+        calls.clear()
+        await send(live.api, run, 40)
+        await take(stream, 1, seconds=3)
+    assert calls, "the stream polled"
+    assert all(
+        c["since"] is None and c["after"] is not None for c in calls
+    )  # index range scans only
+
+
+async def test_polls_have_a_floor_even_under_a_burst_of_wakeups(
+    api: Api, runtime_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async for live in serve(api, runtime_database_url, stream_min_poll_seconds=0.4):
+        calls = 0
+        real = EventQueries.arrived_since
+
+        async def counting(self: EventQueries, *args: Any, _real: Any = real, **kwargs: Any) -> Any:
+            nonlocal calls
+            calls += 1
+            return await _real(self, *args, **kwargs)
+
+        run = make_run_ids()
+        await send(api, run, 1)
+        async with live.open(run["run_id"]) as response:
+            stream = messages(response)
+            await take(stream, 1)
+            monkeypatch.setattr(EventQueries, "arrived_since", counting)
+            for n in range(2, 22):  # twenty wake-ups within a moment
+                await send(api, run, n)
+            await take(stream, 20, seconds=5)
+            await asyncio.sleep(0.1)
+        assert calls <= 8, calls  # about one poll per 0.4 s, not one per wake-up
+
+
+async def test_streams_share_a_small_database_budget_and_all_still_complete(
+    api: Api, runtime_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async for live in serve(api, runtime_database_url, stream_db_concurrency=2):
+        active = peak = 0
+        real = EventQueries.arrived_since
+
+        async def tracked(self: EventQueries, *args: Any, _real: Any = real, **kwargs: Any) -> Any:
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            try:
+                await asyncio.sleep(0.05)
+                return await _real(self, *args, **kwargs)
+            finally:
+                active -= 1
+
+        monkeypatch.setattr(EventQueries, "arrived_since", tracked)
+        run = make_run_ids()
+        sent = [await send(api, run, n) for n in (1, 2, 3)]
+
+        async def watch(live: Live = live, run: dict[str, str] = run) -> list[str]:
+            async with live.open(run["run_id"], token="reader") as response:
+                return [m["id"] for m in await take(messages(response), 3)]
+
+        results = await asyncio.gather(*[watch() for _ in range(8)])  # 8 streams, 2 at a time
+        assert all(r == [e["event_id"] for e in sent] for r in results)
+        assert peak <= 2, peak
