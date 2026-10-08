@@ -51,6 +51,7 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _TYPED_SPANS = {
     "tool": ("tool.call.started", "tool.call.completed", "tool.call.failed"),
     "agent": ("agent.started", "agent.completed", "agent.completed"),
+    "shell": ("shell.command.started", "shell.command.completed", "shell.command.failed"),
 }
 _GENERIC_SPAN = ("span.started", "span.completed", "span.failed")
 _RUN_END = {  # requested status -> (event type, event status)
@@ -110,6 +111,8 @@ class Span:
     def _base_attributes(self) -> dict[str, Any]:
         if self.kind == "tool":
             return {"tool.name": self.name}
+        if self.kind == "shell":
+            return {"shell.command": self.name}
         return {"span.name": self.name, "span.kind": self.kind}
 
     # -- recording ---------------------------------------------------------------------------------

@@ -20,6 +20,7 @@ export type EventIn = {
     "db.rows_returned"?: number;
     "db.system"?: string;
     "diff.artifact"?: string;
+    "diff.withheld"?: string;
     "file.hash_after"?: string;
     "file.hash_before"?: string;
     "file.language"?: string;

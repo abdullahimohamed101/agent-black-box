@@ -82,6 +82,7 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     "file.operation": AttrSpec(AttrType.STRING),
     # Artifact reference `artifact://<art_id>` (ADR-030/031); content is in the store.
     "diff.artifact": AttrSpec(AttrType.STRING),
+    "diff.withheld": AttrSpec(AttrType.STRING),  # sensitive_path | too_large
     "git.repo": AttrSpec(AttrType.STRING),
     "git.branch": AttrSpec(AttrType.STRING),
     "git.base_commit": AttrSpec(AttrType.STRING),

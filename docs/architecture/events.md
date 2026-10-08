@@ -54,7 +54,7 @@ All optional and additive (schema 1.0 is unchanged). Content is never an attribu
 
 | Event | Attributes |
 | --- | --- |
-| `file.read` `.created` `.modified` `.deleted` | `file.path` (required), `file.operation`, `file.language`, `file.size_before/after`, `file.hash_before/after` (`sha256:<hex>`), `file.lines_added/removed`, `diff.artifact` |
+| `file.read` `.created` `.modified` `.deleted` | `file.path` (required), `file.operation`, `file.language`, `file.size_before/after`, `file.hash_before/after` (`sha256:<hex>`), `file.lines_added/removed`, `diff.artifact`, `diff.withheld` (`sensitive_path\|too_large`: why no diff was uploaded) |
 | `git.diff` `.commit` `.branch_created` `.push` | `git.repo`, `git.branch`, `git.base_commit`, `git.head_commit`, `git.commit_hash`, `git.changed_files`, `git.diff_stat_files`, `git.push_target`, `git.pr_number`, `diff.artifact` |
 | `shell.command.*` | `shell.command` (required), `shell.cwd`, `shell.exit_code`, `shell.duration_ms`, `shell.risk_class` (`R0`..`R4`), `shell.category` (`READ_ONLY\|MODIFY_FILES\|NETWORK\|PACKAGE_INSTALL\|PROCESS_CONTROL\|DESTRUCTIVE`), `shell.stdout_artifact`, `shell.stderr_artifact`, `shell.stdout_bytes`, `shell.stderr_bytes`, `shell.output_truncated` |
 | test runs (closing `shell.command.*` event) | `test.framework`, `test.suite`, `test.total`, `test.passed`, `test.failed`, `test.skipped`, `test.failing` (identifiers) |

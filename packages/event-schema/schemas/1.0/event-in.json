@@ -892,6 +892,10 @@
           "maxLength": 4096,
           "type": "string"
         },
+        "diff.withheld": {
+          "maxLength": 4096,
+          "type": "string"
+        },
         "file.hash_after": {
           "maxLength": 4096,
           "type": "string"
