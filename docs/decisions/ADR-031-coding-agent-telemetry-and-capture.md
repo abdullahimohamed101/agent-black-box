@@ -30,3 +30,5 @@ output and diffs are attached, how tests and risk are represented, and who is re
 - Old SDKs and servers keep working: every addition is an optional attribute (backward compatible, schema 1.0).
 - The classifier is heuristic (a shell string is not fully parseable); its reasons are returned for tests and later policy work.
 - Redaction stays best-effort (KI-032, KI-042): the value masker narrows but does not close the gap.
+- **Behaviour change in the SDK:** `run.span(name, kind="shell")` now emits typed `shell.command.started/completed/failed` events (with `shell.command` = the span name, cut at 256 characters) instead of generic `span.*` events, so shell spans are first-class (spec §27). Code that relied on `span.*` for shell spans must switch kind to `custom`.
+- Diffs of secret-looking paths (`.env*`, `*.pem`, keys, `.npmrc`...) and diffs over 1 MiB are not uploaded (`diff.withheld`); hashes and sizes are still recorded.

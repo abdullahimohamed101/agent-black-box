@@ -1,6 +1,6 @@
 # Phase 6 - Coding-agent observability and the flagship demo
 
-Status: In progress (started 2026-10-07)
+Status: Completed 2026-10-08 (not pushed; the `coding-e2e` CI job has not run on GitHub; compose stack and real-model mode UNVERIFIED (env))
 Owner: implementer agent
 Branch: `feature/phase-6-coding-agent-demo` (from `main` cc56935; worktree `abb-worktrees/phase-6`, runs in parallel with Phases 7 and 8)
 Depends on: Phases 2 (ingestion, query), 3 (SDK), 4-5 (web run detail, live stream)
@@ -89,3 +89,26 @@ Focused tests per step, then `scripts/quality.sh full`; E2E by `scripts/coding-e
 7. Example: repository template, agent, scripted model, optional real model, tests.
 8. E2E: script, Playwright spec, Makefile, CI, screenshots.
 9. Verify, review, harden fixes; completion evidence; move plan to `completed/`.
+
+## Completion evidence (2026-10-08)
+
+| # | Criterion | Result | Evidence |
+| --- | --- | --- | --- |
+| A1 | Upload: hash, idempotency, conflict, caps, scopes, project/tenant isolation | PASS | `apps/api/tests/test_artifacts_api.py` (real Postgres, runtime role): in the 427-test `uv run pytest` of `scripts/quality.sh full` (exit 0) |
+| A2 | Chunked reads, UTF-8 boundaries, offsets | PASS | same file: chunk coverage test, offset/limit validation, HTML returned as JSON data |
+| A3 | Migration 0030 | PASS | `quality.sh full` migration up/down/up on the test DB; `test_migrations.py` (each revision up/down/up, 0009 -> 0030, drift test) |
+| A4 | Schema attributes, generated artifacts | PASS | event-schema pytest 346 passed; `make schema-check` clean; SDK contract tests green |
+| A5 | Classifier R0-R4 | PASS | `packages/sdk-python/tests/test_coding.py` (55 table cases + override); sdk pytest 228 passed, 94.8% coverage |
+| A6 | Secret-safe capture | PASS | `test_coding.py` (env never reaches child or events, masker, redaction in uploaded bytes, default mode uploads nothing); E2E server scan: 592 events and 11 artifact files, zero planted literals |
+| A7 | Test-result parsing | PASS | unittest and pytest parser tests; demo events carry `test.failed=1` then `0` |
+| A8 | UI unit tests | PASS | `pnpm --filter @abb/web test`: 303 passed (highlighter, diff, hostile content rendered as text, lazy shell panel, story, proxy allowlist) |
+| A9 | Scripted demo event sequence | PASS | `examples/coding-agent/tests` 8 passed (run in `quality.sh`) |
+| A10 | Browser E2E, real API | PASS | `make coding-e2e` exit 0: 6/6 Playwright tests (story, diff, shell panel lazy load, 220 KB log in 4 chunks, no secret in any API response or page, axe + console), screenshots in `docs/screenshots/phase-6/` |
+| A11 | OpenAPI and web client current | PASS | `quality.sh full` steps `openapi.json is current`, `gen:api:check` |
+| A12 | `quality.sh full` exit 0; security review; mutation checks | PASS | `quality=0` (log: "quality (full): OK"); review below; 22 mutations, all killed |
+
+Mutation checks (committed code, restored with `git checkout <file>`), all killed by tests: SDK redaction (AWS pattern, scan precheck), env-value masker, allowlisted child environment, sensitive-path diff withholding, DROP DATABASE risk class, workspace path escape, payload-mode gate; API hash check, hash-equality conflict, project conflict, project scoping, workspace scoping, store root check, key validation, UTF-8 alignment, gzip-bomb cap, content-type allowlist; web artifact-ref parser, proxy allowlist, raw HTML rendering in `DiffView` and `ArtifactText`.
+
+Security review (own diff): path and key traversal (keys from validated hex only, root containment, tested); size and gzip bombs (streaming cap on compressed and decompressed bytes); content type allowlist and JSON-only reads (no document serving); tenant and project scoping on every read, id collisions across workspaces isolated; 409 and idempotency; workspace-wide key rejected before the body is read (fixed during review); redaction before hashing and upload, hash is of stored bytes; API key masked in captured output; shell-span behaviour change documented in ADR-031. Residual: no server-side scan (KI-042), no quotas (KI-040), shell commands run as the agent user by design (observe-only classes).
+
+Deviations: `docs/KNOWN_ISSUES.md` unchanged beyond KI-040..044. A pre-existing test (`test_stream_hub.py::test_stopping_closes_the_listener_connection`) counted listener connections server-wide and failed while another worktree's API shared the Postgres; it is now scoped to `current_database()`. `actionlint` is not installed; `.github/workflows/ci.yml` parses (PyYAML) with the new `coding-e2e` job.
