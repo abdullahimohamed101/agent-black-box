@@ -129,3 +129,24 @@ Three P1 secret leaks and the P2/P3 items were fixed with regression tests (one 
 | P3 | conflict responses do not reveal other projects; run/project mismatch 409; vanished file is 404 not 503; artifacts have their own rate bucket; `ABB_ARTIFACT_DIR` set in compose; file mode kept; DiffView caps O(n); more secret env names and 6-character minimum for clearly secret names; read_file redacts for the model; `coding-e2e.sh` refuses a busy port and kills process trees; TESTING.md notes the tracked screenshots | `test_artifacts_api.py` additions, `test_coding.py` additions |
 
 Mutation checks on the new committed code (all killed, files restored with `git checkout`): each new redaction pattern (authorization, Basic, `-u`, flags, URL token user, secret assignment), the letters-only pre-check, ANSI stripping, name redaction in the SDK, `sanitize`, command/cwd/`test.suite`/`timeout.operation` sanitizing, fixed artifact names, sensitive-path withholding, hunk filtering, git pathspec excludes, changed-file filtering, diff sanitizing, `read_file` redaction, git ref validation, file mode preservation, HOME removal, unparseable-is-R2, redirection detection, newline splitting, git global options, `-lc` clusters, `eval`, group/lead-word unwrapping, nesting depth.
+
+## Second review round (value masking, 2026-10-08)
+
+A second re-verification (about 190 commands against a capturing server) showed variants still leaking, so the design changed from blocking command shapes to masking
+secret *values* (ADR-031, "Design after the second review"). Commits: secret scanner and value masker, shell-aware path check, diff-section filter; 56 leak regression
+cases; new redaction patterns, pre-cut redaction, C1 controls in names; classifier default inverted with 100+ new cases.
+
+| Requirement | Result | Evidence |
+| --- | --- | --- |
+| Value masking from sensitive files, however the command read them (cat, `bash -c`, `python -c`, `grep -r`, `find -exec`, tar, `git show HEAD:.env`, ...) | PASS | `tests/test_secret_leaks.py`: 56 command shapes x (artifact bodies, names, events, model-facing output); encoded forms; commands that create secret files |
+| Sensitive names case-insensitive and extended; value extraction (dotenv, JSON, YAML/TOML, PEM, `.pgpass`, `.htpasswd`, `.git-credentials`, `.npmrc`, `.netrc`) | PASS | `test_sensitive_names_case_insensitive`, `test_value_extraction`, scanner bounds test |
+| Diff header shapes (`--git`, `--cc`, `--combined`, no/custom prefix, renames, plain, coloured; ANSI before filter) | PASS | `test_diff_section_filter_handles_every_header_shape` |
+| New redaction patterns | PASS | `test_more_secret_shapes` (28 cases) and the non-redaction guard `test_names_that_merely_contain_pat_or_pass_are_left_alone` |
+| Redact before every cut; C1 controls in names | PASS | straddling-cut tests (command capture, `read_file`), SDK and server C1 tests |
+| Classifier default inverted; listed mislabels | PASS | `test_second_round_classifier_mislabels` (about 115 cases), read-only allowlist and known test/build tests |
+
+Mutation checks on the new guards (all killed; each file restored with `git checkout <file>`): file-value masking, rescanning before and after each command, withholding, redact-then-cut,
+capture slack, `read_file` slack, sensitive-path diff withholding, `.netrc`/PEM/JSON/base64/URL-encoded/git-history extraction, dynamic-content and glob detection, recursive readers,
+inline-code bodies, `sh -c` recursion, `git grep|archive|cat-file`, ANSI-before-filter, diff-section header parsing, `REV:path` words, case-insensitive names, each new redaction
+pattern (quoted keys, db/ssh/docker passwords, npm config, signed URLs, cookies, short env names, empty-user URL credentials, npm token, Slack webhook), classifier default, allowlist write flags,
+`git -c` program config, `curl -X DELETE`, `python -m pip`, dynamic `eval`, disk tools.

@@ -33,32 +33,49 @@ output and diffs are attached, how tests and risk are represented, and who is re
 - **Behaviour change in the SDK:** `run.span(name, kind="shell")` now emits typed `shell.command.started/completed/failed` events (with `shell.command` = the span name, cut at 256 characters) instead of generic `span.*` events, so shell spans are first-class (spec §27). Code that relied on `span.*` for shell spans must switch kind to `custom`.
 - Diffs of secret-looking paths (`.env*`, `*.pem`, keys, `.npmrc`...) and diffs over 1 MiB are not uploaded (`diff.withheld`); hashes and sizes are still recorded.
 
-## Exactly what is and is not covered (review fixes, 2026-10-08)
+## Design after the second review: know the secret values, mask them everywhere (2026-10-08)
 
-**Sanitized (ANSI sequences removed, values of secret-looking environment variables masked, secret patterns redacted) before anything
-is cut to length, hashed, uploaded or recorded:** the command (`shell.command`, the span name), the working directory (`shell.cwd`,
-`test.suite`), `timeout.operation`, artifact names (fixed `stdout`/`stderr` for output; the redacted path for diffs; the SDK also redacts any
-name it is given), stdout, stderr, diffs, and the text a tool returns to the model (`read_file` redacts by default; editing reads the real
-content with `redact=False`). Patterns cover provider keys and tokens, JWTs, private keys, `Authorization`/`Basic`/`Bearer` headers, `-u user:pass`,
-`--password/--token/--api-key` flags, `NAME=value` assignments whose name ends in a secret word (`AWS_SECRET_ACCESS_KEY`, `DB_PASSWORD`), and
-URL credentials (`scheme://user:pass@`, `scheme://token@`). Letters-only keys (`AKIA...`) are caught (the pre-check scans any run of 16 letters).
+**Honest scope first.** Capture is best effort. It only happens when the application opted into `PayloadMode.FULL`; in the default mode nothing
+is uploaded. Nothing here can promise that no secret is ever stored: unknown-shape secrets that are in no environment variable and no
+recognisable secret file remain a risk (KI-032, KI-042 stay open). What follows is what the code does, and what it does not.
 
-**Files that hold secrets** (`.env*`, keys, `.npmrc`, `.netrc`, credentials files ...): their write/delete diffs are never uploaded; `git_diff`
-excludes them with pathspecs and removes their hunks from any diff-shaped output; a command that names such a file (`cat .env`) has its
-output withheld from the record and from the agent (`shell.output_withheld`).
+**Why not a command blocklist.** Every review round found another shape that printed a secret file (`cat<.env`, `bash -c`, `grep -r`,
+`git show HEAD:.env`, a coloured diff header). A blocklist of command shapes cannot be complete, so the primary defence is by *value*:
 
-**Not covered (known gaps):** a secret of unknown shape that is not an environment value, not in a recognised assignment and not in a
-secret-named file (KI-032, KI-042); a secret built by the command at run time and printed in pieces; binary output; a command that reads a
-secret file through a name that does not look like one (`cat config/prod.yml`); the command line itself when the secret is positional
-(`mysql -p hunter2` is only caught if it looks like an assignment or flag).
+1. **Value masking from sensitive files** (`blackbox/secretscan.py`). Before and after every recorded command (and before each file diff and
+   `read_file`), the recorder rescans the workspace for sensitive files (names matched case-insensitively: `.env*`, `*.env`, `.envrc`, `*.pem`,
+   `*.key`, `id_*`, `.netrc`, `.npmrc`, `.pypirc`, `.pgpass`, `.htpasswd`, `.git-credentials`, `credentials*`, `*.tfstate`, `*.tfvars`, `*.jks`, `*.ppk`,
+   `*.gpg`, `kubeconfig`, `.docker/config.json`, `.kube/config`, `*secret*.json|yml|toml` ...; `.git`, `node_modules` and virtualenvs are skipped; at most
+   400 files of 256 KiB, cached by size and mtime). It extracts the secret values (dotenv and `NAME=VALUE` lines, JSON string leaves, PEM bodies,
+   credential-file lines and URL passwords, older committed versions via `git show HEAD:`, `:` and the first stashes) and masks every occurrence, plus its
+   base64 and URL-encoded forms, in stdout, stderr, diffs, events and the text returned to the model, **however the command read the file**.
+   Values of keys that look secret are masked from three characters; other values in those files only if token-like (8+ characters with a digit or symbol).
+2. **Environment values** (names containing KEY, TOKEN, SECRET, PASSWORD, PAT, PASS, PWD, AUTH, DSN, COOKIE, SESSION ... and the SDK's own API key) are masked the
+   same way; the child process gets no inherited credentials and no `HOME`.
+3. **Pattern redaction** of the remaining text: provider keys and tokens (glued to preceding or following characters too), JWTs, private keys, Authorization/Basic/Bearer
+   headers, cookies, signed-URL parameters, `-u user:pass`, `--password` flags, `mysql -p`, `sshpass -p`, `docker login -p`, npm auth tokens, quoted `"password": "..."`
+   keys, `NAME=value` assignments, and URL credentials (including an empty user). ANSI sequences are removed first.
+4. **Order.** Everything is sanitized *before* any truncation (the 256-character command attribute, the 1 MiB capture, `read_file`'s limit, artifact names), so a cut
+   cannot leave a secret's prefix. The capture reads 16 KiB past the limit for that purpose. Output past the limit is counted (`shell.stdout_bytes`) and flagged
+   (`shell.output_truncated`); there is no marker inside the text.
+5. **Path-based withholding, shell-aware, as defence in depth.** `command_may_reach_secrets` tokenizes the command (operators, redirections, `$( )`, backticks,
+   newlines), recurses into `sh/bash -c` and `python -c`/`node -e`/`ruby -e` bodies, matches globs against the secret files that exist, understands `REV:path`
+   arguments, and treats recursive or dynamic readers (`grep -r`, `find -exec`, `xargs`, `tar`, `git grep|archive|cat-file`, `source`, `eval`, scripts) as reaching
+   a secret file whenever one exists. When it says yes, the output is not stored and not returned to the agent (`shell.output_withheld = may_reach_secrets`).
+   Diffs are filtered per file section (`diff --git`, `--cc`, `--combined`, plain `---/+++`, any prefix or none, coloured or not).
 
-**Classifier.** Handles redirections (`>`, `>>`, `&>`; `/dev/null` and `2>&1` are harmless), unquoted newlines, `( )`/`{ }`/`if`/`for`/`while`
-groups, wrappers (`sudo`, `env`, `nohup`, `nice`, `time`, `timeout`, `xargs`, `watch` ...), `eval`, `sh/bash/zsh -c` including flag clusters (`-lc`),
-`python -c`/`node -e` code that starts commands, awk `system()`, command substitution, git global options (`-C`, `-c`, `--git-dir`, ...) and
-short-flag clusters (`push -fu`, `clean -xdf`), refspec deletes and history rewrites. Anything it cannot parse is classified R2 or higher,
-and nesting beyond four levels is R3. **Gaps:** shell functions and aliases, variables used as commands (`$CMD`), here-documents with commands,
-`find -exec` targets other than the whole find (always R3), and programs that run other programs internally (`make`, `npm run`, scripts):
-those are R1 as "runs project code". Classification stays observe-only; a class is a hint, never a guarantee.
+**Does not cover:** a secret in a file that is not named like a secret and is not in the environment; a value the command computes or receives from the network and
+prints; secrets shorter than the minimums; binary output; secrets split across lines or across stdout and stderr; files outside the workspace root that a command
+reads (`cat ~/.aws/credentials` is caught by name only); the model *typing* a secret it was never shown. The value scan sees the workspace as it is at command start and end,
+not mid-command.
 
-**Real-model example mode** runs arbitrary shell as the user with no sandbox. It requires `--i-understand-this-runs-commands`, the README warns,
-recorded commands get a minimal environment without `HOME`, and git branch/remote names that look like flags are refused.
+**Classifier (observe-only).** Default inverted: R0 only for allowlisted read-only commands used without write-capable flags (`sort -o`, `uniq in out`, `tree -o`, `xxd -r`,
+`date -s`, `hostname NAME`, `rg --pre`, `sed w/e`, `git ... --output`, `git grep -O`, `git -c core.pager=` and similar are not R0); any unrecognised command or flag combination
+is R2 ("unknown, may modify anything"); known test and build invocations (`python -m unittest|pytest`, `pytest`, `npm test`, `cargo test`, `make test`, `uv run ...`) are R1;
+scripts, inline code with file, process or network access, `eval` of dynamic content and `bash <(...)` are R3. Destructive and cloud commands are classified by name
+(`terraform destroy`, `aws ... rm|delete`, `gcloud ... delete`, `kubectl delete`, `npm publish`, `redis-cli flushall`, SQL `DELETE|DROP|TRUNCATE`, disk tools, `mv / x`, `truncate`,
+`git rm -rf`, `git tag -d`, `curl -X DELETE`, ...). It still cannot see inside scripts, functions, aliases or variables used as commands; those are R2 or higher.
+A class is a hint, never a guarantee, and nothing is enforced.
+
+**Real-model example mode** runs arbitrary shell as the user with no sandbox. It requires `--i-understand-this-runs-commands`, the README warns, recorded commands get a
+minimal environment without `HOME`, and git branch/remote names that look like flags are refused.
