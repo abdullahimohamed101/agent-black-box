@@ -20,6 +20,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import IO
 
@@ -98,6 +99,7 @@ _RAW_RULES: tuple[tuple[re.Pattern[str], int, str, str], ...] = tuple(
             "SQL DELETE without WHERE",
         ),
         (r"\bmkfs(\.\w+)?\b", 4, DESTRUCTIVE, "formats a filesystem"),
+        (r"/dev/(tcp|udp)/", 3, NETWORK, "network access through /dev/tcp"),
         (r"\bdd\b[^|;&]*\bof=/dev/", 4, DESTRUCTIVE, "writes to a device"),
         (r">\s*/dev/(sd|nvme|disk)", 4, DESTRUCTIVE, "writes to a device"),
         (r":\(\)\s*\{\s*:\s*\|", 4, PROCESS_CONTROL, "fork bomb"),
@@ -138,10 +140,17 @@ _RAW_RULES: tuple[tuple[re.Pattern[str], int, str, str], ...] = tuple(
             NETWORK,
             "runs dynamic content from a process substitution",
         ),
+        (
+            r"\|\s*(?:sudo\s+)?(?:sh|bash|zsh|dash|ksh|python[0-9.]*|node|ruby|perl|php)"
+            r"(?:\s+-)?\s*(?:$|[;&|)\n])",
+            3,
+            PROCESS_CONTROL,
+            "pipes content into an interpreter",
+        ),
     )
 )
 _OPERATORS = frozenset({"&&", "||", "|", ";", "&", "|&", ";;"})
-_REDIRECT = re.compile(r"^[0-9]*(>>?|>\||&>>?|<>)$")
+_REDIRECT = re.compile(r"^[0-9]*(>>?|>\||&>>?|<>)$|^>&$")
 _SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "fish"})
 _INTERPRETER_EVAL = {
     "python": "-c", "python3": "-c", "node": "-e", "perl": "-e", "ruby": "-e", "php": "-r",
@@ -250,6 +259,21 @@ def _git_level(args: list[str]) -> tuple[int, str, str]:
         )
     if sub == "tag" and any(a == "--delete" or _flag_cluster(a, "d") for a in rest):
         return 3, DESTRUCTIVE, "deletes a tag"
+    if sub == "tag" and (
+        not [a for a in rest if not a.startswith("-")] or any(a in ("-l", "--list") for a in rest)
+    ):
+        return 0, READ_ONLY, "lists tags"
+    if sub == "rebase" and any(
+        a in ("-x", "--exec") or a.startswith("--exec=") or (a.startswith("-x") and len(a) > 2)
+        for a in rest
+    ):
+        return 3, MODIFY_FILES, "git rebase --exec runs a command"
+    if sub == "tag" and any(a == "--force" or _flag_cluster(a, "f") for a in rest):
+        return 2, MODIFY_FILES, "git tag -f moves an existing tag"
+    if sub == "branch" and any(a == "--force" or _flag_cluster(a, "fM") for a in rest):
+        return 2, MODIFY_FILES, "git branch -f/-M overwrites a branch"
+    if sub in ("checkout", "switch") and "--discard-changes" in rest:
+        return 3, DESTRUCTIVE, "discards working-tree changes"
     if sub == "worktree" and rest[:1] in (["remove"], ["prune"]):
         forced = any(a == "--force" or _flag_cluster(a, "f") for a in rest)
         return (
@@ -338,6 +362,23 @@ def _unwrap(argv: list[str]) -> tuple[list[str], bool]:
         args.pop(0)
         while args and (args[0].startswith("-") or re.fullmatch(r"\w+=.*", args[0])):
             opt = args.pop(0)
+            if wrapper == "env" and (
+                opt in ("-S", "--split-string") or opt.startswith(("--split-string=", "-S"))
+            ):
+                value = (
+                    opt.split("=", 1)[1]
+                    if opt.startswith("--split-string=")
+                    else (
+                        opt[2:]
+                        if opt.startswith("-S") and len(opt) > 2
+                        else (args.pop(0) if args else "")
+                    )
+                )
+                try:  # env -S 'rm -rf x' runs the string as a command line
+                    args = shlex.split(value) + args
+                except ValueError:
+                    args = [value, *args]
+                continue
             if opt in valued and args:
                 args.pop(0)
         if wrapper == "timeout" and args:
@@ -370,14 +411,17 @@ _CLOUD_DESTROY = {
     "tofu": (("destroy",), 4, "tofu destroy removes infrastructure"),
     "pulumi": (("destroy",), 4, "pulumi destroy removes infrastructure"),
 }
+_SAFE_SCRIPTS = frozenset(
+    "test tests lint build check typecheck type-check format fmt compile coverage docs".split()
+)
 _TEST_BUILD = {
     "pytest": None, "tox": None, "nox": None, "mypy": None, "ruff": ("check", "format"),
     "eslint": None, "tsc": None, "javac": None, "cmake": ("--build", "-B", "."),
-    "npm": ("test", "run", "ci", "t", "lint", "build", "start", "run-script", "exec"),
-    "pnpm": ("test", "run", "lint", "build", "exec"),
-    "yarn": ("test", "run", "lint", "build"),
+    "npm": ("test", "ci", "t", "lint", "build", "start"),
+    "pnpm": ("test", "lint", "build"),
+    "yarn": ("test", "lint", "build"),
     "cargo": ("test", "check", "build", "fmt", "clippy", "bench", "doc"),
-    "go": ("test", "build", "vet", "fmt", "run", "mod"),
+    "go": ("test", "build", "vet", "fmt", "mod"),
     "make": ("test", "check", "lint", "build", "all", "fmt", "format", "typecheck"),
     "mvn": ("test", "verify", "compile", "package"), "gradle": ("test", "build", "check"),
 }  # fmt: skip
@@ -405,10 +449,21 @@ def _method_of(rest: list[str]) -> str | None:
 
 
 def _sed_level(rest: list[str]) -> tuple[int, str, str] | None:
-    if any(a == "--in-place" or re.fullmatch(r"-[A-Za-z]*i[A-Za-z]*\S*", a) for a in rest):
+    if any(
+        a == "--in-place"
+        or a.startswith("--in-place=")
+        or re.fullmatch(r"-[A-Za-z]*i[A-Za-z]*\S*", a)
+        for a in rest
+    ):
         return 1, MODIFY_FILES, "sed edits files in place"
     scripts = [a for a in rest if not a.startswith("-")]
     program = scripts[0] if scripts else ""
+    for a in rest:  # `--expression=PROGRAM` / `-e PROGRAM` / `--file=F` carry the program too
+        if a.startswith("--expression="):
+            program += "\n" + a.split("=", 1)[1]
+    for flag, value in pairwise(rest):
+        if flag in ("-e", "--expression"):
+            program += "\n" + value
     if re.search(r"(^|[;{}\n])\s*[0-9$,/]*\s*[eE]\b", program) or re.search(
         r"s(.).*\1.*\1[a-z0-9]*e", program
     ):
@@ -428,8 +483,16 @@ def _read_only_with_flags(exe: str, rest: list[str]) -> tuple[int, str, str] | N
         return 1, MODIFY_FILES, "sort -o writes a file"
     if exe == "uniq" and len(positional) > 1:
         return 1, MODIFY_FILES, "uniq writes its second operand"
-    if exe == "tree" and any(f == "-o" or f.startswith("-o") for f in flags):
+    if exe == "sort" and any(f.startswith("--compress-program") for f in flags):
+        return 3, MODIFY_FILES, "sort --compress-program runs a program"
+    if exe == "tree" and any(f == "-o" or f.startswith(("-o", "--output")) for f in flags):
         return 1, MODIFY_FILES, "tree -o writes a file"
+    if exe == "less" and any(
+        f in ("-o", "-O") or f.startswith(("-o", "-O", "--log-file", "--LOG-FILE")) for f in flags
+    ):
+        return 1, MODIFY_FILES, "less logs its input to a file"
+    if exe == "file" and any(f in ("-C", "--compile") for f in flags):
+        return 1, MODIFY_FILES, "file -C writes a compiled magic file"
     if exe == "xxd" and any(f == "-r" or _flag_cluster(f, "r") for f in flags):
         return 1, MODIFY_FILES, "xxd -r writes binary output"
     if exe == "date" and any(f in ("-s", "--set") or f.startswith(("-s", "--set=")) for f in flags):
@@ -471,11 +534,15 @@ def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]
         module = rest[1]
         if module in ("pip", "pipx", "ensurepip"):
             return _classify_exe("pip", rest[2:], depth)
+        if module == "json.tool":
+            return 0, READ_ONLY, "python -m json.tool only reformats JSON"
         if module in _PY_TOOLS or module.startswith(("pytest", "unittest")):
             return 1, MODIFY_FILES, f"python -m {module} runs project code"
         return 2, MODIFY_FILES, f"python -m {module} runs a module of unknown effect"
     if exe in ("awk", "gawk", "mawk", "nawk"):
         program = " ".join(rest)
+        if re.search(r"(^|\s)-i\s*inplace\b|--inplace\b|-i\s+inplace", program):
+            return 1, MODIFY_FILES, f"{exe} -i inplace edits files in place"
         if "system(" in program or re.search(r"print[^;}]*[>|]|getline", program):
             found = _inner(" ".join(re.findall(r'"([^"]*)"', program)), depth)
             floor = (1, MODIFY_FILES, "awk runs commands or writes files")
@@ -633,7 +700,18 @@ def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]
         return 2, NETWORK, f"{exe} talks to an external system"
     if exe == "find":
         if any(
-            a in ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls")
+            a
+            in (
+                "-delete",
+                "-exec",
+                "-execdir",
+                "-ok",
+                "-okdir",
+                "-fprint",
+                "-fprint0",
+                "-fprintf",
+                "-fls",
+            )
             for a in rest
         ):
             return 3, DESTRUCTIVE, "find with -delete/-exec"
@@ -665,6 +743,13 @@ def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]
     if exe in _R0_COMMANDS:
         writer = _read_only_with_flags(exe, rest)
         return writer or (0, READ_ONLY, f"{exe} only reads")
+    if exe in ("npm", "pnpm", "yarn") and rest[:1] in (["run"], ["run-script"]):
+        script = next((a for a in rest[1:] if not a.startswith("-")), "")
+        if script.split(":")[0] in _SAFE_SCRIPTS:
+            return 1, MODIFY_FILES, f"{exe} runs the project's {script} script"
+        return 2, MODIFY_FILES, f"{exe} run {script or '?'} runs a project script of unknown effect"
+    if exe in ("npm", "pnpm", "yarn") and rest[:1] in (["exec"], ["dlx"], ["x"]):
+        return 2, MODIFY_FILES, f"{exe} {rest[0]} downloads and runs a package"
     if exe in _TEST_BUILD:
         subs = _TEST_BUILD[exe]
         if subs is None or any(a in subs for a in rest[:3]):
@@ -741,8 +826,11 @@ def _redirect_targets_are_harmless(tokens: list[str]) -> bool:
     for i, token in enumerate(tokens):
         if _REDIRECT.match(token):
             target = tokens[i + 1] if i + 1 < len(tokens) else ""
-            if target not in ("/dev/null", "/dev/stderr", "/dev/stdout") and not target.startswith(
-                "&"
+            if (
+                target not in ("/dev/null", "/dev/stderr", "/dev/stdout")
+                and not target.startswith("&")
+                and not target.isdigit()  # 2>&1: duplicating a descriptor
+                and target != "-"
             ):
                 return False
     return True
@@ -758,7 +846,7 @@ def classify_command(command: str, *, _depth: int = 0) -> Classification:
     for pattern, level, cat, why in _RAW_RULES:
         if pattern.search(command):
             best = _bump(best, level, cat, why)
-    tokens = _tokens(command)
+    tokens = _tokens(re.sub(r"[<>]+\([^()]*\)", " __procsub__ ", command))
     if tokens is None:  # unbalanced quotes: classify the pieces crudely, and never below R2
         best = _bump(best, 2, MODIFY_FILES, "unparseable command (assumed risky)")
         pieces = re.split(r"[;&|\n(){}]+", command.replace("'", " ").replace('"', " "))
@@ -770,6 +858,19 @@ def classify_command(command: str, *, _depth: int = 0) -> Classification:
             best = _bump(best, 1, MODIFY_FILES, "redirects output to a file")
             if all(seg[0] in (":", "true", "cat") and len(seg) == 1 for seg in segments):
                 best = _bump(best, 2, MODIFY_FILES, "truncates or overwrites a file")
+    for direction, inner in re.findall(
+        r"([<>]+)\(([^()]*)\)", command
+    ):  # <(cmd) and >(cmd) run `cmd`
+        found = _inner(inner, _depth)
+        floor = 2 if ">" in direction else 0
+        level = max(found[0] if found else 0, floor)
+        if level:
+            best = _bump(
+                best,
+                level,
+                found[1] if found and found[0] > 1 else MODIFY_FILES,
+                "process substitution: " + (found[2] if found else "writes to a command"),
+            )
     for sub in re.findall(r"\$\(([^()]*)\)|`([^`]*)`", command):
         found = _inner(sub[0] or sub[1], _depth)
         if found:

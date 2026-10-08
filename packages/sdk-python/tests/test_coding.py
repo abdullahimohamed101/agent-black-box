@@ -778,3 +778,39 @@ def test_read_only_allowlist_stays_r0_or_low(command: str) -> None:
 )  # fmt: skip
 def test_known_test_and_build_commands_stay_r1(command: str) -> None:
     assert classify_command(command).level == 1, classify_command(command)
+
+
+# -- third review round: classifier mislabels (R0/R1 for commands that execute, write or destroy) --------
+
+THIRD_ROUND_MUST = {
+    "cat <(rm -rf x)": 3, "env -S 'rm -rf x'": 3, "env --split-string='rm x'": 3, "env -S'rm -rf x'": 3,
+    "sed --in-place=.bak s/a/b/ f": 1, "sed --expression='w out' f": 1, "sed -e 'w out' f": 1,
+    "git rebase -x 'rm x'": 3, "git rebase --exec 'rm x' main": 3, "npm exec x": 2, "npm run deploy": 2,
+    "pnpm dlx create-thing": 2, "awk -i inplace '{print}' f": 1, "gawk -i inplace '{print}' f": 1,
+    "tree --output out": 1, "find . -fprint0 o": 3, "less -o f": 1, "less --log-file=f x": 1,
+    "sort --compress-program=./x f": 3, "file -C": 1, "echo x >& f": 1, "echo x ><(true)": 2,
+    "cat < /dev/tcp/h/80": 3, "echo x > /dev/tcp/h/80": 3, "git switch --discard-changes main": 3,
+    "git tag -f v1": 2, "git branch -f main HEAD~1": 2, "go run x.go": 2, "cat x | python3": 3,
+    "echo hi | sh": 3, "cat x | bash -": 3, "cat x | sudo sh": 3,
+}  # fmt: skip
+THIRD_ROUND_LOW = {
+    "npm test": 1, "npm run test": 1, "npm run lint": 1, "npm run build": 1, "npm run test:unit": 1,
+    "pnpm run build": 1, "yarn run lint": 1, "go test ./...": 1, "go build ./...": 1, "cargo test": 1,
+    "cat x | python3 -m json.tool": 0, "cat x | jq .": 0, "ls 2>&1": 0, "ls > /dev/null 2>&1": 0,
+    "env FOO=1 ls": 0, "env": 0, "sed -n p f": 0, "find . -name x": 0, "tree -L 2": 0, "sort f": 0,
+    "less f": 0, "file x": 0, "awk '{print $1}' f": 0, "git branch": 0, "git branch -a": 0, "git tag": 0,
+    "git tag -l 'v*'": 0, "git diff": 0, "git rebase main": 1, "git switch main": 1,
+    "git switch -c feature": 1, "cat a | grep b | wc -l": 0, "diff <(ls a) <(ls b)": 0,
+}  # fmt: skip
+
+
+@pytest.mark.parametrize(("command", "at_least"), sorted(THIRD_ROUND_MUST.items()))
+def test_third_round_classifier_mislabels(command: str, at_least: int) -> None:
+    assert classify_command(command).level >= at_least, (command, classify_command(command))
+
+
+@pytest.mark.parametrize(("command", "at_most"), sorted(THIRD_ROUND_LOW.items()))
+def test_tightening_the_classifier_does_not_make_ordinary_commands_scary(
+    command: str, at_most: int
+) -> None:
+    assert classify_command(command).level <= at_most, (command, classify_command(command))
