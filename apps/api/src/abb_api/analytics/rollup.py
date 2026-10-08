@@ -5,6 +5,7 @@ and a rebuild reproduces it, INV-2). Every select returns columns named like the
 feeds. Client-controlled names (agent slugs, models, tool names) are capped per day.
 """
 
+import logging
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
@@ -24,6 +25,7 @@ from sqlalchemy import (
     literal_column,
     select,
 )
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.analytics.percentiles import bucket_sql
@@ -31,7 +33,14 @@ from abb_api.db import tables as t
 from abb_api.runs.summary import SUMMARY_VERSION
 from abb_api.tenancy import TenantContext
 
+logger = logging.getLogger(__name__)
+
 R = t.runs.c
+RUN_SUMS = (
+    "runs", "cost_usd", "retry_cost_usd", "retried_runs", "runs_with_retry_cost", "llm_calls",
+    "tool_calls", "retry_count", "retries_unattributed", "files_modified", "unpriced_calls",
+    "tool_spans_finished", "tool_spans_ok", "llm_spans_finished", "llm_spans_ok", "unrebuilt_runs",
+)  # fmt: skip
 L = t.cost_calculations.c
 S = t.spans.c
 
@@ -39,6 +48,8 @@ FINISHED = ("SUCCESS", "FAILED", "TIMED_OUT", "BLOCKED")
 NAMED_KINDS = ("tool", "llm")
 TOP_RUNS = 50  # stored per project and day, per ranking
 MAX_NAMES_PER_DAY = 200  # distinct names kept per project and day; the rest fold into OTHER
+MAX_ROWS_PER_DAY = 2000  # rows kept per project and day in one rollup table
+NAME_MAX = 128  # characters of any client-controlled key stored in a rollup
 OTHER = "(other)"
 # Constants inside grouped expressions must be literals, not bind parameters: PostgreSQL only
 # accepts a SELECT expression in GROUP BY if it is the same expression, and bound values get
@@ -238,47 +249,83 @@ def top_runs_select(ws: uuid.UUID, start: date, end: date, project: uuid.UUID | 
 # ------------------------------------------------------------------ refresh
 
 
-def _cap(
+def _short(value: Any) -> Any:
+    """Client-controlled text as stored in a rollup key: bounded, so a 4,000-character model or
+    tool name can never exceed the index row limit (PostgreSQL btree keys are about 2.7 KB)."""
+    return value[:NAME_MAX] if isinstance(value, str) else value
+
+
+def _fold(
     rows: Sequence[Any],
     key: tuple[str, ...],
-    name_field: str,
+    names: tuple[str, ...],
     sums: tuple[str, ...],
     partition: str | None = None,
+    max_rows: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Fold names beyond MAX_NAMES_PER_DAY into OTHER, merging sums.
+    """Bound a day's rollup rows whatever a client sends (KI-018, KI-055).
 
-    Names compete within their project, day and `partition` (a span kind or series), so a flood of
-    one kind of name cannot push out another kind's names.
+    Every text key is truncated to NAME_MAX characters. In each of the `names` fields, names beyond
+    MAX_NAMES_PER_DAY (per project, day and `partition`, such as a span kind) fold into OTHER. Rows
+    that collide after folding merge their `sums`; if more than `max_rows` rows remain for a
+    project-day the smallest fold into a single OTHER row. Totals are preserved at every step.
     """
 
     def group_of(row: Any) -> tuple[Any, ...]:
         return (row.project_id, row.day, getattr(row, partition) if partition else None)
 
-    by_group: dict[tuple[Any, ...], dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for row in rows:
-        by_group[group_of(row)][getattr(row, name_field)] += int(getattr(row, sums[0]) or 0)
-    keep: dict[tuple[Any, ...], set[str]] = {}
-    for group, totals in by_group.items():
-        ranked = sorted(totals.items(), key=lambda item: (-item[1], item[0]))
-        keep[group] = {name for name, _ in ranked[:MAX_NAMES_PER_DAY]}
+    keep: dict[tuple[str, tuple[Any, ...]], set[str]] = {}
+    for field in names:
+        totals: dict[tuple[Any, ...], dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for row in rows:
+            totals[group_of(row)][_short(getattr(row, field))] += int(getattr(row, sums[0]) or 0)
+        for group, counts in totals.items():
+            ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+            keep[(field, group)] = {name for name, _ in ranked[:MAX_NAMES_PER_DAY]}
     merged: dict[tuple[Any, ...], dict[str, Any]] = {}
     for row in rows:
-        values = dict(row._mapping)
-        if getattr(row, name_field) not in keep[group_of(row)]:
-            values[name_field] = OTHER
+        values = {k: _short(v) for k, v in row._mapping.items()}
+        for field in names:
+            if values[field] not in keep[(field, group_of(row))]:
+                values[field] = OTHER
         ident = tuple(values[k] for k in ("project_id", "day", *key))
         if ident in merged:
             for field in sums:
                 merged[ident][field] = (merged[ident][field] or 0) + (values[field] or 0)
         else:
             merged[ident] = values
-    return list(merged.values())
+    if max_rows is None:
+        return list(merged.values())
+    by_day: dict[tuple[Any, Any], list[dict[str, Any]]] = defaultdict(list)
+    for values in merged.values():
+        by_day[(values["project_id"], values["day"])].append(values)
+    result: list[dict[str, Any]] = []
+    for day_rows in by_day.values():
+        day_rows.sort(key=lambda v: -int(v[sums[0]] or 0))
+        result.extend(day_rows[:max_rows])
+        tail = day_rows[max_rows:]
+        if tail:
+            other = dict(tail[0])
+            for field in names:
+                other[field] = OTHER
+            for field in sums:
+                other[field] = sum((v[field] or 0 for v in tail), 0)
+            result.append(other)
+    return result
 
 
-async def refresh_day(conn: AsyncConnection, tenant: TenantContext, day: date) -> None:
-    """Rewrite the rollup rows of one workspace and UTC day from the derived tables."""
+async def refresh_day(conn: AsyncConnection, tenant: TenantContext, day: date) -> int:
+    """Rewrite the rollup rows of one workspace and UTC day from the derived tables.
+
+    Idempotent, and serialised per workspace-day by an advisory lock so two refreshes of the same
+    day cannot interleave. A row the database refuses is skipped, counted and logged (value-free):
+    one hostile row must never keep a whole day from rendering. Returns how many rows were skipped.
+    """
     ws = tenant.workspace_id
     end = day + timedelta(days=1)
+    await conn.execute(
+        select(func.pg_advisory_xact_lock(func.hashtextextended(f"analytics:{ws}:{day}", 0)))
+    )
     for table in (
         t.analytics_runs_daily,
         t.analytics_cost_daily,
@@ -291,36 +338,56 @@ async def refresh_day(conn: AsyncConnection, tenant: TenantContext, day: date) -
     def with_ws(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
         return [{"workspace_id": ws, **row} for row in rows]
 
+    skipped = 0
     runs = (await conn.execute(runs_select(ws, day, end, None))).all()
-    await _insert(conn, t.analytics_runs_daily, with_ws([dict(r._mapping) for r in runs]))
+    folded = _fold(
+        runs, ("agent_slug", "status"), ("agent_slug",), RUN_SUMS, max_rows=MAX_ROWS_PER_DAY
+    )
+    skipped += await _insert(conn, t.analytics_runs_daily, with_ws(folded))
 
     cost = (await conn.execute(cost_select(ws, day, end, None))).all()
-    capped = _cap(
+    folded = _fold(
         cost,
         ("agent_slug", "provider", "model", "source"),
-        "model",
+        ("agent_slug", "provider", "model"),
         ("calls", "total_usd", "input_tokens", "output_tokens"),
+        max_rows=MAX_ROWS_PER_DAY,
     )
-    await _insert(conn, t.analytics_cost_daily, with_ws(capped))
+    skipped += await _insert(conn, t.analytics_cost_daily, with_ws(folded))
 
     spans = (await conn.execute(spans_select(ws, day, end, None))).all()
-    capped = _cap(spans, ("kind", "name"), "name", ("finished", "ok"), partition="kind")
-    await _insert(conn, t.analytics_spans_daily, with_ws(capped))
+    folded = _fold(spans, ("kind", "name"), ("name",), ("finished", "ok"), partition="kind")
+    skipped += await _insert(conn, t.analytics_spans_daily, with_ws(folded))
 
     latency = (await conn.execute(latency_select(ws, day, end, None))).all()
-    capped = _cap(latency, ("series", "name", "bucket"), "name", ("n",), partition="series")
-    await _insert(conn, t.analytics_latency_daily, with_ws(capped))
+    folded = _fold(latency, ("series", "name", "bucket"), ("name",), ("n",), partition="series")
+    skipped += await _insert(conn, t.analytics_latency_daily, with_ws(folded))
 
     top = (await conn.execute(top_runs_select(ws, day, end, None))).all()
-    await _insert(conn, t.analytics_top_runs, with_ws([dict(r._mapping) for r in top]))
+    skipped += await _insert(conn, t.analytics_top_runs, with_ws([dict(r._mapping) for r in top]))
+    if skipped:
+        logger.warning(
+            "analytics rollup skipped rows the database refused",
+            extra={"workspace_id": str(ws), "day": day.isoformat(), "skipped": skipped},
+        )
+    return skipped
 
 
-async def _insert(conn: AsyncConnection, table: Any, rows: list[dict[str, Any]]) -> None:
+async def _insert(conn: AsyncConnection, table: Any, rows: list[dict[str, Any]]) -> int:
+    """Insert rows; a chunk the database refuses is retried row by row and bad rows are skipped."""
     columns = {c.name for c in table.columns}
     chunk = max(1, 30000 // max(len(columns), 1))
+    skipped = 0
     for start in range(0, len(rows), chunk):
-        await conn.execute(
-            insert(table).values(
-                [{k: v for k, v in r.items() if k in columns} for r in rows[start : start + chunk]]
-            )
-        )
+        batch = [{k: v for k, v in r.items() if k in columns} for r in rows[start : start + chunk]]
+        try:
+            async with conn.begin_nested():
+                await conn.execute(insert(table).values(batch))
+        except DBAPIError:
+            for row in batch:
+                try:
+                    async with conn.begin_nested():
+                        await conn.execute(insert(table).values([row]))
+                except DBAPIError:
+                    skipped += 1
+    return skipped

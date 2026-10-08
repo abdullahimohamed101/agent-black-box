@@ -2,7 +2,9 @@
 
 import math
 import random
+import uuid
 from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -19,6 +21,7 @@ from abb_api.db import tables as t
 from abb_api.tenancy import TenantContext
 from tests.analytics_fixtures import D6, D7, Seeder
 from tests.api_fixtures import Api
+from tests.factories import make_run
 from tests.ingest_helpers import wire_event
 
 TABLES = (
@@ -267,3 +270,115 @@ async def test_the_cli_rebuilds_rollups_after_they_are_lost(seeded: Api, databas
     assert other == 0 and acme != seeded.other.context.workspace_id
     assert {k: len(v) for k, v in after.items()} != {} and all(after[k] for k in after)
     assert set(before) == set(after)
+
+
+# ------------------------------------------------------------------ hostile names and cardinality
+
+
+async def test_very_long_client_names_do_not_break_the_refresh(api: Api) -> None:
+    """A 4,000-character model or tool name exceeded the btree key limit (failed the day)."""
+    long_name = "x" * 4000
+    llm = [
+        {
+            "llm.provider": long_name,
+            "llm.model": long_name,
+            "llm.input_tokens": 1,
+            "cost.estimated_usd": 0.5,
+        }
+    ]
+    await Seeder(api, "writer").run(D7, llm=llm, tools=[(long_name, "success", 5)])
+    await api.drain()
+    async with api.engine.connect() as conn:
+        pending = (
+            await conn.execute(
+                select(t.outbox_jobs.c.status).where(t.outbox_jobs.c.status != "done")
+            )
+        ).all()
+        models = [r.model for r in await conn.execute(select(t.analytics_cost_daily.c.model))]
+        tools = [r.name for r in await conn.execute(select(t.analytics_spans_daily.c.name))]
+    assert not pending
+    assert models == ["x" * rollup.NAME_MAX] and "x" * rollup.NAME_MAX in tools
+    assert (await api.get("/v1/analytics/cost")).json()["headline"]["total_usd"] == 0.5
+
+
+async def test_agents_providers_and_models_are_all_capped_and_totals_preserved(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(rollup, "MAX_NAMES_PER_DAY", 5)
+    seeder = Seeder(api, "writer")
+    for i in range(30):
+        call = {
+            "llm.provider": f"prov{i}", "llm.model": f"model{i}", "llm.input_tokens": 1,
+            "cost.estimated_usd": 1.0,
+        }  # fmt: skip
+        await seeder.run(D7, agent=f"agent{i}", llm=[call])
+    await api.drain()
+    async with api.engine.connect() as conn:
+        cost_rows = (await conn.execute(select(t.analytics_cost_daily))).all()
+        run_rows = (await conn.execute(select(t.analytics_runs_daily))).all()
+    assert {r.agent_slug for r in cost_rows} <= {f"agent{i}" for i in range(30)} | {rollup.OTHER}
+    assert len({r.agent_slug for r in cost_rows}) <= 6 and len({r.provider for r in cost_rows}) <= 6
+    assert len({r.model for r in cost_rows}) <= 6 and len({r.agent_slug for r in run_rows}) <= 6
+    assert sum(float(r.total_usd) for r in cost_rows) == pytest.approx(30.0)
+    assert sum(r.runs for r in run_rows) == 30
+
+
+async def test_five_hundred_distinct_keys_give_bounded_rows_and_a_fast_query(api: Api) -> None:
+    import time
+
+    # Build the derived rows directly (events would take minutes): 500 agents x providers x models.
+    async with api.engine.begin() as conn:
+        project = api.tenant.project_uuids["alpha"]
+        run_id = await make_run(
+            conn, api.tenant.context.workspace_id, project, started_at=D7, status="SUCCESS"
+        )
+        lines = [
+            {
+                "workspace_id": api.tenant.context.workspace_id,
+                "event_id": uuid.uuid4(), "run_id": run_id, "project_id": project,
+                "agent_slug": f"agent{i}", "occurred_at": D7, "run_started_at": D7,
+                "provider": f"prov{i}", "model": f"model{i}", "input_tokens": 1, "output_tokens": 1,
+                "cached_input_tokens": 0, "source": "estimated", "total": Decimal("0.01") * (i + 1),
+            }
+            for i in range(500)
+        ]  # fmt: skip
+        await conn.execute(t.cost_calculations.insert(), lines)
+        await refresh_day(conn, api.tenant.context, D7.date())
+    async with api.engine.connect() as conn:
+        stored = (
+            await conn.execute(select(text("count(*)")).select_from(t.analytics_cost_daily))
+        ).scalar_one()
+    assert stored <= rollup.MAX_ROWS_PER_DAY
+    started = time.perf_counter()
+    body = (await api.get("/v1/analytics/cost", top=5)).json()
+    assert time.perf_counter() - started < 2.0
+    assert len(body["by_agent"]) == 5 and len(body["by_model"]) == 5
+    assert body["by_agent_other"]["groups"] >= 1
+    total = sum(0.01 * (i + 1) for i in range(500))
+    assert sum(a["cost_usd"] for a in body["by_agent"]) + body["by_agent_other"][
+        "cost_usd"
+    ] == pytest.approx(total)
+
+
+async def test_a_refresh_skips_rows_the_database_refuses_and_keeps_the_rest(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await Seeder(api, "writer").run(
+        D7, llm=[{"llm.provider": "p", "llm.model": "m", "llm.input_tokens": 1}]
+    )
+    await api.drain()
+    real = rollup._fold
+
+    def poisoned(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        rows = real(*args, **kwargs)
+        if rows and "model" in rows[0]:
+            rows.append({**rows[0], "model": "bad", "calls": None})  # NOT NULL violation
+        return rows
+
+    monkeypatch.setattr(rollup, "_fold", poisoned)
+    async with api.engine.begin() as conn:
+        skipped = await refresh_day(conn, api.tenant.context, D7.date())
+    assert skipped == 1
+    assert (await api.get("/v1/analytics/summary")).json()["runs"][
+        "total"
+    ] == 1  # the rest rendered

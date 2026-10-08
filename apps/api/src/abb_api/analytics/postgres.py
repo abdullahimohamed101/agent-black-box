@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import Any
 
 from abb_event_schema.ids import IdKind, from_uuid
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, tuple_
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 ACTIVE = ("QUEUED", "RUNNING", "WAITING", "WAITING_FOR_APPROVAL")
 R = t.runs.c
+MAX_SLOW_CANDIDATES = 200  # operations whose histograms are read to rank "slowest"
 
 RUNS_COLS = (
     "project_id", "day", "agent_slug", "status", "runs", "cost_usd", "retry_cost_usd",
@@ -219,16 +220,6 @@ def _percentiles(counts: Mapping[int, int] | None) -> Percentiles:
     )
 
 
-def _other(rest: Sequence[Any], cost_field: str, calls_field: str) -> OtherBucket | None:
-    if not rest:
-        return None
-    return OtherBucket(
-        groups=len(rest),
-        calls=sum(int(getattr(r, calls_field) or 0) for r in rest),
-        cost_usd=_usd(sum((Decimal(getattr(r, cost_field) or 0) for r in rest), Decimal(0))),
-    )
-
-
 class PostgresAnalyticsStore:
     def __init__(self, engine: AsyncEngine, *, timeout_seconds: float = 10.0) -> None:
         self._engine = engine
@@ -274,13 +265,21 @@ class PostgresAnalyticsStore:
         return _RunTotals((await conn.execute(statement)).all())
 
     @staticmethod
-    async def _latency(conn: AsyncConnection, sources: _Sources, *series: str) -> Sequence[Any]:
+    async def _latency(
+        conn: AsyncConnection,
+        sources: _Sources,
+        *series: str,
+        names: Sequence[str] | None = None,
+    ) -> Sequence[Any]:
+        """Duration histogram rows of some series, optionally only for the given names."""
         u = sources.latency()
         statement = (
             select(u.c.series, u.c.name, u.c.bucket, func.sum(u.c.n).label("n"))
             .where(u.c.series.in_(series))
             .group_by(u.c.series, u.c.name, u.c.bucket)
         )
+        if names is not None:
+            statement = statement.where(u.c.name.in_(list(names)))
         return (await conn.execute(statement)).all()
 
     # ------------------------------------------------------------------ summary
@@ -374,22 +373,52 @@ class PostgresAnalyticsStore:
             total_usd = func.sum(cost_u.c.total_usd)
             calls = func.sum(cost_u.c.calls)
 
-            async def grouped(*columns: Any) -> list[Any]:
-                return list(
+            async def top_groups(*columns: Any) -> tuple[list[Any], OtherBucket | None]:
+                """The `top` costliest groups (LIMIT in SQL) and one bucket for all the rest."""
+                shown = list(
                     (
                         await conn.execute(
-                            select(*columns, total_usd.label("cost"), calls.label("calls"),
-                                   func.sum(cost_u.c.input_tokens).label("tin"),
-                                   func.sum(cost_u.c.output_tokens).label("tout"))
+                            select(
+                                *columns,
+                                total_usd.label("cost"),
+                                calls.label("calls"),
+                                func.sum(cost_u.c.input_tokens).label("tin"),
+                                func.sum(cost_u.c.output_tokens).label("tout"),
+                            )
                             .group_by(*columns)
                             .order_by(total_usd.desc(), *columns)
+                            .limit(top)
                         )
                     ).all()
-                )  # fmt: skip
+                )
+                grouped = select(*columns).group_by(*columns).subquery()
+                group_count = (
+                    await conn.execute(select(func.count()).select_from(grouped))
+                ).scalar_one()
+                if group_count <= len(shown):
+                    return shown, None
+                everything = (
+                    await conn.execute(select(total_usd.label("cost"), calls.label("calls")))
+                ).one()
+                rest = OtherBucket(
+                    groups=group_count - len(shown),
+                    calls=int(everything.calls or 0) - sum(int(r.calls) for r in shown),
+                    cost_usd=_usd(
+                        Decimal(everything.cost or 0)
+                        - sum((Decimal(r.cost or 0) for r in shown), Decimal(0))
+                    ),
+                )
+                return shown, rest
 
-            agent_rows = await grouped(cost_u.c.agent_slug)
-            model_rows = await grouped(cost_u.c.provider, cost_u.c.model)
-            source_rows = await grouped(cost_u.c.source)
+            agent_rows, agent_other = await top_groups(cost_u.c.agent_slug)
+            model_rows, model_other = await top_groups(cost_u.c.provider, cost_u.c.model)
+            source_rows = (
+                await conn.execute(
+                    select(cost_u.c.source, total_usd.label("cost"), calls.label("calls"))
+                    .group_by(cost_u.c.source)
+                    .order_by(total_usd.desc(), cost_u.c.source)
+                )
+            ).all()
             unpriced_by_model: dict[tuple[str, str], int] = {
                 (r.provider, r.model): int(r.calls)
                 for r in (
@@ -397,6 +426,8 @@ class PostgresAnalyticsStore:
                         select(cost_u.c.provider, cost_u.c.model, calls.label("calls"))
                         .where(cost_u.c.source == "unpriced")
                         .group_by(cost_u.c.provider, cost_u.c.model)
+                        .order_by(calls.desc())
+                        .limit(top)
                     )
                 ).all()
             }
@@ -419,9 +450,9 @@ class PostgresAnalyticsStore:
                     CostByAgent(
                         agent=r.agent_slug or "(unknown)", cost_usd=_usd(r.cost), calls=int(r.calls)
                     )
-                    for r in agent_rows[:top]
+                    for r in agent_rows
                 ],
-                by_agent_other=_other(agent_rows[top:], "cost", "calls"),
+                by_agent_other=agent_other,
                 by_model=[
                     CostByModel(
                         provider=r.provider or None,
@@ -432,9 +463,9 @@ class PostgresAnalyticsStore:
                         output_tokens=int(r.tout or 0),
                         unpriced_calls=unpriced_by_model.get((r.provider, r.model), 0),
                     )
-                    for r in model_rows[:top]
+                    for r in model_rows
                 ],
-                by_model_other=_other(model_rows[top:], "cost", "calls"),
+                by_model_other=model_other,
                 by_source=[
                     CostBySource(source=r.source, cost_usd=_usd(r.cost), calls=int(r.calls))
                     for r in source_rows
@@ -529,20 +560,29 @@ class PostgresAnalyticsStore:
                 )
 
             spans_u = sources.spans()
+            finished: Any = func.sum(spans_u.c.finished)
             tool_rows = (
                 await conn.execute(
                     select(
-                        spans_u.c.name,
-                        func.sum(spans_u.c.finished).label("calls"),
-                        func.sum(spans_u.c.ok).label("ok"),
+                        spans_u.c.name, finished.label("calls"), func.sum(spans_u.c.ok).label("ok")
                     )
                     .where(spans_u.c.kind == "tool")
                     .group_by(spans_u.c.name)
-                    .order_by(func.sum(spans_u.c.finished).desc(), spans_u.c.name)
+                    .order_by(finished.desc(), spans_u.c.name)
+                    .limit(top)
                 )
             ).all()
+            tool_totals = (
+                await conn.execute(
+                    select(
+                        func.count(func.distinct(spans_u.c.name)).label("names"),
+                        finished.label("calls"),
+                    ).where(spans_u.c.kind == "tool")
+                )
+            ).one()
             tool_hist = _histograms(
-                [r for r in await self._latency(conn, sources, "tool")], lambda r: r.name
+                await self._latency(conn, sources, "tool", names=[r.name for r in tool_rows]),
+                lambda r: r.name,
             )
             tools = [
                 ToolReliability(
@@ -551,7 +591,7 @@ class PostgresAnalyticsStore:
                     success_rate=_rate(r.ok, r.calls),
                     p95_ms=_ms(percentile(tool_hist.get(r.name, {}), 0.95)),
                 )
-                for r in tool_rows[:top]
+                for r in tool_rows
             ]
             heavy = [
                 RetryHeavyRun(
@@ -569,7 +609,7 @@ class PostgresAnalyticsStore:
                     conn, scope, sources.top(), "retries", top
                 )
             ]
-            rest = tool_rows[top:]
+            hidden = int(tool_totals.names) - len(tool_rows)
             return ReliabilityReport(
                 window=self._window(scope),
                 runs=totals.counts,
@@ -577,8 +617,11 @@ class PostgresAnalyticsStore:
                 failure_trend=trend,
                 tools=tools,
                 tools_other=(
-                    OtherBucket(groups=len(rest), calls=sum(int(r.calls) for r in rest))
-                    if rest
+                    OtherBucket(
+                        groups=hidden,
+                        calls=int(tool_totals.calls or 0) - sum(int(r.calls) for r in tool_rows),
+                    )
+                    if hidden > 0
                     else None
                 ),
                 retry_heavy_runs=heavy,
@@ -592,9 +635,42 @@ class PostgresAnalyticsStore:
     async def performance(self, scope: AnalyticsScope, *, top: int) -> PerformanceReport:
         async def work(conn: AsyncConnection) -> PerformanceReport:
             sources = _Sources(scope)
-            latency = await self._latency_all(conn, sources)
-            by_series = _histograms(latency, lambda r: r.series)
-            by_operation = _histograms(latency, lambda r: (r.series, r.name))
+            u = sources.latency()
+            by_series = _histograms(
+                (
+                    await conn.execute(
+                        select(u.c.series, u.c.bucket, func.sum(u.c.n).label("n")).group_by(
+                            u.c.series, u.c.bucket
+                        )
+                    )
+                ).all(),
+                lambda r: r.series,
+            )
+            # Candidates: the busiest operations (bounded), then their histograms, ranked by p95.
+            volume: Any = func.sum(u.c.n)
+            busiest = (
+                await conn.execute(
+                    select(u.c.series, u.c.name)
+                    .where(u.c.series != "run")
+                    .group_by(u.c.series, u.c.name)
+                    .order_by(volume.desc(), u.c.series, u.c.name)
+                    .limit(MAX_SLOW_CANDIDATES)
+                )
+            ).all()
+            by_operation = _histograms(
+                (
+                    await conn.execute(
+                        select(u.c.series, u.c.name, u.c.bucket, volume.label("n"))
+                        .where(
+                            tuple_(u.c.series, u.c.name).in_([(r.series, r.name) for r in busiest])
+                        )
+                        .group_by(u.c.series, u.c.name, u.c.bucket)
+                    )
+                ).all()
+                if busiest
+                else [],
+                lambda r: (r.series, r.name),
+            )
             slow = [
                 SlowOperation(
                     kind=series,
@@ -604,7 +680,6 @@ class PostgresAnalyticsStore:
                     p95_ms=_ms(percentile(counts, 0.95)),
                 )
                 for (series, name), counts in by_operation.items()
-                if series != "run"
             ]
             slow.sort(key=lambda o: (-(o.p95_ms or 0), o.kind, o.name or ""))
             return PerformanceReport(
@@ -617,11 +692,3 @@ class PostgresAnalyticsStore:
 
         result: PerformanceReport = await self._read(scope, work)
         return result
-
-    @staticmethod
-    async def _latency_all(conn: AsyncConnection, sources: _Sources) -> Sequence[Any]:
-        u = sources.latency()
-        statement = select(u.c.series, u.c.name, u.c.bucket, func.sum(u.c.n).label("n")).group_by(
-            u.c.series, u.c.name, u.c.bucket
-        )
-        return (await conn.execute(statement)).all()

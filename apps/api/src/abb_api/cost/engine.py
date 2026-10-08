@@ -20,9 +20,10 @@ COST_SOURCES: tuple[CostSource, ...] = (
 _QUANT = Decimal("0.000000001")
 _MILLION = Decimal(1_000_000)
 MAX_TOKENS = 10**12  # absurd counts are hostile input; they are clamped, not trusted
-# No single model call costs a million dollars. Larger figures (a hostile attribute, or a price override
-# times a clamped token count) are clamped to this, flagged on the line and counted in the run summary, so
-# one event can never overflow a money column or dominate a day's totals (never an exception).
+# No single model call costs a million dollars. Larger figures (a hostile attribute, or a price
+# override times a clamped token count) are clamped to this, flagged on the line and counted in the
+# run summary, so one event can never overflow a money column or dominate a day's totals (never an
+# exception).
 MAX_LINE_USD = Decimal("1000000")
 
 
