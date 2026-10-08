@@ -208,6 +208,11 @@ class PostgresAnalyticsStore:
             func.count().filter(_num("retry_count") > 0).label("retried_runs"),
             func.count().filter(_num("retry_cost_usd") > 0).label("runs_with_retry_cost"),
             func.sum(_num("retries_unattributed")).label("unattributed"),
+            func.sum(_num("unpriced_calls")).label("unpriced"),
+            func.sum(_num("tool_spans_finished")).label("tool_finished"),
+            func.sum(_num("tool_spans_ok")).label("tool_ok"),
+            func.sum(_num("llm_spans_finished")).label("llm_finished"),
+            func.sum(_num("llm_spans_ok")).label("llm_ok"),
             func.avg(_num("llm_calls")).label("avg_llm"),
             func.avg(_num("tool_calls")).label("avg_tool"),
             func.avg(_num("retry_count")).label("avg_retries"),
@@ -244,12 +249,7 @@ class PostgresAnalyticsStore:
             retry_rate=_rate(row.retried_runs, counts.total),
         )
 
-    @staticmethod
-    async def _unpriced(conn: AsyncConnection, scope: AnalyticsScope) -> int:
-        statement = _lines_from(scope, func.count()).where(L.source == "unpriced")
-        return int((await conn.execute(statement)).scalar_one())
-
-    def _headline(self, row: Any, counts: RunCounts, unpriced: int) -> CostHeadline:
+    def _headline(self, row: Any, counts: RunCounts) -> CostHeadline:
         total = Decimal(row.cost or 0)
         retry = Decimal(row.retry_cost or 0)
         return CostHeadline(
@@ -260,7 +260,7 @@ class PostgresAnalyticsStore:
             ),
             retry_usd=_usd(retry),
             retry_share=round(float(retry / total), 6) if total else None,
-            unpriced_calls=unpriced,
+            unpriced_calls=int(row.unpriced or 0),
             unrebuilt_runs=row.unrebuilt,
         )
 
@@ -270,20 +270,6 @@ class PostgresAnalyticsStore:
         async def work(conn: AsyncConnection) -> Summary:
             row = await self._counts_and_cost(conn, scope)
             counts = self._run_counts(row)
-            unpriced = await self._unpriced(conn, scope)
-            span_rows = (
-                await conn.execute(
-                    _spans_from(
-                        scope,
-                        S.kind,
-                        func.count().filter(S.status.is_not(None)).label("calls"),
-                        func.count().filter(S.status == "success").label("ok"),
-                    )
-                    .where(S.kind.in_(NAMED_KINDS))
-                    .group_by(S.kind)
-                )
-            ).all()
-            by_kind = {r.kind: r for r in span_rows}
             agents = await conn.execute(
                 select(R.agent_slug)
                 .where(R.workspace_id == scope.tenant.workspace_id, R.status.in_(ACTIVE))
@@ -294,18 +280,11 @@ class PostgresAnalyticsStore:
                 .limit(10)
             )
 
-            def span_rate(kind: str) -> SpanRate:
-                found = by_kind.get(kind)
-                return SpanRate(
-                    calls=found.calls if found else 0,
-                    success_rate=_rate(found.ok, found.calls) if found else None,
-                )
-
             return Summary(
                 window=self._window(scope),
                 runs=counts,
                 rates=self._rates(row, counts),
-                cost=self._headline(row, counts, unpriced),
+                cost=self._headline(row, counts),
                 run_latency=_percentiles(row.latency_count, row.p50, row.p95),
                 behaviour=Behaviour(
                     avg_llm_calls=_avg(row.avg_llm) if counts.total else None,
@@ -313,8 +292,14 @@ class PostgresAnalyticsStore:
                     avg_retries=_avg(row.avg_retries) if counts.total else None,
                     avg_files_modified=_avg(row.avg_files) if counts.total else None,
                 ),
-                tools=span_rate("tool"),
-                llm=span_rate("llm"),
+                tools=SpanRate(
+                    calls=int(row.tool_finished or 0),
+                    success_rate=_rate(int(row.tool_ok or 0), int(row.tool_finished or 0)),
+                ),
+                llm=SpanRate(
+                    calls=int(row.llm_finished or 0),
+                    success_rate=_rate(int(row.llm_ok or 0), int(row.llm_finished or 0)),
+                ),
                 active_agents=[a.agent_slug for a in agents],
             )
 
@@ -327,8 +312,7 @@ class PostgresAnalyticsStore:
         async def work(conn: AsyncConnection) -> CostReport:
             row = await self._counts_and_cost(conn, scope)
             counts = self._run_counts(row)
-            unpriced = await self._unpriced(conn, scope)
-            headline = self._headline(row, counts, unpriced)
+            headline = self._headline(row, counts)
             total = Decimal(row.cost or 0)
             retry = Decimal(row.retry_cost or 0)
 

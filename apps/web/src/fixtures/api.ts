@@ -1,4 +1,5 @@
 import type { EventOut } from "@/lib/api/types";
+import { fixtureAnalytics } from "./analytics";
 import { fixtureRuns } from "./index";
 
 export type Reply = { status: number; body: unknown };
@@ -48,6 +49,10 @@ function page<T>(all: T[], q: URLSearchParams, max: number, def: number) {
 /** An in-memory implementation of the read API (§71, api-v1.md) over the deterministic fixtures. */
 export function fixtureReply(segments: string[], q: URLSearchParams): Reply {
   const [v1, runs, runId, sub, eventId] = segments;
+  if (v1 === "v1" && runs === "analytics" && runId && !sub) {
+    const body = fixtureAnalytics(runId, q);
+    return body ? { status: 200, body } : notFound("NOT_FOUND", "Not found.");
+  }
   if (v1 !== "v1" || runs !== "runs") return notFound("NOT_FOUND", "Not found.");
   const all = fixtureRuns();
   if (!runId) {

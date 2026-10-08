@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { computeDashboard } from "@/lib/dashboard";
 import { formatCost, formatDuration } from "@/lib/format";
-import { runsPath, projectFilter, type Base } from "@/lib/routes";
-import { useRuns } from "@/lib/queries";
+import { analyticsPath, runsPath, projectFilter, type Base } from "@/lib/routes";
+import { useAnalyticsSummary, useRuns } from "@/lib/queries";
 import { RunsTable } from "./RunsTable";
 import { Empty, ErrorState, Loading } from "./States";
 
-const SAMPLE = 200;
+const DAYS = 7;
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -23,14 +21,34 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-export function Dashboard({ base }: { base: Base }) {
-  const q = useRuns({ project: projectFilter(base.project) }, SAMPLE);
-  const runs = useMemo(() => q.data?.pages[0]?.items ?? [], [q.data]);
-  const d = useMemo(() => computeDashboard(runs), [runs]);
+const pct = (r: number | null) => (r == null ? "—" : `${Math.round(r * 100)}%`);
 
-  if (q.isPending) return <Loading label="Loading dashboard" />;
-  if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
-  if (!runs.length) {
+/**
+ * Figures come from the server's aggregate endpoint over the whole window (KI-028 resolved); the two run tables
+ * are the newest runs, fetched separately.
+ */
+export function Dashboard({ base }: { base: Base }) {
+  const project = projectFilter(base.project);
+  const stats = useAnalyticsSummary(project, DAYS);
+  const recent = useRuns({ project }, 8);
+  const failed = useRuns({ project, statuses: ["FAILED", "TIMED_OUT", "BLOCKED"] }, 5);
+
+  if (stats.isPending || recent.isPending) return <Loading label="Loading dashboard" />;
+  const error = stats.error ?? recent.error;
+  if (error) {
+    return (
+      <ErrorState
+        error={error}
+        onRetry={() => {
+          void stats.refetch();
+          void recent.refetch();
+        }}
+      />
+    );
+  }
+  const d = stats.data!;
+  const recentRuns = recent.data?.pages[0]?.items ?? [];
+  if (d.runs.total === 0 && recentRuns.length === 0) {
     return (
       <Empty title="No runs yet">
         Instrument an agent with the SDK or send events to the API; runs appear here within a few
@@ -38,39 +56,57 @@ export function Dashboard({ base }: { base: Base }) {
       </Empty>
     );
   }
-  const more = q.data?.pages[0]?.next_cursor != null;
+  const failures = failed.data?.pages[0]?.items ?? [];
   return (
     <>
       <h1>Dashboard</h1>
       <p className="muted">
-        Based on the latest {d.sampleSize}
-        {more ? "+" : ""} runs{more ? " (older runs are not included)" : ""}.
+        All {d.runs.total.toLocaleString("en-US")} runs started in the last {DAYS} days.{" "}
+        <Link href={analyticsPath(base)}>Cost and reliability analytics →</Link>
       </p>
       <dl className="stats">
         <Stat
           label="Success rate"
-          value={d.successRate == null ? "—" : `${Math.round(d.successRate * 100)}%`}
-          hint={`${d.succeeded} of ${d.finished} finished runs`}
+          value={pct(d.rates.success_rate)}
+          hint={`${d.runs.success} of ${d.runs.finished} finished runs`}
         />
-        <Stat label="Failures" value={String(d.failures)} hint="failed, timed out or blocked" />
-        <Stat label="Cost" value={formatCost(d.totalCostUsd)} hint="event-reported estimate" />
-        <Stat label="Avg duration" value={formatDuration(d.avgDurationMs)} hint="finished runs" />
+        <Stat
+          label="Failures"
+          value={String(d.runs.failed + d.runs.timed_out + d.runs.blocked)}
+          hint="failed, timed out or blocked"
+        />
+        <Stat
+          label="Cost"
+          value={formatCost(d.cost.total_usd)}
+          hint={
+            d.cost.unpriced_calls
+              ? `${d.cost.unpriced_calls} model calls unpriced`
+              : "computed from tokens and prices"
+          }
+        />
+        <Stat
+          label="Median duration"
+          value={formatDuration(d.run_latency.p50_ms)}
+          hint="finished runs"
+        />
         <Stat
           label="Running agents"
-          value={String(d.activeAgents.length)}
-          hint={d.activeAgents.length ? d.activeAgents.join(", ") : `${d.activeRuns} active runs`}
+          value={String(d.active_agents.length)}
+          hint={
+            d.active_agents.length ? d.active_agents.join(", ") : `${d.runs.active} active runs`
+          }
         />
       </dl>
 
-      {d.recentFailures.length > 0 && (
+      {failures.length > 0 && (
         <section aria-labelledby="fail-h">
           <h2 id="fail-h">Recent failures</h2>
-          <RunsTable runs={d.recentFailures} base={base} caption="Recent failed runs" />
+          <RunsTable runs={failures} base={base} caption="Recent failed runs" />
         </section>
       )}
       <section aria-labelledby="recent-h">
         <h2 id="recent-h">Recent runs</h2>
-        <RunsTable runs={d.recent} base={base} caption="Recent runs" />
+        <RunsTable runs={recentRuns} base={base} caption="Recent runs" />
         <p>
           <Link href={runsPath(base)}>All runs →</Link>
         </p>

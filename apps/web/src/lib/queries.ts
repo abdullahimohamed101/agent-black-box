@@ -119,3 +119,78 @@ export function useEventDetail(runId: string, eventId: string | null) {
     staleTime: Infinity,
   });
 }
+
+/** Analytics windows are whole-hour aligned so the query key (and the server's work) is stable between renders. */
+export type WindowDays = 1 | 7 | 30;
+export const WINDOW_OPTIONS: readonly WindowDays[] = [1, 7, 30];
+const HOUR = 3_600_000;
+export function windowFrom(days: WindowDays, now: number = Date.now()): string {
+  return new Date(Math.floor(now / HOUR) * HOUR - days * 24 * HOUR).toISOString();
+}
+
+function analyticsQuery(project: string | null | undefined, days: WindowDays) {
+  return { project_id: project || undefined, from: windowFrom(days) };
+}
+
+const ANALYTICS_STALE_MS = 30_000;
+
+export function useAnalyticsSummary(project: string | null | undefined, days: WindowDays) {
+  return useQuery({
+    queryKey: ["analytics", "summary", project ?? null, days],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/analytics/summary", {
+          signal,
+          params: { query: analyticsQuery(project, days) },
+        }),
+      ),
+    staleTime: ANALYTICS_STALE_MS,
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useCostReport(project: string | null | undefined, days: WindowDays) {
+  return useQuery({
+    queryKey: ["analytics", "cost", project ?? null, days],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/analytics/cost", {
+          signal,
+          params: { query: analyticsQuery(project, days) },
+        }),
+      ),
+    staleTime: ANALYTICS_STALE_MS,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useReliabilityReport(project: string | null | undefined, days: WindowDays) {
+  return useQuery({
+    queryKey: ["analytics", "reliability", project ?? null, days],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/analytics/reliability", {
+          signal,
+          params: { query: analyticsQuery(project, days) },
+        }),
+      ),
+    staleTime: ANALYTICS_STALE_MS,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function usePerformanceReport(project: string | null | undefined, days: WindowDays) {
+  return useQuery({
+    queryKey: ["analytics", "performance", project ?? null, days],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/analytics/performance", {
+          signal,
+          params: { query: analyticsQuery(project, days) },
+        }),
+      ),
+    staleTime: ANALYTICS_STALE_MS,
+    placeholderData: keepPreviousData,
+  });
+}

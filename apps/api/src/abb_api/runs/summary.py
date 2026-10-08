@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from abb_event_schema.enums import EventStatus, RunStatus, can_transition
+from abb_event_schema.enums import EventStatus, RunStatus, SpanKind, can_transition
 from abb_event_schema.event import Event
 from abb_event_schema.ordering import sort_events
 from abb_event_schema.spans import Span, derive_spans
@@ -144,6 +144,11 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
     retried = retry_call_ids(ordered, spans)
     cost_lines = tuple(pricing.calculate(e).with_retry(e.event_id in retried) for e in cost_events)
 
+    # Finished tool/model spans: the dashboard's success rates come from here, not from `spans`.
+    finished = [s for s in spans.values() if s.status is not None]
+    tool_spans = [s for s in finished if s.kind is SpanKind.TOOL]
+    llm_spans = [s for s in finished if s.kind is SpanKind.LLM]
+
     summary: dict[str, Any] = {
         "event_count": len(events),
         "duration_ms": duration_ms,
@@ -153,6 +158,10 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
         "output_tokens": output_tokens,
         # Decimal sums are exact and order-independent: the total never depends on summation order.
         **cost_summary(list(cost_lines)),
+        "tool_spans_finished": len(tool_spans),
+        "tool_spans_ok": sum(1 for s in tool_spans if s.status is EventStatus.SUCCESS),
+        "llm_spans_finished": len(llm_spans),
+        "llm_spans_ok": sum(1 for s in llm_spans if s.status is EventStatus.SUCCESS),
         "retry_count": retry_count,
         "retries_unattributed": retries_unattributed,
         "error_count": error_count,

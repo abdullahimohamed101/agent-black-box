@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { projectPath, runsPath, type Base } from "@/lib/routes";
+import { analyticsPath, projectPath, runsPath, type Base } from "@/lib/routes";
 
 export function AppShell({ base, children }: { base: Base; children: React.ReactNode }) {
   const path = usePathname();
   const dash = projectPath(base);
   const runs = runsPath(base);
+  const analytics = analyticsPath(base);
   const cur = (href: string, exact: boolean) =>
     (exact ? path === href : path === href || path.startsWith(`${href}/`)) ? "page" : undefined;
   return (
@@ -28,6 +29,9 @@ export function AppShell({ base, children }: { base: Base; children: React.React
           </Link>
           <Link href={runs} aria-current={cur(runs, false)}>
             Runs
+          </Link>
+          <Link href={analytics} aria-current={cur(analytics, false)}>
+            Analytics
           </Link>
         </nav>
       </header>
