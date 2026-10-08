@@ -94,6 +94,8 @@ jobs:
           --health-timeout 3s --health-retries 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the e2e compares against origin/main
       - uses: astral-sh/setup-uv@v5
       - name: Install
         run: |

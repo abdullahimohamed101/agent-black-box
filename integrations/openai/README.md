@@ -23,3 +23,5 @@ with bb.run("support bot"):
   `llm.usage_unavailable`).
 - Not wrapped (KI-062): `with_streaming_response`, `chat.completions.parse`, `beta.*`, `embeddings`, `images`, audio. The host's exceptions propagate
   unchanged; the adapter's own failures are contained.
+
+Span ends that arrive after the run ended (an abandoned stream collected late) are dropped: nothing is recorded after a run's end event.

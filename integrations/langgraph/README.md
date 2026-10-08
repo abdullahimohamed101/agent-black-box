@@ -25,3 +25,10 @@ bb.shutdown()
 - Callbacks never raise into LangGraph; contained failures are counted in `handler.errors`. Steps tagged `langsmith:hidden` get no span.
 - `GraphInterrupt` (human-in-the-loop pause) ends the run as `cancelled`. State changes and checkpoints are not mapped (KI-061).
 - Tests: `uv run pytest` runs the shared conformance suite against a fake callback dispatcher and against real `langgraph`.
+
+Limits worth knowing:
+- `GraphInterrupt` (and other bubble-up control flow) ends the run and the open span as `cancelled`, not as an error.
+- `handler.last_run_id` is the most recent run this handler opened; with concurrent invocations on one handler it is racy, so read run ids from your own `bb.run(...)` when you need them.
+- When more than `max_tracked` (10,000) framework runs are in flight the oldest are forgotten (`handler.dropped`): their spans are never ended and, if one was an adapter-owned root, its run is never ended either.
+- Span ends that arrive after their run already ended are dropped (`handler.late_dropped`): nothing is recorded after a run's end event.
+- LLM spans need `agent-black-box>=0.2.0` to nest under their node; with an older SDK they are kept but unnested.

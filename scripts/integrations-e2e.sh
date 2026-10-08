@@ -14,6 +14,9 @@ cleanup() { for p in "${pids[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null || 
 trap cleanup EXIT
 step() { printf '\n==> %s\n' "$*"; }
 fail() { echo "INTEGRATIONS-E2E FAILED: $*" >&2; exit 1; }
+if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+  fail "port $PORT is already in use; refusing to talk to a process this script did not start"
+fi
 cd apps/api
 
 step "create database $DB_NAME if missing, migrate to head"
@@ -71,5 +74,11 @@ leaves = [s for s in items if s.get('kind') in ('llm','tool')]
 ok = len(steps) == 3 and len(leaves) == 3 and all(by_id.get(s.get('parent_span_id'), {}).get('name') in steps for s in leaves)
 print('ok' if ok else 'bad: ' + json.dumps(items)[:600])")"
 [[ "$nested" == ok ]] || fail "span nesting: $nested"
-cd "$root"; [ -z "$(git diff --name-only main -- apps)" ] || fail "apps/ changed: this phase needs no backend change"
+cd "$root"
+base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
+if [ -n "$base" ]; then
+  [ -z "$(git diff --name-only "$base" -- apps)" ] || fail "apps/ changed: this phase needs no backend change"
+else
+  echo "note: no main ref to compare against; the apps/ unchanged check was skipped"
+fi
 printf '\nINTEGRATIONS-E2E PASSED\n'

@@ -20,3 +20,6 @@ with bb.run("support bot"):
 - Cost: pass `cost_fn(provider, model, tokens_in, tokens_out, cached) -> usd`; otherwise none is recorded.
 - Prompts and responses are not recorded; `capture_payloads=True` attaches bounded previews, gated by `payload_mode` and redacted.
 - Not wrapped: the `messages.stream()` helper, `beta.*`, raw-response variants, batches (KI-062). Host exceptions propagate unchanged.
+
+Cost note: cache writes (`cache_creation_input_tokens`) are folded into `llm.input_tokens` and only cache reads are reported as `llm.cached_input_tokens`,
+so a `cost_fn` cannot price cache creation separately from ordinary input. Span ends that arrive after the run ended (an abandoned stream collected late) are dropped.

@@ -118,3 +118,52 @@ def test_disabled_client_is_a_pass_through() -> None:
     with bb.run("r"):
         assert instrument(fake_client(), bb).messages.create(model="m") is not None
     assert bb.buffered_events() == []
+
+
+def test_close_ends_the_span_immediately() -> None:
+    from tests.fakes import FakeStream
+
+    def drive(bb: BlackBox) -> None:
+        with bb.run("r"):
+            client = instrument(fake_client(chat=FakeStream([SimpleNamespace(usage=None)] * 3)), bb)
+            wrapped = client.messages.create(model="m", stream=True)
+            next(iter(wrapped))
+            wrapped.close()
+            assert bb.stats()["queue_size"] >= 3  # started + completed are already queued
+            assert wrapped._call._ended is True
+
+    events = capture(drive)
+    assert of(events, "llm.request.completed")[0]["status"] == "cancelled"
+
+
+@pytest.mark.parametrize("target", ["observe", "complete_usage", "finish", "record_usage"])
+def test_bookkeeping_exceptions_never_reach_the_host(
+    monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    from blackbox import LlmCall
+
+    import blackbox_anthropic.wrap as wrap
+    from tests.fakes import FakeStream, chat_usage
+
+    def explode(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("bookkeeping bug")
+
+    if target == "observe":
+        monkeypatch.setattr(wrap, "get", explode)
+    elif target == "complete_usage":
+        monkeypatch.setattr(wrap, "usage_of", explode)
+    elif target == "finish":
+        monkeypatch.setattr(wrap, "SyncStream", explode)
+    else:
+        monkeypatch.setattr(LlmCall, "record_usage", explode)
+    sentinel = SimpleNamespace(usage=chat_usage())
+
+    def drive(bb: BlackBox) -> None:
+        with bb.run("r"):
+            client = instrument(fake_client(chat=sentinel), bb)
+            assert client.messages.create(model="m") is sentinel
+            streamed = instrument(fake_client(chat=FakeStream([sentinel, sentinel])), bb)
+            out = streamed.messages.create(model="m", stream=True)
+            assert len(list(out)) == 2
+
+    capture(drive)
