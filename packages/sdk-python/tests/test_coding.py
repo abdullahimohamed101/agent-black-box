@@ -356,9 +356,8 @@ def _git(root: Path, *args: str) -> None:
 def test_git_events(tmp_path: Path) -> None:
     work, remote = tmp_path / "work", tmp_path / "remote.git"
     work.mkdir()
-    subprocess.run(  # noqa: S603, S607
-        ["git", "init", "--bare", "-b", "main", str(remote)], check=True, capture_output=True
-    )
+    init = ["git", "init", "--bare", "-b", "main", str(remote)]
+    subprocess.run(init, check=True, capture_output=True)  # noqa: S603
     _git(work, "init", "-b", "main")
     for k, v in (("user.name", "t"), ("user.email", "t@example.com"), ("commit.gpgsign", "false")):
         _git(work, "config", k, v)
