@@ -41,8 +41,10 @@ None.
 2026-10-07: `scripts/quality.sh full` exit 0 on Phase 5: event-schema 339, sdk 135, api 400, web 275; `scripts/stream-e2e.sh` 5/5.
 
 ## Last verified build status
-2026-10-07: images build; clean-slate `docker compose up --wait` reaches alembic 0006 with 15 tables; `scripts/smoke.sh` passes;
-858-request hostile probe: zero 5xx.
+Compose stack: last fully verified at Phase 2 (images build; clean-slate `docker compose up --wait` reached alembic 0006 with 15 tables;
+`scripts/smoke.sh` passed; 858-request hostile probe: zero 5xx). **UNVERIFIED (env)** since: the compose stack was not rebuilt after Phases 3-5
+(migrations 0007-0009, the `abb_runtime` role, streaming). CI's `containers` job covered Phase 3's compose run; run `make up && make smoke
+&& make sdk-e2e` before the PR. Phase 5 itself was verified outside compose by `scripts/stream-e2e.sh` (own API, worker, web and database).
 
 ## Commands to verify environment
 ```bash
