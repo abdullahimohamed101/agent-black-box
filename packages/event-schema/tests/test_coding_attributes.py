@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+from abb_event_schema.errors import EventValidationError
 from abb_event_schema.parse import parse_event_in
 
 from tests.helpers import make_event
@@ -46,8 +47,6 @@ def test_a_test_run_event_with_artifacts_is_valid() -> None:
     ],
 )
 def test_wrong_types_are_rejected(attrs: dict[str, Any]) -> None:
-    from abb_event_schema.errors import EventValidationError
-
     with pytest.raises(EventValidationError):
         parse_event_in(shell_event(**attrs))
 
