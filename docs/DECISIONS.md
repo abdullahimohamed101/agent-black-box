@@ -27,3 +27,6 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-041 | Analytics store over derived tables; aggregates only where measured slow | 7 | Accepted ([file](decisions/ADR-041-analytics-store-and-aggregates.md)) |
 | ADR-042 | Retry cost attribution by retry scope span | 7 | Accepted ([file](decisions/ADR-042-retry-cost-attribution.md)) |
 | ADR-043 | Analytics read daily rollups plus a live today (measured slow without) | 7 | Accepted ([file](decisions/ADR-043-analytics-rollups.md)) |
+| ADR-050 | Adapters are separate distributions depending only on the SDK; frameworks are optional extras | 8 | Accepted ([file](decisions/ADR-050-adapter-packaging-and-optional-dependencies.md)) |
+| ADR-051 | Shared conformance suite: scenarios, structural rules, golden fixtures | 8 | Accepted ([file](decisions/ADR-051-adapter-conformance-suite.md)) |
+| ADR-052 | Adapter behavior contract: never raise, run ownership, explicit parenting, no payloads by default | 8 | Accepted ([file](decisions/ADR-052-adapter-behavior-contract.md)) |

@@ -60,6 +60,51 @@ jobs:
           uv sync --frozen --python ${{ matrix.python }}
           uv run pytest -q
 
+  integrations:
+    # Framework adapters (ADR-050): own environment per package, fakes plus the real framework, no network needed.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [conformance, langgraph, openai, anthropic, mcp]
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Test ${{ matrix.package }}
+        run: |
+          cd integrations/${{ matrix.package }}
+          uv sync --frozen --python ${{ matrix.python }}
+          uv run ruff check . && uv run ruff format --check . && uv run mypy
+          uv run pytest -q --cov
+
+  integrations-e2e:
+    # A LangGraph example through the real API (scripts/integrations-e2e.sh; own database and port).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the e2e compares against origin/main
+      - uses: astral-sh/setup-uv@v5
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd integrations/langgraph && uv sync --frozen)
+          cp .env.example .env
+      - name: LangGraph example end to end
+        run: scripts/integrations-e2e.sh
+
   stream-e2e:
     # Live streaming in a real browser: API + worker + built web server + Python SDK writer (scripts/stream-e2e.sh).
     runs-on: ubuntu-latest

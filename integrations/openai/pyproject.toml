@@ -1,0 +1,69 @@
+[project]
+name = "agent-black-box-openai"
+version = "0.1.0"
+description = "Agent Black Box adapter for the OpenAI Python client"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["agent-black-box>=0.2.0"]
+
+[project.optional-dependencies]
+# The framework is optional (ADR-050): the wrapper works on any object that has the
+# methods it wraps (chat.completions.create, responses.create).
+openai = ["openai>=1.40"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "agent-black-box",
+  "abb-event-schema",
+  "abb-conformance",
+  "openai>=1.40",
+  "httpx>=0.27",
+]
+
+[tool.uv.sources]
+agent-black-box = { path = "../../packages/sdk-python", editable = true }
+abb-event-schema = { path = "../../packages/event-schema", editable = true }
+abb-conformance = { path = "../conformance", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/blackbox_openai"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S311"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["blackbox_openai", "tests"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+
+[tool.coverage.run]
+source = ["blackbox_openai"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
