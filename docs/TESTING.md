@@ -38,6 +38,13 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
   focus return, a bounded DOM for 10,000 events, mobile overflow, screenshots to `docs/screenshots/phase-4/`.
   `make e2e-real` (`scripts/e2e-web-real.sh`) starts an API (:8110) and worker against a dedicated `abb_p4` database, ingests runs over
   HTTP and drives the UI through the web proxy (:3102). It never touches the shared dev/test databases.
+- **Streaming E2E** (`make stream-e2e`, `scripts/stream-e2e.sh`, CI job `stream-e2e`): API (:8120) + worker on a dedicated `abb_p5`
+  database, the built web server (:3103), Chrome via Playwright, and `scripts/stream_driver.py` writing runs (the Python SDK, or plain HTTP).
+  Covers: the SDK example's trace appearing live with no page reload and ending cleanly, axe and console errors on a live page, a browser
+  refresh mid-run (every event once), a connection cut by a fault-injecting TCP proxy (partial-data notice, recovery, no loss), and the
+  accept-to-display latency gate (p95 < 1 s; recorded in `docs/benchmarks/phase-5-streaming.md`). Screenshots: `docs/screenshots/phase-5/`.
+  Server-side streaming is tested over a real socket (`apps/api/tests/test_stream_api.py`), because an in-process ASGI transport buffers
+  whole responses.
 
 Rules: never skip/weaken a failing test; no mocks where a real Postgres test is feasible; UI
 changes are exercised in a browser; fixtures are deterministic (fixed IDs/timestamps).

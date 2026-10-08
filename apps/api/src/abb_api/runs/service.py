@@ -41,7 +41,7 @@ def project_not_found() -> AppError:
     return _not_found("PROJECT_NOT_FOUND", "Project")
 
 
-def _event_out(event: Event, has_payload: bool, *, with_payload: bool) -> EventOut:
+def event_out(event: Event, has_payload: bool, *, with_payload: bool) -> EventOut:
     wire = event.to_wire()
     wire.setdefault("attributes", {})
     wire["payload"] = wire.get("payload") if with_payload else None
@@ -226,7 +226,7 @@ class RunService:
                 cursors.Cursor("events", _event_key(last, mode), mode=mode)
             )
         return EventPage(
-            items=[_event_out(e, has, with_payload=False) for e, has in page],
+            items=[event_out(e, has, with_payload=False) for e, has in page],
             next_cursor=next_cursor,
             ordering_mode=mode,  # type: ignore[arg-type]
         )
@@ -242,7 +242,7 @@ class RunService:
             )
         if event is None:
             raise _not_found("EVENT_NOT_FOUND", "Event")
-        return _event_out(event, event.payload is not None, with_payload=True)
+        return event_out(event, event.payload is not None, with_payload=True)
 
     async def list_spans(
         self, principal: Principal, run_id: str, *, limit: int, cursor: str | None
@@ -262,6 +262,12 @@ class RunService:
         return SpanPage(items=[_span_out(s) for s in page], next_cursor=next_cursor)
 
     # ---------------------------------------------------------------- helpers
+
+    async def visible_run(
+        self, conn: AsyncConnection, principal: Principal, run_id: str
+    ) -> RunRecord:
+        """The run if the caller may see it, else the same 404 as everywhere (used by streams)."""
+        return await self._visible_run(conn, principal, run_id)
 
     async def _visible_run(
         self, conn: AsyncConnection, principal: Principal, run_id: str

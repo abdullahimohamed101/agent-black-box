@@ -4,8 +4,8 @@ A flight recorder, observability, debugging, evaluation and (eventually) control
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell
 command, retry and failure, with cost and latency, live.
 
-> Status: Phases 0-1 done and merged; Phase 2 (ingestion, storage, run queries) complete and awaiting merge.
-> You can already run the stack, ingest events over HTTP and read runs back; there is no SDK or product UI yet.
+> Status: Phases 0-4 merged (event contract, ingestion, Python SDK, web UI); Phase 5 (live streaming) is complete and awaiting merge.
+> You can run the stack, trace an agent with the Python SDK and watch the run in the web UI, live.
 > See `docs/PROJECT_STATE.md`.
 
 ## What it will do
@@ -20,7 +20,7 @@ with bb.run("Fix OAuth timeout") as run:
 ```
 
 Open the dashboard and watch the run populate live: timeline, diffs, retries, cost, and
-where it failed. (The API above is the Phase 3 target and does not exist yet.)
+where it failed. (The SDK, ingestion API and run pages exist; analytics, integrations and the coding-agent demo come later.)
 
 ## Architecture in one picture
 
@@ -69,7 +69,7 @@ API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operat
 
 ## Phase Status
 
-See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-1 merged, Phase 2 complete). Summary: Phases 0-7 build the MVP
+See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-4 merged, Phase 5 complete). Summary: Phases 0-7 build the MVP
 (foundation, event contract, ingestion, SDK, web, live streaming, coding-agent demo,
 analytics) followed by a human review gate; Phases 8-20 add integrations, multi-agent
 tracing, reliability intelligence, evaluations, replay, security, policy/approvals, RBAC,

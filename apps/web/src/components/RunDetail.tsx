@@ -11,6 +11,8 @@ import {
   formatTimestamp,
   num,
 } from "@/lib/format";
+import { useLiveEvents } from "@/lib/live";
+import { liveStatus } from "@/lib/liveStatus";
 import { useRun, useRunEvents } from "@/lib/queries";
 import { runsPath, type Base } from "@/lib/routes";
 import {
@@ -67,7 +69,55 @@ export function headline(
   }
 }
 
-export function RunDetail({ runId, base }: { runId: string; base: Base }) {
+/** Live-connection badge. State is spelled out in words and a glyph, never colour alone. */
+function LiveBar({
+  state,
+  status,
+}: {
+  state: string;
+  status: { label: string; tone: string } | null;
+}) {
+  const connection =
+    state === "live"
+      ? { glyph: "●", text: "Live" }
+      : state === "connecting"
+        ? { glyph: "◌", text: "Connecting" }
+        : state === "reconnecting"
+          ? { glyph: "↻", text: "Reconnecting" }
+          : { glyph: "⏸", text: "Live updates unavailable, refreshing periodically" };
+  const partial = state === "reconnecting" || state === "unavailable";
+  return (
+    <div
+      className="live-bar"
+      role="status"
+      aria-live="polite"
+      data-testid="live-status"
+      data-stream={state}
+      data-tone={status?.tone ?? "work"}
+    >
+      <span className="live-conn">
+        <span aria-hidden="true">{connection.glyph}</span> {connection.text}
+      </span>
+      {status && <span className="live-now">{status.label}</span>}
+      {partial && (
+        <span className="live-partial" data-testid="partial-data">
+          Partial data: some recent events may be missing until the connection recovers.
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function RunDetail({
+  runId,
+  base,
+  live = true,
+}: {
+  runId: string;
+  base: Base;
+  /** Stream running runs over SSE. Off for fixture data, which has no live source. */
+  live?: boolean;
+}) {
   const run = useRun(runId);
   const eventCount = num(run.data?.summary["event_count"]) ?? undefined;
   const active = run.data ? isActive(run.data.status) : true;
@@ -80,11 +130,33 @@ export function RunDetail({ runId, base }: { runId: string; base: Base }) {
     refetch: refetchEvents,
   } = ev;
 
-  // Live runs (until Phase 5 SSE): refetch only when the run grew or changed state, never for a finished run.
+  // Page the whole run in back-to-back; the first page renders as soon as it lands.
+  // pageCount is a dependency so a page that lands without an observed `isFetchingNextPage` toggle still triggers the next.
+  const pageCount = ev.data?.pages.length ?? 0;
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && !evError) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
+
+  const restEvents = useMemo(() => ev.data?.pages.flatMap((p) => p.items) ?? [], [ev.data]);
+  const restComplete = ev.isSuccess && !hasNextPage;
+  const refetchRun = run.refetch;
+  const stream = useLiveEvents(runId, {
+    enabled: live && active && !!run.data,
+    restEvents,
+    restComplete,
+    reconcile: () => void refetchEvents(),
+    onEnd: () => void refetchRun(),
+  });
+  const events = stream.events;
+  const streaming =
+    stream.state === "connecting" || stream.state === "live" || stream.state === "reconnecting";
+
+  // Without a working stream (fixtures, or live updates unavailable) an active run falls back to polling:
+  // refetch the events when the run grew or changed state, never for a finished run.
   const seen = useRef<string | null>(null);
   const marker = run.data ? `${eventCount ?? ""}|${run.data.status}` : null;
   useEffect(() => {
-    if (marker == null) return;
+    if (marker == null || streaming) return;
     if (
       seen.current !== null &&
       seen.current !== marker &&
@@ -93,16 +165,8 @@ export function RunDetail({ runId, base }: { runId: string; base: Base }) {
       void refetchEvents();
     }
     seen.current = marker;
-  }, [marker, active, refetchEvents, run.data?.status]);
+  }, [marker, active, streaming, refetchEvents, run.data?.status]);
 
-  // Page the whole run in back-to-back; the first page renders as soon as it lands.
-  // pageCount is a dependency so a page that lands without an observed `isFetchingNextPage` toggle still triggers the next.
-  const pageCount = ev.data?.pages.length ?? 0;
-  useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && !evError) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
-
-  const events = useMemo(() => ev.data?.pages.flatMap((p) => p.items) ?? [], [ev.data]);
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
@@ -164,7 +228,8 @@ export function RunDetail({ runId, base }: { runId: string; base: Base }) {
   if (run.isError) return <ErrorState error={run.error} onRetry={() => void run.refetch()} />;
   const r = run.data;
   const s = r.summary;
-  const total = eventCount ?? events.length;
+  const total = Math.max(eventCount ?? 0, events.length);
+  const nowDoing = active || stream.state !== "off" ? liveStatus(events) : null;
   const loadingMore = ev.isPending || hasNextPage || isFetchingNextPage;
   const allGroups = groupKeys(buildRows(filtered, new Set()));
   const errText = err ? describe(err) || err.event_type : null;
@@ -181,6 +246,9 @@ export function RunDetail({ runId, base }: { runId: string; base: Base }) {
       <p className="headline" data-testid="headline">
         {headline(r, errText, err ? Date.parse(err.occurred_at) - t0 : null)}
       </p>
+      {stream.state !== "off" && stream.state !== "ended" && (
+        <LiveBar state={stream.state} status={nowDoing} />
+      )}
       {r.summary_state !== "current" && (
         <p role="status" className="notice">
           {r.summary_state === "processing"

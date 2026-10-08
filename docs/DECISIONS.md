@@ -22,3 +22,4 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-013 | Python SDK is standard-library only; contract tests replace pydantic | 3 | Accepted ([file](decisions/ADR-013-stdlib-python-sdk.md)) |
 | ADR-020 | Web data fetching: TanStack Query behind a same-origin read proxy | 4 | Accepted ([file](decisions/ADR-020-web-data-fetching-and-cache.md)) |
 | ADR-021 | Web reads the API through a server-side proxy holding a `runs:read` key | 4 | Accepted ([file](decisions/ADR-021-web-api-access-before-auth.md)) |
+| ADR-022 | Live streams resume by arrival time and wake on Postgres NOTIFY | 5 | Accepted ([file](decisions/ADR-022-live-stream-resume-and-wakeup.md)) |

@@ -1,0 +1,3791 @@
+{
+ "cases": [
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0000018",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0000009",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0000031",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0000023",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0000018",
+    "evt_0000031",
+    "evt_0000009",
+    "evt_0000023"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0010020",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0010056",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0010005",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0010013",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0010037",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0010040",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0010037",
+    "evt_0010020",
+    "evt_0010040",
+    "evt_0010056",
+    "evt_0010013",
+    "evt_0010005"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0020074",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0020036",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0020080",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0020017",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0020051",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0020108",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0020095",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0020063",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0020023",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0020040",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0020005",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    }
+   ],
+   "expected": [
+    "evt_0020051",
+    "evt_0020017",
+    "evt_0020023",
+    "evt_0020005",
+    "evt_0020095",
+    "evt_0020080",
+    "evt_0020074",
+    "evt_0020063",
+    "evt_0020040",
+    "evt_0020036",
+    "evt_0020108"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0030007",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0030038",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0030029",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0030019",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    }
+   ],
+   "expected": [
+    "evt_0030038",
+    "evt_0030029",
+    "evt_0030007",
+    "evt_0030019"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0040013",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0040137",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0040117",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0040004",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0040070",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0040060",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0040106",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0040048",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0040036",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0040088",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0040053",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0040094",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0040026",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0040123",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    }
+   ],
+   "expected": [
+    "evt_0040137",
+    "evt_0040013",
+    "evt_0040106",
+    "evt_0040094",
+    "evt_0040053",
+    "evt_0040117",
+    "evt_0040048",
+    "evt_0040088",
+    "evt_0040123",
+    "evt_0040060",
+    "evt_0040070",
+    "evt_0040026",
+    "evt_0040036",
+    "evt_0040004"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0050020",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0050011",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0050007",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0050033",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0050048",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    }
+   ],
+   "expected": [
+    "evt_0050020",
+    "evt_0050007",
+    "evt_0050011",
+    "evt_0050033",
+    "evt_0050048"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0060081",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0060048",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0060079",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0060068",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0060007",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0060024",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0060030",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0060056",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0060018",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0060068",
+    "evt_0060056",
+    "evt_0060007",
+    "evt_0060018",
+    "evt_0060079",
+    "evt_0060048",
+    "evt_0060024",
+    "evt_0060081",
+    "evt_0060030"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0070090",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0070024",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0070112",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0070035",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0070122",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0070013",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0070044",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0070087",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0070131",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0070069",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0070100",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0070055",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0070070",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0070006",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0070044",
+    "evt_0070013",
+    "evt_0070122",
+    "evt_0070006",
+    "evt_0070112",
+    "evt_0070070",
+    "evt_0070055",
+    "evt_0070024",
+    "evt_0070035",
+    "evt_0070090",
+    "evt_0070131",
+    "evt_0070100",
+    "evt_0070087",
+    "evt_0070069"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0080047",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0080014",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0080021",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0080033",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0080054",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0080008",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    }
+   ],
+   "expected": [
+    "evt_0080047",
+    "evt_0080008",
+    "evt_0080021",
+    "evt_0080014",
+    "evt_0080054",
+    "evt_0080033"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0090038",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0090010",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0090048",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0090009",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0090026",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": null
+    }
+   ],
+   "expected": [
+    "evt_0090038",
+    "evt_0090009",
+    "evt_0090026",
+    "evt_0090048",
+    "evt_0090010"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0100090",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0100001",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0100063",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0100100",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0100083",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0100043",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0100029",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0100010",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0100030",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0100078",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0100050",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    }
+   ],
+   "expected": [
+    "evt_0100043",
+    "evt_0100001",
+    "evt_0100078",
+    "evt_0100050",
+    "evt_0100063",
+    "evt_0100100",
+    "evt_0100090",
+    "evt_0100029",
+    "evt_0100010",
+    "evt_0100030",
+    "evt_0100083"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0110025",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0110052",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0110048",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0110031",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0110013",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0110003",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0110031",
+    "evt_0110048",
+    "evt_0110052",
+    "evt_0110025",
+    "evt_0110013",
+    "evt_0110003"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0120017",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0120082",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0120104",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0120000",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0120136",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0120078",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0120035",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0120061",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0120028",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0120046",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0120115",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0120052",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0120097",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0120126",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0120104",
+    "evt_0120097",
+    "evt_0120000",
+    "evt_0120126",
+    "evt_0120035",
+    "evt_0120078",
+    "evt_0120052",
+    "evt_0120061",
+    "evt_0120046",
+    "evt_0120017",
+    "evt_0120136",
+    "evt_0120115",
+    "evt_0120082",
+    "evt_0120028"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0130078",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0130021",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0130085",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0130055",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0130006",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0130098",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0130036",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0130043",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0130069",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0130015",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0130015",
+    "evt_0130078",
+    "evt_0130069",
+    "evt_0130085",
+    "evt_0130036",
+    "evt_0130098",
+    "evt_0130021",
+    "evt_0130043",
+    "evt_0130006",
+    "evt_0130055"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0140055",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0140078",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0140033",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0140006",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0140060",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0140020",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0140011",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0140040",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0140006",
+    "evt_0140020",
+    "evt_0140078",
+    "evt_0140033",
+    "evt_0140011",
+    "evt_0140040",
+    "evt_0140055",
+    "evt_0140060"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0150093",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0150018",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0150070",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0150039",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0150086",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0150062",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0150020",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0150051",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0150046",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0150002",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    }
+   ],
+   "expected": [
+    "evt_0150093",
+    "evt_0150086",
+    "evt_0150046",
+    "evt_0150020",
+    "evt_0150002",
+    "evt_0150039",
+    "evt_0150051",
+    "evt_0150062",
+    "evt_0150070",
+    "evt_0150018"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0160007",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0160007"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0170025",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0170059",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0170013",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0170035",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0170049",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0170001",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0170059",
+    "evt_0170035",
+    "evt_0170001",
+    "evt_0170013",
+    "evt_0170025",
+    "evt_0170049"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0180000",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0180010",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0180000",
+    "evt_0180010"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0190068",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0190046",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0190072",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0190059",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0190034",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0190023",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0190013",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0190003",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    }
+   ],
+   "expected": [
+    "evt_0190046",
+    "evt_0190072",
+    "evt_0190068",
+    "evt_0190023",
+    "evt_0190003",
+    "evt_0190013",
+    "evt_0190059",
+    "evt_0190034"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0200016",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0200022",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0200009",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0200033",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0200009",
+    "evt_0200033",
+    "evt_0200022",
+    "evt_0200016"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0210032",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0210022",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0210044",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0210011",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0210057",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0210008",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": null
+    }
+   ],
+   "expected": [
+    "evt_0210044",
+    "evt_0210008",
+    "evt_0210057",
+    "evt_0210032",
+    "evt_0210022",
+    "evt_0210011"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0220018",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0220022",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0220091",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0220006",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0220072",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0220113",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0220036",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0220088",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0220109",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0220041",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0220068",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0220054",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0220088",
+    "evt_0220041",
+    "evt_0220113",
+    "evt_0220091",
+    "evt_0220068",
+    "evt_0220109",
+    "evt_0220018",
+    "evt_0220022",
+    "evt_0220006",
+    "evt_0220036",
+    "evt_0220072",
+    "evt_0220054"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0230039",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0230009",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0230013",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0230058",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0230040",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0230029",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0230063",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0230029",
+    "evt_0230039",
+    "evt_0230063",
+    "evt_0230040",
+    "evt_0230058",
+    "evt_0230013",
+    "evt_0230009"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0240032",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0240015",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0240024",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0240001",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0240001",
+    "evt_0240015",
+    "evt_0240024",
+    "evt_0240032"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0250013",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0250003",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0250098",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0250061",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0250105",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0250051",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0250128",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0250116",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0250049",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0250031",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0250028",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0250087",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0250070",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0250105",
+    "evt_0250087",
+    "evt_0250128",
+    "evt_0250049",
+    "evt_0250031",
+    "evt_0250070",
+    "evt_0250028",
+    "evt_0250098",
+    "evt_0250061",
+    "evt_0250116",
+    "evt_0250003",
+    "evt_0250051",
+    "evt_0250013"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0260027",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0260030",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0260015",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0260005",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0260048",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0260058",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    }
+   ],
+   "expected": [
+    "evt_0260058",
+    "evt_0260048",
+    "evt_0260030",
+    "evt_0260005",
+    "evt_0260027",
+    "evt_0260015"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0270133",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0270060",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0270053",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0270033",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0270017",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0270110",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0270123",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0270107",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0270001",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0270024",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0270097",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0270088",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0270049",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0270070",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0270110",
+    "evt_0270060",
+    "evt_0270017",
+    "evt_0270049",
+    "evt_0270133",
+    "evt_0270033",
+    "evt_0270107",
+    "evt_0270024",
+    "evt_0270001",
+    "evt_0270070",
+    "evt_0270097",
+    "evt_0270088",
+    "evt_0270053",
+    "evt_0270123"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0280080",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0280044",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0280056",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0280010",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0280095",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0280038",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0280072",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0280065",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0280000",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0280022",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    }
+   ],
+   "expected": [
+    "evt_0280080",
+    "evt_0280044",
+    "evt_0280010",
+    "evt_0280072",
+    "evt_0280038",
+    "evt_0280065",
+    "evt_0280022",
+    "evt_0280056",
+    "evt_0280000",
+    "evt_0280095"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0290121",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0290054",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0290002",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0290047",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0290119",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0290070",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0290097",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0290029",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0290016",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0290038",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0290087",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0290060",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0290101",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0290038",
+    "evt_0290016",
+    "evt_0290070",
+    "evt_0290121",
+    "evt_0290097",
+    "evt_0290087",
+    "evt_0290002",
+    "evt_0290029",
+    "evt_0290060",
+    "evt_0290047",
+    "evt_0290101",
+    "evt_0290054",
+    "evt_0290119"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0300027",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0300016",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0300004",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0300032",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0300027",
+    "evt_0300016",
+    "evt_0300004",
+    "evt_0300032"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0310099",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0310031",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0310077",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0310080",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0310004",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0310020",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0310046",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0310105",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0310052",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0310060",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0310118",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0310013",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0310099",
+    "evt_0310118",
+    "evt_0310105",
+    "evt_0310046",
+    "evt_0310013",
+    "evt_0310004",
+    "evt_0310080",
+    "evt_0310031",
+    "evt_0310020",
+    "evt_0310077",
+    "evt_0310052",
+    "evt_0310060"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0320054",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0320027",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0320090",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0320037",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0320019",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0320062",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0320072",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0320110",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0320049",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0320009",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0320083",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0320102",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    }
+   ],
+   "expected": [
+    "evt_0320072",
+    "evt_0320062",
+    "evt_0320083",
+    "evt_0320110",
+    "evt_0320019",
+    "evt_0320049",
+    "evt_0320037",
+    "evt_0320054",
+    "evt_0320009",
+    "evt_0320027",
+    "evt_0320090",
+    "evt_0320102"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0330060",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0330029",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0330074",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0330018",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0330047",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0330002",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0330036",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0330053",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": null
+    }
+   ],
+   "expected": [
+    "evt_0330002",
+    "evt_0330029",
+    "evt_0330036",
+    "evt_0330047",
+    "evt_0330074",
+    "evt_0330060",
+    "evt_0330053",
+    "evt_0330018"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0340023",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0340013",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0340074",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0340053",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0340033",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0340068",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0340004",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0340043",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0340023",
+    "evt_0340013",
+    "evt_0340068",
+    "evt_0340053",
+    "evt_0340043",
+    "evt_0340004",
+    "evt_0340033",
+    "evt_0340074"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0350017",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0350021",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0350008",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    }
+   ],
+   "expected": [
+    "evt_0350008",
+    "evt_0350017",
+    "evt_0350021"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0360015",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0360023",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0360033",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0360004",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0360048",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0360048",
+    "evt_0360004",
+    "evt_0360023",
+    "evt_0360033",
+    "evt_0360015"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0370037",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0370018",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0370042",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0370020",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0370000",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0370018",
+    "evt_0370020",
+    "evt_0370000",
+    "evt_0370042",
+    "evt_0370037"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0380029",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0380041",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0380030",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0380098",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0380105",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0380071",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0380082",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0380052",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0380018",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0380069",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0380005",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0380041",
+    "evt_0380029",
+    "evt_0380052",
+    "evt_0380071",
+    "evt_0380082",
+    "evt_0380098",
+    "evt_0380105",
+    "evt_0380018",
+    "evt_0380069",
+    "evt_0380005",
+    "evt_0380030"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0390111",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0390019",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0390048",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0390097",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0390031",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0390065",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0390077",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0390052",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0390086",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0390029",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0390104",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0390003",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": null
+    }
+   ],
+   "expected": [
+    "evt_0390052",
+    "evt_0390031",
+    "evt_0390065",
+    "evt_0390097",
+    "evt_0390029",
+    "evt_0390111",
+    "evt_0390048",
+    "evt_0390104",
+    "evt_0390086",
+    "evt_0390003",
+    "evt_0390019",
+    "evt_0390077"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0400042",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0400014",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0400108",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0400031",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0400079",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0400008",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0400024",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0400096",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0400087",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0400052",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0400061",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0400031",
+    "evt_0400096",
+    "evt_0400008",
+    "evt_0400052",
+    "evt_0400079",
+    "evt_0400014",
+    "evt_0400061",
+    "evt_0400042",
+    "evt_0400024",
+    "evt_0400087",
+    "evt_0400108"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0410012",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0410082",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0410037",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0410093",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0410024",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0410044",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0410007",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0410103",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0410128",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0410066",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0410110",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0410059",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0410079",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    }
+   ],
+   "expected": [
+    "evt_0410110",
+    "evt_0410059",
+    "evt_0410103",
+    "evt_0410024",
+    "evt_0410007",
+    "evt_0410128",
+    "evt_0410082",
+    "evt_0410093",
+    "evt_0410044",
+    "evt_0410066",
+    "evt_0410079",
+    "evt_0410012",
+    "evt_0410037"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0420017",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0420023",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0420035",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0420067",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0420040",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0420009",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0420073",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0420053",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0420035",
+    "evt_0420053",
+    "evt_0420009",
+    "evt_0420040",
+    "evt_0420023",
+    "evt_0420073",
+    "evt_0420017",
+    "evt_0420067"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0430022",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0430000",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0430016",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0430050",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0430045",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0430033",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0430022",
+    "evt_0430033",
+    "evt_0430000",
+    "evt_0430050",
+    "evt_0430016",
+    "evt_0430045"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0440118",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0440000",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0440099",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0440043",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0440038",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0440012",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0440087",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0440028",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0440059",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0440073",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0440101",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0440067",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0440118",
+    "evt_0440038",
+    "evt_0440043",
+    "evt_0440059",
+    "evt_0440087",
+    "evt_0440067",
+    "evt_0440101",
+    "evt_0440099",
+    "evt_0440000",
+    "evt_0440012",
+    "evt_0440028",
+    "evt_0440073"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0450011",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0450124",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0450072",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0450085",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0450021",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0450069",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0450008",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0450101",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0450110",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0450055",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0450049",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0450031",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0450095",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0450110",
+    "evt_0450049",
+    "evt_0450072",
+    "evt_0450085",
+    "evt_0450095",
+    "evt_0450008",
+    "evt_0450031",
+    "evt_0450124",
+    "evt_0450021",
+    "evt_0450069",
+    "evt_0450011",
+    "evt_0450055",
+    "evt_0450101"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0460018",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0460001",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0460027",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0460037",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0460027",
+    "evt_0460037",
+    "evt_0460001",
+    "evt_0460018"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0470016",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0470023",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0470041",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0470079",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0470051",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0470006",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0470030",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0470068",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    }
+   ],
+   "expected": [
+    "evt_0470041",
+    "evt_0470030",
+    "evt_0470068",
+    "evt_0470006",
+    "evt_0470079",
+    "evt_0470051",
+    "evt_0470023",
+    "evt_0470016"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0480001",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0480013",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:01.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0480021",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    }
+   ],
+   "expected": [
+    "evt_0480013",
+    "evt_0480001",
+    "evt_0480021"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0490006",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0490006"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0500008",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0500030",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0500026",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0500049",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0500013",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0500026",
+    "evt_0500008",
+    "evt_0500030",
+    "evt_0500013",
+    "evt_0500049"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0510124",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0510105",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0510050",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0510027",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0510096",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0510047",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0510037",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0510067",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0510017",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0510115",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0510075",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0510004",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0510086",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0510105",
+    "evt_0510086",
+    "evt_0510075",
+    "evt_0510027",
+    "evt_0510017",
+    "evt_0510050",
+    "evt_0510124",
+    "evt_0510096",
+    "evt_0510115",
+    "evt_0510037",
+    "evt_0510067",
+    "evt_0510004",
+    "evt_0510047"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0520049",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0520039",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0520022",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0520002",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0520055",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0520019",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0520019",
+    "evt_0520049",
+    "evt_0520055",
+    "evt_0520002",
+    "evt_0520022",
+    "evt_0520039"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0530004",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0530017",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0530030",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0530065",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0530024",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0530045",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0530056",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    }
+   ],
+   "expected": [
+    "evt_0530024",
+    "evt_0530056",
+    "evt_0530065",
+    "evt_0530004",
+    "evt_0530030",
+    "evt_0530045",
+    "evt_0530017"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0540088",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0540064",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0540079",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0540050",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0540030",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0540013",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0540115",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0540101",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0540045",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0540004",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0540125",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0540090",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0540021",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    }
+   ],
+   "expected": [
+    "evt_0540115",
+    "evt_0540021",
+    "evt_0540030",
+    "evt_0540125",
+    "evt_0540064",
+    "evt_0540050",
+    "evt_0540079",
+    "evt_0540088",
+    "evt_0540013",
+    "evt_0540101",
+    "evt_0540004",
+    "evt_0540045",
+    "evt_0540090"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0550054",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0550065",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0550086",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0550022",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0550075",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0550039",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0550001",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0550011",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0550047",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0550090",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    }
+   ],
+   "expected": [
+    "evt_0550011",
+    "evt_0550039",
+    "evt_0550047",
+    "evt_0550086",
+    "evt_0550090",
+    "evt_0550001",
+    "evt_0550075",
+    "evt_0550022",
+    "evt_0550065",
+    "evt_0550054"
+   ]
+  },
+  {
+   "mode": "time",
+   "events": [
+    {
+     "event_id": "evt_0560065",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0560014",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00.000500Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0560020",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03.000001Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0560091",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0560041",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0560074",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0560087",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:00Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0560031",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0560055",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0560004",
+     "sequence": null,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0560087",
+    "evt_0560065",
+    "evt_0560014",
+    "evt_0560055",
+    "evt_0560031",
+    "evt_0560004",
+    "evt_0560041",
+    "evt_0560091",
+    "evt_0560074",
+    "evt_0560020"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0570021",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0570042",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0570037",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    },
+    {
+     "event_id": "evt_0570005",
+     "sequence": 3,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": null
+    },
+    {
+     "event_id": "evt_0570054",
+     "sequence": 1,
+     "occurred_at": "2026-10-07T12:00:02Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0570018",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": null
+    }
+   ],
+   "expected": [
+    "evt_0570037",
+    "evt_0570018",
+    "evt_0570042",
+    "evt_0570054",
+    "evt_0570005",
+    "evt_0570021"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0580007",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00.003000Z"
+    },
+    {
+     "event_id": "evt_0580025",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:03.999999Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0580014",
+     "sequence": 0,
+     "occurred_at": "2026-10-07T12:00:00.000001Z",
+     "received_at": "2026-10-07T12:00:00.002000Z"
+    }
+   ],
+   "expected": [
+    "evt_0580014",
+    "evt_0580007",
+    "evt_0580025"
+   ]
+  },
+  {
+   "mode": "sequence",
+   "events": [
+    {
+     "event_id": "evt_0590005",
+     "sequence": 4,
+     "occurred_at": "2026-10-07T12:00:02.999999Z",
+     "received_at": "2026-10-07T12:00:00.001000Z"
+    },
+    {
+     "event_id": "evt_0590033",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:02.000500Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0590024",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:00.999999Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0590011",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:03Z",
+     "received_at": "2026-10-07T12:00:00.004000Z"
+    },
+    {
+     "event_id": "evt_0590042",
+     "sequence": 2,
+     "occurred_at": "2026-10-07T12:00:01.000500Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    },
+    {
+     "event_id": "evt_0590058",
+     "sequence": 5,
+     "occurred_at": "2026-10-07T12:00:01Z",
+     "received_at": "2026-10-07T12:00:00Z"
+    }
+   ],
+   "expected": [
+    "evt_0590024",
+    "evt_0590042",
+    "evt_0590033",
+    "evt_0590011",
+    "evt_0590005",
+    "evt_0590058"
+   ]
+  }
+ ]
+}

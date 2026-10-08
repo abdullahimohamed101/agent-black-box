@@ -34,6 +34,12 @@ ingestion edge | control plane | database/object storage | human approvers.
 - Response headers (implemented): every response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`; full secure-header policy is Phase 19.
 - Denial of service (partly implemented): per-project token buckets (per process), bounded batches, bounded cursors and page
   sizes, bounded metadata; a shared limiter and quotas are Phase 19.
+- Live streams (implemented, Phase 5): the stream endpoint uses the same authentication, `runs:read` scope and tenant/project visibility as
+  the other reads (another tenant's or project's run is a 404, tested over a real socket). Payloads are never streamed, only `has_payload`.
+  The `NOTIFY` that wakes streams carries ids only and is never trusted for content: streams re-read rows under their own tenant context.
+  Resources are bounded per process (50 streams, 10 per key, 15 min lifetime, 10 s write timeout) so one visitor cannot hold the pool
+  (a stream borrows a connection per poll, never while idle). Known gap: an open stream is not re-authenticated (KI-033). The web proxy
+  relays streams for the one server-side key (ADR-021, KI-029).
 - Rendering: payloads displayed as text; sanitize any markup; no `dangerouslySetInnerHTML` on trace data.
 - Approvals bound to the exact action hash, single use, atomic consume. (Phase 14)
 - Rate limits, size limits, bounded queues against telemetry flooding. (Phases 2, 19)
