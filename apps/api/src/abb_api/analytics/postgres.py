@@ -555,7 +555,8 @@ class PostgresAnalyticsStore:
                         failed=s["FAILED"],
                         timed_out=s["TIMED_OUT"],
                         blocked=s["BLOCKED"],
-                        failure_rate=_rate(s["FAILED"] + s["BLOCKED"] + s["TIMED_OUT"], finished),
+                        failure_rate=_rate(s["FAILED"] + s["BLOCKED"], finished),
+                        timeout_rate=_rate(s["TIMED_OUT"], finished),
                     )
                 )
 

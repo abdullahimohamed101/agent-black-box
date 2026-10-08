@@ -978,6 +978,7 @@
                 "type": "null"
               }
             ],
+            "description": "(failed + blocked) / finished, as in `rates`.",
             "title": "Failure Rate"
           },
           "finished": {
@@ -991,6 +992,18 @@
           "timed_out": {
             "title": "Timed Out",
             "type": "integer"
+          },
+          "timeout_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "timed out / finished, as in `rates`.",
+            "title": "Timeout Rate"
           }
         },
         "required": [
@@ -1000,7 +1013,8 @@
           "failed",
           "timed_out",
           "blocked",
-          "failure_rate"
+          "failure_rate",
+          "timeout_rate"
         ],
         "title": "FailureDay",
         "type": "object"

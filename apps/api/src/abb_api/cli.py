@@ -329,6 +329,12 @@ async def run(
                 )
                 queued = await OutboxRepository(conn, tenant).enqueue_summarize(run_ids)
                 print(f"queued {queued} of {len(run_ids)} run(s) for re-derivation", file=err)
+                if len(run_ids) >= args.limit:
+                    print(
+                        f"WARNING: stopped at --limit {args.limit}; older runs were NOT queued. "
+                        "Narrow the range with --since / --project or raise --limit and run again.",
+                        file=err,
+                    )
             elif args.command == "refresh-analytics":
                 ws = await _workspace(conn, args.workspace)
                 tenant = TenantContext(ws.id)

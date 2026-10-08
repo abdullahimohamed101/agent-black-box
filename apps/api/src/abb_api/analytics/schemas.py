@@ -170,7 +170,8 @@ class FailureDay(BaseModel):
     failed: int
     timed_out: int
     blocked: int
-    failure_rate: float | None
+    failure_rate: float | None = Field(description="(failed + blocked) / finished, as in `rates`.")
+    timeout_rate: float | None = Field(description="timed out / finished, as in `rates`.")
 
 
 class ToolReliability(BaseModel):

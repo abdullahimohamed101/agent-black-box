@@ -171,7 +171,8 @@ export function fixtureAnalytics(kind: string, q: URLSearchParams): unknown {
             failed: c("FAILED"),
             timed_out: c("TIMED_OUT"),
             blocked: c("BLOCKED"),
-            failure_rate: rate(c("FAILED") + c("TIMED_OUT") + c("BLOCKED"), rs.length),
+            failure_rate: rate(c("FAILED") + c("BLOCKED"), rs.length),
+            timeout_rate: rate(c("TIMED_OUT"), rs.length),
           };
         }),
         tools: [],

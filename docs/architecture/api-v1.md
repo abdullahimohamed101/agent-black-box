@@ -134,6 +134,10 @@ divided. Money is USD rounded to 9 places. Every cost line states its source: `p
 `cost.provider_usd`), `estimated` (tokens x a versioned price, `pricing_version` stored per line), `client_estimate`
 (`cost.estimated_usd`) or `unpriced` (counted as $0 and reported). `input_tokens` includes cached tokens. A model
 call is retry cost when it follows a `retry.attempted` event of its span or an ancestor span (ADR-042).
+The failure trend uses the same definitions per day (`failure_rate` and `timeout_rate`). "Running agents" on the summary
+is read from the live `runs` table (current state, not a rollup; ADR-041 allows this one status-indexed lookup). Retry cost is
+an estimate (ADR-042). Adapters (Phase 8) must report `llm.input_tokens` including cached tokens, or costs will be
+mis-split. Numbers in attributes must be within +-2^53 (floats included) or the event is rejected.
 Prices: `python -m abb_api.cli set-pricing-override` then `rebuild-costs` (ADR-040); built-in prices are illustrative (KI-050).
 
 ## Live streaming

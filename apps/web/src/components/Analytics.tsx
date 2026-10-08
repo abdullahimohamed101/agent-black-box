@@ -288,8 +288,8 @@ export function Analytics({ base }: { base: Base }) {
               valueHeader="Failure rate"
               days={reliability.data.failure_trend.map((d) => ({
                 label: d.day,
-                value: d.failure_rate ?? 0,
-                display: `${pct(d.failure_rate)} of ${d.finished}`,
+                value: (d.failure_rate ?? 0) + (d.timeout_rate ?? 0),
+                display: `${pct((d.failure_rate ?? 0) + (d.timeout_rate ?? 0))} of ${d.finished}`,
                 tone: "bad" as const,
               }))}
             />

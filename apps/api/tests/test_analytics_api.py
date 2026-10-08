@@ -107,7 +107,8 @@ async def test_reliability_report(seeded: Api) -> None:
         1,
         1,
     )
-    assert approx(seventh["failure_rate"], 2 / 3)
+    assert approx(seventh["failure_rate"], 1 / 3)  # failed + blocked, as in `rates`
+    assert approx(seventh["timeout_rate"], 1 / 3)
     tools = {t["name"]: t for t in body["tools"]}
     assert tools["git"]["calls"] == 2 and tools["git"]["success_rate"] == 1.0
     assert tools["sh"]["success_rate"] == 0.0 and tools["fix"]["calls"] == 1

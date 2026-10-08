@@ -668,7 +668,10 @@ export interface components {
             day: string;
             /** Failed */
             failed: number;
-            /** Failure Rate */
+            /**
+             * Failure Rate
+             * @description (failed + blocked) / finished, as in `rates`.
+             */
             failure_rate: number | null;
             /** Finished */
             finished: number;
@@ -676,6 +679,11 @@ export interface components {
             success: number;
             /** Timed Out */
             timed_out: number;
+            /**
+             * Timeout Rate
+             * @description timed out / finished, as in `rates`.
+             */
+            timeout_rate: number | null;
         };
         /** HealthResponse */
         HealthResponse: {
