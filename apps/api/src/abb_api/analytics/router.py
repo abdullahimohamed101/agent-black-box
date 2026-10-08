@@ -30,7 +30,7 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
 _WINDOW = (
     "Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds "
     "down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily "
-    "rollups that lag changes by up to about a minute. Percentiles are approximate (about 5%). "
+    "rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). "
     "A project-bound key is confined to its project."
 )
 

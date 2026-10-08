@@ -116,7 +116,7 @@ All endpoints need `runs:read`. A project-bound key is confined to its project: 
 `404 PROJECT_NOT_FOUND`; a workspace-wide key may name any project of its workspace or none. Windows are `from`/`to`
 (ISO 8601; naive times are UTC; default today and the six days before, at most 92, else `422 INVALID_WINDOW`) and are
 snapped outward to whole UTC days; a run belongs to the day it started in. Figures come from daily rollups (ADR-043) that lag
-changes by up to `ABB_ANALYTICS_REFRESH_DELAY_SECONDS` (default 60); percentiles are histogram-based, within about 5%. Grouped lists return the top `top` groups (default 10, max 50) plus an `*_other` bucket.
+changes by up to `ABB_ANALYTICS_REFRESH_DELAY_SECONDS` (default 60); percentiles are histogram-based, within one bucket, about 10%. Grouped lists return the top `top` groups (default 10, max 50) plus an `*_other` bucket.
 A query is cut off after `ABB_ANALYTICS_TIMEOUT_SECONDS` (default 10) with `503 ANALYTICS_TIMEOUT` (retryable).
 
 | Endpoint | Returns |

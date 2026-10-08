@@ -58,15 +58,22 @@ def test_percentiles_are_within_a_few_percent_of_exact(seed: int) -> None:
     counts = histogram(values)
     for q in (0.5, 0.9, 0.95, 0.99):
         got, want = percentile(counts, q), exact(values, q)
-        assert got is not None and abs(got - want) <= want * 0.06, (q, got, want)
+        assert got is not None and abs(got - want) <= want * 0.10, (q, got, want)
+
+
+def test_long_runs_are_not_misreported() -> None:
+    hour = 3_600_000.0
+    assert percentile(histogram([10 * hour]), 0.95) == pytest.approx(10 * hour, rel=0.10)
+    assert percentile(histogram([70 * hour]), 0.5) == pytest.approx(70 * hour, rel=0.10)
+    assert percentile(histogram([100 * hour, 200 * hour]), 0.95) == 72 * hour  # "at least 72 h"
 
 
 def test_small_samples_and_edges() -> None:
     assert percentile({}, 0.5) is None
     four = histogram([10_000, 20_000, 30_000, 40_000])
-    assert percentile(four, 0.5) == pytest.approx(25_000, rel=0.06)
-    assert percentile(four, 0.95) == pytest.approx(38_500, rel=0.06)
-    assert percentile(histogram([123.0]), 0.95) == pytest.approx(123.0, rel=0.06)
+    assert percentile(four, 0.5) == pytest.approx(25_000, rel=0.10)
+    assert percentile(four, 0.95) == pytest.approx(38_500, rel=0.10)
+    assert percentile(histogram([123.0]), 0.95) == pytest.approx(123.0, rel=0.10)
     assert percentile(histogram([0.2, 0.4]), 0.5) is not None  # sub-millisecond bucket
     assert percentile(histogram([10**9]), 0.5) is not None  # beyond the last bucket
 

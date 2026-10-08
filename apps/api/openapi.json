@@ -2166,7 +2166,7 @@
     },
     "/v1/analytics/cost": {
       "get": {
-        "description": "Cost per run, per successful run, by day, agent, model, project, the retry breakdown (spec §24) and the most expensive runs. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 5%). A project-bound key is confined to its project.",
+        "description": "Cost per run, per successful run, by day, agent, model, project, the retry breakdown (spec §24) and the most expensive runs. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.",
         "operationId": "cost_v1_analytics_cost_get",
         "parameters": [
           {
@@ -2310,7 +2310,7 @@
     },
     "/v1/analytics/performance": {
       "get": {
-        "description": "p50/p95 for runs, model calls and tools, and the slowest operations. Only tool and model spans are listed by name; other kinds are grouped by kind. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 5%). A project-bound key is confined to its project.",
+        "description": "p50/p95 for runs, model calls and tools, and the slowest operations. Only tool and model spans are listed by name; other kinds are grouped by kind. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.",
         "operationId": "performance_v1_analytics_performance_get",
         "parameters": [
           {
@@ -2454,7 +2454,7 @@
     },
     "/v1/analytics/reliability": {
       "get": {
-        "description": "Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 5%). A project-bound key is confined to its project.",
+        "description": "Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.",
         "operationId": "reliability_v1_analytics_reliability_get",
         "parameters": [
           {
@@ -2598,7 +2598,7 @@
     },
     "/v1/analytics/summary": {
       "get": {
-        "description": "Run counts and rates, cost, run latency, behaviour averages. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 5%). A project-bound key is confined to its project.",
+        "description": "Run counts and rates, cost, run latency, behaviour averages. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.",
         "operationId": "summary_v1_analytics_summary_get",
         "parameters": [
           {

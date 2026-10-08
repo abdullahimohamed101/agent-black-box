@@ -27,7 +27,7 @@ query tuning alone (typed columns, no join, one pass) was not enough for the spa
 - **Windows are whole UTC days** (`from` rounds down, `to` up). This is the price of day-grain rollups and is stated in the API.
   The optional agent filter of ADR-041 is dropped (it would multiply span rollup rows by agents).
 - **Percentiles are approximate**: log-spaced histograms (160 buckets, 1 ms to 1 h, about 10% wide), read with `percentile_cont`
-  semantics inside the bucket, within about 5% (tested against exact values). Rollup rows keep at most 200 distinct names (agent
+  semantics inside the bucket, within one bucket, about 10% (tested against exact values). Rollup rows keep at most 200 distinct names (agent
   models, tools) per project and day (and kind); the rest fold into `(other)`, bounding storage against hostile cardinality (KI-018).
 - **Typed columns**: `runs` gets typed copies of the summary figures (cost, retry cost, counts) and `spans` gets `project_id` and
   `run_started_at`, written with the run by the summarizer (migration 0041; backfilled from `summary`/`runs`), so the refresh never

@@ -1,10 +1,10 @@
 """Approximate percentiles from log-spaced duration histograms (ADR-043).
 
 Rollups keep, per day and series, how many durations fell into each bucket. Buckets are
-geometric (about 10% wide) from 1 ms to 1 hour, so a percentile read from merged buckets is
-within about 5% of the exact value. Bucket 0 holds everything under 1 ms and the last bucket
-everything from 1 hour up. The same bucket function is used in SQL (`bucket_sql`) and here, so
-live and rolled-up days merge consistently.
+geometric (about 10% wide) from 1 ms to 72 hours: a percentile read from merged buckets is
+within one bucket, about 10%, of the exact value. Bucket 0 holds everything under 1 ms; the last
+bucket holds everything from 72 hours up and reports exactly 72 hours ("at least"). The same
+bucket function is used in SQL (`bucket_sql`) and here, so every day merges consistently.
 """
 
 import math
@@ -12,9 +12,9 @@ from collections.abc import Mapping
 
 from sqlalchemy import ColumnElement, func, literal
 
-BUCKETS = 160
+BUCKETS = 200
 MIN_MS = 1.0
-MAX_MS = 3_600_000.0
+MAX_MS = 72 * 3_600_000.0  # 72 hours: longer durations share the overflow bucket
 _LN_MAX = math.log(MAX_MS)
 _WIDTH = _LN_MAX / BUCKETS
 OVERFLOW = BUCKETS + 1
@@ -42,7 +42,7 @@ def bucket_bounds(bucket: int) -> tuple[float, float]:
     if bucket <= 0:
         return 0.0, MIN_MS
     if bucket >= OVERFLOW:
-        return MAX_MS, MAX_MS * 2
+        return MAX_MS, MAX_MS  # "at least 72 hours": reported as exactly that, not as a guess
     return math.exp((bucket - 1) * _WIDTH), math.exp(bucket * _WIDTH)
 
 

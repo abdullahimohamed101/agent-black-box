@@ -115,7 +115,7 @@ export function Analytics({ base }: { base: Base }) {
       </div>
       <p className="muted">
         Windows are whole UTC days; a run counts in the day it started. Percentiles are approximate
-        (about 5%). Cost is in USD; each figure says whether it was reported by the provider,
+        (about 10%). Cost is in USD; each figure says whether it was reported by the provider,
         computed from tokens and a versioned price, or estimated by the caller.
       </p>
 
