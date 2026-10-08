@@ -110,7 +110,7 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
 
     models: set[str] = set()
     modified_files: set[str] = set()
-    llm_calls = tool_calls = retry_count = error_count = 0
+    llm_calls = tool_calls = retry_count = error_count = retries_unattributed = 0
     input_tokens = output_tokens = 0
     cost_events: list[Event] = []
     for event in ordered:
@@ -128,6 +128,10 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
             tool_calls += 1
         if kind == "retry.attempted":
             retry_count += 1
+            if event.span_id is None:
+                retries_unattributed += (
+                    1  # names no operation, so no cost can be attributed (ADR-042)
+                )
         if event.status in _ERROR_STATUSES or kind.endswith(".failed"):
             error_count += 1  # each event counts once, however it qualifies
         if kind in ("file.created", "file.modified", "file.deleted"):
@@ -150,6 +154,7 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
         # Decimal sums are exact and order-independent: the total never depends on summation order.
         **cost_summary(list(cost_lines)),
         "retry_count": retry_count,
+        "retries_unattributed": retries_unattributed,
         "error_count": error_count,
         "files_modified": len(modified_files),
         "models": sorted(models),

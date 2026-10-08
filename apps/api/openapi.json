@@ -71,6 +71,384 @@
         "title": "BatchResponse",
         "type": "object"
       },
+      "Behaviour": {
+        "properties": {
+          "avg_files_modified": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Files Modified"
+          },
+          "avg_llm_calls": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Llm Calls"
+          },
+          "avg_retries": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Retries"
+          },
+          "avg_tool_calls": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Tool Calls"
+          }
+        },
+        "required": [
+          "avg_llm_calls",
+          "avg_tool_calls",
+          "avg_retries",
+          "avg_files_modified"
+        ],
+        "title": "Behaviour",
+        "type": "object"
+      },
+      "CostByAgent": {
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "agent",
+          "cost_usd",
+          "calls"
+        ],
+        "title": "CostByAgent",
+        "type": "object"
+      },
+      "CostByDay": {
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "retry_usd": {
+            "title": "Retry Usd",
+            "type": "number"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "cost_usd",
+          "retry_usd",
+          "runs"
+        ],
+        "title": "CostByDay",
+        "type": "object"
+      },
+      "CostByModel": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "unpriced_calls": {
+            "title": "Unpriced Calls",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "cost_usd",
+          "calls",
+          "input_tokens",
+          "output_tokens",
+          "unpriced_calls"
+        ],
+        "title": "CostByModel",
+        "type": "object"
+      },
+      "CostByProject": {
+        "properties": {
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "project_id",
+          "cost_usd",
+          "runs"
+        ],
+        "title": "CostByProject",
+        "type": "object"
+      },
+      "CostBySource": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "source": {
+            "description": "provider_reported | estimated | client_estimate | unpriced",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "cost_usd",
+          "calls"
+        ],
+        "title": "CostBySource",
+        "type": "object"
+      },
+      "CostHeadline": {
+        "properties": {
+          "per_run_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Run Usd"
+          },
+          "per_successful_run_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Successful Run Usd"
+          },
+          "retry_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "retry_usd / total_usd",
+            "title": "Retry Share"
+          },
+          "retry_usd": {
+            "description": "Cost of model calls made after a retry (ADR-042).",
+            "title": "Retry Usd",
+            "type": "number"
+          },
+          "total_usd": {
+            "title": "Total Usd",
+            "type": "number"
+          },
+          "unpriced_calls": {
+            "description": "Model calls with no usable cost; counted as $0.",
+            "title": "Unpriced Calls",
+            "type": "integer"
+          },
+          "unrebuilt_runs": {
+            "description": "Runs summarized before cost lines existed; `rebuild-costs` fills them in.",
+            "title": "Unrebuilt Runs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_usd",
+          "per_run_usd",
+          "per_successful_run_usd",
+          "retry_usd",
+          "retry_share",
+          "unpriced_calls",
+          "unrebuilt_runs"
+        ],
+        "title": "CostHeadline",
+        "type": "object"
+      },
+      "CostReport": {
+        "properties": {
+          "by_agent": {
+            "items": {
+              "$ref": "#/components/schemas/CostByAgent"
+            },
+            "title": "By Agent",
+            "type": "array"
+          },
+          "by_agent_other": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OtherBucket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "by_day": {
+            "items": {
+              "$ref": "#/components/schemas/CostByDay"
+            },
+            "title": "By Day",
+            "type": "array"
+          },
+          "by_model": {
+            "items": {
+              "$ref": "#/components/schemas/CostByModel"
+            },
+            "title": "By Model",
+            "type": "array"
+          },
+          "by_model_other": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OtherBucket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "by_project": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CostByProject"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only when the query is not limited to one project.",
+            "title": "By Project"
+          },
+          "by_source": {
+            "items": {
+              "$ref": "#/components/schemas/CostBySource"
+            },
+            "title": "By Source",
+            "type": "array"
+          },
+          "expensive_runs": {
+            "items": {
+              "$ref": "#/components/schemas/ExpensiveRun"
+            },
+            "title": "Expensive Runs",
+            "type": "array"
+          },
+          "headline": {
+            "$ref": "#/components/schemas/CostHeadline"
+          },
+          "retries": {
+            "$ref": "#/components/schemas/RetryBreakdown"
+          },
+          "window": {
+            "$ref": "#/components/schemas/Window"
+          }
+        },
+        "required": [
+          "window",
+          "headline",
+          "retries",
+          "by_day",
+          "by_agent",
+          "by_agent_other",
+          "by_model",
+          "by_model_other",
+          "by_source",
+          "by_project",
+          "expensive_runs"
+        ],
+        "title": "CostReport",
+        "type": "object"
+      },
       "CreateRunRequest": {
         "properties": {
           "agent_id": {
@@ -508,6 +886,125 @@
         "title": "EventResponse",
         "type": "object"
       },
+      "ExpensiveRun": {
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "retry_count": {
+            "title": "Retry Count",
+            "type": "integer"
+          },
+          "retry_usd": {
+            "title": "Retry Usd",
+            "type": "number"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "project_id",
+          "name",
+          "agent",
+          "status",
+          "started_at",
+          "cost_usd",
+          "retry_usd",
+          "retry_count"
+        ],
+        "title": "ExpensiveRun",
+        "type": "object"
+      },
+      "FailureDay": {
+        "properties": {
+          "blocked": {
+            "title": "Blocked",
+            "type": "integer"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "failure_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Rate"
+          },
+          "finished": {
+            "title": "Finished",
+            "type": "integer"
+          },
+          "success": {
+            "title": "Success",
+            "type": "integer"
+          },
+          "timed_out": {
+            "title": "Timed Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "finished",
+          "success",
+          "failed",
+          "timed_out",
+          "blocked",
+          "failure_rate"
+        ],
+        "title": "FailureDay",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -571,6 +1068,100 @@
           "message"
         ],
         "title": "IssueOut",
+        "type": "object"
+      },
+      "OtherBucket": {
+        "description": "Everything beyond the top-N groups: response size does not depend on how many names exist.",
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "default": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "groups": {
+            "description": "How many groups are folded into this bucket.",
+            "title": "Groups",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "groups",
+          "calls"
+        ],
+        "title": "OtherBucket",
+        "type": "object"
+      },
+      "Percentiles": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "p50_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Ms"
+          },
+          "p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Ms"
+          }
+        },
+        "required": [
+          "count",
+          "p50_ms",
+          "p95_ms"
+        ],
+        "title": "Percentiles",
+        "type": "object"
+      },
+      "PerformanceReport": {
+        "properties": {
+          "llm": {
+            "$ref": "#/components/schemas/Percentiles"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Percentiles"
+          },
+          "slow_operations": {
+            "items": {
+              "$ref": "#/components/schemas/SlowOperation"
+            },
+            "title": "Slow Operations",
+            "type": "array"
+          },
+          "tool": {
+            "$ref": "#/components/schemas/Percentiles"
+          },
+          "window": {
+            "$ref": "#/components/schemas/Window"
+          }
+        },
+        "required": [
+          "window",
+          "run",
+          "llm",
+          "tool",
+          "slow_operations"
+        ],
+        "title": "PerformanceReport",
         "type": "object"
       },
       "PriceOut": {
@@ -698,6 +1289,66 @@
         "title": "PricingOut",
         "type": "object"
       },
+      "Rates": {
+        "properties": {
+          "failure_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(failed + blocked) / finished",
+            "title": "Failure Rate"
+          },
+          "retry_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "runs with at least one retry / runs",
+            "title": "Retry Rate"
+          },
+          "success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "success / finished",
+            "title": "Success Rate"
+          },
+          "timeout_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "timed out / finished",
+            "title": "Timeout Rate"
+          }
+        },
+        "required": [
+          "success_rate",
+          "failure_rate",
+          "timeout_rate",
+          "retry_rate"
+        ],
+        "title": "Rates",
+        "type": "object"
+      },
       "ReadyResponse": {
         "properties": {
           "database": {
@@ -721,6 +1372,226 @@
           "database"
         ],
         "title": "ReadyResponse",
+        "type": "object"
+      },
+      "ReliabilityReport": {
+        "properties": {
+          "failure_trend": {
+            "items": {
+              "$ref": "#/components/schemas/FailureDay"
+            },
+            "title": "Failure Trend",
+            "type": "array"
+          },
+          "rates": {
+            "$ref": "#/components/schemas/Rates"
+          },
+          "retry_heavy_runs": {
+            "items": {
+              "$ref": "#/components/schemas/RetryHeavyRun"
+            },
+            "title": "Retry Heavy Runs",
+            "type": "array"
+          },
+          "runs": {
+            "$ref": "#/components/schemas/RunCounts"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolReliability"
+            },
+            "title": "Tools",
+            "type": "array"
+          },
+          "tools_other": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OtherBucket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "window": {
+            "$ref": "#/components/schemas/Window"
+          }
+        },
+        "required": [
+          "window",
+          "runs",
+          "rates",
+          "failure_trend",
+          "tools",
+          "tools_other",
+          "retry_heavy_runs"
+        ],
+        "title": "ReliabilityReport",
+        "type": "object"
+      },
+      "RetryBreakdown": {
+        "description": "Spec §24: how much of the cost came from retries.",
+        "properties": {
+          "initial_usd": {
+            "title": "Initial Usd",
+            "type": "number"
+          },
+          "retries_unattributed": {
+            "description": "`retry.attempted` events with no span id: counted, but no cost attributed.",
+            "title": "Retries Unattributed",
+            "type": "integer"
+          },
+          "retry_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Share"
+          },
+          "retry_usd": {
+            "title": "Retry Usd",
+            "type": "number"
+          },
+          "runs_with_retry_cost": {
+            "title": "Runs With Retry Cost",
+            "type": "integer"
+          },
+          "total_usd": {
+            "title": "Total Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "total_usd",
+          "initial_usd",
+          "retry_usd",
+          "retry_share",
+          "runs_with_retry_cost",
+          "retries_unattributed"
+        ],
+        "title": "RetryBreakdown",
+        "type": "object"
+      },
+      "RetryHeavyRun": {
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "retry_count": {
+            "title": "Retry Count",
+            "type": "integer"
+          },
+          "retry_usd": {
+            "title": "Retry Usd",
+            "type": "number"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "project_id",
+          "name",
+          "agent",
+          "status",
+          "started_at",
+          "retry_count",
+          "retry_usd",
+          "cost_usd"
+        ],
+        "title": "RetryHeavyRun",
+        "type": "object"
+      },
+      "RunCounts": {
+        "properties": {
+          "active": {
+            "description": "Queued, running or waiting.",
+            "title": "Active",
+            "type": "integer"
+          },
+          "blocked": {
+            "title": "Blocked",
+            "type": "integer"
+          },
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "finished": {
+            "description": "Success, failed, timed out or blocked (cancelled excluded).",
+            "title": "Finished",
+            "type": "integer"
+          },
+          "success": {
+            "title": "Success",
+            "type": "integer"
+          },
+          "timed_out": {
+            "title": "Timed Out",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "active",
+          "finished",
+          "success",
+          "failed",
+          "timed_out",
+          "blocked",
+          "cancelled"
+        ],
+        "title": "RunCounts",
         "type": "object"
       },
       "RunOut": {
@@ -896,6 +1767,72 @@
         "title": "RunPage",
         "type": "object"
       },
+      "SlowOperation": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Ms"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "p50_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Ms"
+          },
+          "p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Ms"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "calls",
+          "p50_ms",
+          "p95_ms",
+          "max_ms"
+        ],
+        "title": "SlowOperation",
+        "type": "object"
+      },
       "SpanOut": {
         "properties": {
           "agent_id": {
@@ -1043,6 +1980,124 @@
         "title": "SpanPage",
         "type": "object"
       },
+      "SpanRate": {
+        "properties": {
+          "calls": {
+            "description": "Spans that finished with a status.",
+            "title": "Calls",
+            "type": "integer"
+          },
+          "success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Rate"
+          }
+        },
+        "required": [
+          "calls",
+          "success_rate"
+        ],
+        "title": "SpanRate",
+        "type": "object"
+      },
+      "Summary": {
+        "properties": {
+          "active_agents": {
+            "description": "Agents with a run in progress (at most 10).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Active Agents",
+            "type": "array"
+          },
+          "behaviour": {
+            "$ref": "#/components/schemas/Behaviour"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/CostHeadline"
+          },
+          "llm": {
+            "$ref": "#/components/schemas/SpanRate",
+            "description": "Model calls; `1 - success_rate` is the request failure rate."
+          },
+          "rates": {
+            "$ref": "#/components/schemas/Rates"
+          },
+          "run_latency": {
+            "$ref": "#/components/schemas/Percentiles"
+          },
+          "runs": {
+            "$ref": "#/components/schemas/RunCounts"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/SpanRate"
+          },
+          "window": {
+            "$ref": "#/components/schemas/Window"
+          }
+        },
+        "required": [
+          "window",
+          "runs",
+          "rates",
+          "cost",
+          "run_latency",
+          "behaviour",
+          "tools",
+          "llm",
+          "active_agents"
+        ],
+        "title": "Summary",
+        "type": "object"
+      },
+      "ToolReliability": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Ms"
+          },
+          "success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Rate"
+          }
+        },
+        "required": [
+          "name",
+          "calls",
+          "success_rate",
+          "p95_ms"
+        ],
+        "title": "ToolReliability",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1081,6 +2136,28 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "Window": {
+        "properties": {
+          "end": {
+            "description": "Exclusive.",
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "description": "Inclusive. Runs are placed in the window by `started_at`.",
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "Window",
         "type": "object"
       }
     },
@@ -1148,6 +2225,636 @@
         "summary": "Readyz",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/v1/analytics/cost": {
+      "get": {
+        "description": "Cost per run, per successful run, by day, agent, model, project, the retry breakdown (spec §24) and the most expensive runs. Runs are placed in the window by `started_at` (UTC). Default: the last 7 days; at most 92. A project-bound key is confined to its project.",
+        "operationId": "cost_v1_analytics_cost_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "description": "Groups listed before `other`.",
+            "in": "query",
+            "name": "top",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Groups listed before `other`.",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired API key."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The key lacks `runs:read`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project not found or not visible to this key."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid (for example a window over 92 days)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The query timed out or a dependency is unavailable; retry."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Where the money went",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/v1/analytics/performance": {
+      "get": {
+        "description": "p50/p95 for runs, model calls and tools, and the slowest operations. Only tool and model spans are listed by name; other kinds are grouped by kind. Runs are placed in the window by `started_at` (UTC). Default: the last 7 days; at most 92. A project-bound key is confined to its project.",
+        "operationId": "performance_v1_analytics_performance_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "description": "Groups listed before `other`.",
+            "in": "query",
+            "name": "top",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Groups listed before `other`.",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired API key."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The key lacks `runs:read`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project not found or not visible to this key."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid (for example a window over 92 days)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The query timed out or a dependency is unavailable; retry."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Latency percentiles and the slowest operations",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/v1/analytics/reliability": {
+      "get": {
+        "description": "Runs are placed in the window by `started_at` (UTC). Default: the last 7 days; at most 92. A project-bound key is confined to its project.",
+        "operationId": "reliability_v1_analytics_reliability_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "description": "Groups listed before `other`.",
+            "in": "query",
+            "name": "top",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Groups listed before `other`.",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReliabilityReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired API key."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The key lacks `runs:read`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project not found or not visible to this key."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid (for example a window over 92 days)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The query timed out or a dependency is unavailable; retry."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Failure trend, tool success and retry-heavy runs",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/v1/analytics/summary": {
+      "get": {
+        "description": "Run counts and rates, cost, run latency, behaviour averages. Runs are placed in the window by `started_at` (UTC). Default: the last 7 days; at most 92. A project-bound key is confined to its project.",
+        "operationId": "summary_v1_analytics_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Summary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired API key."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The key lacks `runs:read`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project not found or not visible to this key."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid (for example a window over 92 days)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The query timed out or a dependency is unavailable; retry."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Headline figures for a window",
+        "tags": [
+          "analytics"
         ]
       }
     },

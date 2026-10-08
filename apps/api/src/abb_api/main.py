@@ -9,6 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from abb_api import __version__
+from abb_api.analytics.postgres import PostgresAnalyticsStore
+from abb_api.analytics.router import router as analytics_router
+from abb_api.analytics.service import AnalyticsService
 from abb_api.clock import Clock, system_clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.errors import install_error_handlers
@@ -79,6 +82,11 @@ def create_app(
         app.state.engine = engine
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
         app.state.runs = RunService(engine, clock)
+        app.state.analytics = AnalyticsService(
+            engine,
+            PostgresAnalyticsStore(engine, timeout_seconds=settings.analytics_timeout_seconds),
+            clock,
+        )
         hub = StreamHub(settings.database_url)
         app.state.streams = StreamService(engine, hub, app.state.runs, settings)
         hub.start()
@@ -106,6 +114,7 @@ def create_app(
     app.include_router(runs_router)
     app.include_router(streams_router)
     app.include_router(pricing_router)
+    app.include_router(analytics_router)
     _install_openapi(app)
     return app
 
