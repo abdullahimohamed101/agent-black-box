@@ -657,3 +657,37 @@ def test_the_child_has_no_home_and_no_other_inherited_variables(
     _bb, _run, rec = recorder(tmp_path)
     out = rec.run_command(f'{sys.executable} -c "import os;print(sorted(os.environ))"').stdout
     assert "HOME" not in out and "SOME_OTHER" not in out
+
+
+def test_a_secret_straddling_the_capture_limit_leaves_no_prefix(tmp_path: Path) -> None:
+    bb = BlackBox(mode="offline", project="d", payload_mode=PayloadMode.FULL)
+    key = "AKIAABCDEFGHIJKLMNOP"
+    with bb.run("r") as run:
+        rec = CodingRecorder(bb, run, tmp_path, capture_limit=1000)
+        printer = f"{sys.executable} -c \"print('x' * 990 + '{key}' + 'y' * 100)\""
+        result = rec.run_command(printer)
+    assert len(result.stdout.encode()) <= 1000
+    assert "AKIA" not in result.stdout and key[4:] not in result.stdout
+    done = attrs_of(events_of(bb), "shell.command.completed")[0]
+    assert done["shell.output_truncated"] is True
+
+
+def test_read_file_cuts_after_redaction(tmp_path: Path) -> None:
+    bb = BlackBox(mode="offline", project="d", payload_mode=PayloadMode.FULL)
+    with bb.run("r") as run:
+        rec = CodingRecorder(bb, run, tmp_path)
+        (tmp_path / "f.txt").write_text("x" * 95 + "AKIAABCDEFGHIJKLMNOP" + "tail")
+        out = rec.read_file("f.txt", max_bytes=100)
+    assert "AKIA" not in out and len(out.encode()) <= 100
+
+
+def test_c1_control_characters_are_stripped_from_artifact_names(server: ArtifactServer) -> None:  # noqa: F811
+    bb = BlackBox(
+        api_key="abb_live_k.secret", endpoint=server.url, project="d",
+        payload_mode=PayloadMode.FULL, wait=lambda _s: True,
+    )  # fmt: skip
+    with bb.run("r"):
+        bb.upload_artifact("x", name="a\x85b\x9fc\x7fd")
+    assert bb.flush(5)
+    assert server.received[0].query["name"] == ["a b c d"]
+    bb.shutdown()

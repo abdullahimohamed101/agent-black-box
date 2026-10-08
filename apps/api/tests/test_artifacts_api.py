@@ -364,3 +364,8 @@ async def test_artifacts_do_not_drain_the_event_ingestion_bucket(
             "occurred_at": "2026-10-07T10:00:00Z", "sequence": 1, "attributes": {},
         }  # fmt: skip
         assert (await api.post_batch([event])).status_code == 202
+
+
+@pytest.mark.parametrize("name", ["a\x85b", "a\x9fb", "a\x7fb", "a\nb"])
+async def test_control_characters_in_names_are_rejected(art: Api, name: str) -> None:
+    assert (await put(art, new_artifact_id(), b"x", name=name)).status_code == 422

@@ -63,12 +63,21 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
             r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)",
             "[REDACTED:private_key]",
         ),
-        ("aws_access_key", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b", "[REDACTED:aws_access_key]"),
-        ("github_token", r"\bgh[pousr]_[A-Za-z0-9]{30,}\b", "[REDACTED:github_token]"),
-        ("github_token", r"\bgithub_pat_[A-Za-z0-9_]{20,}", "[REDACTED:github_token]"),
-        ("slack_token", r"\bxox[abprs]-[A-Za-z0-9-]{10,}", "[REDACTED:slack_token]"),
-        ("api_key", r"\bsk-(?:ant-)?[A-Za-z0-9_-]{20,}", "[REDACTED:api_key]"),
-        ("api_key", r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}", "[REDACTED:api_key]"),
+        ("aws_access_key", r"(?:AKIA|ASIA)[0-9A-Z]{16}", "[REDACTED:aws_access_key]"),
+        ("github_token", r"gh[pousr]_[A-Za-z0-9]{30,}", "[REDACTED:github_token]"),
+        ("github_token", r"github_pat_[A-Za-z0-9_]{20,}", "[REDACTED:github_token]"),
+        ("npm_token", r"npm_[A-Za-z0-9]{36}", "[REDACTED:npm_token]"),
+        ("gitlab_token", r"glpat-[A-Za-z0-9_-]{20,}", "[REDACTED:gitlab_token]"),
+        ("google_api_key", r"AIza[0-9A-Za-z_-]{35}", "[REDACTED:google_api_key]"),
+        ("google_oauth", r"ya29\.[0-9A-Za-z_-]{20,}", "[REDACTED:google_oauth]"),
+        (
+            "slack_webhook",
+            r"hooks\.slack\.com/(?:services|workflows)/[A-Za-z0-9/_-]+",
+            "hooks.slack.com/[REDACTED:slack_webhook]",
+        ),
+        ("slack_token", r"xox[abprs]-[A-Za-z0-9-]{10,}", "[REDACTED:slack_token]"),
+        ("api_key", r"sk-(?:ant-)?[A-Za-z0-9_-]{20,}", "[REDACTED:api_key]"),
+        ("api_key", r"[rs]k_(?:live|test)_[A-Za-z0-9]{16,}", "[REDACTED:api_key]"),
         ("abb_api_key", r"\babb_(?:live|test)_[A-Za-z0-9._-]{10,}", "[REDACTED:abb_api_key]"),
         (
             "jwt",
@@ -93,12 +102,48 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
             r"client[-_]secret|auth[-_]?token|private[-_]?key)(?:\s+|=))(?!\[REDACTED)(?:\"[^\"]*\"|'[^']*'|[^\s]+)",
             r"\g<1>[REDACTED:cli_secret]",
         ),
-        ("url_credentials", r"(://)[^/\s:@]+:[^/\s@]+@", r"\g<1>[REDACTED:url_credentials]@"),
+        (
+            "quoted_key_value",  # "password": "x", 'api_key': 'x' (JSON, YAML, Python dicts)
+            r"(?i)([\"'][A-Za-z0-9_.-]*(?:secret|token|key|password|passwd|passphrase|credentials?|dsn|"
+            r"auth|cookie|pwd|pat|pass)[A-Za-z0-9_.-]*[\"']\s*:\s*)(?!\[REDACTED)"
+            r"(?:\"[^\"]*\"|'[^']*'|[^\s,}\]]+)",
+            r"\g<1>[REDACTED:credential]",
+        ),
+        (
+            "db_cli_password",  # mysql -phunter2, mysql -p hunter2, sshpass -p x, docker login -p x
+            r"(?i)(\b(?:mysql|mysqldump|mysqladmin|mysqlcheck|mariadb|sshpass|docker\s+login|"
+            r"podman\s+login|helm\s+registry\s+login)\b[^\n|;&]*?\s-p)\s*(?!\[REDACTED)[^\s-]\S*",
+            r"\g<1>[REDACTED:cli_secret]",
+        ),
+        (
+            "npm_config_token",
+            r"(?i)(//[^\s]+/:_auth(?:token)?[=\s]+|npm\s+config\s+set\s+\S*(?:auth|token|password)\S*\s+)"
+            r"(?!\[REDACTED)\S+",
+            r"\g<1>[REDACTED:npm_auth]",
+        ),
+        (
+            "signed_url_param",
+            r"(?i)([?&](?:sig|signature|x-amz-signature|x-amz-credential|x-amz-security-token|"
+            r"x-goog-signature|access_token|id_token|token|api[_-]?key|apikey|key)=)(?!\[REDACTED)[^&\s\"']+",
+            r"\g<1>[REDACTED:url_param]",
+        ),
+        (
+            "cookie_header",
+            r"(?i)\b((?:set-)?cookie\s*:\s*)(?!\[REDACTED)[^\r\n]+",
+            r"\g<1>[REDACTED:cookie]",
+        ),
+        ("url_credentials", r"(://)[^/\s:@]*:[^/\s@]+@", r"\g<1>[REDACTED:url_credentials]@"),
         ("url_token_user", r"(://)[A-Za-z0-9_.%-]{16,}@", r"\g<1>[REDACTED:url_credentials]@"),
         (
             "secret_assignment",  # NAME=value, NAME ending in a secret word (AWS_SECRET_ACCESS_KEY)
             r"(?i)(\b[A-Za-z0-9_]*(?:secret|token|key|password|passwd|passphrase|credentials?|dsn)"
             r"(?:_[A-Za-z0-9_]*)?\s*[=:]\s*)(?!\[REDACTED)(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
+            r"\g<1>[REDACTED:credential]",
+        ),
+        (
+            "secret_assignment_short",  # GH_PAT=..., DB_PASS=..., ROOT_PWD=...: the word is a whole name part
+            r"(?i)(\b(?:[A-Za-z0-9]+_)*(?:pat|pass|pwd)(?:_[A-Za-z0-9_]*)?\s*[=:]\s*)(?!\[REDACTED)"
+            r"(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
             r"\g<1>[REDACTED:credential]",
         ),
         (

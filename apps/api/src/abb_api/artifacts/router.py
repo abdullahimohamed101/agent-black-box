@@ -35,8 +35,8 @@ _ERROR_TEXT: dict[int | str, dict[str, Any]] = {
 _ERRORS: dict[int | str, dict[str, Any]] = {
     status: {**spec, "model": ErrorEnvelope} for status, spec in _ERROR_TEXT.items()
 }
-# No control characters: the name is shown to people and written to logs.
-_NAME_OK = re.compile(r"^[^\x00-\x1f\x7f]{1,128}$")
+# No control characters (C0, DEL, C1): the name is shown to people and written to logs.
+_NAME_OK = re.compile(r"^[^\x00-\x1f\x7f-\x9f]{1,128}$")
 _SHA256 = re.compile(r"^[0-9A-Fa-f]{64}$")
 
 

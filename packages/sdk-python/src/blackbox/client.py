@@ -46,7 +46,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 _S = TypeVar("_S", bound="Span")
 
 _SUCCESS, _ERROR, _CANCELLED = "success", "error", "cancelled"
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # C0, DEL and C1 controls
 # kind -> (started, completed, failed) event types; other kinds use the generic span events.
 _TYPED_SPANS = {
     "tool": ("tool.call.started", "tool.call.completed", "tool.call.failed"),

@@ -54,7 +54,9 @@ _PEM = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(.*?)(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S
 )
 _URL_CRED = re.compile(r"://([^/\s:@]*):([^/\s@]+)@")
-_CRED_ASSIGN = re.compile(r"(?i)(?:_authtoken|_auth|_password|password|passwd|token|secret)\s*[=:]\s*['\"]?([^\s'\"]+)")
+_CRED_ASSIGN = re.compile(
+    r"(?i)(?:_authtoken|_auth|_password|password|passwd|token|secret)\s*[=:]\s*['\"]?([^\s'\"]+)"
+)
 _NETRC = re.compile(r"\b(?:password|login|account|token)\s+(\S+)")
 
 

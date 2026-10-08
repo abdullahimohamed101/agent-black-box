@@ -242,3 +242,48 @@ def test_ordinary_text_survives_redaction() -> None:
         "KeyError: 'missing'\nAssertionError: 1 != 2\nRan 5 tests in 0.002s\nprocessed 1234 items"
     )
     assert Redactor().redact_text(plain) == plain
+
+
+@pytest.mark.parametrize(
+    ("text", "secret"),
+    [
+        ('{"password": "x1y2z3pw", "n": 1}', "x1y2z3pw"),
+        ('{"api_key": "abcd1234"}', "abcd1234"),
+        ('{"aws_secret_access_key": "wJalrXUtnFEMIK7MDENG"}', "wJalrXUtnFEMIK7MDENG"),
+        ("{'db_password': 'single quoted'}", "single quoted"),
+        ('{"client_secret": 12345678}', "12345678"),
+        ("redis://:pw0rdpw0rd@cache:6379/0", "pw0rdpw0rd"),
+        ("mysql -u root -phunter2x db", "hunter2x"),
+        ("mysql -u root -p hunter2x db", "hunter2x"),
+        ("mysqldump -p hunter2x db > out.sql", "hunter2x"),
+        ("sshpass -p hunter2x ssh host", "hunter2x"),
+        ("docker login -u me -p hunter2x registry.example.com", "hunter2x"),
+        ("npm config set //registry.npmjs.org/:_authToken npmtok123456", "npmtok123456"),
+        ("//registry.npmjs.org/:_authToken=npmtok123456", "npmtok123456"),
+        ("npm_" + "a1" * 18, "a1" * 18),
+        ("glpat-" + "a" * 20, "a" * 20),
+        ("key AIza" + "a" * 35, "a" * 35),
+        ("auth ya29." + "a" * 30, "a" * 30),
+        ("https://s.blob.core.windows.net/c/f?sv=1&sig=abc123def456&se=2030", "abc123def456"),
+        ("https://b.s3.amazonaws.com/o?X-Amz-Signature=deadbeef01&X-Amz-Date=1", "deadbeef01"),
+        ("curl https://hooks.slack.com/services/T0ABC/B0DEF/abcdefGHIJKL", "abcdefGHIJKL"),
+        ("Cookie: sessionid=abc123; csrftoken=def456", "abc123"),
+        ("Set-Cookie: sid=zzz999; HttpOnly", "zzz999"),
+        ("xghp_" + "b" * 36, "b" * 36),
+        ("xAKIAABCDEFGHIJKLMNOP", "AKIAABCDEFGHIJKLMNOP"),
+        ("GH_PAT=ghx1234567", "ghx1234567"),
+        ("DB_PASS=hunter2x", "hunter2x"),
+        ("ROOT_PWD='two words'", "two words"),
+        ("MY_PAT: tokenvalue1", "tokenvalue1"),
+    ],
+)
+def test_more_secret_shapes(text: str, secret: str) -> None:
+    out = Redactor().redact_text(text)
+    assert secret not in out and "[REDACTED" in out
+
+
+@pytest.mark.parametrize(
+    "text", ["PATH=/usr/bin:/bin", "compass=north", "bypass=1", "pattern: abc", "passed=5 failed=0"]
+)
+def test_names_that_merely_contain_pat_or_pass_are_left_alone(text: str) -> None:
+    assert Redactor().redact_text(text) == text
