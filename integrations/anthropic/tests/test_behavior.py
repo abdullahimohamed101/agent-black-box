@@ -162,7 +162,7 @@ def test_payloads_are_off_unless_requested_and_still_redacted() -> None:
     off = in_run(lambda bb: go(bb, False), payload_mode="full")
     assert all("payload" not in e for e in off) and "private prompt" not in str(off)
     on = in_run(lambda bb: go(bb, True), payload_mode="full")
-    assert "private prompt" in of(on, "llm.request.completed")[0]["payload"]["request"]
+    assert "private prompt" in str(of(on, "llm.request.completed")[0]["payload"]["request"])
     assert all("payload" not in e for e in in_run(lambda bb: go(bb, True)))
 
 

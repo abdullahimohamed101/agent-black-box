@@ -107,10 +107,15 @@ def usage_of(response: Any) -> tuple[int | None, int | None, int | None]:
     return totals[0], totals[1], totals[2]
 
 
-def preview(value: Any) -> str:
-    """A bounded text rendering for opt-in payload capture; never raises."""
+def preview(value: Any) -> Any:
+    """A bounded JSON-safe rendering for opt-in payload capture; never raises.
+
+    Small values stay structured so the SDK's key-based redaction (password, token, ...) applies;
+    larger ones become truncated text (pattern-based redaction still applies)."""
     try:
-        text = json.dumps(value, default=str, ensure_ascii=False)
+        rendered = json.dumps(value, default=str, ensure_ascii=False, allow_nan=False)
     except Exception:
-        text = f"<{type(value).__name__}>"
-    return text[:PREVIEW_CHARS]
+        return f"<{type(value).__name__}>"
+    if len(rendered) <= PREVIEW_CHARS:
+        return json.loads(rendered)
+    return rendered[:PREVIEW_CHARS]

@@ -21,7 +21,7 @@ def test_helpers() -> None:
     assert count(3.0) == 3 and count(True) is None and count(-1) is None and count("3") is None
     assert number(1) == 1.0 and number(-0.1) is None and number("x") is None
     assert preview(object()).startswith("<") or preview(object())
-    assert preview(SimpleNamespace(model_dump=lambda: {"a": 1})) == '{"a": 1}'
+    assert preview(SimpleNamespace(model_dump=lambda: {"a": 1})) == {"a": 1}
 
     class Bad:
         def model_dump(self) -> Any:

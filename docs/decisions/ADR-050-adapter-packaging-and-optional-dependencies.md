@@ -34,7 +34,6 @@ instruments LangGraph must not be forced to install OpenAI, and a user of the Op
 | `openai` (openai adapter: optional extra + dev) | no | yes | the client object we wrap, `httpx.MockTransport` in tests | no | none |
 | `anthropic` (anthropic adapter: optional extra + dev) | no | yes | same | no | none |
 | `mcp` (mcp adapter: optional extra + dev) | no | yes (Anthropic / MCP steering group) | `ClientSession.call_tool` | no | none |
-| `pytest-asyncio` (dev only, adapters) | pytest has no async runner | yes | async tests | `asyncio.run` in sync tests is possible; used only where a loop must persist | none |
 | `abb-conformance` (dev only) | this repo (ADR-051) | n/a | the suite | n/a | n/a |
 
 Vulnerability review: dev-only (not shipped) except the optional extras, which are the user's own framework choice; `make audit` is extended to

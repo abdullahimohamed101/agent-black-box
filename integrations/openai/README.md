@@ -5,7 +5,8 @@ OpenAI client wrapper for Agent Black Box (spec 18, 70; ADR-050..052). Runtime d
 
 ```python
 from blackbox_openai import instrument
-client = instrument(OpenAI(), bb)      # or AsyncOpenAI(); the only change
+
+client = instrument(OpenAI(), bb)  # or AsyncOpenAI(); the only change
 with bb.run("support bot"):
     client.chat.completions.create(model="gpt-4.1", messages=[...])
 ```

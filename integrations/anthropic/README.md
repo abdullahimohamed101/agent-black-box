@@ -5,7 +5,8 @@ Anthropic client wrapper for Agent Black Box (spec 18, 70; ADR-050..052). Runtim
 
 ```python
 from blackbox_anthropic import instrument
-client = instrument(Anthropic(), bb)      # or AsyncAnthropic(); the only change
+
+client = instrument(Anthropic(), bb)  # or AsyncAnthropic(); the only change
 with bb.run("support bot"):
     client.messages.create(model="claude-sonnet-4-5", max_tokens=512, messages=[...])
 ```

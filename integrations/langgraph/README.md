@@ -8,7 +8,7 @@ from blackbox import BlackBox
 from blackbox_langgraph import BlackBoxCallback
 
 bb = BlackBox(api_key=..., endpoint=...)
-app.invoke(state, config={"callbacks": [BlackBoxCallback(bb)]})   # the only change
+app.invoke(state, config={"callbacks": [BlackBoxCallback(bb)]})  # the only change
 bb.shutdown()
 ```
 

@@ -34,13 +34,18 @@ def number(value: Any) -> float | None:
     return float(value) if value >= 0 else None
 
 
-def preview(value: Any) -> str:
-    """Bounded text for opt-in payload capture; never raises."""
+def preview(value: Any) -> Any:
+    """A bounded JSON-safe rendering for opt-in payload capture; never raises.
+
+    Small values stay structured so the SDK's key-based redaction (password, token, ...) applies;
+    larger ones become truncated text (pattern-based redaction still applies)."""
     try:
         dump = getattr(value, "model_dump", None)
-        if callable(dump):
-            value = dump()
-        rendered = json.dumps(value, default=str, ensure_ascii=False)
+        rendered = json.dumps(
+            dump() if callable(dump) else value, default=str, ensure_ascii=False, allow_nan=False
+        )
     except Exception:
-        rendered = f"<{type(value).__name__}>"
+        return f"<{type(value).__name__}>"
+    if len(rendered) <= PREVIEW_CHARS:
+        return json.loads(rendered)
     return rendered[:PREVIEW_CHARS]
