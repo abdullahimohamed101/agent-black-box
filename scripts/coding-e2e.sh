@@ -12,7 +12,9 @@ export ABB_SUMMARY_DEBOUNCE_SECONDS=1
 PORT="${CODING_E2E_API_PORT:-8140}"; API="http://localhost:$PORT"
 WORK="$(mktemp -d)"; pids=()
 export ABB_ARTIFACT_DIR="$WORK/artifacts"
-cleanup() { for p in "${pids[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done; rm -rf "$WORK"; }
+# `uv run` starts the real server as a child: kill every descendant, not just the wrapper.
+kill_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done; kill "$1" 2>/dev/null || true; }
+cleanup() { for p in "${pids[@]:-}"; do [ -n "$p" ] && kill_tree "$p"; done; rm -rf "$WORK"; }
 trap cleanup EXIT
 step() { printf '\n==> %s\n' "$*"; }
 fail() { echo "CODING-E2E FAILED: $*" >&2; exit 1; }
@@ -32,6 +34,7 @@ PY
 uv run alembic upgrade head >/dev/null 2>&1
 
 step "start API (:$PORT, artifacts in a temp directory) and worker"
+if curl -sf "$API/readyz" >/dev/null 2>&1; then fail "something is already serving $API; stop it or set CODING_E2E_API_PORT"; fi
 uv run uvicorn abb_api.main:app_from_env --factory --port "$PORT" >"$WORK/api.log" 2>&1 & pids+=($!)
 uv run python -m abb_api.worker >"$WORK/worker.log" 2>&1 & pids+=($!)
 for _ in $(seq 1 40); do curl -sf "$API/readyz" >/dev/null && break; sleep 0.5; done

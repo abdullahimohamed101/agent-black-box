@@ -28,12 +28,9 @@ export function DiffView({ text, lang }: { text: string; lang?: string | null })
   // How many lines each file may show so that all files together stay within the cap.
   const caps = useMemo(() => {
     const limit = all ? Infinity : MAX_LINES;
-    return files.map((f, i) =>
-      Math.min(
-        f.lines.length,
-        Math.max(0, limit - files.slice(0, i).reduce((n, g) => n + g.lines.length, 0)),
-      ),
-    );
+    const sizes = files.map((f) => f.lines.length);
+    const before = sizes.map((_, i) => sizes.slice(0, i).reduce((a, b) => a + b, 0));
+    return sizes.map((n, i) => Math.min(n, Math.max(0, limit - before[i]!)));
   }, [files, all]);
   return (
     <div className="diff" data-testid="diff">

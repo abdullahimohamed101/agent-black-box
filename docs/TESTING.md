@@ -64,3 +64,11 @@ between tests, and migration tests create one database each. Neither the dev dat
 holds test data.
 ```text
 ```
+
+- **Coding-agent E2E** (`make coding-e2e`, `scripts/coding-e2e.sh`, CI job `coding-e2e`): dedicated `abb_p6` database, API (:8140) with a
+  throwaway artifact directory and a worker; the scripted demo agent (`examples/coding-agent`) writes a real run through the SDK; a
+  server-side scan (`scripts/coding_e2e_check.py`) searches events, `artifacts.name/kind/uri` and every artifact file for the planted
+  secrets; Playwright (`apps/web/e2e/coding.spec.ts`, web on :3140) checks the story, diff, lazy shell output, chunked loading and that no
+  planted secret reaches any page or API response. The script refuses to start if the port is already serving and kills the whole
+  process tree on exit. **The Playwright spec writes screenshots into the tracked `docs/screenshots/phase-6/`**: commit them when they changed
+  meaningfully, otherwise `git checkout` them. Example tests: `uv run --project packages/sdk-python pytest examples/coding-agent/tests`.

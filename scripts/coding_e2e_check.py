@@ -24,13 +24,18 @@ async def main(run_id: str) -> int:
             "select event_type, attributes::text as a, coalesce(payload::text, '') as p, tags::text as t "
             "from events"
         )
-        artifacts = await conn.fetch("select artifact_type, size_bytes, storage_uri from artifacts")
+        artifacts = await conn.fetch(
+            "select artifact_type, name, size_bytes, storage_uri, run_id::text as run from artifacts"
+        )
     finally:
         await conn.close()
     problems: list[str] = []
     for row in rows:
         blob = row["a"] + row["p"] + row["t"]
         problems += [f"event {row['event_type']} contains a planted secret" for s in planted if s in blob]
+    for row in artifacts:  # names and kinds are user text too
+        blob = f"{row['artifact_type']} {row['name'] or ''} {row['storage_uri']}"
+        problems += ["artifact row (name/kind/uri) contains a planted secret" for s in planted if s in blob]
     root = Path(os.environ["CODING_E2E_ARTIFACT_DIR"])
     files = [p for p in root.rglob("*") if p.is_file()]
     text = ""
