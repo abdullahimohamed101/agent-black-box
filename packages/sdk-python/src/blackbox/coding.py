@@ -63,7 +63,7 @@ _R1_RUNNERS = frozenset(
     tox nox mypy ruff eslint prettier tsc javac java mvn gradle cmake""".split()
 )
 _GIT_READ = frozenset(
-    "status diff log show rev-parse blame ls-files describe remote shortlog grep cat-file".split()
+    "status diff log show rev-parse blame ls-files describe shortlog grep cat-file ls-tree rev-list".split()
 )
 _GIT_LOCAL = frozenset(
     """add commit checkout switch restore stash merge rebase tag cherry-pick apply init mv am
@@ -89,7 +89,12 @@ _RAW_RULES: tuple[tuple[re.Pattern[str], int, str, str], ...] = tuple(
         (r"\bdrop\s+(database|schema)\b", 4, DESTRUCTIVE, "SQL DROP DATABASE/SCHEMA"),
         (r"\bdrop\s+table\b", 3, DESTRUCTIVE, "SQL DROP TABLE"),
         (r"\btruncate\s+(table\s+)?\w", 3, DESTRUCTIVE, "SQL TRUNCATE"),
-        (r"\bdelete\s+from\s+\w+\s*(;|$|\")", 3, DESTRUCTIVE, "SQL DELETE without WHERE"),
+        (
+            r"\bdelete\s+from\s+[\w.\"`]+\s*(;|$|[\"'`)]|\\n)",
+            3,
+            DESTRUCTIVE,
+            "SQL DELETE without WHERE",
+        ),
         (r"\bmkfs(\.\w+)?\b", 4, DESTRUCTIVE, "formats a filesystem"),
         (r"\bdd\b[^|;&]*\bof=/dev/", 4, DESTRUCTIVE, "writes to a device"),
         (r">\s*/dev/(sd|nvme|disk)", 4, DESTRUCTIVE, "writes to a device"),
@@ -110,6 +115,26 @@ _RAW_RULES: tuple[tuple[re.Pattern[str], int, str, str], ...] = tuple(
             "recursive or forced delete of a root, home or wildcard target",
         ),
         (r"\bchmod\s+(-[a-zA-Z]+\s+)*[0-7]{3,4}\s+/(\s|$)", 3, DESTRUCTIVE, "permissions on /"),
+        (
+            r"\b(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|rmtree|FileUtils\.(rm_rf|rm_r|rm_f|remove\w*)"
+            r"|File\.delete|unlinkSync|rmSync|rmdirSync|Files\.delete)\b",
+            3,
+            DESTRUCTIVE,
+            "code that deletes files",
+        ),
+        (r">>?\s*/proc/|\btee\b[^|;&]*\s/proc/", 3, PROCESS_CONTROL, "writes to /proc"),
+        (
+            r"(>>?|\btee\b(\s+-a)?|\b(cp|mv|install|sed\s+-i)\b[^|;&]*)\s*\S*authorized_keys",
+            3,
+            DESTRUCTIVE,
+            "changes SSH authorized_keys",
+        ),
+        (
+            r"\b(sh|bash|zsh|source|\.)\s+<\(",
+            3,
+            NETWORK,
+            "runs dynamic content from a process substitution",
+        ),
     )
 )
 _OPERATORS = frozenset({"&&", "||", "|", ";", "&", "|&", ";;"})
@@ -161,16 +186,46 @@ def _flag_cluster(arg: str, letters: str) -> bool:
     return bool(re.fullmatch(r"-[A-Za-z]+", arg)) and any(c in arg[1:] for c in letters)
 
 
+_GIT_EXEC_CONFIG = re.compile(
+    r"(?i)^(core\.(pager|fsmonitor|sshcommand|editor|hookspath|askpass|gitproxy)|alias\.|diff\.external|"
+    r"gpg\.program|credential\.helper|filter\.|merge\.tool|difftool\.|pager\.|sequence\.editor|"
+    r"http\.proxy|url\..*insteadof|protocol\.)"
+)
+
+
 def _git_level(args: list[str]) -> tuple[int, str, str]:
     rest_args = list(args)
+    runs_config = False
     while rest_args and rest_args[0].startswith(
         "-"
     ):  # git's own options come before the subcommand
         opt = rest_args.pop(0)
+        value = ""
         if opt in _GIT_GLOBAL_WITH_VALUE and rest_args:
-            rest_args.pop(0)
+            value = rest_args.pop(0)
+        elif opt.startswith("-c") and len(opt) > 2:
+            value = opt[2:]
+        if (opt == "-c" or opt.startswith("-c")) and _GIT_EXEC_CONFIG.match(value.split("=", 1)[0]):
+            runs_config = True
     sub = rest_args[0] if rest_args else ""
     rest = rest_args[1:]
+    if runs_config:
+        return 3, MODIFY_FILES, "git -c sets configuration that runs a program"
+    if any(a.startswith("--output") for a in rest) and sub in (
+        "diff",
+        "log",
+        "show",
+        "format-patch",
+        "blame",
+    ):
+        return 1, MODIFY_FILES, f"git {sub} --output writes a file"
+    if sub == "grep" and any(
+        a in ("-O", "--open-files-in-pager")
+        or a.startswith("-O")
+        or a.startswith("--open-files-in-pager=")
+        for a in rest
+    ):
+        return 3, MODIFY_FILES, "git grep -O runs a pager command"
     if sub == "push":
         forced = any(a in ("--force", "--force-with-lease", "--delete", "--mirror") for a in rest)
         forced = forced or any(_flag_cluster(a, "fd") for a in rest)
@@ -181,8 +236,61 @@ def _git_level(args: list[str]) -> tuple[int, str, str]:
         return 3, DESTRUCTIVE, "git reset --hard discards work"
     if sub == "clean" and any(_flag_cluster(a, "f") or a == "--force" for a in rest):
         return 3, DESTRUCTIVE, "git clean removes untracked files"
+    if sub == "rm":
+        forced = any(a == "--force" or _flag_cluster(a, "f") or _flag_cluster(a, "r") for a in rest)
+        return (
+            (3, DESTRUCTIVE, "git rm -f/-r deletes files")
+            if forced
+            else (1, MODIFY_FILES, "git rm deletes tracked files")
+        )
+    if sub == "tag" and any(a == "--delete" or _flag_cluster(a, "d") for a in rest):
+        return 3, DESTRUCTIVE, "deletes a tag"
+    if sub == "worktree" and rest[:1] in (["remove"], ["prune"]):
+        forced = any(a == "--force" or _flag_cluster(a, "f") for a in rest)
+        return (
+            (3, DESTRUCTIVE, "worktree removal with --force")
+            if forced
+            else (2, DESTRUCTIVE, "removes a worktree")
+        )
+    if sub == "remote":
+        action = next((a for a in rest if not a.startswith("-")), "")
+        if action in ("prune", "update", "show"):
+            return 2, NETWORK, f"git remote {action} contacts the remote"
+        if action in (
+            "remove",
+            "rm",
+            "rename",
+            "set-head",
+            "set-branches",
+            "set-url",
+            "add",
+            "get-url",
+        ):
+            return (
+                (0, READ_ONLY, "reads a remote URL")
+                if action == "get-url"
+                else (2, MODIFY_FILES, f"git remote {action} edits repository configuration")
+            )
+        return 0, READ_ONLY, "lists remotes"
     if sub == "branch" and any(a in ("--delete",) or _flag_cluster(a, "dD") for a in rest):
         return 3, DESTRUCTIVE, "deletes a branch"
+    if sub == "branch" and any(
+        a
+        in (
+            "--unset-upstream",
+            "--set-upstream-to",
+            "--move",
+            "--copy",
+            "--force",
+            "--edit-description",
+            "--track",
+            "--no-track",
+        )
+        or a.startswith("--set-upstream-to=")
+        or _flag_cluster(a, "mMcCfu")
+        for a in rest
+    ):
+        return 1, MODIFY_FILES, "git branch changes branches or their configuration"
     if sub in ("checkout", "restore", "switch") and (
         "--" in rest or "." in rest or any(_flag_cluster(a, "f") for a in rest) or "--force" in rest
     ):
@@ -201,13 +309,13 @@ def _git_level(args: list[str]) -> tuple[int, str, str]:
         return (
             (0, READ_ONLY, "lists branches") if listing else (1, MODIFY_FILES, "creates a branch")
         )
-    if sub in _GIT_READ and not (sub == "remote" and any(a in ("add", "set-url") for a in rest)):
+    if sub in _GIT_READ:
         return 0, READ_ONLY, f"git {sub} is read-only"
     if sub in ("fetch", "pull", "clone"):
         return 2, NETWORK, f"git {sub} contacts a remote"
-    if sub in _GIT_LOCAL or sub == "remote":
+    if sub in _GIT_LOCAL:
         return 1, MODIFY_FILES, f"git {sub} changes local state"
-    return 1, MODIFY_FILES, f"unrecognised git command ({' '.join(args)[:40]})"
+    return 2, MODIFY_FILES, f"unrecognised git command ({' '.join(args)[:40]})"
 
 
 def _unwrap(argv: list[str]) -> tuple[list[str], bool]:
@@ -252,40 +360,152 @@ def _inner(command: str, depth: int) -> tuple[int, str, str] | None:
     return inner.level, inner.category, f"nested: {inner.reasons[0] if inner.reasons else ''}"
 
 
+_CLOUD_DESTROY = {
+    "terraform": (("destroy",), 4, "terraform destroy removes infrastructure"),
+    "tofu": (("destroy",), 4, "tofu destroy removes infrastructure"),
+    "pulumi": (("destroy",), 4, "pulumi destroy removes infrastructure"),
+}
+_TEST_BUILD = {
+    "pytest": None, "tox": None, "nox": None, "mypy": None, "ruff": ("check", "format"),
+    "eslint": None, "tsc": None, "javac": None, "cmake": ("--build", "-B", "."),
+    "npm": ("test", "run", "ci", "t", "lint", "build", "start", "run-script", "exec"),
+    "pnpm": ("test", "run", "lint", "build", "exec"),
+    "yarn": ("test", "run", "lint", "build"),
+    "cargo": ("test", "check", "build", "fmt", "clippy", "bench", "doc"),
+    "go": ("test", "build", "vet", "fmt", "run", "mod"),
+    "make": ("test", "check", "lint", "build", "all", "fmt", "format", "typecheck"),
+    "mvn": ("test", "verify", "compile", "package"), "gradle": ("test", "build", "check"),
+}  # fmt: skip
+_PY_TOOLS = frozenset(
+    {"unittest", "pytest", "mypy", "ruff", "black", "isort", "flake8", "coverage", "tox"}
+)
+_DYNAMIC_CODE = re.compile(
+    r"open\s*\(|write|remove|unlink|rmtree|rmdir|system|exec|eval|subprocess|popen|rename|mkdir|chmod"
+    r"|requests|urllib|socket|__import__|compile|fs\.|child_process|FileUtils|File\.|Dir\.|IO\.|`",
+    re.I,
+)
+
+
+def _method_of(rest: list[str]) -> str | None:
+    """The HTTP method a curl-like command asks for (`-XDELETE`, `-X DELETE`, `--request=POST`)."""
+    for i, a in enumerate(rest):
+        if a in ("-X", "--request") and i + 1 < len(rest):
+            return rest[i + 1].upper()
+        if a.startswith("--request="):
+            return a.split("=", 1)[1].upper()
+        if a.startswith("-X") and len(a) > 2:
+            return a[2:].upper()
+    return None
+
+
+def _sed_level(rest: list[str]) -> tuple[int, str, str] | None:
+    if any(a == "--in-place" or re.fullmatch(r"-[A-Za-z]*i[A-Za-z]*\S*", a) for a in rest):
+        return 1, MODIFY_FILES, "sed edits files in place"
+    scripts = [a for a in rest if not a.startswith("-")]
+    program = scripts[0] if scripts else ""
+    if re.search(r"(^|[;{}\n])\s*[0-9$,/]*\s*[eE]\b", program) or re.search(
+        r"s(.).*\1.*\1[a-z0-9]*e", program
+    ):
+        return 3, MODIFY_FILES, "sed runs commands (e)"
+    if re.search(r"(^|[;{}\n])\s*[0-9$,/]*\s*[wW]\s*\S|s(.).*\2.*\2[a-z0-9]*w\s*\S", program):
+        return 1, MODIFY_FILES, "sed writes files (w)"
+    return None
+
+
+def _read_only_with_flags(exe: str, rest: list[str]) -> tuple[int, str, str] | None:
+    """Allowlisted read-only commands become writers with certain flags; None if truly read-only."""
+    positional = [a for a in rest if not a.startswith("-")]
+    flags = [a for a in rest if a.startswith("-")]
+    if exe == "sort" and any(
+        f in ("-o", "--output") or f.startswith(("-o", "--output=")) for f in flags
+    ):
+        return 1, MODIFY_FILES, "sort -o writes a file"
+    if exe == "uniq" and len(positional) > 1:
+        return 1, MODIFY_FILES, "uniq writes its second operand"
+    if exe == "tree" and any(f == "-o" or f.startswith("-o") for f in flags):
+        return 1, MODIFY_FILES, "tree -o writes a file"
+    if exe == "xxd" and any(f == "-r" or _flag_cluster(f, "r") for f in flags):
+        return 1, MODIFY_FILES, "xxd -r writes binary output"
+    if exe == "date" and any(f in ("-s", "--set") or f.startswith(("-s", "--set=")) for f in flags):
+        return 3, PROCESS_CONTROL, "date -s sets the system clock"
+    if exe == "hostname" and positional:
+        return 3, PROCESS_CONTROL, "hostname NAME changes the machine name"
+    if exe in ("rg", "ag", "ack") and any(f.startswith(("--pre", "--hostname-bin")) for f in flags):
+        return 3, MODIFY_FILES, f"{exe} --pre runs a command on every file"
+    if exe in ("diff", "less", "more") and any(f.startswith("--output") for f in flags):
+        return 1, MODIFY_FILES, f"{exe} writes a file"
+    return None
+
+
 def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]:
+    if exe == "busybox" and rest:
+        return _classify_exe(os.path.basename(rest[0]), rest[1:], depth)
     if exe == "eval":
+        dynamic = any("$" in a or "`" in a for a in rest)
         found = _inner(" ".join(rest), depth)
-        return (max(found[0], 1), found[1], found[2]) if found else (1, MODIFY_FILES, "eval")
+        level = max(found[0] if found else 1, 3 if dynamic else 1)
+        return level, (found[1] if found else MODIFY_FILES), "eval runs dynamic content"
     if exe in _SHELLS:  # sh -c, bash -lc, zsh -ec ...
         for i, a in enumerate(rest):
             if (a == "-c" or _flag_cluster(a, "c")) and i + 1 < len(rest):
                 found = _inner(rest[i + 1], depth)
                 if found:
                     return max(found[0], 1), found[1], found[2]
-        return 1, MODIFY_FILES, f"{exe} runs a script"
+        return 2, MODIFY_FILES, f"{exe} runs a script of unknown effect"
     if exe in _INTERPRETER_EVAL and _INTERPRETER_EVAL[exe] in rest:
         i = rest.index(_INTERPRETER_EVAL[exe])
         code = rest[i + 1] if i + 1 < len(rest) else ""
-        found = None
-        if re.search(r"system|exec|popen|subprocess|`", code):  # code that starts commands
-            literals = re.findall(r"""['"]([^'"]{2,})['"]""", code) or [code]
-            levels = [_inner(lit, depth) for lit in literals]
-            found = max((f for f in levels if f), default=None)
-            floor = (2, MODIFY_FILES, f"{exe} code starts commands")
-            found = max(floor, found) if found else floor
-        return (max(found[0], 1), found[1], found[2]) if found else (1, MODIFY_FILES, f"{exe} -c")
+        if not _DYNAMIC_CODE.search(code):  # trivially read-only: print(1 + 1)
+            return 1, MODIFY_FILES, f"{exe} runs inline code"
+        literals = re.findall(r"""['"]([^'"]{2,})['"]""", code) or [code]
+        found = max((f for f in (_inner(lit, depth) for lit in literals) if f), default=None)
+        floor = (3, MODIFY_FILES, f"{exe} inline code can read, write or run anything")
+        return max(floor, found) if found else floor
+    if exe in ("python", "python3") and rest[:1] == ["-m"] and len(rest) > 1:
+        module = rest[1]
+        if module in ("pip", "pipx", "ensurepip"):
+            return _classify_exe("pip", rest[2:], depth)
+        if module in _PY_TOOLS or module.startswith(("pytest", "unittest")):
+            return 1, MODIFY_FILES, f"python -m {module} runs project code"
+        return 2, MODIFY_FILES, f"python -m {module} runs a module of unknown effect"
     if exe in ("awk", "gawk", "mawk", "nawk"):
         program = " ".join(rest)
-        if "system(" in program or re.search(r"print[^;}]*[>|]", program):
+        if "system(" in program or re.search(r"print[^;}]*[>|]|getline", program):
             found = _inner(" ".join(re.findall(r'"([^"]*)"', program)), depth)
             floor = (1, MODIFY_FILES, "awk runs commands or writes files")
             return max(floor, found) if found else floor
         return 0, READ_ONLY, f"{exe} only reads"
+    if exe == "sed":
+        return _sed_level(rest) or (0, READ_ONLY, "sed only reads")
     if exe == "git":
         return _git_level(rest)
     if exe in ("rm", "rmdir", "shred", "unlink"):
         level, why = _rm_level(rest)
         return level, DESTRUCTIVE, why
+    if exe == "mv" and any(
+        a in ("/", "/*", "~", "~/", "$HOME", "/etc", "/usr", "/bin") for a in rest[:-1]
+    ):
+        return 4, DESTRUCTIVE, "moves a system directory"
+    if exe == "truncate":
+        return 3, DESTRUCTIVE, "truncate destroys file contents"
+    if exe in (
+        "wipefs",
+        "fdisk",
+        "sfdisk",
+        "gdisk",
+        "sgdisk",
+        "parted",
+        "mkswap",
+        "cryptsetup",
+        "blkdiscard",
+    ):
+        return 4, DESTRUCTIVE, f"{exe} changes disk layout"
+    if (
+        exe == "diskutil"
+        and rest[:1]
+        and re.match(r"(?i)(erase|partition|repair|secure|zero|random)", rest[0])
+    ):
+        return 4, DESTRUCTIVE, "diskutil erases or repartitions a disk"
     if exe in ("chmod", "chown", "chgrp"):
         recursive = any(a in ("-R", "-r", "--recursive") or _flag_cluster(a, "R") for a in rest)
         return (
@@ -293,36 +513,101 @@ def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]
         )
     if exe in ("kill", "pkill", "killall"):
         return 2, PROCESS_CONTROL, "signals processes"
-    if exe in ("systemctl", "service", "launchctl", "mount", "umount", "iptables", "crontab"):
+    if exe in (
+        "systemctl",
+        "service",
+        "launchctl",
+        "mount",
+        "umount",
+        "iptables",
+        "crontab",
+        "sysctl",
+        "ufw",
+    ):
         return 3, PROCESS_CONTROL, f"{exe} changes system state"
+    if exe in _CLOUD_DESTROY and any(a in _CLOUD_DESTROY[exe][0] or a == "-destroy" for a in rest):
+        return _CLOUD_DESTROY[exe][1], DESTRUCTIVE, _CLOUD_DESTROY[exe][2]
+    if exe == "terraform" and rest[:1] in (["apply"], ["import"], ["state"], ["taint"]):
+        return 3, DESTRUCTIVE, "terraform changes real infrastructure"
+    if exe == "aws":
+        text = " ".join(rest)
+        if re.search(
+            r"\b(rm|rb|delete[\w-]*|terminate[\w-]*|remove[\w-]*|purge|detach[\w-]*)\b", text
+        ):
+            return 3, DESTRUCTIVE, "aws deletes or terminates resources"
+        return 2, NETWORK, "aws talks to a cloud account"
+    if exe in ("gcloud", "az", "doctl", "heroku", "flyctl", "fly", "vercel", "netlify", "wrangler"):
+        text = " ".join(rest)
+        if re.search(r"\b(delete|destroy|remove|rm|purge|terminate)\b", text):
+            return 3, DESTRUCTIVE, f"{exe} deletes resources"
+        return 2, NETWORK, f"{exe} talks to a cloud account"
+    if exe == "kubectl" and any(
+        a in ("delete", "drain", "replace", "apply", "patch", "scale", "rollout", "cordon", "taint")
+        for a in rest
+    ):
+        return 3, DESTRUCTIVE, "kubectl changes the cluster"
+    if exe in ("npm", "pnpm", "yarn") and any(
+        a
+        in ("publish", "unpublish", "deprecate", "owner", "access", "dist-tag", "login", "adduser")
+        for a in rest
+    ):
+        return 3, NETWORK, f"{exe} changes a public registry"
+    if exe in ("cargo", "gem", "twine", "poetry") and any(
+        a in ("publish", "push", "yank", "upload") for a in rest
+    ):
+        return 3, NETWORK, f"{exe} publishes a package"
+    if exe in ("redis-cli", "valkey-cli") and any(
+        a.lower() in ("flushall", "flushdb", "shutdown", "debug", "config") for a in rest
+    ):
+        return 4, DESTRUCTIVE, "redis-cli removes data or reconfigures the server"
+    if exe in ("mongo", "mongosh") and re.search(r"(?i)drop|deleteMany|remove\(", " ".join(rest)):
+        return 4, DESTRUCTIVE, "mongo drops or deletes data"
+    if exe in ("psql", "sqlite3", "mysql", "mariadb", "clickhouse-client", "cockroach"):
+        return (
+            2,
+            NETWORK if exe != "sqlite3" else MODIFY_FILES,
+            f"{exe} runs SQL against a database",
+        )
+    if exe == "uv" and rest[:1] == ["run"]:
+        inner = [a for a in rest[1:] if not a.startswith("--")]  # uv run [--project x] cmd ...
+        if inner:
+            found = _classify_argv(inner, depth + 1)
+            return max(found[0], 1), found[1], f"uv run: {found[2]}"
+        return 2, MODIFY_FILES, "uv run without a command"
     if exe in _INSTALL and rest and rest[0] in _INSTALL[exe]:
         return 2, PACKAGE_INSTALL, f"{exe} {rest[0]} fetches and installs packages"
     if exe == "uv" and (
-        rest[:2] == ["pip", "install"] or rest[:1] in (["add"], ["sync"], ["tool"])
+        rest[:2] == ["pip", "install"] or rest[:1] in (["add"], ["sync"], ["tool"], ["pip"])
     ):
         return 2, PACKAGE_INSTALL, "uv installs packages"
-    if exe in ("curl", "wget", "http", "https"):
-        sends = any(
+    if exe in ("curl", "wget", "http", "https", "xh"):
+        method = _method_of(rest)
+        sends = method not in (None, "GET", "HEAD", "OPTIONS") or any(
             a
             in (
                 "-d",
                 "--data",
                 "--data-raw",
                 "--data-binary",
+                "--data-urlencode",
                 "-F",
                 "--form",
                 "-T",
                 "--upload-file",
+                "--json",
             )
-            or a.startswith(("-d", "--data"))
-            or (a in ("-X", "--request") and i + 1 < len(rest) and rest[i + 1].upper() != "GET")
-            for i, a in enumerate(rest)
+            or a.startswith(("-d", "--data", "--form", "--json"))
+            for a in rest
         )
-        return (
-            (2, NETWORK, "sends data to a remote host")
-            if sends
-            else (1, NETWORK, "downloads from a remote host")
-        )
+        if method == "DELETE":
+            return 3, NETWORK, "sends a DELETE request to a remote host"
+        if (
+            sends
+            or exe == "wget"
+            and any(a.startswith("--post") or a == "--method=POST" for a in rest)
+        ):
+            return 2, NETWORK, "sends data to a remote host"
+        return 1, NETWORK, "downloads from a remote host"
     if exe in (
         "ssh",
         "scp",
@@ -330,28 +615,73 @@ def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]
         "sftp",
         "nc",
         "ncat",
+        "socat",
         "telnet",
         "ftp",
         "gh",
+        "glab",
         "docker",
-        "kubectl",
+        "podman",
+        "helm",
+        "ansible",
+        "ansible-playbook",
     ):
         return 2, NETWORK, f"{exe} talks to an external system"
     if exe == "find":
-        if any(a in ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint") for a in rest):
+        if any(
+            a in ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls")
+            for a in rest
+        ):
             return 3, DESTRUCTIVE, "find with -delete/-exec"
         return 0, READ_ONLY, "find"
-    if exe == "sed" and any(a == "-i" or a.startswith("-i") or a == "--in-place" for a in rest):
+    if exe == "fd" or exe == "fdfind":
+        for i, a in enumerate(rest):
+            if a in ("-x", "-X", "--exec", "--exec-batch"):
+                found = (
+                    _classify_argv(rest[i + 1 :], depth + 1)
+                    if rest[i + 1 :]
+                    else (2, MODIFY_FILES, "fd -x")
+                )
+                return max(found[0], 2), found[1], f"fd runs a command per match: {found[2]}"
+        return 0, READ_ONLY, "fd only lists"
+    if exe in ("perl", "ruby", "python", "python3", "node") and any(
+        a.startswith("-i") for a in rest
+    ):
         return 1, MODIFY_FILES, "edits files in place"
-    if exe in ("perl", "ruby") and any(a.startswith("-i") for a in rest):
-        return 1, MODIFY_FILES, "edits files in place"
-    if exe in ("tee", "touch", "mkdir", "cp", "mv", "ln", "install", "truncate", "patch"):
+    if exe in ("tee", "touch", "mkdir", "cp", "mv", "ln", "install", "patch", "dd"):
+        if exe == "dd" and any(a.startswith("of=") for a in rest):
+            return (
+                3 if not any(a.startswith("of=/dev/") for a in rest) else 4,
+                DESTRUCTIVE,
+                "dd writes its output file",
+            )
         return 1, MODIFY_FILES, f"{exe} writes files"
-    if exe in _R0_COMMANDS or exe == "sed":
-        return 0, READ_ONLY, f"{exe} only reads"
-    if exe in _R1_RUNNERS:
-        return 1, MODIFY_FILES, f"{exe} runs project code"
-    return 1, MODIFY_FILES, "unrecognised command (assumed to modify local files)"
+    if exe == ":":
+        return 0, READ_ONLY, "no-op"
+    if exe in _R0_COMMANDS:
+        writer = _read_only_with_flags(exe, rest)
+        return writer or (0, READ_ONLY, f"{exe} only reads")
+    if exe in _TEST_BUILD:
+        subs = _TEST_BUILD[exe]
+        if subs is None or any(a in subs for a in rest[:3]):
+            return 1, MODIFY_FILES, f"{exe} runs project tests or builds"
+        return 2, MODIFY_FILES, f"{exe} runs project code of unknown effect"
+    if exe in (
+        "python",
+        "python3",
+        "node",
+        "ruby",
+        "perl",
+        "bash",
+        "sh",
+        "uv",
+        "npx",
+        "deno",
+        "bun",
+        "php",
+    ):
+        return 2, MODIFY_FILES, f"{exe} runs code of unknown effect"
+    return 2, MODIFY_FILES, "unrecognised command (unknown, may modify anything)"
 
 
 def _mark_newlines(command: str) -> str:
@@ -434,6 +764,8 @@ def classify_command(command: str, *, _depth: int = 0) -> Classification:
         segments, redirects = _segments(tokens)
         if redirects and not _redirect_targets_are_harmless(tokens):
             best = _bump(best, 1, MODIFY_FILES, "redirects output to a file")
+            if all(seg[0] in (":", "true", "cat") and len(seg) == 1 for seg in segments):
+                best = _bump(best, 2, MODIFY_FILES, "truncates or overwrites a file")
     for sub in re.findall(r"\$\(([^()]*)\)|`([^`]*)`", command):
         found = _inner(sub[0] or sub[1], _depth)
         if found:
