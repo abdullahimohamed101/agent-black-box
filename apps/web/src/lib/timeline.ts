@@ -99,11 +99,29 @@ export function describe(e: EventOut): string {
     const err = attr(e, "tool.error_type");
     return err ? `${name} · ${err}` : name;
   }
-  if (e.event_type.startsWith("file.")) return attr(e, "file.path") ?? "file";
+  if (e.event_type.startsWith("file.")) {
+    const added = num(a["file.lines_added"]);
+    const removed = num(a["file.lines_removed"]);
+    const delta = added != null || removed != null ? ` +${added ?? 0} -${removed ?? 0}` : "";
+    return `${attr(e, "file.path") ?? "file"}${delta}`;
+  }
+  if (e.event_type.startsWith("git.")) {
+    return (
+      attr(e, "git.push_target") ??
+      attr(e, "git.branch") ??
+      attr(e, "git.commit_hash")?.slice(0, 10) ??
+      ""
+    );
+  }
   if (e.event_type.startsWith("shell.")) {
     const cmd = attr(e, "shell.command") ?? "command";
     const code = num(a["shell.exit_code"]);
-    return code != null ? `${cmd} · exit ${code}` : cmd;
+    const failed = num(a["test.failed"]);
+    const tests =
+      num(a["test.total"]) != null
+        ? ` · ${failed ? `${failed} test(s) failed` : "tests pass"}`
+        : "";
+    return code != null ? `${cmd} · exit ${code}${tests}` : cmd;
   }
   return attr(e, "error.summary") ?? attr(e, "approval.action") ?? "";
 }
