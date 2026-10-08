@@ -615,7 +615,7 @@ class BlackBox:
                     artifact_id,
                     target.run_id,
                     kind if kind in KINDS else "other",
-                    _CONTROL.sub(" ", name)[:256] if isinstance(name, str) and name else None,
+                    self._artifact_name(name),
                     data,
                 )
             )
@@ -623,6 +623,12 @@ class BlackBox:
         except Exception:
             self.stats_.add("internal_errors")
             return None
+
+    def _artifact_name(self, name: object) -> str | None:
+        """A short printable label: redacted first, then cut (never a secret's prefix)."""
+        if not isinstance(name, str) or not name:
+            return None
+        return _CONTROL.sub(" ", self._redactor.redact_text(name))[:120] or None
 
     def flush(self, timeout: float | None = None) -> bool:
         """Wait (bounded) until queued events were handed to the sink. Never raises."""

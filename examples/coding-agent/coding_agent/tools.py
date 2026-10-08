@@ -79,7 +79,8 @@ class Toolbox:
         return ToolOutcome(_clip("\n".join(hits[:50]) or "no matches"))
 
     def _edit_file(self, path: str, old: str, new: str) -> ToolOutcome:
-        current = self.rec.read_file(path)  # recorded: the edit is based on what was read
+        # Recorded as a read; the real, unredacted and complete content is needed to edit safely.
+        current = self.rec.read_file(path, None, redact=False)
         if current.count(old) != 1:
             raise ToolError(f"`old` must occur exactly once in {path} (found {current.count(old)})")
         self.rec.write_file(path, current.replace(old, new))

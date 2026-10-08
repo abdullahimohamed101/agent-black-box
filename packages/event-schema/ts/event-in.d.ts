@@ -73,6 +73,7 @@ export type EventIn = {
     "shell.duration_ms"?: number;
     "shell.exit_code"?: number;
     "shell.output_truncated"?: boolean;
+    "shell.output_withheld"?: string;
     "shell.risk_class"?: string;
     "shell.stderr_artifact"?: string;
     "shell.stderr_bytes"?: number;

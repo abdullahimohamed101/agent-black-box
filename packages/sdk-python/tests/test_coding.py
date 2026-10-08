@@ -382,3 +382,194 @@ def test_git_events(tmp_path: Path) -> None:
     assert "R2" in risks  # the push
     assert rec.git_branch("fix/session").ok is False  # already exists: no branch event
     assert "git.branch_created" not in types_of(events_of(bb))  # the command failed
+
+
+# -- review fixes: nothing derived from user text may carry a secret (ADR-031) --------------
+
+HOSTILE_COMMANDS = [
+    "echo AKIAABCDEFGHIJKLMNOP",
+    "curl -u admin:hunter22xx https://example.com/",
+    "curl -H 'Authorization: Basic dXNlcjpwYXNzd29yZA==' https://example.com/",
+    "export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMIK7MDENGbPxRfiCY && true",
+    "git clone https://deploy:s3cr3tpw99@github.com/o/r.git",
+    "tool --password hunter2xyzzy --token=abc123abc123",
+]
+HOSTILE_SECRETS = [
+    "AKIAABCDEFGHIJKLMNOP", "hunter22xx", "dXNlcjpwYXNzd29yZA", "wJalrXUtnFEMIK7MDENGbPxRfiCY",
+    "s3cr3tpw99", "hunter2xyzzy", "abc123abc123",
+]  # fmt: skip
+
+
+def test_the_command_cwd_and_every_attribute_derived_from_them_are_redacted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MY_API_TOKEN", "unknown-shape-tok-4242")
+    bb, _run, rec = recorder(tmp_path)
+    rec = CodingRecorder(bb, rec.run, tmp_path)
+    for command in [*HOSTILE_COMMANDS, "echo unknown-shape-tok-4242"]:
+        rec.run_command(command, timeout=5)
+    rec.run_command("sleep 30 # AKIAABCDEFGHIJKLMNOP", timeout=0.2)
+    (tmp_path / "AKIAABCDEFGHIJKLMNOP").mkdir()
+    rec.run_command("true", cwd="AKIAABCDEFGHIJKLMNOP")
+    dump = repr(events_of(bb))
+    for secret in [*HOSTILE_SECRETS, "unknown-shape-tok-4242"]:
+        assert secret not in dump, secret
+
+
+def test_a_secret_straddling_the_256_character_cut_leaves_no_prefix(tmp_path: Path) -> None:
+    bb, _run, rec = recorder(tmp_path)
+    key = "AKIA" + "ABCDEFGHIJKLMNOP"
+    command = "echo " + "x" * 245 + " " + key  # the key begins before char 256 and ends after
+    rec.run_command(command)
+    started = attrs_of(events_of(bb), "shell.command.started")[0]["shell.command"]
+    assert "AKIA" not in started and len(started) <= 256
+
+
+def test_artifact_names_are_fixed_or_redacted(tmp_path: Path, server: ArtifactServer) -> None:  # noqa: F811
+    bb = BlackBox(
+        api_key="abb_live_k.secret", endpoint=server.url, project="d",
+        payload_mode=PayloadMode.FULL, mode="http", wait=lambda _s: True,
+    )  # fmt: skip
+    with bb.run("r") as run:
+        rec = CodingRecorder(bb, run, tmp_path)
+        rec.run_command("echo AKIAABCDEFGHIJKLMNOP; echo oops >&2")
+        (tmp_path / "AKIAABCDEFGHIJKLMNOP.txt").write_text("x\n")
+        rec.write_file("AKIAABCDEFGHIJKLMNOP.txt", "y\n")
+    assert bb.flush(5)
+    names = [p.query.get("name", [""])[0] for p in server.received]
+    assert set(names) >= {"stdout", "stderr"} and len(names) == 3
+    assert all("AKIAABCDEFGHIJKLMNOP" not in n and "echo" not in n for n in names)
+    bb.shutdown()
+
+
+def test_the_sdk_redacts_an_artifact_name_itself(server: ArtifactServer) -> None:  # noqa: F811
+    bb = BlackBox(
+        api_key="abb_live_k.secret", endpoint=server.url, project="d",
+        payload_mode=PayloadMode.FULL, wait=lambda _s: True,
+    )  # fmt: skip
+    with bb.run("r"):
+        bb.upload_artifact("x", name="curl -u admin:hunter22xx AKIAABCDEFGHIJKLMNOP")
+    assert bb.flush(5)
+    name = server.received[0].query["name"][0]
+    assert "hunter22xx" not in name and "AKIAABCDEFGHIJKLMNOP" not in name
+    bb.shutdown()
+
+
+SECRET_ENV = "DB_PASSWORD=sup3r-s3cret-pw\nAPI_TOKEN=tok_zz_unknown_shape_1\n"
+
+
+def git_repo_with_env(root: Path) -> None:
+    for args in (
+        ["init", "-b", "main"], ["config", "user.name", "t"], ["config", "user.email", "t@e.x"],
+        ["config", "commit.gpgsign", "false"],
+    ):  # fmt: skip
+        _git(root, *args)
+    (root / ".env").write_text("A=1\n")
+    (root / "app").mkdir()
+    (root / "app" / ".env.local").write_text("B=1\n")
+    (root / "a.py").write_text("x = 1\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-m", "init")
+    (root / ".env").write_text(SECRET_ENV)
+    (root / "app" / ".env.local").write_text(SECRET_ENV)
+    (root / "a.py").write_text("x = 2\n")
+
+
+def test_git_diff_never_includes_the_diff_of_a_tracked_env_file(tmp_path: Path) -> None:
+    git_repo_with_env(tmp_path)
+    bb, _run, rec = recorder(tmp_path)
+    diff = rec.git_diff()
+    assert "x = 2" in diff  # other files still show
+    assert "sup3r-s3cret-pw" not in diff and "tok_zz_unknown_shape_1" not in diff
+    ev = attrs_of(events_of(bb), "git.diff")[0]
+    assert ev["git.changed_files"] == 1  # the secret files are not even counted
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["git diff", "git diff HEAD", "git show --stat -p HEAD", "git stash show -p"],
+)
+def test_generic_git_commands_strip_sensitive_hunks(tmp_path: Path, command: str) -> None:
+    git_repo_with_env(tmp_path)
+    _git(tmp_path, "stash", "push", "-m", "wip")
+    (tmp_path / ".env").write_text(SECRET_ENV)
+    bb, _run, rec = recorder(tmp_path)
+    result = rec.run_command(command)
+    assert "sup3r-s3cret-pw" not in result.output and "tok_zz_unknown_shape_1" not in result.output
+    assert "sup3r-s3cret-pw" not in repr(events_of(bb))
+
+
+def test_commands_naming_a_secret_file_are_withheld_entirely(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(SECRET_ENV)
+    bb, _run, rec = recorder(tmp_path)
+    for command in ("cat .env", "head -n 5 ./.env", "grep -r . app/../.env"):
+        result = rec.run_command(command)
+        assert "sup3r-s3cret-pw" not in result.output and "withheld" in result.output
+    done = attrs_of(events_of(bb), "shell.command.completed")
+    assert all(d["shell.output_withheld"] == "sensitive_path" for d in done)
+    assert not any("shell.stdout_artifact" in d for d in done)
+
+
+def test_stdout_with_an_unknown_secret_in_a_normal_file_is_still_masked_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SERVICE_COOKIE", "abc123")  # short, but the name is clearly secret-ish
+    monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h/db")
+    monkeypatch.setenv("TINY_PASSWORD", "pw1234")
+    values = secret_env_values()
+    assert "pw1234" in values and "postgres://u:p@h/db" in values
+    assert "abc123" not in values  # COOKIE is not a clearly-secret name: needs 8 characters
+
+
+def test_read_file_redacts_for_the_model_but_edits_use_the_real_content(tmp_path: Path) -> None:
+    bb, _run, rec = recorder(tmp_path)
+    (tmp_path / "cfg.py").write_text(
+        "KEY = 'x'\nAWS_SECRET_ACCESS_KEY = 'wJalrXUtnFEMIK7MDENGbPxRfiCY'\n"
+    )
+    assert "wJalrXUtnFEMIK7MDENGbPxRfiCY" not in rec.read_file("cfg.py")
+    assert "wJalrXUtnFEMIK7MDENGbPxRfiCY" in rec.read_file("cfg.py", None, redact=False)
+    assert bb is not None
+
+
+def test_diffs_are_masked_for_env_values_and_ansi_split_tokens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MY_SERVICE_TOKEN", "unknown-shape-tok-4242")
+    bb = BlackBox(mode="offline", project="d", payload_mode=PayloadMode.FULL)
+    with bb.run("r") as run:
+        rec = CodingRecorder(bb, run, tmp_path)
+        assert "unknown-shape-tok-4242" not in rec.sanitize("x unknown-shape-tok-4242 y")
+        assert "a" * 36 not in rec.sanitize("ghp_\x1b[0m" + "a" * 36)
+        assert rec.sanitize("\x1b[31mred\x1b[0m") == "red"
+
+
+def test_write_file_keeps_the_mode_and_new_files_are_not_private(tmp_path: Path) -> None:
+    _bb, _run, rec = recorder(tmp_path)
+    script = tmp_path / "run.sh"
+    script.write_text("echo 1\n")
+    script.chmod(0o755)
+    rec.write_file("run.sh", "echo 2\n")
+    assert script.stat().st_mode & 0o777 == 0o755
+    rec.write_file("new.txt", "x\n")
+    assert (tmp_path / "new.txt").stat().st_mode & 0o777 == 0o644
+
+
+@pytest.mark.parametrize("bad", ["--force", "-D", "a b", "a..b", "x;rm", "", "-", "a/", "x.lock"])
+def test_flag_like_or_malformed_git_names_are_refused(tmp_path: Path, bad: str) -> None:
+    _bb, _run, rec = recorder(tmp_path)
+    with pytest.raises(ValueError):
+        rec.git_branch(bad)
+    with pytest.raises(ValueError):
+        rec.git_push("origin", bad)
+    with pytest.raises(ValueError):
+        rec.git_push(bad, "main")
+
+
+def test_the_child_has_no_home_and_no_other_inherited_variables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", "/home/someone")
+    monkeypatch.setenv("SOME_OTHER", "value")
+    _bb, _run, rec = recorder(tmp_path)
+    out = rec.run_command(f'{sys.executable} -c "import os;print(sorted(os.environ))"').stdout
+    assert "HOME" not in out and "SOME_OTHER" not in out

@@ -14,6 +14,7 @@ import os
 import re
 import shlex
 import signal
+import stat
 import subprocess
 import tempfile
 import threading
@@ -350,8 +351,16 @@ def parse_test_output(output: str) -> TestSummary | None:
 
 # -- secret-safe capture (ADR-031) -------------------------------------------------------------
 
-_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|PRIVATE", re.I)
-SAFE_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TZ", "USER", "LOGNAME")
+_SECRET_NAME = re.compile(
+    r"KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|PRIVATE|AUTH|DSN|COOKIE|SESSION"
+    r"|DATABASE_URL|CONNECTION_STRING|SIGNATURE",
+    re.I,
+)
+_CLEARLY_SECRET = re.compile(r"PASSWORD|PASSWD|SECRET|TOKEN|PASSPHRASE|PRIVATE", re.I)
+# No HOME: a recorded command must not find the user's dotfiles, credentials or tool configs there.
+SAFE_ENV = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TZ", "USER", "LOGNAME")
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+_REF = re.compile(r"^[A-Za-z0-9._/][A-Za-z0-9._/@+-]{0,199}$")
 _SENSITIVE_PATHS = (
     ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_ed25519*", ".npmrc",
     ".netrc", "credentials*", "*.keystore", ".pypirc", "secrets.*",
@@ -361,9 +370,16 @@ _SENSITIVE_PATHS = (
 def secret_env_values(
     environ: Mapping[str, str] | None = None, extra: tuple[str, ...] = (), min_len: int = 8
 ) -> tuple[str, ...]:
-    """Values of secret-looking environment variables (longest first), for exact masking."""
+    """Values of secret-looking environment variables (longest first), for exact masking.
+
+    Values of names that are clearly secrets are masked from 6 characters; others from `min_len`.
+    """
     source = os.environ if environ is None else environ
-    values = {v for k, v in source.items() if _SECRET_NAME.search(k) and len(v) >= min_len}
+    values = {
+        v
+        for k, v in source.items()
+        if _SECRET_NAME.search(k) and len(v) >= (6 if _CLEARLY_SECRET.search(k) else min_len)
+    }
     values.update(v for v in extra if isinstance(v, str) and len(v) >= min_len)
     return tuple(sorted(values, key=len, reverse=True))
 
@@ -387,6 +403,51 @@ def safe_environment(extra: Mapping[str, str] | None = None) -> dict[str, str]:
 def is_sensitive_path(path: str) -> bool:
     name = os.path.basename(path)
     return any(fnmatch.fnmatch(name, pattern) for pattern in _SENSITIVE_PATHS)
+
+
+def touches_sensitive_path(command: str) -> bool:
+    """Does any word of the command name a file that holds secrets (`cat .env`, `less ~/.npmrc`)?"""
+    try:
+        words = shlex.split(command.replace("\n", " "))
+    except ValueError:
+        words = command.split()
+    return any(
+        is_sensitive_path(w.strip("'\""))
+        for w in words
+        if ("/" in w or "." in w) and not w.startswith(":(exclude")  # our own pathspec excludes
+    )
+
+
+_DIFF_HEAD = re.compile(r"^diff --git a/(.+?) b/(.+)$", re.M)
+
+
+def withhold_sensitive_hunks(text: str) -> str:
+    """Replace the body of every per-file section of a git diff whose path holds secrets."""
+    if "diff --git " not in text:
+        return text
+    heads = list(_DIFF_HEAD.finditer(text))
+    out, last = [], 0
+    for i, m in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+        out.append(text[last : m.start()])
+        if is_sensitive_path(m.group(2)) or is_sensitive_path(m.group(1)):
+            out.append(f"{m.group(0)}\n[content withheld: sensitive path]\n")
+        else:
+            out.append(text[m.start() : end])
+        last = end
+    out.append(text[last:])
+    return "".join(out)
+
+
+def _git_excludes() -> list[str]:
+    """Pathspecs that keep secret-holding files out of a git command's output (any directory)."""
+    return [f":(exclude,glob)**/{pattern}" for pattern in _SENSITIVE_PATHS]
+
+
+def _valid_ref(value: str, what: str) -> str:
+    if not _REF.fullmatch(value) or ".." in value or value.endswith((".lock", "/")):
+        raise ValueError(f"unsafe {what}: {value!r}")
+    return value
 
 
 _LANGUAGES = {
@@ -486,11 +547,16 @@ class CodingRecorder:
         return full.relative_to(self.root).as_posix() if full != self.root else "."
 
     def sanitize(self, text: str) -> str:
-        return self.bb.redact_text(mask_values(text, self._secrets))
+        """Everything that leaves the recorder passes here: ANSI off, env values masked."""
+        return self.bb.redact_text(mask_values(_ANSI.sub("", text), self._secrets))
 
     # -- files -------------------------------------------------------------------------------------
 
-    def read_file(self, path: str, max_bytes: int = 256 * 1024) -> str:
+    def read_file(
+        self, path: str, max_bytes: int | None = 256 * 1024, *, redact: bool = True
+    ) -> str:
+        """Read a file for the agent. The text is redacted by default (the model must not see
+        secrets either); pass `redact=False` and `max_bytes=None` only to edit the real content."""
         full = self.resolve(path)
         data = full.read_bytes()
         self.run.event(
@@ -500,7 +566,8 @@ class CodingRecorder:
                 "file.hash_after": _sha(data), **self._lang(path),
             },
         )  # fmt: skip
-        return data[:max_bytes].decode("utf-8", errors="replace")
+        text = (data if max_bytes is None else data[:max_bytes]).decode("utf-8", errors="replace")
+        return self.sanitize(text) if redact else text
 
     @staticmethod
     def _lang(path: str) -> dict[str, str]:
@@ -516,9 +583,11 @@ class CodingRecorder:
         if old == new:
             return False
         full.parent.mkdir(parents=True, exist_ok=True)
+        mode = stat.S_IMODE(full.stat().st_mode) if old is not None else 0o644
         fd, tmp = tempfile.mkstemp(dir=full.parent, prefix=".abb-")
         with os.fdopen(fd, "wb") as handle:
             handle.write(new)
+        os.chmod(tmp, mode)  # mkstemp creates 0600; keep the file's own mode (executables stay so)
         os.replace(tmp, full)
         attrs: dict[str, object] = {
             "file.path": rel, "file.operation": "created" if old is None else "modified",
@@ -555,10 +624,12 @@ class CodingRecorder:
         if size > MAX_DIFF_BYTES:
             attrs["diff.withheld"] = "too_large"
             return
-        diff = _diff_text(rel, before, after)
+        diff = self.sanitize(_diff_text(rel, before, after))
         added, removed = _count_changes(diff)
         attrs["file.lines_added"], attrs["file.lines_removed"] = added, removed
-        artifact = self.bb.upload_artifact(diff, kind="diff", name=rel, run=self.run)
+        artifact = self.bb.upload_artifact(
+            diff, kind="diff", name=self.sanitize(rel)[:120], run=self.run
+        )
         if artifact:
             attrs["diff.artifact"] = f"artifact://{artifact}"
 
@@ -586,8 +657,11 @@ class CodingRecorder:
         work = self.resolve(cwd)
         label = self.root_label + ("" if work == self.root else "/" + self.rel(work))
         verdict = self.classify(command)
+        # Sanitize BEFORE cutting to the attribute length: a cut must not leave a secret's prefix.
+        shown = self.sanitize(command)
+        label = self.sanitize(label)
         span = self.run.span(
-            command, kind="shell",
+            shown, kind="shell",
             attributes={
                 "shell.cwd": label, "shell.risk_class": verdict.risk_class,
                 "shell.category": verdict.category,
@@ -598,7 +672,11 @@ class CodingRecorder:
         started = time.monotonic()
         code, out, err, total_out, total_err, timed_out = self._execute(command, work, limit, env)
         duration = (time.monotonic() - started) * 1000
-        stdout, stderr = self.sanitize(out), self.sanitize(err)
+        withheld = touches_sensitive_path(command)
+        if withheld:  # `cat .env`: neither the record nor the agent gets the content
+            out = err = "[output withheld: the command touches a path that holds secrets]\n"
+        stdout = self.sanitize(withhold_sensitive_hunks(out))
+        stderr = self.sanitize(withhold_sensitive_hunks(err))
         summary = parse_test_output(stdout + "\n" + stderr)
         attrs: dict[str, object] = {
             "shell.cwd": label,
@@ -608,17 +686,17 @@ class CodingRecorder:
             "shell.stdout_bytes": total_out, "shell.stderr_bytes": total_err,
             "shell.output_truncated": total_out > self._limit or total_err > self._limit,
         }  # fmt: skip
+        if withheld:
+            attrs["shell.output_withheld"] = "sensitive_path"
         for stream, text, size in (("stdout", stdout, total_out), ("stderr", stderr, total_err)):
-            if size:
-                artifact = self.bb.upload_artifact(
-                    text, kind=stream, name=command[:120], run=self.run
-                )
+            if size and not withheld:
+                artifact = self.bb.upload_artifact(text, kind=stream, name=stream, run=self.run)
                 if artifact:
                     attrs[f"shell.{stream}_artifact"] = f"artifact://{artifact}"
         if summary is not None:
             attrs.update(
                 {
-                    "test.framework": summary.framework, "test.suite": cwd,
+                    "test.framework": summary.framework, "test.suite": self.sanitize(cwd)[:200],
                     "test.total": summary.total, "test.passed": summary.passed,
                     "test.failed": summary.failed, "test.skipped": summary.skipped,
                     "test.failing": list(summary.failing),
@@ -628,10 +706,10 @@ class CodingRecorder:
         if timed_out:
             self.run.event(
                 "timeout.occurred",
-                {"timeout.operation": command[:200], "timeout.limit_ms": limit * 1000},
+                {"timeout.operation": shown[:200], "timeout.limit_ms": limit * 1000},
             )
         span.end("success" if code == 0 else "error")
-        return CommandResult(command, code, stdout, stderr, duration, verdict, timed_out, summary)
+        return CommandResult(shown, code, stdout, stderr, duration, verdict, timed_out, summary)
 
     def _execute(
         self, command: str, cwd: Path, timeout: float, extra_env: Mapping[str, str] | None
@@ -702,6 +780,7 @@ class CodingRecorder:
         return done.stdout.strip() if done.returncode == 0 else ""
 
     def git_branch(self, name: str) -> CommandResult:
+        _valid_ref(name, "branch name")  # a flag-like value must never reach git
         base = self._head()
         result = self._git("checkout", "-b", name)
         if result.ok:
@@ -712,15 +791,15 @@ class CodingRecorder:
         return result
 
     def git_diff(self) -> str:
-        """The working-tree diff; recorded as a git.diff event with a diff artifact."""
-        result = self._git("diff", "--no-color")
+        """The working-tree diff, without files that hold secrets; recorded as a git.diff event."""
+        result = self._git("diff", "--no-color", "--", ".", *_git_excludes())
         names = self._quiet("git diff --name-only")
-        files = [n for n in names.splitlines() if n]
+        files = [n for n in names.splitlines() if n and not is_sensitive_path(n)]
         attrs: dict[str, object] = {
             "git.changed_files": len(files),
             "git.diff_stat_files": len(files),
         }
-        if result.stdout:
+        if result.stdout:  # already sanitized and hunk-filtered by run_command
             artifact = self.bb.upload_artifact(
                 result.stdout, kind="diff", name="git diff", run=self.run
             )
@@ -734,7 +813,11 @@ class CodingRecorder:
         result = self._git("commit", "-m", message)
         if result.ok:
             head = self._head()
-            files = [n for n in self._quiet("git show --name-only --format=").splitlines() if n]
+            files = [
+                n
+                for n in self._quiet("git show --name-only --format=").splitlines()
+                if n and not is_sensitive_path(n)
+            ]
             attrs: dict[str, object] = {"git.changed_files": len(files)}
             if head:
                 attrs["git.commit_hash"] = attrs["git.head_commit"] = head
@@ -745,6 +828,8 @@ class CodingRecorder:
         return result
 
     def git_push(self, remote: str, branch: str) -> CommandResult:
+        _valid_ref(remote, "remote name")
+        _valid_ref(branch, "branch name")
         result = self._git("push", "-u", remote, branch)
         if result.ok:
             self.run.event(

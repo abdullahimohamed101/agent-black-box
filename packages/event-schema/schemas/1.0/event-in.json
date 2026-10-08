@@ -1094,6 +1094,10 @@
         "shell.output_truncated": {
           "type": "boolean"
         },
+        "shell.output_withheld": {
+          "maxLength": 4096,
+          "type": "string"
+        },
         "shell.risk_class": {
           "maxLength": 4096,
           "type": "string"
