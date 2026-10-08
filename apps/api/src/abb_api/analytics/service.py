@@ -21,8 +21,18 @@ def _invalid(message: str) -> AppError:
     return AppError("INVALID_WINDOW", message, category=ErrorCategory.VALIDATION, status_code=422)
 
 
+MIN_YEAR, MAX_YEAR = 2000, 2100
+
+
 def _utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    """UTC time within the supported years; anything else (or an overflow) is a 422, never a 500."""
+    try:
+        moment = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    except OverflowError:
+        raise _invalid(f"Times must be between the years {MIN_YEAR} and {MAX_YEAR}.") from None
+    if not MIN_YEAR <= moment.year <= MAX_YEAR:
+        raise _invalid(f"Times must be between the years {MIN_YEAR} and {MAX_YEAR}.")
+    return moment
 
 
 class AnalyticsService:

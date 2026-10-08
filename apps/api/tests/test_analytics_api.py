@@ -248,3 +248,21 @@ async def test_a_slow_query_is_cut_off_and_reported_as_retryable(seeded: Api) ->
     with pytest.raises(AppError) as caught:
         await store._read(scope, sleepy)
     assert caught.value.code == analytics_timeout().code and caught.value.status_code == 503
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"to": "9999-12-31T23:59:59Z"},
+        {"from": "0001-01-01T00:00:00+14:00", "to": "2026-10-07T00:00:00Z"},
+        {"from": "0001-01-01T00:00:00Z", "to": "0001-01-02T00:00:00Z"},
+        {"from": "1999-12-31T00:00:00Z", "to": "2000-01-02T00:00:00Z"},
+        {"from": "2100-12-31T00:00:00Z", "to": "2101-01-02T00:00:00Z"},
+        {"from": "2026-10-01T00:00:00-14:00", "to": "9999-12-31T23:59:59.999999-14:00"},
+    ],
+)
+async def test_extreme_windows_are_a_422_not_a_500(seeded: Api, params: dict[str, str]) -> None:
+    for kind in ("summary", "cost", "reliability", "performance"):
+        response = await seeded.get(f"/v1/analytics/{kind}", **params)
+        assert response.status_code == 422, (kind, params, response.text[:200])
+        assert response.json()["error"]["code"] in ("INVALID_WINDOW", "REQUEST_INVALID")
