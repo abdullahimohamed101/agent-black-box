@@ -607,3 +607,11 @@ h3 {
 .column-fill[data-tone="bad"] {
   background: var(--bad, #b3261e);
 }
+
+/* Figures shown while the next window or project is loading are dimmed and announced. */
+[data-stale="true"] > :not(.updating) {
+  opacity: 0.55;
+}
+.updating {
+  margin: 0.25rem 0;
+}

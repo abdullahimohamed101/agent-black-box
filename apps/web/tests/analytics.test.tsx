@@ -80,6 +80,30 @@ describe("Analytics page", () => {
   });
 });
 
+describe("stale figures are marked while the next window loads", () => {
+  it("dims the sections and says Updating until the new window arrives", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const calls = stubApi();
+    renderWithQuery(<Analytics base={BASE} />);
+    await screen.findByText(/of cost came from retries/);
+    // make the next cost request wait, then switch the window
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: Request | string) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("/analytics/cost")) await gate;
+      return original(input as Request);
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Last 30 days" }));
+    const cost = screen.getByRole("region", { name: "Cost" });
+    await waitFor(() => expect(cost.querySelector("[aria-busy='true']")).not.toBeNull());
+    expect(within(cost).getByText("Updating…")).toBeInTheDocument();
+    release();
+    await waitFor(() => expect(cost.querySelector("[aria-busy='true']")).toBeNull());
+    expect(calls.length).toBeGreaterThan(0);
+  });
+});
+
 describe("charts render telemetry as text", () => {
   const hostile = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
   it("bar labels and values are text nodes, never markup", () => {

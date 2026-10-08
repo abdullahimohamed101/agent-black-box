@@ -57,8 +57,14 @@ export function Dashboard({ base }: { base: Base }) {
     );
   }
   const failures = failed.data?.pages[0]?.items ?? [];
+  const stale = stats.isPlaceholderData;
   return (
-    <>
+    <div aria-busy={stale ? "true" : undefined} data-stale={stale ? "true" : undefined}>
+      {stale && (
+        <p role="status" className="muted updating">
+          Updating…
+        </p>
+      )}
       <h1>Dashboard</h1>
       <p className="muted">
         All {d.runs.total.toLocaleString("en-US")} runs started in the last {DAYS} days.{" "}
@@ -111,6 +117,6 @@ export function Dashboard({ base }: { base: Base }) {
           <Link href={runsPath(base)}>All runs →</Link>
         </p>
       </section>
-    </>
+    </div>
   );
 }

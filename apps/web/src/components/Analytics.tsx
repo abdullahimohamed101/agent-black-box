@@ -26,7 +26,12 @@ function Section({
 }: {
   id: string;
   title: string;
-  query: { isPending: boolean; error: unknown; refetch: () => unknown };
+  query: {
+    isPending: boolean;
+    isPlaceholderData?: boolean;
+    error: unknown;
+    refetch: () => unknown;
+  };
   children: React.ReactNode;
 }) {
   return (
@@ -37,7 +42,17 @@ function Section({
       ) : query.error ? (
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />
       ) : (
-        children
+        <div
+          aria-busy={query.isPlaceholderData ? "true" : undefined}
+          data-stale={query.isPlaceholderData ? "true" : undefined}
+        >
+          {query.isPlaceholderData && (
+            <p role="status" className="muted updating">
+              Updating…
+            </p>
+          )}
+          {children}
+        </div>
       )}
     </section>
   );
@@ -212,6 +227,10 @@ export function Analytics({ base }: { base: Base }) {
                 }))}
               />
               <h3>Cost from retries</h3>
+              <p className="muted">
+                Estimated: every model call made after a retry of the same operation counts as retry
+                cost.
+              </p>
               {c.retries.retry_usd > 0 ? (
                 <>
                   <p>
