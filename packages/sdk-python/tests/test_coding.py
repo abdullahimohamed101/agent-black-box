@@ -12,12 +12,12 @@ from blackbox.coding import (
     Classification,
     CodingRecorder,
     classify_command,
-    is_sensitive_path,
     mask_values,
     parse_test_output,
     safe_environment,
     secret_env_values,
 )
+from blackbox.secretscan import is_sensitive_path
 from tests.helpers import events_of, types_of
 from tests.test_artifacts import ArtifactServer, server  # noqa: F401  (fixture)
 
@@ -590,7 +590,7 @@ def test_commands_naming_a_secret_file_are_withheld_entirely(tmp_path: Path) -> 
         result = rec.run_command(command)
         assert "sup3r-s3cret-pw" not in result.output and "withheld" in result.output
     done = attrs_of(events_of(bb), "shell.command.completed")
-    assert all(d["shell.output_withheld"] == "sensitive_path" for d in done)
+    assert all(d["shell.output_withheld"] == "may_reach_secrets" for d in done)
     assert not any("shell.stdout_artifact" in d for d in done)
 
 

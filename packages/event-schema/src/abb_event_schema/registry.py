@@ -104,7 +104,7 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     "shell.stdout_bytes": AttrSpec(AttrType.INTEGER, 0),
     "shell.stderr_bytes": AttrSpec(AttrType.INTEGER, 0),
     "shell.output_truncated": AttrSpec(AttrType.BOOLEAN),
-    "shell.output_withheld": AttrSpec(AttrType.STRING),  # sensitive_path
+    "shell.output_withheld": AttrSpec(AttrType.STRING),  # may_reach_secrets
     "test.framework": AttrSpec(AttrType.STRING),
     "test.suite": AttrSpec(AttrType.STRING),
     "test.total": AttrSpec(AttrType.INTEGER, 0),

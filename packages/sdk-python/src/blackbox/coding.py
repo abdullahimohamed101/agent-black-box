@@ -25,6 +25,14 @@ from pathlib import Path
 from typing import IO
 
 from blackbox.client import BlackBox, Run
+from blackbox.secretscan import (
+    SecretFiles,
+    command_may_reach_secrets,
+    git_excludes,
+    is_sensitive_path,
+    strip_ansi,
+    withhold_sensitive_hunks,
+)
 
 # -- command risk classification (spec §27, §83) -----------------------------------------------
 
@@ -519,18 +527,15 @@ def parse_test_output(output: str) -> TestSummary | None:
 
 _SECRET_NAME = re.compile(
     r"KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|PRIVATE|AUTH|DSN|COOKIE|SESSION"
-    r"|DATABASE_URL|CONNECTION_STRING|SIGNATURE",
+    r"|DATABASE_URL|CONNECTION_STRING|SIGNATURE|(?:^|_)(?:PAT|PASS|PWD)(?:_|$)",
     re.I,
 )
-_CLEARLY_SECRET = re.compile(r"PASSWORD|PASSWD|SECRET|TOKEN|PASSPHRASE|PRIVATE", re.I)
+_CLEARLY_SECRET = re.compile(
+    r"PASSWORD|PASSWD|SECRET|TOKEN|PASSPHRASE|PRIVATE|(?:^|_)(?:PAT|PASS|PWD)(?:_|$)", re.I
+)
 # No HOME: a recorded command must not find the user's dotfiles, credentials or tool configs there.
 SAFE_ENV = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TZ", "USER", "LOGNAME")
-_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 _REF = re.compile(r"^[A-Za-z0-9._/][A-Za-z0-9._/@+-]{0,199}$")
-_SENSITIVE_PATHS = (
-    ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_ed25519*", ".npmrc",
-    ".netrc", "credentials*", "*.keystore", ".pypirc", "secrets.*",
-)  # fmt: skip
 
 
 def secret_env_values(
@@ -550,10 +555,10 @@ def secret_env_values(
     return tuple(sorted(values, key=len, reverse=True))
 
 
-def mask_values(text: str, values: tuple[str, ...]) -> str:
+def mask_values(text: str, values: tuple[str, ...], marker: str = "[REDACTED:env]") -> str:
     for value in values:
         if value in text:
-            text = text.replace(value, "[REDACTED:env]")
+            text = text.replace(value, marker)
     return text
 
 
@@ -564,50 +569,6 @@ def safe_environment(extra: Mapping[str, str] | None = None) -> dict[str, str]:
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env.update(extra or {})
     return env
-
-
-def is_sensitive_path(path: str) -> bool:
-    name = os.path.basename(path)
-    return any(fnmatch.fnmatch(name, pattern) for pattern in _SENSITIVE_PATHS)
-
-
-def touches_sensitive_path(command: str) -> bool:
-    """Does any word of the command name a file that holds secrets (`cat .env`, `less ~/.npmrc`)?"""
-    try:
-        words = shlex.split(command.replace("\n", " "))
-    except ValueError:
-        words = command.split()
-    return any(
-        is_sensitive_path(w.strip("'\""))
-        for w in words
-        if ("/" in w or "." in w) and not w.startswith(":(exclude")  # our own pathspec excludes
-    )
-
-
-_DIFF_HEAD = re.compile(r"^diff --git a/(.+?) b/(.+)$", re.M)
-
-
-def withhold_sensitive_hunks(text: str) -> str:
-    """Replace the body of every per-file section of a git diff whose path holds secrets."""
-    if "diff --git " not in text:
-        return text
-    heads = list(_DIFF_HEAD.finditer(text))
-    out, last = [], 0
-    for i, m in enumerate(heads):
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        out.append(text[last : m.start()])
-        if is_sensitive_path(m.group(2)) or is_sensitive_path(m.group(1)):
-            out.append(f"{m.group(0)}\n[content withheld: sensitive path]\n")
-        else:
-            out.append(text[m.start() : end])
-        last = end
-    out.append(text[last:])
-    return "".join(out)
-
-
-def _git_excludes() -> list[str]:
-    """Pathspecs that keep secret-holding files out of a git command's output (any directory)."""
-    return [f":(exclude,glob)**/{pattern}" for pattern in _SENSITIVE_PATHS]
 
 
 def _valid_ref(value: str, what: str) -> str:
@@ -675,6 +636,13 @@ def _count_changes(diff: str) -> tuple[int, int]:
 
 
 MAX_DIFF_BYTES = 1024 * 1024
+CUT_SLACK = 16 * 1024  # captured past the limit so redaction sees a whole secret before the cut
+
+
+def _cut(text: str, limit: int) -> str:
+    """At most `limit` bytes of text, never splitting a character."""
+    raw = text.encode("utf-8")
+    return text if len(raw) <= limit else raw[:limit].decode("utf-8", errors="ignore")
 
 
 class CodingRecorder:
@@ -699,6 +667,18 @@ class CodingRecorder:
         self._timeout = timeout
         extra = (bb.config.api_key,) if bb.config.api_key else ()
         self._secrets = secret_env_values(extra=extra)
+        self._files = SecretFiles(self.root)
+        self._file_secrets: tuple[str, ...] = ()
+        self.refresh_secrets()
+
+    def refresh_secrets(self) -> None:
+        """Learn the secret values in the workspace's sensitive files (cheap: cached by size and mtime)."""
+        try:
+            self._file_secrets = self._files.refresh()
+        except (
+            Exception
+        ):  # scanning must never break the agent (INV-4); masking just uses what it had
+            self.bb.stats_.add("internal_errors")
 
     # -- paths and text ----------------------------------------------------------------------------
 
@@ -713,8 +693,10 @@ class CodingRecorder:
         return full.relative_to(self.root).as_posix() if full != self.root else "."
 
     def sanitize(self, text: str) -> str:
-        """Everything that leaves the recorder passes here: ANSI off, env values masked."""
-        return self.bb.redact_text(mask_values(_ANSI.sub("", text), self._secrets))
+        """Everything that leaves the recorder passes here: ANSI off, secret values masked, redacted."""
+        text = mask_values(strip_ansi(text), self._secrets)
+        text = mask_values(text, self._file_secrets, "[REDACTED:file]")
+        return self.bb.redact_text(text)
 
     # -- files -------------------------------------------------------------------------------------
 
@@ -732,8 +714,13 @@ class CodingRecorder:
                 "file.hash_after": _sha(data), **self._lang(path),
             },
         )  # fmt: skip
-        text = (data if max_bytes is None else data[:max_bytes]).decode("utf-8", errors="replace")
-        return self.sanitize(text) if redact else text
+        # Redact the whole text first and cut afterwards, so a secret straddling the cut leaves no prefix.
+        raw = data if max_bytes is None else data[: max_bytes + CUT_SLACK]
+        text = raw.decode("utf-8", errors="replace")
+        if redact:
+            self.refresh_secrets()
+            text = self.sanitize(text)
+        return text if max_bytes is None else _cut(text, max_bytes)
 
     @staticmethod
     def _lang(path: str) -> dict[str, str]:
@@ -790,6 +777,7 @@ class CodingRecorder:
         if size > MAX_DIFF_BYTES:
             attrs["diff.withheld"] = "too_large"
             return
+        self.refresh_secrets()
         diff = self.sanitize(_diff_text(rel, before, after))
         added, removed = _count_changes(diff)
         attrs["file.lines_added"], attrs["file.lines_removed"] = added, removed
@@ -821,6 +809,8 @@ class CodingRecorder:
     ) -> CommandResult:
         """Run a shell command with a minimal environment; record it; return sanitized output."""
         work = self.resolve(cwd)
+        self.refresh_secrets()
+        known_before = list(self._files.paths)
         label = self.root_label + ("" if work == self.root else "/" + self.rel(work))
         verdict = self.classify(command)
         # Sanitize BEFORE cutting to the attribute length: a cut must not leave a secret's prefix.
@@ -838,11 +828,17 @@ class CodingRecorder:
         started = time.monotonic()
         code, out, err, total_out, total_err, timed_out = self._execute(command, work, limit, env)
         duration = (time.monotonic() - started) * 1000
-        withheld = touches_sensitive_path(command)
-        if withheld:  # `cat .env`: neither the record nor the agent gets the content
-            out = err = "[output withheld: the command touches a path that holds secrets]\n"
-        stdout = self.sanitize(withhold_sensitive_hunks(out))
-        stderr = self.sanitize(withhold_sensitive_hunks(err))
+        self.refresh_secrets()  # the command may have written a secret file
+        cwd_rel = self.rel(work)
+        withheld = command_may_reach_secrets(
+            command, sorted(set(known_before) | set(self._files.paths)), cwd_rel
+        )
+        if (
+            withheld
+        ):  # `cat .env`, `bash -c`, `grep -r`: neither the record nor the agent gets the output
+            out = err = "[output withheld: the command may print a file that holds secrets]\n"
+        stdout = _cut(self.sanitize(withhold_sensitive_hunks(out)), self._limit)
+        stderr = _cut(self.sanitize(withhold_sensitive_hunks(err)), self._limit)
         summary = parse_test_output(stdout + "\n" + stderr)
         attrs: dict[str, object] = {
             "shell.cwd": label,
@@ -853,7 +849,7 @@ class CodingRecorder:
             "shell.output_truncated": total_out > self._limit or total_err > self._limit,
         }  # fmt: skip
         if withheld:
-            attrs["shell.output_withheld"] = "sensitive_path"
+            attrs["shell.output_withheld"] = "may_reach_secrets"
         for stream, text, size in (("stdout", stdout, total_out), ("stderr", stderr, total_err)):
             if size and not withheld:
                 artifact = self.bb.upload_artifact(text, kind=stream, name=stream, run=self.run)
@@ -898,7 +894,7 @@ class CodingRecorder:
                 if not chunk:
                     return
                 totals[key] += len(chunk)
-                room = self._limit - len(kept[key])
+                room = self._limit + CUT_SLACK - len(kept[key])
                 if room > 0:
                     kept[key].extend(chunk[:room])
 
@@ -958,7 +954,7 @@ class CodingRecorder:
 
     def git_diff(self) -> str:
         """The working-tree diff, without files that hold secrets; recorded as a git.diff event."""
-        result = self._git("diff", "--no-color", "--", ".", *_git_excludes())
+        result = self._git("diff", "--no-color", "--", ".", *git_excludes())
         names = self._quiet("git diff --name-only")
         files = [n for n in names.splitlines() if n and not is_sensitive_path(n)]
         attrs: dict[str, object] = {
