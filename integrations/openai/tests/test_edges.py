@@ -118,3 +118,53 @@ def test_disabled_client_is_a_pass_through() -> None:
     with bb.run("r"):
         assert instrument(fake_client(), bb).chat.completions.create(model="m") is not None
     assert bb.buffered_events() == []
+
+
+def test_with_options_and_copy_keep_the_instrumentation() -> None:
+    def make_client(bb: BlackBox) -> Any:
+        base = fake_client()
+
+        def derive(**kwargs: Any) -> Any:
+            return fake_client()  # the real SDK returns a fresh, untraced client
+
+        base.with_options = derive
+        base.copy = derive
+        return instrument(base, bb)
+
+    def drive(bb: BlackBox) -> None:
+        with bb.run("r"):
+            client = make_client(bb)
+            client.with_options(timeout=5).chat.completions.create(model="m")
+            client.copy().responses.create(model="m")
+
+    assert len(of(capture(drive), "llm.request.completed")) == 2
+
+
+def test_raw_response_variants_read_usage_without_consuming_the_parse() -> None:
+    from tests.fakes import chat_usage
+
+    class Raw:
+        def __init__(self) -> None:
+            self.parses = 0
+            self.parsed = SimpleNamespace(usage=chat_usage())
+
+        def parse(self) -> Any:
+            self.parses += 1
+            return self.parsed
+
+    raw = Raw()
+    fake = fake_client()
+    fake.chat.completions.with_raw_response = SimpleNamespace(create=lambda **kw: raw)
+
+    def drive(bb: BlackBox) -> None:
+        with bb.run("r"):
+            client = instrument(fake, bb)
+            assert client.chat.completions.with_raw_response.create(model="m") is raw
+            streamed = client.chat.completions.with_raw_response.create(model="m", stream=True)
+            assert streamed is raw
+
+    events = capture(drive)
+    done = of(events, "llm.request.completed")
+    assert done[0]["attributes"]["llm.input_tokens"] == 120 and raw.parsed.usage
+    assert done[1]["attributes"]["llm.usage_unavailable"] is True
+    assert "llm.input_tokens" not in done[1]["attributes"]

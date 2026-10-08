@@ -18,5 +18,8 @@ with bb.run("support bot"):
   (chat: `stream_options={"include_usage": True}`; responses: the `response.completed` event). A stream the caller abandons ends `cancelled`.
 - Cost: pass `cost_fn(provider, model, tokens_in, tokens_out, cached) -> usd`; otherwise none is recorded.
 - Prompts and responses are not recorded; `capture_payloads=True` attaches bounded previews, gated by `payload_mode` and redacted.
-- Not wrapped: `with_raw_response`, `with_streaming_response`, `beta.*`, `images`, `embeddings` (KI-062). The host's exceptions propagate unchanged;
-  the adapter's own failures are contained.
+- Also traced: `client.with_options(...)` / `client.copy()` (derived clients stay instrumented) and `with_raw_response.create` (usage is read by parsing
+  the response; the SDK caches the parse, so your own `.parse()` is unaffected; a raw streaming call is recorded without tokens and carries
+  `llm.usage_unavailable`).
+- Not wrapped (KI-062): `with_streaming_response`, `chat.completions.parse`, `beta.*`, `embeddings`, `images`, audio. The host's exceptions propagate
+  unchanged; the adapter's own failures are contained.

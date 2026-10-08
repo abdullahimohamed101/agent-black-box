@@ -26,7 +26,15 @@ log = logging.getLogger("blackbox.openai")
 
 CostFn = Callable[[str, str, int | None, int | None, int | None], float | None]
 _TARGETS = (("chat", "completions", "create"), ("responses", "create"))
+# `with_raw_response.create` returns an unparsed response: we parse it (the SDK caches the result,
+# so the caller's own `.parse()` is unaffected) to read usage.
+_RAW_TARGETS = (
+    ("chat", "completions", "with_raw_response", "create"),
+    ("responses", "with_raw_response", "create"),
+)
+_COPIERS = ("with_options", "copy")
 _MARK = "_abb_wrapped"
+_RAW_MARK = "_abb_raw_wrapped"  # `to_raw_response_wrapper` copies _MARK from the inner function
 
 
 class Settings:
@@ -126,12 +134,15 @@ class Call:
             self.s.contained()
 
 
-def begin(settings: Settings, kwargs: dict[str, Any]) -> Call | None:
+def begin(settings: Settings, kwargs: dict[str, Any], raw: bool = False) -> Call | None:
     """Start the span for a call; None means pass through (no run, disabled, or a failure)."""
     try:
         run = current_run()
         if run is None or not settings.bb.enabled:
             return None
+        headers = kwargs.get("extra_headers")
+        if not raw and isinstance(headers, dict) and "X-Stainless-Raw-Response" in headers:
+            return None  # the raw-response wrapper above this call records it
         model = text(kwargs.get("model")) or "unknown"
         temperature = number(kwargs.get("temperature"))
         max_tokens = count(
@@ -254,9 +265,16 @@ class AsyncStream:
             self._call.abandon()
 
 
-def _finish(settings: Settings, call: Call, result: Any, streaming: bool) -> Any:
+def _finish(settings: Settings, call: Call, result: Any, streaming: bool, raw: bool = False) -> Any:
     """Turn a call's result into what the host receives, ending the span when appropriate."""
     try:
+        if raw:
+            if streaming:  # the stream is consumed by the caller later: usage is not tracked
+                call.span.set_attribute("llm.usage_unavailable", True)
+                call.complete(None)
+                return result
+            call.complete(result.parse())
+            return result
         if streaming and hasattr(result, "__aiter__"):
             return AsyncStream(result, call)
         if streaming and hasattr(result, "__iter__"):
@@ -267,12 +285,14 @@ def _finish(settings: Settings, call: Call, result: Any, streaming: bool) -> Any
     return result
 
 
-def _make_wrapper(orig: Callable[..., Any], settings: Settings) -> Callable[..., Any]:
+def _make_wrapper(
+    orig: Callable[..., Any], settings: Settings, raw: bool = False
+) -> Callable[..., Any]:
     if inspect.iscoroutinefunction(orig):
 
         @functools.wraps(orig)
         async def awrapper(*args: Any, **kwargs: Any) -> Any:
-            call = begin(settings, kwargs)
+            call = begin(settings, kwargs, raw)
             if call is None:
                 return await orig(*args, **kwargs)
             try:
@@ -280,14 +300,14 @@ def _make_wrapper(orig: Callable[..., Any], settings: Settings) -> Callable[...,
             except BaseException as exc:
                 call.fail(exc)
                 raise
-            return _finish(settings, call, result, bool(kwargs.get("stream")))
+            return _finish(settings, call, result, bool(kwargs.get("stream")), raw)
 
-        setattr(awrapper, _MARK, True)
+        setattr(awrapper, _RAW_MARK if raw else _MARK, True)
         return awrapper
 
     @functools.wraps(orig)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        call = begin(settings, kwargs)
+        call = begin(settings, kwargs, raw)
         if call is None:
             return orig(*args, **kwargs)
         try:
@@ -303,13 +323,43 @@ def _make_wrapper(orig: Callable[..., Any], settings: Settings) -> Callable[...,
                 except BaseException as exc:
                     call.fail(exc)
                     raise
-                return _finish(settings, call, done, bool(kwargs.get("stream")))
+                return _finish(settings, call, done, bool(kwargs.get("stream")), raw)
 
             return await_it()
-        return _finish(settings, call, result, bool(kwargs.get("stream")))
+        return _finish(settings, call, result, bool(kwargs.get("stream")), raw)
 
-    setattr(wrapper, _MARK, True)
+    setattr(wrapper, _RAW_MARK if raw else _MARK, True)
     return wrapper
+
+
+def _apply(client: Any, settings: Settings) -> None:
+    """Wrap the call paths on `client`, and `with_options`/`copy` so derived clients stay traced."""
+    for paths, raw in ((_TARGETS, False), (_RAW_TARGETS, True)):
+        for path in paths:
+            target = client
+            for part in path[:-1]:
+                target = getattr(target, part, None)
+            orig = getattr(target, path[-1], None) if target is not None else None
+            if callable(orig) and not getattr(orig, _RAW_MARK if raw else _MARK, False):
+                setattr(target, path[-1], _make_wrapper(orig, settings, raw))
+    for name in _COPIERS:
+        copier = getattr(client, name, None)
+        if callable(copier) and not getattr(copier, _MARK, False):
+            setattr(client, name, _make_copier(copier, settings))
+
+
+def _make_copier(orig: Callable[..., Any], settings: Settings) -> Callable[..., Any]:
+    @functools.wraps(orig)
+    def copier(*args: Any, **kwargs: Any) -> Any:
+        derived = orig(*args, **kwargs)
+        try:
+            _apply(derived, settings)
+        except Exception:
+            settings.contained()
+        return derived
+
+    setattr(copier, _MARK, True)
+    return copier
 
 
 def instrument(
@@ -328,14 +378,7 @@ def instrument(
             cost_fn if callable(cost_fn) else None,
             capture_payloads is True,
         )
-        for path in _TARGETS:
-            target = client
-            for part in path[:-1]:
-                target = getattr(target, part, None)
-            orig = getattr(target, path[-1], None) if target is not None else None
-            if not callable(orig) or getattr(orig, _MARK, False):
-                continue
-            setattr(target, path[-1], _make_wrapper(orig, settings))
+        _apply(client, settings)
     except Exception:
         log.debug("blackbox-openai: could not instrument the client", exc_info=True)
     return client

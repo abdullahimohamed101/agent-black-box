@@ -357,3 +357,16 @@ def test_real_responses_api() -> None:
 
     attrs = of(in_run(go), "llm.request.completed")[0]["attributes"]
     assert attrs["llm.input_tokens"] == LLM_INPUT and attrs["llm.cached_input_tokens"] == LLM_CACHED
+
+
+@real
+def test_real_with_options_and_raw_response() -> None:
+    def go(bb: BlackBox) -> None:
+        client = instrument(real_client(), bb)
+        client.with_options(timeout=3).chat.completions.create(model="m1", messages=[])
+        raw = client.chat.completions.with_raw_response.create(model="m1", messages=[])
+        assert raw.parse().choices  # the caller can still parse
+
+    done = of(in_run(go), "llm.request.completed")
+    assert len(done) == 2
+    assert all(e["attributes"]["llm.input_tokens"] == LLM_INPUT for e in done)
