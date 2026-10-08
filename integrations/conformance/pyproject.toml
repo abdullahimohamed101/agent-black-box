@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = ["agent-black-box", "abb-event-schema"]
 
 [dependency-groups]
-dev = ["pytest>=8.3", "ruff>=0.8", "mypy>=1.13"]
+dev = ["pytest>=8.3", "pytest-cov>=6.0", "ruff>=0.8", "mypy>=1.13"]
 
 [tool.uv.sources]
 agent-black-box = { path = "../../packages/sdk-python", editable = true }
@@ -39,3 +39,10 @@ files = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-p no:cacheprovider"
+
+[tool.coverage.run]
+source = ["abb_conformance"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 85

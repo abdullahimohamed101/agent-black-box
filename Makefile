@@ -1,4 +1,5 @@
-.PHONY: stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
+INTEGRATIONS := conformance langgraph openai anthropic mcp
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -126,3 +127,10 @@ stream-e2e:
 
 e2e-real:
 	pnpm --filter @abb/web build && scripts/e2e-web-real.sh
+
+# Framework adapters (ADR-050): each has its own environment; all tests run offline.
+integrations-test:
+	for p in $(INTEGRATIONS); do (cd integrations/$$p && uv run pytest -q) || exit 1; done
+
+integrations-e2e:
+	scripts/integrations-e2e.sh

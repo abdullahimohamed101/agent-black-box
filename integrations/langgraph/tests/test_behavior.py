@@ -495,3 +495,12 @@ def _drive_with(cls: Any) -> tuple[list[dict[str, Any]], Any]:
 def test_subclasses_the_framework_handler_when_installed() -> None:
     base = pytest.importorskip("langchain_core.callbacks.base")
     assert issubclass(BlackBoxCallback, base.BaseCallbackHandler)
+
+
+def test_last_run_id_names_the_run_the_handler_opened() -> None:
+    def go(fw: FakeFramework, bb: BlackBox) -> None:
+        with fw.chain("g"):
+            pass
+
+    events, handler = run_with(go)
+    assert handler.last_run_id == events[0]["run_id"]

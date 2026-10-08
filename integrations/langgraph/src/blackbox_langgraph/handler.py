@@ -98,6 +98,7 @@ class BlackBoxCallbackHandler(_Base):
         self._max = max(1, int(max_tracked)) if isinstance(max_tracked, int) else MAX_TRACKED
         self._nodes: OrderedDict[str, _Node] = OrderedDict()
         self._lock = threading.Lock()
+        self.last_run_id: str | None = None  # the most recent run this handler opened itself
         self.errors = 0  # adapter-internal failures (callbacks that raised and were contained)
         self.dropped = 0  # in-flight runs forgotten because the tracking bound was reached
 
@@ -129,6 +130,8 @@ class BlackBoxCallbackHandler(_Base):
             anchor = None
             run = current_run() or self._bb.run(name)
             owned = run is not current_run()
+            if owned:
+                self.last_run_id = run.run_id
         span = None
         if make is not None and not (owned and root_is_run):
             try:
