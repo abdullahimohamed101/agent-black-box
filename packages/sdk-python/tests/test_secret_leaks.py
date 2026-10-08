@@ -5,14 +5,16 @@ an artifact name, an event, or the output handed back to the model, however the 
 """
 
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from blackbox import BlackBox, PayloadMode
-from blackbox.coding import CodingRecorder
+from blackbox.coding import CodingRecorder, classify_command
 from blackbox.secretscan import (
+    MAX_FILE_BYTES,
     SecretFiles,
     extract_values,
     is_sensitive_path,
@@ -149,21 +151,24 @@ def test_encoded_forms_of_a_secret_are_masked(repo: Path) -> None:
 @pytest.mark.parametrize(
     ("name", "text", "expected"),
     [
-        (".env", "export A_KEY='quoted value 123'\nDB_PASSWORD=abc\nPORT=8000\nHOST=localhost\n# C=comment", {"quoted value 123", "abc"}),
-        ("secrets.json", '{"db": {"password": "pw-1234"}, "n": 5, "name": "plainname"}', {"pw-1234"}),
+        (".env", "export A_KEY='quoted value 123'\nDB_PASSWORD=q9Zx2Lp\nPORT=8000\nHOST=localhost\n# C=comment", {"quoted value 123", "q9Zx2Lp"}),
+        ("secrets.json", '{"db": {"password": "pw-1234"}, "n": 5, "name": "plainname"}', {"pw-1234", "plainname"}),
         ("creds.yml", "api_key: abcDEF123456\nname: demo\n", {"abcDEF123456"}),
         ("k.pem", "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAxxxxxxxx\nAAAAAAAAAAAAAAAAAAAA\n-----END RSA PRIVATE KEY-----", {"MIIEowIBAAKCAQEAxxxxxxxx", "AAAAAAAAAAAAAAAAAAAA"}),
         (".pgpass", "db:5432:app:user:hunter2hunter2\n", {"db:5432:app:user:hunter2hunter2", "hunter2hunter2"}),
         (".htpasswd", "bob:$apr1$abc$defghijkl\n", {"bob:$apr1$abc$defghijkl", "$apr1$abc$defghijkl"}),
         (".git-credentials", "https://user:tokenvalue99@github.com\n", {"tokenvalue99", "https://user:tokenvalue99@github.com"}),
         (".npmrc", "//registry.npmjs.org/:_authToken=npm_abcdefghijklmnopqrstuvwxyz0123456789\n", {"npm_abcdefghijklmnopqrstuvwxyz0123456789"}),
-        (".netrc", "machine h login me password s3cretpw\n", {"s3cretpw", "me"}),
+        (".netrc", "machine h login me password s3cretpw\n", {"s3cretpw"}),
     ],
 )  # fmt: skip
 def test_value_extraction(name: str, text: str, expected: set[str]) -> None:
     got = extract_values(name, text)
     assert expected <= got, expected - got
-    assert "localhost" not in got and "8000" not in got and "plainname" not in got
+    assert "localhost" not in got and "8000" not in got
+    if name != "secrets.json":  # every string leaf of a file that is secret BY NAME is learned
+        assert "plainname" not in got
+    assert "me" not in got  # too short to mask anywhere: it would corrupt all output
 
 
 @pytest.mark.parametrize(
@@ -223,10 +228,64 @@ def test_other_sections_of_a_diff_survive() -> None:
 
 def test_the_scanner_bounds_itself(tmp_path: Path) -> None:
     (tmp_path / "node_modules").mkdir()
-    (tmp_path / "node_modules" / ".env").write_text("A_KEY=should-not-be-scanned-1\n")
-    (tmp_path / ".env").write_text("A_KEY=" + "x" * 300_000 + "\n")  # over the per-file cap
+    (tmp_path / "node_modules" / ".env").write_text("A_KEY=vendored-secret-value-1\n")
+    (tmp_path / "huge").mkdir()
+    (tmp_path / "huge" / ".env").write_text(
+        "C_KEY=" + "y" * (MAX_FILE_BYTES + 10) + "\n"
+    )  # over the cap
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / ".env").write_text("B_KEY=scanned-value-77\n")
     values = SecretFiles(tmp_path).refresh()
     assert "scanned-value-77" in values
-    assert "should-not-be-scanned-1" not in values and not any(len(v) > 1000 for v in values)
+    assert "vendored-secret-value-1" in values  # a secret file is found even inside a package tree
+    assert not any(v.startswith("yyyy") for v in values)  # a file over the size cap is not read
+
+
+def test_a_very_long_value_is_learned_exactly_without_exploding_the_scan(tmp_path: Path) -> None:
+    """Regression: a 300,000-character value took ~10 minutes (a regex re-scanned the run from every position)."""
+    blob = "Zq9" * 100_000
+    (tmp_path / ".env").write_text(f"BIG_KEY={blob}\n")
+    started = time.perf_counter()
+    values = SecretFiles(tmp_path).refresh()
+    assert time.perf_counter() - started < 5
+    assert (
+        blob in values
+    )  # still masked exactly (head/tail forms too), only the derived encodings are skipped
+
+
+@pytest.mark.parametrize(
+    "shape", ["x", "A_KEY=x", 'A_KEY="a', "A_KEY='a", "a=b\n", "k: |\n  x\n", ":", "-", "a.", '"']
+)
+def test_extract_values_is_linear_on_adversarial_files(shape: str) -> None:
+    text = shape * (300_000 // len(shape))
+    for name in (".env", "secrets.json", "secrets.yml", ".pgpass", "master.key", ".npmrc"):
+        started = time.perf_counter()
+        extract_values(name, text)
+        assert time.perf_counter() - started < 3, (name, shape)
+
+
+@pytest.mark.parametrize("shape", ["$(", "a|", ";", "a=b\n", "k: |\n  x\n", "rm -rf x; ", "'"])
+def test_classifying_a_huge_command_is_fast(shape: str) -> None:
+    """Regression: the reasons tuple was copied per segment, so 200 KB of `a|a|...` took 21 s."""
+    started = time.perf_counter()
+    classify_command(shape * (200_000 // len(shape)))
+    assert time.perf_counter() - started < 3
+
+
+@pytest.mark.parametrize(
+    ("name", "text"),
+    [
+        (".env", "SECRET_KEY=secret\nDB_PASSWORD=password\nAPI_TOKEN=test\nCOOKIE_SECURE=true\nSESSION_TTL=3600\n"),
+        (".env.example", "SECRET_KEY=changeme\nDB_PASSWORD=your-password-here\nAPI_TOKEN=xxxxxxxx\n"),
+        (".env.sample", "API_TOKEN=<your token>\nSECRET=${SECRET}\n"),
+    ],
+)  # fmt: skip
+def test_placeholders_and_template_files_do_not_become_masks(name: str, text: str) -> None:
+    """Masking ordinary words ('secret', 'true', 'test') would make source and test output unreadable."""
+    assert extract_values(name, text) == set()
+
+
+def test_a_real_looking_value_in_a_template_file_is_still_learned() -> None:
+    """Someone pasting a real key into .env.example is a leak waiting to happen: keep masking it."""
+    got = extract_values(".env.example", "SECRET_KEY=Zq9xKp2LmN8vTr4Wb7Yc\n")
+    assert "Zq9xKp2LmN8vTr4Wb7Yc" in got

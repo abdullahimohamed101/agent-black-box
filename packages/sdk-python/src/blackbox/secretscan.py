@@ -6,21 +6,28 @@ appear, however a command read them (ADR-031). Path-based withholding stays as d
 depth, and is shell-aware: when a command could reach a secret file and we are unsure, its output is
 withheld.
 
-Best effort. It cannot find a secret that is in no sensitive file and not in the environment.
+Best effort. It cannot find a secret that is in no sensitive file and not in the environment, and it
+cannot undo a transform a command applies before printing (hex, rot13, splitting ...).
 """
 
 import base64
 import fnmatch
+import html
 import json
+import math
 import os
 import re
 import shlex
 import subprocess
+import time
 import urllib.parse
+from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape as xml_escape
 
 # Matched case-insensitively against the base name.
 SENSITIVE_NAMES: tuple[str, ...] = (
@@ -33,38 +40,89 @@ SENSITIVE_NAMES: tuple[str, ...] = (
 )  # fmt: skip
 # Sensitive by where they live, whatever their name.
 SENSITIVE_SUFFIXES: tuple[str, ...] = (
-    ".docker/config.json", ".kube/config", ".aws/credentials", ".aws/config",
+    ".docker/config.json", ".kube/config", ".aws/credentials", ".aws/config", ".git/config",
 )  # fmt: skip
 _CREDENTIAL_FILES = (".pgpass", ".htpasswd", ".git-credentials", ".netrc", "_netrc")
-_SKIP_DIRS = frozenset(
-    {".git", "node_modules", ".venv", "venv", "__pycache__", ".tox", "dist", "build", ".next",
-     ".mypy_cache", ".ruff_cache", ".pytest_cache", "target", ".cache", "site-packages"}
-)  # fmt: skip
+_RAW_TOKEN_FILES = ("*.key", "*.ppk", "*.gpg", "master.key", "*.jks", "*.keystore", "id_*")
+_TEMPLATE_FILE = re.compile(r"(?i)\.(example|sample|template|dist|defaults?|tmpl|skel)(\.|$)")
+# Only real package trees are skipped (secrets in build/ or dist/ are found).
+_PRUNE_DIRS = frozenset({".git", "node_modules", "site-packages", "__pycache__"})
+MAX_FILE_BYTES = 4 * 1024 * 1024
+MAX_FILES = 5000
+MAX_VALUES = 6000
+MAX_REMEMBERED = 50_000  # values kept for the recorder's lifetime; oldest dropped above this
+SCAN_BUDGET_SECONDS = 2.0
 _PATH = os.environ.get("PATH", os.defpath)
-MAX_FILE_BYTES = 256 * 1024
-MAX_FILES = 400
-MAX_VISITED = 20_000
-MAX_VALUES = 3000
-MAX_VALUE_LEN = 4096
 _SECRET_KEY = re.compile(
     r"key|token|secret|pass|pwd|credential|private|auth|dsn|cookie|session|signature|salt"
     r"|database_url|connection|bearer|(?:^|[_.-])pat(?:$|[_.-])",
     re.I,
 )
 _LINE = re.compile(r"^\s*(?:export\s+|set\s+)?([A-Za-z_][A-Za-z0-9_.\-/]*)\s*[=:]\s*(.*?)\s*$")
+# The identifier may only start at a boundary: without the look-behind a long run of identifier
+# characters is re-scanned from every position inside it (quadratic: 80,000 characters took 36 s).
+_QUOTED = re.compile(
+    r"""(?<![A-Za-z0-9_.\-])([A-Za-z_][A-Za-z0-9_.\-]*)\s*[=:]\s*"""
+    r"""("(?:[^"\\]|\\.)*"|'[^']*')""",
+    re.S,
+)
+_BLOCK = re.compile(r"^(\s*)([\w.\-]+)\s*:\s*[|>][+-]?\s*$")
+_LIST_ITEM = re.compile(r"^\s*-\s+(.+?)\s*$")
 _PEM = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(.*?)(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S
 )
 _URL_CRED = re.compile(r"://([^/\s:@]*):([^/\s@]+)@")
+_URL_USER = re.compile(r"://([^/\s:@]{8,})@")
 _CRED_ASSIGN = re.compile(
     r"(?i)(?:_authtoken|_auth|_password|password|passwd|token|secret)\s*[=:]\s*['\"]?([^\s'\"]+)"
 )
 _NETRC = re.compile(r"\b(?:password|login|account|token)\s+(\S+)")
 
+# Words that are not secrets even when a sample file puts them next to a secret-looking key.
+_COMMON = frozenset(
+    """
+    secret password passwd pass test testing tests changeme change-me example sample true
+    false null none nil yes no on off admin root user username localhost dev development
+    production prod staging debug default token key apikey api_key secretkey secret_key
+    your-secret-here xxx xxxx foo bar baz todo tbd dummy fake demo guest public private
+    local info warning error utf-8 utf8 http https postgres mysql redis sqlite memory
+    console json html text
+    """.split()
+)
+_PLACEHOLDER = re.compile(
+    r"(?i)^(x+|\*+|\.+|-+|_+|<.*>|\$\{.*\}|\$\w+|%\(.*\)s|your[-_ ].*|change.?me.*|replace.*|"
+    r"insert.*|dummy.*|fake.*|sample.*|example.*|placeholder.*|1234+|12345.*|abc+|test\d*|secret\d*|password\d*)$"
+)
+
+
+def _unquote_git(path: str) -> str:
+    """Undo git's C-style quoting of a path in a header (`"a\\tb"`, octal escapes)."""
+    path = path.strip()
+    if len(path) < 2 or path[0] != '"' or path[-1] != '"':
+        return path
+    body, out, i = path[1:-1], bytearray(), 0
+    simple = {"a": 7, "b": 8, "f": 12, "n": 10, "r": 13, "t": 9, "v": 11, '"': 34, "\\": 92}
+    while i < len(body):
+        ch = body[i]
+        if ch == "\\" and i + 1 < len(body):
+            nxt = body[i + 1]
+            if nxt in "01234567":
+                digits = re.match(r"[0-7]{1,3}", body[i + 1 :])
+                assert digits
+                out.append(int(digits.group(0), 8) & 0xFF)
+                i += 1 + len(digits.group(0))
+                continue
+            out.append(simple.get(nxt, ord(nxt) & 0xFF))
+            i += 2
+            continue
+        out.extend(ch.encode("utf-8"))
+        i += 1
+    return out.decode("utf-8", errors="replace")
+
 
 def is_sensitive_path(path: str) -> bool:
     """Does this path name a file that holds secrets? Case-insensitive; also by directory."""
-    lowered = path.replace("\\", "/").lower().strip()
+    lowered = _unquote_git(path).lower().strip()
     name = lowered.rsplit("/", 1)[-1]
     if any(fnmatch.fnmatchcase(name, pattern) for pattern in SENSITIVE_NAMES):
         return True
@@ -74,28 +132,53 @@ def is_sensitive_path(path: str) -> bool:
 def git_excludes() -> list[str]:
     """Pathspecs that keep secret-holding files out of a git command (any directory, any case)."""
     return [f":(exclude,icase,glob)**/{pattern}" for pattern in SENSITIVE_NAMES] + [
-        f":(exclude,icase,glob)**/{suffix}" for suffix in SENSITIVE_SUFFIXES
+        f":(exclude,icase,glob)**/{suffix}"
+        for suffix in SENSITIVE_SUFFIXES
+        if suffix != ".git/config"
     ]
 
 
-def _looks_secret_value(value: str, key_is_secret: bool) -> bool:
-    if len(value) > MAX_VALUE_LEN or "\n" in value:
+def _entropy(value: str) -> float:
+    counts = {c: value.count(c) for c in set(value)}
+    return -sum(n / len(value) * math.log2(n / len(value)) for n in counts.values())
+
+
+def high_entropy(value: str) -> bool:
+    """Looks like a generated token, not a word: long enough, varied enough."""
+    classes = sum(
+        any(f(c) for c in value)
+        for f in (str.islower, str.isupper, str.isdigit, lambda c: not c.isalnum())
+    )
+    return len(value) >= 12 and classes >= 2 and _entropy(value) >= 3.0
+
+
+def _is_placeholder(value: str) -> bool:
+    lowered = value.lower().strip()
+    if lowered in _COMMON or _PLACEHOLDER.match(lowered):
+        return True
+    return lowered.isdigit() and len(lowered) < 10  # ports, timeouts, counts
+
+
+def _worth_learning(value: str, key_is_secret: bool, by_name: bool, template: bool) -> bool:
+    if "\n" in value or not value:
+        return False
+    if template:  # `.env.example`: only values that look generated; "secret" and "changeme" are not
+        return high_entropy(value) and not _is_placeholder(value)
+    if _is_placeholder(value):
         return False
     if key_is_secret:
-        return len(value) >= 3
-    # A value of a non-secret-looking key in a secret file ("localhost", "8000", "true") is not
-    # worth masking everywhere; a token-looking one is.
-    return len(value) >= 8 and any(c.isdigit() or c in "-_/+=:@." for c in value)
+        return len(value) >= 6
+    return by_name and len(value) >= 4
 
 
 def _unquote(raw: str) -> str:
     raw = raw.strip()
     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"`":
         return raw[1:-1]
-    return re.split(r"\s+#", raw, maxsplit=1)[0].strip().strip("'\"")
+    return raw
 
 
-def _json_leaves(node: Any, secret_key: bool, out: set[str], depth: int = 0) -> None:
+def _json_leaves(node: Any, secret_key: bool, out: list[tuple[str, bool]], depth: int = 0) -> None:
     if depth > 12:
         return
     if isinstance(node, dict):
@@ -104,117 +187,324 @@ def _json_leaves(node: Any, secret_key: bool, out: set[str], depth: int = 0) -> 
     elif isinstance(node, list):
         for v in node:
             _json_leaves(v, secret_key, out, depth + 1)
-    elif isinstance(node, str) and _looks_secret_value(node, secret_key):
-        out.add(node)
+    elif isinstance(node, str):
+        out.append((node, secret_key))
 
 
 def extract_values(path: str, text: str) -> set[str]:
     """The secret values in one sensitive file's text."""
-    values: set[str] = set()
-    name = path.replace("\\", "/").lower().rsplit("/", 1)[-1]
+    name = _unquote_git(path).lower().rsplit("/", 1)[-1]
+    by_name = is_sensitive_path(path)
+    template = bool(_TEMPLATE_FILE.search(name))
+    candidates: list[tuple[str, bool]] = []  # (value, key looks secret)
     stripped = text.strip()
     if stripped[:1] in "{[":
         try:
-            _json_leaves(json.loads(stripped), False, values)
+            _json_leaves(json.loads(stripped), False, candidates)
         except ValueError:
             pass
+    pem_found = False
     for block in _PEM.findall(text):
+        pem_found = True
         body = [line.strip() for line in block.splitlines() if line.strip()]
-        values.update(line for line in body if len(line) >= 16)
+        candidates += [(line, True) for line in body if len(line) >= 16]
         if body:
-            values.add("".join(body)[:MAX_VALUE_LEN])
-    for line in text.splitlines():
-        m = _LINE.match(line)
-        if m:
-            key, value = m.group(1), _unquote(m.group(2))
-            if value and _looks_secret_value(value, bool(_SECRET_KEY.search(key))):
-                values.add(value)
-        values.update(v for v in _CRED_ASSIGN.findall(line) if len(v) >= 3)
-        for cred in _URL_CRED.finditer(line):
-            values.add(cred.group(2))
+            candidates.append(("".join(body), True))
+    if not pem_found and any(fnmatch.fnmatchcase(name, p) for p in _RAW_TOKEN_FILES):
+        # master.key, *.ppk, *.gpg ...: the whole file is the secret (and each of its lines)
+        if stripped and "\n" not in stripped:
+            candidates.append((stripped, True))
+        candidates += [(ln.strip(), True) for ln in text.splitlines() if len(ln.strip()) >= 6]
+        if stripped:
+            candidates.append((stripped, True))
+    for q in _QUOTED.finditer(text):  # multi-line quoted values: all lines
+        inner = q.group(2)[1:-1]
+        if "\n" in inner:
+            secret = bool(_SECRET_KEY.search(q.group(1)))
+            candidates.append((inner.strip(), secret))
+            candidates += [
+                (ln.strip(), secret) for ln in inner.splitlines() if len(ln.strip()) >= 6
+            ]
+    lines = text.splitlines()
+    block_indent: tuple[int, bool] | None = None
+    for line in lines:
+        if block_indent is not None:  # YAML block scalar body
+            indent = len(line) - len(line.lstrip())
+            if line.strip() and indent > block_indent[0]:
+                candidates.append((line.strip(), True))
+                continue
+            block_indent = None
+        blk = _BLOCK.match(line)
+        if blk:
+            block_indent = (len(blk.group(1)), bool(_SECRET_KEY.search(blk.group(2))))
+            continue
+        kv = _LINE.match(line)
+        if kv:
+            key, raw = kv.group(1), _unquote(kv.group(2))
+            secret = bool(_SECRET_KEY.search(key))
+            if raw:
+                candidates.append((raw, secret))
+                pre = re.split(r"\s+#", raw, maxsplit=1)[0].strip().strip("'\"")
+                if pre != raw:  # `value #comment`: learn the text with and without the comment
+                    candidates.append((pre, secret))
+        item = _LIST_ITEM.match(line)
+        if item:
+            candidates.append((_unquote(item.group(1)), False))
+        candidates += [(v, True) for v in _CRED_ASSIGN.findall(line) if len(v) >= 3]
+        candidates += [(c.group(2), True) for c in _URL_CRED.finditer(line)]
+        candidates += [(c.group(1), True) for c in _URL_USER.finditer(line)]
         if name in _CREDENTIAL_FILES and line.strip() and not line.lstrip().startswith("#"):
             token = line.strip()
-            if len(token) >= 8:
-                values.add(token)
+            candidates.append((token, True))
             if name == ".pgpass":
-                values.add(token.rsplit(":", 1)[-1])
+                candidates.append((token.rsplit(":", 1)[-1], True))
             if name == ".htpasswd" and ":" in token:
-                values.add(token.split(":", 1)[1])
-        values.update(_NETRC.findall(line) if name in (".netrc", "_netrc") else [])
-    return {v for v in values if v and len(v) <= MAX_VALUE_LEN}
+                candidates.append((token.split(":", 1)[1], True))
+        if name in (".netrc", "_netrc"):
+            candidates += [(v, True) for v in _NETRC.findall(line)]
+    values: set[str] = set()
+    for value, secret in candidates:
+        value = value.strip()
+        if _worth_learning(value, secret, by_name, template):
+            values.add(value)
+    return values
+
+
+def _b64_alignments(raw: bytes) -> set[str]:
+    """Base64 of `raw` as it appears at each of the three byte alignments inside longer text."""
+    forms: set[str] = set()
+    for offset, skip in ((0, 0), (1, 2), (2, 3)):
+        for encode in (base64.b64encode, base64.urlsafe_b64encode):
+            enc = encode(b"\x00" * offset + raw).decode()
+            body = enc[skip:].rstrip("=")
+            if offset or len(body) % 4:
+                body = body[:-2]  # the last chars depend on what follows the value
+            if len(body) >= 8:
+                forms.add(body)
+    return forms
 
 
 def derived_forms(value: str) -> set[str]:
-    """The value as it may appear encoded: base64 (both alphabets/no padding), URL-encoded."""
+    """The value as it may appear escaped or encoded, so a command that escapes it still masks."""
     forms = {value}
+    if len(value) >= 24:  # a long value: its head and tail alone are enough to recognise it
+        forms.update({value[:12], value[-12:]})
+    if len(value) > 512:
+        return forms
     raw = value.encode("utf-8", errors="ignore")
-    if 6 <= len(raw) <= 1024:
-        for encode in (base64.b64encode, base64.urlsafe_b64encode):
-            b64 = encode(raw).decode()
-            forms.update({b64, b64.rstrip("=")})
+    if len(raw) >= 6:
+        forms |= _b64_alignments(raw)
+        forms.update({raw.hex(), raw.hex().upper()})
     quoted = urllib.parse.quote(value, safe="")
-    if quoted != value:
-        forms.add(quoted)
-    return forms
+    forms.update(
+        {
+            quoted,
+            urllib.parse.quote_plus(value),
+            urllib.parse.quote(value),
+            re.sub(r"%[0-9A-F]{2}", lambda m: m.group(0).lower(), quoted),
+            json.dumps(value)[1:-1],
+            json.dumps(value, ensure_ascii=False)[1:-1],
+            json.dumps(value)[1:-1].replace("/", "\\/"),
+            shlex.quote(value),
+            repr(value)[1:-1],
+            html.escape(value),
+            html.escape(value, quote=False),
+            xml_escape(value),
+            re.sub(r"([^\w])", r"\\\1", value),
+            value.replace("\\", "\\\\"),
+        }
+    )
+    return {f for f in forms if len(f) >= 4 or f == value}
+
+
+@lru_cache(maxsize=8)
+def _compile_masker(values: tuple[str, ...]) -> "re.Pattern[str] | None":
+    if not values:
+        return None
+    long_part = [re.escape(v) for v in values if len(v) >= 8]
+    short_part = [re.escape(v) for v in values if len(v) < 8]
+    parts = list(long_part)
+    if short_part:  # short values only count as whole words, never inside identifiers or numbers
+        parts.append(r"(?<![A-Za-z0-9_])(?:" + "|".join(short_part) + r")(?![A-Za-z0-9_])")
+    return re.compile("|".join(parts))
+
+
+def mask_text(text: str, values: tuple[str, ...], marker: str) -> str:
+    """Replace every occurrence of every value (longest first) with `marker`."""
+    if not values or not text:
+        return text
+    if len(values) <= 24:  # the common case: plain substring replacement is fastest
+        for value in values:
+            if len(value) < 8:
+                text = re.sub(
+                    r"(?<![A-Za-z0-9_])" + re.escape(value) + r"(?![A-Za-z0-9_])", marker, text
+                )
+            elif value in text:
+                text = text.replace(value, marker)
+        return text
+    pattern = _compile_masker(values)
+    return pattern.sub(marker, text) if pattern else text
 
 
 @dataclass
 class SecretFiles:
-    """Finds sensitive files under a root and keeps the set of their secret values current."""
+    """Finds sensitive files under a root and keeps the set of their secret values current.
+
+    Values are remembered for the lifetime of the object: moving or deleting a secret file does not
+    make its content printable.
+    """
 
     root: Path
-    paths: list[str] = field(default_factory=list)  # root-relative, posix
+    paths: list[str] = field(default_factory=list)  # root-relative, posix; secret files now
+    history_paths: list[str] = field(default_factory=list)  # secret files that ever existed
+    incomplete: bool = False  # the scan hit its time budget: some secret files may be unknown
     _cache: dict[str, tuple[int, int, frozenset[str]]] = field(default_factory=dict)
-    _git: frozenset[str] = frozenset()
+    _learned: "OrderedDict[str, None]" = field(default_factory=OrderedDict)
     _git_state: str = ""
+    _source_blob: str | None = None
+    _expanded: tuple[str, ...] = ()
+    _expanded_for: int = -1
 
-    def _walk(self) -> list[Path]:
+    def _has_sensitive_entry(self, directory: str) -> bool:
+        try:
+            return any(is_sensitive_path(e.name) for e in os.scandir(directory))
+        except OSError:
+            return False
+
+    def _walk(self, deadline: float) -> list[Path]:
         found: list[Path] = []
-        visited = 0
         for dirpath, dirnames, filenames in os.walk(self.root, followlinks=False):
-            dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
-            for filename in filenames:
-                visited += 1
-                full = Path(dirpath) / filename
-                rel = full.relative_to(self.root).as_posix()
-                if is_sensitive_path(rel):
-                    found.append(full)
-            if visited > MAX_VISITED or len(found) >= MAX_FILES:
+            if time.monotonic() > deadline:
+                self.incomplete = True
                 break
+            keep = []
+            for d in dirnames:
+                full = os.path.join(dirpath, d)
+                pruned = d in _PRUNE_DIRS or os.path.exists(os.path.join(full, "pyvenv.cfg"))
+                if pruned:  # a package tree is not walked, but a secret file at its top is found
+                    if self._has_sensitive_entry(full):
+                        found += [
+                            Path(full) / e.name
+                            for e in os.scandir(full)
+                            if is_sensitive_path(e.name)
+                        ]
+                else:
+                    keep.append(d)
+            dirnames[:] = keep
+            for filename in filenames:
+                full_path = Path(dirpath) / filename
+                if is_sensitive_path(full_path.relative_to(self.root).as_posix()):
+                    found.append(full_path)
+            if len(found) >= MAX_FILES:
+                self.incomplete = True
+                break
+        git_config = self.root / ".git" / "config"
+        if git_config.is_file():
+            found.append(git_config)
         return found[:MAX_FILES]
 
-    def _git_values(self, rels: Iterable[str]) -> set[str]:
-        """Older versions of tracked secret files (HEAD, index, stashes): `git show HEAD:.env`."""
+    def _git(self, *args: str, limit: int = 4 * 1024 * 1024, timeout: float = 10.0) -> str:
+        try:
+            done = subprocess.run(  # noqa: S603
+                ["git", *args],  # noqa: S607
+                cwd=self.root, capture_output=True, timeout=timeout, check=False,
+                stdin=subprocess.DEVNULL, env={"PATH": _PATH, "GIT_TERMINAL_PROMPT": "0"},
+            )  # fmt: skip
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return done.stdout[:limit].decode("utf-8", errors="replace") if done.returncode == 0 else ""
+
+    def _history(self, rels: Iterable[str]) -> tuple[set[str], list[str]]:
+        """Secret values and file names from git history, including files deleted long ago."""
         values: set[str] = set()
         if not (self.root / ".git").exists():
-            return values
+            return values, []
+        names = {
+            n.strip()
+            for n in self._git(
+                "log",
+                "--all",
+                "--name-only",
+                "--format=",
+                "--max-count=2000",
+                limit=2 * 1024 * 1024,
+            ).splitlines()
+            if n.strip() and is_sensitive_path(n)
+        }
+        specs = [f":(icase,glob)**/{p}" for p in SENSITIVE_NAMES]
+        patch = self._git(
+            "log", "--all", "-p", "--no-color", "--format=", "--max-count=500", "--", *specs,
+            limit=8 * 1024 * 1024, timeout=20.0,
+        )  # fmt: skip
+        for section in re.split(r"(?m)^diff --git ", patch)[1:]:
+            head, _, body = section.partition("\n")
+            path = head.rsplit(" b/", 1)[-1] if " b/" in head else head
+            changed = "\n".join(
+                ln[1:]
+                for ln in body.splitlines()
+                if ln[:1] in "+-" and ln[:3] not in ("+++", "---")
+            )
+            values |= extract_values(path, changed)
         refs = ["HEAD:", ":"] + [f"stash@{{{i}}}:" for i in range(3)]
-        budget = 24
         for rel in list(rels)[:8]:
             for ref in refs:
-                if budget <= 0:
-                    return values
-                budget -= 1
-                try:
-                    done = subprocess.run(  # noqa: S603
-                        ["git", "show", f"{ref}{rel}"],  # noqa: S607
-                        cwd=self.root, capture_output=True, timeout=5, check=False,
-                        stdin=subprocess.DEVNULL,
-                        env={"PATH": _PATH, "GIT_TERMINAL_PROMPT": "0"},
-                    )  # fmt: skip
-                except (OSError, subprocess.SubprocessError):
-                    continue
-                if done.returncode == 0 and len(done.stdout) <= MAX_FILE_BYTES:
-                    values |= extract_values(rel, done.stdout.decode("utf-8", errors="replace"))
-        return values
+                values |= extract_values(
+                    rel, self._git("show", f"{ref}{rel}", limit=MAX_FILE_BYTES)
+                )
+        return values, sorted(names)
+
+    def _source_text(self) -> str:
+        """Lower-cased text of ordinary source files, to tell identifiers from secrets."""
+        if self._source_blob is None:
+            parts, total = [], 0
+            for dirpath, dirnames, filenames in os.walk(self.root):
+                dirnames[:] = [
+                    d for d in dirnames if d not in _PRUNE_DIRS and not d.startswith(".")
+                ]
+                for filename in filenames:
+                    full = Path(dirpath) / filename
+                    if is_sensitive_path(filename) or full.suffix.lower() not in _SOURCE_EXT:
+                        continue
+                    try:
+                        if full.stat().st_size > 512 * 1024:
+                            continue
+                        parts.append(full.read_text(errors="replace").lower())
+                    except OSError:
+                        continue
+                    total += len(parts[-1])
+                    if total > 4 * 1024 * 1024:
+                        break
+            self._source_blob = "\n".join(parts)
+        return self._source_blob
+
+    def _remember(self, values: Iterable[str]) -> None:
+        for value in values:
+            if value in self._learned:
+                self._learned.move_to_end(value)
+                continue
+            # A word that is also an identifier in the repo's own source is not masked, unless it
+            # looks generated: masking `session` everywhere would break the agent.
+            if not high_entropy(value) and value.lower() in self._source_text():
+                continue
+            self._learned[value] = None
+        while len(self._learned) > MAX_REMEMBERED:
+            self._learned.popitem(last=False)
 
     def refresh(self) -> tuple[str, ...]:
         """Rescan (cached by size and mtime) and return all secret values, longest first."""
-        files = self._walk()
-        self.paths = [f.relative_to(self.root).as_posix() for f in files]
+        self.incomplete = False
+        self._source_blob = None
+        deadline = time.monotonic() + SCAN_BUDGET_SECONDS
+        files = self._walk(deadline)
+        self.paths = [
+            f.relative_to(self.root).as_posix()
+            for f in files
+            if f.name != "config" or ".git" not in f.parts
+        ]
         live: dict[str, tuple[int, int, frozenset[str]]] = {}
-        all_values: set[str] = set()
-        for full, rel in zip(files, self.paths, strict=True):
+        fresh: set[str] = set()
+        for full in files:
+            rel = full.relative_to(self.root).as_posix()
             try:
                 st = full.stat()
             except OSError:
@@ -231,20 +521,35 @@ class SecretFiles:
                     continue
                 values = frozenset(extract_values(rel, text))
             live[rel] = (st.st_mtime_ns, st.st_size, values)
-            all_values |= values
+            fresh |= values
         self._cache = live
-        state = ",".join(f"{r}:{live[r][0]}" for r in sorted(live))
-        if state != self._git_state:  # history lookups only when a secret file changed
-            self._git, self._git_state = frozenset(self._git_values(self.paths)), state
-        all_values |= self._git
-        expanded: set[str] = set()
-        for value in all_values:
-            expanded |= derived_forms(value)
-            if len(expanded) > MAX_VALUES * 4:
-                break
-        return tuple(sorted((v for v in expanded if len(v) >= 3), key=len, reverse=True))[
-            :MAX_VALUES
-        ]
+        head = self._git("rev-parse", "HEAD", limit=100).strip()
+        refs = self._git("for-each-ref", "--format=%(objectname)", limit=200_000)
+        state = f"{head}:{hash(refs)}:{','.join(sorted(self.paths))}:{len(self._learned)}"
+        if (
+            state != self._git_state
+        ):  # history lookups only when the repository or a secret file changed
+            history_values, history_names = self._history(self.paths)
+            fresh |= history_values
+            self.history_paths = history_names
+            self._git_state = state
+        self._remember(fresh)
+        if self._expanded_for != len(self._learned) or fresh:
+            expanded: set[str] = set()
+            for value in self._learned:
+                expanded |= derived_forms(value)
+            ordered = sorted(expanded, key=lambda v: -len(v))
+            self._expanded = tuple(ordered[:MAX_VALUES])
+            self._expanded_for = len(self._learned)
+        return self._expanded
+
+
+_SOURCE_EXT = frozenset(
+    """
+        .py .js .ts .tsx .jsx .go .rs .java .rb .php .c .h .cpp .cs .sh .md .rst .txt .html
+        .css .sql
+    """.split()
+)
 
 
 # -- shell-aware command check ------------------------------------------------------

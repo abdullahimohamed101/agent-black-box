@@ -29,6 +29,7 @@ from blackbox.secretscan import (
     command_may_reach_secrets,
     git_excludes,
     is_sensitive_path,
+    mask_text,
     strip_ansi,
     withhold_sensitive_hunks,
 )
@@ -50,6 +51,7 @@ class Classification:
         return int(self.risk_class[1:])
 
 
+MAX_REASONS = 8
 Classifier = Callable[[str], "Classification | None"]
 
 _R0_COMMANDS = frozenset(
@@ -166,7 +168,8 @@ _MAX_DEPTH = 4
 def _bump(best: Classification | None, level: int, category: str, why: str) -> Classification:
     if best is None or level > best.level:
         return Classification(f"R{level}", category, (why,))
-    if level == best.level:
+    if level == best.level and why not in best.reasons and len(best.reasons) < MAX_REASONS:
+        # Informational; copying a growing tuple per segment was quadratic on huge commands.
         return Classification(best.risk_class, best.category, (*best.reasons, why))
     return best
 
@@ -886,10 +889,7 @@ def secret_env_values(
 
 
 def mask_values(text: str, values: tuple[str, ...], marker: str = "[REDACTED:env]") -> str:
-    for value in values:
-        if value in text:
-            text = text.replace(value, marker)
-    return text
+    return mask_text(text, values, marker)
 
 
 def safe_environment(extra: Mapping[str, str] | None = None) -> dict[str, str]:
