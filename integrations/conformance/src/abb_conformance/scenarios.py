@@ -138,6 +138,14 @@ def _nested(driver: Driver, events: list[dict[str, Any]]) -> None:
 
 
 def _concurrent(driver: Driver, events: list[dict[str, Any]]) -> None:
+    # Tool-calling adapters run CONCURRENCY named tool calls; model-only wrappers run model calls.
+    if getattr(driver, "concurrent_kind", "tool") == "llm":
+        spans = _spans(events, "llm.request.")
+        assert len(spans) == CONCURRENCY
+        for span in spans.values():
+            assert span["close"]["event_type"] == "llm.request.completed"
+            assert span["close"]["attributes"]["llm.input_tokens"] == LLM_INPUT
+        return
     spans = _spans(events, "tool.call.")
     assert len(spans) == CONCURRENCY
     names = set()
