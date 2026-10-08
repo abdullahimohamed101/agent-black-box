@@ -54,6 +54,7 @@ _PEM = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(.*?)(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S
 )
 _URL_CRED = re.compile(r"://([^/\s:@]*):([^/\s@]+)@")
+_CRED_ASSIGN = re.compile(r"(?i)(?:_authtoken|_auth|_password|password|passwd|token|secret)\s*[=:]\s*['\"]?([^\s'\"]+)")
 _NETRC = re.compile(r"\b(?:password|login|account|token)\s+(\S+)")
 
 
@@ -124,6 +125,7 @@ def extract_values(path: str, text: str) -> set[str]:
             key, value = m.group(1), _unquote(m.group(2))
             if value and _looks_secret_value(value, bool(_SECRET_KEY.search(key))):
                 values.add(value)
+        values.update(v for v in _CRED_ASSIGN.findall(line) if len(v) >= 3)
         for cred in _URL_CRED.finditer(line):
             values.add(cred.group(2))
         if name in _CREDENTIAL_FILES and line.strip() and not line.lstrip().startswith("#"):
