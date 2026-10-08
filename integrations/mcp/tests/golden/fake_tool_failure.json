@@ -1,0 +1,83 @@
+[
+  {
+    "agent_id": "conformance",
+    "attributes": {
+      "run.name": "conformance"
+    },
+    "event_id": "evt_00000000000000000000000001",
+    "event_type": "run.started",
+    "occurred_at": "2026-01-01T00:00:00.000001Z",
+    "run_id": "run_00000000000000000000000001",
+    "schema_version": "1.0",
+    "sdk": {
+      "name": "agent-black-box-python",
+      "version": "0"
+    },
+    "sequence": 1,
+    "trace_id": "trc_00000000000000000000000001"
+  },
+  {
+    "agent_id": "conformance",
+    "attributes": {
+      "framework.name": "mcp",
+      "tool.name": "lookup",
+      "tool.operation": "mcp.call_tool"
+    },
+    "event_id": "evt_00000000000000000000000002",
+    "event_type": "tool.call.started",
+    "occurred_at": "2026-01-01T00:00:00.000002Z",
+    "run_id": "run_00000000000000000000000001",
+    "schema_version": "1.0",
+    "sdk": {
+      "name": "agent-black-box-python",
+      "version": "0"
+    },
+    "sequence": 2,
+    "span_id": "spn_00000000000000000000000001",
+    "trace_id": "trc_00000000000000000000000001"
+  },
+  {
+    "agent_id": "conformance",
+    "attributes": {
+      "error.message": "boom",
+      "error.type": "ScenarioError",
+      "tool.error_type": "ScenarioError",
+      "tool.latency_ms": 1.0,
+      "tool.name": "lookup"
+    },
+    "duration_ms": 1.0,
+    "event_id": "evt_00000000000000000000000003",
+    "event_type": "tool.call.failed",
+    "occurred_at": "2026-01-01T00:00:00.000003Z",
+    "run_id": "run_00000000000000000000000001",
+    "schema_version": "1.0",
+    "sdk": {
+      "name": "agent-black-box-python",
+      "version": "0"
+    },
+    "sequence": 3,
+    "span_id": "spn_00000000000000000000000001",
+    "status": "error",
+    "trace_id": "trc_00000000000000000000000001"
+  },
+  {
+    "agent_id": "conformance",
+    "attributes": {
+      "error.message": "boom",
+      "error.type": "ScenarioError"
+    },
+    "duration_ms": 1.0,
+    "event_id": "evt_00000000000000000000000004",
+    "event_type": "run.failed",
+    "occurred_at": "2026-01-01T00:00:00.000004Z",
+    "run_id": "run_00000000000000000000000001",
+    "schema_version": "1.0",
+    "sdk": {
+      "name": "agent-black-box-python",
+      "version": "0"
+    },
+    "sequence": 4,
+    "status": "error",
+    "trace_id": "trc_00000000000000000000000001"
+  }
+]

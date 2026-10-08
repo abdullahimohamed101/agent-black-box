@@ -1,0 +1,82 @@
+[
+  {
+    "agent_id": "conformance",
+    "attributes": {
+      "run.name": "conformance"
+    },
+    "event_id": "evt_00000000000000000000000001",
+    "event_type": "run.started",
+    "occurred_at": "2026-01-01T00:00:00.000001Z",
+    "run_id": "run_00000000000000000000000001",
+    "schema_version": "1.0",
+    "sdk": {
+      "name": "agent-black-box-python",
+      "version": "0"
+    },
+    "sequence": 1,
+    "trace_id": "trc_00000000000000000000000001"
+  },
+  {
+    "agent_id": "conformance",
+    "attributes": {
+      "framework.name": "anthropic",
+      "llm.max_tokens": 16,
+      "llm.model": "m1",
+      "llm.provider": "anthropic"
+    },
+    "event_id": "evt_00000000000000000000000002",
+    "event_type": "llm.request.started",
+    "occurred_at": "2026-01-01T00:00:00.000002Z",
+    "run_id": "run_00000000000000000000000001",
+    "schema_version": "1.0",
+    "sdk": {
+      "name": "agent-black-box-python",
+      "version": "0"
+    },
+    "sequence": 2,
+    "span_id": "spn_00000000000000000000000001",
+    "trace_id": "trc_00000000000000000000000001"
+  },
+  {
+    "agent_id": "conformance",
+    "attributes": {
+      "llm.cached_input_tokens": 20,
+      "llm.input_tokens": 120,
+      "llm.latency_ms": 1.0,
+      "llm.model": "m1",
+      "llm.output_tokens": 30,
+      "llm.provider": "anthropic"
+    },
+    "duration_ms": 1.0,
+    "event_id": "evt_00000000000000000000000003",
+    "event_type": "llm.request.completed",
+    "occurred_at": "2026-01-01T00:00:00.000003Z",
+    "run_id": "run_00000000000000000000000001",
+    "schema_version": "1.0",
+    "sdk": {
+      "name": "agent-black-box-python",
+      "version": "0"
+    },
+    "sequence": 3,
+    "span_id": "spn_00000000000000000000000001",
+    "status": "success",
+    "trace_id": "trc_00000000000000000000000001"
+  },
+  {
+    "agent_id": "conformance",
+    "attributes": {},
+    "duration_ms": 1.0,
+    "event_id": "evt_00000000000000000000000004",
+    "event_type": "run.completed",
+    "occurred_at": "2026-01-01T00:00:00.000004Z",
+    "run_id": "run_00000000000000000000000001",
+    "schema_version": "1.0",
+    "sdk": {
+      "name": "agent-black-box-python",
+      "version": "0"
+    },
+    "sequence": 4,
+    "status": "success",
+    "trace_id": "trc_00000000000000000000000001"
+  }
+]

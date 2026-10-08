@@ -23,3 +23,6 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-020 | Web data fetching: TanStack Query behind a same-origin read proxy | 4 | Accepted ([file](decisions/ADR-020-web-data-fetching-and-cache.md)) |
 | ADR-021 | Web reads the API through a server-side proxy holding a `runs:read` key | 4 | Accepted ([file](decisions/ADR-021-web-api-access-before-auth.md)) |
 | ADR-022 | Live streams resume by arrival time and wake on Postgres NOTIFY | 5 | Accepted ([file](decisions/ADR-022-live-stream-resume-and-wakeup.md)) |
+| ADR-050 | Adapters are separate distributions depending only on the SDK; frameworks are optional extras | 8 | Accepted ([file](decisions/ADR-050-adapter-packaging-and-optional-dependencies.md)) |
+| ADR-051 | Shared conformance suite: scenarios, structural rules, golden fixtures | 8 | Accepted ([file](decisions/ADR-051-adapter-conformance-suite.md)) |
+| ADR-052 | Adapter behavior contract: never raise, run ownership, explicit parenting, no payloads by default | 8 | Accepted ([file](decisions/ADR-052-adapter-behavior-contract.md)) |
