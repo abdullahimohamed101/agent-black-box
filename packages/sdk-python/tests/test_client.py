@@ -561,3 +561,16 @@ def test_plain_http_to_a_remote_host_warns_but_localhost_does_not(
     caplog.clear()
     BlackBox(api_key="k", endpoint="https://ingest.example.com")
     assert "plain http" not in caplog.text
+
+
+def test_llm_call_accepts_an_explicit_parent_for_adapters() -> None:
+    bb = offline()
+    run = bb.run("r")
+    outer = run.span("step").start()
+    with run.llm_call("p", "m", parent=outer):
+        pass
+    outer.end()
+    run.end()
+    evs = events_of(bb)
+    started = by_type(evs, "llm.request.started")[0]
+    assert started["parent_span_id"] == by_type(evs, "span.started")[0]["span_id"]

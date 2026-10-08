@@ -222,6 +222,7 @@ class LlmCall(Span):
         temperature: float | None = None,
         max_tokens: int | None = None,
         attributes: dict[str, Any] | None = None,
+        parent: Span | None = None,
     ) -> None:
         self.provider, self.model = name_attr(provider), name_attr(model)
         given = as_mapping(attributes)
@@ -229,7 +230,7 @@ class LlmCall(Span):
             given["llm.temperature"] = temperature
         if max_tokens is not None:
             given["llm.max_tokens"] = max_tokens
-        super().__init__(run, f"{self.provider}/{self.model}", "llm", given)
+        super().__init__(run, f"{self.provider}/{self.model}", "llm", given, parent)
         self._types = ("llm.request.started", "llm.request.completed", "llm.request.failed")
 
     def _base_attributes(self) -> dict[str, Any]:
@@ -313,6 +314,7 @@ class Run:
         temperature: float | None = None,
         max_tokens: int | None = None,
         attributes: dict[str, Any] | None = None,
+        parent: Span | None = None,
     ) -> LlmCall:
         return LlmCall(
             self,
@@ -321,6 +323,7 @@ class Run:
             temperature=temperature,
             max_tokens=max_tokens,
             attributes=attributes,
+            parent=parent,
         )
 
     def event(
