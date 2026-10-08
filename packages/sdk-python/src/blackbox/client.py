@@ -211,7 +211,7 @@ class Span:
 
 
 class LlmCall(Span):
-    """A model call. `record_usage` fills token counts; the cost is yours to provide (Phase 7)."""
+    """A model call. `record_usage` fills token counts and optional costs."""
 
     def __init__(
         self,
@@ -243,7 +243,9 @@ class LlmCall(Span):
         *,
         cached_input_tokens: int | None = None,
         cost_usd: float | None = None,
+        provider_cost_usd: float | None = None,
     ) -> None:
+        """`cost_usd` is your estimate; `provider_cost_usd` the provider's own (ADR-040)."""
         for key, value in (
             ("llm.input_tokens", input_tokens),
             ("llm.output_tokens", output_tokens),
@@ -253,6 +255,12 @@ class LlmCall(Span):
                 self._attrs[key] = value
         if isinstance(cost_usd, (int, float)) and not isinstance(cost_usd, bool) and cost_usd >= 0:
             self._attrs["cost.estimated_usd"] = float(cost_usd)
+        if (
+            isinstance(provider_cost_usd, (int, float))
+            and not isinstance(provider_cost_usd, bool)
+            and provider_cost_usd >= 0
+        ):
+            self._attrs["cost.provider_usd"] = float(provider_cost_usd)
 
     def end(self, status: str = _SUCCESS, exc: BaseException | None = None) -> None:
         if self._started and not self._ended:

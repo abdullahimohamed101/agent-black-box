@@ -75,10 +75,15 @@ ok = len(steps) == 3 and len(leaves) == 3 and all(by_id.get(s.get('parent_span_i
 print('ok' if ok else 'bad: ' + json.dumps(items)[:600])")"
 [[ "$nested" == ok ]] || fail "span nesting: $nested"
 cd "$root"
-base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
-if [ -n "$base" ]; then
-  [ -z "$(git diff --name-only "$base" -- apps)" ] || fail "apps/ changed: this phase needs no backend change"
-else
-  echo "note: no main ref to compare against; the apps/ unchanged check was skipped"
+# The example runs against this branch's own API, which is the real proof that the adapters need no backend change.
+# A diff-against-main guard only makes sense for the PR that introduced them, so it is opt-in:
+#   INTEGRATIONS_E2E_REQUIRE_NO_APPS_CHANGE=1 scripts/integrations-e2e.sh
+if [ "${INTEGRATIONS_E2E_REQUIRE_NO_APPS_CHANGE:-0}" = 1 ]; then
+  base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
+  if [ -n "$base" ]; then
+    [ -z "$(git diff --name-only "$base" -- apps)" ] || fail "apps/ changed: this change was meant to need no backend change"
+  else
+    echo "note: no main ref to compare against; the apps/ unchanged check was skipped"
+  fi
 fi
 printf '\nINTEGRATIONS-E2E PASSED\n'

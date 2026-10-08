@@ -378,8 +378,11 @@ async def test_a_span_id_that_belongs_to_another_run_is_never_taken_over(
         await ingest(engine, tenant, [e])
     async with engine.begin() as conn:
         repo = RunRepository(conn, tenant.context)
-        assert await repo.apply_derivation(to_uuid(runs[0]["run_id"]), derive_run([events[0]])) == 0
-        skipped = await repo.apply_derivation(to_uuid(runs[1]["run_id"]), derive_run([events[1]]))
+        project = tenant.project_uuids["p"]
+        first = derive_run([events[0]])
+        assert await repo.apply_derivation(to_uuid(runs[0]["run_id"]), first, project) == 0
+        second = derive_run([events[1]])
+        skipped = await repo.apply_derivation(to_uuid(runs[1]["run_id"]), second, project)
     assert skipped == 1
     spans = await span_rows(engine, runs[0]["run_id"])
     assert [s.name for s in spans.values()] == ["first"]
@@ -447,6 +450,9 @@ async def test_a_burst_of_batches_is_summarized_once_after_the_debounce_delay(
     )
     assert await late.run_once() == 1  # once due, a single recomputation covers all 30 events
     assert (await run_row(engine, run["run_id"])).summary["event_count"] == 30
+    assert (
+        await late.run_once() == 1
+    )  # the summary enqueued one analytics refresh for the run's day
     assert await late.run_once() == 0
 
 

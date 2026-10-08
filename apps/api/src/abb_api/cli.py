@@ -7,6 +7,11 @@
     python -m abb_api.cli revoke-key --workspace acme --key-id <key_id>
     python -m abb_api.cli jobs-list --status dead_letter
     python -m abb_api.cli jobs-retry [--id <job uuid>]   # after fixing the cause
+    python -m abb_api.cli set-pricing-override --workspace acme --model-pattern 'my-model*' \
+        --input-per-million 3 --output-per-million 15 [--project p] [--valid-from 2026-10-01]
+    python -m abb_api.cli list-pricing --workspace acme
+    python -m abb_api.cli rebuild-costs --workspace acme [--project p] [--since 2026-10-01]
+    python -m abb_api.cli refresh-analytics --workspace acme [--since 2026-10-01]
     python -m abb_api.cli seed            # local development only
 
 A new key's secret is written to stdout exactly once; everything else goes to stderr so the key can
@@ -20,12 +25,14 @@ import stat
 import sys
 import uuid
 from collections.abc import Sequence
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TextIO
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from abb_api.analytics.rollup import refresh_day
 from abb_api.auth import scopes as scope_names
 from abb_api.auth.keys import parse_key
 from abb_api.auth.repository import ApiKeyRepository
@@ -34,9 +41,12 @@ from abb_api.clock import Clock, system_clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.domain import AlreadyExistsError, DomainError, NotFoundError
 from abb_api.core.errors import AppError
+from abb_api.cost.builtin import BUILTIN_ENTRIES
+from abb_api.cost.repository import CostRepository
 from abb_api.db import create_engine
-from abb_api.jobs.outbox import JobQueue
+from abb_api.jobs.outbox import JobQueue, OutboxRepository
 from abb_api.projects.repository import ProjectRepository
+from abb_api.runs.repository import RunRepository
 from abb_api.tenancy import TenantContext
 from abb_api.workspaces import Workspace, WorkspaceProvisioning
 
@@ -44,6 +54,24 @@ SEED_WORKSPACE = ("Local development", "local")
 SEED_PROJECT = ("Demo", "demo")
 SEED_KEY_NAME = "dev-seed"
 DEFAULT_KEY_FILE = Path(".local/dev-api-key")
+
+
+def _price(text: str) -> Decimal:
+    try:
+        value = Decimal(text)
+    except InvalidOperation:
+        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
+    if not value.is_finite() or value < 0:
+        raise argparse.ArgumentTypeError("must be a finite number >= 0")
+    return value
+
+
+def _instant(text: str) -> datetime:
+    try:
+        value = datetime.fromisoformat(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not an ISO date or time: {text!r}") from None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -86,9 +114,52 @@ def build_parser() -> argparse.ArgumentParser:
     )
     jobs_retry.add_argument("--id", type=uuid.UUID, help="a single job; default: all dead letters")
 
+    override = sub.add_parser(
+        "set-pricing-override",
+        help="add a price for a model (newer rows win); run rebuild-costs to apply to past runs",
+    )
+    override.add_argument("--workspace", required=True, help="workspace slug")
+    override.add_argument("--project", help="project slug; omit for the whole workspace")
+    override.add_argument("--provider", help="match only this provider (default: any)")
+    override.add_argument("--model-pattern", required=True, help="glob, e.g. 'my-model*'")
+    override.add_argument("--input-per-million", type=_price, required=True)
+    override.add_argument("--output-per-million", type=_price, required=True)
+    override.add_argument("--cached-input-per-million", type=_price)
+    override.add_argument("--request-price", type=_price, default=Decimal(0))
+    override.add_argument(
+        "--valid-from", type=_instant, default=datetime(1970, 1, 1, tzinfo=UTC),
+        help="ISO date or time (UTC); default: always",
+    )  # fmt: skip
+    override.add_argument("--note")
+
+    pricing = sub.add_parser("list-pricing", help="show the built-in price table and overrides")
+    pricing.add_argument("--workspace", required=True, help="workspace slug")
+
+    rebuild = sub.add_parser(
+        "rebuild-costs", help="re-derive runs (summary and cost lines) after a price change"
+    )
+    rebuild.add_argument("--workspace", required=True, help="workspace slug")
+    rebuild.add_argument("--project", help="project slug")
+    rebuild.add_argument("--since", type=_instant, help="only runs started at or after this")
+    rebuild.add_argument("--limit", type=int, default=10_000)
+
+    refresh = sub.add_parser(
+        "refresh-analytics",
+        help="rebuild the daily analytics rollups of a workspace (after a restore or a backfill)",
+    )
+    refresh.add_argument("--workspace", required=True, help="workspace slug")
+    refresh.add_argument("--since", type=_instant, help="first day to rebuild (default: all)")
+
     seed = sub.add_parser("seed", help="create a local workspace, project and dev key")
     seed.add_argument("--key-file", type=Path, default=DEFAULT_KEY_FILE)
     return parser
+
+
+def _price_line(version: str, pattern: str, entry) -> str:  # type: ignore[no-untyped-def]
+    return (
+        f"{version}  {entry.provider or '*'}/{pattern}  in={entry.input_per_million} "
+        f"out={entry.output_per_million}  from={entry.valid_from.date()}"
+    )
 
 
 async def _workspace(conn: AsyncConnection, slug: str) -> Workspace:
@@ -222,6 +293,55 @@ async def run(
             elif args.command == "jobs-retry":
                 revived = await JobQueue(conn).requeue_dead_letters(None, args.id)
                 print(f"requeued {revived} job(s)", file=err)
+            elif args.command == "set-pricing-override":
+                ws = await _workspace(conn, args.workspace)
+                project_id = await _project_id(conn, ws, args.project) if args.project else None
+                created_id = await CostRepository(conn, TenantContext(ws.id)).add_override(
+                    project_id=project_id,
+                    provider=args.provider,
+                    model_pattern=args.model_pattern,
+                    input_per_million=args.input_per_million,
+                    output_per_million=args.output_per_million,
+                    cached_input_per_million=args.cached_input_per_million,
+                    request_price=args.request_price,
+                    valid_from=args.valid_from,
+                    note=args.note,
+                )
+                print(
+                    f"added override:{created_id}; run rebuild-costs to apply it to past runs",
+                    file=err,
+                )
+            elif args.command == "list-pricing":
+                ws = await _workspace(conn, args.workspace)
+                for entry in BUILTIN_ENTRIES:
+                    print(_price_line(entry.pricing_version, entry.model_pattern, entry), file=out)
+                for record in await CostRepository(conn, TenantContext(ws.id)).overrides():
+                    print(
+                        _price_line(f"override:{record.id}", record.model_pattern, record.entry()),
+                        file=out,
+                    )
+            elif args.command == "rebuild-costs":
+                ws = await _workspace(conn, args.workspace)
+                tenant = TenantContext(ws.id)
+                project_id = await _project_id(conn, ws, args.project) if args.project else None
+                run_ids = await RunRepository(conn, tenant).run_ids(
+                    project_id=project_id, since=args.since, limit=args.limit
+                )
+                queued = await OutboxRepository(conn, tenant).enqueue_summarize(run_ids)
+                print(f"queued {queued} of {len(run_ids)} run(s) for re-derivation", file=err)
+                if len(run_ids) >= args.limit:
+                    print(
+                        f"WARNING: stopped at --limit {args.limit}; older runs were NOT queued. "
+                        "Narrow the range with --since / --project or raise --limit and run again.",
+                        file=err,
+                    )
+            elif args.command == "refresh-analytics":
+                ws = await _workspace(conn, args.workspace)
+                tenant = TenantContext(ws.id)
+                days = await RunRepository(conn, tenant).run_days(since=args.since)
+                for day in days:
+                    await refresh_day(conn, tenant, day)
+                print(f"rebuilt analytics for {len(days)} day(s)", file=err)
             elif args.command == "seed":
                 await _seed(conn, args.key_file, settings, clock, out, err)
     except (DomainError, ValueError) as exc:

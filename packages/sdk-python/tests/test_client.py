@@ -114,13 +114,15 @@ def test_llm_call_records_usage_and_failures() -> None:
     with bb.run("r") as run:
         with run.llm_call("anthropic", "claude", temperature=0.5, max_tokens=64) as llm:
             llm.record_usage(100, 50, cached_input_tokens=10, cost_usd=0.002)
-            llm.record_usage(-1, True, cost_usd=-3)  # invalid values are ignored
+            llm.record_usage(-1, True, cost_usd=-3, provider_cost_usd=0.0021)  # bad ones ignored
+            llm.record_usage(provider_cost_usd=True)  # a bool is not a number
         with pytest.raises(RuntimeError), run.llm_call("anthropic", "claude"):
             raise RuntimeError("overloaded")
     evs = events_of(bb)
     done = by_type(evs, "llm.request.completed")[0]["attributes"]
     assert done["llm.provider"] == "anthropic" and done["llm.input_tokens"] == 100
     assert done["llm.output_tokens"] == 50 and done["cost.estimated_usd"] == 0.002
+    assert done["cost.provider_usd"] == 0.0021  # kept apart from the estimate (ADR-040)
     assert (
         done["llm.latency_ms"] >= 0
         and by_type(evs, "llm.request.started")[0]["attributes"]["llm.temperature"] == 0.5

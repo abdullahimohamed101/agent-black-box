@@ -22,6 +22,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -30,7 +31,9 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     MetaData,
+    Numeric,
     PrimaryKeyConstraint,
+    SmallInteger,
     Table,
     Text,
     UniqueConstraint,
@@ -71,6 +74,7 @@ RUN_STATUSES = (
 ORDERING_MODES = ("sequence", "time")
 JOB_STATUSES = ("pending", "running", "done", "dead_letter")
 POLICY_ACTIONS = ("allow", "deny", "require_approval")
+COST_SOURCES = ("provider_reported", "estimated", "client_estimate", "unpriced")
 
 # ---------------------------------------------------------------- tenancy and identity
 
@@ -190,12 +194,28 @@ runs = Table(
     Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     _ts("created_at", nullable=False, default_now=True),
     _ts("updated_at", nullable=False, default_now=True),
+    # Typed copies of summary figures, written with it by the summarizer (INV-2: rebuilt).
+    # Analytics aggregate these instead of parsing JSONB for every row (measured, ADR-043).
+    Column("cost_usd", Numeric(38, 9), nullable=False, server_default="0"),
+    Column("retry_cost_usd", Numeric(38, 9), nullable=False, server_default="0"),
+    Column("llm_calls", Integer, nullable=False, server_default="0"),
+    Column("tool_calls", Integer, nullable=False, server_default="0"),
+    Column("retry_count", Integer, nullable=False, server_default="0"),
+    Column("retries_unattributed", Integer, nullable=False, server_default="0"),
+    Column("files_modified", Integer, nullable=False, server_default="0"),
+    Column("unpriced_calls", Integer, nullable=False, server_default="0"),
+    Column("tool_spans_finished", Integer, nullable=False, server_default="0"),
+    Column("tool_spans_ok", Integer, nullable=False, server_default="0"),
+    Column("llm_spans_finished", Integer, nullable=False, server_default="0"),
+    Column("llm_spans_ok", Integer, nullable=False, server_default="0"),
     PrimaryKeyConstraint("workspace_id", "id"),
     ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
     CheckConstraint(_in("status", RUN_STATUSES), name="ck_runs_status"),
     CheckConstraint(_in("ordering_mode", ORDERING_MODES), name="ck_runs_ordering_mode"),
     Index("ix_runs_project_started", "workspace_id", "project_id", text("started_at DESC"), "id"),
     Index("ix_runs_status_started", "workspace_id", "status", text("started_at DESC"), "id"),
+    # Workspace-wide windows and cross-project listings (KI-025; analytics windows, ADR-043).
+    Index("ix_runs_workspace_started", "workspace_id", text("started_at DESC"), "id"),
 )
 
 spans = Table(
@@ -214,11 +234,15 @@ spans = Table(
     _ts("ended_at"),
     Column("duration_ms", Float),
     Column("event_count", Integer, nullable=False, server_default="0"),
+    # Copied from the run by the summarizer so span analytics filter without a join (ADR-043).
+    Column("project_id", UUID(as_uuid=True)),
+    _ts("run_started_at"),
     PrimaryKeyConstraint("workspace_id", "id"),
     ForeignKeyConstraint(
         ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
     ),
     Index("ix_spans_run_parent", "workspace_id", "run_id", "parent_span_id"),
+    Index("ix_spans_window", "workspace_id", "run_started_at", "kind"),
 )
 
 events = Table(
@@ -291,6 +315,174 @@ outbox_jobs = Table(
     Index("ix_outbox_lease", "lease_expires_at", postgresql_where=text("status = 'running'")),
     # Run listings look up each run's job state by key; without this they scan the whole history.
     Index("ix_outbox_dedupe", "workspace_id", "job_type", "dedupe_key", "status"),
+)
+
+# ---------------------------------------------------------------- cost (Phase 7, ADR-040)
+
+# One row per completed model call, derived from events by the summarizer (INV-2): rewritten
+# wholesale for a run whenever the run is summarized. `run_started_at` is copied from the run so
+# aggregates filter and bucket without a join; money is exact `numeric` (9 decimal places).
+cost_calculations = Table(
+    "cost_calculations",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("event_id", UUID(as_uuid=True), nullable=False),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("agent_slug", Text, nullable=False),
+    Column("span_id", UUID(as_uuid=True)),
+    _ts("occurred_at", nullable=False),
+    _ts("run_started_at", nullable=False),
+    Column("provider", Text),
+    Column("model", Text),
+    Column("input_tokens", BigInteger, nullable=False),
+    Column("output_tokens", BigInteger, nullable=False),
+    Column("cached_input_tokens", BigInteger, nullable=False),
+    Column("source", Text, nullable=False),
+    Column("pricing_version", Text),
+    Column("pricing_origin", Text),
+    Column("input_cost", Numeric(38, 9)),
+    Column("output_cost", Numeric(38, 9)),
+    Column("cached_cost", Numeric(38, 9)),
+    Column("request_cost", Numeric(38, 9)),
+    Column("estimated_total", Numeric(38, 9)),
+    Column("reported_total", Numeric(38, 9)),
+    Column("client_total", Numeric(38, 9)),
+    Column("total", Numeric(38, 9), nullable=False),
+    Column("is_retry", Boolean, nullable=False, server_default=text("false")),
+    PrimaryKeyConstraint("workspace_id", "event_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
+    ),
+    CheckConstraint(_in("source", COST_SOURCES), name="ck_cost_calculations_source"),
+    Index("ix_cost_run", "workspace_id", "run_id"),
+    Index("ix_cost_project_started", "workspace_id", "project_id", "run_started_at"),
+)
+
+# User price overrides: append-only (a correction is a newer row), workspace- or project-scoped.
+pricing_overrides = Table(
+    "pricing_overrides",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("provider", Text),
+    Column("model_pattern", Text, nullable=False),
+    Column("input_per_million", Numeric(38, 9), nullable=False),
+    Column("output_per_million", Numeric(38, 9), nullable=False),
+    Column("cached_input_per_million", Numeric(38, 9)),
+    Column("request_price", Numeric(38, 9), nullable=False, server_default="0"),
+    _ts("valid_from", nullable=False),
+    Column("note", Text),
+    _ts("created_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
+    CheckConstraint(
+        "input_per_million >= 0 AND output_per_million >= 0 AND request_price >= 0 "
+        "AND (cached_input_per_million IS NULL OR cached_input_per_million >= 0)",
+        name="ck_pricing_overrides_nonnegative",
+    ),
+    Index("ix_pricing_overrides_workspace", "workspace_id", "project_id"),
+)
+
+# ---------------------------------------------------------------- analytics rollups (ADR-043)
+#
+# Daily aggregates of the derived tables, rebuilt per (workspace, UTC day) by the
+# `refresh_analytics_day` job (delete + insert), so they are derived state like everything else here
+# (INV-2). They exist because scanning 700,000 runs / 6,000,000 spans per dashboard request was
+# measured at 1.5-9 s (docs/benchmarks/phase-7-analytics.md). Today's (still changing) day is never
+# read from here: the read path aggregates it live.
+
+
+def _daily(name: str, *columns: Column[Any], key: tuple[str, ...]) -> Table:
+    return Table(
+        name,
+        metadata,
+        Column("workspace_id", UUID(as_uuid=True), nullable=False),
+        Column("project_id", UUID(as_uuid=True), nullable=False),
+        Column("day", Date, nullable=False),
+        *columns,
+        PrimaryKeyConstraint("workspace_id", "project_id", "day", *key),
+        ForeignKeyConstraint(
+            ["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]
+        ),
+        Index(f"ix_{name}_day", "workspace_id", "day"),
+    )
+
+
+def _bigint(name: str) -> Column[Any]:
+    return Column(name, BigInteger, nullable=False, server_default="0")
+
+
+def _money(name: str) -> Column[Any]:
+    return Column(name, Numeric(38, 9), nullable=False, server_default="0")
+
+
+analytics_runs_daily = _daily(
+    "analytics_runs_daily",
+    Column("agent_slug", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    _bigint("runs"),
+    _money("cost_usd"),
+    _money("retry_cost_usd"),
+    _bigint("retried_runs"),
+    _bigint("runs_with_retry_cost"),
+    _bigint("llm_calls"),
+    _bigint("tool_calls"),
+    _bigint("retry_count"),
+    _bigint("retries_unattributed"),
+    _bigint("files_modified"),
+    _bigint("unpriced_calls"),
+    _bigint("tool_spans_finished"),
+    _bigint("tool_spans_ok"),
+    _bigint("llm_spans_finished"),
+    _bigint("llm_spans_ok"),
+    _bigint("unrebuilt_runs"),
+    key=("agent_slug", "status"),
+)
+
+analytics_cost_daily = _daily(
+    "analytics_cost_daily",
+    Column("agent_slug", Text, nullable=False),
+    Column("provider", Text, nullable=False),  # '' when unknown
+    Column("model", Text, nullable=False),
+    Column("source", Text, nullable=False),
+    _bigint("calls"),
+    _money("total_usd"),
+    _bigint("input_tokens"),
+    _bigint("output_tokens"),
+    key=("agent_slug", "provider", "model", "source"),
+)
+
+analytics_spans_daily = _daily(
+    "analytics_spans_daily",
+    Column("kind", Text, nullable=False),
+    Column("name", Text, nullable=False),  # '' for kinds that are not listed by name
+    _bigint("finished"),
+    _bigint("ok"),
+    key=("kind", "name"),
+)
+
+# Duration histograms (log-spaced buckets, `analytics/percentiles.py`): percentiles are merged
+# across days from these.
+analytics_latency_daily = _daily(
+    "analytics_latency_daily",
+    Column("series", Text, nullable=False),  # 'run' or a span kind
+    Column("name", Text, nullable=False),
+    Column("bucket", SmallInteger, nullable=False),
+    _bigint("n"),
+    key=("series", "name", "bucket"),
+)
+
+analytics_top_runs = _daily(
+    "analytics_top_runs",
+    Column("kind", Text, nullable=False),  # 'cost' | 'retries'
+    Column("rank", SmallInteger, nullable=False),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    _money("cost_usd"),
+    _money("retry_cost_usd"),
+    _bigint("retry_count"),
+    key=("kind", "rank"),
 )
 
 # ------------------------ skeletons (extended by later phases)

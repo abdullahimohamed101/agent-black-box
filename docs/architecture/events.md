@@ -54,7 +54,7 @@ declared type and minimum wherever they appear. Large, sensitive or unbounded da
 | --- | --- |
 | run | `run.started` `run.completed` `run.failed` `run.cancelled` |
 | agent | `agent.started` `agent.completed` `agent.state_changed` `agent.spawned` |
-| llm | `llm.request.started` `.completed` `.failed` (require `llm.provider`, `llm.model`) |
+| llm | `llm.request.started` `.completed` `.failed` (require `llm.provider`, `llm.model`; cost attributes: `cost.provider_usd` = reported by the provider, `cost.estimated_usd` = the caller's estimate, `cost.pricing_version`; the server prices tokens itself, ADR-040) |
 | tool | `tool.call.started` `.completed` `.failed` (require `tool.name`) |
 | file | `file.read` `file.created` `file.modified` `file.deleted` (require `file.path`) |
 | git | `git.diff` `git.commit` `git.branch_created` `git.push` |

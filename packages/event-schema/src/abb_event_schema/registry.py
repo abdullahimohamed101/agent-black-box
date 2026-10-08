@@ -63,6 +63,8 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     "llm.max_tokens": AttrSpec(AttrType.INTEGER, 0),
     "llm.error_type": AttrSpec(AttrType.STRING),
     "cost.estimated_usd": AttrSpec(AttrType.NUMBER, 0),
+    # Cost reported by the provider (billed/usage API), distinct from any estimate (§79.3, ADR-040).
+    "cost.provider_usd": AttrSpec(AttrType.NUMBER, 0),
     "cost.pricing_version": AttrSpec(AttrType.STRING),
     # tools
     "tool.name": AttrSpec(AttrType.STRING),

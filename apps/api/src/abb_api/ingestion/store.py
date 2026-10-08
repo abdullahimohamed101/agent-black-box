@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
 from abb_api.db.event_rows import event_to_row, row_to_event
-from abb_api.jobs.outbox import SUMMARIZE_RUN, OutboxRepository
+from abb_api.jobs.outbox import SUMMARIZE_RUN, OutboxRepository, summarize_key
 from abb_api.projects.repository import AgentRepository
 from abb_api.runs.repository import RunRepository, RunSeed
 from abb_api.streaming import notify
@@ -180,7 +180,7 @@ class PgEventStore:
         ):
             await outbox.enqueue(
                 job_type=SUMMARIZE_RUN,
-                dedupe_key=f"{workspace}:{run_id}",
+                dedupe_key=summarize_key(workspace, run_id),
                 payload={"run_id": str(run_id)},
                 delay=self._summary_delay,
             )
