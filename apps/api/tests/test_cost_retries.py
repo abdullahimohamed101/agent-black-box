@@ -26,7 +26,14 @@ class Trace:
     def __init__(self) -> None:
         self.events: list[Event] = []
 
-    def add(self, kind: str, *, span: str | None, parent: str | None = None, **attrs: Any) -> str:
+    def add(
+        self,
+        kind: str,
+        *,
+        span: str | None,
+        parent: str | None = None,
+        attrs: dict[str, Any] | None = None,
+    ) -> str:
         extra: dict[str, Any] = {"span_id": span if span else ...}
         if parent:
             extra["parent_span_id"] = parent
@@ -40,10 +47,10 @@ class Trace:
         return event.event_id
 
     def llm(self, span: str | None, parent: str | None = None) -> str:
-        return self.add("llm.request.completed", span=span, parent=parent, **LLM)
+        return self.add("llm.request.completed", span=span, parent=parent, attrs=LLM)
 
     def retry(self, span: str | None, attempt: int = 1) -> None:
-        self.add("retry.attempted", span=span, **{"retry.attempt": attempt})
+        self.add("retry.attempted", span=span, attrs={"retry.attempt": attempt})
 
     def retries(self) -> set[str]:
         ordered = sort_events(self.events)
@@ -64,7 +71,7 @@ def test_calls_after_a_scoped_retry_are_retry_cost() -> None:
 
 def test_descendants_of_the_scope_count_and_siblings_do_not() -> None:
     t, scope, child, other = Trace(), sid(), sid(), sid()
-    t.add("tool.call.started", span=scope, **{"tool.name": "t"})
+    t.add("tool.call.started", span=scope, attrs={"tool.name": "t"})
     t.retry(scope)
     inside = t.llm(child, parent=scope)
     outside = t.llm(other)
@@ -91,8 +98,8 @@ def test_only_calls_after_the_first_retry_of_a_scope_count() -> None:
 
 def test_a_cyclic_ancestry_terminates() -> None:
     t, a, b = Trace(), sid(), sid()
-    t.add("tool.call.started", span=a, parent=b, **{"tool.name": "t"})
-    t.add("tool.call.started", span=b, parent=a, **{"tool.name": "t"})
+    t.add("tool.call.started", span=a, parent=b, attrs={"tool.name": "t"})
+    t.add("tool.call.started", span=b, parent=a, attrs={"tool.name": "t"})
     t.retry(a)
     call = t.llm(b, parent=a)
     assert call in t.retries()  # terminates and still finds the scope on the walk
