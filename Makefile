@@ -1,4 +1,4 @@
-.PHONY: stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
+.PHONY: stream-e2e analytics-e2e analytics-bench-seed analytics-bench sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -126,3 +126,13 @@ stream-e2e:
 
 e2e-real:
 	pnpm --filter @abb/web build && scripts/e2e-web-real.sh
+
+# Analytics: browser E2E over known runs, and the Stage A benchmark (docs/benchmarks/phase-7-analytics.md).
+analytics-e2e:
+	pnpm --filter @abb/web build && scripts/analytics-e2e.sh
+
+analytics-bench-seed:
+	ANALYTICS_E2E_MODE=seed scripts/analytics-e2e.sh
+
+analytics-bench:
+	ANALYTICS_E2E_MODE=bench scripts/analytics-e2e.sh

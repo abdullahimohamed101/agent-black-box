@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Analytics E2E: a dedicated database (abb_p7), an API on :8150 and a worker started by this script, the built web
 # server on :3150 reading through its proxy, and Playwright driving a real browser over runs written by
-# scripts/analytics_driver.py. ANALYTICS_E2E_MODE=bench instead seeds the Stage A dataset (scripts/analytics_seed.py)
-# and measures the endpoints (scripts/bench_analytics.py). Needs `.env` (Postgres on 5433) and, for the browser run,
+# scripts/analytics_driver.py. ANALYTICS_E2E_MODE=seed seeds the Stage A dataset (scripts/analytics_seed.py) and
+# ANALYTICS_E2E_MODE=bench measures its endpoints (scripts/bench_analytics.py). Needs `.env` (Postgres on 5433) and, for the
+# browser run,
 # `pnpm --filter @abb/web build`. Never touches the shared dev/test databases or the compose stack.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"
@@ -30,6 +31,14 @@ async def main():
 asyncio.run(main())
 PY
 uv run alembic upgrade head >/dev/null 2>&1
+
+if [ "${ANALYTICS_E2E_MODE:-}" = seed ]; then
+  step "seed the Stage A dataset into $DB_NAME (deterministic; replaces the 'bench' workspace) and build the rollups"
+  uv run python ../../scripts/analytics_seed.py --database-url "$ABB_DATABASE_URL" \
+    --runs-per-day "${SEED_RUNS_PER_DAY:-100000}" --days "${SEED_DAYS:-7}"
+  uv run python -m abb_api.cli refresh-analytics --workspace bench
+  exit 0
+fi
 
 step "start API (:$PORT) and worker"
 uv run uvicorn abb_api.main:app_from_env --factory --port "$PORT" >"$WORK/api.log" 2>&1 & pids+=($!)
