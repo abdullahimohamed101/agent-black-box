@@ -31,6 +31,9 @@ PY
 uv run alembic upgrade head >/dev/null 2>&1
 
 step "start API (:$PORT) and worker"
+if [ "${STREAM_E2E_MODE:-}" = bench ]; then   # many viewers on one key
+  export ABB_STREAM_MAX_PER_KEY=200 ABB_STREAM_MAX_TOTAL=200
+fi
 uv run uvicorn abb_api.main:app_from_env --factory --port "$PORT" >"$WORK/api.log" 2>&1 & pids+=($!)
 uv run python -m abb_api.worker >"$WORK/worker.log" 2>&1 & pids+=($!)
 for _ in $(seq 1 40); do curl -sf "$API/readyz" >/dev/null && break; sleep 0.5; done
@@ -44,6 +47,15 @@ cli create-project --workspace "stream-e2e-$suffix" --name Demo --slug demo >/de
 WRITE_KEY="$(cli create-key --workspace "stream-e2e-$suffix" --project demo --scopes events:write runs:read --name stream-write)"
 READ_KEY="$(cli create-key --workspace "stream-e2e-$suffix" --scopes runs:read --name stream-web-read)"
 [[ "$WRITE_KEY" == abb_live_* && "$READ_KEY" == abb_live_* ]] || fail "key creation"
+
+if [ "${STREAM_E2E_MODE:-}" = bench ]; then
+  step "fan-out benchmark: many viewers of one hot run while it ingests (scripts/bench_stream_fanout.py)"
+  cd "$root"
+  BENCH_API_URL="$API" BENCH_WRITE_KEY="$WRITE_KEY" BENCH_READ_KEY="$READ_KEY" \
+    uv run --project apps/api python scripts/bench_stream_fanout.py
+  grep -c "stream failed" "$WORK/api.log" | sed 's/^/stream failures logged by the API: /'
+  exit 0
+fi
 
 step "Playwright: browser <-> web server <-> API, writers driven by scripts/stream_driver.py"
 cd "$root/apps/web"

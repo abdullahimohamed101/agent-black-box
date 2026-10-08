@@ -8,7 +8,9 @@ import type { EventOut } from "@/lib/api/types";
  *   `event_id` (`mergeEvents`), this client does not try to.
  * - `EventSource` retries by itself after a dropped connection (sending `Last-Event-ID`), but gives up
  *   for good on an HTTP error. Then this client reopens with backoff from the last event it saw, and
- *   after `maxFailures` consecutive failures reports `unavailable` so the caller can poll instead.
+ *   after `maxFailures` failures in a row reports `unavailable` so the caller can poll instead. A failure
+ *   is forgiven once a connection delivers an event or stays open for `stableMs`, so a server that
+ *   accepts connections and then errors cannot reconnect forever.
  */
 
 export type StreamState = "connecting" | "live" | "reconnecting" | "ended" | "unavailable";
@@ -28,6 +30,8 @@ export interface StreamOptions {
   /** Injected for tests; defaults to requestAnimationFrame / setTimeout. */
   schedule?: (flush: () => void) => () => void;
   maxFailures?: number;
+  /** How long a connection must stay open to count as healthy (default 10 s). */
+  stableMs?: number;
   backoffMs?: (failures: number) => number;
 }
 
@@ -59,6 +63,9 @@ export function parseEvent(data: unknown): StreamEvent | null {
       typeof o.event_type === "string" &&
       typeof o.occurred_at === "string" &&
       typeof o.run_id === "string" &&
+      typeof o.attributes === "object" &&
+      o.attributes !== null &&
+      !Array.isArray(o.attributes) &&
       (o.sequence === null || o.sequence === undefined || typeof o.sequence === "number");
     return ok ? (e as StreamEvent) : null;
   } catch {
@@ -91,7 +98,8 @@ export function openRunStream(options: StreamOptions): StreamHandle {
     onState = () => {},
     onEnd = () => {},
     schedule = defaultSchedule,
-    maxFailures = 8,
+    maxFailures = 5,
+    stableMs = 10_000,
     backoffMs = defaultBackoff,
   } = options;
   const create =
@@ -103,6 +111,7 @@ export function openRunStream(options: StreamOptions): StreamHandle {
   let cancelFlush: (() => void) | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let failures = 0;
+  let stableTimer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
   let malformed = 0;
 
@@ -134,7 +143,8 @@ export function openRunStream(options: StreamOptions): StreamHandle {
     const es = create(streamUrl(runId, lastId));
     source = es;
     es.onopen = () => {
-      failures = 0;
+      if (stableTimer) clearTimeout(stableTimer);
+      stableTimer = setTimeout(() => (failures = 0), stableMs);
       onState("live");
     };
     es.addEventListener("trace_event", (message) => {
@@ -144,6 +154,7 @@ export function openRunStream(options: StreamOptions): StreamHandle {
         return;
       }
       lastId = event.event_id;
+      failures = 0; // it is delivering
       queue(event);
     });
     es.addEventListener("run_end", () => {
@@ -152,22 +163,28 @@ export function openRunStream(options: StreamOptions): StreamHandle {
     });
     es.onerror = (ev) => {
       if (closed || source !== es) return;
-      // The server's own `event: error` frame arrives on this same channel, carrying data: it closes
-      // the stream and the browser reconnects by itself, like any dropped connection.
-      if (es.readyState === CONNECTING || (ev as MessageEvent).data !== undefined) {
+      if (stableTimer) {
+        clearTimeout(stableTimer);
+        stableTimer = null;
+      }
+      // A plain network drop leaves the browser in CONNECTING: it retries by itself, indefinitely, and
+      // that is not a server fault. Two things are: the server's own `event: error` frame (it arrives on
+      // this channel with data, then the stream ends) and an HTTP error, after which the browser gives up.
+      const serverFrame = (ev as MessageEvent).data !== undefined;
+      if (!serverFrame && es.readyState === CONNECTING) {
         onState("reconnecting");
         return;
       }
+      failures++;
+      if (failures >= maxFailures) {
+        finish("unavailable");
+        return;
+      }
+      onState("reconnecting");
       if (es.readyState === CLOSED) {
-        // An HTTP error (429 STREAM_LIMIT, 503, ...): EventSource will not retry. Do it ourselves.
+        // 429 STREAM_LIMIT, 503, ...: EventSource will not retry. Do it ourselves, with backoff.
         es.close();
         source = null;
-        failures++;
-        if (failures >= maxFailures) {
-          finish("unavailable");
-          return;
-        }
-        onState("reconnecting");
         retryTimer = setTimeout(connect, backoffMs(failures));
       }
     };
@@ -184,6 +201,7 @@ export function openRunStream(options: StreamOptions): StreamHandle {
     close: () => {
       if (closed) return;
       if (retryTimer) clearTimeout(retryTimer);
+      if (stableTimer) clearTimeout(stableTimer);
       cancelFlush?.();
       source?.close();
       source = null;

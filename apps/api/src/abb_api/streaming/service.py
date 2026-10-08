@@ -70,7 +70,7 @@ class StreamService:
         cursor = ArrivalCursor(stream.start, timedelta(seconds=s.stream_overlap_seconds))
         key = (stream.principal.workspace_id, stream.run_id)
         deadline = loop.time() + s.stream_max_lifetime_seconds
-        last_write = last_fresh = loop.time()
+        last_write = last_fresh = last_check = loop.time()
         subscription = self._hub.subscribe(key)
         try:
             yield sse.retry_frame()
@@ -83,7 +83,10 @@ class StreamService:
                 if (pause := s.stream_min_poll_seconds - (loop.time() - polled)) > 0:
                     await asyncio.sleep(pause)
                 polled = loop.time()
-                async for batch in self._fresh_pages(stream, cursor):
+                check = polled - last_check >= s.stream_window_check_seconds
+                if check:
+                    last_check = polled
+                async for batch in self._fresh_pages(stream, cursor, check_window=check):
                     for event, has_payload in batch:
                         yield sse.frame(
                             "trace_event",
@@ -124,19 +127,20 @@ class StreamService:
             )
 
     async def _fresh_pages(
-        self, stream: OpenStream, cursor: ArrivalCursor
+        self, stream: OpenStream, cursor: ArrivalCursor, *, check_window: bool
     ) -> AsyncIterator[list[tuple[Event, bool]]]:
         """Rows this connection has not sent, page by page (queries borrow a connection briefly).
 
         Steady state is cheap: read strictly after the newest row sent (an index range scan), then
-        compare the number of rows in the overlap window with what was sent. Only a mismatch, which
-        means a row became visible late with an older arrival time, re-reads the window (ADR-022).
+        every `stream_window_check_seconds` compare the number of rows in the overlap window with
+        what was sent. Only a mismatch, which means a row became visible late with an older arrival
+        time, re-reads the window (ADR-022).
         """
         first = cursor.position is None
         async for batch in self._read(stream, cursor, since=cursor.lower_bound if first else None):
             yield batch
         position = cursor.position
-        if first or position is None:
+        if first or position is None or not check_window:
             return
         async with self._db, self._engine.connect() as conn:
             arrived = await EventQueries(conn, stream.principal.tenant).count_window(

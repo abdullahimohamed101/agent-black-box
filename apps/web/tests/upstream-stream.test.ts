@@ -49,7 +49,7 @@ describe("stream proxy", () => {
     const r = await readThrough(STREAM, new URLSearchParams());
     expect(r.status).toBe(200);
     expect(r.headers.get("content-type")).toBe("text/event-stream");
-    expect(r.headers.get("cache-control")).toBe("no-store");
+    expect(r.headers.get("cache-control")).toBe("no-store, no-transform");
     expect(r.headers.get("x-accel-buffering")).toBe("no");
     expect(r.headers.get("x-content-type-options")).toBe("nosniff");
     expect(r.headers.get("x-request-id")).toBe("req_1");

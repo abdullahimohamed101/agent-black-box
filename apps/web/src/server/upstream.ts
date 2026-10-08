@@ -134,7 +134,7 @@ async function streamThrough(
       status: 200,
       headers: {
         "content-type": "text/event-stream",
-        "cache-control": "no-store",
+        "cache-control": "no-store, no-transform", // no-transform: nothing may re-encode or buffer the stream
         "x-accel-buffering": "no",
         "x-content-type-options": "nosniff",
         ...(upstream.headers.get("x-request-id")

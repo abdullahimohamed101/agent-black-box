@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     # The pool is shared with ingestion: streams queue here instead of starving it.
     stream_min_poll_seconds: float = Field(default=0.1, ge=0)
     stream_db_concurrency: int = Field(default=4, ge=1)
+    # How often a stream counts its overlap window to catch a row that became visible late.
+    stream_window_check_seconds: float = Field(default=2.0, ge=0)
 
     @model_validator(mode="after")
     def _bursts_fit_a_full_batch(self) -> "Settings":

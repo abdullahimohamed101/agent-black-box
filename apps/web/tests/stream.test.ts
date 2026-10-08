@@ -14,7 +14,7 @@ class FakeSource implements EventSourceLike {
   onerror: ((ev: Event) => void) | null = null;
   closed = false;
   private listeners = new Map<string, ((ev: MessageEvent) => void)[]>();
-  constructor(readonly url: string) {}
+  constructor(public url: string) {}
   addEventListener(type: string, listener: (ev: MessageEvent) => void) {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
   }
@@ -50,6 +50,7 @@ const wire = (id: string, extra: Record<string, unknown> = {}) => ({
   event_type: "tool.call.completed",
   occurred_at: "2026-10-07T12:00:00Z",
   sequence: 1,
+  attributes: {},
   ...extra,
 });
 
@@ -103,6 +104,9 @@ describe("url and parsing", () => {
       JSON.stringify({ ...wire("evt_1"), event_id: 5 }),
       JSON.stringify({ ...wire("evt_1"), occurred_at: undefined }),
       JSON.stringify({ ...wire("evt_1"), sequence: "1" }),
+      JSON.stringify({ ...wire("evt_1"), attributes: null }),
+      JSON.stringify({ ...wire("evt_1"), attributes: [] }),
+      JSON.stringify({ ...wire("evt_1"), attributes: "x" }),
     ]) {
       expect(parseEvent(bad)).toBeNull();
     }
@@ -181,15 +185,30 @@ describe("openRunStream", () => {
     expect(h.sources).toHaveLength(count); // and it stops trying
   });
 
-  it("a successful open resets the failure count", () => {
+  it("forgives earlier failures once a connection has stayed open or delivered an event", () => {
+    const h = harness({ maxFailures: 2 });
+    h.sources[0]!.fail();
+    vi.advanceTimersByTime(1000);
+    h.sources[1]!.open();
+    vi.advanceTimersByTime(10_000); // healthy for stableMs
+    h.sources[1]!.fail();
+    vi.advanceTimersByTime(1000);
+    expect(h.states.at(-1)).toBe("reconnecting");
+    expect(h.sources).toHaveLength(3);
+    h.sources[2]!.open();
+    h.sources[2]!.trace("evt_1"); // delivering counts as healthy at once
+    h.sources[2]!.fail();
+    vi.advanceTimersByTime(1000);
+    expect(h.sources).toHaveLength(4);
+  });
+
+  it("does not forgive an open that fails again at once", () => {
     const h = harness({ maxFailures: 2 });
     h.sources[0]!.fail();
     vi.advanceTimersByTime(1000);
     h.sources[1]!.open();
     h.sources[1]!.fail();
-    vi.advanceTimersByTime(1000);
-    expect(h.states.at(-1)).toBe("reconnecting");
-    expect(h.sources).toHaveLength(3);
+    expect(h.states.at(-1)).toBe("unavailable");
   });
 
   it("ends on run_end: flushes what arrived, closes, and does not reconnect", () => {
@@ -206,14 +225,23 @@ describe("openRunStream", () => {
     expect(h.sources).toHaveLength(1);
   });
 
-  it("ignores the server's in-band error frame as a reconnect, not a failure", () => {
-    const h = harness({ maxFailures: 1 });
+  it("counts the server's in-band error frames as failures, so a faulty server ends in 'unavailable'", () => {
+    const h = harness({ maxFailures: 3 });
+    const es = h.sources[0]!; // the browser reconnects with this same object after each error
+    for (let i = 0; i < 3; i++) {
+      es.open();
+      es.onerror?.({ data: '{"error":{"code":"STREAM_UNAVAILABLE"}}' } as unknown as Event);
+      expect(h.states.at(-1)).toBe(i < 2 ? "reconnecting" : "unavailable");
+    }
+    expect(es.closed).toBe(true); // and the client stops the browser's own retrying
+  });
+
+  it("never gives up on plain network drops: the browser keeps retrying by itself", () => {
+    const h = harness({ maxFailures: 2 });
     h.sources[0]!.open();
-    h.sources[0]!.readyState = 1;
-    h.sources[0]!.onerror?.({
-      data: '{"error":{"code":"STREAM_UNAVAILABLE"}}',
-    } as unknown as Event);
+    for (let i = 0; i < 20; i++) h.sources[0]!.drop();
     expect(h.states.at(-1)).toBe("reconnecting");
+    expect(h.sources[0]!.closed).toBe(false);
     expect(h.sources).toHaveLength(1);
   });
 

@@ -58,10 +58,25 @@ export function useLiveEvents(
   useEffect(() => {
     if (!enabled || !restComplete) return;
     let lostAt: number | null = null;
+    let knownFor: readonly EventOut[] | null = null;
+    let known = new Set<string>();
     const handle = openRunStream({
       runId,
       lastEventId: newestArrival(rest.current),
-      onEvents: (batch) => setLive((prev) => mergeEvents(prev, batch).events),
+      onEvents: (batch) => {
+        // Live copies of events REST already holds are redundant: drop them so state stays bounded.
+        if (knownFor !== rest.current) {
+          knownFor = rest.current;
+          known = new Set(rest.current.map((e) => e.event_id));
+        }
+        setLive(
+          (prev) =>
+            mergeEvents(
+              prev.filter((e) => !known.has(e.event_id)),
+              batch,
+            ).events,
+        );
+      },
       onState: (s) => {
         setState(s);
         const t = callbacks.current.now();
@@ -89,5 +104,5 @@ export function useLiveEvents(
     () => (live.length === 0 ? restEvents : mergeEvents(restEvents, live).events),
     [restEvents, live],
   );
-  return { events, state: enabled ? state : ("off" as LiveState) };
+  return { events, state: enabled ? state : ("off" as LiveState), liveCount: live.length };
 }
