@@ -46,7 +46,8 @@ def upgrade() -> None:
         [f"{c} = coalesce((summary->>'{SOURCE_KEY[c]}')::numeric, 0)" for c in MONEY]
         + [f"{c} = coalesce((summary->>'{c}')::numeric, 0)::int" for c in COUNTS]
     )
-    op.execute(f"UPDATE runs SET {assignments} WHERE summary <> '{{}}'::jsonb")
+    # Column names come from the constants above, never from input.
+    op.execute(f"UPDATE runs SET {assignments} WHERE summary <> '{{}}'::jsonb")  # noqa: S608
 
     op.add_column("spans", sa.Column("project_id", sa.UUID(), nullable=True))
     op.add_column("spans", sa.Column("run_started_at", sa.DateTime(timezone=True), nullable=True))

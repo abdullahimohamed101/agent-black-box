@@ -114,7 +114,7 @@ def test_llm_call_records_usage_and_failures() -> None:
     with bb.run("r") as run:
         with run.llm_call("anthropic", "claude", temperature=0.5, max_tokens=64) as llm:
             llm.record_usage(100, 50, cached_input_tokens=10, cost_usd=0.002)
-            llm.record_usage(-1, True, cost_usd=-3, provider_cost_usd=0.0021)  # invalid ones ignored
+            llm.record_usage(-1, True, cost_usd=-3, provider_cost_usd=0.0021)  # bad ones ignored
             llm.record_usage(provider_cost_usd=True)  # a bool is not a number
         with pytest.raises(RuntimeError), run.llm_call("anthropic", "claude"):
             raise RuntimeError("overloaded")
