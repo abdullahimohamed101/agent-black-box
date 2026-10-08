@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from blackbox.coding import CodingRecorder
+from blackbox.secretscan import is_sensitive_path
 
 MAX_RESULT_CHARS = 4000  # what the model sees of a tool result
 
@@ -70,12 +71,20 @@ class Toolbox:
         except re.error as exc:
             raise ToolError(f"invalid pattern: {exc}") from exc
         hits: list[str] = []
+        root = self.rec.root.resolve()
         for path in sorted(self.rec.root.rglob("*.py")):
             if ".git" in path.parts or "logs" in path.parts:
                 continue
+            try:  # a symlink may lead to a secret file or out of the repo: follow it only inside the repo
+                target = path.resolve().relative_to(root).as_posix()
+            except (ValueError, OSError):
+                continue
+            if is_sensitive_path(self.rec.rel(path)) or is_sensitive_path(target):
+                continue
             for number, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
                 if regex.search(line):
-                    hits.append(f"{self.rec.rel(path)}:{number}: {line.strip()}")
+                    # Everything shown to the model is masked, like read_file (ADR-031).
+                    hits.append(self.rec.sanitize(f"{self.rec.rel(path)}:{number}: {line.strip()}"))
         return ToolOutcome(_clip("\n".join(hits[:50]) or "no matches"))
 
     def _edit_file(self, path: str, old: str, new: str) -> ToolOutcome:

@@ -172,3 +172,27 @@ def test_git_tools_refuse_flag_like_names(tmp_path: Path) -> None:
             tools.call("git_branch", {"name": "--force"})
         with pytest.raises(ValueError):
             tools.call("git_push", {"branch": "-D"})
+
+
+def test_search_masks_secrets_and_does_not_follow_links_to_secret_files(tmp_path):
+    """Regression (third review): `search` returned file lines to the model unmasked, also via symlinks."""
+    import subprocess
+
+    from blackbox import BlackBox, PayloadMode
+    from blackbox.coding import CodingRecorder
+
+    from coding_agent.tools import Toolbox
+
+    subprocess.run(["git", "init", "-q", "-b", "main", str(tmp_path)], check=True)
+    (tmp_path / ".env").write_text("DB_PW=search-secret-value-5512\nPORT=1\n")
+    (tmp_path / "app.py").write_text("URL = 'search-secret-value-5512'\nOK = 'plain'\n")
+    (tmp_path / "link.py").symlink_to(tmp_path / ".env")
+    outside = tmp_path.parent / "outside_secret.py"
+    outside.write_text("TOKEN = 'outside-secret-value-3301'\n")
+    (tmp_path / "out.py").symlink_to(outside)
+    bb = BlackBox(mode="offline", project="d", payload_mode=PayloadMode.FULL)
+    with bb.run("r") as run:
+        box = Toolbox(CodingRecorder(bb, run, tmp_path))
+        shown = box.call("search", {"pattern": "URL|OK|PW|TOKEN"}).text
+    assert "search-secret-value-5512" not in shown and "outside-secret-value-3301" not in shown
+    assert "OK = 'plain'" in shown  # ordinary hits still work
