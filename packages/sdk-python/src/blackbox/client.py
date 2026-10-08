@@ -11,6 +11,7 @@ import inspect
 import itertools
 import logging
 import os
+import re
 import threading
 import time
 import weakref
@@ -19,6 +20,7 @@ from types import TracebackType
 from typing import Any, TypeVar, cast, overload
 
 from blackbox import ids
+from blackbox.artifacts import KINDS, ArtifactUploader, _Upload
 from blackbox.buffer import EventBuffer
 from blackbox.config import Config, agent_slug
 from blackbox.context import _current_run, _current_span
@@ -35,7 +37,7 @@ from blackbox.events import (
     span_kind,
 )
 from blackbox.exporter import Exporter, HttpSink, LocalSink, Sink
-from blackbox.redaction import Redactor
+from blackbox.redaction import PayloadMode, Redactor
 from blackbox.stats import Stats
 from blackbox.version import __version__
 
@@ -44,6 +46,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 _S = TypeVar("_S", bound="Span")
 
 _SUCCESS, _ERROR, _CANCELLED = "success", "error", "cancelled"
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 # kind -> (started, completed, failed) event types; other kinds use the generic span events.
 _TYPED_SPANS = {
     "tool": ("tool.call.started", "tool.call.completed", "tool.call.failed"),
@@ -483,6 +486,7 @@ class BlackBox:
         )
         self._buffer = EventBuffer(self.config.max_queue, self.stats_)
         self._exporter = self._new_exporter()
+        self._uploader = ArtifactUploader(self.config, self.stats_)
         self._start_lock = threading.Lock()
         self._started = False
         self._closed = False
@@ -563,14 +567,70 @@ class BlackBox:
 
         return decorate(fn) if fn is not None else decorate
 
+    def redact_text(self, text: str) -> str:
+        """Apply this client's secret redaction to free text (never raises; "" on failure)."""
+        try:
+            return self._redactor.redact_text(text) if isinstance(text, str) else ""
+        except Exception:
+            self.stats_.add("internal_errors")
+            return ""
+
+    def upload_artifact(
+        self,
+        content: str | bytes,
+        *,
+        kind: str = "other",
+        name: str | None = None,
+        run: "Run | None" = None,
+    ) -> str | None:
+        """Queue text (a diff, terminal output) as an artifact; return its id (`art_...`) or None.
+
+        Non-blocking. The text is redacted here, before it can leave the process (INV-5), and the
+        upload only happens in `PayloadMode.FULL` over HTTP: otherwise nothing is stored and None is
+        returned. A queue that is full or a failing server drops the upload and counts it.
+        """
+        try:
+            target = run if run is not None else _current_run.get()
+            if (
+                target is None
+                or not self.enabled
+                or self.config.payload_mode is not PayloadMode.FULL
+                or not self._uploader.active
+            ):
+                return None
+            text = (
+                content.decode("utf-8", errors="replace")
+                if isinstance(content, (bytes, bytearray))
+                else content
+            )
+            if not isinstance(text, str):
+                return None
+            data = self._redactor.redact_text(text).replace("\x00", "").encode("utf-8")
+            artifact_id = ids.new_id("art")
+            queued = self._uploader.enqueue(
+                _Upload(
+                    artifact_id,
+                    target.run_id,
+                    kind if kind in KINDS else "other",
+                    _CONTROL.sub(" ", name)[:256] if isinstance(name, str) and name else None,
+                    data,
+                )
+            )
+            return artifact_id if queued else None
+        except Exception:
+            self.stats_.add("internal_errors")
+            return None
+
     def flush(self, timeout: float | None = None) -> bool:
         """Wait (bounded) until queued events were handed to the sink. Never raises."""
         try:
+            wait = self.config.shutdown_timeout if timeout is None else timeout
+            started = time.monotonic()
+            uploaded = self._uploader.flush(wait)
             if not self._started:
-                return len(self._buffer) == 0
-            return self._exporter.flush(
-                self.config.shutdown_timeout if timeout is None else timeout
-            )
+                return len(self._buffer) == 0 and uploaded
+            left = max(0.0, wait - (time.monotonic() - started))
+            return self._exporter.flush(left) and uploaded
         except Exception:
             self.stats_.add("internal_errors")
             return False
@@ -581,9 +641,11 @@ class BlackBox:
             return True
         self._closed = True
         try:
-            return self._exporter.shutdown(
-                self.config.shutdown_timeout if timeout is None else timeout
-            )
+            wait = self.config.shutdown_timeout if timeout is None else timeout
+            started = time.monotonic()
+            uploaded = self._uploader.shutdown(wait)  # first: events may reference these artifacts
+            left = max(0.0, wait - (time.monotonic() - started))
+            return self._exporter.shutdown(left) and uploaded
         except Exception:
             self.stats_.add("internal_errors")
             return False
@@ -626,6 +688,7 @@ class BlackBox:
         self._start_lock = threading.Lock()
         self._buffer = EventBuffer(self.config.max_queue, self.stats_)
         self._exporter = self._new_exporter()
+        self._uploader = ArtifactUploader(self.config, self.stats_)
         self._started = False
 
     def _emit(

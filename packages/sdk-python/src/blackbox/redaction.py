@@ -28,6 +28,7 @@ MAX_NODES = 5000  # values visited per event: a huge wide payload must not stall
 # Strings are bounded before scanning so a huge value cannot stall the caller. One byte over the
 # inline payload limit: such a payload is later dropped as too large, never silently truncated.
 MAX_STRING = 64 * 1024 + 1
+MAX_TEXT = 4 * 1024 * 1024  # artifact text: the largest document scanned in one piece
 Event = dict[str, Any]
 Callback = Callable[[Event], "Event | None"]
 
@@ -130,6 +131,18 @@ class Redactor:
     def redact_string(self, text: str) -> str:
         if len(text) > MAX_STRING:
             text = text[:MAX_STRING]
+        return self._scrub(text)
+
+    def redact_text(self, text: str, *, max_chars: int = MAX_TEXT) -> str:
+        """Redact a whole document (terminal output, a diff) for an artifact (ADR-031).
+
+        Unlike `redact_string` the text is scanned as one piece, so a private key that spans
+        many lines is matched. Bounded by `max_chars` (cut, never skipped), so a huge output
+        cannot stall the caller.
+        """
+        return self._scrub(text[:max_chars] if len(text) > max_chars else text)
+
+    def _scrub(self, text: str) -> str:
         if len(text) < 8 or _MAYBE_SECRET.search(text) is None:
             return text
         for _kind, pattern, repl in _SECRET_PATTERNS:
