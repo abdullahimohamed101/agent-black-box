@@ -300,18 +300,21 @@ artifacts = Table(
     metadata,
     Column("workspace_id", UUID(as_uuid=True), nullable=False),
     Column("id", UUID(as_uuid=True), nullable=False),
+    # No foreign key to runs (ADR-030): an artifact may arrive before the first event of its run.
     Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
     Column("span_id", UUID(as_uuid=True)),
     Column("artifact_type", Text, nullable=False),
+    Column("name", Text),
+    Column("media_type", Text, nullable=False, server_default="text/plain"),
     Column("storage_uri", Text, nullable=False),
     Column("size_bytes", BigInteger),
     Column("content_hash", LargeBinary),
     Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     _ts("created_at", nullable=False, default_now=True),
     PrimaryKeyConstraint("workspace_id", "id"),
-    ForeignKeyConstraint(
-        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
-    ),
+    ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
+    Index("ix_artifacts_run", "workspace_id", "run_id"),
 )
 
 evaluations = Table(

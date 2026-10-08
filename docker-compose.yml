@@ -56,6 +56,8 @@ services:
     profiles: ["app"]
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - artifacts:/data/artifacts
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -98,3 +100,4 @@ services:
 
 volumes:
   pgdata:
+  artifacts:
