@@ -104,11 +104,36 @@ Events are put in canonical order, then folded:
 | `name`, `agent_id`, `trace_id` | `run.name` of the earliest `run.started` (an explicit name from `POST /v1/runs` is kept unless events name the run); agent and trace of the earliest event |
 | `ordering_mode` | `sequence` if every event has a `sequence`, else `time` |
 
-`summary` (version 1): `event_count`, `duration_ms`, `llm_calls` (`llm.request.completed|failed`), `tool_calls`
+`summary` (version 2): `event_count`, `duration_ms`, `llm_calls` (`llm.request.completed|failed`), `tool_calls`
 (`tool.call.completed|failed`), `input_tokens` and `output_tokens` (sums over `llm.request.completed`),
-`estimated_cost_usd` (sum of `cost.estimated_usd`; the pricing engine arrives in Phase 7), `retry_count`
+`estimated_cost_usd` (the effective cost: sum over model calls of the cost line, ADR-040; name kept for compatibility), `retry_cost_usd`, `initial_cost_usd`, `cost_by_source_usd`, `unpriced_calls`, `tool_spans_ok/finished`, `llm_spans_ok/finished`, `retry_count`, `retries_unattributed`
 (`retry.attempted`), `error_count` (events with status `error`/`timeout` or a `*.failed` type, each counted
 once), `files_modified` (distinct `file.path` of created/modified/deleted), `models`, `first_event_at`, `last_event_at`.
+
+## Cost and analytics
+
+All endpoints need `runs:read`. A project-bound key is confined to its project: `project_id` of another project is
+`404 PROJECT_NOT_FOUND`; a workspace-wide key may name any project of its workspace or none. Windows are `from`/`to`
+(ISO 8601; naive times are UTC; default the last 7 days, at most 92, else `422 INVALID_WINDOW`); a run belongs to the
+window it started in. Grouped lists return the top `top` groups (default 10, max 50) plus an `*_other` bucket.
+A query is cut off after `ABB_ANALYTICS_TIMEOUT_SECONDS` (default 10) with `503 ANALYTICS_TIMEOUT` (retryable).
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /v1/analytics/summary` | run counts, success/failure/timeout/retry rates, cost headline (total, per run, per successful run, retries, unpriced calls), run latency p50/p95, behaviour averages, tool and model-call success, active agents |
+| `GET /v1/analytics/cost` | headline, retry breakdown (initial vs retry cost, spec §24), cost by day, agent, model, source and project, most expensive runs |
+| `GET /v1/analytics/reliability` | rates, failure trend by day, tool success and p95, retry-heavy runs |
+| `GET /v1/analytics/performance` | p50/p95 for runs, model calls and tools; slowest operations (tool and model spans by name, other kinds by kind) |
+| `GET /v1/pricing` | the price entries the engine uses (built-in, illustrative, plus the caller's overrides) |
+
+Definitions: finished = success, failed, timed out or blocked (cancelled runs are counted separately and excluded
+from rates); `success_rate` = success / finished; `failure_rate` = (failed + blocked) / finished; `timeout_rate` =
+timed out / finished; `retry_rate` = runs with a retry / runs. Rates are `null`, not 0, when nothing can be
+divided. Money is USD rounded to 9 places. Every cost line states its source: `provider_reported` (event attribute
+`cost.provider_usd`), `estimated` (tokens x a versioned price, `pricing_version` stored per line), `client_estimate`
+(`cost.estimated_usd`) or `unpriced` (counted as $0 and reported). `input_tokens` includes cached tokens. A model
+call is retry cost when it follows a `retry.attempted` event of its span or an ancestor span (ADR-042).
+Prices: `python -m abb_api.cli set-pricing-override` then `rebuild-costs` (ADR-040); built-in prices are illustrative (KI-050).
 
 ## Live streaming
 
