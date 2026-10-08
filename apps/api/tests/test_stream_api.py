@@ -432,6 +432,7 @@ async def test_steady_state_polls_read_after_the_position_and_not_the_whole_wind
         calls.clear()
         await send(live.api, run, 40)
         await take(stream, 1, seconds=3)
+        await asyncio.sleep(0.6)  # let whole poll cycles finish, including the window check
     assert calls, "the stream polled"
     assert all(
         c["since"] is None and c["after"] is not None for c in calls
