@@ -492,3 +492,18 @@ async def test_streams_share_a_small_database_budget_and_all_still_complete(
         results = await asyncio.gather(*[watch() for _ in range(8)])  # 8 streams, 2 at a time
         assert all(r == [e["event_id"] for e in sent] for r in results)
         assert peak <= 2, peak
+
+
+async def test_with_the_listener_down_events_still_arrive_through_the_fallback_poll(
+    live: Live,
+) -> None:
+    run = make_run_ids()
+    await send(live.api, run, 1)
+    async with live.open(run["run_id"]) as response:
+        stream = messages(response)
+        await take(stream, 1)
+        await live.app.state.streams.hub.stop()  # no NOTIFY wake-ups from here on
+        assert not live.app.state.streams.hub.connected
+        later = await send(live.api, run, 2)
+        got = await take(stream, 1, seconds=3)  # delivered by the poll, not by a notification
+    assert got[0]["id"] == later["event_id"]
