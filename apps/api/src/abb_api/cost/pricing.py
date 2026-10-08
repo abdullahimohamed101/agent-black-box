@@ -5,11 +5,12 @@ the event time, never on the wall clock, so recomputing history later gives the 
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from fnmatch import fnmatchcase
 
 ZERO = Decimal(0)
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class PriceEntry:
     source: str = ""
     origin: str = "builtin"  # "builtin" | "override"
     project_id: str | None = None  # overrides only: None = whole workspace
+    created_at: datetime | None = None  # overrides only: the newer of two equal rows wins
 
     def applies(self, provider: str | None, model: str, at: datetime) -> bool:
         if self.valid_from > at or (self.valid_to is not None and at >= self.valid_to):
@@ -35,8 +37,9 @@ class PriceEntry:
             return False
         return fnmatchcase(model.lower(), self.model_pattern.lower())
 
-    def specificity(self) -> tuple[int, int, int, int, datetime]:
-        """Bigger wins: override, project scope, provider-specific, longer literal, newer."""
+    def specificity(self) -> tuple[int, int, int, int, datetime, datetime]:
+        """Bigger wins: override, project scope, provider-specific, longer literal, newer start,
+        newer row (so a correction with the same pattern and start replaces the earlier one)."""
         literal = sum(1 for ch in self.model_pattern if ch not in "*?")
         return (
             1 if self.origin == "override" else 0,
@@ -44,6 +47,7 @@ class PriceEntry:
             1 if self.provider is not None else 0,
             literal,
             self.valid_from,
+            self.created_at or _EPOCH,
         )
 
 

@@ -104,3 +104,25 @@ async def test_cli_rejects_bad_prices(api: Api, database_url: str) -> None:
         except SystemExit as exit_:  # argparse reports bad arguments by exiting with 2
             code = int(str(exit_.code))
         assert code == 2
+
+
+async def test_the_newer_of_two_equal_overrides_wins_every_time(api: Api) -> None:
+    """Same pattern and valid_from: the later row used to lose half the time (random id order)."""
+    from abb_api.cost.pricing import PriceBook
+
+    wrong = 0
+    for _ in range(100):
+        async with api.engine.begin() as conn:
+            repo = CostRepository(conn, api.tenant.context)
+            for price in (1, 2):  # the second is the correction
+                await repo.add_override(
+                    project_id=None, provider=None, model_pattern="dup*",
+                    input_per_million=Decimal(price), output_per_million=Decimal(price),
+                    cached_input_per_million=None, request_price=Decimal(0),
+                    valid_from=EPOCH, note=None,
+                )  # fmt: skip
+            book = PriceBook([r.entry() for r in await repo.overrides()])
+            entry = book.find(None, "dup-1", datetime(2026, 10, 7, tzinfo=UTC))
+            wrong += entry is None or entry.input_per_million != Decimal(2)
+            await conn.execute(t.pricing_overrides.delete())
+    assert wrong == 0

@@ -3,7 +3,7 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from abb_event_schema.ids import to_uuid
@@ -46,6 +46,7 @@ class OverrideRecord:
             source="workspace override",
             origin="override",
             project_id=str(self.project_id) if self.project_id else None,
+            created_at=self.created_at,
         )
 
 
@@ -75,7 +76,11 @@ class CostRepository:
                 | (t.pricing_overrides.c.project_id == project_id)
             )
         rows = await self._conn.execute(
-            statement.order_by(t.pricing_overrides.c.valid_from, t.pricing_overrides.c.id)
+            statement.order_by(
+                t.pricing_overrides.c.valid_from,
+                t.pricing_overrides.c.created_at,
+                t.pricing_overrides.c.id,
+            )
         )
         return [
             OverrideRecord(**{c: getattr(r, c) for c in OverrideRecord.__dataclass_fields__})
@@ -114,6 +119,9 @@ class CostRepository:
                 request_price=request_price,
                 valid_from=valid_from,
                 note=note,
+                # Python clock, not now(): rows added in one transaction share now(), and the
+                # newer of two otherwise equal overrides must win.
+                created_at=datetime.now(UTC),
             )
         )
         return new_id
