@@ -1,12 +1,12 @@
 # Phase 7 - Cost and analytics
 
-Status: In progress
+Status: Completed 2026-10-08 on branch `feature/phase-7-cost-analytics` (not pushed; MVP GATE reached, awaiting human review; the MVP is NOT declared accepted)
 Owner: implementer agent
 Branch: `feature/phase-7-cost-analytics` (from `main` cc56935; worktree `../abb-worktrees/phase-7`)
 Depends on: Phase 2 (derived runs/spans, outbox), Phase 4 (web), Phase 5 (live runs)
 Spec refs: §79 (cost engine), §22-23 (analytics, cost), §24 (retry cost), §61.2/61.4 (dashboard p95, Stage A), §138 (launch bar), INV-1/2/3/7
-ADRs: ADR-040 (cost engine and pricing), ADR-041 (analytics store and aggregates), ADR-042 (retry-cost attribution)
-Migration ids used: 0040 (chains from 0009). Known issues ids: KI-050..
+ADRs: ADR-040 (cost engine and pricing), ADR-041 (analytics store; its aggregates clause superseded), ADR-042 (retry-cost attribution), ADR-043 (daily rollups)
+Migration ids used: 0040 (cost tables), 0041 (typed run/span columns, indexes), 0042 (rollups); chain 0009 -> 0040 -> 0041 -> 0042. Known issues: KI-050..055 (KI-053 accepted), KI-028 and KI-025 resolved.
 
 ## Outcome
 A developer opens a project's Analytics page and sees what agents cost, where the money went (agent, model, day, retries), how reliable
@@ -105,3 +105,50 @@ scope-filter code. Independent verify and review passes (skills) before completi
 8. Web: client, dashboard (KI-028), analytics page, fixtures, tests.
 9. E2E script + Playwright spec + axe + screenshots.
 10. Verify, review, harden, complete (checklist, plan moved, docs).
+
+## Design changes made during implementation (measured, see the benchmark)
+- ADR-043: reading `runs`/`spans`/`cost_calculations` directly measured 1.3-8.6 s on the Stage A dataset; analytics now read five daily rollup tables
+  rewritten per workspace-day by a `refresh_analytics_day` job (debounced 60 s). A variant that aggregated today live measured worse and was dropped.
+  Consequences: whole-UTC-day windows, approximate percentiles (about 5%), analytics lag up to a minute, no agent filter (D5 of this plan changed).
+- `cost.provider_usd` was added to the event schema (additive); D3's "retries without a span attribute nothing" stands (KI-052).
+- Overrides are CLI-managed (KI-051); `GET /v1/pricing` is read-only.
+
+## Acceptance evidence
+| # | Criterion | Evidence | Status |
+| --- | --- | --- | --- |
+| 1 | Pricing and cost unit tests incl. historical reproducibility | `apps/api/tests/test_cost_engine.py` (21 tests: version selection by event time, glob specificity, override and source precedence, cached tokens, rounding, unpriced flag, hostile values, `test_historical_calculations_reproduce_after_prices_change`), part of api 461 passed in `scripts/quality.sh full` | VERIFIED |
+| 2 | Retry attribution | `test_cost_retries.py` (5) and `test_cost_derivation.py::test_a_run_gets_priced_lines...` (`retry + initial == total`); mutation of the ancestry rule fails them | VERIFIED |
+| 3 | Rebuild property (INV-2) | `test_cost_derivation.py::test_cost_lines_are_a_pure_function_of_the_events` (shuffled batches, delete + rebuild); `test_analytics_rollup.py::test_rollups_are_rebuilt_exactly_from_the_derived_tables`, `..._refresh_is_idempotent`, the CLI rebuild test | VERIFIED |
+| 4 | Analytics integration tests on seeded data | `test_analytics_api.py` (12): every metric against hand-worked numbers (ingestion -> worker -> API) | VERIFIED |
+| 5 | Tenant and project isolation | `test_analytics_api.py::test_a_project_key_cannot_read_or_probe_other_projects`, `..._another_workspace_is_invisible_everywhere`, `..._a_workspace_key_sees_every_project_and_can_narrow`, access tests (401/403); `test_pricing_api.py`; `test_rollup_rows_never_cross_workspaces`. Mutation checks (committed code, restored with git checkout): removing the project predicate, the workspace predicate, the project authorisation, the source precedence and the retry ancestry rule each made the targeted tests fail | VERIFIED |
+| 6 | Cardinality bound | `test_grouped_results_are_bounded_by_top` (top-N + other for models and tools), `test_client_controlled_names_are_capped_per_day` (rollup cap, cost preserved); agent slugs not capped (KI-055) | VERIFIED (agents: open KI-055) |
+| 7 | KI-028 resolved | `Dashboard.tsx` reads `/v1/analytics/summary`; `computeDashboard` removed; `tests/analytics.test.tsx`, `runs-list.test.tsx`; E2E dashboard test; issue #20 closed, row moved to Resolved | VERIFIED |
+| 8 | Dashboard p95 < 1.5 s on Stage A, measured | `docs/benchmarks/phase-7-analytics.md`: 700,000 runs / 5,948,006 spans / 2,098,880 lines; summary p95 801 ms (1 day), 30 ms (7 days); other endpoints 33-221 ms p95 | VERIFIED |
+| 9 | Browser E2E (Playwright, axe, screenshots) | `scripts/analytics-e2e.sh`: 4 passed (dashboard figures, analytics page figures, hostile names as text with no dialog/`__pwned`, window switch + 375 px no horizontal overflow); axe serious/critical = 0; screenshots in `docs/screenshots/phase-7/`; no `dangerouslySetInnerHTML` in `apps/web/src` | VERIFIED |
+| 10 | openapi, client, quality | `make openapi`, `pnpm gen:api` current; `scripts/quality.sh full` **exit 0** (event-schema 339, sdk 135, api 461, web 282 passed; migrations up/down/up; web build; wheel build) | VERIFIED |
+| 11 | §138 launch bar run as a checklist | below | DONE, partly open |
+
+## Security review note (review-change)
+Every analytics statement starts from `workspace_id == tenant` (`_source`, `rollup.*_select`, `_runs_from_top`, the active-agents query); a project key is forced to
+its own project and probing another is `404 PROJECT_NOT_FOUND` (`projects/access.py`, one place, tested for every endpoint); reads run in a READ ONLY transaction
+with a statement timeout; the web proxy allowlist is exactly the four analytics paths (GET only; `/v1/pricing` is not exposed to the browser); trace-derived names render
+only as React text nodes (tested). Findings fixed during review: `E501`/lint and a stale openapi caught by `quality.sh`; rollup cap ranked names across span kinds
+(fixed with a partition); the web proxy test now pins the allowlist. Residual: KI-029 (one shared web key) unchanged; KI-055 (agent slug cardinality).
+
+## Spec §138 MVP launch quality bar (checklist, human review pending)
+| Item | Evidence | Result |
+| --- | --- | --- |
+| Instrumentation takes minutes, not hours | `examples/python/trace_an_agent.py` + `scripts/sdk-e2e.sh` (Phase 3, compose stack); not re-run in Phase 7 | ASSUMED from Phase 3; needs a timed fresh run |
+| Live trace stable through reconnect | `scripts/stream-e2e.sh` re-run now: 5/5 passed (refresh mid-run, dropped connection, p50 6 ms / p95 25 ms accept-to-display). One earlier run timed out the latency test while the machine was loaded (load average 7); the rerun passed | VERIFIED (one flaky timeout under load) |
+| Duplicate events do not appear | `test_event_store.py` duplicate/conflict tests, `stream-e2e` refresh test (no duplicate rows), web `mergeEvents` tests; all in the green quality run | VERIFIED |
+| Sensitive fields can be disabled/redacted | SDK default `METADATA_ONLY`, `test_redaction.py` (payload modes, secret patterns, fail-closed callback); server-side detectors are KI-032 | VERIFIED (client-side only; KI-032 open) |
+| A failed coding-agent run can be diagnosed from the UI | the coding-agent demo, shell/diff views and artifact store are Phase 6 (parallel branch, not in this tree). The generic failure path (failure trend, timeline, retry-heavy runs, run detail) is exercised | NOT VERIFIED HERE: depends on Phase 6 |
+| Cost values are explainable | each model call stores source (provider-reported / estimated / client estimate / unpriced), pricing version and components; `GET /v1/pricing`; UI "where the cost figures come from", unpriced count, unrebuilt notice. Built-in prices are illustrative only (KI-050) | PARTLY: explainable, but real vendor prices must be added (KI-050, S2) |
+| Project data is tenant-isolated | tenant repository, schema-constraint, runtime-role and analytics isolation tests; mutation checks above | VERIFIED |
+| SDK outage behaviour does not break the demo agent | SDK tests (`test_client.py` never-raise and offline tests, exporter retry bounds); demo agent is Phase 6 | VERIFIED for the SDK; demo agent depends on Phase 6 |
+| README reproduces setup from a clean machine | no clean machine available; compose stack last verified at Phase 2 | UNVERIFIED (env) |
+| CI is green | `scripts/quality.sh full` exit 0 locally; nothing pushed, so GitHub CI (including the new `analytics-e2e` job) has never run on this branch | UNVERIFIED until pushed |
+| Basic load test passes the target stage | ingestion benchmark (Phase 2, about 4,000 events/s vs the Stage A peak of 1,000 events/s); analytics benchmark now (Stage A, p95 < 1.5 s). The ingestion benchmark was not re-run after Phase 7 changes (KI-054) | PARTLY: analytics VERIFIED; ingest re-run open (KI-054) |
+
+Outcome: not every item is evidenced. Open before the MVP can be accepted: Phase 6 (coding-agent diagnosis, demo agent), KI-050 (real prices), KI-054 (ingest re-measure),
+a clean-machine README run, and GitHub CI. This phase stops at the MVP gate; the human reviews.
