@@ -30,6 +30,9 @@ class Put:
 class ArtifactServer:
     script: list[int] = field(default_factory=list)
     received: list[Put] = field(default_factory=list)
+    events: list[Put] = field(
+        default_factory=list
+    )  # POSTed event batches (never mixed into `received`)
     delay: float = 0.0
     server: ThreadingHTTPServer | None = None
 
@@ -67,6 +70,24 @@ def server() -> Iterator[ArtifactServer]:
                 self.send_header("Retry-After", "0")
             self.end_headers()
             self.wfile.write(b"{}")
+
+        def do_POST(self) -> None:
+            raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            body = gzip.decompress(raw) if self.headers.get("Content-Encoding") == "gzip" else raw
+            parts = urlsplit(self.path)
+            state.events.append(
+                Put(
+                    parts.path,
+                    parse_qs(parts.query),
+                    {k.lower(): v for k, v in self.headers.items()},
+                    body,
+                )
+            )
+            reply = b'{"accepted":0,"duplicates":0,"conflicts":0,"rejected":0}'
+            self.send_response(202)
+            self.send_header("Content-Length", str(len(reply)))
+            self.end_headers()
+            self.wfile.write(reply)
 
         def log_message(self, *args: Any) -> None:
             return None

@@ -263,3 +263,23 @@ def test_comparisons_in_source_code_are_not_treated_as_assignments(code: str) ->
 )
 def test_real_assignments_are_still_redacted(text: str, secret: str) -> None:
     assert secret not in _bb().redact_text(text)
+
+
+# 11. every attribute built from user text goes through sanitize --------------------------------------------------
+
+
+def test_file_paths_and_git_refs_in_events_are_sanitized(plain: Path) -> None:
+    """Events stay buffered in offline mode, so every attribute can be inspected."""
+    secret = "path-secret-token-8820xyz"
+    (plain / ".env").write_text(f"SVC_KEY={secret}\n")
+    bb = BlackBox(mode="offline", project="d", payload_mode=PayloadMode.FULL)
+    with bb.run("r") as run:
+        rec = CodingRecorder(bb, run, plain)
+        (plain / f"notes-{secret}.txt").write_text("hi\n")
+        rec.read_file(f"notes-{secret}.txt")
+        rec.write_file(f"out-{secret}.txt", "x\n")
+        rec.delete_file(f"out-{secret}.txt")
+        rec.git_branch(f"feature/{secret}")
+    events = repr(bb.buffered_events())
+    assert "file.path" in events and "git.branch" in events  # the events are there to be inspected
+    assert secret not in events

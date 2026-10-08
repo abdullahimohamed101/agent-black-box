@@ -62,7 +62,14 @@ def make(root: Path, srv: ArtifactServer) -> tuple[BlackBox, Any, CodingRecorder
 
 def everything(bb: BlackBox, srv: ArtifactServer, results: list[Any]) -> str:
     assert bb.flush(5)
-    bodies = [p.body.decode(errors="replace") + p.path + repr(p.query) for p in srv.received]
+    assert srv.events, (
+        "no event batch reached the server: this harness would be blind to attributes"
+    )
+    # Artifact uploads AND the event batches the SDK really sent (attributes, names, ids).
+    bodies = [
+        p.body.decode(errors="replace") + p.path + repr(p.query)
+        for p in [*srv.received, *srv.events]
+    ]
     return "\n".join(
         [*bodies, repr(bb.buffered_events()), *(r.output + r.command for r in results)]
     )

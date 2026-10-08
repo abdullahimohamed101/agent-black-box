@@ -1187,7 +1187,9 @@ class CodingRecorder:
         self.run.event(
             "file.read",
             {
-                "file.path": self.rel(full), "file.operation": "read", "file.size_after": len(data),
+                "file.path": self.sanitize(self.rel(full)),
+                "file.operation": "read",
+                "file.size_after": len(data),
                 "file.hash_after": _sha(data), **self._lang(path),
             },
         )  # fmt: skip
@@ -1220,7 +1222,8 @@ class CodingRecorder:
         os.chmod(tmp, mode)  # mkstemp creates 0600; keep the file's own mode (executables stay so)
         os.replace(tmp, full)
         attrs: dict[str, object] = {
-            "file.path": rel, "file.operation": "created" if old is None else "modified",
+            "file.path": self.sanitize(rel),
+            "file.operation": "created" if old is None else "modified",
             "file.size_after": len(new), "file.hash_after": _sha(new), **self._lang(path),
         }  # fmt: skip
         if old is not None:
@@ -1238,7 +1241,9 @@ class CodingRecorder:
         full.unlink()
         rel = self.rel(full)
         attrs: dict[str, object] = {
-            "file.path": rel, "file.operation": "deleted", "file.size_before": len(old),
+            "file.path": self.sanitize(rel),
+            "file.operation": "deleted",
+            "file.size_before": len(old),
             "file.hash_before": _sha(old), **self._lang(path),
         }  # fmt: skip
         self._attach_diff(attrs, rel, old.decode("utf-8", errors="replace"), None, len(old))
@@ -1423,7 +1428,7 @@ class CodingRecorder:
         base = self._head()
         result = self._git("checkout", "-b", name)
         if result.ok:
-            attrs: dict[str, object] = {"git.branch": name}
+            attrs: dict[str, object] = {"git.branch": self.sanitize(name)}
             if base:
                 attrs["git.base_commit"] = base
             self.run.event("git.branch_created", attrs)
@@ -1462,7 +1467,7 @@ class CodingRecorder:
                 attrs["git.commit_hash"] = attrs["git.head_commit"] = head
             branch = self._quiet("git rev-parse --abbrev-ref HEAD")
             if branch:
-                attrs["git.branch"] = branch
+                attrs["git.branch"] = self.sanitize(branch)
             self.run.event("git.commit", attrs)
         return result
 
@@ -1472,6 +1477,10 @@ class CodingRecorder:
         result = self._git("push", "-u", remote, branch)
         if result.ok:
             self.run.event(
-                "git.push", {"git.push_target": f"{remote} {branch}", "git.branch": branch}
+                "git.push",
+                {
+                    "git.push_target": self.sanitize(f"{remote} {branch}"),
+                    "git.branch": self.sanitize(branch),
+                },
             )
         return result
