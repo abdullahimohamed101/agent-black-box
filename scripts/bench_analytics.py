@@ -2,9 +2,9 @@
 
     BENCH_API_URL=http://localhost:8150 BENCH_KEY=abb_live_... python scripts/bench_analytics.py
 
-Each endpoint is requested `--rounds` times per window, with the project filter alternating between the whole
-workspace and single projects (a dashboard is opened both ways). The first request of each distinct query is
-reported separately as "cold" (cache-cold pages); the percentiles cover all requests. Numbers depend on the
+Each query is warmed up (`--warmup` discarded requests), then measured `--rounds` times, and the whole pass is repeated
+`--repeats` times; every repeat is reported, and the budget is checked against the worst repeat. The very first request
+of each query is reported separately. Numbers depend on the
 machine; record the environment next to them (docs/benchmarks/phase-7-analytics.md).
 """
 
@@ -31,10 +31,12 @@ def percentile(values: list[float], q: float) -> float:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--rounds", type=int, default=15)
+    parser.add_argument("--rounds", type=int, default=20, help="measured requests per query per repeat")
+    parser.add_argument("--warmup", type=int, default=3, help="discarded requests per query before measuring")
+    parser.add_argument("--repeats", type=int, default=3, help="whole measurement passes; each is reported")
     parser.add_argument("--end", help="exclusive end (default: the next UTC midnight)")
     parser.add_argument("--days", type=int, nargs="+", default=[1, 7])
-    parser.add_argument("--projects", nargs="*", default=[], help="project ids to alternate with")
+    parser.add_argument("--projects", nargs="*", default=[], help="project ids to measure as well")
     parser.add_argument("--budget-ms", type=float, default=1500.0)
     parser.add_argument("--json-out")
     args = parser.parse_args()
@@ -46,47 +48,59 @@ def main() -> int:
         else datetime(now.year, now.month, now.day, tzinfo=timezone.utc) + timedelta(days=1)
     )
     client = httpx.Client(base_url=url, headers={"authorization": f"Bearer {key}"}, timeout=60)
-    results: dict[str, dict[str, float]] = {}
-    failed = False
+    queries = []  # (label, endpoint, params)
     for days in args.days:
         for endpoint in ENDPOINTS:
-            samples: list[float] = []
-            cold: list[float] = []
-            filters: list[str | None] = [None, *args.projects]
-            for project in filters:
-                params = {
-                    "from": (end - timedelta(days=days)).isoformat(),  # whole UTC days: today is the last
-                    "to": end.isoformat(),
-                }
+            for project in [None, *args.projects]:
+                params = {"from": (end - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                          "to": end.strftime("%Y-%m-%dT%H:%M:%SZ")}  # fmt: skip
                 if project:
                     params["project_id"] = project
-                for round_ in range(args.rounds):
-                    started = time.perf_counter()
-                    response = client.get(f"/v1/analytics/{endpoint}", params=params)
-                    elapsed = (time.perf_counter() - started) * 1000
-                    if response.status_code != 200:
-                        print(f"FAILED {endpoint} {days}d: {response.status_code} {response.text[:200]}")
-                        failed = True
-                        break
-                    (cold if round_ == 0 else samples).append(elapsed)
-            if not samples:
-                continue
-            label = f"{endpoint} window={days}d"
-            results[label] = {
-                "n": len(samples),
-                "cold_ms": round(statistics.mean(cold), 1) if cold else 0,
-                "p50_ms": round(percentile(samples, 0.5), 1),
-                "p95_ms": round(percentile(samples, 0.95), 1),
-                "max_ms": round(max(samples), 1),
-            }
-            print(f"{label:34} n={len(samples):3} cold={results[label]['cold_ms']:8.1f} "
-                  f"p50={results[label]['p50_ms']:8.1f} p95={results[label]['p95_ms']:8.1f} "
-                  f"max={results[label]['max_ms']:8.1f} ms")
-    over = [k for k, v in results.items() if v["p95_ms"] > args.budget_ms]
+                label = f"{endpoint} {days}d " + (project[-6:] if project else "workspace")
+                queries.append((label, endpoint, params))
+    results: dict[str, dict[str, object]] = {}
+    failed = False
+    first_seen: dict[str, float] = {}
+    for repeat in range(args.repeats):
+        for label, endpoint, params in queries:
+            for i in range(args.warmup + args.rounds):
+                started = time.perf_counter()
+                response = client.get(f"/v1/analytics/{endpoint}", params=params)
+                elapsed = (time.perf_counter() - started) * 1000
+                if response.status_code != 200:
+                    print(f"FAILED {label}: {response.status_code} {response.text[:200]}")
+                    failed = True
+                    break
+                if repeat == 0 and i == 0:
+                    first_seen[label] = elapsed
+                if i >= args.warmup:
+                    results.setdefault(label, {"repeats": []})  # type: ignore[union-attr]
+                    bucket = results[label]["repeats"]  # type: ignore[index]
+                    if len(bucket) <= repeat:  # type: ignore[arg-type]
+                        bucket.append([])  # type: ignore[attr-defined]
+                    bucket[repeat].append(elapsed)  # type: ignore[index]
+    summary: dict[str, dict[str, object]] = {}
+    over = []
+    for label, data in results.items():
+        runs = data["repeats"]  # type: ignore[assignment]
+        per_repeat = [
+            {"p50_ms": round(percentile(r, 0.5), 1), "p95_ms": round(percentile(r, 0.95), 1),
+             "max_ms": round(max(r), 1), "n": len(r)}
+            for r in runs  # type: ignore[attr-defined]
+        ]  # fmt: skip
+        worst = max(p["p95_ms"] for p in per_repeat)
+        summary[label] = {"first_request_ms": round(first_seen[label], 1), "repeats": per_repeat,
+                          "worst_p95_ms": worst}  # fmt: skip
+        flag = "  OVER" if worst > args.budget_ms else ""
+        print(f"{label:34} first={first_seen[label]:7.1f}  "
+              + "  ".join(f"[p50 {p['p50_ms']:6.1f} p95 {p['p95_ms']:6.1f} max {p['max_ms']:6.1f}]" for p in per_repeat)
+              + flag)  # fmt: skip
+        if worst > args.budget_ms:
+            over.append(label)
     print("OVER BUDGET:" if over else "within budget", ", ".join(over))
     if args.json_out:
         with open(args.json_out, "w") as handle:
-            json.dump(results, handle, indent=2)
+            json.dump({"environment_note": "see docs/benchmarks/phase-7-analytics.md", "results": summary}, handle, indent=2)
     return 1 if failed or over else 0
 
 

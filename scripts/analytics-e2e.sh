@@ -42,7 +42,11 @@ fi
 
 step "start API (:$PORT) and worker"
 uv run uvicorn abb_api.main:app_from_env --factory --port "$PORT" >"$WORK/api.log" 2>&1 & pids+=($!)
-uv run python -m abb_api.worker >"$WORK/worker.log" 2>&1 & pids+=($!)
+# The benchmark must not share the VM with a worker draining leftover jobs (that, not a cold cache, produced the
+# 801 ms p95 of the first run); only the browser E2E needs one.
+if [ "${ANALYTICS_E2E_MODE:-}" != bench ]; then
+  uv run python -m abb_api.worker >"$WORK/worker.log" 2>&1 & pids+=($!)
+fi
 for _ in $(seq 1 40); do curl -sf "$API/readyz" >/dev/null && break; sleep 0.5; done
 curl -sf "$API/readyz" >/dev/null || fail "API did not become ready: $(tail -5 "$WORK/api.log")"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
@@ -51,9 +55,21 @@ if [ "${ANALYTICS_E2E_MODE:-}" = bench ]; then
   step "benchmark: Stage A dataset (seed it first: uv run python ../../scripts/analytics_seed.py --database-url \$ABB_DATABASE_URL)"
   KEY="$(cli create-key --workspace bench --scopes runs:read --name bench)"
   [[ "$KEY" == abb_live_* ]] || fail "no 'bench' workspace: seed the dataset first"
+  PROJECTS="$(uv run python - <<'PY'
+import asyncio, os, asyncpg
+from abb_event_schema.ids import IdKind, from_uuid
+async def main():
+    conn = await asyncpg.connect(os.environ["ABB_DATABASE_URL"].replace("+asyncpg", ""))
+    rows = await conn.fetch("select id from projects where workspace_id = '00000000-0000-4000-8000-0000000000a7' order by slug limit 3")
+    print(" ".join(from_uuid(IdKind.PROJECT, r["id"]) for r in rows))
+asyncio.run(main())
+PY
+)"
+  PENDING="$(docker compose exec -T postgres psql -U abb -d "$DB_NAME" -Atc "select count(*) from outbox_jobs where status <> 'done'" 2>/dev/null || echo unknown)"
+  echo "outbox jobs not done (no worker runs in this mode): $PENDING"
   cd "$root"
   BENCH_API_URL="$API" BENCH_KEY="$KEY" uv run --project apps/api python scripts/bench_analytics.py \
-    --rounds "${BENCH_ROUNDS:-15}" --json-out "${BENCH_OUT:-$root/.local/analytics-bench.json}"
+    --rounds "${BENCH_ROUNDS:-20}" --projects $PROJECTS --json-out "${BENCH_OUT:-$root/docs/benchmarks/phase-7-analytics-results.json}"
   exit 0
 fi
 

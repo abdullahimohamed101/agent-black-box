@@ -1,6 +1,9 @@
 # Phase 7 benchmark: analytics on the Stage A dataset
 
-Spec §61.2 target: p95 dashboard aggregate query < 1.5 s (Stage A, §61.4). Status: **MEASURED, target met** (see method and limits).
+Spec §61.2 target: p95 dashboard aggregate query < 1.5 s (Stage A, §61.4). Status: **MEASURED, target met under the stated conditions**.
+
+> **Limits, up front:** the dataset was seeded straight into the derived tables (no events, no ingest or summarizer load), has tiny cardinality (5 projects, 12 agents, 6 models, 20 tools),
+> and was read by one client with no concurrent ingestion. See "Limits of this benchmark" below before quoting any number.
 
 ## Environment (recorded, not a capacity claim)
 - Host: Apple M5 Pro, 24 GiB; PostgreSQL 16.15 in the Colima Docker VM (2 vCPU, 4 GiB), default settings, shared with other
@@ -21,23 +24,64 @@ make analytics-bench             # starts the API on :8150, runs scripts/bench_a
 ```
 
 ## Results (final design: daily rollups, ADR-043)
-`scripts/bench_analytics.py`, 20 rounds per query, workspace-wide key. "cold" is the mean of each distinct query's first request.
+`scripts/bench_analytics.py` through `make analytics-bench`: no worker and no other load on the VM, each query warmed up (3 discarded
+requests), then 20 measured requests, repeated 3 times; the table reports the first request ever made for the query, the range of the
+three repeats' p50 and the **worst repeat's p95**. Raw numbers for every repeat are saved in `docs/benchmarks/phase-7-analytics-results.json`
+(this file is the source of the table, including the single-project rows; there is no unsaved run behind any number here).
 
-| Endpoint | Window | p50 ms | p95 ms | max ms |
-| --- | --- | --- | --- | --- |
-| summary (the dashboard) | 1 day | 216 | 801 | 1064 |
-| summary | 7 days | 26 | 30 | 31 |
-| cost | 1 day | 72 | 221 | 329 |
-| cost | 7 days | 38 | 49 | 50 |
-| reliability | 1 day | 40 | 50 | 52 |
-| reliability | 7 days | 53 | 55 | 58 |
-| performance | 1 day | 26 | 33 | 35 |
-| performance | 7 days | 32 | 35 | 41 |
+| Endpoint | Window | Scope | first request ms | p50 ms (3 repeats) | worst p95 ms | max ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| summary | 1d | workspace-wide | 35 | 8-10 | 12 | 25 |
+| summary | 1d | one project (D9DDJW) | 14 | 9-11 | 13 | 13 |
+| summary | 1d | one project (5YJHQB) | 11 | 9-10 | 16 | 17 |
+| summary | 1d | one project (V5YSNK) | 11 | 9-10 | 17 | 23 |
+| cost | 1d | workspace-wide | 24 | 12-14 | 16 | 17 |
+| cost | 1d | one project (D9DDJW) | 22 | 11-13 | 15 | 16 |
+| cost | 1d | one project (5YJHQB) | 15 | 10-12 | 14 | 14 |
+| cost | 1d | one project (V5YSNK) | 12 | 10-10 | 11 | 12 |
+| reliability | 1d | workspace-wide | 16 | 12-12 | 13 | 13 |
+| reliability | 1d | one project (D9DDJW) | 19 | 11-12 | 15 | 29 |
+| reliability | 1d | one project (5YJHQB) | 12 | 11-12 | 14 | 17 |
+| reliability | 1d | one project (V5YSNK) | 13 | 10-11 | 14 | 15 |
+| performance | 1d | workspace-wide | 17 | 15-15 | 16 | 17 |
+| performance | 1d | one project (D9DDJW) | 13 | 11-11 | 13 | 28 |
+| performance | 1d | one project (5YJHQB) | 11 | 11-12 | 15 | 16 |
+| performance | 1d | one project (V5YSNK) | 13 | 11-12 | 14 | 14 |
+| summary | 7d | workspace-wide | 13 | 11-14 | 20 | 20 |
+| summary | 7d | one project (D9DDJW) | 24 | 10-12 | 16 | 18 |
+| summary | 7d | one project (5YJHQB) | 24 | 9-11 | 13 | 15 |
+| summary | 7d | one project (V5YSNK) | 18 | 8-11 | 13 | 14 |
+| cost | 7d | workspace-wide | 30 | 20-22 | 24 | 26 |
+| cost | 7d | one project (D9DDJW) | 22 | 13-16 | 17 | 18 |
+| cost | 7d | one project (5YJHQB) | 18 | 13-16 | 27 | 28 |
+| cost | 7d | one project (V5YSNK) | 18 | 15-16 | 28 | 32 |
+| reliability | 7d | workspace-wide | 28 | 26-28 | 30 | 35 |
+| reliability | 7d | one project (D9DDJW) | 20 | 15-17 | 62 | 246 |
+| reliability | 7d | one project (5YJHQB) | 121 | 15-17 | 19 | 21 |
+| reliability | 7d | one project (V5YSNK) | 18 | 15-17 | 19 | 22 |
+| performance | 7d | workspace-wide | 52 | 50-57 | 407 | 694 |
+| performance | 7d | one project (D9DDJW) | 392 | 23-26 | 192 | 267 |
+| performance | 7d | one project (5YJHQB) | 26 | 23-26 | 68 | 72 |
+| performance | 7d | one project (V5YSNK) | 26 | 22-24 | 27 | 30 |
 
-The same, with a single-project filter (3 projects x 20 rounds, 76 samples per row; ms p50 / p95): summary 14/15 (1 day), 9/23 (7 days);
-cost 16/22, 12/17; reliability 61/539 (one 2.1 s outlier while PostgreSQL autovacuum ran on the freshly written tables), 15/25;
-performance 24/33, 12/14. **Dashboard summary p95: 801 ms (1 day) and 30 ms (7 days), both under 1.5 s.** The 1-day summary p95 is dominated
-by the first requests after a seed (cold page cache for the run-status index used by the "running agents" list); steady state is about 15-30 ms.
+**Dashboard summary: worst p95 20 ms over every window and scope, budget 1500 ms.** Largest figure of any endpoint: 407 ms p95
+(performance, 7 days, in the first repeat after a restart: page cache, 694 ms max); steady state is 9-60 ms.
+
+### What the earlier "801 ms" 1-day summary p95 was
+An earlier version of this document attributed an 801 ms p95 (p50 216 ms, max 1,064 ms, 19 samples) to a cold page cache. That explanation was
+wrong: `EXPLAIN ANALYZE` of the 1-day SQL takes under 1 ms and the first request of every query here takes 11-35 ms. The run that produced it was
+started by a script that also launched a **worker**, on a database that had just been seeded (autovacuum/ANALYZE and `refresh_analytics_day` jobs
+from earlier probes were still running) on a 2-vCPU VM. With the worker removed from benchmark mode and a warm-up phase, the same query measures
+9-17 ms p95 in three repeats. I could not reproduce 801 ms afterwards, so contention on the shared VM is the best-supported explanation, not a proven one;
+the benchmark now refuses to hide that variance (every repeat is reported and the budget is checked against the worst one).
+
+## Limits of this benchmark (read before quoting any figure)
+- **The seed writes the derived tables directly** (`runs`, `spans`, `cost_calculations`); no events were ingested or summarized for this dataset, so ingest, summarizer
+  and refresh cost are NOT measured here (KI-054).
+- **Tiny cardinality**: 5 projects, 12 agents, 6 models, 20 tools. Rollup reads scale with the number of distinct names, agents and projects; production data has more.
+  Caps (200 names per kind and day, 2,000 rows per table and day) bound the worst case but the benchmark does not exercise them.
+- **No concurrent ingestion or concurrent readers**: one request at a time, one API process, loopback client. Latency under load and refresh cost under ingestion are unmeasured.
+- One machine (Apple M5 Pro host, Colima VM 2 vCPU / 4 GiB, PostgreSQL 16.15 default settings), owner database role. A latency baseline, not a capacity claim.
 
 ## How the design was reached (what was measured slow)
 ADR-041 started with no materialized aggregates. First implementation, aggregating `runs.summary` JSONB, `spans` and `cost_calculations`
@@ -47,10 +91,5 @@ reliability and performance 6.7-7.6 s): the cost was reading and sorting 0.7 M w
 that kept today live and read earlier days from rollups measured 0.6 s (summary), 6 s (cost) on a 100,000-run day, because each report statement
 re-aggregated the live day, so today was moved into the rollups as well. Final: reads touch only the five small rollup tables (ADR-043).
 
-## Limits of this measurement
-- One machine, one process, loopback client, one concurrent request at a time: this is a latency baseline, not a throughput or concurrency test.
-- Rollup freshness: figures lag run changes by up to the refresh interval (default 60 s); the benchmark does not measure refresh load under ingestion.
-  A full-day refresh (100,000 runs, about 800,000 spans) took about 4 s on an idle database.
-- Windows are whole UTC days and percentiles are histogram-based (about 5%); both are documented in `docs/architecture/api-v1.md`.
-- Summarizer cost with the cost engine on (KI-016): per-run cost computation is O(model calls) inside the existing pass; the ingestion benchmark
-  (`make bench`) was not re-run in this phase (UNVERIFIED for a regression of ingest p99; the added work is one extra table write per summarization).
+## Migration backfill time (measured on abb_p7 itself, non-destructively)
+`alembic upgrade 0041` on the seeded 700,000 runs / 5,948,006 spans took **3 min 5 s** (one transaction, `ACCESS EXCLUSIVE` on `runs` and `spans`); see `docs/runbooks/analytics-migrations.md` and KI-056.
