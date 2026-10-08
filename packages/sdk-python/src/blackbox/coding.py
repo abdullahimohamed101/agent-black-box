@@ -118,7 +118,8 @@ _RAW_RULES: tuple[tuple[re.Pattern[str], int, str, str], ...] = tuple(
         ),
         (r"\bchmod\s+(-[a-zA-Z]+\s+)*[0-7]{3,4}\s+/(\s|$)", 3, DESTRUCTIVE, "permissions on /"),
         (
-            r"\b(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|rmtree|FileUtils\.(rm_rf|rm_r|rm_f|remove\w*)"
+            r"\b(shutil\.rmtree|os\.(remove|unlink|rmdir|removedirs)|rmtree|FileUtils\.(rm_rf|rm_r|"
+            r"rm_f|remove\w*)"
             r"|File\.delete|unlinkSync|rmSync|rmdirSync|Files\.delete)\b",
             3,
             DESTRUCTIVE,
@@ -190,7 +191,8 @@ def _flag_cluster(arg: str, letters: str) -> bool:
 
 
 _GIT_EXEC_CONFIG = re.compile(
-    r"(?i)^(core\.(pager|fsmonitor|sshcommand|editor|hookspath|askpass|gitproxy)|alias\.|diff\.external|"
+    r"(?i)^(core\.(pager|fsmonitor|sshcommand|editor|hookspath|askpass|gitproxy)|alias\.|"
+    r"diff\.external|"
     r"gpg\.program|credential\.helper|filter\.|merge\.tool|difftool\.|pager\.|sequence\.editor|"
     r"http\.proxy|url\..*insteadof|protocol\.)"
 )
@@ -383,7 +385,8 @@ _PY_TOOLS = frozenset(
     {"unittest", "pytest", "mypy", "ruff", "black", "isort", "flake8", "coverage", "tox"}
 )
 _DYNAMIC_CODE = re.compile(
-    r"open\s*\(|write|remove|unlink|rmtree|rmdir|system|exec|eval|subprocess|popen|rename|mkdir|chmod"
+    r"open\s*\(|write|remove|unlink|rmtree|rmdir|system|exec|eval|subprocess|popen|rename|"
+    r"mkdir|chmod"
     r"|requests|urllib|socket|__import__|compile|fs\.|child_process|FileUtils|File\.|Dir\.|IO\.|`",
     re.I,
 )
@@ -871,19 +874,62 @@ SAFE_ENV = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TZ", "USER"
 _REF = re.compile(r"^[A-Za-z0-9._/][A-Za-z0-9._/@+-]{0,199}$")
 
 
+# Host variables that carry no secret by their nature. Everything else in the host's environment is
+# masked by VALUE, whatever its name: `ps eww -p $PPID` and `/proc/$PPID/environ` print the whole
+# environment, and a name like SMTP_PW or HF_TOK is not something a pattern can be relied on to
+# recognise (ADR-031).
+_BENIGN_ENV = re.compile(
+    r"^(?:PATH|HOME|SHELL|USER|USERNAME|LOGNAME|LANG|LANGUAGE|LC_\w+|TERM|TERM_\w+|PWD|"
+    r"OLDPWD|TMPDIR|TMP|TEMP|"
+    r"EDITOR|VISUAL|PAGER|DISPLAY|SHLVL|COLORTERM|COLUMNS|LINES|XDG_\w+|_|HOSTNAME|HOST|"
+    r"MAIL|TZ|PS\d|IFS|"
+    r"LS_COLORS|LSCOLORS|CLICOLOR\w*|NO_COLOR|FORCE_COLOR|CI|OSTYPE|MACHTYPE|HOSTTYPE|"
+    r"NODE_ENV|PYTHON\w*|"
+    r"VIRTUAL_ENV|CONDA_\w+|JAVA_HOME|GOPATH|GOROOT|GOFLAGS|CARGO_HOME|RUSTUP_HOME|NVM_\w+|"
+    r"COMMAND_MODE|"
+    r"DBUS_\w+|XPC_\w+|__CF_\w+|APPLE_\w+|ITERM_\w+|TERM_PROGRAM\w*|WINDOWID|LAUNCHINSTANCEID|"
+    r"GITHUB_(?:WORKSPACE|ACTIONS|JOB|RUN_\w+|REPOSITORY\w*|REF\w*|SHA|EVENT_\w+|SERVER_URL|"
+    r"API_URL|ACTOR|"
+    r"WORKFLOW\w*)|RUNNER_\w+|ABB_ENVIRONMENT)$",
+    re.I,
+)
+_PLAIN_VALUE = re.compile(
+    r"^(?:[\d.:,/+-]+|true|false|yes|no|on|off|null|none|development|production|test)$", re.I
+)
+
+
+def _host_value_is_harmless(value: str) -> bool:
+    """Paths, plain URLs, numbers and ordinary words: masking them would corrupt all output."""
+    if value.startswith(("/", "~", "./", "../")):
+        return True
+    if re.match(r"^https?://[^/@\s]+(?:/[^\s@]*)?$", value):
+        return True  # a URL without credentials
+    return bool(_PLAIN_VALUE.match(value))
+
+
 def secret_env_values(
     environ: Mapping[str, str] | None = None, extra: tuple[str, ...] = (), min_len: int = 8
 ) -> tuple[str, ...]:
-    """Values of secret-looking environment variables (longest first), for exact masking.
+    """Values of the host environment to mask exactly, longest first.
 
-    Values of names that are clearly secrets are masked from 6 characters; others from `min_len`.
+    Names that look secret are masked from 6 characters (8 otherwise). Any OTHER variable is masked
+    too, unless it is on a short benign list or its value is plainly harmless (a path, a number, a
+    plain URL).
     """
     source = os.environ if environ is None else environ
-    values = {
-        v
-        for k, v in source.items()
-        if _SECRET_NAME.search(k) and len(v) >= (6 if _CLEARLY_SECRET.search(k) else min_len)
-    }
+    values: set[str] = set()
+    for key, value in source.items():
+        if not isinstance(value, str) or not value:
+            continue
+        if _SECRET_NAME.search(key):
+            if len(value) >= (6 if _CLEARLY_SECRET.search(key) else min_len):
+                values.add(value)
+        elif (
+            len(value) >= min_len
+            and not _BENIGN_ENV.match(key)
+            and not _host_value_is_harmless(value)
+        ):
+            values.add(value)
     values.update(v for v in extra if isinstance(v, str) and len(v) >= min_len)
     return tuple(sorted(values, key=len, reverse=True))
 

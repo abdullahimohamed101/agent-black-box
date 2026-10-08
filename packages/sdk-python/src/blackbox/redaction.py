@@ -137,19 +137,19 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
         (
             "secret_assignment",  # NAME=value, NAME ending in a secret word (AWS_SECRET_ACCESS_KEY)
             r"(?i)(\b[A-Za-z0-9_]*(?:secret|token|key|password|passwd|passphrase|credentials?|dsn)"
-            r"(?:_[A-Za-z0-9_]*)?\s*[=:]\s*)(?!\[REDACTED)(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
+            r"(?:_[A-Za-z0-9_]*)?\s*(?::=|[=:](?![=>~]))\s*)(?!\[REDACTED)(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
             r"\g<1>[REDACTED:credential]",
         ),
         (
             "secret_assignment_short",  # GH_PAT=, DB_PASS=, ROOT_PWD=: a whole name part
-            r"(?i)(\b(?:[A-Za-z0-9]+_)*(?:pat|pass|pwd)(?:_[A-Za-z0-9_]*)?\s*[=:]\s*)(?!\[REDACTED)"
+            r"(?i)(\b(?:[A-Za-z0-9]+_)*(?:pat|pass|pwd)(?:_[A-Za-z0-9_]*)?\s*(?::=|[=:](?![=>~]))\s*)(?!\[REDACTED)"
             r"(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
             r"\g<1>[REDACTED:credential]",
         ),
         (
             "credential",
             r"(?i)(\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
-            r"\s*[=:]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
+            r"\s*(?::=|[=:](?![=>~]))\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
             r"\g<1>[REDACTED:credential]",
         ),
     )

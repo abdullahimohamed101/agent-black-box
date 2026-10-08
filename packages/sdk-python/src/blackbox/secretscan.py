@@ -35,6 +35,8 @@ SENSITIVE_NAMES: tuple[str, ...] = (
     "id_dsa*", "id_ecdsa*", "id_ed25519*", "id_rsa*", "*.jks", "*.keystore", "*.ppk", "*.gpg",
     "*.pem", "*.key", "*.p12", "*.pfx", "kubeconfig", ".netrc", "_netrc", ".npmrc", ".pypirc",
     ".pgpass", ".htpasswd", ".git-credentials", "credentials", "credentials.*", "secrets.*",
+    "creds", "creds.*", "*creds*.json", "*creds*.yml", "*creds*.yaml", "*creds*.toml",
+    "*credential*.json", "*credential*.yml", "*credential*.yaml", "*credential*.toml",
     "*secret*.json", "*secret*.yml", "*secret*.yaml", "*secret*.toml", "*secrets*.json",
     "*secrets*.yml", "*secrets*.yaml", "*secrets*.toml",
 )  # fmt: skip

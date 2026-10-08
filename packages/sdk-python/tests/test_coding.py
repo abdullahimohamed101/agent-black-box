@@ -252,10 +252,24 @@ def test_env_values_are_masked_and_the_child_environment_is_minimal(
     monkeypatch.setenv("MY_SERVICE_TOKEN", "tok-9f8e7d6c5b4a")
     monkeypatch.setenv("DB_PASSWORD", "hunter2hunter2")
     monkeypatch.setenv("SHORT_KEY", "abc")
-    monkeypatch.setenv("PLAIN", "not-a-secret-value")
+    monkeypatch.setenv("PLAIN", "not-a-secret-value")  # any host value is masked, whatever its name
+    monkeypatch.setenv(
+        "WHERE", "/usr/local/share/somewhere/deep"
+    )  # a path: harmless, left readable
+    monkeypatch.setenv("COUNT", "123456789012")
+    monkeypatch.setenv("SITE", "https://example.com/docs")  # a URL without credentials
+    monkeypatch.setenv("LANG", "en_US.UTF-8.something-long")  # benign by name
     values = secret_env_values(extra=("extra-secret-value",))
     assert "tok-9f8e7d6c5b4a" in values and "hunter2hunter2" in values
-    assert "abc" not in values and "not-a-secret-value" not in values
+    assert "not-a-secret-value" in values
+    assert "abc" not in values
+    for harmless in (
+        "/usr/local/share/somewhere/deep",
+        "123456789012",
+        "https://example.com/docs",
+        "en_US.UTF-8.something-long",
+    ):
+        assert harmless not in values
     assert mask_values("a tok-9f8e7d6c5b4a b extra-secret-value", values) == (
         "a [REDACTED:env] b [REDACTED:env]"
     )
