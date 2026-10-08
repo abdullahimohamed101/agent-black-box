@@ -48,9 +48,9 @@ export function DiffView({ text, lang }: { text: string; lang?: string | null })
         return (
           <div key={fi} className="diff-file">
             {path && <div className="diff-path">{path}</div>}
-            <div role="table" aria-label={path ? `Diff of ${path}` : "Diff"} tabIndex={0}>
+            <div role="group" aria-label={path ? `Diff of ${path}` : "Diff"} tabIndex={0}>
               {lines.map((l, i) => (
-                <div role="row" key={i} className={`diff-line diff-${l.kind}`} data-kind={l.kind}>
+                <div key={i} className={`diff-line diff-${l.kind}`} data-kind={l.kind}>
                   <span className="diff-no" aria-hidden="true">
                     {l.oldNo ?? ""}
                   </span>
@@ -65,7 +65,7 @@ export function DiffView({ text, lang }: { text: string; lang?: string | null })
                   >
                     {l.kind === "add" ? "+" : l.kind === "del" ? "-" : l.kind === "meta" ? "" : " "}
                   </span>
-                  <span className="diff-text" role="cell">
+                  <span className="diff-text">
                     {l.kind === "meta" ? l.text : <Code text={l.text} lang={language} />}
                   </span>
                 </div>

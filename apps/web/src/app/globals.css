@@ -624,7 +624,7 @@ pre {
   font-weight: 600;
   padding: 0.2rem 0;
 }
-.diff [role="table"] {
+.diff [role="group"] {
   border: 1px solid var(--border);
   border-radius: 4px;
   overflow: auto;
@@ -637,7 +637,7 @@ pre {
   overflow-wrap: anywhere;
 }
 .diff-no {
-  color: var(--muted);
+  color: var(--fg);
   text-align: right;
   padding-right: 0.4rem;
   user-select: none;
@@ -662,21 +662,21 @@ pre {
   color: var(--bad);
 }
 .tok-kw {
-  color: #8a2be2;
+  color: #5b21b6;
   font-weight: 600;
 }
 .tok-str {
-  color: #1a7f37;
+  color: #116329;
 }
 .tok-num {
-  color: #b35900;
+  color: #8a4600;
 }
 .tok-com {
   color: var(--muted);
   font-style: italic;
 }
 .tok-fn {
-  color: #0b6bcb;
+  color: #0a4fa3;
 }
 .tok-op {
   color: var(--muted);

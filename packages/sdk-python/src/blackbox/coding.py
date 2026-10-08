@@ -601,6 +601,9 @@ class CodingRecorder:
         stdout, stderr = self.sanitize(out), self.sanitize(err)
         summary = parse_test_output(stdout + "\n" + stderr)
         attrs: dict[str, object] = {
+            "shell.cwd": label,
+            "shell.risk_class": verdict.risk_class,
+            "shell.category": verdict.category,
             "shell.exit_code": code, "shell.duration_ms": round(duration, 3),
             "shell.stdout_bytes": total_out, "shell.stderr_bytes": total_err,
             "shell.output_truncated": total_out > self._limit or total_err > self._limit,

@@ -268,6 +268,14 @@ describe("the run as a story", () => {
     expect(isCodingRun([ev("run.started"), ev("llm.request.completed")])).toBe(false);
   });
 
+  it("tells git work through git steps, not as bare commands", () => {
+    const steps = buildStory([
+      ev("shell.command.completed", { "shell.command": "git add -A", "shell.exit_code": 0 }),
+      ev("shell.command.completed", { "shell.command": "ls", "shell.exit_code": 0 }),
+    ]);
+    expect(steps.map((s) => s.detail)).toEqual(["ls"]);
+  });
+
   it("lists the steps, opens an event on click, and hides for non-coding runs", () => {
     const open = vi.fn();
     const events = story();

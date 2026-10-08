@@ -131,7 +131,8 @@ export function buildStory(events: readonly EventOut[]): Step[] {
               ? `${passed} of ${total} passed`
               : `${failed ?? "?"} failed, ${passed} passed${names.length ? `: ${names.join(", ")}` : ""}`,
           });
-        } else {
+        } else if (!(str(a["shell.command"]) ?? "").startsWith("git ")) {
+          // git commands are told by their own branch/commit/push steps
           steps.push({
             key,
             eventId: key,
