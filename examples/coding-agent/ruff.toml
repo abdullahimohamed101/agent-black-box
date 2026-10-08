@@ -1,0 +1,7 @@
+line-length = 100
+target-version = "py310"
+extend-exclude = ["repo_template"]
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "S", "RUF"]
+ignore = ["S101", "S603", "S607", "E402", "E501"]

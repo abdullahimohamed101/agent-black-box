@@ -112,7 +112,7 @@ def test_a_user_classifier_overrides_and_failures_fall_back(tmp_path: Path) -> N
 UNITTEST_FAIL = """\
 F....
 ======================================================================
-FAIL: test_refresh (tests.test_session.SessionTests.test_refresh)
+FAIL: test_refresh (tests.test_session.SessionTests)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
 AssertionError: x

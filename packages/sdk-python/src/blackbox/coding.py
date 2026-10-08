@@ -324,7 +324,15 @@ def parse_test_output(output: str) -> TestSummary | None:
             if ok is None:
                 return None
             skipped = _count(ok.group(1) or "", "skipped")
-        ids = tuple(dict.fromkeys(m.group(2) for m in _UT_ID.finditer(output)))[:_MAX_FAILING]
+        ids = tuple(
+            dict.fromkeys(
+                m.group(2)
+                if m.group(2).endswith("." + m.group(1))
+                else f"{m.group(2)}.{m.group(1)}"
+                for m in _UT_ID.finditer(output)
+            )
+        )[:_MAX_FAILING]  # Python < 3.11 prints the class only; keep the method name
+
         return TestSummary(
             "unittest", total, max(total - failed - skipped, 0), failed, skipped, ids
         )
