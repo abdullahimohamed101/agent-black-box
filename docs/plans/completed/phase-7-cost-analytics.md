@@ -6,7 +6,7 @@ Branch: `feature/phase-7-cost-analytics` (from `main` cc56935; worktree `../abb-
 Depends on: Phase 2 (derived runs/spans, outbox), Phase 4 (web), Phase 5 (live runs)
 Spec refs: §79 (cost engine), §22-23 (analytics, cost), §24 (retry cost), §61.2/61.4 (dashboard p95, Stage A), §138 (launch bar), INV-1/2/3/7
 ADRs: ADR-040 (cost engine and pricing), ADR-041 (analytics store; its aggregates clause superseded), ADR-042 (retry-cost attribution), ADR-043 (daily rollups)
-Migration ids used: 0040 (cost tables), 0041 (typed run/span columns, indexes), 0042 (rollups); chain 0009 -> 0040 -> 0041 -> 0042. Known issues: KI-050..055 (KI-053 accepted), KI-028 and KI-025 resolved.
+Migration ids used: 0040 (cost tables), 0041 (typed run/span columns, indexes), 0042 (rollups), 0043 (money columns to numeric(38,9)); chain 0009 -> 0040 -> 0041 -> 0042 -> 0043. Known issues: KI-050..055 (KI-053 accepted), KI-028 and KI-025 resolved.
 
 ## Outcome
 A developer opens a project's Analytics page and sees what agents cost, where the money went (agent, model, day, retries), how reliable
@@ -123,9 +123,9 @@ scope-filter code. Independent verify and review passes (skills) before completi
 | 5 | Tenant and project isolation | `test_analytics_api.py::test_a_project_key_cannot_read_or_probe_other_projects`, `..._another_workspace_is_invisible_everywhere`, `..._a_workspace_key_sees_every_project_and_can_narrow`, access tests (401/403); `test_pricing_api.py`; `test_rollup_rows_never_cross_workspaces`. Mutation checks (committed code, restored with git checkout): removing the project predicate, the workspace predicate, the project authorisation, the source precedence and the retry ancestry rule each made the targeted tests fail | VERIFIED |
 | 6 | Cardinality bound | `test_grouped_results_are_bounded_by_top` (top-N + other for models and tools), `test_client_controlled_names_are_capped_per_day` (rollup cap, cost preserved); agent slugs not capped (KI-055) | VERIFIED (agents: open KI-055) |
 | 7 | KI-028 resolved | `Dashboard.tsx` reads `/v1/analytics/summary`; `computeDashboard` removed; `tests/analytics.test.tsx`, `runs-list.test.tsx`; E2E dashboard test; issue #20 closed, row moved to Resolved | VERIFIED |
-| 8 | Dashboard p95 < 1.5 s on Stage A, measured | `docs/benchmarks/phase-7-analytics.md`: 700,000 runs / 5,948,006 spans / 2,098,880 lines; summary p95 801 ms (1 day), 30 ms (7 days); other endpoints 33-221 ms p95 | VERIFIED |
+| 8 | Dashboard p95 < 1.5 s on Stage A, measured | `docs/benchmarks/phase-7-analytics.md` and `docs/benchmarks/phase-7-analytics-results.json` (3 repeats, warm-up, no worker): 700,000 runs / 5,948,006 spans / 2,098,880 lines; summary worst p95 about 20 ms; slowest endpoint worst p95 407 ms (first repeat after restart). Limits stated up front: seeded derived tables, tiny cardinality, no concurrent ingestion | VERIFIED under those conditions |
 | 9 | Browser E2E (Playwright, axe, screenshots) | `scripts/analytics-e2e.sh`: 4 passed (dashboard figures, analytics page figures, hostile names as text with no dialog/`__pwned`, window switch + 375 px no horizontal overflow); axe serious/critical = 0; screenshots in `docs/screenshots/phase-7/`; no `dangerouslySetInnerHTML` in `apps/web/src` | VERIFIED |
-| 10 | openapi, client, quality | `make openapi`, `pnpm gen:api` current; `scripts/quality.sh full` **exit 0** (event-schema 339, sdk 135, api 461, web 282 passed; migrations up/down/up; web build; wheel build) | VERIFIED |
+| 10 | openapi, client, quality | `make openapi`, `pnpm gen:api` current; `scripts/quality.sh full` exit 0 (re-run after the review fixes, see the review-fixes section for counts) | VERIFIED |
 | 11 | §138 launch bar run as a checklist | below | DONE, partly open |
 
 ## Security review note (review-change)
@@ -152,3 +152,22 @@ only as React text nodes (tested). Findings fixed during review: `E501`/lint and
 
 Outcome: not every item is evidenced. Open before the MVP can be accepted: Phase 6 (coding-agent diagnosis, demo agent), KI-050 (real prices), KI-054 (ingest re-measure),
 a clean-machine README run, and GitHub CI. This phase stops at the MVP gate; the human reviews.
+
+## Independent review fixes (post-completion)
+An independent review found tenancy sound and reproduced three P1 poisoning paths. Each fix has a regression test and its own commit; new guards were mutation-checked
+(mutant made the targeted tests fail, restored with `git checkout <file>`).
+
+| ID | Finding | Fix | Regression test | Mutation |
+| --- | --- | --- | --- | --- |
+| P1-1 | `cost.provider_usd` 5e10 x2 overflowed `numeric(20,9)` in the day's rollup (workspace-day showed $0, job retried forever); 1e11+ failed `UPDATE runs`; floats >= 1e19 were accepted, stored by JSONB as integers and then failed event reload (`EventValidationError`) | CostEngine clamps every per-call figure to 1,000,000 USD, flags the line and counts `clamped_calls`; money columns widened to `numeric(38,9)` (migration 0043); the event schema now rejects floats beyond +-2^53 like integers (the reload bug was in the contract, not the summarizer); `refresh_day` inserts in savepoints and skips/counts/logs (value-free) rows the database refuses | `test_hostile_numbers.py` (two-runs, single-huge-run, NaN/inf/negative/bool, reject-at-ingestion, poisoned-row refresh), schema parse tests | clamp, float bound: tests fail |
+| P1-2 | 4,000-character model/tool name broke the btree key on rollup refresh | every rollup text key truncated to 128 chars; names capped per project/day for agent, provider, model and span/series names, and 2,000 rows per table per day, folding into `(other)` with totals preserved | `test_very_long_client_names_do_not_break_the_refresh`, `test_agents_providers_and_models_are_all_capped...`, `test_five_hundred_distinct_keys...` | truncation, cap: tests fail |
+| P1-3 | `retry_call_ids` quadratic in span depth (16k deep: 86 s, 1 GB) | memoised iterative `retry_position` with cycle guard, O(n) | `test_a_very_deep_span_chain_is_linear_time` (6,000 deep, time bound), cycle test | memo removed: test fails |
+| P2-4 | extreme `from`/`to` gave 500 | years bounded to 2000-2100, overflow caught: 422 `INVALID_WINDOW` | `test_extreme_windows_are_a_422_not_a_500` (6 cases x 4 endpoints) | bound removed: fails |
+| P2-5 | equal-pattern overrides did not resolve to the newer | `created_at` (Python clock) in ordering and specificity | `test_the_newer_of_two_equal_overrides_wins_every_time` (100 pairs) | ordering removed: fails |
+| P2-6 | rollups unbounded in agents/providers; all groups fetched into Python | caps above; `LIMIT top` in SQL with a remainder bucket for agents, models and tools; slow operations rank only the 200 busiest | cardinality tests above (500 keys: bounded rows, query < 2 s) | cap removed: fails |
+| P2-7 | 1-2 h last bucket: a 10 h run reported 1.93 h | histogram range 72 h (200 buckets), overflow reports exactly 72 h; accuracy stated as one bucket, about 10% | `test_long_runs_are_not_misreported` | overflow change: fails |
+| P2-8 | migration 0041 long locks | measured 3 min 5 s on 700k runs / 6M spans; runbook `docs/runbooks/analytics-migrations.md`; KI-056 (S2); not automated | n/a (documented) | n/a |
+| P2-9 | stale numbers shown with no signal while the next window loads | `isPlaceholderData`: sections dimmed, "Updating..." status, `aria-busy` | `tests/analytics.test.tsx` stale-figures test | n/a |
+| Bench | 801 ms explanation (cold cache) was wrong | benchmark mode no longer starts a worker; warm-up, 3 repeats, worst repeat checked; results file saved; limits up front; the earlier outlier is explained as contention and stated as not reproduced | `docs/benchmarks/phase-7-analytics.md` | n/a |
+| P3 | failure_rate defined differently in docs and trend; sdk doc stale; rebuild-costs silent cap; concurrent refresh; lost-update window; active-agents vs ADR-041; retry cost label; cached tokens | trend now uses `failure_rate` + `timeout_rate` as in `rates`; sdk-python.md fixed; CLI warns at `--limit`; advisory lock per workspace-day; KI-057 (S3) for the lost-update window; active-agents documented as the one live read; UI labels retry cost "Estimated"; api-v1 states adapters must report input tokens including cached | tests above | n/a |
+KI-055 raised to S2 (issue #43 relabelled). New: KI-056 (S2), KI-057 (S3).
