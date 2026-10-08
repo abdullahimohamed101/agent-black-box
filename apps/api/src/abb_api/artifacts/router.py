@@ -36,7 +36,7 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     status: {**spec, "model": ErrorEnvelope} for status, spec in _ERROR_TEXT.items()
 }
 # No control characters: the name is shown to people and written to logs.
-_NAME_OK = re.compile(r"^[^\x00-\x1f\x7f]{1,256}$")
+_NAME_OK = re.compile(r"^[^\x00-\x1f\x7f]{1,128}$")
 _SHA256 = re.compile(r"^[0-9A-Fa-f]{64}$")
 
 
@@ -90,7 +90,7 @@ async def put_artifact(
     principal: Writer,
     run_id: Annotated[str, Query(pattern=id_pattern(IdKind.RUN))],
     kind: ArtifactKind = "other",
-    name: Annotated[str | None, Query(max_length=256)] = None,
+    name: Annotated[str | None, Query(max_length=128)] = None,
 ) -> ArtifactOut:
     if principal.project_id is None:
         raise project_key_required()  # before reading a body that could be megabytes
@@ -99,7 +99,7 @@ async def put_artifact(
     if art_uuid is None or run_uuid is None:
         raise _invalid("artifact_id or run_id is malformed.")
     if name is not None and not _NAME_OK.match(name):
-        raise _invalid("name must be 1-256 printable characters.")
+        raise _invalid("name must be 1-128 printable characters.")
     claimed = request.headers.get("x-content-sha256")
     if claimed is not None and not _SHA256.match(claimed):
         raise _invalid("X-Content-SHA256 must be 64 hex characters.")

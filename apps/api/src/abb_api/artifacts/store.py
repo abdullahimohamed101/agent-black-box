@@ -16,7 +16,11 @@ _KEY = re.compile(r"^[0-9a-f]{32}/[0-9a-f]{32}-[0-9a-f]{64}$")
 
 
 class ArtifactStoreError(Exception):
-    """The store could not complete an operation (missing file, bad key, I/O failure)."""
+    """The store could not complete an operation (bad key, I/O failure)."""
+
+
+class ArtifactMissing(ArtifactStoreError):
+    """The row exists but its bytes are gone (removed from disk): not retryable."""
 
 
 def valid_key(key: str) -> bool:
@@ -75,6 +79,8 @@ class LocalFsArtifactStore:
             with path.open("rb") as handle:
                 handle.seek(offset)
                 return handle.read(length)
+        except FileNotFoundError as exc:
+            raise ArtifactMissing("the artifact file is missing") from exc
         except OSError as exc:
             raise ArtifactStoreError("could not read the artifact") from exc
 

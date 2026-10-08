@@ -1260,7 +1260,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "maxLength": 256,
+                  "maxLength": 128,
                   "type": "string"
                 },
                 {

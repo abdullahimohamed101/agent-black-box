@@ -9,12 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.artifacts.repository import ArtifactRecord, ArtifactRepository
 from abb_api.artifacts.schemas import ArtifactChunk, ArtifactOut
-from abb_api.artifacts.store import ArtifactStore, ArtifactStoreError, valid_key
+from abb_api.artifacts.store import ArtifactMissing, ArtifactStore, ArtifactStoreError, valid_key
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import public_id
 from abb_api.ingestion.ratelimit import RateLimiter
 from abb_api.ingestion.service import project_key_required, rate_limited
+from abb_api.runs.queries import RunQueries
 from abb_api.tenancy import Principal
 
 logger = logging.getLogger(__name__)
@@ -57,10 +58,11 @@ def artifact_out(record: ArtifactRecord) -> ArtifactOut:
     )
 
 
-def _conflict(message: str) -> AppError:
+def _conflict() -> AppError:
+    # One message for every cause (other content, another project's id): it must not reveal which.
     return AppError(
         "ARTIFACT_CONFLICT",
-        message,
+        "That artifact id is already in use (artifacts are immutable and ids are not reusable).",
         category=ErrorCategory.CONFLICT,
         status_code=409,
     )
@@ -124,13 +126,24 @@ class ArtifactService:
                 category=ErrorCategory.VALIDATION,
                 status_code=422,
             )
-        wait = self._limiter.acquire(str(principal.project_id), events=1, bytes_=len(data))
+        # Its own bucket: a burst of artifacts must not starve event ingestion (and vice versa).
+        wait = self._limiter.acquire(
+            f"artifacts:{principal.project_id}", events=1, bytes_=len(data)
+        )
         if wait is not None:
             raise rate_limited(wait)
 
         async with self._engine.begin() as conn:
             repo = ArtifactRepository(conn, principal.tenant)
             existing = await repo.get(artifact_id, project_id=None)
+            run = await RunQueries(conn, principal.tenant, None).get(run_id)
+        if run is not None and run.project_id != principal.project_id:
+            raise AppError(
+                "RUN_PROJECT_MISMATCH",
+                "That run id belongs to another project.",
+                category=ErrorCategory.CONFLICT,
+                status_code=409,
+            )
         if existing is not None:
             return self._existing(
                 principal, existing, project_id=principal.project_id, digest=digest
@@ -178,10 +191,8 @@ class ArtifactService:
         project_id: uuid.UUID,
         digest: bytes,
     ) -> tuple[ArtifactOut, bool]:
-        if record.project_id != project_id:
-            raise _conflict("That artifact id is already in use.")
-        if record.sha256 != digest:
-            raise _conflict("That artifact id holds different content; artifacts are immutable.")
+        if record.project_id != project_id or record.sha256 != digest:
+            raise _conflict()
         return artifact_out(record), False
 
     async def _visible(self, principal: Principal, artifact_id: uuid.UUID) -> ArtifactRecord:
@@ -216,6 +227,14 @@ class ArtifactService:
         try:
             # Three bytes beyond the window let us see whether the cut falls inside a character.
             data = await self._store.read(record.storage_key, offset, want + 3)
+        except ArtifactMissing:
+            logger.error("artifact row has no file")
+            raise AppError(
+                "ARTIFACT_CONTENT_MISSING",
+                "The artifact's content is no longer available.",
+                category=ErrorCategory.NOT_FOUND,
+                status_code=404,
+            ) from None
         except ArtifactStoreError:
             logger.error("artifact store read failed")
             raise _store_unavailable() from None

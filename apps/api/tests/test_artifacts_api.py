@@ -292,3 +292,75 @@ def test_character_alignment() -> None:
     assert align_to_character(data, 2) == 1  # a cut between the two bytes moves back
     assert align_to_character(data, 1) == 1
     assert align_to_character(data, 3) == 3
+
+
+async def test_conflict_responses_do_not_reveal_whether_the_id_is_another_projects(
+    art: Api,
+) -> None:
+    aid = new_artifact_id()
+    await put(art, aid, b"alpha content")
+    other_project = await put(art, aid, b"anything", token="art_beta")
+    different = await put(art, aid, b"different")
+    assert other_project.status_code == different.status_code == 409
+    assert other_project.json()["error"]["message"] == different.json()["error"]["message"]
+
+
+async def test_a_run_of_another_project_is_refused(art: Api) -> None:
+    run_id = new_id(IdKind.RUN)
+    event = {
+        "schema_version": "1.0", "event_id": new_id(IdKind.EVENT), "run_id": run_id,
+        "trace_id": new_id(IdKind.TRACE), "agent_id": "a", "event_type": "run.started",
+        "occurred_at": "2026-10-07T10:00:00Z", "sequence": 1, "attributes": {},
+    }  # fmt: skip
+    assert (await art.post_batch([event], token="beta")).status_code == 202  # run belongs to beta
+    refused = await put(art, new_artifact_id(), b"x", run_id=run_id)  # an alpha key
+    assert error_code(refused, 409) == "RUN_PROJECT_MISMATCH"
+    assert (
+        await put(art, new_artifact_id(), b"x", run_id=run_id, token="art_beta")
+    ).status_code == 201
+
+
+async def test_a_row_whose_file_vanished_is_404_not_a_retryable_503(
+    art: Api, tmp_path: Path
+) -> None:
+    aid = new_artifact_id()
+    await put(art, aid, b"bytes")
+    for f in (tmp_path / "store").rglob("*"):
+        if f.is_file():
+            f.unlink()
+    r = await art.get(f"/v1/artifacts/{aid}/content", token="reader")
+    assert error_code(r, 404) == "ARTIFACT_CONTENT_MISSING"
+    assert r.json()["error"]["retryable"] is False
+
+
+async def test_artifact_names_are_short_and_printable(art: Api) -> None:
+    assert (await put(art, new_artifact_id(), b"x", name="n" * 128)).status_code == 201
+    assert (await put(art, new_artifact_id(), b"x", name="n" * 129)).status_code == 422
+
+
+async def test_artifacts_do_not_drain_the_event_ingestion_bucket(
+    database_url: str, runtime_database_url: str, engine: AsyncEngine, tmp_path: Path
+) -> None:
+    from abb_api.ingestion.ratelimit import InMemoryRateLimiter
+
+    limiter = InMemoryRateLimiter(
+        events_per_second=0.001, burst_events=1000, bytes_per_second=1, burst_bytes=10 * 1024 * 1024
+    )
+    settings = make_settings(database_url, artifact_dir=str(tmp_path / "s"))
+    async for api in build_api(database_url, engine, settings=settings, rate_limiter=limiter):
+        async with engine.begin() as conn:
+            keys = ApiKeyRepository(conn, api.tenant.context)
+            token = (
+                await keys.create(
+                    scopes=frozenset({scopes.ARTIFACTS_WRITE}),
+                    project_id=api.tenant.project_uuids["alpha"],
+                )
+            ).token
+        for _ in range(12):  # exhausts the artifact byte bucket
+            await put(api, new_artifact_id(), b"x" * 1_000_000, token=token)
+        event = {
+            "schema_version": "1.0", "event_id": new_id(IdKind.EVENT), "run_id": new_id(IdKind.RUN),
+            "trace_id": new_id(IdKind.TRACE), "agent_id": "a", "event_type": "run.started",
+            "occurred_at": "2026-10-07T10:00:00Z", "sequence": 1, "attributes": {},
+        }  # fmt: skip
+        assert (await api.post_batch([event])).status_code == 202

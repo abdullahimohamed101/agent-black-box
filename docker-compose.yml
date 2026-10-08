@@ -7,6 +7,7 @@ x-api-env: &api-env
     # never update or delete. Only the one-shot `migrate` job below uses the owner.
     ABB_DATABASE_URL: postgresql+asyncpg://abb_runtime:${ABB_RUNTIME_DB_PASSWORD:-abb_runtime_dev_password}@postgres:5432/abb
     ABB_CORS_ORIGINS: http://localhost:3000
+    ABB_ARTIFACT_DIR: /data/artifacts
     # Overridable so load tests can measure capacity without the per-project limiter in the way.
     ABB_RATE_LIMIT_EVENTS_PER_SECOND: ${ABB_RATE_LIMIT_EVENTS_PER_SECOND:-2000}
     ABB_RATE_LIMIT_BURST_EVENTS: ${ABB_RATE_LIMIT_BURST_EVENTS:-10000}
