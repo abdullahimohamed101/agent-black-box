@@ -1,6 +1,6 @@
 # Phase 5 - Live execution streaming
 
-Status: Active (decisions D1-D6 confirmed; steps 1-8 done)
+Status: Completed 2026-10-07 (PR and GitHub CI pending approval; the `stream-e2e` CI job has not run on GitHub)
 Owner: implementer agent
 Branch: `feature/phase-5-live-streaming` (from `main` fa4c346)
 Depends on: Phase 2 (ingestion, query API), Phase 4 (run detail, read proxy)
@@ -108,4 +108,35 @@ mutation checks on committed code (resume overlap, dedupe, comparator, limits); 
 6. [x] Web: `useLiveEvents` merges streamed events into the REST history (stream opens after the history is complete, resumes after the newest event), `LiveBar` (Live / Connecting / Reconnecting / unavailable, "Partial data" notice, what-the-agent-is-doing line from `liveStatus`), REST reconciliation after a gap > 20 s and at run end, polling fallback when streaming is off or unavailable, interim refetch removed while streaming; 33 new web tests, 28 mutants killed or equivalent. Ordering-mode flips need no special case: the client sorts canonically.
 7. [x] E2E: `scripts/stream-e2e.sh` + `scripts/stream_driver.py` + `e2e/stream.spec.ts` (5 tests: SDK example live, axe/console, refresh mid-run, cut connection via fault proxy, latency gate), CI job `stream-e2e`, `make stream-e2e`, screenshots, benchmark: p95 about 9 ms (`docs/benchmarks/phase-5-streaming.md`). The CI job itself has not run on GitHub yet.
 8. [x] Docs: api-v1 (stream contract), RELIABILITY (5 failure rows, limits), OPERATIONS (settings, listener query, log messages), SECURITY, runbook `stream-issues.md`, ARCHITECTURE, README, ADR-020 amendment, ADR-022 accepted, KNOWN_ISSUES (KI-033, KI-034 accepted, KI-017 widened).
-9. Verify, review, harden, complete-phase.
+9. [x] Verify, review, harden, complete-phase (see "Completion evidence").
+
+## Completion evidence (2026-10-07)
+
+Independent verification and review ran on the branch; every P0/P1 and the cheap P2/P3 findings were fixed (list below). Gate:
+`scripts/quality.sh full` exit 0: event-schema 339, sdk 135, api 400 (about 93 s), web 275; migrations empty -> head and each step up/down/up
+(`tests/test_migrations.py`, 13 passed); `apps/api/openapi.json` current.
+
+| # | Criterion | Result | Evidence |
+| --- | --- | --- | --- |
+| 1 | stream endpoint, live delivery, tenant and project scoping | PASS | `tests/test_stream_api.py` (auth matrix 401/403/404 before any bytes, live delivery, replay order, only its own run); verifier also ran revoked/expired/unknown/Basic keys |
+| 2 | resume with `Last-Event-ID`, late-committed event | PASS | `test_resuming_from_last_event_id...`, `test_a_late_committed_event...window_check`, `test_stream_resume.py` (overlap catches a late row; a 45 s-old transaction is the documented miss, KI-034) |
+| 3 | keepalive, slow client dropped, slot freed on disconnect | PASS | keepalive and limits tests; write-timeout unit test over the ASGI stub; verifier: 320 connects + 30 aborts leave 0 slots/subscribers/pool connections, a non-reading client dropped about 1.2 s after the 1 s timeout |
+| 4 | limits, lifetime, no idle DB connection | PASS (with shortened settings) | per-key and per-server 429 tested at 2/3 (defaults 10/50 are settings), `max-lifetime` test, `pool.checkedout() == 0` while idle; DB budget test (peak concurrent stream queries <= 2) |
+| 5 | two processes, listener killed | PASS | `test_every_process_hears_one_commit`, `test_a_killed_listener_reconnects...`, `test_with_the_listener_down_events_still_arrive_through_the_fallback_poll`; verifier ran two real servers (3 ms) and a killed listener (recovered in 0.18 s) |
+| 6 | `run_end`, no reconnect, late events | PASS | run-end, late-event, run-restart and resume-after-terminal tests (the last fixed a verifier finding); web: `run_end` closes and does not reconnect |
+| 7 | frontend duplicate/out-of-order/reconnect/refresh/end | PASS | `tests/live-run.test.tsx` (15), `stream.test.ts`, `live-hook.test.tsx`, `ordering.test.ts` (golden parity, 60 cases), no events refetch while streaming. Ordering-mode flips need no special case (the client sorts canonically); `CURSOR_STALE` is the Phase 4 test |
+| 8 | Playwright E2E with the SDK example, axe, screenshots | PASS | `scripts/stream-e2e.sh`: 5/5 (SDK example live with one page load, axe + console, refresh mid-run, cut connection via TCP fault proxy, latency); `docs/screenshots/phase-5/` |
+| 9 | p95 accept-to-display < 1 s | PASS | p95 7-9 ms over four runs of 60 events; hot-run table in `docs/benchmarks/phase-5-streaming.md` |
+| 10 | security | PASS, with one UNVERIFIED | OpenAPI path has `bearerAuth` and 401/403/404/422/429/503 (`test_openapi.py`); payloads never streamed (test + `has_payload` only); proxy allowlist test for the stream path only; security review: no exploitable finding. **UNVERIFIED: GitHub CI** (not pushed). "No secrets in logs": reviewed (class names only), no dedicated stream log test |
+
+### Findings fixed after verification and review
+Migration `0009` arrival index (planner test); incremental polls with a periodic window count instead of re-reading the overlap on every wake;
+poll floor; shared database budget for streams; terminal state read from the database on open; client failure accounting (server error
+frames and HTTP errors count, plain network drops never do; failures forgiven after a healthy connection); bounded live state; `attributes`
+validation; `no-transform`; fan-out benchmark and honest docs. Recorded, not fixed: KI-033 (streams not re-authenticated), KI-034 (very
+old transactions), KI-035 (O(n) live merge), web key shared by all browsers can fill the stream cap (KI-029, ADR-021), `received_at` from
+the API clock across instances and `pg_notify` commit serialisation at very high ingest rates (ADR-022).
+
+### Technical debt introduced
+KI-033, KI-034 (accepted), KI-035; the summarizer cost on very large active runs (KI-016) is unchanged and is what limits ingest p95 on a
+5,000-event hot run, not streaming.

@@ -12,7 +12,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 2 | Data model, ingestion, run querying, outbox + summarizer | §60, §71-73, §78 | M0-M1 | Complete (merged, CI green) |
 | 3 | Python SDK | §67-68, §17 | M1 | Complete (merged, CI green) |
 | 4 | Core web product (fixtures first, then live API) | §95-100, §135 | M1 | Complete (merged, CI green) |
-| 5 | Live execution streaming (SSE) | §76, §21 | M1 | Planned (plan awaiting confirmation) |
+| 5 | Live execution streaming (SSE) | §76, §21 | M1 | Complete (PR pending, CI unverified) |
 | 6 | Coding-agent observability + flagship demo | §82-83, §136, §26-27 | M2 | Not started |
 | 7 | Cost and analytics | §79, §22-23, §61 | M3 | Not started |
 | | **MVP gate** (spec §49, §138): human review, launch quality bar | | | |
