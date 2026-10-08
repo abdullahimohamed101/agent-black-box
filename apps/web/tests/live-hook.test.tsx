@@ -70,6 +70,28 @@ describe("useLiveEvents state", () => {
     expect(result.current.events).toHaveLength(4);
   });
 
+  it("prunes against the newest REST history, not the history at the time the stream opened", async () => {
+    let rest = [ev(1)];
+    const { result, rerender } = renderHook(() =>
+      useLiveEvents("run_1", {
+        enabled: true,
+        restEvents: rest,
+        restComplete: true,
+        reconcile: () => {},
+      }),
+    );
+    const source = Source.all[0]!;
+    source.trace(ev(2));
+    source.trace(ev(3));
+    await act(() => new Promise((r) => setTimeout(r, 20)));
+    rest = [ev(1), ev(2), ev(3)]; // a reconciliation reloaded the history
+    rerender();
+    source.trace(ev(4));
+    await act(() => new Promise((r) => setTimeout(r, 20)));
+    expect(result.current.liveCount).toBe(1); // only evt_4: evt_2 and evt_3 are REST's now
+    expect(result.current.events).toHaveLength(4);
+  });
+
   it("reports 'off' and opens nothing while disabled or before the history is complete", () => {
     const { result, rerender } = renderHook(
       ({ complete }) =>

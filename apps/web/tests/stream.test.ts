@@ -236,6 +236,17 @@ describe("openRunStream", () => {
     expect(es.closed).toBe(true); // and the client stops the browser's own retrying
   });
 
+  it("by default gives up after five failures in a row, not before", () => {
+    const h = harness({ backoffMs: () => 1 });
+    for (let i = 0; i < 4; i++) {
+      h.sources.at(-1)!.fail();
+      vi.advanceTimersByTime(1);
+    }
+    expect(h.states.at(-1)).toBe("reconnecting");
+    h.sources.at(-1)!.fail();
+    expect(h.states.at(-1)).toBe("unavailable");
+  });
+
   it("never gives up on plain network drops: the browser keeps retrying by itself", () => {
     const h = harness({ maxFailures: 2 });
     h.sources[0]!.open();

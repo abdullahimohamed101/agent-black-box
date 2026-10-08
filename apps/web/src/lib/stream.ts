@@ -161,17 +161,17 @@ export function openRunStream(options: StreamOptions): StreamHandle {
       finish("ended");
       onEnd();
     });
-    es.onerror = (ev) => {
+    es.onerror = () => {
       if (closed || source !== es) return;
       if (stableTimer) {
         clearTimeout(stableTimer);
         stableTimer = null;
       }
-      // A plain network drop leaves the browser in CONNECTING: it retries by itself, indefinitely, and
-      // that is not a server fault. Two things are: the server's own `event: error` frame (it arrives on
-      // this channel with data, then the stream ends) and an HTTP error, after which the browser gives up.
-      const serverFrame = (ev as MessageEvent).data !== undefined;
-      if (!serverFrame && es.readyState === CONNECTING) {
+      // A plain network drop leaves the browser in CONNECTING: it retries by itself, indefinitely, and that
+      // is not a server fault. Failures are the server's own `event: error` frame (it arrives on this channel
+      // while the connection is still open, then the stream ends) and an HTTP error, after which the browser
+      // gives up (CLOSED).
+      if (es.readyState === CONNECTING) {
         onState("reconnecting");
         return;
       }
