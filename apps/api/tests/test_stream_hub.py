@@ -151,7 +151,8 @@ async def terminate_listener(engine: AsyncEngine) -> int:
         result = await conn.execute(
             text(
                 "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-                "WHERE application_name = :name AND pid <> pg_backend_pid()"
+                "WHERE application_name = :name AND datname = current_database() "
+                "AND pid <> pg_backend_pid()"
             ),
             {"name": APPLICATION_NAME},
         )
@@ -203,7 +204,10 @@ async def test_stopping_closes_the_listener_connection(
     async with engine.connect() as conn:
         count = (
             await conn.execute(
-                text("SELECT count(*) FROM pg_stat_activity WHERE application_name = :n"),
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE application_name = :n AND datname = current_database()"
+                ),
                 {"n": APPLICATION_NAME},
             )
         ).scalar_one()
