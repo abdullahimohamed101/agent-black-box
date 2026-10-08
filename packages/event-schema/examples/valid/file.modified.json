@@ -1,10 +1,13 @@
 {
   "agent_id": "coding-agent",
   "attributes": {
+    "diff.artifact": "artifact://art_01J90000000000000000000030",
     "file.hash_after": "sha256:bb",
     "file.hash_before": "sha256:aa",
+    "file.language": "python",
     "file.lines_added": 3,
     "file.lines_removed": 1,
+    "file.operation": "modified",
     "file.path": "src/auth/session.ts",
     "file.size_after": 1960,
     "file.size_before": 1900

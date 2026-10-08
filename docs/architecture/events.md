@@ -48,6 +48,19 @@ chars), integer (within +/-2^53-1), finite number, boolean, or a flat list (<= 6
 declared type and minimum wherever they appear. Large, sensitive or unbounded data belongs in
 `payload`/`payload_ref`, not attributes (§64.4).
 
+### Coding-agent attributes (Phase 6, ADR-030, ADR-031)
+
+All optional and additive (schema 1.0 is unchanged). Content is never an attribute: diffs and terminal output are artifacts, referenced as `artifact://<art_id>`.
+
+| Event | Attributes |
+| --- | --- |
+| `file.read` `.created` `.modified` `.deleted` | `file.path` (required), `file.operation`, `file.language`, `file.size_before/after`, `file.hash_before/after` (`sha256:<hex>`), `file.lines_added/removed`, `diff.artifact` |
+| `git.diff` `.commit` `.branch_created` `.push` | `git.repo`, `git.branch`, `git.base_commit`, `git.head_commit`, `git.commit_hash`, `git.changed_files`, `git.diff_stat_files`, `git.push_target`, `git.pr_number`, `diff.artifact` |
+| `shell.command.*` | `shell.command` (required), `shell.cwd`, `shell.exit_code`, `shell.duration_ms`, `shell.risk_class` (`R0`..`R4`), `shell.category` (`READ_ONLY\|MODIFY_FILES\|NETWORK\|PACKAGE_INSTALL\|PROCESS_CONTROL\|DESTRUCTIVE`), `shell.stdout_artifact`, `shell.stderr_artifact`, `shell.stdout_bytes`, `shell.stderr_bytes`, `shell.output_truncated` |
+| test runs (closing `shell.command.*` event) | `test.framework`, `test.suite`, `test.total`, `test.passed`, `test.failed`, `test.skipped`, `test.failing` (identifiers) |
+
+A non-zero exit closes the span with `shell.command.failed` and `status=error`. The environment of a command is never recorded.
+
 ## Event families
 
 | Class | Types |

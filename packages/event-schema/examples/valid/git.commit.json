@@ -4,6 +4,7 @@
     "git.branch": "fix/login",
     "git.changed_files": 2,
     "git.commit_hash": "9fceb02",
+    "git.diff_stat_files": 2,
     "git.repo": "acme/web"
   },
   "event_id": "evt_01J90000000000000000000020",
