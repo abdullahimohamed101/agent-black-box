@@ -45,11 +45,10 @@ recognisable secret file remain a risk (KI-032, KI-042 stay open). What follows 
 1. **Value masking from sensitive files** (`blackbox/secretscan.py`). Before and after every recorded command (and before each file diff and
    `read_file`), the recorder rescans the workspace for sensitive files (names matched case-insensitively: `.env*`, `*.env`, `.envrc`, `*.pem`,
    `*.key`, `id_*`, `.netrc`, `.npmrc`, `.pypirc`, `.pgpass`, `.htpasswd`, `.git-credentials`, `credentials*`, `*.tfstate`, `*.tfvars`, `*.jks`, `*.ppk`,
-   `*.gpg`, `kubeconfig`, `.docker/config.json`, `.kube/config`, `*secret*.json|yml|toml` ...; `.git`, `node_modules` and virtualenvs are skipped; at most
-   400 files of 256 KiB, cached by size and mtime). It extracts the secret values (dotenv and `NAME=VALUE` lines, JSON string leaves, PEM bodies,
+   `*.gpg`, `kubeconfig`, `.docker/config.json`, `.kube/config`, `*secret*.json|yml|toml` ...; superseded below: see the third review round for the current limits). It extracts the secret values (dotenv and `NAME=VALUE` lines, JSON string leaves, PEM bodies,
    credential-file lines and URL passwords, older committed versions via `git show HEAD:`, `:` and the first stashes) and masks every occurrence, plus its
    base64 and URL-encoded forms, in stdout, stderr, diffs, events and the text returned to the model, **however the command read the file**.
-   Values of keys that look secret are masked from three characters; other values in those files only if token-like (8+ characters with a digit or symbol).
+   The minimums and the placeholder rules changed in the third round (below).
 2. **Environment values** (names containing KEY, TOKEN, SECRET, PASSWORD, PAT, PASS, PWD, AUTH, DSN, COOKIE, SESSION ... and the SDK's own API key) are masked the
    same way; the child process gets no inherited credentials and no `HOME`.
 3. **Pattern redaction** of the remaining text: provider keys and tokens (glued to preceding or following characters too), JWTs, private keys, Authorization/Basic/Bearer
@@ -72,10 +71,56 @@ not mid-command.
 **Classifier (observe-only).** Default inverted: R0 only for allowlisted read-only commands used without write-capable flags (`sort -o`, `uniq in out`, `tree -o`, `xxd -r`,
 `date -s`, `hostname NAME`, `rg --pre`, `sed w/e`, `git ... --output`, `git grep -O`, `git -c core.pager=` and similar are not R0); any unrecognised command or flag combination
 is R2 ("unknown, may modify anything"); known test and build invocations (`python -m unittest|pytest`, `pytest`, `npm test`, `cargo test`, `make test`, `uv run ...`) are R1;
-scripts, inline code with file, process or network access, `eval` of dynamic content and `bash <(...)` are R3. Destructive and cloud commands are classified by name
+inline code with file, process or network access, `eval` of dynamic content, `bash <(...)` and piping content into an interpreter are R3; running a script by path (`bash x.sh`, `python3 script.py`) is R2 (unknown effect). Destructive and cloud commands are classified by name
 (`terraform destroy`, `aws ... rm|delete`, `gcloud ... delete`, `kubectl delete`, `npm publish`, `redis-cli flushall`, SQL `DELETE|DROP|TRUNCATE`, disk tools, `mv / x`, `truncate`,
 `git rm -rf`, `git tag -d`, `curl -X DELETE`, ...). It still cannot see inside scripts, functions, aliases or variables used as commands; those are R2 or higher.
 A class is a hint, never a guarantee, and nothing is enforced.
 
 **Real-model example mode** runs arbitrary shell as the user with no sandbox. It requires `--i-understand-this-runs-commands`, the README warns, recorded commands get a
 minimal environment without `HOME`, and git branch/remote names that look like flags are refused.
+
+## Third review round (2026-10-08): what changed, and the gaps we accept
+
+An independent adversarial pass (about 650 commands and many encodings against a real recorder and a capturing server) found no P0 and these defects in the
+value-masking design, all fixed with regression tests (`tests/test_secret_round3.py`, `tests/test_secret_leaks.py`):
+
+- **Forgotten values.** Values are now remembered for the life of the recorder: moving, copying then deleting, or renaming a secret file no longer unmasks it.
+- **Placeholders corrupted the agent's view.** `SECRET_KEY=secret`, `API_TOKEN=test`, `COOKIE_SECURE=true` in a sample file turned ordinary words into masks (source code,
+  `Ran 2 tests`). Template files (`.example`, `.sample`, `.template`, `.dist`) and common words, booleans, numbers and placeholders (`changeme`, `<token>`, `${X}`,
+  `xxxx`) are not learned; a real-looking value in a template file still is. Values under 3 characters, and under 6 or 8 for names that do not look secret, are not masked.
+- **History.** Secret values that only exist in older commits, rotated or deleted files, are learned from history (bounded, cached by `HEAD`), and `git show <blob>` /
+  `git cat-file` are withheld when the object could be a sensitive file.
+- **Remotes and `.git/config`** are scanned; `https://<token>@host/` (a bare token as the user, as Azure DevOps uses) is a credential.
+- **The host's own environment** is masked by value for every variable except a short benign list and values that are plainly harmless (paths, plain URLs, numbers,
+  ordinary words), because `ps eww -p $PPID` prints the whole environment and a name like `SMTP_PW` or `HF_TOK` cannot be recognised reliably.
+- **Discovery.** Only `.git`, real package trees (`node_modules`, `site-packages`, `__pycache__`) are skipped, and never a directory that contains a file with a sensitive
+  name; `build/`, `dist/`, `target/`, `.cache/` and deep paths are scanned. Up to 5,000 secret files of 4 MiB each, within a 2 s time budget; when the budget is hit the scan is
+  marked incomplete instead of silently partial. Values of any length are learned (long ones by exact match plus head and tail).
+- **File shapes.** Raw single-token files (`master.key`, `*.ppk`, `*.gpg`), YAML block scalars and list items, multi-line quoted values, `value # comment`, and every string leaf of
+  a file that is secret by name (`secrets.json`, `credentials.*`, `creds.*`, `*.tfvars`).
+- **Encodings.** base64 at all three byte alignments (and url-safe), percent-encoding variants, JSON, `repr`, `shlex`, HTML/XML and backslash escapes, hex, and any
+  12-character head or tail of a long value.
+- **The example's `search` tool** returned file lines to the model unmasked, also through symlinks: it now masks, and does not follow links to secret files or out of the repo.
+- **Redaction no longer rewrites comparisons** (`password == 'test'` became `password =[REDACTED]`).
+- **Performance.** Two quadratic slowdowns (a quoted-value regex: 80,000 characters took 36 s; the classifier's reasons tuple: a 200 KB command took 21 s) are fixed and
+  guarded by time-bounded tests.
+- **Classifier.** `env -S`, process substitution, `/dev/tcp`, pipes into interpreters, `git rebase --exec`, forced ref moves, `npm run <unknown>`, `npm exec`, `go run`, writer
+  flags on read-only tools (`sed --in-place=`, `awk -i inplace`, `tree --output`, `less -o`, `sort --compress-program`, `file -C`, `find -fprint0`) and more; a second table
+  asserts that ordinary commands (`npm test`, `git tag`, `ls 2>&1`, `diff <(a) <(b)`, `python -m json.tool`) stay low.
+- **Event attributes** built from user text (`file.path`, `git.branch`, `git.push_target`) are sanitized, and the leak tests now assert that event batches really reached the
+  capturing server, so they cannot go blind to attributes.
+
+### Known gaps (accepted; masking cannot solve these)
+
+1. **Reversible transforms computed by a command that avoids a sensitive name:** hex, base32, rot13, reversing, lower-casing, splitting a value across `echo`s or across stdout
+   and stderr, inserting separators, control or zero-width characters between characters, NFC/NFD changes. The command computes something that is no longer the value.
+2. **Secrets created, changed or removed inside a single command**, runtime-generated tokens, and values overwritten and restored mid-command: the scan sees the workspace at the
+   start and end of a command, not during it.
+3. **Secrets in files that are neither named like secrets nor matched by a pattern** (`config.py`, `main.tf`, `settings.json` without secret-looking keys, SQLite and other binary files).
+4. **Secrets outside the workspace** read by absolute path or `~` (`cat ~/.ssh/id_*`, `~/.aws/*`): caught by name, and real PEM keys and provider-shaped keys by pattern, nothing else.
+   Linux-only vectors (`/proc/$PPID/environ`) were not exercised on the macOS host.
+5. **The model typing a secret it was never shown**, and secrets split across 64 KiB chunks of a *non-text* stream.
+
+**What an operator should do:** capture is opt-in (`PayloadMode.FULL`); keep real credentials out of the agent's reach (a separate user or container, a throwaway working
+directory, no production keys in the environment or the repo); treat the stored artifacts as sensitive anyway (KI-040 retention, KI-042 no server-side scan).
+
