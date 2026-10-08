@@ -120,6 +120,21 @@ def usage_of(response: Any) -> tuple[int | None, int | None, int | None]:
     return None, None, None
 
 
+_DELIMITERS = frozenset(" \t\r\n\"',;:[]{}()<>")
+
+
+def _cut(rendered: str) -> str:
+    """Truncate without leaving half a token: a secret cut in two would escape the SDK's pattern
+    redaction (which runs on the truncated text) and leak its prefix."""
+    head = rendered[:PREVIEW_CHARS]
+    if rendered[PREVIEW_CHARS] in _DELIMITERS:
+        return head
+    for i in range(len(head) - 1, -1, -1):
+        if i > 0 and head[i] in _DELIMITERS:
+            return head[:i]
+    return f"<{len(rendered)} characters>"
+
+
 def preview(value: Any) -> Any:
     """A bounded JSON-safe rendering for opt-in payload capture; never raises.
 
@@ -131,4 +146,4 @@ def preview(value: Any) -> Any:
         return f"<{type(value).__name__}>"
     if len(rendered) <= PREVIEW_CHARS:
         return json.loads(rendered)
-    return rendered[:PREVIEW_CHARS]
+    return _cut(rendered)
