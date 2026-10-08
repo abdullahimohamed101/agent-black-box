@@ -1,6 +1,6 @@
 # Phase 8 - Framework integrations
 
-Status: In progress
+Status: Completed 2026-10-08 (no push, PR or CI run; the new `integrations` and `integrations-e2e` CI jobs have not run on GitHub)
 Owner: implementer agent
 Branch: `feature/phase-8-framework-integrations` (from `main` cc56935; developed in parallel with Phases 6 and 7)
 Depends on: Phase 3 (SDK), Phase 1 (event contract)
@@ -77,12 +77,45 @@ Real-framework APIs drift (mitigated by lockfiles + lower bounds + fake drivers)
 leaked in-flight state (bounded map); secrets in error messages (SDK pattern redaction; `error.message` truncated).
 
 ## Ordered steps
-- [ ] 1 Plan, ADR-050..052 (this commit)
-- [ ] 2 SDK `llm_call(parent=)` + conformance package
-- [ ] 3 LangGraph adapter (fakes, real LangChain/LangGraph, goldens)
-- [ ] 4 OpenAI wrapper
-- [ ] 5 Anthropic wrapper
-- [ ] 6 MCP wrapper
-- [ ] 7 quality.sh, Makefile, CI jobs
-- [ ] 8 Example + `scripts/integrations-e2e.sh`, docs/architecture/integrations.md
-- [ ] 9 Verify, review (security), harden, mutation check, close-out (plan moved to completed with evidence)
+- [x] 1 Plan, ADR-050..052
+- [x] 2 SDK `llm_call(parent=)` + conformance package
+- [x] 3 LangGraph adapter (fakes, real LangChain/LangGraph, goldens)
+- [x] 4 OpenAI wrapper
+- [x] 5 Anthropic wrapper
+- [x] 6 MCP wrapper (payload previews made structured here so key redaction applies; applied to all adapters)
+- [x] 7 quality.sh, Makefile, CI jobs
+- [x] 8 Example + `scripts/integrations-e2e.sh`, `docs/architecture/integrations.md`, KI-060..063
+- [x] 9 Verify, review, harden, mutation check, close-out
+
+## Evidence (2026-10-08, VERIFIED = command run here)
+| # | Criterion | Command / result |
+| --- | --- | --- |
+| 1 | Suite catches broken adapters | `cd integrations/conformance && uv run pytest` 15 passed (reference passes; mutants for missing usage, swallowed error, wrong name, golden drift fail). VERIFIED |
+| 2 | Fake and real framework pass | langgraph 66, openai 54, anthropic 52, mcp 39 passed, each running the conformance suite against a fake and the real package (langgraph 1.2, openai 3.x, anthropic 1.x with httpx2, mcp 2.3 in-memory server). VERIFIED. Coverage 95/92/91/93 % (gate 90) |
+| 3 | Goldens valid and drift-sensitive | `tests/golden/*.json` per adapter (fake and real), `test_every_golden_validates_against_the_event_schema` (EventIn); conformance golden-drift test. VERIFIED |
+| 4 | Containment | `test_sdk_failures_do_not_reach_the_framework`, `test_a_raising_cost_fn_is_contained`, `test_failures_while_finishing_a_span_are_contained`, hostile scenarios, `redactor_raises`; host errors propagate identically (`is` check). VERIFIED |
+| 5 | Concurrency, nesting, tokens, cost | `concurrent`/`nested` scenarios; threads (8), asyncio gather over real `ainvoke`, async clients; token shapes (usage_metadata, token_usage, Anthropic cache split, Responses API, streams); `cost_fn` tests. VERIFIED |
+| 6 | No payload/secret by default | `sensitive`, `sensitive_full` scenarios; per-adapter payload tests incl. key-based redaction and `payload_mode` gating. VERIFIED |
+| 7 | Example through the real API, no backend change | `scripts/integrations-e2e.sh` -> `INTEGRATIONS-E2E PASSED` (run SUCCESS, 14 events, 2 llm calls, 1 tool call, 320 input tokens, exact event order, node->llm/tool span nesting; script also fails if `git diff main -- apps` is non-empty). Example has 5 Black Box lines. VERIFIED |
+| 8 | Quality gate | `scripts/quality.sh full` ran all steps through api pytest; ONE api test failed for an environmental reason (see below). The remaining steps were then run by hand: api pytest `--deselect` that test 399 passed, web vitest 275 passed, alembic up/down/up exit 0, `next build` exit 0, api wheel exit 0. Schema 339, sdk 136 passed. Partially VERIFIED |
+| 9 | Review and mutation | Self-review below; 7 mutants on committed code (guard narrowed, token fields swapped, parent anchor dropped, host error swallowed, Anthropic input total, MCP error flag, stream finalizer) all killed, files restored with `git checkout`. VERIFIED |
+
+Environmental failure: `apps/api/tests/test_stream_hub.py::test_stopping_closes_the_listener_connection` counts `abb-stream-listener`
+connections server-wide on the shared Postgres (port 5433); the Phase 7 worktree's running API (database `abb_p7`) holds one, so the count is 1. It
+passes in isolation when no other API is running; this phase touches nothing under `apps/`. Re-run `quality.sh full` after merge on a quiet server.
+UNVERIFIED (env): the two new CI jobs on GitHub; `uv sync --frozen --python 3.12` for the adapters (only 3.10 was run here).
+
+## Review notes (review-change security pass)
+- Raising paths: every framework-facing LangGraph callback is guarded; wrappers guard begin/finish bookkeeping and never swallow host exceptions
+  (mutants confirm). `BaseException` is recorded as `cancelled` and re-raised.
+- Data capture: inputs, outputs, prompts and tool arguments are not read unless `capture_payloads=True`; previews are bounded (4 KiB), stay structured
+  so the SDK's key rules redact `token`/`password` keys, then obey `payload_mode`. Residual: failure events carry `error.message` (SDK keeps it in
+  `metadata_only`, truncated to 500 characters and pattern-redacted); use `payload_mode="disabled"` to drop it.
+- Resource bounds: in-flight LangGraph runs capped at 10,000 (counted `dropped`), a finished root closes orphan spans, streams close spans on exhaustion, close
+  or garbage collection.
+- Tenant/API: no backend, auth or key handling is touched. No secrets are committed (test secrets are built at runtime).
+- Findings fixed during review: payload previews were strings (defeating key-based redaction) -> now structured; `sequence` ordering assumptions in the
+  conformance suite were arrival-based -> now by sequence; `Run.llm_call` could not take an explicit parent -> SDK addition.
+
+## Deviations
+Spec §70 lists `openai-agents/` while §18 lists `openai/` and `anthropic/`; we followed §18 (ADR-050). `pytest-asyncio` was not needed.
