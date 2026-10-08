@@ -13,6 +13,7 @@ from abb_api.auth.dependencies import require_principal
 from abb_api.core.errors import AppError, ErrorCategory, ErrorEnvelope
 from abb_api.ids import parse_public_id
 from abb_api.ingestion.body import decode_body, read_body
+from abb_api.ingestion.service import project_key_required
 from abb_api.tenancy import Principal
 
 router = APIRouter(prefix="/v1/artifacts", tags=["artifacts"])
@@ -91,6 +92,8 @@ async def put_artifact(
     kind: ArtifactKind = "other",
     name: Annotated[str | None, Query(max_length=256)] = None,
 ) -> ArtifactOut:
+    if principal.project_id is None:
+        raise project_key_required()  # before reading a body that could be megabytes
     art_uuid = parse_public_id(IdKind.ARTIFACT, artifact_id)
     run_uuid = parse_public_id(IdKind.RUN, run_id)
     if art_uuid is None or run_uuid is None:

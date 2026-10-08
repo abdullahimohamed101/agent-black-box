@@ -1,4 +1,4 @@
-.PHONY: stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
+.PHONY: coding-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -123,6 +123,9 @@ e2e:
 
 stream-e2e:
 	pnpm --filter @abb/web build && scripts/stream-e2e.sh
+
+coding-e2e:
+	pnpm --filter @abb/web build && scripts/coding-e2e.sh
 
 e2e-real:
 	pnpm --filter @abb/web build && scripts/e2e-web-real.sh

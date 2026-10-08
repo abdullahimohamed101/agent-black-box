@@ -203,7 +203,10 @@ async def test_stopping_closes_the_listener_connection(
     async with engine.connect() as conn:
         count = (
             await conn.execute(
-                text("SELECT count(*) FROM pg_stat_activity WHERE application_name = :n"),
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE application_name = :n AND datname = current_database()"
+                ),
                 {"n": APPLICATION_NAME},
             )
         ).scalar_one()
