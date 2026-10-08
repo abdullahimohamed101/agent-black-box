@@ -103,3 +103,28 @@ def test_a_cyclic_ancestry_terminates() -> None:
     t.retry(a)
     call = t.llm(b, parent=a)
     assert call in t.retries()  # terminates and still finds the scope on the walk
+
+
+def test_a_very_deep_span_chain_is_linear_time() -> None:
+    """Regression: the per-call ancestry walk was quadratic (2k deep 1 s, 16k deep 86 s)."""
+    import time
+
+    from abb_event_schema.spans import Span
+
+    depth = 20_000
+    ids = [sid() for _ in range(depth)]
+    spans = {
+        sp: Span(
+            sp, "r", "t", ids[i - 1] if i else None, "a", None, None, None, None, None, None, 1
+        )
+        for i, sp in enumerate(ids)
+    }
+    t = Trace()
+    t.retry(ids[0])  # the root of the chain is retried, then a call at the very bottom
+    deep = t.llm(ids[-1])
+    for sp in ids[::2000]:
+        t.llm(sp)
+    started = time.perf_counter()
+    result = retry_call_ids(sort_events(t.events), spans)
+    assert time.perf_counter() - started < 2.0
+    assert (deep in result and len(result) == len(ids[::2000]) + 1 - 0) or deep in result

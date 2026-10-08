@@ -20,27 +20,36 @@ def retry_call_ids(ordered: Sequence[Event], spans: Mapping[str, Span]) -> set[s
     if not first_retry_at:
         return set()
 
-    ancestry_cache: dict[str, tuple[str, ...]] = {}
+    unretried = len(ordered)  # larger than any position: "no retry on this lineage"
+    earliest: dict[str, int] = {}  # span -> earliest retry position on the span or an ancestor
 
-    def lineage(span_id: str) -> tuple[str, ...]:
-        cached = ancestry_cache.get(span_id)
-        if cached is not None:
-            return cached
-        chain: list[str] = []
-        seen: set[str] = set()
+    def retry_position(span_id: str) -> int:
+        """Memoised and iterative: every span is visited once however deep the chain (O(n))."""
+        if span_id in earliest:
+            return earliest[span_id]
+        path: list[str] = []
+        on_path: set[str] = set()
         node: str | None = span_id
-        while node is not None and node not in seen:  # a cycle ends the walk
-            seen.add(node)
-            chain.append(node)
+        inherited = unretried
+        while node is not None:
+            if node in earliest:
+                inherited = earliest[node]
+                break
+            if node in on_path:  # a cycle ends the walk
+                break
+            on_path.add(node)
+            path.append(node)
             span = spans.get(node)
             node = span.parent_span_id if span else None
-        ancestry_cache[span_id] = tuple(chain)
-        return ancestry_cache[span_id]
+        for visited in reversed(path):
+            inherited = min(inherited, first_retry_at.get(visited, unretried))
+            earliest[visited] = inherited
+        return earliest[span_id]
 
     retries: set[str] = set()
     for position, event in enumerate(ordered):
         if event.event_type != "llm.request.completed" or event.span_id is None:
             continue
-        if any(first_retry_at.get(s, position) < position for s in lineage(event.span_id)):
+        if retry_position(event.span_id) < position:
             retries.add(event.event_id)
     return retries
