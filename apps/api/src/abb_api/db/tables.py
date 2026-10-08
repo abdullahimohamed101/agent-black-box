@@ -30,6 +30,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     MetaData,
+    Numeric,
     PrimaryKeyConstraint,
     Table,
     Text,
@@ -71,6 +72,7 @@ RUN_STATUSES = (
 ORDERING_MODES = ("sequence", "time")
 JOB_STATUSES = ("pending", "running", "done", "dead_letter")
 POLICY_ACTIONS = ("allow", "deny", "require_approval")
+COST_SOURCES = ("provider_reported", "estimated", "client_estimate", "unpriced")
 
 # ---------------------------------------------------------------- tenancy and identity
 
@@ -291,6 +293,74 @@ outbox_jobs = Table(
     Index("ix_outbox_lease", "lease_expires_at", postgresql_where=text("status = 'running'")),
     # Run listings look up each run's job state by key; without this they scan the whole history.
     Index("ix_outbox_dedupe", "workspace_id", "job_type", "dedupe_key", "status"),
+)
+
+# ---------------------------------------------------------------- cost (Phase 7, ADR-040)
+
+# One row per completed model call, derived from events by the summarizer (INV-2): rewritten
+# wholesale for a run whenever the run is summarized. `run_started_at` is copied from the run so
+# aggregates filter and bucket without a join; money is exact `numeric` (9 decimal places).
+cost_calculations = Table(
+    "cost_calculations",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("event_id", UUID(as_uuid=True), nullable=False),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("agent_slug", Text, nullable=False),
+    Column("span_id", UUID(as_uuid=True)),
+    _ts("occurred_at", nullable=False),
+    _ts("run_started_at", nullable=False),
+    Column("provider", Text),
+    Column("model", Text),
+    Column("input_tokens", BigInteger, nullable=False),
+    Column("output_tokens", BigInteger, nullable=False),
+    Column("cached_input_tokens", BigInteger, nullable=False),
+    Column("source", Text, nullable=False),
+    Column("pricing_version", Text),
+    Column("pricing_origin", Text),
+    Column("input_cost", Numeric(20, 9)),
+    Column("output_cost", Numeric(20, 9)),
+    Column("cached_cost", Numeric(20, 9)),
+    Column("request_cost", Numeric(20, 9)),
+    Column("estimated_total", Numeric(20, 9)),
+    Column("reported_total", Numeric(20, 9)),
+    Column("client_total", Numeric(20, 9)),
+    Column("total", Numeric(20, 9), nullable=False),
+    Column("is_retry", Boolean, nullable=False, server_default=text("false")),
+    PrimaryKeyConstraint("workspace_id", "event_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
+    ),
+    CheckConstraint(_in("source", COST_SOURCES), name="ck_cost_calculations_source"),
+    Index("ix_cost_run", "workspace_id", "run_id"),
+    Index("ix_cost_project_started", "workspace_id", "project_id", "run_started_at"),
+)
+
+# User price overrides: append-only (a correction is a newer row), workspace- or project-scoped.
+pricing_overrides = Table(
+    "pricing_overrides",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("provider", Text),
+    Column("model_pattern", Text, nullable=False),
+    Column("input_per_million", Numeric(20, 9), nullable=False),
+    Column("output_per_million", Numeric(20, 9), nullable=False),
+    Column("cached_input_per_million", Numeric(20, 9)),
+    Column("request_price", Numeric(20, 9), nullable=False, server_default="0"),
+    _ts("valid_from", nullable=False),
+    Column("note", Text),
+    _ts("created_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
+    CheckConstraint(
+        "input_per_million >= 0 AND output_per_million >= 0 AND request_price >= 0 "
+        "AND (cached_input_per_million IS NULL OR cached_input_per_million >= 0)",
+        name="ck_pricing_overrides_nonnegative",
+    ),
+    Index("ix_pricing_overrides_workspace", "workspace_id", "project_id"),
 )
 
 # ------------------------ skeletons (extended by later phases)

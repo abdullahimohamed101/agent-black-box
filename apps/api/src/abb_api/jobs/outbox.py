@@ -7,7 +7,7 @@ worker) is claimable again.
 """
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -55,6 +55,11 @@ def _truncate(error: str) -> str:
     return error if len(error) <= MAX_ERROR_LENGTH else error[:MAX_ERROR_LENGTH] + "…"
 
 
+def summarize_key(workspace_id: uuid.UUID, run_id: uuid.UUID) -> str:
+    """The coalescing key of a run's summarize job (shared by ingestion and rebuilds)."""
+    return f"{workspace_id}:{run_id}"
+
+
 class OutboxRepository:
     """Tenant-scoped producer side: jobs are always created for one workspace."""
 
@@ -94,6 +99,17 @@ class OutboxRepository:
             .returning(t.outbox_jobs.c.id)
         )
         return result.first() is not None
+
+    async def enqueue_summarize(self, run_ids: Sequence[uuid.UUID]) -> int:
+        """Ask for these runs to be re-derived (cost or rule changes); returns jobs created."""
+        created = 0
+        for run_id in sorted(run_ids, key=lambda r: r.bytes):
+            created += await self.enqueue(
+                job_type=SUMMARIZE_RUN,
+                dedupe_key=summarize_key(self._tenant.workspace_id, run_id),
+                payload={"run_id": str(run_id)},
+            )
+        return created
 
 
 class JobQueue:
