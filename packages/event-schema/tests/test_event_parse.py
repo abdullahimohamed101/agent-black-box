@@ -253,6 +253,8 @@ def test_unknown_but_well_formed_event_types_are_accepted() -> None:
         ({"list": [[1]]}, "attribute_value_invalid"),
         ({"none": None}, "attribute_value_invalid"),
         ({"big": 2**53}, "attribute_integer_out_of_range"),
+        ({"cost.provider_usd": 1e19}, "attribute_number_out_of_range"),  # JSONB would return it as an int
+        ({"cost.provider_usd": float(2**53) * 2}, "attribute_number_out_of_range"),
         ({"long": "x" * (limits.MAX_ATTRIBUTE_STRING_LENGTH + 1)}, "attribute_string_too_long"),
         ({"many": list(range(limits.MAX_ATTRIBUTE_LIST_ITEMS + 1))}, "attribute_list_too_long"),
         ({"tool.name": 5}, "attribute_type_mismatch"),

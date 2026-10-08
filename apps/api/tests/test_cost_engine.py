@@ -176,7 +176,8 @@ def test_hostile_cost_values_are_ignored(bad: Any) -> None:
 
 def test_absurd_token_counts_are_clamped() -> None:
     line = engine(entry("v1")).calculate(llm({"llm.input_tokens": 10**30}, raw=True))
-    assert line.input_tokens == 10**12 and line.total == D("3000000.0")
+    assert line.input_tokens == 10**12
+    assert line.total == D("1000000") and line.clamped  # 3,000,000 USD, clamped per call
 
 
 def test_rounding_is_to_nine_places_half_even() -> None:

@@ -196,8 +196,8 @@ runs = Table(
     _ts("updated_at", nullable=False, default_now=True),
     # Typed copies of summary figures, written with it by the summarizer (INV-2: rebuilt).
     # Analytics aggregate these instead of parsing JSONB for every row (measured, ADR-043).
-    Column("cost_usd", Numeric(20, 9), nullable=False, server_default="0"),
-    Column("retry_cost_usd", Numeric(20, 9), nullable=False, server_default="0"),
+    Column("cost_usd", Numeric(38, 9), nullable=False, server_default="0"),
+    Column("retry_cost_usd", Numeric(38, 9), nullable=False, server_default="0"),
     Column("llm_calls", Integer, nullable=False, server_default="0"),
     Column("tool_calls", Integer, nullable=False, server_default="0"),
     Column("retry_count", Integer, nullable=False, server_default="0"),
@@ -341,14 +341,14 @@ cost_calculations = Table(
     Column("source", Text, nullable=False),
     Column("pricing_version", Text),
     Column("pricing_origin", Text),
-    Column("input_cost", Numeric(20, 9)),
-    Column("output_cost", Numeric(20, 9)),
-    Column("cached_cost", Numeric(20, 9)),
-    Column("request_cost", Numeric(20, 9)),
-    Column("estimated_total", Numeric(20, 9)),
-    Column("reported_total", Numeric(20, 9)),
-    Column("client_total", Numeric(20, 9)),
-    Column("total", Numeric(20, 9), nullable=False),
+    Column("input_cost", Numeric(38, 9)),
+    Column("output_cost", Numeric(38, 9)),
+    Column("cached_cost", Numeric(38, 9)),
+    Column("request_cost", Numeric(38, 9)),
+    Column("estimated_total", Numeric(38, 9)),
+    Column("reported_total", Numeric(38, 9)),
+    Column("client_total", Numeric(38, 9)),
+    Column("total", Numeric(38, 9), nullable=False),
     Column("is_retry", Boolean, nullable=False, server_default=text("false")),
     PrimaryKeyConstraint("workspace_id", "event_id"),
     ForeignKeyConstraint(
@@ -368,10 +368,10 @@ pricing_overrides = Table(
     Column("project_id", UUID(as_uuid=True)),
     Column("provider", Text),
     Column("model_pattern", Text, nullable=False),
-    Column("input_per_million", Numeric(20, 9), nullable=False),
-    Column("output_per_million", Numeric(20, 9), nullable=False),
-    Column("cached_input_per_million", Numeric(20, 9)),
-    Column("request_price", Numeric(20, 9), nullable=False, server_default="0"),
+    Column("input_per_million", Numeric(38, 9), nullable=False),
+    Column("output_per_million", Numeric(38, 9), nullable=False),
+    Column("cached_input_per_million", Numeric(38, 9)),
+    Column("request_price", Numeric(38, 9), nullable=False, server_default="0"),
     _ts("valid_from", nullable=False),
     Column("note", Text),
     _ts("created_at", nullable=False, default_now=True),
@@ -415,7 +415,7 @@ def _bigint(name: str) -> Column[Any]:
 
 
 def _money(name: str) -> Column[Any]:
-    return Column(name, Numeric(20, 9), nullable=False, server_default="0")
+    return Column(name, Numeric(38, 9), nullable=False, server_default="0")
 
 
 analytics_runs_daily = _daily(

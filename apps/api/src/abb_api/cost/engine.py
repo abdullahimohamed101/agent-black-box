@@ -20,6 +20,10 @@ COST_SOURCES: tuple[CostSource, ...] = (
 _QUANT = Decimal("0.000000001")
 _MILLION = Decimal(1_000_000)
 MAX_TOKENS = 10**12  # absurd counts are hostile input; they are clamped, not trusted
+# No single model call costs a million dollars. Larger figures (a hostile attribute, or a price override
+# times a clamped token count) are clamped to this, flagged on the line and counted in the run summary, so
+# one event can never overflow a money column or dominate a day's totals (never an exception).
+MAX_LINE_USD = Decimal("1000000")
 
 
 @dataclass(frozen=True)
@@ -45,6 +49,7 @@ class CostLine:
     reported_total: Decimal | None = None  # what the provider reported (when it did)
     client_total: Decimal | None = None  # the caller's own estimate (`cost.estimated_usd`)
     is_retry: bool = False
+    clamped: bool = False  # a figure above MAX_LINE_USD was clamped
 
     def with_retry(self, is_retry: bool) -> "CostLine":
         return replace(self, is_retry=is_retry)
@@ -61,15 +66,23 @@ def _tokens(attrs: dict[str, Any], key: str) -> int | None:
     return min(value, MAX_TOKENS)
 
 
-def _usd(attrs: dict[str, Any], key: str) -> Decimal | None:
+def _usd(attrs: dict[str, Any], key: str) -> tuple[Decimal | None, bool]:
+    """A cost attribute as money, and whether it was clamped; None when absent or unusable."""
     value = attrs.get(key)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
+        return None, False
     if isinstance(value, float) and not math.isfinite(value):
-        return None
+        return None, False
     if value < 0:
-        return None
-    return _money(Decimal(str(value)))
+        return None, False
+    amount = Decimal(str(value))
+    if amount > MAX_LINE_USD:
+        return MAX_LINE_USD, True
+    return _money(amount), False
+
+
+def _clamp(amount: Decimal) -> tuple[Decimal, bool]:
+    return (MAX_LINE_USD, True) if amount > MAX_LINE_USD else (amount, False)
 
 
 class CostEngine:
@@ -89,8 +102,8 @@ class CostEngine:
         input_tokens = _tokens(attrs, "llm.input_tokens")
         output_tokens = _tokens(attrs, "llm.output_tokens")
         cached = _tokens(attrs, "llm.cached_input_tokens") or 0
-        reported = _usd(attrs, "cost.provider_usd")
-        client = _usd(attrs, "cost.estimated_usd")
+        reported, reported_clamped = _usd(attrs, "cost.provider_usd")
+        client, client_clamped = _usd(attrs, "cost.estimated_usd")
 
         entry: PriceEntry | None = None
         if model is not None and (input_tokens is not None or output_tokens is not None):
@@ -117,15 +130,20 @@ class CostEngine:
             billed_cached = min(cached, input_tokens or 0)
             plain = (input_tokens or 0) - billed_cached
             cached_price = entry.cached_input_per_million
-            input_cost = _money(plain * entry.input_per_million / _MILLION)
-            cached_cost = _money(
-                billed_cached
-                * (cached_price if cached_price is not None else entry.input_per_million)
-                / _MILLION
+            input_cost, c1 = _clamp(_money(plain * entry.input_per_million / _MILLION))
+            cached_cost, c2 = _clamp(
+                _money(
+                    billed_cached
+                    * (cached_price if cached_price is not None else entry.input_per_million)
+                    / _MILLION
+                )
             )
-            output_cost = _money((output_tokens or 0) * entry.output_per_million / _MILLION)
-            request_cost = _money(entry.request_price)
-            estimated = input_cost + cached_cost + output_cost + request_cost
+            output_cost, c3 = _clamp(
+                _money((output_tokens or 0) * entry.output_per_million / _MILLION)
+            )
+            request_cost, c4 = _clamp(_money(entry.request_price))
+            estimated, c5 = _clamp(input_cost + cached_cost + output_cost + request_cost)
+            estimate_clamped = c1 or c2 or c3 or c4 or c5
             line = replace(
                 line,
                 pricing_version=entry.pricing_version,
@@ -135,12 +153,14 @@ class CostEngine:
                 cached_cost=cached_cost,
                 request_cost=request_cost,
                 estimated_total=estimated,
+                clamped=estimate_clamped,
             )
         if reported is not None:
             return replace(
                 line,
                 source="provider_reported",
                 total=reported,
+                clamped=line.clamped or reported_clamped,
                 pricing_origin=line.pricing_origin or "event",
             )
         if line.estimated_total is not None:
@@ -151,6 +171,7 @@ class CostEngine:
                 line,
                 source="client_estimate",
                 total=client,
+                clamped=line.clamped or client_clamped,
                 pricing_version=version if isinstance(version, str) else None,
                 pricing_origin="event",
             )
@@ -174,4 +195,5 @@ def cost_summary(lines: list[CostLine]) -> dict[str, Any]:
             s: usd(v) for s, v in by_source.items() if v or any(ln.source == s for ln in lines)
         },
         "unpriced_calls": sum(1 for ln in lines if ln.source == "unpriced"),
+        "clamped_calls": sum(1 for ln in lines if ln.clamped),
     }

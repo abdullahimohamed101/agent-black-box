@@ -140,6 +140,10 @@ def _check_scalar(key: str, value: Any, *, allow_list: bool) -> None:
     if isinstance(value, float):
         if not math.isfinite(value):
             raise _fail("attribute_not_finite", f"Attribute {key} must be a finite number.", loc)
+        # Same bound as integers: PostgreSQL JSONB stores 1e19 as the integer 10000000000000000000, which
+        # the integer rule above would reject when the event is read back (a run no worker could summarize).
+        if abs(value) > limits.MAX_SAFE_INTEGER:
+            raise _fail("attribute_number_out_of_range", f"Attribute {key} is out of range.", loc)
         return
     if isinstance(value, str):
         if len(value) > limits.MAX_ATTRIBUTE_STRING_LENGTH:
