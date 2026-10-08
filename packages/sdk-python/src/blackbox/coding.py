@@ -9,6 +9,7 @@ in captured output. Command risk classes (spec §83) are observed, never enforce
 
 import difflib
 import hashlib
+import logging
 import os
 import re
 import shlex
@@ -1144,6 +1145,7 @@ class CodingRecorder:
         self._timeout = timeout
         extra = (bb.config.api_key,) if bb.config.api_key else ()
         self._secrets = secret_env_values(extra=extra)
+        self._warned_incomplete = False
         self._files = SecretFiles(self.root)
         self._file_secrets: tuple[str, ...] = ()
         self.refresh_secrets()
@@ -1152,6 +1154,11 @@ class CodingRecorder:
         """Learn secret values in the workspace's sensitive files (cached by size and mtime)."""
         try:
             self._file_secrets = self._files.refresh()
+            if self._files.incomplete and not self._warned_incomplete:
+                self._warned_incomplete = True  # once, value-free: some secret files may be unknown
+                logging.getLogger("blackbox").warning(
+                    "blackbox: secret scan hit its time budget; some secret files may not be masked"
+                )
         except (
             Exception
         ):  # scanning must never break the agent (INV-4); masking just uses what it had

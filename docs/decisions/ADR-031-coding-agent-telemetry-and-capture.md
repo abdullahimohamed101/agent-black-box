@@ -88,14 +88,15 @@ value-masking design, all fixed with regression tests (`tests/test_secret_round3
 - **Placeholders corrupted the agent's view.** `SECRET_KEY=secret`, `API_TOKEN=test`, `COOKIE_SECURE=true` in a sample file turned ordinary words into masks (source code,
   `Ran 2 tests`). Template files (`.example`, `.sample`, `.template`, `.dist`) and common words, booleans, numbers and placeholders (`changeme`, `<token>`, `${X}`,
   `xxxx`) are not learned; a real-looking value in a template file still is. Values under 3 characters, and under 6 or 8 for names that do not look secret, are not masked.
-- **History.** Secret values that only exist in older commits, rotated or deleted files, are learned from history (bounded, cached by `HEAD`), and `git show <blob>` /
-  `git cat-file` are withheld when the object could be a sensitive file.
+- **History.** Secret values that only exist in older commits, rotated or deleted files, are learned from history (bounded, cached by `HEAD`) and masked by value, so
+  `git show <blob>` of a deleted `.env` prints nothing secret. (`git cat-file` and `git show` are additionally *withheld* while a sensitive file exists in the tree; once none
+  does, value masking is the only defence for objects that hold values it did not learn.)
 - **Remotes and `.git/config`** are scanned; `https://<token>@host/` (a bare token as the user, as Azure DevOps uses) is a credential.
 - **The host's own environment** is masked by value for every variable except a short benign list and values that are plainly harmless (paths, plain URLs, numbers,
   ordinary words), because `ps eww -p $PPID` prints the whole environment and a name like `SMTP_PW` or `HF_TOK` cannot be recognised reliably.
 - **Discovery.** Only `.git`, real package trees (`node_modules`, `site-packages`, `__pycache__`) are skipped, and never a directory that contains a file with a sensitive
-  name; `build/`, `dist/`, `target/`, `.cache/` and deep paths are scanned. Up to 5,000 secret files of 4 MiB each, within a 2 s time budget; when the budget is hit the scan is
-  marked incomplete instead of silently partial. Values of any length are learned (long ones by exact match plus head and tail).
+  name; `build/`, `dist/`, `target/`, `.cache/` and deep paths are scanned. Up to 5,000 secret files of 4 MiB each, within a 2 s time budget; when the budget is hit `SecretFiles.incomplete`
+  is set and the recorder logs a single value-free warning (it is not an event attribute: the event schema has no slot for it yet), instead of being silently partial. Values of any length are learned (long ones by exact match plus head and tail).
 - **File shapes.** Raw single-token files (`master.key`, `*.ppk`, `*.gpg`), YAML block scalars and list items, multi-line quoted values, `value # comment`, and every string leaf of
   a file that is secret by name (`secrets.json`, `credentials.*`, `creds.*`, `*.tfvars`).
 - **Encodings.** base64 at all three byte alignments (and url-safe), percent-encoding variants, JSON, `repr`, `shlex`, HTML/XML and backslash escapes, hex, and any

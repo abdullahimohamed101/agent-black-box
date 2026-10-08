@@ -283,3 +283,19 @@ def test_file_paths_and_git_refs_in_events_are_sanitized(plain: Path) -> None:
     events = repr(bb.buffered_events())
     assert "file.path" in events and "git.branch" in events  # the events are there to be inspected
     assert secret not in events
+
+
+def test_an_incomplete_secret_scan_is_reported_once_without_values(
+    plain: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import blackbox.secretscan as ss
+
+    (plain / ".env").write_text("SVC_KEY=budget-secret-value-4417\n")
+    monkeypatch.setattr(ss, "SCAN_BUDGET_SECONDS", -1.0)  # already over budget when the walk starts
+    bb = BlackBox(mode="offline", project="d", payload_mode=PayloadMode.FULL)
+    with bb.run("r") as run, caplog.at_level("WARNING", logger="blackbox"):
+        rec = CodingRecorder(bb, run, plain)
+        rec.run_command("echo one", timeout=10)
+        rec.run_command("echo two", timeout=10)
+    warnings = [r.getMessage() for r in caplog.records if "secret scan" in r.getMessage()]
+    assert len(warnings) == 1 and "budget-secret-value-4417" not in warnings[0]
