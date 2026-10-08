@@ -1,6 +1,7 @@
 """Conformance drivers: the same operations through the fake dispatcher and the real LangGraph."""
 
 import operator
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Any, TypedDict
 
@@ -14,7 +15,7 @@ from tests.fakes import FakeFramework
 
 ALL = frozenset(
     "tool tool_failure llm llm_failure nested concurrent sensitive sensitive_full hostile "
-    "redactor_raises".split()
+    "redactor_raises late_end".split()
 )
 
 
@@ -28,6 +29,9 @@ class FakeDriver:
     llm_provider, llm_model = "acme", "m1"
 
     def perform(self, scenario: str, bb: BlackBox) -> None:
+        if scenario == "late_end":
+            self._late_end(bb)
+            return
         fw = FakeFramework(handler_for(scenario, bb))
         with fw.chain("LangGraph") as root:
             if scenario in ("tool", "redactor_raises"):
@@ -61,6 +65,19 @@ class FakeDriver:
                     pass
             elif scenario == "hostile":
                 self._hostile(fw, root)
+
+    @staticmethod
+    def _late_end(bb: BlackBox) -> None:
+        """The host's run ends while a tool is still open; its end callback arrives afterwards."""
+        h = handler_for("late_end", bb)
+        root, tool = uuid.uuid4(), uuid.uuid4()
+        with bb.run("host"):
+            h.on_chain_start({"name": "Graph"}, {}, run_id=root, parent_run_id=None, name="Graph")
+            h.on_tool_start(
+                {"name": TOOL_NAME}, "q", run_id=tool, parent_run_id=root, name=TOOL_NAME
+            )
+        h.on_tool_end("r", run_id=tool)
+        h.on_chain_end({}, run_id=root)
 
     @staticmethod
     def _hostile(fw: FakeFramework, root: Any) -> None:
@@ -147,7 +164,10 @@ class RealDriver:
     """Drives genuine `langgraph` graphs; callbacks arrive exactly as in production."""
 
     name = "langgraph-real"
-    supports = ALL - {"hostile"}  # hostile arguments cannot be injected through a real graph
+    supports = ALL - {
+        "hostile",
+        "late_end",
+    }  # hostile arguments cannot be injected through a real graph
     llm_provider, llm_model = "acme", "m1"
 
     def perform(self, scenario: str, bb: BlackBox) -> None:

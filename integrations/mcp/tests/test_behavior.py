@@ -182,3 +182,36 @@ def test_unusual_arguments_and_unrenderable_payloads() -> None:
     events = run_async(go, payload_mode="full")
     names = [e["attributes"]["tool.name"] for e in of(events, "tool.call.started")]
     assert names == ["t", "unknown"]
+
+
+def test_nothing_is_emitted_after_the_run_ended() -> None:
+    from blackbox import current_run
+
+    class EndsRun(FakeSession):
+        async def call_tool(self, name: Any = None, arguments: Any = None, **kw: Any) -> Any:
+            run = current_run()
+            assert run is not None
+            run.end()
+            if self.error is not None:
+                raise self.error
+            return self.result
+
+    def drive(bb: BlackBox) -> None:
+        async def main() -> None:
+            async with bb.run("r"):
+                ok = instrument(EndsRun(), bb)
+                await ok.call_tool("t")
+                bad = instrument(EndsRun(ScenarioError("x")), bb)
+                with pytest.raises(ScenarioError):  # run already ended: pass-through, no events
+                    await bad.call_tool("t")
+            async with bb.run("second"):
+                failing = instrument(EndsRun(ScenarioError("y")), bb)
+                with pytest.raises(ScenarioError):  # fails after ending its own run
+                    await failing.call_tool("u")
+
+        asyncio.run(main())
+
+    events = capture(drive)
+    assert [e["event_type"] for e in events][-1] == "run.completed"
+    assert len(of(events, "tool.call.started")) == 2
+    assert not of(events, "tool.call.completed") and not of(events, "tool.call.failed")

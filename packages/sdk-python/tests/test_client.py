@@ -574,3 +574,11 @@ def test_llm_call_accepts_an_explicit_parent_for_adapters() -> None:
     evs = events_of(bb)
     started = by_type(evs, "llm.request.started")[0]
     assert started["parent_span_id"] == by_type(evs, "span.started")[0]["span_id"]
+
+
+def test_run_ended_property_flips_once() -> None:
+    bb = offline()
+    run = bb.run("r")
+    assert run.ended is False
+    run.end()
+    assert run.ended is True

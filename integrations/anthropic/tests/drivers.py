@@ -1,6 +1,7 @@
 """Conformance drivers for the OpenAI wrapper: fake client and the real `openai` package."""
 
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from typing import Any
 
 import blackbox
@@ -9,10 +10,11 @@ from abb_conformance.scenarios import CONCURRENCY, TOOL_NAME
 from blackbox import BlackBox
 
 from blackbox_anthropic import instrument
-from tests.fakes import fake_client
+from tests.fakes import FakeStream, fake_client
 
 SUPPORTED = frozenset(
-    "llm llm_failure nested concurrent sensitive sensitive_full hostile redactor_raises".split()
+    "llm llm_failure nested concurrent sensitive sensitive_full hostile redactor_raises "
+    "late_end".split()
 )
 MESSAGE_JSON = {
     "id": "msg_1",
@@ -69,7 +71,7 @@ class Driver:
     def __init__(self, real: bool) -> None:
         self.real = real
         self.name = "openai-real" if real else "openai-fake"
-        self.supports = SUPPORTED - ({"hostile", "llm_failure"} if real else set())
+        self.supports = SUPPORTED - ({"hostile", "llm_failure", "late_end"} if real else set())
         self.concurrent_kind = "llm"
 
     def client(self, scenario: str, bb: BlackBox) -> Any:
@@ -77,6 +79,9 @@ class Driver:
         if self.real:
             return instrument(real_client(), bb, capture_payloads=capture)
         error = ScenarioError("boom") if scenario == "llm_failure" else None
+        if scenario == "late_end":
+            chunks = [SimpleNamespace(usage=None), SimpleNamespace(usage=None)]
+            return instrument(fake_client(chat=FakeStream(chunks)), bb)
         return instrument(fake_client(error=error), bb, capture_payloads=capture)
 
     def perform(self, scenario: str, bb: BlackBox) -> None:
@@ -87,6 +92,12 @@ class Driver:
                 model="m1", max_tokens=16, messages=[{"role": "user", "content": content}], **extra
             )
 
+        if scenario == "late_end":  # the caller abandons a stream after its run has ended
+            with bb.run("conformance"):
+                stream = client.messages.create(model="m1", max_tokens=1, messages=[], stream=True)
+                next(iter(stream))
+            stream.close()
+            return
         with bb.run("conformance") as run:
             if scenario == "nested":
                 with run.span("step", kind="agent"):

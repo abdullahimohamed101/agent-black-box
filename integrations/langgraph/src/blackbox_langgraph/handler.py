@@ -100,6 +100,7 @@ class BlackBoxCallbackHandler(_Base):
         self._lock = threading.Lock()
         self.last_run_id: str | None = None  # the most recent run this handler opened itself
         self.errors = 0  # adapter-internal failures (callbacks that raised and were contained)
+        self.late_dropped = 0  # span ends that arrived after their run had ended
         self.dropped = 0  # in-flight runs forgotten because the tracking bound was reached
 
     # -- bookkeeping ------------------------------------------------
@@ -128,12 +129,14 @@ class BlackBoxCallbackHandler(_Base):
             run, anchor = parent.run, parent.anchor
         else:
             anchor = None
-            run = current_run() or self._bb.run(name)
-            owned = run is not current_run()
+            ambient = current_run()
+            usable = ambient if ambient is not None and not ambient.ended else None
+            run = usable or self._bb.run(name)
+            owned = usable is None
             if owned:
                 self.last_run_id = run.run_id
         span = None
-        if make is not None and not (owned and root_is_run):
+        if make is not None and not run.ended and not (owned and root_is_run):
             try:
                 span = make(run, anchor)
                 span.start()
@@ -170,7 +173,9 @@ class BlackBoxCallbackHandler(_Base):
                 else "error"
             )
         try:
-            if node.span is not None:
+            if node.span is not None and node.run.ended:
+                self.late_dropped += 1  # nothing may follow a run's end event
+            elif node.span is not None:
                 if annotate is not None and error is None:
                     annotate(node.span)
                 if self._capture:

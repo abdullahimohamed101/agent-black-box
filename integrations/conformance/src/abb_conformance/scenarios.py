@@ -37,7 +37,11 @@ class Driver(Protocol):
 
 
 # scenario -> options for the client under test
-_OPTIONS: dict[str, dict[str, Any]] = {"redactor_raises": {"redactor": lambda event: 1 / 0}}
+_OPTIONS: dict[str, dict[str, Any]] = {
+    "redactor_raises": {"redactor": lambda event: 1 / 0},
+    # Payloads are allowed by the client here, so absence proves the adapter's own default-off gate.
+    "sensitive": {"payload_mode": "full"},
+}
 
 
 def _spans(events: list[dict[str, Any]], prefix: str) -> dict[str, dict[str, dict[str, Any]]]:
@@ -50,7 +54,9 @@ def _spans(events: list[dict[str, Any]], prefix: str) -> dict[str, dict[str, dic
     return spans
 
 
-def _structure(events: list[dict[str, Any]], *, payloads_allowed: bool = False) -> None:
+def _structure(
+    events: list[dict[str, Any]], *, payloads_allowed: bool = False, allow_unclosed: bool = False
+) -> None:
     """Rules every scenario obeys: lifecycle, span pairing, parenting, ordering, no payloads."""
     assert events, "the adapter emitted nothing"
     validate_events(events)
@@ -80,7 +86,8 @@ def _structure(events: list[dict[str, Any]], *, payloads_allowed: bool = False) 
             elif span_id and e["event_type"].endswith((".completed", ".failed")):
                 assert span_id in opened and span_id not in closed, f"span {span_id} closed badly"
                 closed.add(span_id)
-        assert closed == set(opened), f"unclosed spans: {set(opened) - closed}"
+        if not allow_unclosed:
+            assert closed == set(opened), f"unclosed spans: {set(opened) - closed}"
 
 
 def _one(spans: dict[str, dict[str, dict[str, Any]]]) -> dict[str, dict[str, Any]]:
@@ -183,6 +190,7 @@ _CHECKS: dict[str, Callable[[Driver, list[dict[str, Any]]], None]] = {
     "sensitive_full": _sensitive_full,
     "hostile": _nothing_more,
     "redactor_raises": _nothing_more,
+    "late_end": _nothing_more,
 }
 _FAILING = {"tool_failure", "llm_failure"}
 SCENARIOS: tuple[str, ...] = tuple(_CHECKS)
@@ -216,6 +224,10 @@ def check_scenario(driver: Driver, scenario: str) -> bool:
     if scenario == "redactor_raises":  # the SDK drops what it cannot redact: only validity holds
         validate_events(events)
     else:
-        _structure(events, payloads_allowed=scenario == "sensitive_full")
+        _structure(
+            events,
+            payloads_allowed=scenario == "sensitive_full",
+            allow_unclosed=scenario == "late_end",
+        )
     _CHECKS[scenario](driver, events)
     return True

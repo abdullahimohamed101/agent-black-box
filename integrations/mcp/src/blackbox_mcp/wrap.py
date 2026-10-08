@@ -67,6 +67,7 @@ class _Settings:
     def __init__(self, bb: BlackBox, server: str | None, capture: bool) -> None:
         self.bb, self.server, self.capture = bb, server, capture
         self.errors = 0
+        self.late_dropped = 0
 
     def contained(self) -> None:
         self.errors += 1
@@ -76,7 +77,7 @@ class _Settings:
 def _begin(s: _Settings, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Span | None:
     try:
         run = current_run()
-        if run is None or not s.bb.enabled:
+        if run is None or run.ended or not s.bb.enabled:
             return None
         name = args[0] if args else kwargs.get("name")
         name = name if isinstance(name, str) and name.strip() else "unknown"
@@ -91,9 +92,19 @@ def _begin(s: _Settings, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Span 
         return None
 
 
+def _late(s: _Settings, span: Span) -> bool:
+    """True (and counted) when the run already ended: nothing may follow a run's end event."""
+    if getattr(span.run, "ended", False):
+        s.late_dropped += 1
+        return True
+    return False
+
+
 def _succeed(
     s: _Settings, span: Span, result: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
 ) -> None:
+    if _late(s, span):
+        return
     try:
         flagged = _get(result, "is_error")
         if flagged is None:
@@ -118,6 +129,8 @@ def _succeed(
 
 
 def _fail(s: _Settings, span: Span, exc: BaseException) -> None:
+    if _late(s, span):
+        return
     try:
         span.set_attribute("tool.error_type", type(exc).__name__)
         span.end("error" if isinstance(exc, Exception) else "cancelled", exc)

@@ -23,6 +23,7 @@ class Reference:
     llm_provider, llm_model = "acme", "m1"
     skip_usage = False
     swallow = False
+    emit_late = False
 
     def perform(self, scenario: str, bb: BlackBox) -> None:
         with bb.run("conformance") as run:
@@ -40,6 +41,12 @@ class Reference:
             elif scenario == "concurrent":
                 for i in range(CONCURRENCY):
                     self._tool(run, f"{TOOL_NAME}-{i}")
+            elif scenario == "late_end":
+                span = run.span(TOOL_NAME, kind="tool").start()
+                run.end()
+                if not self.emit_late:
+                    return
+                span.end()  # a correct adapter checks `run.ended` first
             elif scenario in ("hostile", "redactor_raises"):
                 self._tool(run, TOOL_NAME)
 
@@ -77,6 +84,13 @@ def test_missing_usage_is_caught() -> None:
     driver.skip_usage = True
     with pytest.raises(KeyError):
         check_scenario(driver, "llm")
+
+
+def test_an_event_after_the_run_end_is_caught() -> None:
+    driver = Reference()
+    driver.emit_late = True
+    with pytest.raises(AssertionError, match="run end"):
+        check_scenario(driver, "late_end")
 
 
 def test_swallowed_framework_error_is_caught() -> None:

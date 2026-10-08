@@ -294,6 +294,11 @@ class Run:
             attributes[f"metadata.{name_attr(key, 100).lower()}"] = value
         self._emit("run.started", attributes=attributes)
 
+    @property
+    def ended(self) -> bool:
+        """True once the run's end event was recorded (adapters drop span events after it)."""
+        return self._ended
+
     # -- instrumentation ---------------------------------------------------------------------------
 
     def span(

@@ -18,7 +18,7 @@ import weakref
 from collections.abc import Callable
 from typing import Any
 
-from blackbox import BlackBox, LlmCall, current_run
+from blackbox import BlackBox, LlmCall, Run, current_run
 
 from blackbox_openai._util import count, get, number, preview, text
 
@@ -46,6 +46,7 @@ class Settings:
         self.cost_fn = cost_fn
         self.capture = capture_payloads
         self.errors = 0
+        self.late_dropped = 0
 
     def contained(self) -> None:
         self.errors += 1
@@ -69,10 +70,13 @@ def usage_of(usage: Any) -> tuple[int | None, int | None, int | None]:
 class Call:
     """One in-flight model call: ends its span exactly once."""
 
-    def __init__(self, settings: Settings, span: LlmCall, request: Any, model: str) -> None:
+    def __init__(
+        self, settings: Settings, span: LlmCall, request: Any, model: str, run: Run
+    ) -> None:
         self.s = settings
         self.span = span
         self.model = model
+        self.run = run
         self.request = request  # preview text, only when payload capture is on
         self.usage: Any = None
         self._ended = False
@@ -128,6 +132,9 @@ class Call:
             self._end("cancelled", None)
 
     def _end(self, status: str, exc: BaseException | None) -> None:
+        if getattr(self.run, "ended", False):  # a late close (e.g. GC of an abandoned stream)
+            self.s.late_dropped += 1  # must not emit after the run's end event
+            return
         try:
             self.span.end(status, exc)
         except Exception:
@@ -138,7 +145,7 @@ def begin(settings: Settings, kwargs: dict[str, Any], raw: bool = False) -> Call
     """Start the span for a call; None means pass through (no run, disabled, or a failure)."""
     try:
         run = current_run()
-        if run is None or not settings.bb.enabled:
+        if run is None or run.ended or not settings.bb.enabled:
             return None
         headers = kwargs.get("extra_headers")
         if not raw and isinstance(headers, dict) and "X-Stainless-Raw-Response" in headers:
@@ -159,7 +166,7 @@ def begin(settings: Settings, kwargs: dict[str, Any], raw: bool = False) -> Call
         )
         span.start()
         request = preview(kwargs.get("messages") or kwargs.get("input")) if settings.capture else ""
-        return Call(settings, span, request, model)
+        return Call(settings, span, request, model, run)
     except Exception:
         settings.contained()
         return None
