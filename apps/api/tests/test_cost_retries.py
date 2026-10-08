@@ -111,7 +111,7 @@ def test_a_very_deep_span_chain_is_linear_time() -> None:
 
     from abb_event_schema.spans import Span
 
-    depth = 20_000
+    depth = 6_000
     ids = [sid() for _ in range(depth)]
     spans = {
         sp: Span(
@@ -120,11 +120,10 @@ def test_a_very_deep_span_chain_is_linear_time() -> None:
         for i, sp in enumerate(ids)
     }
     t = Trace()
-    t.retry(ids[0])  # the root of the chain is retried, then a call at the very bottom
-    deep = t.llm(ids[-1])
-    for sp in ids[::2000]:
-        t.llm(sp)
+    t.retry(ids[0])  # the root of the chain is retried, then a model call on every span below it
+    calls = {t.llm(sp) for sp in ids}
+    ordered = sort_events(t.events)
     started = time.perf_counter()
-    result = retry_call_ids(sort_events(t.events), spans)
-    assert time.perf_counter() - started < 2.0
-    assert (deep in result and len(result) == len(ids[::2000]) + 1 - 0) or deep in result
+    result = retry_call_ids(ordered, spans)
+    assert time.perf_counter() - started < 0.5  # linear: milliseconds; the old walk took seconds
+    assert result == calls
