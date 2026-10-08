@@ -10,7 +10,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"
 set -a; . ./.env; set +a
 DB_NAME="${ANALYTICS_E2E_DB_NAME:-abb_p7}"
 export ABB_DATABASE_URL="${ABB_DATABASE_URL%/*}/$DB_NAME"
-export ABB_SUMMARY_DEBOUNCE_SECONDS=0
+export ABB_SUMMARY_DEBOUNCE_SECONDS=0 ABB_ANALYTICS_REFRESH_DELAY_SECONDS=0
 PORT="${ANALYTICS_E2E_API_PORT:-8150}"; API="http://localhost:$PORT"
 WORK="$(mktemp -d)"; pids=()
 cleanup() { for p in "${pids[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done; rm -rf "$WORK"; }

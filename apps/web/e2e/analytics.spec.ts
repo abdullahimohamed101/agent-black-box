@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
 // Runs only through scripts/analytics-e2e.sh: a real API + worker, the built web server on :3150 and runs written by
@@ -25,6 +25,9 @@ async function axe(page: Page) {
   );
 }
 
+/** One headline figure tile, found by its label (tables have headers with the same words). */
+const stat = (scope: Page | Locator, label: string) =>
+  scope.locator(".stat").filter({ hasText: new RegExp(`^${label}`) });
 const usd = (n: number) => `$${n.toFixed(2)}`;
 const PROJECT = "all"; // the web key is workspace-wide (KI-027: no project lookup, `all` = no filter)
 const base = `/w/e2e/projects/${PROJECT}`;
@@ -36,10 +39,8 @@ test("dashboard shows whole-window aggregates from the server", async ({ page })
   await page.goto(base);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.getByText(`All ${w.runs} runs started in the last 7 days`)).toBeVisible();
-  await expect(page.getByText("Success rate").locator("..")).toContainText("50%");
-  await expect(page.getByText("Cost", { exact: true }).locator("..")).toContainText(
-    usd(w.total_usd),
-  );
+  await expect(stat(page, "Success rate")).toContainText("50%");
+  await expect(stat(page, "Cost")).toContainText(usd(w.total_usd));
   await expect(page.getByRole("heading", { name: "Recent failures" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Cost and reliability analytics/ })).toBeVisible();
   await axe(page);
@@ -52,8 +53,8 @@ test("analytics page: cost, retries, reliability and performance", async ({ page
   await page.goto(`${base}/analytics`);
   await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
   const cost = page.getByRole("region", { name: "Cost" });
-  await expect(cost.getByText("Total").locator("..")).toContainText(usd(w.total_usd));
-  await expect(cost.getByText("Per successful run").locator("..")).toContainText("$2.25");
+  await expect(stat(cost, "Total")).toContainText(usd(w.total_usd));
+  await expect(stat(cost, "Per successful run")).toContainText("$2.25");
   await expect(cost.getByText(/19% of cost came from retries/)).toBeVisible();
   await expect(
     cost.getByText(/Initial attempts \$6\.25, retries \$1\.50 across 1 runs/),
@@ -66,8 +67,8 @@ test("analytics page: cost, retries, reliability and performance", async ({ page
   await expect(cost.getByRole("table", { name: "Most expensive runs" })).toBeVisible();
 
   const reliability = page.getByRole("region", { name: "Reliability" });
-  await expect(reliability.getByText("Failure rate").locator("..")).toContainText("25%");
-  await expect(reliability.getByText("Timeout rate").locator("..")).toContainText("25%");
+  await expect(stat(reliability, "Failure rate")).toContainText("25%");
+  await expect(stat(reliability, "Timeout rate")).toContainText("25%");
   await expect(
     reliability.getByRole("table", { name: "Tool success rate and latency" }),
   ).toContainText("git");
