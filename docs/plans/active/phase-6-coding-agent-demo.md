@@ -1,0 +1,91 @@
+# Phase 6 - Coding-agent observability and the flagship demo
+
+Status: In progress (started 2026-10-07)
+Owner: implementer agent
+Branch: `feature/phase-6-coding-agent-demo` (from `main` cc56935; worktree `abb-worktrees/phase-6`, runs in parallel with Phases 7 and 8)
+Depends on: Phases 2 (ingestion, query), 3 (SDK), 4-5 (web run detail, live stream)
+Spec refs: §26, §27, §75 (artifacts), §82 (82.1-82.3), §83 (risk classes), §136 (demo), §62 (INV-1/2/3/4/5/7/8); ADR-013, 020, 021, 022; new ADR-030, 031, 032
+
+## Outcome
+Run `examples/coding-agent` (an intentionally broken OAuth session-expiry repository, a real agent loop, a deterministic scripted model) and open the run in
+the web app: the story *read -> model -> edit -> test fails -> retry -> edit -> tests pass* is readable without narration, diffs are syntax highlighted,
+every shell command shows cwd, duration, exit code, risk class and lazily loaded stdout/stderr, test results are semantic (passed/failed/failing ids), and secrets
+that the demo plants in its output are redacted in storage and in the UI.
+
+## Non-goals
+Enforcement of command risk (observe-only, spec §83), server-side secret scanning (Phase 13, KI-042), object storage (Phase 18, KI-041), quotas/retention (Phase 19, KI-040),
+policy findings such as "agent changed authentication code" as stored findings (Phase 10/13; the UI shows an informational path label only), run comparison (Phase 12),
+run-summary changes (the UI derives coding figures from events; `SUMMARY_VERSION` stays), LangGraph/OpenAI wrappers (Phase 8), web login (Phase 15).
+
+## Current architecture (what exists)
+- Registry already has `file.*`, `git.*`, `shell.command.*` (+ `shell.exit_code/cwd/risk_class`, `test.*`, `file.*` attributes); `payload_ref` is an `artifact://` string, unused.
+- Skeleton `artifacts` table (0005; FK to `runs`), scope `artifacts:write`, id kind `art`. No store, endpoint or UI.
+- SDK (stdlib only): `Run.event()`, spans, `Redactor` (deny keys + secret patterns + callback; payloads only in `PayloadMode.FULL`), bounded exporter thread.
+- Web: `EventDrawer` renders model/tool sections and payload JSON as text; read proxy allowlists `/v1/runs*`; run summary has `files_modified`.
+- E2E pattern: `scripts/stream-e2e.sh` (own DB, API, worker, built web server) + Playwright `e2e/stream.spec.ts`.
+
+## Known issues considered
+- KI-032 (S3, SDK secret detection best-effort): **pulled in.** Terminal output is the highest-risk captured text, so the same patterns are applied to whole texts and a
+  value masker for the host's secret-looking environment values is added (ADR-031). Server-side detection stays Phase 13 (new KI-042).
+- KI-029 (S1, one shared web key): stays. Artifact content flows through the same proxy and key, so the "never expose the web app publicly" warning matters more; stated in ADR-030 and `docs/SECURITY.md` is not edited (coordinator).
+- KI-018 (S1, unbounded cardinality): stays, but artifacts add a storage growth axis; bounded per artifact now, quota recorded as new KI-040. KI-019 (S1): unaffected. KI-021/026/017: stay (artifact bodies are capped at 8 MiB and counted by the per-project limiter).
+- KI-016/022 (large-run summarization), KI-027/028, KI-033/035: unrelated.
+- New: KI-040 (quota/retention/orphans), KI-041 (single-node store), KI-042 (no server scan), KI-043 (regex highlighter), KI-044 (real-model mode unexercised).
+
+## Decisions
+- **D1 (ADR-030)** `ArtifactStore` contract + local FS; client-id `PUT /v1/artifacts/{id}`; hash check; idempotent; chunked JSON reads; events reference artifacts by attribute; FK to runs dropped.
+- **D2 (ADR-031)** No new event types: optional attributes; tests are attributes on the closing `shell.command.*` event; risk R0-R4 + spec category from a deterministic SDK classifier; three-layer secret-safe capture.
+- **D3 (ADR-032)** Highlighting is a local tokenizer rendered as React text; no dependency.
+- **D4 SDK surface.** `BlackBox.upload_artifact(...)` (non-blocking, own bounded queue and thread, flushed with `flush/shutdown`; no-op unless `PayloadMode.FULL`) and `blackbox.coding`
+  (classifier, `CodingRecorder` with `read_file/write_file/delete_file/git/run_command`, test-summary parsers). Kept in the SDK, not the example, because every coding-agent integration needs the same safe capture.
+- **D5 Demo repository** uses `unittest` only (no installs) and a local bare Git remote created in a temp directory, so `git push` is real and offline. The scripted model's edits are
+  computed from the actual file contents; if the repository drifts the script fails loudly instead of editing blindly.
+- **D6 Real-model mode** is a stdlib HTTP client for the Anthropic Messages API behind `--model anthropic`; it reads the key from the user's environment, is never imported in scripted mode, and is never required (KI-044).
+- **D7 Web** derives an *attempts* summary (each test run, retries between them, files changed) from the loaded events (pure functions, unit tested) and adds drawer panels for file, git and shell events.
+
+## Proposed design
+**API** (`abb_api/artifacts/`: `store.py`, `repository.py`, `service.py`, `router.py`, `schemas.py`): settings `ABB_ARTIFACT_DIR`, `ABB_ARTIFACT_MAX_BYTES`, `ABB_ARTIFACT_CHUNK_BYTES`. Migration `0030` adds
+`project_id`, `name`, `media_type`, the project foreign key and `ix_artifacts_run`, and drops the run foreign key. `tables.py` updated in the same commit (the drift test enforces it).
+**Schema** (`packages/event-schema`): attributes listed in ADR-031 added to `KNOWN_ATTRIBUTES`; regenerated JSON Schema/TS; valid examples for the new shapes; `docs/architecture/events.md`.
+**SDK**: `redaction.Redactor.redact_text`, `artifacts.py` (uploader), `coding.py`.
+**Web**: proxy allowlist; `lib/highlight.ts`, `lib/diff.ts`, `lib/coding.ts` (attempts, risk labels, sensitive-path labels); components `DiffView`, `ShellPanel`, `ArtifactText` (lazy chunks), `CodingSummary`; drawer sections for file/git/shell; timeline descriptions.
+**Example**: `examples/coding-agent/` (`repo_template/`, `coding_agent/{agent,tools,models,scripted,anthropic_model}.py`, `run_demo.py`, `README.md`, tests).
+**E2E**: `scripts/coding-e2e.sh` (database `abb_p6`, API :8140, web :3140), `apps/web/e2e/coding.spec.ts`, `make coding-e2e`, CI job.
+
+## Affected files (conflict-prone with parallel phases: `scripts/quality.sh`, `Makefile`, `.github/workflows/ci.yml`, `apps/api/openapi.json`, `apps/web/src/lib/api/schema.d.ts`, `docs/DECISIONS.md`, `docs/KNOWN_ISSUES.md`)
+New/changed per the design above, plus `docker-compose.yml` (artifact volume and env), `.env.example` (`ABB_ARTIFACT_DIR`).
+
+## Acceptance criteria (each is evidenced with a command and its output in the completion table)
+- A1 Artifact upload: stored, SHA-256 verified, idempotent on retry, conflict on different content, size cap 413, wrong scope 403, project-bound, cross-workspace read 404 (pytest on real Postgres).
+- A2 Chunked read: offset/limit, UTF-8 boundaries preserved, `next_offset` null at the end, big artifact never read whole by one request (pytest).
+- A3 Migration 0030: empty -> head, head -> base -> head, and 0009 -> 0030 with the drift test green.
+- A4 Schema: new attributes validate and reject wrong types; generated artifacts current (`make schema-check`); SDK contract tests green.
+- A5 Classifier: table-driven R0-R4 and category tests incl. compound, sudo, pipe-to-shell, SQL, force push, user override.
+- A6 Secret-safe capture: planted secrets of every pattern kind and an env value of unknown shape are absent from the uploaded bytes; the child process cannot see the host's secrets; env never appears in any event (pytest).
+- A7 Test-result parsing from real `unittest` and `pytest` output captured from the demo.
+- A8 UI unit tests: diff parse/render, highlighter safety (no markup from trace content), shell panel lazy loading (no content request before expansion; second chunk on demand), attempts derivation, retry/error markers.
+- A9 Demo scripted run end to end: `examples/coding-agent` produces the expected event sequence (read, llm, edit, test fail, retry, edit, test pass, commit, push) deterministically (pytest + the E2E).
+- A10 Browser E2E through the real API, worker and built web server (`make coding-e2e`): the story is visible, diff is highlighted, shell panel lazy-loads the large output, planted secrets are absent from the page, from the API responses, from the artifact files on disk and from the database event rows; screenshots saved to `docs/screenshots/phase-6/`.
+- A11 OpenAPI and the generated web client are current (`make openapi-check`, `pnpm --filter @abb/web gen:api:check`).
+- A12 `scripts/quality.sh full` exits 0; security review pass recorded; mutation checks on the redaction and tenant-scoping tests.
+
+## Verification plan
+Focused tests per step, then `scripts/quality.sh full`; E2E by `scripts/coding-e2e.sh`; independent `verify-change` then `review-change` (security pass required: capture, upload, classes, XSS in the highlighter), then `harden-change`; mutation-test committed security code
+(remove a redaction pattern, drop the project scope, skip the hash check, render raw) and confirm tests fail.
+
+## Risks
+- Secrets leaking through captured text (mitigated by layers; residual KI-042). Stored XSS through diff/terminal text (text-only rendering, test). Path traversal in the store (keys from validated UUIDs only; test). Disk exhaustion (per-artifact cap, rate limit; KI-040).
+- The scripted demo drifting from the template (a pytest runs it on every CI run). Timing flakiness in E2E (wait on conditions, not sleeps).
+- Parallel phases touching shared files (merge conflicts listed above).
+- Docker compose cannot be re-verified without restarting shared containers (the compose change is validated with `docker compose config` only: UNVERIFIED (env) for a running stack).
+
+## Ordered steps (one commit each)
+1. Plan, ADR-030/031/032, KI-040..044 (docs).
+2. Event-schema: attributes, examples, generated artifacts, docs.
+3. API: migration 0030, `ArtifactStore`, upload and read endpoints, settings, tests, OpenAPI.
+4. SDK: `redact_text`, artifact uploader, `upload_artifact`, tests.
+5. SDK: `blackbox.coding` (classifier, runner, parsers, recorder), tests.
+6. Web: proxy allowlist, generated client, highlighter, diff, artifact text, shell panel, drawer sections, coding summary, tests.
+7. Example: repository template, agent, scripted model, optional real model, tests.
+8. E2E: script, Playwright spec, Makefile, CI, screenshots.
+9. Verify, review, harden fixes; completion evidence; move plan to `completed/`.
