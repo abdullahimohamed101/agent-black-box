@@ -31,6 +31,11 @@ web app. `scripts/coding-e2e.sh` does all of this against a throwaway database a
 
 ## Real-model mode (optional, never required)
 
+> **Warning: a real model runs arbitrary shell commands as your user, with no sandbox.** Recorded commands get a minimal
+> environment (no `HOME`, no inherited credentials) and their output is redacted, but they can still read and write
+> your files and use your network. Run this only in a disposable VM or container. The flag
+> `--i-understand-this-runs-commands` is required; scripted mode needs no flag and runs only the fixed plan.
+
 `--model anthropic` uses `ANTHROPIC_API_KEY` from your environment with the Messages API. It has not been run by the project (KI-044).
 
 ## Layout

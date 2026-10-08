@@ -2,7 +2,8 @@
 """Run the coding-agent demo and record it with Agent Black Box.
 
     uv run --project packages/sdk-python python examples/coding-agent/run_demo.py            # scripted, deterministic
-    ANTHROPIC_API_KEY=... uv run --project packages/sdk-python python examples/coding-agent/run_demo.py --model anthropic
+    ANTHROPIC_API_KEY=... uv run --project packages/sdk-python python examples/coding-agent/run_demo.py \\
+        --model anthropic --i-understand-this-runs-commands    # runs arbitrary shell as you: see README
 
 Needs BLACKBOX_API_KEY (a project key with events:write and artifacts:write) and BLACKBOX_ENDPOINT. The demo
 turns on full payload capture (diffs and terminal output are redacted, then uploaded as artifacts); that is a
@@ -35,7 +36,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--offline", action="store_true", help="record nothing remotely (events stay in memory)"
     )
+    parser.add_argument(
+        "--i-understand-this-runs-commands",
+        action="store_true",
+        help="REQUIRED for --model anthropic: a real model runs arbitrary shell commands as you, unsandboxed",
+    )
     args = parser.parse_args(argv)
+    if args.model == "anthropic" and not args.i_understand_this_runs_commands:
+        parser.error(
+            "real-model mode lets a language model run arbitrary shell commands as your user, with no "
+            "sandbox (recorded commands get a minimal environment, but your files and network are open). "
+            "Run it in a disposable VM or container, then pass --i-understand-this-runs-commands."
+        )
 
     # `python` in recorded commands must be the interpreter running the demo.
     os.environ["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")

@@ -152,3 +152,23 @@ def test_a_failing_tool_does_not_stop_the_loop(tmp_path: Path) -> None:
     assert result.turns == 2 and not result.tests_passed
     failed = [e for e in bb.buffered_events() if e["event_type"] == "tool.call.failed"]
     assert len(failed) == 1
+
+
+def test_real_model_mode_needs_the_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    import run_demo
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "not-used")
+    with pytest.raises(SystemExit) as exc:
+        run_demo.main(["--model", "anthropic", "--offline"])
+    assert exc.value.code == 2  # argparse error: refused before any model or command runs
+
+
+def test_git_tools_refuse_flag_like_names(tmp_path: Path) -> None:
+    root = prepare_workspace(tmp_path)
+    bb = BlackBox(mode="offline", project="d")
+    with bb.run("r") as run:
+        tools = Toolbox(CodingRecorder(bb, run, root))
+        with pytest.raises(ValueError):
+            tools.call("git_branch", {"name": "--force"})
+        with pytest.raises(ValueError):
+            tools.call("git_push", {"branch": "-D"})
