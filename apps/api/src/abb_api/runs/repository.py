@@ -68,6 +68,20 @@ class RunRepository:
         )
         return {r.id: r.project_id for r in rows}
 
+    async def run_ids(
+        self, *, project_id: uuid.UUID | None, since: datetime | None, limit: int
+    ) -> list[uuid.UUID]:
+        """Newest runs of the tenant (optionally one project, optionally since a time)."""
+        statement = select(t.runs.c.id).where(t.runs.c.workspace_id == self._tenant.workspace_id)
+        if project_id is not None:
+            statement = statement.where(t.runs.c.project_id == project_id)
+        if since is not None:
+            statement = statement.where(t.runs.c.started_at >= since)
+        rows = await self._conn.execute(
+            statement.order_by(t.runs.c.started_at.desc(), t.runs.c.id).limit(limit)
+        )
+        return [r.id for r in rows]
+
     async def lock(self, run_id: uuid.UUID) -> bool:
         """Take the run's row lock; False if the run does not exist.
 

@@ -14,6 +14,7 @@ from abb_api.core.config import Settings, get_settings
 from abb_api.core.errors import install_error_handlers
 from abb_api.core.logging import configure_logging
 from abb_api.core.middleware import RequestContextMiddleware
+from abb_api.cost.router import router as pricing_router
 from abb_api.db import create_engine
 from abb_api.health.router import router as health_router
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter, RateLimiter
@@ -104,6 +105,7 @@ def create_app(
     app.include_router(ingestion_router)
     app.include_router(runs_router)
     app.include_router(streams_router)
+    app.include_router(pricing_router)
     _install_openapi(app)
     return app
 

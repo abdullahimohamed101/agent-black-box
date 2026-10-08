@@ -75,6 +75,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the prices used to compute cost
+         * @description Built-in price entries plus the workspace's overrides (a project-bound key sees workspace-wide overrides and its own project's). Built-in entries are illustrative (KI-050).
+         */
+        get: operations["list_prices_v1_pricing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runs": {
         parameters: {
             query?: never;
@@ -409,6 +429,11 @@ export interface components {
              */
             status: "accepted" | "duplicate" | "conflict";
         };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** HealthResponse */
         HealthResponse: {
             /**
@@ -427,6 +452,49 @@ export interface components {
             loc: (string | number)[];
             /** Message */
             message: string;
+        };
+        /** PriceOut */
+        PriceOut: {
+            /** Cached Input Per Million */
+            cached_input_per_million: string | null;
+            /** Currency */
+            currency: string;
+            /** Input Per Million */
+            input_per_million: string;
+            /** Model Pattern */
+            model_pattern: string;
+            /**
+             * Origin
+             * @description `builtin` or `override`.
+             */
+            origin: string;
+            /** Output Per Million */
+            output_per_million: string;
+            /** Pricing Version */
+            pricing_version: string;
+            /**
+             * Project Id
+             * @description Set when an override applies to one project only.
+             */
+            project_id: string | null;
+            /** Provider */
+            provider: string | null;
+            /** Request Price */
+            request_price: string;
+            /** Source */
+            source: string;
+            /**
+             * Valid From
+             * Format: date-time
+             */
+            valid_from: string;
+            /** Valid To */
+            valid_to: string | null;
+        };
+        /** PricingOut */
+        PricingOut: {
+            /** Prices */
+            prices: components["schemas"]["PriceOut"][];
         };
         /** ReadyResponse */
         ReadyResponse: {
@@ -547,6 +615,19 @@ export interface components {
             items: components["schemas"]["SpanOut"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
         };
     };
     responses: never;
@@ -786,6 +867,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_prices_v1_pricing_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingOut"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The key lacks `runs:read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not found or not visible to this key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
