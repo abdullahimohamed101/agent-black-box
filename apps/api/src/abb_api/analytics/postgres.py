@@ -560,15 +560,17 @@ class PostgresAnalyticsStore:
                 )
 
             spans_u = sources.spans()
-            finished: Any = func.sum(spans_u.c.finished)
+            finished_calls: Any = func.sum(spans_u.c.finished)
             tool_rows = (
                 await conn.execute(
                     select(
-                        spans_u.c.name, finished.label("calls"), func.sum(spans_u.c.ok).label("ok")
+                        spans_u.c.name,
+                        finished_calls.label("calls"),
+                        func.sum(spans_u.c.ok).label("ok"),
                     )
                     .where(spans_u.c.kind == "tool")
                     .group_by(spans_u.c.name)
-                    .order_by(finished.desc(), spans_u.c.name)
+                    .order_by(finished_calls.desc(), spans_u.c.name)
                     .limit(top)
                 )
             ).all()
@@ -576,7 +578,7 @@ class PostgresAnalyticsStore:
                 await conn.execute(
                     select(
                         func.count(func.distinct(spans_u.c.name)).label("names"),
-                        finished.label("calls"),
+                        finished_calls.label("calls"),
                     ).where(spans_u.c.kind == "tool")
                 )
             ).one()
