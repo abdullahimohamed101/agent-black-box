@@ -4,7 +4,15 @@ import pytest
 from blackbox import BlackBox
 
 from abb_conformance import SCENARIOS, ScenarioError, check_scenario
-from abb_conformance.scenarios import CONCURRENCY, LLM_CACHED, LLM_INPUT, LLM_OUTPUT, TOOL_NAME
+from abb_conformance.scenarios import (
+    CONCURRENCY,
+    LLM_CACHED,
+    LLM_INPUT,
+    LLM_OUTPUT,
+    PASSWORD_ASSIGNMENT,
+    SECRET,
+    TOOL_NAME,
+)
 
 
 class Reference:
@@ -18,7 +26,10 @@ class Reference:
 
     def perform(self, scenario: str, bb: BlackBox) -> None:
         with bb.run("conformance") as run:
-            if scenario.startswith("tool") or scenario in ("sensitive", "sensitive_full"):
+            if scenario == "sensitive_full":
+                with run.span(TOOL_NAME, kind="tool") as span:
+                    span.set_payload({"in": SECRET, "out": PASSWORD_ASSIGNMENT})
+            elif scenario.startswith("tool") or scenario == "sensitive":
                 self._tool(run, TOOL_NAME, fail=scenario == "tool_failure")
             elif scenario.startswith("llm"):
                 self._llm(run, fail=scenario == "llm_failure")

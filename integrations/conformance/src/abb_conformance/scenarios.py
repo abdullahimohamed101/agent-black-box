@@ -50,20 +50,23 @@ def _spans(events: list[dict[str, Any]], prefix: str) -> dict[str, dict[str, dic
     return spans
 
 
-def _structure(events: list[dict[str, Any]]) -> None:
+def _structure(events: list[dict[str, Any]], *, payloads_allowed: bool = False) -> None:
     """Rules every scenario obeys: lifecycle, span pairing, parenting, ordering, no payloads."""
     assert events, "the adapter emitted nothing"
     validate_events(events)
     by_run: dict[str, list[dict[str, Any]]] = {}
     for e in events:
         by_run.setdefault(e["run_id"], []).append(e)
-        assert "payload" not in e and "payload_ref" not in e, "payloads are off by default (INV-5)"
+        if not payloads_allowed:
+            assert "payload" not in e and "payload_ref" not in e, "payloads are off by default"
     for run_id, items in by_run.items():
+        # Queue order may differ from creation order across threads; `sequence` is the truth.
+        items.sort(key=lambda e: e["sequence"])
+        assert [e["sequence"] for e in items] == list(range(1, len(items) + 1)), "gaps in sequence"
         types = [e["event_type"] for e in items]
         assert types[0] == "run.started", f"{run_id}: first event is {types[0]}"
         ends = [t for t in types if t in ("run.completed", "run.failed", "run.cancelled")]
         assert len(ends) == 1 and types[-1] == ends[0], f"{run_id}: bad run end {types}"
-        assert [e["sequence"] for e in items] == sorted(e["sequence"] for e in items)
         assert len({e["trace_id"] for e in items}) == 1
         opened: dict[str, int] = {}
         closed: set[str] = set()
@@ -152,6 +155,11 @@ def _sensitive(driver: Driver, events: list[dict[str, Any]]) -> None:
     assert _spans(events, "tool.call.") or _spans(events, "llm.request.")
 
 
+def _sensitive_full(driver: Driver, events: list[dict[str, Any]]) -> None:
+    _sensitive(driver, events)
+    assert any("payload" in e for e in events), "payload capture was requested but nothing captured"
+
+
 def _nothing_more(driver: Driver, events: list[dict[str, Any]]) -> None:
     return None
 
@@ -164,7 +172,7 @@ _CHECKS: dict[str, Callable[[Driver, list[dict[str, Any]]], None]] = {
     "nested": _nested,
     "concurrent": _concurrent,
     "sensitive": _sensitive,
-    "sensitive_full": _sensitive,
+    "sensitive_full": _sensitive_full,
     "hostile": _nothing_more,
     "redactor_raises": _nothing_more,
 }
@@ -197,6 +205,9 @@ def check_scenario(driver: Driver, scenario: str) -> bool:
         )  # any exception here is the adapter's bug: let it fail the test
 
     events = capture(drive, **options)
-    _structure(events)
+    if scenario == "redactor_raises":  # the SDK drops what it cannot redact: only validity holds
+        validate_events(events)
+    else:
+        _structure(events, payloads_allowed=scenario == "sensitive_full")
     _CHECKS[scenario](driver, events)
     return True
