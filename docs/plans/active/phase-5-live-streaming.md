@@ -1,6 +1,6 @@
 # Phase 5 - Live execution streaming
 
-Status: Active (decisions D1-D6 confirmed; steps 1-6 done)
+Status: Active (decisions D1-D6 confirmed; steps 1-7 done)
 Owner: implementer agent
 Branch: `feature/phase-5-live-streaming` (from `main` fa4c346)
 Depends on: Phase 2 (ingestion, query API), Phase 4 (run detail, read proxy)
@@ -106,6 +106,6 @@ mutation checks on committed code (resume overlap, dedupe, comparator, limits); 
 4. [x] API: `GET /v1/runs/{id}/stream` (SSE framing, retry/keepalive, `run_end` after terminal event + quiet period, late events, `Last-Event-ID` header or `last_event_id`, 429 `STREAM_LIMIT` per key/server, max lifetime, write timeout, in-band `error` frame, no idle DB connection), OpenAPI + generated client; 19 socket-level tests, 16 mutants killed. New known issue KI-033 (streams are not re-authenticated).
 5. [x] Web: proxy streams the upstream body (allowlist, `Last-Event-ID`, abort on disconnect, connect-only timeout; fixtures answer 404 `STREAM_NOT_AVAILABLE`), `ordering.ts` (BigInt microseconds; golden parity with `sort_events` generated in `packages/event-schema/tests/data/ordering-golden.json`, 60 cases), `stream.ts` EventSource client (frame batching, backoff reopen from the last event, `unavailable` after 8 failures). 99 new web tests; 22 mutants killed or equivalent.
 6. [x] Web: `useLiveEvents` merges streamed events into the REST history (stream opens after the history is complete, resumes after the newest event), `LiveBar` (Live / Connecting / Reconnecting / unavailable, "Partial data" notice, what-the-agent-is-doing line from `liveStatus`), REST reconciliation after a gap > 20 s and at run end, polling fallback when streaming is off or unavailable, interim refetch removed while streaming; 33 new web tests, 28 mutants killed or equivalent. Ordering-mode flips need no special case: the client sorts canonically.
-7. E2E: `stream-e2e.sh`, Playwright specs, latency benchmark, screenshots.
+7. [x] E2E: `scripts/stream-e2e.sh` + `scripts/stream_driver.py` + `e2e/stream.spec.ts` (5 tests: SDK example live, axe/console, refresh mid-run, cut connection via fault proxy, latency gate), CI job `stream-e2e`, `make stream-e2e`, screenshots, benchmark: p95 about 9 ms (`docs/benchmarks/phase-5-streaming.md`). The CI job itself has not run on GitHub yet.
 8. Docs: api-v1, RELIABILITY, OPERATIONS, runbook, ADR-020 amendment, DECISIONS index, known issues.
 9. Verify, review, harden, complete-phase.

@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 // Fixture server (port 3100) always; real-API server (port 3102) when E2E_REAL_API_KEY is set (see docs/TESTING.md).
 // Uses the system Chrome so no browser download is needed. Run `pnpm build` first.
 const real = !!process.env.E2E_REAL_API_KEY;
+const stream = !!process.env.E2E_STREAM_API_KEY;
 const common = { reuseExistingServer: false, timeout: 60_000 } as const;
 
 export default defineConfig({
@@ -27,6 +28,19 @@ export default defineConfig({
             env: {
               ABB_WEB_API_KEY: process.env.E2E_REAL_API_KEY!,
               ABB_API_INTERNAL_URL: process.env.E2E_REAL_API_URL ?? "http://localhost:8110",
+            },
+          },
+        ]
+      : []),
+    ...(stream
+      ? [
+          {
+            ...common,
+            command: "pnpm exec next start --port 3103",
+            url: "http://localhost:3103",
+            env: {
+              ABB_WEB_API_KEY: process.env.E2E_STREAM_API_KEY!,
+              ABB_API_INTERNAL_URL: process.env.E2E_STREAM_API_URL ?? "http://localhost:8120",
             },
           },
         ]

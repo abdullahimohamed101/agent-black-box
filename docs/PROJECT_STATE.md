@@ -3,7 +3,7 @@
 Last updated: 2026-10-07
 
 ## Current phase
-Phases 0-4 are merged to `main` (CI green). Phase 5 (live streaming) is active on `feature/phase-5-live-streaming`: plan `docs/plans/active/phase-5-live-streaming.md`, steps 1-6 of 9 done.
+Phases 0-4 are merged to `main` (CI green). Phase 5 (live streaming) is active on `feature/phase-5-live-streaming`: plan `docs/plans/active/phase-5-live-streaming.md`, steps 1-7 of 9 done.
 
 ## Current milestone
 M1 is complete once Phase 5 lands; M2 starts with Phase 6 (coding-agent demo).
@@ -16,13 +16,13 @@ M1 is complete once Phase 5 lands; M2 starts with Phase 6 (coding-agent demo).
   (ADR-020, ADR-021), CSP/security headers, Playwright e2e (fixtures and real run), axe checks. Plan: `docs/plans/completed/phase-4-web-product.md`.
 
 ## In-progress work
-Phase 5 step 7 next: stream E2E, Playwright, latency benchmark, screenshots.
+Phase 5 step 8 next: docs (api-v1, RELIABILITY, OPERATIONS, runbook, DECISIONS).
 
 ## Blocked work
 None.
 
 ## Next actions (exact)
-1. Phase 5 plan step 7 (see the plan's ordered steps).
+1. Phase 5 plan step 8 (see the plan's ordered steps).
 2. Then Phase 6 (needs SDK, UI and streaming for its E2E). Phases 7 (analytics; resolves KI-028) and 8 (integrations) can run in parallel with 5/6
    in separate worktrees.
 
