@@ -79,22 +79,28 @@ def llm_options(metadata: Any) -> dict[str, Any]:
 
 def _from_usage(usage: Any) -> tuple[int | None, int | None, int | None]:
     tokens_in = _count(_get(usage, "input_tokens"))
-    tokens_in = tokens_in if tokens_in is not None else _count(_get(usage, "prompt_tokens"))
+    if tokens_in is None:
+        tokens_in = _count(_get(usage, "prompt_tokens"))
     tokens_out = _count(_get(usage, "output_tokens"))
-    tokens_out = tokens_out if tokens_out is not None else _count(_get(usage, "completion_tokens"))
+    if tokens_out is None:
+        tokens_out = _count(_get(usage, "completion_tokens"))
     cached = _count(_get(_get(usage, "input_token_details"), "cache_read"))
     if cached is None:
         cached = _count(_get(_get(usage, "prompt_tokens_details"), "cached_tokens"))
+    # Raw Anthropic usage reports cache reads and writes apart from `input_tokens`; the canonical
+    # input is the whole prompt (same as integrations/anthropic).
+    read = _count(_get(usage, "cache_read_input_tokens"))
+    created = _count(_get(usage, "cache_creation_input_tokens"))
+    if read is not None or created is not None:
+        tokens_in = (tokens_in or 0) + (read or 0) + (created or 0)
+        cached = read if read is not None else cached
     return tokens_in, tokens_out, cached
 
 
 def usage_of(response: Any) -> tuple[int | None, int | None, int | None]:
-    """(input, output, cached input) tokens of an `LLMResult`; provider totals win."""
-    output = _get(response, "llm_output")
-    for key in ("token_usage", "usage"):
-        found = _from_usage(_get(output, key))
-        if found[0] is not None or found[1] is not None:
-            return found
+    """(input, output, cached input) tokens of an `LLMResult`.
+
+    The normalised `message.usage_metadata` wins; the provider's raw `llm_output` is the fallback."""
     totals: list[int | None] = [None, None, None]
     generations = _get(response, "generations")
     if isinstance(generations, (list, tuple)):
@@ -104,7 +110,14 @@ def usage_of(response: Any) -> tuple[int | None, int | None, int | None]:
                 for i, value in enumerate(_from_usage(usage)):
                     if value is not None:
                         totals[i] = (totals[i] or 0) + value
-    return totals[0], totals[1], totals[2]
+    if totals[0] is not None or totals[1] is not None:
+        return totals[0], totals[1], totals[2]
+    output = _get(response, "llm_output")
+    for key in ("token_usage", "usage"):
+        found = _from_usage(_get(output, key))
+        if found[0] is not None or found[1] is not None:
+            return found
+    return None, None, None
 
 
 def preview(value: Any) -> Any:

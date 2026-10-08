@@ -63,6 +63,39 @@ def test_anthropic_style_usage_names_are_understood() -> None:
     assert "llm.cached_input_tokens" not in attrs
 
 
+def test_raw_anthropic_usage_sums_cache_into_input() -> None:
+    usage = {
+        "input_tokens": 5,
+        "cache_read_input_tokens": 100,
+        "cache_creation_input_tokens": 50,
+        "output_tokens": 7,
+    }
+    result = SimpleNamespace(generations=[], llm_output={"usage": usage})
+
+    def go(fw: FakeFramework, bb: BlackBox) -> None:
+        with fw.chain("g") as root, fw.llm(root, result=result):
+            pass
+
+    attrs = by_type(run_with(go)[0], "llm.request.completed")[0]["attributes"]
+    assert (attrs["llm.input_tokens"], attrs["llm.cached_input_tokens"]) == (155, 100)
+    assert attrs["llm.output_tokens"] == 7
+
+
+def test_normalised_usage_metadata_is_preferred_over_raw_llm_output() -> None:
+    message = SimpleNamespace(usage_metadata={"input_tokens": 9, "output_tokens": 2})
+    result = SimpleNamespace(
+        generations=[[SimpleNamespace(message=message)]],
+        llm_output={"usage": {"input_tokens": 1, "output_tokens": 1}},
+    )
+
+    def go(fw: FakeFramework, bb: BlackBox) -> None:
+        with fw.chain("g") as root, fw.llm(root, result=result):
+            pass
+
+    attrs = by_type(run_with(go)[0], "llm.request.completed")[0]["attributes"]
+    assert (attrs["llm.input_tokens"], attrs["llm.output_tokens"]) == (9, 2)
+
+
 @pytest.mark.parametrize(
     "usage",
     [
