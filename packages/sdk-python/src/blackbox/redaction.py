@@ -141,7 +141,7 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
             r"\g<1>[REDACTED:credential]",
         ),
         (
-            "secret_assignment_short",  # GH_PAT=..., DB_PASS=..., ROOT_PWD=...: the word is a whole name part
+            "secret_assignment_short",  # GH_PAT=, DB_PASS=, ROOT_PWD=: a whole name part
             r"(?i)(\b(?:[A-Za-z0-9]+_)*(?:pat|pass|pwd)(?:_[A-Za-z0-9_]*)?\s*[=:]\s*)(?!\[REDACTED)"
             r"(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
             r"\g<1>[REDACTED:credential]",

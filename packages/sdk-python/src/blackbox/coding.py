@@ -8,7 +8,6 @@ in captured output. Command risk classes (spec §83) are observed, never enforce
 """
 
 import difflib
-import fnmatch
 import hashlib
 import os
 import re
@@ -63,7 +62,8 @@ _R1_RUNNERS = frozenset(
     tox nox mypy ruff eslint prettier tsc javac java mvn gradle cmake""".split()
 )
 _GIT_READ = frozenset(
-    "status diff log show rev-parse blame ls-files describe shortlog grep cat-file ls-tree rev-list".split()
+    """status diff log show rev-parse blame ls-files describe shortlog grep cat-file ls-tree
+    rev-list""".split()
 )
 _GIT_LOCAL = frozenset(
     """add commit checkout switch restore stash merge rebase tag cherry-pick apply init mv am
@@ -601,10 +601,8 @@ def _classify_exe(exe: str, rest: list[str], depth: int) -> tuple[int, str, str]
         )
         if method == "DELETE":
             return 3, NETWORK, "sends a DELETE request to a remote host"
-        if (
-            sends
-            or exe == "wget"
-            and any(a.startswith("--post") or a == "--method=POST" for a in rest)
+        if sends or (
+            exe == "wget" and any(a.startswith("--post") or a == "--method=POST" for a in rest)
         ):
             return 2, NETWORK, "sends data to a remote host"
         return 1, NETWORK, "downloads from a remote host"
@@ -1004,7 +1002,7 @@ class CodingRecorder:
         self.refresh_secrets()
 
     def refresh_secrets(self) -> None:
-        """Learn the secret values in the workspace's sensitive files (cheap: cached by size and mtime)."""
+        """Learn secret values in the workspace's sensitive files (cached by size and mtime)."""
         try:
             self._file_secrets = self._files.refresh()
         except (
@@ -1025,7 +1023,7 @@ class CodingRecorder:
         return full.relative_to(self.root).as_posix() if full != self.root else "."
 
     def sanitize(self, text: str) -> str:
-        """Everything that leaves the recorder passes here: ANSI off, secret values masked, redacted."""
+        """Everything that leaves the recorder passes here: ANSI off, values masked, redacted."""
         text = mask_values(strip_ansi(text), self._secrets)
         text = mask_values(text, self._file_secrets, "[REDACTED:file]")
         return self.bb.redact_text(text)
@@ -1046,7 +1044,7 @@ class CodingRecorder:
                 "file.hash_after": _sha(data), **self._lang(path),
             },
         )  # fmt: skip
-        # Redact the whole text first and cut afterwards, so a secret straddling the cut leaves no prefix.
+        # Redact the whole text, then cut: a secret straddling the cut must not leave a prefix.
         raw = data if max_bytes is None else data[: max_bytes + CUT_SLACK]
         text = raw.decode("utf-8", errors="replace")
         if redact:

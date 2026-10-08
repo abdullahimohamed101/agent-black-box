@@ -88,8 +88,8 @@ CASES = [
 @pytest.mark.parametrize("command", CASES)
 def test_no_command_shape_leaks_a_planted_secret(
     repo: Path,
-    server: ArtifactServer,
-    command: str,  # noqa: F811
+    server: ArtifactServer,  # noqa: F811
+    command: str,
 ) -> None:
     bb, _run, rec = make(repo, server)
     result = rec.run_command(command, timeout=10)

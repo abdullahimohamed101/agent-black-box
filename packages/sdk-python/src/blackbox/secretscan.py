@@ -1,9 +1,10 @@
 """Secret values from the workspace, and shell-aware checks for commands that could print them.
 
-A blocklist of command shapes can never be complete (`cat .env`, `cat<.env`, `bash -c`, `grep -r`, `git show
-HEAD:.env` ...), so the design is to know the secret *values* and mask them wherever they appear, however a
-command happened to read them (ADR-031). Path-based withholding stays as defence in depth, and is shell-aware:
-when a command could reach a secret file and we are unsure, its output is withheld.
+A blocklist of command shapes can never be complete (`cat .env`, `cat<.env`, `bash -c`, `grep -r`,
+`git show HEAD:.env` ...), so the design is to know the secret *values* and mask them wherever they
+appear, however a command read them (ADR-031). Path-based withholding stays as defence in
+depth, and is shell-aware: when a command could reach a secret file and we are unsure, its output is
+withheld.
 
 Best effort. It cannot find a secret that is in no sensitive file and not in the environment.
 """
@@ -39,6 +40,7 @@ _SKIP_DIRS = frozenset(
     {".git", "node_modules", ".venv", "venv", "__pycache__", ".tox", "dist", "build", ".next",
      ".mypy_cache", ".ruff_cache", ".pytest_cache", "target", ".cache", "site-packages"}
 )  # fmt: skip
+_PATH = os.environ.get("PATH", os.defpath)
 MAX_FILE_BYTES = 256 * 1024
 MAX_FILES = 400
 MAX_VISITED = 20_000
@@ -81,7 +83,7 @@ def _looks_secret_value(value: str, key_is_secret: bool) -> bool:
         return False
     if key_is_secret:
         return len(value) >= 3
-    # A value of a non-secret-looking key in a secret file ("localhost", "8000", "true") is not a secret
+    # A value of a non-secret-looking key in a secret file ("localhost", "8000", "true") is not
     # worth masking everywhere; a token-looking one is.
     return len(value) >= 8 and any(c.isdigit() or c in "-_/+=:@." for c in value)
 
@@ -143,7 +145,7 @@ def extract_values(path: str, text: str) -> set[str]:
 
 
 def derived_forms(value: str) -> set[str]:
-    """The value as it may appear encoded: base64 (standard and URL-safe, with and without padding), URL-encoded."""
+    """The value as it may appear encoded: base64 (both alphabets/no padding), URL-encoded."""
     forms = {value}
     raw = value.encode("utf-8", errors="ignore")
     if 6 <= len(raw) <= 1024:
@@ -182,7 +184,7 @@ class SecretFiles:
         return found[:MAX_FILES]
 
     def _git_values(self, rels: Iterable[str]) -> set[str]:
-        """Older versions of tracked secret files (HEAD, the index, a few stashes): `git show HEAD:.env`."""
+        """Older versions of tracked secret files (HEAD, index, stashes): `git show HEAD:.env`."""
         values: set[str] = set()
         if not (self.root / ".git").exists():
             return values
@@ -198,7 +200,7 @@ class SecretFiles:
                         ["git", "show", f"{ref}{rel}"],  # noqa: S607
                         cwd=self.root, capture_output=True, timeout=5, check=False,
                         stdin=subprocess.DEVNULL,
-                        env={"PATH": os.environ.get("PATH", os.defpath), "GIT_TERMINAL_PROMPT": "0"},
+                        env={"PATH": _PATH, "GIT_TERMINAL_PROMPT": "0"},
                     )  # fmt: skip
                 except (OSError, subprocess.SubprocessError):
                     continue
@@ -245,7 +247,7 @@ class SecretFiles:
         ]
 
 
-# -- shell-aware command check -------------------------------------------------------------------------
+# -- shell-aware command check ------------------------------------------------------
 
 _INLINE = {"python": "-c", "python3": "-c", "node": "-e", "ruby": "-e", "perl": "-e", "php": "-r"}
 _SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh"})
@@ -290,8 +292,9 @@ def command_may_reach_secrets(
 ) -> bool:
     """True if running `command` could print the contents of a secret file. When unsure, True.
 
-    `sensitive` are the root-relative secret files that exist now. A command that names one literally, uses a glob
-    that matches one, or reads recursively / dynamically while one exists, is treated as reaching it.
+    `sensitive` are the root-relative secret files that exist now. A command that names one
+    literally, uses a glob that matches one, or reads recursively or dynamically while one exists,
+    is treated as reaching it.
     """
     if _depth > 4:
         return bool(sensitive)
@@ -368,7 +371,7 @@ def _argv_reaches(
     return False
 
 
-# -- diffs --------------------------------------------------------------------------------------------
+# -- diffs ---------------------------------------------------------------------------
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 
@@ -383,9 +386,9 @@ _SECTION = re.compile(r"^(?:diff (?:--git|--cc|--combined) .*|--- \S.*(?=\n\+\+\
 def withhold_sensitive_hunks(text: str) -> str:
     """Replace the body of every per-file section of a diff whose path holds secrets.
 
-    Understands git (`diff --git`, `--cc`, `--combined`, any prefix, none) and plain `---/+++` diffs. ANSI
-    colour is removed first so a coloured header cannot hide a path. Masking of the values is the main defence;
-    this is the second.
+    Understands git (`diff --git`, `--cc`, `--combined`, any prefix, none) and plain `---/+++`
+    diffs. ANSI colour is removed first so a coloured header cannot hide a path. Masking of the
+    values is the main defence; this is the second.
     """
     text = _ANSI.sub("", text)
     heads = list(_SECTION.finditer(text))
