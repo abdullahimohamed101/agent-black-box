@@ -14,7 +14,7 @@ import argparse
 import asyncio
 import sys
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time as dtime, timedelta
 
 import asyncpg
 
@@ -40,6 +40,9 @@ async def seed(url: str, runs_per_day: int, days: int, end: datetime, seed_value
     conn = await asyncpg.connect(dsn)
     started = time.monotonic()
     try:
+        for rollup in ("runs", "cost", "spans", "latency"):
+            await conn.execute(f"DELETE FROM analytics_{rollup}_daily WHERE workspace_id = $1", WORKSPACE_ID)
+        await conn.execute("DELETE FROM analytics_top_runs WHERE workspace_id = $1", WORKSPACE_ID)
         await conn.execute("DELETE FROM cost_calculations WHERE workspace_id = $1", WORKSPACE_ID)
         await conn.execute("DELETE FROM spans WHERE workspace_id = $1", WORKSPACE_ID)
         await conn.execute("DELETE FROM runs WHERE workspace_id = $1", WORKSPACE_ID)
@@ -65,8 +68,8 @@ async def seed(url: str, runs_per_day: int, days: int, end: datetime, seed_value
         await conn.execute(
             """
             UPDATE runs r SET summary = r.summary || jsonb_build_object(
-                'estimated_cost_usd', c.total, 'retry_cost_usd', c.retry,
-                'initial_cost_usd', c.total - c.retry)
+                'estimated_cost_usd', c.total, 'retry_cost_usd', coalesce(c.retry, 0),
+                'initial_cost_usd', c.total - coalesce(c.retry, 0))
             FROM (SELECT run_id, sum(total) AS total,
                          sum(total) FILTER (WHERE is_retry) AS retry
                   FROM cost_calculations WHERE workspace_id = $1 GROUP BY run_id) c
@@ -203,10 +206,16 @@ def main() -> None:
     parser.add_argument("--database-url", required=True)
     parser.add_argument("--runs-per-day", type=int, default=100_000)
     parser.add_argument("--days", type=int, default=7)
-    parser.add_argument("--end", default="2026-10-07T00:00:00+00:00", help="exclusive end of the data")
+    parser.add_argument(
+        "--end",
+        help="exclusive end of the data (default: the next UTC midnight, so the last seeded day is today)",
+    )
     parser.add_argument("--seed", type=int, default=7)
     args = parser.parse_args()
-    end = datetime.fromisoformat(args.end).astimezone(UTC)
+    if args.end:
+        end = datetime.fromisoformat(args.end).astimezone(UTC)
+    else:
+        end = datetime.combine(datetime.now(UTC).date() + timedelta(days=1), dtime.min, tzinfo=UTC)
     asyncio.run(seed(args.database_url, args.runs_per_day, args.days, end, args.seed))
 
 

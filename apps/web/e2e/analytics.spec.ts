@@ -109,11 +109,8 @@ test("window switch refetches and the layout holds on a phone", async ({ page })
   await page.goto(`${base}/analytics`);
   const requests: string[] = [];
   page.on("request", (r) => requests.push(r.url()));
-  await page.getByRole("button", { name: "Last 24 hours" }).click();
-  await expect(page.getByRole("button", { name: "Last 24 hours" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await page.getByRole("button", { name: "Today" }).click();
+  await expect(page.getByRole("button", { name: "Today" })).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => requests.some((u) => u.includes("/analytics/cost"))).toBe(true);
   await page.setViewportSize({ width: 375, height: 800 });
   await page.reload();

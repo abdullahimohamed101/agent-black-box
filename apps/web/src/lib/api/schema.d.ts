@@ -47,7 +47,7 @@ export interface paths {
         };
         /**
          * Where the money went
-         * @description Cost per run, per successful run, by day, agent, model, project, the retry breakdown (spec §24) and the most expensive runs. Runs are placed in the window by `started_at` (UTC). Default: the last 7 days; at most 92. A project-bound key is confined to its project.
+         * @description Cost per run, per successful run, by day, agent, model, project, the retry breakdown (spec §24) and the most expensive runs. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Finished days come from rollups refreshed within about a minute of a change; today is computed live. Percentiles are approximate (about 5%). A project-bound key is confined to its project.
          */
         get: operations["cost_v1_analytics_cost_get"];
         put?: never;
@@ -67,7 +67,7 @@ export interface paths {
         };
         /**
          * Latency percentiles and the slowest operations
-         * @description p50/p95 for runs, model calls and tools, and the slowest operations. Only tool and model spans are listed by name; other kinds are grouped by kind. Runs are placed in the window by `started_at` (UTC). Default: the last 7 days; at most 92. A project-bound key is confined to its project.
+         * @description p50/p95 for runs, model calls and tools, and the slowest operations. Only tool and model spans are listed by name; other kinds are grouped by kind. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Finished days come from rollups refreshed within about a minute of a change; today is computed live. Percentiles are approximate (about 5%). A project-bound key is confined to its project.
          */
         get: operations["performance_v1_analytics_performance_get"];
         put?: never;
@@ -87,7 +87,7 @@ export interface paths {
         };
         /**
          * Failure trend, tool success and retry-heavy runs
-         * @description Runs are placed in the window by `started_at` (UTC). Default: the last 7 days; at most 92. A project-bound key is confined to its project.
+         * @description Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Finished days come from rollups refreshed within about a minute of a change; today is computed live. Percentiles are approximate (about 5%). A project-bound key is confined to its project.
          */
         get: operations["reliability_v1_analytics_reliability_get"];
         put?: never;
@@ -107,7 +107,7 @@ export interface paths {
         };
         /**
          * Headline figures for a window
-         * @description Run counts and rates, cost, run latency, behaviour averages. Runs are placed in the window by `started_at` (UTC). Default: the last 7 days; at most 92. A project-bound key is confined to its project.
+         * @description Run counts and rates, cost, run latency, behaviour averages. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Finished days come from rollups refreshed within about a minute of a change; today is computed live. Percentiles are approximate (about 5%). A project-bound key is confined to its project.
          */
         get: operations["summary_v1_analytics_summary_get"];
         put?: never;
@@ -714,7 +714,10 @@ export interface components {
              */
             groups: number;
         };
-        /** Percentiles */
+        /**
+         * Percentiles
+         * @description Approximate: read from duration histograms with about 10% wide buckets (ADR-043).
+         */
         Percentiles: {
             /** Count */
             count: number;
@@ -973,8 +976,6 @@ export interface components {
             calls: number;
             /** Kind */
             kind: string;
-            /** Max Ms */
-            max_ms: number | null;
             /** Name */
             name: string | null;
             /** P50 Ms */
@@ -1059,13 +1060,13 @@ export interface components {
             /**
              * End
              * Format: date-time
-             * @description Exclusive.
+             * @description Exclusive, UTC midnight.
              */
             end: string;
             /**
              * Start
              * Format: date-time
-             * @description Inclusive. Runs are placed in the window by `started_at`.
+             * @description Inclusive UTC midnight. Windows are whole UTC days; requests snap outward.
              */
             start: string;
         };
@@ -1131,7 +1132,6 @@ export interface operations {
         parameters: {
             query?: {
                 project_id?: string | null;
-                agent_id?: string | null;
                 from?: string | null;
                 to?: string | null;
                 /** @description Groups listed before `other`. */
@@ -1203,7 +1203,6 @@ export interface operations {
         parameters: {
             query?: {
                 project_id?: string | null;
-                agent_id?: string | null;
                 from?: string | null;
                 to?: string | null;
                 /** @description Groups listed before `other`. */
@@ -1275,7 +1274,6 @@ export interface operations {
         parameters: {
             query?: {
                 project_id?: string | null;
-                agent_id?: string | null;
                 from?: string | null;
                 to?: string | null;
                 /** @description Groups listed before `other`. */
@@ -1347,7 +1345,6 @@ export interface operations {
         parameters: {
             query?: {
                 project_id?: string | null;
-                agent_id?: string | null;
                 from?: string | null;
                 to?: string | null;
             };

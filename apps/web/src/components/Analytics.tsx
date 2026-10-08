@@ -109,14 +109,14 @@ export function Analytics({ base }: { base: Base }) {
       <div className="toolbar" role="group" aria-label="Time window">
         {WINDOW_OPTIONS.map((d) => (
           <button key={d} type="button" aria-pressed={d === days} onClick={() => setDays(d)}>
-            {d === 1 ? "Last 24 hours" : `Last ${d} days`}
+            {d === 1 ? "Today" : `Last ${d} days`}
           </button>
         ))}
       </div>
       <p className="muted">
-        Runs are counted in the window they started in (UTC). Cost is in USD; each figure says
-        whether it was reported by the provider, computed from tokens and a versioned price, or
-        estimated by the caller.
+        Windows are whole UTC days; a run counts in the day it started. Percentiles are approximate
+        (about 5%). Cost is in USD; each figure says whether it was reported by the provider,
+        computed from tokens and a versioned price, or estimated by the caller.
       </p>
 
       <Section id="cost-h" title="Cost" query={cost}>
@@ -368,9 +368,6 @@ export function Analytics({ base }: { base: Base }) {
                       <th scope="col" className="num">
                         p95
                       </th>
-                      <th scope="col" className="num">
-                        Max
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -381,7 +378,6 @@ export function Analytics({ base }: { base: Base }) {
                         <td className="num">{formatInt(o.calls)}</td>
                         <td className="num">{formatDuration(o.p50_ms)}</td>
                         <td className="num">{formatDuration(o.p95_ms)}</td>
-                        <td className="num">{formatDuration(o.max_ms)}</td>
                       </tr>
                     ))}
                   </tbody>

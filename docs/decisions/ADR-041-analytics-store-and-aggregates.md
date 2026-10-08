@@ -1,6 +1,6 @@
 # ADR-041: Analytics Read Derived Tables Through an `AnalyticsStore`; Aggregates Only Where Measured Slow
 
-Status: Accepted
+Status: Accepted (the "no materialized aggregates by default" clause is superseded by ADR-043, after measurement)
 Date: 2026-10-08
 
 ## Context

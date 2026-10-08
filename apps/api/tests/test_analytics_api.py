@@ -60,7 +60,7 @@ async def test_summary_figures_for_a_project_key(seeded: Api) -> None:
     assert body["tools"] == {"calls": 4, "success_rate": 0.75}
     assert body["llm"] == {"calls": 5, "success_rate": 1.0}
     assert body["active_agents"] == ["a3"]
-    assert body["window"] == {"start": "2026-09-30T00:00:00Z", "end": "2026-10-08T00:00:00Z"}
+    assert body["window"] == {"start": "2026-10-01T00:00:00Z", "end": "2026-10-08T00:00:00Z"}
 
 
 async def test_cost_report_breakdowns_and_retry_share(seeded: Api) -> None:

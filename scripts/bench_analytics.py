@@ -32,14 +32,19 @@ def percentile(values: list[float], q: float) -> float:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--rounds", type=int, default=15)
-    parser.add_argument("--end", default="2026-10-07T00:00:00+00:00")
+    parser.add_argument("--end", help="exclusive end (default: the next UTC midnight)")
     parser.add_argument("--days", type=int, nargs="+", default=[1, 7])
     parser.add_argument("--projects", nargs="*", default=[], help="project ids to alternate with")
     parser.add_argument("--budget-ms", type=float, default=1500.0)
     parser.add_argument("--json-out")
     args = parser.parse_args()
     url, key = os.environ["BENCH_API_URL"], os.environ["BENCH_KEY"]
-    end = datetime.fromisoformat(args.end).astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    end = (
+        datetime.fromisoformat(args.end).astimezone(timezone.utc)
+        if args.end
+        else datetime(now.year, now.month, now.day, tzinfo=timezone.utc) + timedelta(days=1)
+    )
     client = httpx.Client(base_url=url, headers={"authorization": f"Bearer {key}"}, timeout=60)
     results: dict[str, dict[str, float]] = {}
     failed = False
@@ -50,7 +55,7 @@ def main() -> int:
             filters: list[str | None] = [None, *args.projects]
             for project in filters:
                 params = {
-                    "from": (end - timedelta(days=days)).isoformat(),
+                    "from": (end - timedelta(days=days)).isoformat(),  # whole UTC days: today is the last
                     "to": end.isoformat(),
                 }
                 if project:

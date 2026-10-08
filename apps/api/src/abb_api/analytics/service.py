@@ -42,7 +42,7 @@ class AnalyticsService:
         """Whole UTC days: start rounds down, end rounds up, so a window never shrinks."""
         now = self._clock().astimezone(UTC)
         end_at = _utc(end) if end else now
-        start_at = _utc(start) if start else end_at - timedelta(days=DEFAULT_WINDOW_DAYS)
+        start_at = _utc(start) if start else end_at - timedelta(days=DEFAULT_WINDOW_DAYS - 1)
         if start_at >= end_at:
             raise _invalid("`from` must be earlier than `to`.")
         start_day = start_at.date()

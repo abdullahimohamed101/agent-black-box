@@ -120,12 +120,12 @@ export function useEventDetail(runId: string, eventId: string | null) {
   });
 }
 
-/** Analytics windows are whole-hour aligned so the query key (and the server's work) is stable between renders. */
+/** Analytics windows are whole UTC days (the server snaps them): "7 days" is today and the six before it. */
 export type WindowDays = 1 | 7 | 30;
 export const WINDOW_OPTIONS: readonly WindowDays[] = [1, 7, 30];
-const HOUR = 3_600_000;
+const DAY = 86_400_000;
 export function windowFrom(days: WindowDays, now: number = Date.now()): string {
-  return new Date(Math.floor(now / HOUR) * HOUR - days * 24 * HOUR).toISOString();
+  return new Date((Math.floor(now / DAY) - (days - 1)) * DAY).toISOString();
 }
 
 function analyticsQuery(project: string | null | undefined, days: WindowDays) {
