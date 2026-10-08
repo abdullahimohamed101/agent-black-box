@@ -31,5 +31,10 @@ The event data itself is safe: streams only read what ingestion already committe
 7. **A revoked key is still receiving events**: streams are not re-authenticated, so it lasts at most the stream lifetime (KI-033). Lower
    `ABB_STREAM_MAX_LIFETIME_SECONDS`, or restart the API to drop every stream at once.
 
+8. **Ingestion slows while many viewers open a hot run**: every new viewer replays the last `ABB_STREAM_OVERLAP_SECONDS` of events. On a
+   5,000-event run, 50 simultaneous viewers took 17 s to replay and ingest p50 rose to about 200 ms meanwhile (`docs/benchmarks/phase-5-streaming.md`).
+   Lower `ABB_STREAM_DB_CONCURRENCY` to protect ingestion further (streams queue), lower the overlap, or limit viewers. Steady-state slow ingests
+   on very large runs are the summarizer (KI-016), not streaming.
+
 **Do not** add a second consumer that reads events "to feed streams": the stream reads Postgres by design (ADR-022). If many viewers of one
 hot run make the per-stream query a measured cost (see `docs/benchmarks/phase-5-streaming.md`), that is the trigger for a shared fan-out, via an ADR.

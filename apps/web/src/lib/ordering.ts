@@ -21,7 +21,9 @@ const WIRE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$
 export function micros(timestamp: string | null | undefined): bigint {
   if (!timestamp) return 0n; // a missing received_at sorts first, as Python's epoch default does
   const m = WIRE.exec(timestamp);
-  if (!m) return 0n; // the API only emits canonical UTC timestamps; anything else is not trusted to order
+  // The API only emits canonical UTC timestamps (`...Z`), which the golden file covers. Anything else, such as an
+  // offset (Python would convert it), is not trusted to order and sorts first instead of throwing.
+  if (!m) return 0n;
   const [, y, mo, d, h, mi, s, frac = ""] = m;
   const seconds =
     Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)) / 1000;

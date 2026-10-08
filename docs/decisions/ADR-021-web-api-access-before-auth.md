@@ -22,5 +22,10 @@ API is time-limited (10 s), the browser's `Last-Event-ID` is forwarded (validate
 disconnects. API errors (404, 429 `STREAM_LIMIT`, 503) are relayed unchanged; upstream 401/403 still become 502. With fixture data there
 is no live source: the proxy answers 404 `STREAM_NOT_AVAILABLE` and the UI keeps polling.
 
+**Exposure to state plainly:** every browser shares the one key, and live streams are capped at 10 per key (per API process). Anyone who
+can reach the web app can open ten streams (tabs or `curl`) and make other viewers' streams answer `429 STREAM_LIMIT`; their pages then fall
+back to polling. Data is unaffected. Until Phase 15 gives each viewer their own identity, either keep the web app private or raise
+`ABB_STREAM_MAX_PER_KEY` and put per-IP limits in front of it (KI-029).
+
 ## Consequences
 No CORS needed for the browser; the key never leaves the server; Phase 15 replaces the proxy's key with a per-user session.
