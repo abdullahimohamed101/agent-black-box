@@ -283,13 +283,11 @@ class BlackBoxCallbackHandler(_Base):
         attrs = self._framework_attrs(metadata)
 
         def make(run: Run, parent: Span | None) -> Span:
-            return run.llm_call(
-                provider,
-                model,
-                attributes=attrs,
-                parent=parent,
-                **options,
-            )
+            try:
+                return run.llm_call(provider, model, attributes=attrs, parent=parent, **options)
+            except TypeError:  # an SDK older than 0.2 has no `parent=`: keep the span, unnested
+                self._record_error()
+                return run.llm_call(provider, model, attributes=attrs, **options)
 
         node = self._enter(
             run_id,

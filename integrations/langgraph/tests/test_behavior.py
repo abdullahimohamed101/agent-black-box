@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import sys
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -537,3 +538,37 @@ def test_last_run_id_names_the_run_the_handler_opened() -> None:
 
     events, handler = run_with(go)
     assert handler.last_run_id == events[0]["run_id"]
+
+
+def test_an_sdk_without_llm_call_parent_still_records_the_span(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from blackbox import Run
+
+    original = Run.llm_call
+
+    def old_sdk(self: Run, provider: str, model: str, **kwargs: Any) -> Any:
+        if "parent" in kwargs:
+            raise TypeError("unexpected keyword argument 'parent'")
+        return original(self, provider, model, **kwargs)
+
+    monkeypatch.setattr(Run, "llm_call", old_sdk)
+
+    def go(fw: FakeFramework, bb: BlackBox) -> None:
+        with fw.chain("g") as root, fw.chain("step", root) as step, fw.llm(step):
+            pass
+
+    events, handler = run_with(go)
+    assert by_type(events, "llm.request.completed") and handler.errors == 1
+
+
+def test_sdk_version_matches_the_adapter_lower_bound() -> None:
+    import re
+
+    from blackbox import __version__
+
+    text = (Path(__file__).parents[1] / "pyproject.toml").read_text()
+    bound = re.search(r'"agent-black-box>=([0-9.]+)"', text)
+    assert bound is not None
+    as_tuple = lambda v: tuple(int(x) for x in v.split("."))  # noqa: E731
+    assert as_tuple(__version__) >= as_tuple(bound.group(1)) >= (0, 2, 0)
