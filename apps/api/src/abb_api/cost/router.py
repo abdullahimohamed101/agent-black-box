@@ -71,6 +71,7 @@ def _out(entry: PriceEntry) -> PriceOut:
             "model": ErrorEnvelope,
         },
         403: {"description": "The key lacks `runs:read`.", "model": ErrorEnvelope},
+        422: {"description": "A parameter is invalid.", "model": ErrorEnvelope},
         404: {
             "description": "Project not found or not visible to this key.",
             "model": ErrorEnvelope,
