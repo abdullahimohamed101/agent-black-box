@@ -3,9 +3,9 @@
 from typing import Any
 
 import pytest
+
 from abb_event_schema.errors import EventValidationError
 from abb_event_schema.parse import parse_event_in
-
 from tests.helpers import make_event
 
 SHELL = {"shell.command": "python -m unittest"}

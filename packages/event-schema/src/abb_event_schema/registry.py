@@ -80,7 +80,7 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     "file.lines_added": AttrSpec(AttrType.INTEGER, 0),
     "file.lines_removed": AttrSpec(AttrType.INTEGER, 0),
     "file.operation": AttrSpec(AttrType.STRING),
-    # Artifact references (ADR-030/031): `artifact://<art_id>`; the content lives in the ArtifactStore.
+    # Artifact reference `artifact://<art_id>` (ADR-030/031); content is in the store.
     "diff.artifact": AttrSpec(AttrType.STRING),
     "git.repo": AttrSpec(AttrType.STRING),
     "git.branch": AttrSpec(AttrType.STRING),
