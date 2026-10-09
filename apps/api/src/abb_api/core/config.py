@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     # Live streams (spec §76, ADR-022). Limits are per API process until Phase 19.
     stream_max_total: int = Field(default=50, ge=1)
     stream_max_per_key: int = Field(default=10, ge=1)
+    # How often an open stream re-checks that its credential, session and role still hold (KI-033).
+    stream_reauth_seconds: float = Field(default=30.0, gt=0)
     stream_max_lifetime_seconds: float = Field(default=900.0, gt=0)
     stream_fallback_poll_seconds: float = Field(default=2.0, gt=0)
     stream_keepalive_seconds: float = Field(default=15.0, gt=0)

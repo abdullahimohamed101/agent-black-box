@@ -392,6 +392,16 @@ class SessionRepository:
             else None
         )
 
+    async def find_by_id(self, session_id: uuid.UUID) -> SessionRecord | None:
+        row = (
+            await self._conn.execute(select(*_SESSION_COLUMNS).where(t.sessions.c.id == session_id))
+        ).first()
+        return (
+            SessionRecord(**{c.name: getattr(row, c.name) for c in _SESSION_COLUMNS})
+            if row
+            else None
+        )
+
     async def slide(self, session: SessionRecord, *, now: datetime, idle: timedelta) -> None:
         """Extend the idle deadline at most once per resolution window; never past expiry."""
         if now - session.last_seen_at < SESSION_SLIDE_RESOLUTION:

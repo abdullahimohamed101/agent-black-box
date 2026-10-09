@@ -47,12 +47,13 @@ class StreamLimiter:
         with self._lock:
             return sum(self._per_key.values())
 
-    def acquire(self, key_id: str) -> StreamLease:
+    def acquire(self, key_id: str, *, scope: str = "key") -> StreamLease:
+        """`key_id` is the actor (a key, or a person across tabs and devices); `scope` names it."""
         with self._lock:
             if sum(self._per_key.values()) >= self._max_total:
                 raise stream_limit("server")
             if self._per_key[key_id] >= self._max_per_key:
-                raise stream_limit("key")
+                raise stream_limit(scope)
             self._per_key[key_id] += 1
         return StreamLease(self, key_id)
 

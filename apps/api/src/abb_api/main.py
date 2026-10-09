@@ -188,7 +188,7 @@ def create_app(
             clock,
         )
         hub = StreamHub(settings.database_url)
-        app.state.streams = StreamService(engine, hub, app.state.runs, settings)
+        app.state.streams = StreamService(engine, hub, app.state.runs, settings, clock)
         hub.start()
         try:
             yield

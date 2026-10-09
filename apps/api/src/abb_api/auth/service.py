@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -17,10 +18,11 @@ from abb_api.auth.repository import (
     UserRecord,
     UserRepository,
 )
-from abb_api.authz.matrix import scope_actions
+from abb_api.authz.matrix import role_actions, scope_actions
 from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
+from abb_api.workspaces.repository import MembershipRepository
 
 logger = logging.getLogger(__name__)
 
@@ -122,3 +124,36 @@ async def authenticate_session(
         raise session_invalid()
     await sessions.slide(found, now=now, idle=idle)
     return SessionContext(user, found)
+
+
+async def credential_still_grants(
+    conn: AsyncConnection, principal: Principal, action: str, clock: Clock
+) -> bool:
+    """Whether the credential behind `principal` still exists and still grants `action` (KI-033).
+
+    Open streams call this periodically instead of holding the answer from when they opened. It
+    never slides a session or touches `last_used_at`: watching a stream is not activity. A key is
+    found by its id (the secret is not kept), a session by its row id, and a person's role is read
+    afresh, so a revocation, an expiry, a removal or a demotion all end the stream.
+    """
+    now = clock()
+    if principal.kind == "api_key":
+        stored = await ApiKeyLookup(conn).find(principal.actor_id.removeprefix("key:"))
+        return (
+            stored is not None
+            and stored.workspace_id == principal.workspace_id
+            and stored.project_id == principal.project_id
+            and stored.is_active(now)
+            and action in scope_actions(stored.scopes)
+        )
+    if principal.session_id is None or principal.user_id is None:
+        return False
+    try:
+        session_id = uuid.UUID(principal.session_id)
+    except ValueError:
+        return False
+    session = await SessionRepository(conn).find_by_id(session_id)
+    if session is None or session.user_id != principal.user_id or not session.usable(now):
+        return False
+    role = await MembershipRepository(conn, principal.tenant).role_of(principal.user_id)
+    return role is not None and action in role_actions(role)

@@ -646,6 +646,11 @@ export interface paths {
          *     Resume with the `Last-Event-ID` header (browsers send it on reconnect) or `last_event_id` for the
          *     first connection. The server re-sends a short window of events already seen: de-duplicate by event
          *     id. Without either, the stream starts at the beginning of the run. Payloads are never streamed.
+         *
+         *     The credential is re-checked while the stream is open (every `ABB_STREAM_REAUTH_SECONDS`, default
+         *     30): a revoked or expired key or session, a removed member, or a role without run access ends the
+         *     stream with `event: error` (`STREAM_UNAUTHORIZED`, not retryable). Reconnecting then gives the
+         *     precise 401, 403 or 404. Open streams are limited per key, and per person across tabs and devices.
          */
         get: operations["stream_run_v1_runs__run_id__stream_get"];
         put?: never;
@@ -4709,7 +4714,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description STREAM_LIMIT: too many open streams for this server or key; honour Retry-After. */
+            /** @description STREAM_LIMIT: too many open streams for this server, key or person; honour Retry-After. */
             429: {
                 headers: {
                     [name: string]: unknown;
