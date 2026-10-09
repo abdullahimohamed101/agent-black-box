@@ -10,6 +10,7 @@ import json
 import shlex
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -31,7 +32,7 @@ def plain(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def leaked(bb: BlackBox, srv: ArtifactServer, results: list, secrets: list[str]) -> list[str]:
+def leaked(bb: BlackBox, srv: ArtifactServer, results: list[Any], secrets: list[str]) -> list[str]:
     text = everything(bb, srv, results)
     return [s for s in secrets if s in text]
 
