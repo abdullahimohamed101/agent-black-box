@@ -6,6 +6,8 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 port="${1:-8900}"
 origin="${ABB_WEB_ORIGIN:-http://localhost:3000}"
+# fake_oidc refuses to start unless this is development or test; an explicit production value stays and refuses.
+export ABB_ENVIRONMENT="${ABB_ENVIRONMENT:-development}"
 cd "$root/apps/api"
 exec uv run python -m tests.fake_oidc --port "$port" --client-id "${ABB_OIDC_CLIENT_ID:-abb-dev}" \
   --redirect-uri "${origin%/}/api/auth/callback"

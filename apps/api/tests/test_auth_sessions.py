@@ -774,3 +774,29 @@ async def test_minted_sessions_work_without_an_identity_provider(auth: Api) -> N
     token = await mint_session(auth.engine, user.id, auth.clock())
     headers = {"cookie": f"{SESSION_COOKIE}={token}", "x-abb-workspace": auth.tenant.workspace_id}
     assert (await auth.client.get("/v1/runs", headers=headers)).status_code == 200
+
+
+@pytest.mark.parametrize("environment", ["production", "staging", "", "prod"])
+def test_the_standalone_fake_provider_refuses_to_start_outside_development(
+    environment: str,
+) -> None:
+    """Review F10: the server that accepts any email has a gate of its own."""
+    import os
+    import subprocess
+    import sys
+
+    env = {k: v for k, v in os.environ.items() if k != "ABB_ENVIRONMENT"}
+    if environment:
+        env["ABB_ENVIRONMENT"] = environment
+    done = subprocess.run(
+        [sys.executable, "-m", "tests.fake_oidc", "--port", "0"],
+        env=env, capture_output=True, text=True, timeout=60,
+    )  # fmt: skip
+    assert done.returncode != 0 and "development-only" in done.stderr
+
+
+def test_the_fake_provider_gate_admits_development_and_test() -> None:
+    from tests.fake_oidc import refuse_outside_development
+
+    refuse_outside_development({"ABB_ENVIRONMENT": "development"})
+    refuse_outside_development({"ABB_ENVIRONMENT": "test"})

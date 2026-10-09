@@ -15,7 +15,7 @@ import hashlib
 import hmac
 import html
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -252,9 +252,22 @@ def _parse_query(url: str) -> list[tuple[str, str]]:
     return parse_qsl(urlsplit(url).query, keep_blank_values=True)
 
 
+def refuse_outside_development(environ: Mapping[str, str]) -> None:
+    """The standalone server accepts any email: it starts only in development or test."""
+    environment = environ.get("ABB_ENVIRONMENT", "")
+    if environment not in ("development", "test"):
+        raise SystemExit(
+            "fake_oidc is development-only: set ABB_ENVIRONMENT to development or test "
+            f"(got {environment or 'nothing'!r})."
+        )
+
+
 def main() -> None:  # pragma: no cover - exercised by scripts/fake-oidc.sh
+    import os
+
     import uvicorn
 
+    refuse_outside_development(os.environ)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8900)
     parser.add_argument("--host", default="127.0.0.1")
