@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from abb_api.auth.repository import UserRepository
 from abb_api.core.config import Settings
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter
-from tests.api_fixtures import Api, Tick, build_api
+from tests.api_fixtures import Api, Tick, build_api, person
 from tests.auth_helpers import add_member, mint_session
 from tests.conftest import make_settings
 from tests.fake_oidc import FakeOidc
@@ -202,15 +202,54 @@ async def test_a_pre_provisioned_user_is_linked_on_first_login(auth: Api, fake: 
     assert (await counts(auth.engine))[0] == 1  # no duplicate user was created
 
 
-async def test_the_subject_decides_so_an_email_change_at_the_provider_changes_nothing(
+async def test_the_subject_decides_so_an_email_change_at_the_provider_is_followed(
     auth: Api, fake: FakeOidc
 ) -> None:
     browser = Browser(auth, fake)
     await browser.sign_in("old@example.com", subject="sub-1")
     again = Browser(auth, fake)
     assert (await again.sign_in("new@example.com", subject="sub-1")).status_code == 302
-    assert (await again.get("/v1/me")).json()["user"]["email"] == "old@example.com"
-    assert (await counts(auth.engine))[0] == 1
+    assert (await again.get("/v1/me")).json()["user"]["email"] == "new@example.com"
+    assert (await counts(auth.engine))[0] == 1  # the same person, not a second user
+
+
+async def test_an_email_change_onto_another_users_address_changes_nothing(
+    auth: Api, fake: FakeOidc
+) -> None:
+    await Browser(auth, fake).sign_in("one@example.com", subject="sub-1")
+    await Browser(auth, fake).sign_in("two@example.com", subject="sub-2")
+    refused = await Browser(auth, fake).sign_in("two@example.com", subject="sub-1")
+    error(refused, 401, "LOGIN_FAILED")
+    again = Browser(auth, fake)
+    await again.sign_in("one@example.com", subject="sub-1")
+    assert (await again.get("/v1/me")).json()["user"]["email"] == "one@example.com"
+
+
+async def test_a_reassigned_address_cannot_accept_the_new_holders_invitation(
+    auth: Api, fake: FakeOidc
+) -> None:
+    """Review F2: acceptance compares the current verified email, not the first login's."""
+    alice = Browser(auth, fake)
+    await alice.sign_in("alice@corp.test", subject="sub-alice")
+    # The provider renames Alice's account and hands her old address to Bob.
+    await alice.sign_in("alice.2@corp.test", subject="sub-alice")
+    admin = await person(auth, "admin@acme.test", "ADMIN")
+    sent = await auth.client.post(
+        "/v1/invitations", json={"email": "alice@corp.test", "role": "VIEWER"}, headers=admin
+    )
+    token = sent.json()["link"].split("#", 1)[1]
+    bob = Browser(auth, fake)
+    assert (await bob.sign_in("alice@corp.test", subject="sub-bob")).status_code == 302
+
+    def accept(browser: Browser) -> Any:
+        return auth.client.post(
+            "/v1/invitations/accept",
+            json={"token": token},
+            headers={**browser.cookie_header(), "origin": ORIGIN},
+        )
+
+    error(await accept(alice), 403, "INVITATION_EMAIL_MISMATCH")
+    assert (await accept(bob)).status_code == 200
 
 
 # ------------------------------------------------------------------ login CSRF and state

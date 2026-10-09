@@ -305,6 +305,25 @@ class UserRepository:
         )
         return result.rowcount == 1
 
+    async def refresh_verified_email(
+        self, user_id: uuid.UUID, *, email: str, verified_at: datetime
+    ) -> bool:
+        """Store the email the provider vouches for now. False when another user already holds it.
+
+        Invitation acceptance compares `users.email` with the invited address, so it must follow
+        the provider (a reassigned address must not stay with the old account, ADR-061).
+        """
+        try:
+            async with self._conn.begin_nested():
+                await self._conn.execute(
+                    update(t.users)
+                    .where(t.users.c.id == user_id)
+                    .values(email=email.lower(), email_verified_at=verified_at)
+                )
+        except IntegrityError:
+            return False
+        return True
+
     async def record_login(self, user_id: uuid.UUID, now: datetime) -> None:
         await self._conn.execute(
             update(t.users).where(t.users.c.id == user_id).values(last_login_at=now)

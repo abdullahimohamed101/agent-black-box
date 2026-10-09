@@ -191,7 +191,13 @@ class LoginService:
         now = self._clock()
         known = await users.find_by_identity(issuer, subject)
         if known is not None:
-            return known
+            if known.email.lower() == email.lower():
+                return known
+            # The provider now vouches for another address: follow it, so a later invitation is
+            # compared with the current verified email. A taken address changes nothing.
+            if not await users.refresh_verified_email(known.id, email=email, verified_at=now):
+                return None
+            return await users.get(known.id)
         by_email = await users.find_by_email(email)
         if by_email is None:
             try:
