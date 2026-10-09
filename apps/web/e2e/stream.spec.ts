@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { signIn, workspace } from "./session";
 
 // Runs only through scripts/stream-e2e.sh: a real API + worker, the built web server on :3103, and a driver process
 // (the Python SDK, or plain HTTP) that writes the run while the browser is already watching it.
@@ -11,6 +12,7 @@ const writeKey = process.env.E2E_STREAM_WRITE_KEY;
 const apiUrl = process.env.E2E_STREAM_API_URL;
 test.skip(!writeKey || !apiUrl, "needs scripts/stream-e2e.sh");
 test.use({ baseURL: "http://localhost:3103" });
+test.beforeEach(async ({ context, baseURL }) => signIn(context, baseURL!));
 test.describe.configure({ mode: "serial" }); // one writer at a time keeps the latency numbers honest
 const SHOTS = "../../docs/screenshots/phase-5";
 
@@ -72,7 +74,7 @@ async function startDriver(...args: string[]): Promise<Driver> {
   };
 }
 
-const runUrl = (id: string) => `/w/stream/projects/all/runs/${id}`;
+const runUrl = (id: string) => `/w/${workspace()}/projects/all/runs/${id}`;
 const shown = async (page: Page) => {
   const text = (await page.getByTestId("progress").textContent()) ?? "";
   const m = /(\d+) of (\d+) events shown/.exec(text);
@@ -188,8 +190,10 @@ async function faultProxy(targetPort: number) {
 
 test("a dropped connection is reported as partial data and recovers with every event present", async ({
   page,
+  context,
 }) => {
   const proxy = await faultProxy(3103);
+  await signIn(context, `http://127.0.0.1:${proxy.port}`); // another host: the cookie does not follow
   const driver = await startDriver("http", "24", "0.25");
   try {
     await page.goto(`http://127.0.0.1:${proxy.port}${runUrl(driver.runId)}`);

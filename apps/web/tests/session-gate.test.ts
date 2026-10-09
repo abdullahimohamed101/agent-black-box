@@ -13,7 +13,6 @@ beforeEach(() => {
   vi.stubEnv("ABB_WEB_ORIGIN", "http://localhost:3000");
   vi.stubEnv("ABB_API_INTERNAL_URL", "http://api.internal");
   vi.stubEnv("ABB_WEB_DATA_SOURCE", "api");
-  vi.stubEnv("ABB_WEB_API_KEY", "");
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -68,11 +67,8 @@ describe("loginRedirect (proxy.ts fast path)", () => {
     expect(loginRedirect("/w/acme", "", COOKIE)).toBeNull();
     expect(loginRedirect("/w/acme", "", "abb_session=short")).not.toBeNull();
   });
-  it("stands aside in fixture mode and while the legacy key exists", () => {
+  it("stands aside in fixture mode", () => {
     vi.stubEnv("ABB_WEB_DATA_SOURCE", "fixtures");
-    expect(loginRedirect("/w/acme", "", null)).toBeNull();
-    vi.stubEnv("ABB_WEB_DATA_SOURCE", "api");
-    vi.stubEnv("ABB_WEB_API_KEY", "abb_live_k.s");
     expect(loginRedirect("/w/acme", "", null)).toBeNull();
   });
 });
@@ -139,24 +135,6 @@ describe("workspace resolution (KI-027)", () => {
     expect((await resolveWorkspace("acme", COOKIE)).status).toBe("unavailable");
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
     expect((await fetchMe(COOKIE)).status).toBe("unavailable");
-  });
-
-  it("uses the legacy key when there is no session, without a person", async () => {
-    vi.stubEnv("ABB_WEB_API_KEY", "abb_live_k.secret");
-    const calls = stubApi({
-      "/v1/projects": () => Response.json({ items: [{ id: "prj_1", slug: "web", name: "Web" }] }),
-    });
-    const r = await resolveWorkspace("whatever", null);
-    expect(r.status).toBe("ok");
-    if (r.status !== "ok") return;
-    expect(r.value).toMatchObject({
-      mode: "key",
-      user: null,
-      permissions: [],
-      workspace: { id: null },
-    });
-    expect(r.value.projects).toHaveLength(1);
-    expect(calls[0]!.headers.authorization).toBe("Bearer abb_live_k.secret");
   });
 
   it("serves a fixture person in fixture mode and refuses it in production", async () => {

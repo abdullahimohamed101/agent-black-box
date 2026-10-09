@@ -1,6 +1,6 @@
 /**
  * Web server settings and the few rules every handler shares (ADR-060, D2/D17). Read from the environment on each
- * call so tests can stub it; nothing here is secret except `ABB_WEB_API_KEY`, which never leaves the server.
+ * call so tests can stub it. The web server holds no credential of its own: the visitor's session cookie is the only one.
  */
 
 export const DEFAULT_API_URL = "http://localhost:8000";
@@ -29,9 +29,6 @@ export const fixturesBlocked = (): boolean =>
   fixturesMode() &&
   process.env.NODE_ENV === "production" &&
   process.env.ABB_WEB_ALLOW_FIXTURES !== "1";
-
-/** The retired shared read key (D14): honoured after the session cookie until step 15 removes it. */
-export const legacyKey = (): string | null => process.env.ABB_WEB_API_KEY || null;
 
 /** Must match the API's `cookies.session_cookie_name` (one rule: https origin => `__Host-`). */
 export function sessionCookieName(): string {
@@ -76,17 +73,7 @@ export const envelope = (status: number, code: string, message: string, retryabl
     { status, headers: jsonSafeHeaders },
   );
 
-/** Which credential the web server uses for the visitor: their session, the legacy key, or none. */
-export type Credential =
-  { kind: "session"; cookie: string } | { kind: "key"; key: string } | { kind: "none" };
-
-export function credentialFor(cookieHeader: string | null | undefined): Credential {
-  const cookie = cookieValue(cookieHeader, sessionCookieName());
-  if (cookie) return { kind: "session", cookie };
-  const key = legacyKey();
-  if (key) return { kind: "key", key };
-  return { kind: "none" };
+/** The visitor's session cookie value, or null when there is none (the only credential the web server forwards). */
+export function sessionCookieFor(cookieHeader: string | null | undefined): string | null {
+  return cookieValue(cookieHeader, sessionCookieName());
 }
-
-/** Session mode: nothing but sessions can sign anyone in, so unauthenticated visitors go to /login. */
-export const sessionOnly = (): boolean => !fixturesMode() && legacyKey() === null;

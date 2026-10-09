@@ -8,7 +8,6 @@ import { config, proxy } from "@/proxy";
 beforeEach(() => {
   vi.stubEnv("ABB_WEB_ORIGIN", "https://abb.example");
   vi.stubEnv("ABB_WEB_DATA_SOURCE", "api");
-  vi.stubEnv("ABB_WEB_API_KEY", "");
 });
 afterEach(() => {
   vi.unstubAllEnvs();

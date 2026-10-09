@@ -9,7 +9,6 @@ beforeEach(() => {
   vi.stubEnv("ABB_WEB_ORIGIN", ORIGIN);
   vi.stubEnv("ABB_API_INTERNAL_URL", "http://api.internal");
   vi.stubEnv("ABB_WEB_DATA_SOURCE", "api");
-  vi.stubEnv("ABB_WEB_API_KEY", "");
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -241,8 +240,7 @@ describe("proxy writes: exact Origin, JSON, bounded", () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  it("needs a session for writes: no cookie is 401 even with the legacy key configured", async () => {
-    vi.stubEnv("ABB_WEB_API_KEY", "abb_live_k.secret");
+  it("needs a session for writes: no cookie is 401", async () => {
     const f = stubFetch();
     const res = await readThrough(["v1", "invitations"], new URLSearchParams(), {
       method: "POST",
@@ -285,24 +283,23 @@ describe("proxy routes", () => {
   });
 });
 
-describe("legacy key fallback (until phase 15 step 15)", () => {
-  it("uses the session first, then the key, and only for reads", async () => {
-    vi.stubEnv("ABB_WEB_API_KEY", "abb_live_k.secret");
+describe("no shared credential", () => {
+  it("a read without a session cookie is 401 and nothing is sent upstream", async () => {
     const f = stubFetch();
-    await readThrough(["v1", "runs"], new URLSearchParams(), { headers: withSession() });
-    expect(sent(f).headers.authorization).toBeUndefined();
-    expect(sent(f).headers.cookie).toBe(`abb_session=${SESSION}`);
-    f.mockClear();
-    await readThrough(["v1", "runs"], new URLSearchParams(), { headers: new Headers() });
-    expect(sent(f).headers.authorization).toBe("Bearer abb_live_k.secret");
-    expect(sent(f).headers.cookie).toBeUndefined();
+    const res = await readThrough(["v1", "runs"], new URLSearchParams(), {
+      headers: new Headers(),
+    });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("SESSION_INVALID");
+    expect(f).not.toHaveBeenCalled();
   });
 
-  it("still maps a rejected key to 502 (the visitor's login is not at fault)", async () => {
-    vi.stubEnv("ABB_WEB_API_KEY", "abb_live_k.secret");
-    stubFetch(new Response("{}", { status: 401 }));
-    expect(
-      (await readThrough(["v1", "runs"], new URLSearchParams(), { headers: new Headers() })).status,
-    ).toBe(502);
+  it("never puts an Authorization header on the upstream request", async () => {
+    const f = stubFetch();
+    await readThrough(["v1", "runs"], new URLSearchParams(), {
+      headers: withSession({ authorization: "Bearer abb_live_x.y" }),
+    });
+    expect(sent(f).headers.authorization).toBeUndefined();
+    expect(sent(f).headers.cookie).toBe(`abb_session=${SESSION}`);
   });
 });

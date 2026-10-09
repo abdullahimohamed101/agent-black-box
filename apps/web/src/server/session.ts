@@ -6,9 +6,9 @@ import type { WorkspaceContext } from "@/lib/workspace";
 import {
   UPSTREAM_TIMEOUT_MS,
   apiBase,
-  credentialFor,
   fixturesBlocked,
   fixturesMode,
+  sessionCookieFor,
   sessionCookieName,
 } from "./config";
 
@@ -50,9 +50,9 @@ export async function fetchMe(cookieHeader: string | null): Promise<Loaded<Me>> 
     if (fixturesBlocked()) return { status: "unavailable", message: "Fixture data is disabled." };
     return { status: "ok", value: FIXTURE_ME };
   }
-  const credential = credentialFor(cookieHeader);
-  if (credential.kind !== "session") return { status: "unauthenticated" };
-  return getJson<Me>("/v1/me", { cookie: `${sessionCookieName()}=${credential.cookie}` });
+  const session = sessionCookieFor(cookieHeader);
+  if (!session) return { status: "unauthenticated" };
+  return getJson<Me>("/v1/me", { cookie: `${sessionCookieName()}=${session}` });
 }
 
 export async function resolveWorkspace(
@@ -75,32 +75,14 @@ export async function resolveWorkspace(
       value: toContext("fixtures", me.value, m, FIXTURE_PROJECTS),
     };
   }
-  const credential = credentialFor(cookieHeader);
-  if (credential.kind === "key") {
-    const projects = await getJson<{ items: Project[] }>("/v1/projects", {
-      authorization: `Bearer ${credential.key}`,
-    });
-    return {
-      status: "ok",
-      value: {
-        mode: "key",
-        user: null,
-        workspace: { id: null, slug, name: slug },
-        role: null,
-        permissions: [],
-        ownPermissions: [],
-        memberships: [],
-        projects: projects.status === "ok" ? projects.value.items : [],
-      },
-    };
-  }
-  if (credential.kind !== "session") return { status: "unauthenticated" };
+  const session = sessionCookieFor(cookieHeader);
+  if (!session) return { status: "unauthenticated" };
   const me = await fetchMe(cookieHeader);
   if (me.status !== "ok") return me;
   const membership = me.value.memberships.find((m) => m.workspace.slug === slug);
   if (!membership) return { status: "not_found" }; // not a member looks the same as not existing (D7)
   const projects = await getJson<{ items: Project[] }>("/v1/projects", {
-    cookie: `${sessionCookieName()}=${credential.cookie}`,
+    cookie: `${sessionCookieName()}=${session}`,
     "x-abb-workspace": membership.workspace.id,
   });
   if (projects.status !== "ok") return projects;

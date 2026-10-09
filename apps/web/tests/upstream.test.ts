@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readThrough } from "@/server/upstream";
 
+const SESSION = "s".repeat(43);
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -62,15 +64,13 @@ describe("read proxy", () => {
     expect(ok.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  it("fails closed without a session or a key: 401, so the browser goes to sign-in (phase 15)", async () => {
-    vi.stubEnv("ABB_WEB_API_KEY", "");
+  it("fails closed without a session: 401, so the browser goes to sign-in (phase 15)", async () => {
     const r = await readThrough(["v1", "runs"], new URLSearchParams());
     expect(r.status).toBe(401);
     expect(((await r.json()) as { error: { code: string } }).error.code).toBe("SESSION_INVALID");
   });
 
-  it("forwards the key server-side only, relays request id, maps upstream auth failure to 502", async () => {
-    vi.stubEnv("ABB_WEB_API_KEY", "abb_live_test.secret");
+  it("forwards the visitor's session only, relays request id and upstream auth failures unchanged", async () => {
     vi.stubEnv("ABB_API_INTERNAL_URL", "http://api.internal");
     const fetchMock = vi.fn().mockResolvedValue(
       new Response('{"items":[],"next_cursor":null}', {
@@ -79,19 +79,25 @@ describe("read proxy", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const ok = await readThrough(["v1", "runs"], new URLSearchParams("limit=2"));
+    const headers = new Headers({ cookie: `abb_session=${SESSION}`, authorization: "Bearer x" });
+    const ok = await readThrough(["v1", "runs"], new URLSearchParams("limit=2"), { headers });
     expect(fetchMock.mock.calls[0]![0]).toBe("http://api.internal/v1/runs?limit=2");
-    expect((fetchMock.mock.calls[0]![1] as RequestInit).headers).toMatchObject({
-      authorization: "Bearer abb_live_test.secret",
-    });
+    const sentHeaders = (fetchMock.mock.calls[0]![1] as RequestInit).headers as Record<
+      string,
+      string
+    >;
+    expect(sentHeaders.cookie).toBe(`abb_session=${SESSION}`);
+    expect(sentHeaders.authorization).toBeUndefined();
     expect(ok.headers.get("x-request-id")).toBe("req_1");
-    expect(JSON.stringify([...ok.headers])).not.toContain("secret");
+    expect(JSON.stringify([...ok.headers])).not.toContain(SESSION);
 
     fetchMock.mockResolvedValue(new Response("{}", { status: 401 }));
-    expect((await readThrough(["v1", "runs"], new URLSearchParams())).status).toBe(502);
+    expect((await readThrough(["v1", "runs"], new URLSearchParams(), { headers })).status).toBe(
+      401,
+    );
 
     fetchMock.mockRejectedValue(new Error("down"));
-    const down = await readThrough(["v1", "runs"], new URLSearchParams());
+    const down = await readThrough(["v1", "runs"], new URLSearchParams(), { headers });
     expect(down.status).toBe(503);
     expect(((await down.json()) as { error: { retryable: boolean } }).error.retryable).toBe(true);
   });
@@ -108,7 +114,6 @@ describe("artifact read paths", () => {
       expect((await readThrough(p, new URLSearchParams())).status).toBe(404); // fixtures: not found, but allowed through
     }
     vi.stubEnv("ABB_WEB_DATA_SOURCE", "api");
-    vi.stubEnv("ABB_WEB_API_KEY", "k");
     const seen: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -117,7 +122,9 @@ describe("artifact read paths", () => {
         return Response.json({});
       }),
     );
-    await readThrough(["v1", "artifacts", "art_X", "content"], new URLSearchParams("offset=5"));
+    await readThrough(["v1", "artifacts", "art_X", "content"], new URLSearchParams("offset=5"), {
+      headers: new Headers({ cookie: `abb_session=${SESSION}` }),
+    });
     expect(seen[0]).toMatch(/\/v1\/artifacts\/art_X\/content\?offset=5$/);
     for (const p of [
       ["v1", "artifacts"],

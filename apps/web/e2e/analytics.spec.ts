@@ -1,12 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { signIn, workspace } from "./session";
 
 // Runs only through scripts/analytics-e2e.sh: a real API + worker, the built web server on :3150 and runs written by
 // scripts/analytics_driver.py with known costs (the expected figures are in the file named by E2E_ANALYTICS_EXPECT).
 const expectFile = process.env.E2E_ANALYTICS_EXPECT;
 test.skip(!expectFile, "needs scripts/analytics-e2e.sh");
 test.use({ baseURL: "http://localhost:3150" });
+test.beforeEach(async ({ context, baseURL }) => signIn(context, baseURL!));
 const SHOTS = "../../docs/screenshots/phase-7";
 const want = () =>
   JSON.parse(readFileSync(expectFile!, "utf8")) as {
@@ -29,8 +31,8 @@ async function axe(page: Page) {
 const stat = (scope: Page | Locator, label: string) =>
   scope.locator(".stat").filter({ hasText: new RegExp(`^${label}`) });
 const usd = (n: number) => `$${n.toFixed(2)}`;
-const PROJECT = "all"; // the web key is workspace-wide (KI-027: no project lookup, `all` = no filter)
-const base = `/w/e2e/projects/${PROJECT}`;
+const PROJECT = "all"; // `all` is the route form of "no project filter"
+const base = `/w/${workspace()}/projects/${PROJECT}`;
 
 test("dashboard shows whole-window aggregates from the server", async ({ page }) => {
   const w = want();

@@ -2,14 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ApiHealth } from "@/components/ApiHealth";
-import { fixturesMode, legacyKey } from "@/server/config";
+import { fixturesMode } from "@/server/config";
 import { loadMe } from "@/server/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  // Fixture data and the legacy shared key have no person: keep the plain entry page.
-  if (fixturesMode() || legacyKey()) {
+  // Fixture data has no person: keep the plain entry page.
+  if (fixturesMode()) {
     return (
       <main>
         <h1>Agent Black Box</h1>

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Web E2E against a REAL ingested run: a dedicated database (abb_p4, never the shared dev/test ones), the API on :8100
 # and a worker started by this script, events ingested over HTTP, then the Playwright "real" spec through the web
-# server's read proxy (ADR-021). Needs `.env` (Postgres on 5433) and `pnpm --filter @abb/web build`.
+# server's session-aware proxy (ADR-060; the browser holds a development session, never a key). Needs `.env` (Postgres on 5433) and `pnpm --filter @abb/web build`.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"
 set -a; . ./.env; set +a
@@ -35,7 +35,7 @@ uv run python -m abb_api.worker >"$WORK/worker.log" 2>&1 & pids+=($!)
 for _ in $(seq 1 40); do curl -sf "$API/readyz" >/dev/null && break; sleep 0.5; done
 curl -sf "$API/readyz" >/dev/null || fail "API did not become ready: $(tail -5 "$WORK/api.log")"
 
-step "provision a workspace, project, a write key and a workspace-wide read-only key (secrets never printed)"
+step "provision a workspace, project, a write key and a script-only read key (secrets never printed)"
 suffix="$(date +%s)$RANDOM"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Web E2E" --slug "web-e2e-$suffix" >/dev/null
@@ -43,6 +43,11 @@ cli create-project --workspace "web-e2e-$suffix" --name Demo --slug demo >/dev/n
 WRITE_KEY="$(cli create-key --workspace "web-e2e-$suffix" --project demo --scopes events:write runs:read --name e2e-write)"
 READ_KEY="$(cli create-key --workspace "web-e2e-$suffix" --scopes runs:read --name e2e-web-read)"
 [[ "$WRITE_KEY" == abb_live_* && "$READ_KEY" == abb_live_* ]] || fail "key creation"
+
+step "mint a development session for a workspace owner (the browser's only credential; gated by ABB_ENVIRONMENT + ABB_ALLOW_DEV_SESSIONS)"
+cli add-member --workspace "web-e2e-$suffix" --email e2e-owner@local.test --role OWNER >/dev/null
+SESSION="$(ABB_ENVIRONMENT=development ABB_ALLOW_DEV_SESSIONS=1 cli create-session --email e2e-owner@local.test --hours 1)"
+[ -n "$SESSION" ] || fail "could not mint a session"
 
 step "ingest a failed-with-retries run and a successful run over HTTP"
 WRITE_KEY="$WRITE_KEY" API="$API" uv run python - >"$WORK/runs.env" <<'PY'
@@ -107,6 +112,6 @@ done
 
 step "Playwright against the web server reading through its proxy"
 cd "$root/apps/web"
-E2E_REAL_API_KEY="$READ_KEY" E2E_REAL_API_URL="$API" E2E_REAL_FAILED_RUN="$E2E_REAL_FAILED_RUN" E2E_REAL_OK_RUN="$E2E_REAL_OK_RUN" \
+E2E_SESSION_TOKEN="$SESSION" E2E_WORKSPACE="web-e2e-$suffix" E2E_REAL_API_URL="$API" E2E_REAL_FAILED_RUN="$E2E_REAL_FAILED_RUN" E2E_REAL_OK_RUN="$E2E_REAL_OK_RUN" \
   pnpm exec playwright test e2e/real.spec.ts
 printf '\nE2E-REAL PASSED\n'

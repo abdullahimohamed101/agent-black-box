@@ -64,7 +64,7 @@ typecheck:
 # Local development only: workspace "local", project "demo" and a dev API key in .local/dev-api-key
 # (owner-only file, gitignored). Safe to repeat; it keeps a still-valid key.
 seed:
-	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run python -m abb_api.cli seed --key-file $(CURDIR)/.local/dev-api-key
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && ABB_ALLOW_DEV_SESSIONS=1 uv run python -m abb_api.cli seed --key-file $(CURDIR)/.local/dev-api-key
 
 # Regenerate the committed JSON Schema and TypeScript types from the Pydantic models.
 schema:

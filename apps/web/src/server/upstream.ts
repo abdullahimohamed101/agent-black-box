@@ -3,11 +3,11 @@ import {
   MAX_BODY_BYTES,
   UPSTREAM_TIMEOUT_MS,
   apiBase,
-  credentialFor,
   envelope,
   fixturesBlocked,
   fixturesMode,
   jsonSafeHeaders as SAFE,
+  sessionCookieFor,
   sessionCookieName,
   webOrigin,
 } from "./config";
@@ -17,8 +17,7 @@ import {
  * cookie only; this server forwards it, and nothing else, to the API. What is forwarded is an allowlist (D17):
  * the session cookie, `X-ABB-Workspace`, `Origin`, `Last-Event-ID`, `Accept` and a JSON body. `Authorization`,
  * other cookies, `X-Forwarded-*`, `Forwarded` and `X-Request-ID` from the browser never reach the API, and
- * `Set-Cookie` never comes back (sign-in has its own handlers). `ABB_WEB_API_KEY` remains a read-only fallback
- * for visitors without a session until step 15 of phase 15 removes it.
+ * `Set-Cookie` never comes back (sign-in has its own handlers). The web server has no credential of its own.
  */
 
 const ID = "[A-Za-z0-9_-]{1,64}";
@@ -65,7 +64,6 @@ type Prepared =
       method: string;
       headers: Record<string, string>;
       body: string | undefined;
-      viaKey: boolean;
     };
 
 async function readCapped(
@@ -118,7 +116,7 @@ async function prepare(
     return fail(envelope(414, "QUERY_TOO_LONG", "Query string too long."));
 
   const incoming = options.headers ?? new Headers();
-  const credential = credentialFor(incoming.get("cookie"));
+  const session = sessionCookieFor(incoming.get("cookie"));
   if (method !== "GET") {
     const origin = webOrigin();
     if (!origin) return fail(envelope(503, "WEB_NOT_CONFIGURED", "ABB_WEB_ORIGIN is not set."));
@@ -126,17 +124,12 @@ async function prepare(
     if (incoming.get("origin") !== origin)
       return fail(envelope(403, "CSRF_REJECTED", "Cross-origin request refused."));
   }
-  if (credential.kind === "none" || (credential.kind === "key" && method !== "GET"))
-    return fail(envelope(401, "SESSION_INVALID", "Sign in to continue."));
+  if (!session) return fail(envelope(401, "SESSION_INVALID", "Sign in to continue."));
 
   const headers: Record<string, string> = {
     accept: STREAM.test(path) ? "text/event-stream" : "application/json",
+    cookie: `${sessionCookieName()}=${session}`,
   };
-  if (credential.kind === "session") {
-    headers.cookie = `${sessionCookieName()}=${credential.cookie}`;
-  } else {
-    headers.authorization = `Bearer ${credential.key}`;
-  }
   const workspace = incoming.get("x-abb-workspace") ?? workspaceParam;
   if (workspace && WORKSPACE_ID.test(workspace)) headers["x-abb-workspace"] = workspace;
   const lastEventId = options.lastEventId ?? incoming.get("last-event-id");
@@ -161,12 +154,8 @@ async function prepare(
     method,
     headers,
     body,
-    viaKey: credential.kind === "key",
   };
 }
-
-const keyRejected = () =>
-  envelope(502, "WEB_UPSTREAM_AUTH", "The web server's API key was rejected by the API.");
 
 const redirected = () =>
   envelope(502, "WEB_UPSTREAM_REDIRECT", "The API answered with a redirect.");
@@ -218,9 +207,6 @@ export async function readThrough(
       await upstream.body?.cancel();
       return redirected();
     }
-    // A rejected shared key is the web server's fault, not the visitor's login.
-    if (prepared.viaKey && (upstream.status === 401 || upstream.status === 403))
-      return keyRejected();
     const headers = relayHeaders(upstream);
     if (upstream.status === 204) headers.delete("content-type");
     return new Response(upstream.status === 204 ? null : upstream.body, {
@@ -254,10 +240,6 @@ async function streamThrough(
     if (upstream.status >= 300 && upstream.status < 400) {
       await upstream.body?.cancel();
       return redirected();
-    }
-    if (prepared.viaKey && (upstream.status === 401 || upstream.status === 403)) {
-      await upstream.body?.cancel();
-      return keyRejected();
     }
     const type = upstream.headers.get("content-type") ?? "";
     if (!upstream.ok || !type.startsWith("text/event-stream")) {

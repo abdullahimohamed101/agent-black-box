@@ -9,17 +9,19 @@ The event data itself is safe: streams only read what ingestion already committe
 2. **`Live updates unavailable`** (the browser gave up after 8 failed reconnects, or there is no `EventSource`): the page keeps polling
    the run record and reloads events when it changes, so the data still arrives, only slower. Find out why the stream answers
    non-200: `curl -i -N -H "Authorization: Bearer $KEY" $API/v1/runs/$RUN/stream`.
-   - `401/403`: the web server's `ABB_WEB_API_KEY` is wrong, revoked or lacks `runs:read` (the proxy shows this as 502 `WEB_UPSTREAM_AUTH`).
-   - `404`: the run is not visible to that key (other project or workspace).
+   - `401` (`SESSION_INVALID` / `API_KEY_INVALID`): the session expired or was revoked, or the key was revoked; sign in again. A stream that
+     was open when this happened ends with `event: error` code `STREAM_UNAUTHORIZED` (it re-checks every `ABB_STREAM_REAUTH_SECONDS`,
+     default 30) and the page asks for a new sign-in instead of reconnecting forever. `403 PERMISSION_DENIED`: the role lost `run.read`.
+   - `404`: the run is not visible to that person or key (other project or workspace, or `X-ABB-Workspace` names a workspace they are not in).
    - `429 STREAM_LIMIT`: see step 4.
    - `503`/connection refused: API down or database unreachable; fix `/readyz` first, streams resume by themselves.
 3. **Reconnect loop / stream closes every few seconds**: a proxy or load balancer between web and API is buffering or cutting idle
    connections. The API sends a keepalive comment every 15 s (`ABB_STREAM_KEEPALIVE_SECONDS`) and `X-Accel-Buffering: no`; set the proxy's
    read timeout above that and disable response buffering for `text/event-stream`.
 4. **`STREAM_LIMIT`**: the per-process caps were hit (`ABB_STREAM_MAX_TOTAL` 50, `ABB_STREAM_MAX_PER_KEY` 10). Slots free when a client
-   disconnects or a stream reaches `ABB_STREAM_MAX_LIFETIME_SECONDS` (900). Typical cause: many open tabs behind the one web-server key
-   (KI-029). Close tabs, raise the limits if the host can afford one idle connection plus a query every 2 s per stream, or run more API
-   processes (limits are per process, KI-017).
+   disconnects or a stream reaches `ABB_STREAM_MAX_LIFETIME_SECONDS` (900). The cap is per person (`scope: user` in the error
+   details; `key` for API keys): 10 streams across all of one person's tabs and devices. Close tabs, raise the limits if the host can afford one idle
+   connection plus a query every 2 s per stream, or run more API processes (limits are per process, KI-017).
 5. **Delivery is slow but not broken** (events appear after about 2 s instead of immediately): the `NOTIFY` listener is down and streams are
    on the 2 s fallback poll. Check the log for `stream listener unavailable (...)` and that the API's database user can `LISTEN`
    (`abb_runtime` can). Listener connections: `SELECT pid, state FROM pg_stat_activity WHERE application_name = 'abb-stream-listener';`

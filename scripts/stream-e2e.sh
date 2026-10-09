@@ -39,14 +39,19 @@ uv run python -m abb_api.worker >"$WORK/worker.log" 2>&1 & pids+=($!)
 for _ in $(seq 1 40); do curl -sf "$API/readyz" >/dev/null && break; sleep 0.5; done
 curl -sf "$API/readyz" >/dev/null || fail "API did not become ready: $(tail -5 "$WORK/api.log")"
 
-step "provision a workspace, a project, a write key and a workspace-wide read-only key (secrets never printed)"
+step "provision a workspace, a project, a write key and a script-only read key (secrets never printed)"
 suffix="$(date +%s)$RANDOM"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Stream E2E" --slug "stream-e2e-$suffix" >/dev/null
 cli create-project --workspace "stream-e2e-$suffix" --name Demo --slug demo >/dev/null
 WRITE_KEY="$(cli create-key --workspace "stream-e2e-$suffix" --project demo --scopes events:write runs:read --name stream-write)"
-READ_KEY="$(cli create-key --workspace "stream-e2e-$suffix" --scopes runs:read --name stream-web-read)"
+READ_KEY="$(cli create-key --workspace "stream-e2e-$suffix" --scopes runs:read --name stream-script-read)"
 [[ "$WRITE_KEY" == abb_live_* && "$READ_KEY" == abb_live_* ]] || fail "key creation"
+
+step "mint a development session for a workspace owner (the browser's only credential; gated by ABB_ENVIRONMENT + ABB_ALLOW_DEV_SESSIONS)"
+cli add-member --workspace "stream-e2e-$suffix" --email e2e-owner@local.test --role OWNER >/dev/null
+SESSION="$(ABB_ENVIRONMENT=development ABB_ALLOW_DEV_SESSIONS=1 cli create-session --email e2e-owner@local.test --hours 1)"
+[ -n "$SESSION" ] || fail "could not mint a session"
 
 if [ "${STREAM_E2E_MODE:-}" = bench ]; then
   step "fan-out benchmark: many viewers of one hot run while it ingests (scripts/bench_stream_fanout.py)"
@@ -59,7 +64,7 @@ fi
 
 step "Playwright: browser <-> web server <-> API, writers driven by scripts/stream_driver.py"
 cd "$root/apps/web"
-E2E_STREAM_API_KEY="$READ_KEY" E2E_STREAM_WRITE_KEY="$WRITE_KEY" E2E_STREAM_API_URL="$API" \
+E2E_SESSION_TOKEN="$SESSION" E2E_WORKSPACE="stream-e2e-$suffix" E2E_STREAM_WRITE_KEY="$WRITE_KEY" E2E_STREAM_API_URL="$API" \
   STREAM_LATENCY_OUT="${STREAM_LATENCY_OUT:-$root/apps/web/test-results/stream-latency.json}" \
   pnpm exec playwright test e2e/stream.spec.ts
 printf '\nSTREAM-E2E PASSED\n'

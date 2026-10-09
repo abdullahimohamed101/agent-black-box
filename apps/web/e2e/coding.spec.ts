@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { signIn, workspace, workspaceHeader } from "./session";
 
 // Runs only through scripts/coding-e2e.sh: the scripted coding agent already wrote its run through the SDK into a
 // real API; the built web server on :3140 reads it through its proxy. The planted secrets come from the script.
@@ -7,10 +8,11 @@ const runId = process.env.E2E_CODING_RUN_ID;
 const planted: string[] = JSON.parse(process.env.E2E_CODING_PLANTED ?? "[]");
 test.skip(!runId || planted.length === 0, "needs scripts/coding-e2e.sh");
 test.use({ baseURL: "http://localhost:3140", viewport: { width: 1400, height: 1000 } });
+test.beforeEach(async ({ context, baseURL }) => signIn(context, baseURL!));
 const SHOTS = "../../docs/screenshots/phase-6";
 
 const open = async (page: Page) => {
-  await page.goto(`/w/coding/projects/all/runs/${runId}`);
+  await page.goto(`/w/${workspace()}/projects/all/runs/${runId}`);
   await expect(page.getByTestId("story")).toBeVisible();
 };
 const step = (page: Page, name: RegExp) =>
@@ -129,7 +131,8 @@ test("a ~220 KB log loads in chunks, with the planted secrets redacted", async (
 
 test("planted secrets are in no API response the browser can reach", async ({ page }) => {
   await open(page);
-  const events = await page.request.get(`/api/abb/v1/runs/${runId}/events?limit=500`);
+  const headers = await workspaceHeader(page);
+  const events = await page.request.get(`/api/abb/v1/runs/${runId}/events?limit=500`, { headers });
   const body = await events.text();
   for (const s of planted) expect(body).not.toContain(s);
   const items = (JSON.parse(body) as { items: { attributes: Record<string, unknown> }[] }).items;
@@ -143,6 +146,7 @@ test("planted secrets are in no API response the browser can reach", async ({ pa
     while (offset !== null) {
       const r = await page.request.get(
         `/api/abb/v1/artifacts/${id}/content?offset=${offset}&limit=262144`,
+        { headers },
       );
       expect(r.status()).toBe(200);
       const chunk = (await r.json()) as { content: string; next_offset: number | null };

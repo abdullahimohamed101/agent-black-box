@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readThrough } from "@/server/upstream";
 
 const STREAM = ["v1", "runs", "run_01ABC", "stream"];
+const SESSION = "s".repeat(43);
+const signedIn = { headers: new Headers({ cookie: `abb_session=${SESSION}` }) };
 
 beforeEach(() => {
-  vi.stubEnv("ABB_WEB_API_KEY", "abb_live_test.secret");
   vi.stubEnv("ABB_API_INTERNAL_URL", "http://api.internal");
 });
 afterEach(() => {
@@ -30,7 +31,7 @@ describe("stream proxy", () => {
 
   it("has no live source for fixtures: a 404 envelope the client treats as 'poll instead'", async () => {
     vi.stubEnv("ABB_WEB_DATA_SOURCE", "fixtures");
-    const r = await readThrough(STREAM, new URLSearchParams());
+    const r = await readThrough(STREAM, new URLSearchParams(), signedIn);
     expect(r.status).toBe(404);
     expect(((await r.json()) as { error: { code: string } }).error.code).toBe(
       "STREAM_NOT_AVAILABLE",
@@ -46,7 +47,7 @@ describe("stream proxy", () => {
       },
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sse(upstream, { "x-request-id": "req_1" })));
-    const r = await readThrough(STREAM, new URLSearchParams());
+    const r = await readThrough(STREAM, new URLSearchParams(), signedIn);
     expect(r.status).toBe(200);
     expect(r.headers.get("content-type")).toBe("text/event-stream");
     expect(r.headers.get("cache-control")).toBe("no-store, no-transform");
@@ -60,36 +61,41 @@ describe("stream proxy", () => {
     await reader.cancel();
   });
 
-  it("sends the key and Last-Event-ID upstream, never the key downstream", async () => {
+  it("sends the session cookie and Last-Event-ID upstream, never the cookie downstream", async () => {
     const fetchMock = vi.fn().mockResolvedValue(sse("", {}));
     vi.stubGlobal("fetch", fetchMock);
     const r = await readThrough(STREAM, new URLSearchParams("last_event_id=evt_9"), {
+      ...signedIn,
       lastEventId: "evt_5",
     });
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("http://api.internal/v1/runs/run_01ABC/stream?last_event_id=evt_9");
-    expect(init.headers.authorization).toBe("Bearer abb_live_test.secret");
+    expect(init.headers.cookie).toBe(`abb_session=${SESSION}`);
+    expect(init.headers.authorization).toBeUndefined();
     expect(init.headers["last-event-id"]).toBe("evt_5");
     expect(init.headers.accept).toBe("text/event-stream");
-    expect(JSON.stringify([...r.headers])).not.toContain("secret");
+    expect(JSON.stringify([...r.headers])).not.toContain(SESSION);
   });
 
   it("drops a malformed Last-Event-ID instead of forwarding it", async () => {
     const fetchMock = vi.fn().mockResolvedValue(sse(""));
     vi.stubGlobal("fetch", fetchMock);
-    await readThrough(STREAM, new URLSearchParams(), { lastEventId: "evt_1\r\nx-evil: 1" });
+    await readThrough(STREAM, new URLSearchParams(), {
+      ...signedIn,
+      lastEventId: "evt_1\r\nx-evil: 1",
+    });
     expect(fetchMock.mock.calls[0]![1].headers["last-event-id"]).toBeUndefined();
   });
 
-  it("maps upstream auth failure to 502 and relays API errors (429, 404) unchanged", async () => {
+  it("relays API errors (401, 429, 404) unchanged", async () => {
     const json = (status: number, code: string, extra: Record<string, string> = {}) =>
       new Response(JSON.stringify({ error: { code } }), {
         status,
         headers: { "content-type": "application/json", ...extra },
       });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json(401, "API_KEY_INVALID")));
-    const unauth = await readThrough(STREAM, new URLSearchParams());
-    expect(unauth.status).toBe(502);
+    const unauth = await readThrough(STREAM, new URLSearchParams(), signedIn);
+    expect(unauth.status).toBe(401);
     vi.stubGlobal(
       "fetch",
       vi
@@ -98,12 +104,12 @@ describe("stream proxy", () => {
           json(429, "STREAM_LIMIT", { "retry-after": "5", "x-request-id": "r" }),
         ),
     );
-    const limited = await readThrough(STREAM, new URLSearchParams());
+    const limited = await readThrough(STREAM, new URLSearchParams(), signedIn);
     expect(limited.status).toBe(429);
     expect(limited.headers.get("retry-after")).toBe("5");
     expect(((await limited.json()) as { error: { code: string } }).error.code).toBe("STREAM_LIMIT");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json(404, "RUN_NOT_FOUND")));
-    expect((await readThrough(STREAM, new URLSearchParams())).status).toBe(404);
+    expect((await readThrough(STREAM, new URLSearchParams(), signedIn)).status).toBe(404);
   });
 
   it("closes the upstream stream when the browser goes away", async () => {
@@ -116,7 +122,7 @@ describe("stream proxy", () => {
       }),
     );
     const browser = new AbortController();
-    await readThrough(STREAM, new URLSearchParams(), { signal: browser.signal });
+    await readThrough(STREAM, new URLSearchParams(), { ...signedIn, signal: browser.signal });
     expect(seen[0]!.aborted).toBe(false);
     browser.abort();
     expect(seen[0]!.aborted).toBe(true);
@@ -126,7 +132,7 @@ describe("stream proxy", () => {
     vi.useFakeTimers();
     try {
       vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
-      const down = await readThrough(STREAM, new URLSearchParams());
+      const down = await readThrough(STREAM, new URLSearchParams(), signedIn);
       expect(down.status).toBe(503);
       let signal!: AbortSignal;
       vi.stubGlobal(
@@ -136,7 +142,7 @@ describe("stream proxy", () => {
           return Promise.resolve(sse(new ReadableStream()));
         }),
       );
-      await readThrough(STREAM, new URLSearchParams());
+      await readThrough(STREAM, new URLSearchParams(), signedIn);
       await vi.advanceTimersByTimeAsync(60_000); // far past the 10 s connect timeout
       expect(signal.aborted).toBe(false);
     } finally {
@@ -158,7 +164,7 @@ describe("stream proxy", () => {
               ),
           ),
       );
-      const pending = readThrough(STREAM, new URLSearchParams());
+      const pending = readThrough(STREAM, new URLSearchParams(), signedIn);
       await vi.advanceTimersByTimeAsync(10_500);
       expect((await pending).status).toBe(503);
     } finally {
