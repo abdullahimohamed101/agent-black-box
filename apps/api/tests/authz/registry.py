@@ -184,6 +184,18 @@ def _post_key(side: Side, overrides: dict[str, str]) -> RequestSpec:
     return RequestSpec("POST", "/v1/api-keys", content=json.dumps(body).encode(), headers=JSON)
 
 
+def _post_override(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    body = {"model_pattern": f"probe-{uuid.uuid4().hex[:8]}*", "input_per_million": "1.5",
+            "output_per_million": 3}  # fmt: skip
+    return RequestSpec(
+        "POST", "/v1/pricing/overrides", content=json.dumps(body).encode(), headers=JSON
+    )
+
+
+def _post_rebuild(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    return RequestSpec("POST", "/v1/cost/rebuild", content=b"{}", headers=JSON)
+
+
 _ANALYTICS = ("summary", "cost", "reliability", "performance")
 
 CASES: dict[tuple[str, str], RouteCase] = {
@@ -250,6 +262,8 @@ CASES: dict[tuple[str, str], RouteCase] = {
             _target("DELETE", "/v1/api-keys", "key_id", "api_key", None), 204,
             ("key_id",), probe_actors=ADMINS,
         ),
+        RouteCase("POST", "/v1/pricing/overrides", actions.PRICING_WRITE, _post_override, 201),
+        RouteCase("POST", "/v1/cost/rebuild", actions.PRICING_WRITE, _post_rebuild, 202),
         RouteCase("PUT", "/v1/artifacts/{artifact_id}", actions.ARTIFACT_WRITE, _put_artifact, 201),
         RouteCase(
             "GET", "/v1/artifacts/{artifact_id}", actions.RUN_READ,

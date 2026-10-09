@@ -263,6 +263,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/cost/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-derive cost for past runs
+         * @description Queues the newest runs (optionally one project, optionally since a time) to be re-derived with the current prices. Bounded to 10,000 runs per call; repeat with `since` for older ones.
+         */
+        post: operations["rebuild_costs_v1_cost_rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/events": {
         parameters: {
             query?: never;
@@ -439,6 +459,26 @@ export interface paths {
         get: operations["list_prices_v1_pricing_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pricing/overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a price override
+         * @description Owners, admins and billing. Overrides are append-only: a correction is a newer row for the same pattern. Past runs keep their cost until `POST /v1/cost/rebuild`.
+         */
+        post: operations["create_override_v1_pricing_overrides_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -889,6 +929,41 @@ export interface components {
             project_id?: string | null;
             /** Scopes */
             scopes: ("events:write" | "runs:read" | "artifacts:write" | "policy:check")[];
+        };
+        /** CreateOverride */
+        CreateOverride: {
+            /** Cached Input Per Million */
+            cached_input_per_million?: number | string | null;
+            /** Input Per Million */
+            input_per_million: number | string;
+            /**
+             * Model Pattern
+             * @description Glob over the model name, e.g. `my-model*`.
+             */
+            model_pattern: string;
+            /** Note */
+            note?: string | null;
+            /** Output Per Million */
+            output_per_million: number | string;
+            /**
+             * Project Id
+             * @description Omit for the whole workspace.
+             */
+            project_id?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /**
+             * Request Price
+             * @default 0
+             */
+            request_price: number | string;
+            /**
+             * Valid From
+             * Format: date-time
+             * @description Applies to calls at or after this time (UTC); default: always.
+             * @default 1970-01-01T00:00:00Z
+             */
+            valid_from: string;
         };
         /** CreateProject */
         CreateProject: {
@@ -1372,6 +1447,39 @@ export interface components {
             status: "ok";
             /** Version */
             version: string;
+        };
+        /** RebuildOut */
+        RebuildOut: {
+            /**
+             * Matched
+             * @description Runs selected (newest first, at most `limit`).
+             */
+            matched: number;
+            /**
+             * Queued
+             * @description Re-derivation jobs created; already-queued runs add none.
+             */
+            queued: number;
+            /**
+             * Truncated
+             * @description True when older runs were left out by `limit`.
+             */
+            truncated: boolean;
+        };
+        /** RebuildRequest */
+        RebuildRequest: {
+            /**
+             * Limit
+             * @default 10000
+             */
+            limit: number;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Since
+             * @description Only runs started at or after this.
+             */
+            since?: string | null;
         };
         /** ReliabilityReport */
         ReliabilityReport: {
@@ -2777,6 +2885,78 @@ export interface operations {
             };
         };
     };
+    rebuild_costs_v1_cost_rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RebuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RebuildOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller may not change prices. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace or project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     ingest_event_v1_events_post: {
         parameters: {
             query?: never;
@@ -3619,6 +3799,87 @@ export interface operations {
             };
             /** @description A parameter is invalid. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_override_v1_pricing_overrides_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOverride"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller may not change prices. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace or project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The workspace already has 1000 overrides. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -22,6 +22,7 @@ from abb_api.db import tables as t
 from abb_api.ids import new_uuid
 from abb_api.projects.repository import ProjectRepository
 from abb_api.tenancy import TenantContext
+from abb_api.workspaces.repository import lock_workspace
 
 LAST_USED_RESOLUTION = timedelta(minutes=1)
 
@@ -200,11 +201,7 @@ class ApiKeyRepository:
 
     async def lock_for_create(self) -> None:
         """Serialise key creation per workspace, so the bound cannot be raced past."""
-        await self._conn.execute(
-            select(t.workspaces.c.id)
-            .where(t.workspaces.c.id == self._tenant.workspace_id)
-            .with_for_update(key_share=True)
-        )
+        await lock_workspace(self._conn, self._tenant)
 
     async def revoke(self, key_id: str, now: datetime) -> bool:
         """Revoke a key of this tenant. False if there is no such active key here."""

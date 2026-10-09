@@ -682,3 +682,48 @@ is visible in logs and capped in the table; a future "who viewed what" requireme
   - *Session minting for tests* goes straight to the database (`tests/auth_helpers.py`); the CLI `create-session` stays in step 12.
   - *Startup warning* is emitted by `create_app` (the OIDC client factory) when OIDC is configured and `ABB_ENVIRONMENT != production`.
   - *Not yet done in step 3 (by design, later steps):* the stream re-check and the sliding opt-out for it (step 11), audit rows for denials (step 5).
+
+### Steps 5-8 (audit, members and invitations, API keys, pricing writes)
+
+- **Step 5 (0046, 0047, audit).**
+  - `audit_log.id` is a `BIGINT GENERATED ALWAYS AS IDENTITY` (strictly increasing, so a cursor needs no tie-break); the index is plain
+    `(workspace_id, occurred_at, id)` (Postgres scans it backwards for newest first; a `DESC` expression index would make `compare_metadata`
+    report drift). `details` is also CHECKed to be a JSON object, and the text columns have length CHECKs.
+  - The migration module `0047_audit_log.py` exports `APPEND_ONLY_TABLES = ("events", "audit_log")`; `test_runtime_role.py` loads it by file
+    path (module names starting with digits cannot be imported normally), asserts those tables have no UPDATE/DELETE/TRUNCATE but keep
+    SELECT+INSERT, and that every other table stays writable.
+  - Denials are audited from `require()` (first stage) and from `authorize_audited()` (checks that need the loaded resource: `member.write_owner`,
+    `Own(api_key.revoke)`). The denial row's `action` is the required permission; `details` hold only the HTTP method and the route
+    *template*. Key denials are log lines only. The bucket is injectable (`app.state.denial_limiter`) so the flood test has an exact bound.
+  - CLI: one row per mutating command (`workspace.create`, `project.create`, `api_key.create/revoke`, `pricing_override.create`, `cost.rebuild`, and
+    the same for `seed`), in the command's own transaction, `actor_id = cli:<os user>`. `refresh-analytics` (derived state only) is not audited.
+  - `details` are validated by `clean_details` (flat scalars/lists, <= 20 items, values <= 200 chars, no key naming a token, secret, cookie,
+    authorization, password, credential, code or state); a violation is a programming error that tests catch.
+- **Step 6 (members, invitations).**
+  - Logic that inspects roles lives in `workspaces/members.py` and `authz/members.py`; `test_no_scattered_checks` allows `workspaces/members.py`
+    next to `workspaces/repository.py` (routes live in `members_router.py`, which stays free of role access). The OWNER-involvement rule itself is
+    in `authz/members.py` (`authorize_role_change`).
+  - Last-owner rule: `SELECT ... WHERE role='OWNER' ORDER BY user_id FOR UPDATE` first, then the target row; verified by mutation (removing the
+    `FOR UPDATE` makes `test_two_owners_removing_each_other_at_once_leave_one` fail).
+  - Self-changes follow the same rules and no more: there is no self-service "leave" for roles without `member.write`.
+  - Per-workspace bounds (open invitations, members at acceptance, active keys, overrides) serialise on `lock_workspace()`
+    (`FOR NO KEY UPDATE` on the workspace row, so foreign-key checks of other inserts are not blocked).
+  - Invitation outcomes: unknown or revoked token `404 INVITATION_NOT_FOUND`; reused `409 INVITATION_USED`; lapsed `410 INVITATION_EXPIRED`;
+    other or unverified email `403 INVITATION_EMAIL_MISMATCH`; already a member `409 ALREADY_MEMBER`; a header naming another workspace
+    `404 WORKSPACE_NOT_FOUND`. Lapsed open invitations are retired (marked revoked at their expiry) whenever someone invites, which frees the
+    one-open-per-email slot and the 200 bound. Accepting is audited in the invitation's workspace as `invitation.accept` by the accepting user.
+  - `POST /v1/invitations/accept` is `SESSION_ONLY` in the registry (like `/v1/me`): it has its own tests instead of a role-matrix row.
+  - Unchanged role (`PATCH` to the current role) answers 200 and writes no audit row.
+- **Step 7 (keys).**
+  - D9 as written ("implied actions subset of the creator's") would forbid every person from creating an ingestion key, because no role holds
+    `event.write`/`artifact.write`. The rule therefore excludes `INGESTION_ACTIONS`: `ungrantable_actions = scope_actions(scopes) - INGESTION_ACTIONS -
+    actor.actions`; the end-to-end test patches the role matrix to prove the 422 `SCOPE_NOT_ALLOWED` path, since no current role can trigger it.
+  - Ingestion scopes (`events:write`, `artifacts:write`) require a `project_id` (`422 PROJECT_REQUIRED`): workspace-wide keys cannot ingest anyway.
+  - `require(action, owned=True)` lets a holder of only `Own(action)` through the dependency; the handler then loads the key and calls
+    `authorize_audited(..., key)`. A key that is revoked, unknown, malformed or foreign is `404 KEY_NOT_FOUND` for everyone who reaches the handler.
+  - The creation response carries `Cache-Control: no-store`. The list shows keys that are not revoked (active or expired), at most 500.
+- **Step 8 (pricing writes).**
+  - Overrides are capped at 1000 per workspace (`409 LIMIT_REACHED`): the table is append-only, so a bound was needed (not in the plan's list).
+    Prices are `0..1,000,000` with at most 9 decimals and finite; `valid_from` must carry a timezone and lie between 1970 and 2100.
+  - `POST /v1/cost/rebuild` takes `project_id`, `since`, `limit` (1..10,000, default 10,000), answers `202 {matched, queued, truncated}`; repeated calls
+    are idempotent while jobs are pending (dedupe key). BILLING may call it although it cannot read runs: the response carries counts only.

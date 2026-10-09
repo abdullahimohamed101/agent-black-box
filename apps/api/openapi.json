@@ -829,6 +829,130 @@
         "title": "CreateKey",
         "type": "object"
       },
+      "CreateOverride": {
+        "properties": {
+          "cached_input_per_million": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cached Input Per Million"
+          },
+          "input_per_million": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
+                "type": "string"
+              }
+            ],
+            "title": "Input Per Million"
+          },
+          "model_pattern": {
+            "description": "Glob over the model name, e.g. `my-model*`.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]+$",
+            "title": "Model Pattern",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "output_per_million": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
+                "type": "string"
+              }
+            ],
+            "title": "Output Per Million"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Omit for the whole workspace.",
+            "title": "Project Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "request_price": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Request Price"
+          },
+          "valid_from": {
+            "default": "1970-01-01T00:00:00Z",
+            "description": "Applies to calls at or after this time (UTC); default: always.",
+            "format": "date-time",
+            "title": "Valid From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_pattern",
+          "input_per_million",
+          "output_per_million"
+        ],
+        "title": "CreateOverride",
+        "type": "object"
+      },
       "CreateProject": {
         "properties": {
           "name": {
@@ -2079,6 +2203,70 @@
           "database"
         ],
         "title": "ReadyResponse",
+        "type": "object"
+      },
+      "RebuildOut": {
+        "properties": {
+          "matched": {
+            "description": "Runs selected (newest first, at most `limit`).",
+            "title": "Matched",
+            "type": "integer"
+          },
+          "queued": {
+            "description": "Re-derivation jobs created; already-queued runs add none.",
+            "title": "Queued",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "True when older runs were left out by `limit`.",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "matched",
+          "queued",
+          "truncated"
+        ],
+        "title": "RebuildOut",
+        "type": "object"
+      },
+      "RebuildRequest": {
+        "properties": {
+          "limit": {
+            "default": 10000,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Only runs started at or after this.",
+            "title": "Since"
+          }
+        },
+        "title": "RebuildRequest",
         "type": "object"
       },
       "ReliabilityReport": {
@@ -4664,6 +4852,107 @@
         ]
       }
     },
+    "/v1/cost/rebuild": {
+      "post": {
+        "description": "Queues the newest runs (optionally one project, optionally since a time) to be re-derived with the current prices. Bounded to 10,000 runs per call; repeat with `since` for older ones.",
+        "operationId": "rebuild_costs_v1_cost_rebuild_post",
+        "parameters": [
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RebuildRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebuildOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller may not change prices."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace or project not found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Re-derive cost for past runs",
+        "tags": [
+          "cost"
+        ]
+      }
+    },
     "/v1/events": {
       "post": {
         "operationId": "ingest_event_v1_events_post",
@@ -5768,6 +6057,117 @@
           }
         ],
         "summary": "List the prices used to compute cost",
+        "tags": [
+          "cost"
+        ]
+      }
+    },
+    "/v1/pricing/overrides": {
+      "post": {
+        "description": "Owners, admins and billing. Overrides are append-only: a correction is a newer row for the same pattern. Past runs keep their cost until `POST /v1/cost/rebuild`.",
+        "operationId": "create_override_v1_pricing_overrides_post",
+        "parameters": [
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOverride"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller may not change prices."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace or project not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The workspace already has 1000 overrides."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Add a price override",
         "tags": [
           "cost"
         ]

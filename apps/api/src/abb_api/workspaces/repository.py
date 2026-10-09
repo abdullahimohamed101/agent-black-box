@@ -14,6 +14,19 @@ from abb_api.db import tables as t
 from abb_api.tenancy import TenantContext
 
 
+async def lock_workspace(conn: AsyncConnection, tenant: TenantContext) -> None:
+    """Serialise changes that are bounded per workspace (members, invitations, keys, overrides).
+
+    `FOR NO KEY UPDATE` does not block the key-share locks that foreign keys take, so audit and
+    project inserts into the same workspace are not held up; two bounded creators still queue.
+    """
+    await conn.execute(
+        select(t.workspaces.c.id)
+        .where(t.workspaces.c.id == tenant.workspace_id)
+        .with_for_update(key_share=True)
+    )
+
+
 @dataclass(frozen=True)
 class Member:
     user_id: uuid.UUID
@@ -104,16 +117,7 @@ class MembershipRepository:
         return [r.user_id for r in rows]
 
     async def lock_workspace(self) -> None:
-        """Serialise changes that are bounded per workspace (members, open invitations).
-
-        `FOR NO KEY UPDATE` does not block the key-share locks that foreign keys take, so audit and
-        project inserts into the same workspace are not held up.
-        """
-        await self._conn.execute(
-            select(t.workspaces.c.id)
-            .where(t.workspaces.c.id == self._tenant.workspace_id)
-            .with_for_update(key_share=True)
-        )
+        await lock_workspace(self._conn, self._tenant)
 
     async def add(self, user_id: uuid.UUID, role: str, *, invited_by: uuid.UUID | None) -> None:
         try:
