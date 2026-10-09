@@ -55,6 +55,9 @@ def _login_service(request: Request) -> LoginService:
 
 
 def _throttle(request: Request) -> None:
+    # Sign-in *starts* only. A callback is bound to the browser's own login cookie and a state it
+    # consumes, so it is never behind a pool an anonymous client could drain (security review F1).
+    # This is a ceiling that protects the database, not a fairness limit: no client address here.
     limiter: RateLimiter = request.app.state.login_limiter
     wait = limiter.acquire("auth", events=1, bytes_=0)
     if wait is not None:
@@ -108,7 +111,6 @@ async def callback(
     service = _login_service(request)
     clear = cookies.clear_cookie(settings, cookies.LOGIN_COOKIE, path=cookies.LOGIN_COOKIE_PATH)
     try:
-        _throttle(request)
         finished = await service.finish(
             code=code,
             state=state,

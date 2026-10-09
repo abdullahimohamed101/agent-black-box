@@ -195,10 +195,14 @@ Kafka/ClickHouse/Redis/Kubernetes.
   the real browser flow against the fake provider (`scripts/auth-e2e.sh`, CI job `auth-e2e`). The web keeps an `ABB_WEB_API_KEY` fallback
   (cookie first, then key, with a deprecation warning) from step 13 until step 15 removes it, so CI's E2E jobs stay green on every commit.
 - **D15 Login rate limiting.** The API never sees client addresses (every login arrives through the Next relay) and ignores `X-Forwarded-For`/
-  `Forwarded` entirely in this phase (no `ABB_TRUSTED_PROXY_CIDRS` yet). The per-client limit therefore lives in the Next route handlers
-  `/api/auth/login` and `/api/auth/callback` (token bucket keyed by the client address Next sees, default 10/min, bounded map), and the API keeps a
-  **global** bucket on `/v1/auth/login` + `/callback` sized above the Next limit times the expected number of web instances (default 600/min) as a
-  backstop that one client cannot exhaust on its own. The proxy strips every client-supplied `X-Forwarded-*`/`Forwarded` header.
+  `Forwarded`. Next keeps a client-supplied `X-Forwarded-For`, so an address is trusted only when `ABB_TRUST_PROXY=1` declares that a proxy we run
+  sets it (the last entry is used: earlier ones are client-supplied). Rules (security review F1): (1) only sign-in *starts* are limited; the per-address
+  bucket (default 10/min, bounded map) lives in the Next handler `/api/auth/login`, and without `ABB_TRUST_PROXY` there is no client identity and
+  nothing is refused there; (2) there is no shared pool in the web server, because any pool an anonymous client can drain refuses every other person;
+  (3) a callback is bound to the browser's own `abb_login` cookie and a consumed state, so it is never refused by a limiter (without the cookie the web
+  handler fails it locally, without calling the API); (4) the API keeps one global ceiling on `/v1/auth/login` only (default 6000/min) that protects
+  the database and is not a fairness limit. Residual risk (KI-073): without a trusted proxy, one client sustaining more than the ceiling (about
+  100 requests a second) can block new sign-ins, never callbacks or existing sessions. The proxy strips every client-supplied `X-Forwarded-*`/`Forwarded` header.
 - **D16 Environment gating.** Every unsafe convenience (`create-session`, `seed`'s dev owner, `http://` issuer, fixture user, the fake provider in
   compose) is gated on `ABB_ENVIRONMENT in {"development", "test"}`, never on `!= production`; `create-session` and the dev owner additionally
   need `ABB_ALLOW_DEV_SESSIONS=1`. The API logs a WARNING at startup when OIDC is configured and the environment is not `production`. The
@@ -777,7 +781,7 @@ is visible in logs and capped in the table; a future "who viewed what" requireme
   the URL slug, `permissions` is empty (no Settings link), projects come from `/v1/projects` with the key. All four E2E scripts (`e2e-web-real`, `analytics-e2e`,
   `stream-e2e`, `coding-e2e`) pass on it.
 - **Login limiter (D15)**: Next keeps a client-supplied `X-Forwarded-For` (`??=` in `base-server.js`), so the address is a hint. The per-client bucket (10/min) is therefore
-  paired with a per-instance bucket over everyone (120/min); the API keeps its global backstop. Unknown address shares one bucket.
+  ignored unless `ABB_TRUST_PROXY=1`; there is no per-instance bucket (review F1); the API keeps its global ceiling on starts only.
 - **Workspace switcher** is a `<details>` list of links, not a `<select>`: option roles collided with the timeline's listbox selectors in the existing Playwright specs.
 - **Fixture mode** serves one person with two workspaces (`default` OWNER, `viewer-only` VIEWER), any other slug as an OWNER workspace (the e2e specs use their own slugs), and
   read-only settings data; writes through the proxy are `405 FIXTURE_READ_ONLY`.

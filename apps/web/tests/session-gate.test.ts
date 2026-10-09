@@ -152,7 +152,7 @@ describe("workspace resolution (KI-027)", () => {
 describe("login limiter", () => {
   it("refills over time and forgets the oldest client when full", () => {
     let now = 0;
-    const limiter = new LoginLimiter(2, 1000, 2, () => now);
+    const limiter = new LoginLimiter(2, 2, () => now);
     expect(limiter.acquire("a")).toBeNull();
     expect(limiter.acquire("a")).toBeNull();
     expect(limiter.acquire("a")).toBeGreaterThan(0);
@@ -162,9 +162,17 @@ describe("login limiter", () => {
     limiter.acquire("c"); // "a" is evicted: bounded memory
     expect(limiter.acquire("a")).toBeNull();
   });
-  it("keys on the first forwarded address and shares one bucket when there is none", () => {
-    expect(clientKey(new Headers({ "x-forwarded-for": "1.2.3.4, 10.0.0.1" }))).toBe("1.2.3.4");
-    expect(clientKey(new Headers())).toBe("unknown");
-    expect(clientKey(new Headers({ "x-forwarded-for": "x".repeat(200) }))).toBe("unknown");
+  it("trusts a forwarded address only behind a declared proxy, and then only its own entry", () => {
+    const forwarded = new Headers({ "x-forwarded-for": "6.6.6.6, 1.2.3.4" });
+    expect(clientKey(forwarded)).toBeNull();
+    vi.stubEnv("ABB_TRUST_PROXY", "1");
+    expect(clientKey(forwarded)).toBe("1.2.3.4");
+    expect(clientKey(new Headers())).toBeNull();
+    expect(clientKey(new Headers({ "x-forwarded-for": "x".repeat(200) }))).toBeNull();
+    vi.unstubAllEnvs();
+  });
+  it("never limits a client it cannot identify", () => {
+    const limiter = new LoginLimiter(1);
+    for (let i = 0; i < 50; i++) expect(limiter.acquire(null)).toBeNull();
   });
 });

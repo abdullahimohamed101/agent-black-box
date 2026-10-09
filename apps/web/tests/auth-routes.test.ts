@@ -33,6 +33,7 @@ function stubFetch(res: Response | Error) {
 }
 const get = (path: string, headers: Record<string, string> = {}) =>
   new Request(`${ORIGIN}${path}`, { headers });
+const withLogin = (path: string) => get(path, { cookie: `abb_login=${STATE}` });
 const post = (path: string, headers: Record<string, string> = {}) =>
   new Request(`${ORIGIN}${path}`, { method: "POST", headers });
 
@@ -111,8 +112,9 @@ describe("GET /api/auth/login", () => {
     );
   });
 
-  it("limits sign-in starts per client address and tells the browser when to retry", async () => {
-    setLoginLimiter(new LoginLimiter(2, 100));
+  it("limits sign-in starts per trusted client address and tells the browser when to retry", async () => {
+    vi.stubEnv("ABB_TRUST_PROXY", "1");
+    setLoginLimiter(new LoginLimiter(2));
     const fetchMock = stubFetch(upstream(302, [["location", "https://idp.example/a"]]));
     const from = (ip: string) => get("/api/auth/login", { "x-forwarded-for": ip });
     expect((await loginRoute(from("1.1.1.1"))).status).toBe(302);
@@ -128,15 +130,30 @@ describe("GET /api/auth/login", () => {
     );
   });
 
-  it("is bounded for everyone together when addresses rotate", async () => {
-    setLoginLimiter(new LoginLimiter(5, 3));
+  it("lets one client rotating X-Forwarded-For make no one else's sign-in fail (security review F1)", async () => {
+    // No ABB_TRUST_PROXY: the header is client-supplied and must pick no bucket and drain no shared pool.
+    setLoginLimiter(new LoginLimiter(5));
     stubFetch(upstream(302, [["location", "https://idp.example/a"]]));
-    const results: (string | null)[] = [];
-    for (let i = 0; i < 6; i++) {
-      const res = await loginRoute(get("/api/auth/login", { "x-forwarded-for": `9.9.9.${i}` }));
-      results.push(res.headers.get("location"));
+    for (let i = 0; i < 500; i++) {
+      const res = await loginRoute(
+        get("/api/auth/login", { "x-forwarded-for": `9.9.${i >> 8}.${i & 255}` }),
+      );
+      expect(res.headers.get("location")).toBe("https://idp.example/a");
     }
-    expect(results.filter((l) => l === "/login?error=rate_limited")).toHaveLength(3);
+    const honest = await loginRoute(get("/api/auth/login", { "x-forwarded-for": "5.5.5.5" }));
+    expect(honest.headers.get("location")).toBe("https://idp.example/a");
+  });
+
+  it("behind a trusted proxy a client cannot choose its bucket by prepending addresses", async () => {
+    vi.stubEnv("ABB_TRUST_PROXY", "1");
+    setLoginLimiter(new LoginLimiter(1));
+    stubFetch(upstream(302, [["location", "https://idp.example/a"]]));
+    const via = (spoof: string) =>
+      get("/api/auth/login", { "x-forwarded-for": `${spoof}, 7.7.7.7` });
+    expect((await loginRoute(via("1.1.1.1"))).status).toBe(302);
+    expect((await loginRoute(via("2.2.2.2"))).headers.get("location")).toBe(
+      "/login?error=rate_limited",
+    );
   });
 
   it("does nothing in fixture mode", async () => {
@@ -177,44 +194,58 @@ describe("GET /api/auth/callback", () => {
   it("falls back to / for a Location that is not an app path", async () => {
     for (const location of ["https://evil.example/", "//evil.example", "/\\evil", "/w/a%0d%0ax"]) {
       stubFetch(upstream(302, [["location", location]]));
-      const res = await callbackRoute(get("/api/auth/callback?code=a&state=b"));
+      const res = await callbackRoute(withLogin("/api/auth/callback?code=a&state=b"));
       expect(res.headers.get("location"), location).toBe("/");
     }
   });
 
   it("sends a failed sign-in to /login and still relays the cleared login cookie, never a session", async () => {
     stubFetch(upstream(400, [["set-cookie", clearLogin]]));
-    const res = await callbackRoute(get("/api/auth/callback?code=a&state=b"));
+    const res = await callbackRoute(withLogin("/api/auth/callback?code=a&state=b"));
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("/login?error=login_failed");
     expect(res.headers.getSetCookie()).toEqual([clearLogin]);
     stubFetch(upstream(401, [["set-cookie", clearLogin]]));
-    const again = await callbackRoute(get("/api/auth/callback?code=a&state=b"));
+    const again = await callbackRoute(withLogin("/api/auth/callback?code=a&state=b"));
     expect(again.headers.getSetCookie().join(";")).not.toContain("abb_session");
   });
 
   it("forwards only code, state and error, within bounds", async () => {
     const fetchMock = stubFetch(upstream(400));
     await callbackRoute(
-      get(`/api/auth/callback?code=a&state=b&error=denied&extra=1&state2=${"x".repeat(10)}`),
+      withLogin(`/api/auth/callback?code=a&state=b&error=denied&extra=1&state2=${"x".repeat(10)}`),
     );
     expect((fetchMock.mock.calls[0]! as unknown as [string])[0]).toBe(
       "http://api.internal/v1/auth/callback?code=a&state=b&error=denied",
     );
     const big = stubFetch(upstream(400));
-    await callbackRoute(get(`/api/auth/callback?code=${"c".repeat(3000)}&state=b`));
+    await callbackRoute(withLogin(`/api/auth/callback?code=${"c".repeat(3000)}&state=b`));
     expect((big.mock.calls[0]! as unknown as [string])[0]).toBe(
       "http://api.internal/v1/auth/callback?state=b",
     );
   });
 
-  it("is rate limited like the login start", async () => {
-    setLoginLimiter(new LoginLimiter(1, 100));
+  it("is never refused by the sign-in limiter, even when it is exhausted", async () => {
+    vi.stubEnv("ABB_TRUST_PROXY", "1");
+    setLoginLimiter(new LoginLimiter(1));
     const fetchMock = stubFetch(upstream(400));
-    await callbackRoute(get("/api/auth/callback?code=a&state=b"));
-    const second = await callbackRoute(get("/api/auth/callback?code=a&state=b"));
-    expect(second.headers.get("location")).toBe("/login?error=rate_limited");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 5; i++) {
+      const res = await callbackRoute(
+        get("/api/auth/callback?code=a&state=b", {
+          cookie: `abb_login=${STATE}`,
+          "x-forwarded-for": "3.3.3.3",
+        }),
+      );
+      expect(res.headers.get("location")).toBe("/login?error=login_failed");
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("does not ask the API when the browser has no login cookie", async () => {
+    const fetchMock = stubFetch(upstream(302, [["location", "/"]]));
+    const res = await callbackRoute(get("/api/auth/callback?code=a&state=b"));
+    expect(res.headers.get("location")).toBe("/login?error=login_failed");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

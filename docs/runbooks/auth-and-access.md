@@ -31,6 +31,11 @@ field names the cause: `state_cookie_mismatch`, `state_unknown_or_expired`, `ide
 `idp_error`, a `token_*` problem (`token_signature`, `token_nonce`, `token_expired`, `token_azp`...), `unknown_kid`, a `discovery_*` problem
 (`discovery_untrusted_host` means the provider needs `ABB_OIDC_EXTRA_HOSTS`), or `provider_unavailable`. Logs never contain tokens, codes, states, cookies, emails or the provider's error text.
 
+Behind a reverse proxy or load balancer set `ABB_TRUST_PROXY=1` on the **web** server only when that proxy overwrites or appends
+`X-Forwarded-For` for every request (the web server uses the last entry) and clients cannot reach the web port directly. Without it the web
+server has no client address and applies no per-client sign-in limit; it never reads a client-supplied header on its own. Never set it when the
+web port is reachable without the proxy.
+
 ## 2. The first owner, and everyone after
 Sign-up is invite-only. Create the workspace and its first OWNER with the CLI (on a host that can reach the database as the runtime role):
 
@@ -87,6 +92,6 @@ The API refuses to remove the last owner, so this happens only if the owner's ac
 | "no workspaces" after signing in | the person has no membership: invite them or `add-member` |
 | `403 PERMISSION_DENIED` / "Not available for your role" | working as designed; check the role in Settings, Members |
 | `404` on a workspace or run you know exists | the person is not a member of that workspace (a workspace they cannot see is a 404 by design) |
-| `429` on login | the login limiter (10 a minute per client address, 120 a minute per web instance, 600 a minute across the API); wait a minute |
+| `429` on login | the login limiter (10 sign-in starts a minute per client address, only with `ABB_TRUST_PROXY=1`; 6000 a minute across the API); wait a minute |
 | A live page says "Live updates stopped: your access to this run changed" | the credential, session or membership ended while the stream was open (`STREAM_UNAUTHORIZED`); reload and sign in again |
 | Streams limited per person | `429 STREAM_LIMIT` with `details.scope: user`: 10 open streams across one person's tabs |

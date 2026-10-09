@@ -37,9 +37,13 @@ The Next.js server and the FastAPI API must trust each other without a shared se
   never relayed by the generic proxy; the sign-in handlers use `redirect: "manual"` and relay `Location` and `Set-Cookie`. A cookie-authenticated
   request that is not `GET`/`HEAD` must carry an `Origin` exactly equal to `ABB_WEB_ORIGIN`, checked by the proxy and again by the API. The API
   ignores `X-Forwarded-*` and never trusts the web server's network position: there is no internal bypass.
-- **Login is rate-limited where the client is visible**: per client address (10 a minute) and per instance (120 a minute) in the web handlers,
-  and a global backstop in the API (`ABB_LOGIN_GLOBAL_PER_MINUTE`, 600). Next keeps a client-supplied `X-Forwarded-For`, so the address is a
-  hint; the per-instance bucket and the API backstop are what actually bound abuse. Phase 19's shared limiter replaces both (KI-019).
+- **Login starts are rate-limited only where the client is known.** Next keeps a client-supplied `X-Forwarded-For`, so the web handler trusts an
+  address only when `ABB_TRUST_PROXY=1` says a proxy we run sets it (it uses the last entry) and then allows 10 starts a minute per address (bounded
+  map); without that setting nothing is refused there. There is no pool shared by everyone: an anonymous client that can drain one refuses every other
+  person (review F1, an earlier draft had this flaw). A callback is bound to the browser's `abb_login` cookie and a consumed state and is never
+  refused by a limiter. The API keeps one ceiling on `/v1/auth/login` (`ABB_LOGIN_GLOBAL_PER_MINUTE`, 6000) that protects the database, not fairness;
+  without a trusted proxy a client above it (about 100 requests a second) can block new sign-ins, never callbacks or existing sessions (KI-073).
+  Phase 19's shared limiter replaces this (KI-019).
 - **Unscoped lookups are now three**: `api_keys.key_id`, `sessions.token_hash`, `login_states.state_hash` (each by an unguessable value, then
   every query carries the workspace). `GET /v1/me` is the one deliberate read of a person's memberships across workspaces.
 - **Development conveniences are gated on `ABB_ENVIRONMENT in {development, test}`, never `!= production`**: an `http` issuer, the fake

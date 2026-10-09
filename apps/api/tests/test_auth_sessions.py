@@ -601,6 +601,8 @@ async def test_the_login_endpoints_have_a_global_backstop(
         assert statuses == [302, 302, 302, 429, 429]
         limited = await instance.client.get("/v1/auth/login")
         assert limited.headers["retry-after"]
+        # A callback is not behind that pool: a flood of starts fails no one's sign-in (review F1).
+        assert (await instance.client.get("/v1/auth/callback")).status_code != 429
         # Keys and the rest of the API are not behind that limiter.
         assert (await instance.get("/v1/runs", token="reader")).status_code == 200
 

@@ -102,20 +102,18 @@ const BOUNDS = { code: 2048, state: 128, error: 200 } as const;
 /** `GET /api/auth/callback?code&state` (or `error`): the identity provider's redirect target. */
 export async function callbackRoute(request: Request): Promise<Response> {
   if (fixturesMode()) return redirect("/", 302);
-  const limited = throttled(request);
-  if (limited) return limited;
+  // The callback is bound to this browser's own login cookie, so the anonymous-flood limiter never applies to it;
+  // without the cookie there is nothing to complete, and the API is not asked.
+  const login = cookieValue(request.headers.get("cookie"), LOGIN_COOKIE);
+  if (!login) return toLogin("login_failed");
   const incoming = new URL(request.url).searchParams;
   const forward = new URLSearchParams();
   for (const name of ["code", "state", "error"] as const) {
     const value = incoming.get(name);
     if (value !== null && value.length <= BOUNDS[name]) forward.set(name, value);
   }
-  const login = cookieValue(request.headers.get("cookie"), LOGIN_COOKIE);
   const upstream = await callApi(`/v1/auth/callback?${forward.toString()}`, {
-    headers: {
-      accept: "application/json",
-      ...(login ? { cookie: `${LOGIN_COOKIE}=${login}` } : {}),
-    },
+    headers: { accept: "application/json", cookie: `${LOGIN_COOKIE}=${login}` },
   });
   if (!upstream) return toLogin("unavailable");
   const cookies = issuedCookies(upstream); // on failure this is just the spent login cookie being cleared
