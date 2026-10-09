@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { analyticsPath, projectPath, runsPath, type Base } from "@/lib/routes";
+import { SignOutButton } from "./SignOutButton";
 import { useWorkspaceOptional } from "./WorkspaceProvider";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
@@ -53,10 +54,8 @@ export function AppShell({ base, children }: { base: Base; children: React.React
             <span className="muted" title={ws.role ?? undefined}>
               {ws.user.email}
             </span>
-            {/* A POST form: signing out is never a GET (a cross-site link must not be able to do it). */}
-            <form action="/api/auth/logout" method="post">
-              <button type="submit">Sign out</button>
-            </form>
+            {/* A POST: signing out is never a GET (a cross-site link must not be able to do it). */}
+            <SignOutButton />
           </div>
         )}
       </header>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { SignOutButton } from "@/components/SignOutButton";
 import { ApiHealth } from "@/components/ApiHealth";
 import { fixturesMode, legacyKey } from "@/server/config";
 import { loadMe } from "@/server/session";
@@ -41,9 +42,7 @@ export default async function Home() {
         You are signed in, but you are not a member of any workspace. Ask a workspace owner for an
         invitation link, then open it.
       </p>
-      <form action="/api/auth/logout" method="post">
-        <button type="submit">Sign out</button>
-      </form>
+      <SignOutButton />
     </main>
   );
 }
