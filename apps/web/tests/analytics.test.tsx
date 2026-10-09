@@ -116,6 +116,18 @@ describe("charts render telemetry as text", () => {
     expect(container.querySelector("img, script")).toBeNull();
     expect(screen.getAllByText(hostile, { exact: false }).length).toBeGreaterThan(0);
   });
+  it("a single day renders one capped column with its figure (KI-064)", () => {
+    renderWithQuery(
+      <DayColumns
+        caption="Daily spend"
+        valueHeader="Cost (USD)"
+        days={[{ label: "2026-10-09", value: 0.22, display: "$0.22" }]}
+      />,
+    );
+    expect(document.querySelectorAll(".column")).toHaveLength(1);
+    const table = screen.getByRole("table", { name: "Daily spend" });
+    expect(within(table).getByRole("cell", { name: "$0.22" })).toBeInTheDocument();
+  });
   it("day columns carry their figures in a table", () => {
     renderWithQuery(
       <DayColumns

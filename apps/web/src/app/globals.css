@@ -762,7 +762,9 @@ h3 {
   border-bottom: 1px solid var(--border);
 }
 .column {
-  flex: 1;
+  /* Grow to share the row, but a lone day must not become one slab. */
+  flex: 1 1 0;
+  max-width: 3rem;
   height: 100%;
   display: flex;
   align-items: flex-end;

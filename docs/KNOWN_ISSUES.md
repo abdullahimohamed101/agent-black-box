@@ -47,9 +47,6 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 | KI-061 | S3 | LangGraph state changes, checkpoints and sub-graph identity are not mapped to events | no state-diff view for graphs | Phase 9 or on demand | [#39](https://github.com/abdullahimohamed101/agent-black-box/issues/39) |
 | KI-062 | S3 | Client wrappers cover only primary paths (OpenAI `chat.completions.create`/`responses.create`, `with_options`/`copy` and `with_raw_response`; not `with_streaming_response`, `chat.completions.parse`, `beta.*`; Anthropic `messages.create`, not `messages.stream()`; MCP `call_tool` only) | other calls are not traced | On user demand; revisit with Phase 17 | [#40](https://github.com/abdullahimohamed101/agent-black-box/issues/40) |
 | KI-063 | S3 | Adapter spans are not placed in the SDK context (ADR-052), so SDK spans inside a LangGraph node do not nest under the node span | mixed manual and callback instrumentation shows a flatter tree | Phase 9: trace-context propagation | [#41](https://github.com/abdullahimohamed101/agent-black-box/issues/41) |
-| KI-064 | S3 | The analytics "Daily spend" chart (`DayColumns`) renders one solid block when the window holds a single day of data (seen after the Phase 6 demo, 2026-10-09) | the headline chart is unreadable on a fresh install, which is exactly what a first-time user sees | MVP gate (before Phase 15); fix and add a one-day component test | [#50](https://github.com/abdullahimohamed101/agent-black-box/issues/50) |
-| KI-065 | S3 | The home page "API status" widget calls `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) from the browser, which the CSP `connect-src 'self'` blocks, so it always shows "API unreachable" and logs console errors | misleading status and a noisy console in every web deployment; the widget should go through the web server like every other call | MVP gate (before Phase 15) | [#51](https://github.com/abdullahimohamed101/agent-black-box/issues/51) |
-| KI-066 | S3 | One unidentified 404 ("Failed to load resource") is logged in the console when a run page loads; the failing URL was not captured (it is not in the browser's resource timing) | possibly a Next.js prefetch of a missing route; unknown impact | MVP gate: reproduce with the network log, then fix or close | [#52](https://github.com/abdullahimohamed101/agent-black-box/issues/52) |
 
 ## Accepted (documented limitations, no action planned)
 
@@ -66,6 +63,9 @@ close the issue and move the row to Resolved when it is fixed. A deferral is not
 
 | ID | Was | Resolved |
 | --- | --- | --- |
+| KI-064 | Daily spend chart rendered as one solid block with a single day | 2026-10-09: columns capped at 3rem; component test; checked in a browser |
+| KI-065 | home page API status always "unreachable" (browser called the API, blocked by the CSP) | 2026-10-09: the check goes through the web server (`/api/health`); route tests; checked in a browser |
+| KI-066 | unidentified 404 in the console on page load | 2026-10-09: root cause was the missing favicon; added `src/app/icon.svg`; console clean in a browser |
 | KI-054 | ingest p99 and summarizer cost not re-measured after Phase 7 | 2026-10-09: `docs/benchmarks/phase-7-regression-check.md`: realistic runs unchanged; the 30,000-event run's p99 rose about 40% (the KI-016 tail) |
 | KI-020 | runtime DB role could UPDATE/DELETE `events` (and delete them via run cascade) | Phase 3: migrations 0007-0008: `abb_runtime` role, RESTRICT foreign key, no DELETE on parents of events, tested as a role inheriting it; [#4](https://github.com/abdullahimohamed101/agent-black-box/issues/4) closes on merge |
 | KI-001..005 | Node/pnpm, Docker, PostgreSQL, Python 3.12, uv missing | 2026-10-07: installed with approval (Docker via Colima) |
