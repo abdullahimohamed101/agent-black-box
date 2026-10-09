@@ -1,9 +1,9 @@
-"""The built-in price table. Illustrative entries only (ADR-040, KI-050).
+"""The built-in price table (ADR-040, KI-050).
 
-Real vendor prices cannot be verified offline and change often. A wrong default price would make
-every dashboard figure quietly wrong, so this table contains the documentation/fixture models only;
-real models are priced by workspace overrides or by a reviewed new `pricing_version` added here.
-Never edit a published version's prices: add a new version with a later `valid_from`.
+Real vendor prices change often and a wrong default would make every dashboard figure quietly
+wrong, so an entry is added only from a vendor's own pricing page, with its source and fetch date,
+and each batch is a new `pricing_version`. Models without an entry show as unpriced; workspaces can
+add overrides. Never edit a published version's prices: add a new version with a later `valid_from`.
 """
 
 from datetime import UTC, datetime
@@ -15,7 +15,7 @@ BUILTIN_VERSION = "2026-10-01"
 
 _V1 = datetime(2026, 10, 1, tzinfo=UTC)
 
-BUILTIN_ENTRIES: tuple[PriceEntry, ...] = (
+_EXAMPLE_ENTRIES: tuple[PriceEntry, ...] = (
     PriceEntry(
         pricing_version=BUILTIN_VERSION,
         provider="example-provider",
@@ -36,6 +36,35 @@ BUILTIN_ENTRIES: tuple[PriceEntry, ...] = (
         source="illustrative",
     ),
 )
+
+
+# Version 2026-10-09: Anthropic list prices (USD per million tokens) from claude.com/pricing,
+# fetched 2026-10-09. Not yet checked by a human against an invoice. Not included: Haiku 5.5 (the page
+# tiers its price at 100K prompt tokens, which the engine cannot express), legacy models, and every
+# OpenAI model (the vendor page could not be read here; only third-party figures were available).
+ANTHROPIC_VERSION = "2026-10-09"
+_V2 = datetime(2026, 10, 9, tzinfo=UTC)
+_ANTHROPIC_SOURCE = "https://claude.com/pricing (fetched 2026-10-09)"
+
+ANTHROPIC_ENTRIES: tuple[PriceEntry, ...] = tuple(
+    PriceEntry(
+        pricing_version=ANTHROPIC_VERSION,
+        provider="anthropic",
+        model_pattern=pattern,
+        valid_from=_V2,
+        input_per_million=Decimal(inp),
+        output_per_million=Decimal(out),
+        cached_input_per_million=Decimal(cached),
+        source=_ANTHROPIC_SOURCE,
+    )
+    for pattern, inp, out, cached in (
+        ("claude-fable-5-1*", "10", "50", "0.25"),
+        ("claude-opus-5-5*", "4", "20", "0.20"),
+        ("claude-sonnet-5-5*", "2", "10", "0.10"),
+    )
+)
+
+BUILTIN_ENTRIES: tuple[PriceEntry, ...] = (*_EXAMPLE_ENTRIES, *ANTHROPIC_ENTRIES)
 
 
 def builtin_price_book() -> PriceBook:
