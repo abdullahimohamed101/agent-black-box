@@ -8,7 +8,9 @@ from abb_event_schema.event import Event
 from abb_event_schema.ids import IdKind, from_uuid, new_id, to_uuid
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from abb_api.authz import actions
 from abb_api.authz.principal import Principal
+from abb_api.authz.service import holds
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import parse_public_id
@@ -41,11 +43,15 @@ def project_not_found() -> AppError:
     return _not_found("PROJECT_NOT_FOUND", "Project")
 
 
-def event_out(event: Event, has_payload: bool, *, with_payload: bool) -> EventOut:
+def event_out(
+    event: Event, has_payload: bool, *, with_payload: bool, withheld: bool = False
+) -> EventOut:
+    """`withheld`: the caller lacks `payload.read`, so the body is dropped and the response says so
+    (D10). Lists and streams never carry payloads at all, so they never set it."""
     wire = event.to_wire()
     wire.setdefault("attributes", {})
-    wire["payload"] = wire.get("payload") if with_payload else None
-    return EventOut(**wire, has_payload=has_payload)
+    wire["payload"] = wire.get("payload") if with_payload and not withheld else None
+    return EventOut(**wire, has_payload=has_payload, payload_withheld=withheld)
 
 
 def _run_out(record: RunRecord, state: str) -> RunOut:
@@ -242,7 +248,12 @@ class RunService:
             )
         if event is None:
             raise _not_found("EVENT_NOT_FOUND", "Event")
-        return event_out(event, event.payload is not None, with_payload=True)
+        return event_out(
+            event,
+            event.payload is not None,
+            with_payload=True,
+            withheld=not holds(principal, actions.PAYLOAD_READ),
+        )
 
     async def list_spans(
         self, principal: Principal, run_id: str, *, limit: int, cursor: str | None

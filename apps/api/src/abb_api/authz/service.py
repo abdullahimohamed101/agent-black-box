@@ -56,6 +56,11 @@ def authorize(actor: Principal, action: str, resource: Owned | None = None) -> N
     raise PermissionDenied(actor, action)
 
 
+def holds(actor: Principal, action: str) -> bool:
+    """Whether `actor` has `action` outright: for responses that vary by permission, not gate it."""
+    return action in actor.actions
+
+
 def ungrantable_actions(actor: Principal, scopes: frozenset[str]) -> frozenset[str]:
     """What a key with `scopes` could do that `actor` could not (D9): nobody mints a key stronger
     than themselves. Ingestion actions are exempt because no role holds them by design: project

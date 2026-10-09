@@ -66,6 +66,7 @@ export class RunBuilder {
       payload: extra.payload ?? null,
       payload_ref: null,
       has_payload: extra.payload != null,
+      payload_withheld: false,
       tags: [],
       sdk: { name: "fixture", version: "0" },
     };

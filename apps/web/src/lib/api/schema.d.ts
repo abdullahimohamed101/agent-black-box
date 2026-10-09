@@ -1148,6 +1148,12 @@ export interface components {
             } | null;
             /** Payload Ref */
             payload_ref?: string | null;
+            /**
+             * Payload Withheld
+             * @description True when the caller's role lacks `payload.read`: `payload` is then null although `has_payload` may be true. Never set on lists.
+             * @default false
+             */
+            payload_withheld: boolean;
             /** Project Id */
             project_id: string;
             /**

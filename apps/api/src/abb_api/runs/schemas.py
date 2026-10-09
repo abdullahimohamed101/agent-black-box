@@ -119,6 +119,11 @@ class EventOut(BaseModel):
     tags: list[str]
     sdk: dict[str, Any] | None = None
     has_payload: bool
+    payload_withheld: bool = Field(
+        default=False,
+        description="True when the caller's role lacks `payload.read`: `payload` is then null "
+        "although `has_payload` may be true. Never set on lists.",
+    )
 
 
 class EventPage(BaseModel):

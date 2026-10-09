@@ -1365,6 +1365,12 @@
             ],
             "title": "Payload Ref"
           },
+          "payload_withheld": {
+            "default": false,
+            "description": "True when the caller's role lacks `payload.read`: `payload` is then null although `has_payload` may be true. Never set on lists.",
+            "title": "Payload Withheld",
+            "type": "boolean"
+          },
           "project_id": {
             "title": "Project Id",
             "type": "string"
