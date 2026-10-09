@@ -32,6 +32,8 @@ class IdKind(str, Enum):
     EVALUATION = "eval"
     POLICY = "pol"
     APPROVAL = "apr"
+    USER = "usr"  # dashboard users (Phase 15); never appears in events
+    INVITATION = "inv"
 
 
 def id_pattern(kind: IdKind) -> str:

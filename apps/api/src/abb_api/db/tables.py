@@ -94,7 +94,49 @@ users = Table(
     Column("email", Text, nullable=False),
     Column("name", Text),
     _ts("created_at", nullable=False, default_now=True),
+    # OIDC identity (ADR-060). `provider` is the issuer URL. Both NULL = pre-provisioned, not yet
+    # linked; the pair is unique, and may only be set while NULL (UserRepository.link_identity).
+    Column("provider", Text),
+    Column("provider_subject", Text),
+    _ts("email_verified_at"),
+    _ts("last_login_at"),
     Index("uq_users_email_lower", func.lower(Column("email", Text)), unique=True),
+    UniqueConstraint("provider", "provider_subject", name="uq_users_identity"),
+    CheckConstraint(
+        "(provider IS NULL) = (provider_subject IS NULL)", name="ck_users_identity_pair"
+    ),
+)
+
+# People's sessions and login attempts are user-level, not tenant-keyed (like api_keys.key_id they
+# are found by an unguessable token, here its SHA-256, before any workspace is chosen).
+sessions = Table(
+    "sessions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("token_hash", LargeBinary, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("last_seen_at", nullable=False, default_now=True),
+    _ts("expires_at", nullable=False),
+    _ts("idle_expires_at", nullable=False),
+    _ts("revoked_at"),
+    UniqueConstraint("token_hash", name="uq_sessions_token_hash"),
+    CheckConstraint("octet_length(token_hash) = 32", name="ck_sessions_token_hash"),
+    Index("ix_sessions_user", "user_id"),
+    Index("ix_sessions_expires", "expires_at"),
+)
+
+login_states = Table(
+    "login_states",
+    metadata,
+    Column("state_hash", LargeBinary, primary_key=True),
+    Column("nonce", Text, nullable=False),
+    Column("code_verifier", Text, nullable=False),
+    Column("return_to", Text, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("expires_at", nullable=False),
+    CheckConstraint("octet_length(state_hash) = 32", name="ck_login_states_state_hash"),
+    Index("ix_login_states_expires", "expires_at"),
 )
 
 workspace_members = Table(
