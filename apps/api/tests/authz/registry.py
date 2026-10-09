@@ -6,6 +6,7 @@ are tenant-owned ids (so the cross-workspace test can replay them with foreign a
 """
 
 import json
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
@@ -130,6 +131,17 @@ def _put_artifact(side: Side, overrides: dict[str, str]) -> RequestSpec:
     )
 
 
+def _list_projects(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    return RequestSpec("GET", "/v1/projects")
+
+
+def _create_project(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    body = json.dumps({"name": "Probe", "slug": f"probe-{uuid.uuid4().hex[:10]}"}).encode()
+    return RequestSpec(
+        "POST", "/v1/projects", content=body, headers={"content-type": "application/json"}
+    )
+
+
 _ANALYTICS = ("summary", "cost", "reliability", "performance")
 
 CASES: dict[tuple[str, str], RouteCase] = {
@@ -159,6 +171,8 @@ CASES: dict[tuple[str, str], RouteCase] = {
             "GET", "/v1/runs/{run_id}/stream", actions.RUN_READ,
             _get("/v1/runs/{run_id}/stream"), 200, ("run_id",), transport="socket",
         ),
+        RouteCase("GET", "/v1/projects", actions.PROJECT_READ, _list_projects, 200),
+        RouteCase("POST", "/v1/projects", actions.PROJECT_WRITE, _create_project, 201),
         RouteCase(
             "GET", "/v1/pricing", actions.PRICING_READ, _get("/v1/pricing"), 200, ("project_id",)
         ),

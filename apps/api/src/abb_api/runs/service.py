@@ -12,7 +12,7 @@ from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import parse_public_id
-from abb_api.projects.repository import ProjectRepository
+from abb_api.projects.access import authorise_project
 from abb_api.runs import cursors
 from abb_api.runs.event_queries import EventQueries
 from abb_api.runs.queries import RunQueries, RunRecord
@@ -160,7 +160,7 @@ class RunService:
     ) -> RunPage:
         after_key = self._run_cursor(cursor)
         async with self._engine.connect() as conn:
-            scope_project = await self._project_filter(conn, principal, project_id)
+            scope_project = await authorise_project(conn, principal, project_id)
             queries = RunQueries(conn, principal.tenant, principal.project_id)
             records = await queries.page(
                 statuses=statuses,
@@ -282,21 +282,6 @@ class RunService:
         if record is None:
             raise run_not_found()
         return record
-
-    async def _project_filter(
-        self, conn: AsyncConnection, principal: Principal, project_id: str | None
-    ) -> uuid.UUID | None:
-        if project_id is None:
-            return None
-        requested = parse_public_id(IdKind.PROJECT, project_id)
-        if requested is None:
-            raise project_not_found()
-        if principal.project_id is not None:
-            if requested != principal.project_id:
-                raise project_not_found()  # a project key cannot even probe other projects
-        elif await ProjectRepository(conn, principal.tenant).get(requested) is None:
-            raise project_not_found()
-        return requested
 
     @staticmethod
     def _run_cursor(token: str | None) -> tuple[datetime, uuid.UUID] | None:

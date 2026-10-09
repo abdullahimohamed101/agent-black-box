@@ -36,6 +36,7 @@ from abb_api.runs.service import RunService
 from abb_api.streaming.hub import StreamHub
 from abb_api.streaming.router import router as streams_router
 from abb_api.streaming.service import StreamService
+from abb_api.workspaces.router import router as projects_router
 
 # Which credentials may call an operation (documented, and checked by test_openapi).
 _BEARER_ONLY = {
@@ -212,6 +213,7 @@ def create_app(
     app.include_router(streams_router)
     app.include_router(pricing_router)
     app.include_router(analytics_router)
+    app.include_router(projects_router)
     _install_openapi(app, settings)
     return app
 

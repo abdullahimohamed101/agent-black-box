@@ -105,9 +105,10 @@ def test_own_grants_exist_only_for_roles_and_only_for_known_actions() -> None:
 
 def test_every_case_demands_a_real_action_that_some_actor_holds() -> None:
     held = {x for v in SCOPE_ACTIONS.values() for x in v}
+    held |= {x for g in ROLE_GRANTS.values() for x in role_actions_of(g)}
     for case in CASES.values():
         assert case.action in a.ALL_ACTIONS
-        assert case.action in held, f"{case.key}: no key scope can ever call this route"
+        assert case.action in held, f"{case.key}: nobody can ever call this route"
 
 
 def test_payload_read_separates_content_from_metadata() -> None:

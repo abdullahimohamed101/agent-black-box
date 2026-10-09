@@ -21,11 +21,17 @@ INGEST = "allow deny  deny deny   allow  allow deny  deny  allow 401 401 401 401
 LIST = "allow allow allow allow deny  allow deny  deny  allow 401 401 401 401"
 # An id of acme's project alpha: another workspace's key and another project's key see a 404.
 READ_ID = "allow allow allow allow deny  404   deny  deny  404   401 401 401 401"
+EVERY_KEY = "allow allow allow allow allow allow allow allow allow 401 401 401 401"
+NO_KEY = "deny  deny  deny  deny   deny  deny  deny  deny  deny  401 401 401 401"
 UPLOAD = "deny  deny  deny  deny   deny  deny  allow deny  deny  401 401 401 401"
 
 # People: owner admin developer viewer security billing | no_membership removed downgraded
 #         expired_session revoked_session session_as_bearer key_as_cookie owner_no_header
 # Nobody holds an ingestion action; a non-member and a removed member see a 404, never a 403.
+U_PROJECTS = "allow allow allow     allow  allow    allow   | 404 404 allow 401 401 401 401 400"
+U_PROJECT_ADMIN = (
+    "allow allow deny      deny   deny     deny    | 404 404 deny  401 401 401 401 400"
+)
 U_NEVER = "deny  deny  deny      deny   deny     deny    | 404 404 deny  401 401 401 401 400"
 U_RUNS = "allow allow allow     allow  allow    deny    | 404 404 allow 401 401 401 401 400"
 U_MONEY = "allow allow allow     allow  allow    allow   | 404 404 allow 401 401 401 401 400"
@@ -41,6 +47,8 @@ EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/v1/runs/{run_id}/events/{event_id}"): (READ_ID, U_RUNS),
     ("GET", "/v1/runs/{run_id}/spans"): (READ_ID, U_RUNS),
     ("GET", "/v1/runs/{run_id}/stream"): (READ_ID, U_RUNS),
+    ("GET", "/v1/projects"): (EVERY_KEY, U_PROJECTS),
+    ("POST", "/v1/projects"): (NO_KEY, U_PROJECT_ADMIN),
     ("GET", "/v1/pricing"): (LIST, U_MONEY),
     ("GET", "/v1/analytics/summary"): (LIST, U_MONEY),
     ("GET", "/v1/analytics/cost"): (LIST, U_MONEY),
