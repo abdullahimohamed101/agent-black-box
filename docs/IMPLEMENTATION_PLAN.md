@@ -12,11 +12,11 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 2 | Data model, ingestion, run querying, outbox + summarizer | §60, §71-73, §78 | M0-M1 | Complete (merged, CI green) |
 | 3 | Python SDK | §67-68, §17 | M1 | Complete (merged, CI green) |
 | 4 | Core web product (fixtures first, then live API) | §95-100, §135 | M1 | Complete (merged, CI green) |
-| 5 | Live execution streaming (SSE) | §76, §21 | M1 | Complete (PR pending, CI unverified) |
-| 6 | Coding-agent observability + flagship demo | §82-83, §136, §26-27 | M2 | Not started |
-| 7 | Cost and analytics | §79, §22-23, §61 | M3 | Not started |
-| | **MVP gate** (spec §49, §138): human review, launch quality bar | | | |
-| 8 | Framework integrations | §70, §18 | post-MVP | Not started |
+| 5 | Live execution streaming (SSE) | §76, §21 | M1 | Complete (merged, CI green) |
+| 6 | Coding-agent observability + flagship demo | §82-83, §136, §26-27 | M2 | Complete (merged, CI green) |
+| 7 | Cost and analytics | §79, §22-23, §61 | M3 | Complete (merged, CI green) |
+| | **MVP gate** (spec §49, §138): human review, launch quality bar | | | Open: KI-050, KI-054, KI-064..066, README clean-machine run |
+| 8 | Framework integrations | §70, §18 | post-MVP | Complete (merged, CI green) |
 | 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Not started |
 | 10 | Reliability intelligence | §80-81 | M5 | Not started |
 | 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Not started |
