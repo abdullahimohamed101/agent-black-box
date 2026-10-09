@@ -16,7 +16,7 @@ import pytest
 
 from blackbox import BlackBox, PayloadMode
 from blackbox.coding import CodingRecorder, parse_test_output
-from blackbox.secretscan import SecretFiles, extract_values
+from blackbox.secretscan import SecretFiles, extract_values, is_harmless_plain
 from tests.test_artifacts import ArtifactServer, server  # noqa: F401  (fixture)
 from tests.test_secret_leaks import everything, git, make
 
@@ -70,13 +70,15 @@ def test_placeholder_values_in_an_example_file_do_not_corrupt_the_agents_view(
     (plain / ".env.example").write_text(
         "SECRET_KEY=secret\nDB_PASSWORD=password\nAPI_TOKEN=test\nCOOKIE_SECURE=true\nSESSION_TTL=3600\n"
     )
-    (plain / "app.py").write_text("def check_secret(password):\n    return password == 'test'\n")
+    (plain / "app.py").write_text("def check_secret(password):\n    return password == expected\n")
     (plain / "t.py").write_text(
         "import unittest\nclass T(unittest.TestCase):\n    def test_a(self): pass\n    def test_b(self): pass\n"
         "unittest.main()\n"
     )
     bb, _run, rec = make(plain, server)
-    assert rec.read_file("app.py") == "def check_secret(password):\n    return password == 'test'\n"
+    assert (
+        rec.read_file("app.py") == "def check_secret(password):\n    return password == expected\n"
+    )
     result = rec.run_command("python3 t.py", timeout=20)
     assert "Ran 2 tests" in result.output and "REDACTED" not in result.output
     summary = parse_test_output(result.output)
@@ -241,7 +243,7 @@ def _bb() -> BlackBox:
 @pytest.mark.parametrize(
     "code",
     [
-        "return password == 'test'",
+        "return password == other",
         "if token === other:",
         "assert secret_key != None and api_key == expected",
         "const k = (password) => password === x",
@@ -336,3 +338,165 @@ def test_a_repo_with_a_remote_still_shows_ordinary_git_output(plain: Path) -> No
             + rec.run_command("git branch --show-current", timeout=10).output
         )
     assert "origin" in out and "main" in out and "REDACTED" not in out
+
+
+# 13. fourth adversarial round ----------------------------------------------------------------------------------------
+
+KEY_LINES = [
+    f"MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSj{n:02d}AAAAAAAAAAAAAAAAAAAA" for n in range(8)
+]
+
+
+def test_every_line_of_a_private_key_written_with_escaped_newlines_is_learned() -> None:
+    body = "\\n".join(KEY_LINES)
+    json_text = json.dumps(
+        {
+            "client_email": "svc@example.iam",
+            "private_key": f"-----BEGIN PRIVATE KEY-----\n{chr(10).join(KEY_LINES)}\n-----END PRIVATE KEY-----\n",
+        }
+    )
+    env_text = f'GCP_KEY="-----BEGIN PRIVATE KEY-----\\n{body}\\n-----END PRIVATE KEY-----\\n"\n'
+    for name, text in (("credentials.json", json_text), (".env", env_text)):
+        got = extract_values(name, text)
+        assert all(line in got for line in KEY_LINES), (
+            name,
+            [ln for ln in KEY_LINES if ln not in got],
+        )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://hooks.example.com/services/T0/B0/q1w2e3r4t5y6",
+        "https://discord.com/api/webhooks/123456789/abcDEF123tokenXYZ",
+        "http://10.0.0.5:8080/path/TokenValue99x",
+        "./relative-secret-9917",
+        "/tokens/abcd1234efgh",
+        "https://example.com/x?token=abc123def456",
+    ],
+)
+def test_token_like_urls_and_paths_are_not_dismissed_as_harmless(value: str) -> None:
+    assert not is_harmless_plain(value)
+    assert value in extract_values(".env", f"WEBHOOK={value}\n")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://registry.npmjs.org/",
+        "https://example.com/docs",
+        "https://github.com/o/r.git",
+        "/usr/local/share/somewhere/deep",
+        "/home/dev/.npm",
+        "~/projects/app",
+    ],
+)
+def test_ordinary_urls_and_paths_stay_harmless(value: str) -> None:
+    assert is_harmless_plain(value)
+    assert extract_values(".env", f"CACHE={value}\n") == set()
+
+
+@pytest.mark.parametrize(
+    "password",
+    [
+        "password123",
+        "Secret2024",
+        "changeme2024",
+        "test1234",
+        "12345678",
+        "dummyvalue12",
+        "samplePW77",
+    ],
+)
+def test_weak_real_passwords_in_a_real_env_file_are_secrets(password: str) -> None:
+    assert password in extract_values(".env", f"DB_PASSWORD={password}\n")
+    assert password not in extract_values(
+        ".env.example", f"DB_PASSWORD={password}\n"
+    )  # a template: a placeholder
+
+
+def test_a_json_blob_in_a_dotenv_value_teaches_its_parts() -> None:
+    got = extract_values(".env", 'CONFIG={"client_secret":"part-secret-value-5531","name":"app"}\n')
+    assert "part-secret-value-5531" in got and "app" not in got
+
+
+def test_a_bom_does_not_hide_the_first_key() -> None:
+    assert "bom-first-secret-4417" in extract_values(".env", "﻿API_TOKEN=bom-first-secret-4417\n")
+
+
+def test_a_secret_file_over_the_size_cap_marks_the_scan_incomplete(tmp_path: Path) -> None:
+    from blackbox.secretscan import MAX_FILE_BYTES
+
+    (tmp_path / ".env").write_text("A_KEY=" + "y" * (MAX_FILE_BYTES + 10) + "\n")
+    scan = SecretFiles(tmp_path)
+    scan.refresh()
+    assert scan.incomplete
+
+
+def test_a_secret_that_is_also_a_whole_word_in_source_is_dropped_but_a_substring_is_not(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "README.md").write_text(
+        "set the timeout to 30 and enjoy correcthorsebatterystaple-ish docs\n"
+    )
+    (tmp_path / ".env").write_text("A_KEY=timeout\nB_KEY=correcthorse\n")
+    values = SecretFiles(tmp_path).refresh()
+    assert (
+        "timeout" not in values
+    )  # a whole word of the repo's own text: masking it would corrupt everything
+    assert "correcthorse" in values  # only a substring of a longer word: still a secret
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "'password' => 'hunter2hunter2'",
+        '"api_key" => "hunter2hunter2"',
+        "'secret' => 'hunter2hunter2'",
+    ],
+)
+def test_hash_rocket_secrets_are_redacted(text: str) -> None:
+    assert "hunter2hunter2" not in _bb().redact_text(text)
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "if password == 'hunter2hunter2':",
+        'assert token === "hunter2hunter2"',
+        "x = api_key == 'hunter2hunter2'",
+    ],
+)
+def test_a_secret_literal_in_a_comparison_is_hidden_but_the_code_stays_readable(code: str) -> None:
+    out = _bb().redact_text(code)
+    assert "hunter2hunter2" not in out
+    assert "==" in out  # the operator survives
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "return password == other",
+        "if token === expected:",
+        "assert mode == 'password'",
+        "x = (password) => password",
+    ],
+)
+def test_comparisons_without_a_secret_literal_are_untouched(code: str) -> None:
+    assert _bb().redact_text(code) == code
+
+
+def test_host_env_values_shaped_like_webhooks_or_token_paths_are_masked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from blackbox.coding import secret_env_values
+
+    monkeypatch.setenv("ZZ_URL", "https://hooks.example.com/services/T0/B0/q1w2e3r4t5y6")
+    monkeypatch.setenv("ZZ_PATH", "./relative-secret-9917")
+    monkeypatch.setenv("ZZ_DOCS", "https://example.com/docs")
+    values = secret_env_values()
+    assert (
+        "https://hooks.example.com/services/T0/B0/q1w2e3r4t5y6" in values
+        and "./relative-secret-9917" in values
+    )
+    assert "https://example.com/docs" not in values

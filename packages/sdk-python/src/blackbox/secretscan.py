@@ -91,6 +91,9 @@ _COMMON = frozenset(
     console json html text
     """.split()
 )
+# Narrow placeholders apply everywhere; the broad family only to template files (.env.example ...):
+# in a real .env, `password123` or `changeme2024` IS somebody's password.
+_NARROW_PLACEHOLDER = re.compile(r"(?i)^(x+|\*+|\.+|-+|_+|<.*>|\$\{.*\}|\$\w+|%\(.*\)s)$")
 _PLACEHOLDER = re.compile(
     r"(?i)^(x+|\*+|\.+|-+|_+|<.*>|\$\{.*\}|\$\w+|%\(.*\)s|your[-_ ].*|change.?me.*|replace.*|"
     r"insert.*|dummy.*|fake.*|sample.*|example.*|placeholder.*|1234+|12345.*|abc+|test\d*|secret\d*|password\d*)$"
@@ -154,23 +157,50 @@ def high_entropy(value: str) -> bool:
     return len(value) >= 12 and classes >= 2 and _entropy(value) >= 3.0
 
 
-def _is_placeholder(value: str) -> bool:
+def _is_placeholder(value: str, *, broad: bool = False, key_is_secret: bool = False) -> bool:
     lowered = value.lower().strip()
-    if lowered in _COMMON or _PLACEHOLDER.match(lowered):
+    if lowered in _COMMON or _NARROW_PLACEHOLDER.match(lowered):
         return True
-    return lowered.isdigit() and len(lowered) < 10  # ports, timeouts, counts
+    if broad and _PLACEHOLDER.match(lowered):
+        return True
+    # Short numbers are ports, timeouts and counts, unless the key says it is a secret (a PIN).
+    return not key_is_secret and lowered.isdigit() and len(lowered) < 10
+
+
+def _tokenish(segment: str) -> bool:
+    return (
+        len(segment) >= 8
+        and any(c.isdigit() for c in segment)
+        and any(c.isalpha() for c in segment)
+    )
+
+
+def is_harmless_plain(value: str) -> bool:
+    """A plain URL or path: masking it would corrupt output, and it holds no token-like segment.
+
+    `https://registry.npmjs.org/` and `/usr/local/share/x` are harmless; a webhook
+    (`https://hooks.example.com/services/T0/B0/q1w2e3r4t5y6`), a URL with a query or userinfo, or a
+    path whose segment looks like a generated token (`./relative-secret-9917`) is not.
+    """
+    m = re.fullmatch(r"https?://([^/@\s?#]+)((?:/[^/\s?#@]*)*)/?", value)
+    if m:
+        return not any(_tokenish(seg) for seg in m.group(2).split("/"))
+    if value.startswith(("/", "~", "./", "../")) and not re.search(r"\s", value):
+        segs = [s for s in value.split("/") if s not in ("", "~", ".", "..")]
+        return bool(segs) and not any(_tokenish(s) or len(s) > 40 for s in segs)
+    return False
 
 
 def _worth_learning(value: str, key_is_secret: bool, by_name: bool, template: bool) -> bool:
     if "\n" in value or not value:
         return False
     if template:  # `.env.example`: only values that look generated; "secret" and "changeme" are not
-        return high_entropy(value) and not _is_placeholder(value)
-    if _is_placeholder(value):
+        return high_entropy(value) and not _is_placeholder(value, broad=True)
+    if _is_placeholder(value, key_is_secret=key_is_secret):
         return False
     if key_is_secret:
         return len(value) >= 6
-    if re.match(r"^(?:https?://[^/@\s]+(?:/[^\s@]*)?|[/~.][^\s]*)$", value):
+    if is_harmless_plain(value):
         return False  # a plain URL or path is no secret; masking it would corrupt output
     return by_name and len(value) >= 4
 
@@ -197,6 +227,7 @@ def _json_leaves(node: Any, secret_key: bool, out: list[tuple[str, bool]], depth
 
 def extract_values(path: str, text: str) -> set[str]:
     """The secret values in one sensitive file's text."""
+    text = text.lstrip("\ufeff")  # a BOM would hide the first key
     name = _unquote_git(path).lower().rsplit("/", 1)[-1]
     # `.git/config` and `.aws/config` are mostly ordinary settings (remote and branch names,
     # regions):
@@ -254,6 +285,11 @@ def extract_values(path: str, text: str) -> set[str]:
             secret = bool(_SECRET_KEY.search(key))
             if raw:
                 candidates.append((raw, secret))
+                if raw[:1] in "{[":  # CONFIG={"client_secret": "..."}: the parts are secrets too
+                    try:
+                        _json_leaves(json.loads(raw), secret, candidates)
+                    except ValueError:
+                        pass
                 pre = re.split(r"\s+#", raw, maxsplit=1)[0].strip().strip("'\"")
                 if pre != raw:  # `value #comment`: learn the text with and without the comment
                     candidates.append((pre, secret))
@@ -272,6 +308,15 @@ def extract_values(path: str, text: str) -> set[str]:
                 candidates.append((token.split(":", 1)[1], True))
         if name in (".netrc", "_netrc"):
             candidates += [(v, True) for v in _NETRC.findall(line)]
+    for value, secret in list(
+        candidates
+    ):  # a key in one JSON/dotenv line: every line of it is a secret
+        if "\\n" in value or "\n" in value:
+            pem = "PRIVATE KEY" in value
+            for part in re.split(r"\\n|\n", value):
+                part = part.strip()
+                if len(part) >= 16 and not part.startswith("-----"):
+                    candidates.append((part, secret or pem))
     values: set[str] = set()
     for value, secret in candidates:
         value = value.strip()
@@ -494,7 +539,10 @@ class SecretFiles:
                 continue
             # A word that is also an identifier in the repo's own source is not masked, unless it
             # looks generated: masking `session` everywhere would break the agent.
-            if not high_entropy(value) and value.lower() in self._source_text():
+            if not high_entropy(value) and re.search(
+                r"(?<![A-Za-z0-9_])" + re.escape(value.lower()) + r"(?![A-Za-z0-9_])",
+                self._source_text(),
+            ):
                 continue
             self._learned[value] = None
         while len(self._learned) > MAX_REMEMBERED:
@@ -524,6 +572,7 @@ class SecretFiles:
                 values = cached[2]
             elif st.st_size > MAX_FILE_BYTES:
                 values = frozenset()
+                self.incomplete = True  # a secret file too large to read is a known blind spot
             else:
                 try:
                     text = full.read_bytes().decode("utf-8", errors="replace")

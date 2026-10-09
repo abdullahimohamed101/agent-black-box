@@ -67,7 +67,7 @@ def run_agent(
                 with run.span(tc.name, kind="tool"):  # an exception here marks the span failed
                     outcome = tools.call(tc.name, tc.args)
             except (ToolError, OSError, ValueError) as exc:
-                results.append({"id": tc.id, "text": f"error: {exc}"})
+                results.append({"id": tc.id, "text": self.rec.sanitize(f"error: {exc}")})
                 continue
             if tc.name == "run_tests":
                 test_runs += 1

@@ -105,7 +105,7 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
         (
             "quoted_key_value",  # "password": "x", 'api_key': 'x' (JSON, YAML, Python dicts)
             r"(?i)([\"'][A-Za-z0-9_.-]*(?:secret|token|key|password|passwd|passphrase|credentials?|dsn|"
-            r"auth|cookie|pwd|pat|pass)[A-Za-z0-9_.-]*[\"']\s*:\s*)(?!\[REDACTED)"
+            r"auth|cookie|pwd|pat|pass)[A-Za-z0-9_.-]*[\"']\s*(?::|=>)\s*)(?!\[REDACTED)"
             r"(?:\"[^\"]*\"|'[^']*'|[^\s,}\]]+)",
             r"\g<1>[REDACTED:credential]",
         ),
@@ -144,6 +144,12 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
             "secret_assignment_short",  # GH_PAT=, DB_PASS=, ROOT_PWD=: a whole name part
             r"(?i)(\b(?:[A-Za-z0-9]+_)*(?:pat|pass|pwd)(?:_[A-Za-z0-9_]*)?\s*(?::=|[=:](?![=>~]))\s*)(?!\[REDACTED)"
             r"(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
+            r"\g<1>[REDACTED:credential]",
+        ),
+        (
+            "secret_comparison_literal",  # `password == "x"`: keep the code, hide the literal
+            r"(?i)(\b(?:[A-Za-z0-9_]*(?:secret|token|password|passwd|passphrase|api[_-]?key)[A-Za-z0-9_]*)"
+            r"\s*===?\s*)(?!\[REDACTED)(?:\"[^\"]+\"|'[^']+')",
             r"\g<1>[REDACTED:credential]",
         ),
         (

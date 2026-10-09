@@ -30,6 +30,7 @@ from blackbox.secretscan import (
     SecretFiles,
     command_may_reach_secrets,
     git_excludes,
+    is_harmless_plain,
     is_sensitive_path,
     mask_text,
     strip_ansi,
@@ -1016,11 +1017,7 @@ _PLAIN_VALUE = re.compile(
 
 def _host_value_is_harmless(value: str) -> bool:
     """Paths, plain URLs, numbers and ordinary words: masking them would corrupt all output."""
-    if value.startswith(("/", "~", "./", "../")):
-        return True
-    if re.match(r"^https?://[^/@\s]+(?:/[^\s@]*)?$", value):
-        return True  # a URL without credentials
-    return bool(_PLAIN_VALUE.match(value))
+    return is_harmless_plain(value) or bool(_PLAIN_VALUE.match(value))
 
 
 def secret_env_values(
