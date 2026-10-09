@@ -5,10 +5,10 @@ AI agents. See what an agent actually did: every model call, tool call, file edi
 command, retry and failure, with cost and latency, live.
 
 > Status: Phases 0-8 merged (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters). The MVP gate is open; see `docs/IMPLEMENTATION_PLAN.md`.
-> You can run the stack, trace an agent with the Python SDK and watch the run in the web UI, live.
+> You can run the stack, trace an agent with the Python SDK or a framework adapter, and watch the run in the web UI, live.
 > See `docs/PROJECT_STATE.md`.
 
-## What it will do
+## What it does
 
 ```python
 from blackbox import BlackBox
@@ -20,7 +20,7 @@ with bb.run("Fix OAuth timeout") as run:
 ```
 
 Open the dashboard and watch the run populate live: timeline, diffs, retries, cost, and
-where it failed. (The SDK, ingestion API and run pages exist; analytics, integrations and the coding-agent demo come later.)
+where it failed. Diffs, shell output, cost and analytics are in the UI today; evaluations, policy and approvals, and multi-agent tracing are later phases (`docs/IMPLEMENTATION_PLAN.md`).
 
 ## Architecture in one picture
 
@@ -36,10 +36,10 @@ contract, not any single datastore. Details: `ARCHITECTURE.md`.
 ## Repository Layout
 
 ```text
-apps/{api,web}  infrastructure/  scripts/  docs/        (exists now)
-packages/{event-schema,sdk-python,...}  integrations/  processors/  examples/  tests/   (later phases)
+apps/{api,web}  packages/{event-schema,sdk-python}  integrations/{langgraph,openai,anthropic,mcp,conformance}
+examples/coding-agent  infrastructure/  scripts/  docs/
 ```
-Directories appear when their phase begins.
+New directories appear when their phase begins (for example `processors/`).
 
 ## Quick Start
 
@@ -64,6 +64,11 @@ make seed                       # local workspace + project + dev key in .local/
 KEY=$(cat .local/dev-api-key)
 curl -s localhost:8000/v1/runs -H "Authorization: Bearer $KEY"
 ```
+
+See a real run in about two minutes (needs the Quick Start above, `make seed`, and `pnpm --filter @abb/web build`):
+the flagship demo is a small coding agent that fixes a broken OAuth service, hits a failing test, retries and passes.
+`scripts/coding-e2e.sh` runs it end to end on a throwaway database and drives a browser; `examples/coding-agent/README.md`
+shows how to point it at your own stack and open the run (diff, shell and cost panels).
 
 API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operations: `docs/OPERATIONS.md`.
 
