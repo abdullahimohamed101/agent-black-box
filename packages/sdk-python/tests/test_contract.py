@@ -81,7 +81,7 @@ def test_a_realistic_run_validates_against_models_and_json_schema() -> None:
             pass
         run.event("retry.attempted", {"retry.attempt": 2, "retry.reason": "timeout"})
         try:
-            with run.span("boom", kind="shell"):
+            with run.span("boom", kind="custom"):
                 raise RuntimeError("x")
         except RuntimeError:
             pass

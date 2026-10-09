@@ -81,6 +81,10 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     "file.language": AttrSpec(AttrType.STRING),
     "file.lines_added": AttrSpec(AttrType.INTEGER, 0),
     "file.lines_removed": AttrSpec(AttrType.INTEGER, 0),
+    "file.operation": AttrSpec(AttrType.STRING),
+    # Artifact reference `artifact://<art_id>` (ADR-030/031); content is in the store.
+    "diff.artifact": AttrSpec(AttrType.STRING),
+    "diff.withheld": AttrSpec(AttrType.STRING),  # sensitive_path | too_large
     "git.repo": AttrSpec(AttrType.STRING),
     "git.branch": AttrSpec(AttrType.STRING),
     "git.base_commit": AttrSpec(AttrType.STRING),
@@ -89,13 +93,22 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     "git.changed_files": AttrSpec(AttrType.INTEGER, 0),
     "git.push_target": AttrSpec(AttrType.STRING),
     "git.pr_number": AttrSpec(AttrType.INTEGER, 0),
+    "git.diff_stat_files": AttrSpec(AttrType.INTEGER, 0),
     # shell and tests (spec §82.3, §83)
     "shell.command": AttrSpec(AttrType.STRING),
     "shell.cwd": AttrSpec(AttrType.STRING),
     "shell.exit_code": AttrSpec(AttrType.INTEGER),
     "shell.duration_ms": AttrSpec(AttrType.NUMBER, 0),
     "shell.risk_class": AttrSpec(AttrType.STRING),
+    "shell.category": AttrSpec(AttrType.STRING),
+    "shell.stdout_artifact": AttrSpec(AttrType.STRING),
+    "shell.stderr_artifact": AttrSpec(AttrType.STRING),
+    "shell.stdout_bytes": AttrSpec(AttrType.INTEGER, 0),
+    "shell.stderr_bytes": AttrSpec(AttrType.INTEGER, 0),
+    "shell.output_truncated": AttrSpec(AttrType.BOOLEAN),
+    "shell.output_withheld": AttrSpec(AttrType.STRING),  # may_reach_secrets
     "test.framework": AttrSpec(AttrType.STRING),
+    "test.suite": AttrSpec(AttrType.STRING),
     "test.total": AttrSpec(AttrType.INTEGER, 0),
     "test.passed": AttrSpec(AttrType.INTEGER, 0),
     "test.failed": AttrSpec(AttrType.INTEGER, 0),

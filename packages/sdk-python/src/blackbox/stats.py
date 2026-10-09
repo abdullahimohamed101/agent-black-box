@@ -19,6 +19,9 @@ COUNTERS = (
     "attributes_dropped",
     "payloads_dropped",
     "redactions",
+    "artifacts_uploaded",
+    "artifact_bytes_uploaded",
+    "dropped_artifacts",  # queue full, too large, shutdown, or the upload failed
     "batches_sent",
     "retries",
     "internal_errors",

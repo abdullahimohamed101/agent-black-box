@@ -37,7 +37,7 @@ select = ["E", "F", "I", "UP", "B", "S", "RUF"]
 ignore = ["S101"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S105", "S106", "S311", "S310", "S113"]
+"tests/*" = ["S105", "S106", "S311", "S310", "S113", "E501"]  # long command strings in test tables
 
 [tool.ruff.lint.isort]
 known-first-party = ["blackbox", "tests"]

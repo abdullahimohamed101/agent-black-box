@@ -892,6 +892,14 @@
           "maxLength": 4096,
           "type": "string"
         },
+        "diff.artifact": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "diff.withheld": {
+          "maxLength": 4096,
+          "type": "string"
+        },
         "file.hash_after": {
           "maxLength": 4096,
           "type": "string"
@@ -911,6 +919,10 @@
         "file.lines_removed": {
           "minimum": 0,
           "type": "integer"
+        },
+        "file.operation": {
+          "maxLength": 4096,
+          "type": "string"
         },
         "file.path": {
           "maxLength": 4096,
@@ -939,6 +951,10 @@
         "git.commit_hash": {
           "maxLength": 4096,
           "type": "string"
+        },
+        "git.diff_stat_files": {
+          "minimum": 0,
+          "type": "integer"
         },
         "git.head_commit": {
           "maxLength": 4096,
@@ -1060,6 +1076,10 @@
           "maxLength": 4096,
           "type": "string"
         },
+        "shell.category": {
+          "maxLength": 4096,
+          "type": "string"
+        },
         "shell.command": {
           "maxLength": 4096,
           "type": "string"
@@ -1075,9 +1095,32 @@
         "shell.exit_code": {
           "type": "integer"
         },
+        "shell.output_truncated": {
+          "type": "boolean"
+        },
+        "shell.output_withheld": {
+          "maxLength": 4096,
+          "type": "string"
+        },
         "shell.risk_class": {
           "maxLength": 4096,
           "type": "string"
+        },
+        "shell.stderr_artifact": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "shell.stderr_bytes": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "shell.stdout_artifact": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "shell.stdout_bytes": {
+          "minimum": 0,
+          "type": "integer"
         },
         "span.kind": {
           "maxLength": 4096,
@@ -1110,6 +1153,10 @@
         "test.skipped": {
           "minimum": 0,
           "type": "integer"
+        },
+        "test.suite": {
+          "maxLength": 4096,
+          "type": "string"
         },
         "test.total": {
           "minimum": 0,

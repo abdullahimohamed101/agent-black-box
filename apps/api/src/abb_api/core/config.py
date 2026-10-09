@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Ingestion limits (spec §71.4). Per-event size comes from the event contract itself.
     ingest_max_body_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
     ingest_max_batch_events: int = Field(default=1000, ge=1)
+    # Artifacts (ADR-030): local filesystem store, per-artifact size cap.
+    artifact_dir: str = ".artifacts"
+    artifact_max_bytes: int = Field(default=8 * 1024 * 1024, ge=1024)
     # Background worker (spec §72)
     # Delay before a run's summary job becomes due. A burst of batches for one run coalesces into
     # a single recomputation instead of one per batch (see docs/benchmarks/phase-2-ingestion.md).
@@ -67,6 +70,8 @@ class Settings(BaseSettings):
             raise ValueError("rate_limit_burst_events must be >= ingest_max_batch_events")
         if self.rate_limit_burst_bytes < self.ingest_max_body_bytes:
             raise ValueError("rate_limit_burst_bytes must be >= ingest_max_body_bytes")
+        if self.rate_limit_burst_bytes < self.artifact_max_bytes:
+            raise ValueError("rate_limit_burst_bytes must be >= artifact_max_bytes")
         return self
 
     @property

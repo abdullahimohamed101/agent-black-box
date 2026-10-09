@@ -14,6 +14,7 @@ import {
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
 import { useRun, useRunEvents } from "@/lib/queries";
+import { codingKind } from "@/lib/coding";
 import { runsPath, type Base } from "@/lib/routes";
 import {
   CLASS_LABELS,
@@ -27,6 +28,7 @@ import {
   type EventClass,
   type Filters,
 } from "@/lib/timeline";
+import { CodingSummary } from "./CodingSummary";
 import { EventDrawer } from "./EventDrawer";
 import { StatusBadge } from "./StatusBadge";
 import { ErrorState, Loading } from "./States";
@@ -289,6 +291,15 @@ export function RunDetail({
         </div>
       )}
 
+      <CodingSummary
+        events={events}
+        onOpen={(id) => {
+          setFilters(NO_FILTERS);
+          setSelected(id);
+          setDrawerEventId(id);
+        }}
+      />
+
       <section aria-labelledby="tl-h" className="timeline-section">
         <h2 id="tl-h">Timeline</h2>
         <div className="toolbar" role="group" aria-label="Timeline filters">
@@ -341,7 +352,12 @@ export function RunDetail({
             </button>
           </div>
         ) : (
-          <div className="split" ref={timelineWrap} data-drawer={drawerEvent ? "open" : "closed"}>
+          <div
+            className="split"
+            ref={timelineWrap}
+            data-drawer={drawerEvent ? "open" : "closed"}
+            data-wide={(drawerEvent && codingKind(drawerEvent) !== null) || undefined}
+          >
             <Timeline
               rows={rows}
               t0={t0}

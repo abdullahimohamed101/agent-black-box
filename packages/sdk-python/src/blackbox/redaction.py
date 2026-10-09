@@ -28,6 +28,7 @@ MAX_NODES = 5000  # values visited per event: a huge wide payload must not stall
 # Strings are bounded before scanning so a huge value cannot stall the caller. One byte over the
 # inline payload limit: such a payload is later dropped as too large, never silently truncated.
 MAX_STRING = 64 * 1024 + 1
+MAX_TEXT = 4 * 1024 * 1024  # artifact text: the largest document scanned in one piece
 Event = dict[str, Any]
 Callback = Callable[[Event], "Event | None"]
 
@@ -62,12 +63,21 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
             r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)",
             "[REDACTED:private_key]",
         ),
-        ("aws_access_key", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b", "[REDACTED:aws_access_key]"),
-        ("github_token", r"\bgh[pousr]_[A-Za-z0-9]{30,}\b", "[REDACTED:github_token]"),
-        ("github_token", r"\bgithub_pat_[A-Za-z0-9_]{20,}", "[REDACTED:github_token]"),
-        ("slack_token", r"\bxox[abprs]-[A-Za-z0-9-]{10,}", "[REDACTED:slack_token]"),
-        ("api_key", r"\bsk-(?:ant-)?[A-Za-z0-9_-]{20,}", "[REDACTED:api_key]"),
-        ("api_key", r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}", "[REDACTED:api_key]"),
+        ("aws_access_key", r"(?:AKIA|ASIA)[0-9A-Z]{16}", "[REDACTED:aws_access_key]"),
+        ("github_token", r"gh[pousr]_[A-Za-z0-9]{30,}", "[REDACTED:github_token]"),
+        ("github_token", r"github_pat_[A-Za-z0-9_]{20,}", "[REDACTED:github_token]"),
+        ("npm_token", r"npm_[A-Za-z0-9]{36}", "[REDACTED:npm_token]"),
+        ("gitlab_token", r"glpat-[A-Za-z0-9_-]{20,}", "[REDACTED:gitlab_token]"),
+        ("google_api_key", r"AIza[0-9A-Za-z_-]{35}", "[REDACTED:google_api_key]"),
+        ("google_oauth", r"ya29\.[0-9A-Za-z_-]{20,}", "[REDACTED:google_oauth]"),
+        (
+            "slack_webhook",
+            r"hooks\.slack\.com/(?:services|workflows)/[A-Za-z0-9/_-]+",
+            "hooks.slack.com/[REDACTED:slack_webhook]",
+        ),
+        ("slack_token", r"xox[abprs]-[A-Za-z0-9-]{10,}", "[REDACTED:slack_token]"),
+        ("api_key", r"sk-(?:ant-)?[A-Za-z0-9_-]{20,}", "[REDACTED:api_key]"),
+        ("api_key", r"[rs]k_(?:live|test)_[A-Za-z0-9]{16,}", "[REDACTED:api_key]"),
         ("abb_api_key", r"\babb_(?:live|test)_[A-Za-z0-9._-]{10,}", "[REDACTED:abb_api_key]"),
         (
             "jwt",
@@ -75,16 +85,85 @@ _SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
             "[REDACTED:jwt]",
         ),
         ("bearer_token", r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{16,}", r"\g<1>[REDACTED:bearer]"),
-        ("url_credentials", r"(://)[^/\s:@]+:[^/\s@]+@", r"\g<1>[REDACTED:url_credentials]@"),
+        (
+            "authorization",
+            r"(?i)(\bauthorization\s*[:=]\s*[\"']?(?:(?:basic|bearer|token|digest)\s+)?)(?!\[REDACTED|(?:basic|bearer|token|digest)\s+\[REDACTED)[^\s\"',;]{6,}",
+            r"\g<1>[REDACTED:authorization]",
+        ),
+        ("basic_auth", r"(?i)\b(basic\s+)[A-Za-z0-9+/]{12,}={0,2}", r"\g<1>[REDACTED:basic_auth]"),
+        (
+            "cli_user",
+            r"(?i)((?:^|\s)(?:-u|--user|--proxy-user)(?:\s+|=)[\"']?)(?!\[REDACTED)[^\s\"']+",
+            r"\g<1>[REDACTED:cli_user]",
+        ),
+        (
+            "cli_secret_flag",
+            r"(?i)(\s--(?:password|passwd|pass|token|secret|api[-_]?key|access[-_]?key|"
+            r"client[-_]secret|auth[-_]?token|private[-_]?key)(?:\s+|=))(?!\[REDACTED)(?:\"[^\"]*\"|'[^']*'|[^\s]+)",
+            r"\g<1>[REDACTED:cli_secret]",
+        ),
+        (
+            "quoted_key_value",  # "password": "x", 'api_key': 'x' (JSON, YAML, Python dicts)
+            r"(?i)([\"'][A-Za-z0-9_.-]*(?:secret|token|key|password|passwd|passphrase|credentials?|dsn|"
+            r"auth|cookie|pwd|pat|pass)[A-Za-z0-9_.-]*[\"']\s*(?::|=>)\s*)(?!\[REDACTED)"
+            r"(?:\"[^\"]*\"|'[^']*'|[^\s,}\]]+)",
+            r"\g<1>[REDACTED:credential]",
+        ),
+        (
+            "db_cli_password",  # mysql -phunter2, mysql -p hunter2, sshpass -p x, docker login -p x
+            r"(?i)(\b(?:mysql|mysqldump|mysqladmin|mysqlcheck|mariadb|sshpass|docker\s+login|"
+            r"podman\s+login|helm\s+registry\s+login)\b[^\n|;&]*?\s-p)\s*(?!\[REDACTED)[^\s-]\S*",
+            r"\g<1>[REDACTED:cli_secret]",
+        ),
+        (
+            "npm_config_token",
+            r"(?i)(//[^\s]+/:_auth(?:token)?[=\s]+|npm\s+config\s+set\s+\S*(?:auth|token|password)\S*\s+)"
+            r"(?!\[REDACTED)\S+",
+            r"\g<1>[REDACTED:npm_auth]",
+        ),
+        (
+            "signed_url_param",
+            r"(?i)([?&](?:sig|signature|x-amz-signature|x-amz-credential|x-amz-security-token|"
+            r"x-goog-signature|access_token|id_token|token|api[_-]?key|apikey|key)=)(?!\[REDACTED)[^&\s\"']+",
+            r"\g<1>[REDACTED:url_param]",
+        ),
+        (
+            "cookie_header",
+            r"(?i)\b((?:set-)?cookie\s*:\s*)(?!\[REDACTED)[^\r\n]+",
+            r"\g<1>[REDACTED:cookie]",
+        ),
+        ("url_credentials", r"(://)[^/\s:@]*:[^/\s@]+@", r"\g<1>[REDACTED:url_credentials]@"),
+        ("url_token_user", r"(://)[A-Za-z0-9_.%-]{16,}@", r"\g<1>[REDACTED:url_credentials]@"),
+        (
+            "secret_assignment",  # NAME=value, NAME ending in a secret word (AWS_SECRET_ACCESS_KEY)
+            r"(?i)(\b[A-Za-z0-9_]*(?:secret|token|key|password|passwd|passphrase|credentials?|dsn)"
+            r"(?:_[A-Za-z0-9_]*)?\s*(?::=|[=:](?![=>~]))\s*)(?!\[REDACTED)(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
+            r"\g<1>[REDACTED:credential]",
+        ),
+        (
+            "secret_assignment_short",  # GH_PAT=, DB_PASS=, ROOT_PWD=: a whole name part
+            r"(?i)(\b(?:[A-Za-z0-9]+_)*(?:pat|pass|pwd)(?:_[A-Za-z0-9_]*)?\s*(?::=|[=:](?![=>~]))\s*)(?!\[REDACTED)"
+            r"(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
+            r"\g<1>[REDACTED:credential]",
+        ),
+        (
+            "secret_comparison_literal",  # `password == "x"`: keep the code, hide the literal
+            r"(?i)(\b(?:[A-Za-z0-9_]*(?:secret|token|password|passwd|passphrase|api[_-]?key)[A-Za-z0-9_]*)"
+            r"\s*===?\s*)(?!\[REDACTED)(?:\"[^\"]+\"|'[^']+')",
+            r"\g<1>[REDACTED:credential]",
+        ),
         (
             "credential",
             r"(?i)(\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
-            r"\s*[=:]\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
+            r"\s*(?::=|[=:](?![=>~]))\s*)(?:\"[^\"]*\"|'[^']*'|[^\s,;&]+)",
             r"\g<1>[REDACTED:credential]",
         ),
     )
 )
-_MAYBE_SECRET = re.compile(r"[-_=:@.]|\d")  # cheap pre-check: plain prose skips the regex pass
+# Cheap pre-check: plain prose skips the regex pass. A run of 16+ letters is kept in because some
+# credentials (AKIA... access keys) are letters only.
+_MAYBE_SECRET = re.compile(r"[-_=:@.]|\d|[A-Za-z]{16}")
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 
 # What a P0 event keeps if the user callback fails: structure, never free text.
 _STRUCTURAL_KEYS = frozenset(
@@ -130,6 +209,19 @@ class Redactor:
     def redact_string(self, text: str) -> str:
         if len(text) > MAX_STRING:
             text = text[:MAX_STRING]
+        return self._scrub(text)
+
+    def redact_text(self, text: str, *, max_chars: int = MAX_TEXT) -> str:
+        """Redact a whole document (terminal output, a diff) for an artifact (ADR-031).
+
+        Unlike `redact_string` the text is scanned as one piece, so a private key that spans
+        many lines is matched. Bounded by `max_chars` (cut, never skipped), so a huge output
+        cannot stall the caller.
+        """
+        text = _ANSI.sub("", text[:max_chars] if len(text) > max_chars else text)  # ghp_\x1b[0m...
+        return self._scrub(text)
+
+    def _scrub(self, text: str) -> str:
         if len(text) < 8 or _MAYBE_SECRET.search(text) is None:
             return text
         for _kind, pattern, repl in _SECRET_PATTERNS:

@@ -12,6 +12,9 @@ from abb_api import __version__
 from abb_api.analytics.postgres import PostgresAnalyticsStore
 from abb_api.analytics.router import router as analytics_router
 from abb_api.analytics.service import AnalyticsService
+from abb_api.artifacts.router import router as artifacts_router
+from abb_api.artifacts.service import ArtifactService
+from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
 from abb_api.clock import Clock, system_clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.errors import install_error_handlers
@@ -65,6 +68,7 @@ def create_app(
     *,
     clock: Clock = system_clock,
     rate_limiter: RateLimiter | None = None,
+    artifact_store: ArtifactStore | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
@@ -82,6 +86,13 @@ def create_app(
         app.state.engine = engine
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
         app.state.runs = RunService(engine, clock)
+        app.state.artifacts = ArtifactService(
+            engine,
+            artifact_store or LocalFsArtifactStore(settings.artifact_dir),
+            limiter,
+            clock,
+            max_bytes=settings.artifact_max_bytes,
+        )
         app.state.analytics = AnalyticsService(
             engine,
             PostgresAnalyticsStore(engine, timeout_seconds=settings.analytics_timeout_seconds),
@@ -112,6 +123,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(ingestion_router)
     app.include_router(runs_router)
+    app.include_router(artifacts_router)
     app.include_router(streams_router)
     app.include_router(pricing_router)
     app.include_router(analytics_router)

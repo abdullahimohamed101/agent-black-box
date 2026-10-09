@@ -7,6 +7,7 @@ export type EventOut = components["schemas"]["EventOut"];
 export type EventPage = components["schemas"]["EventPage"];
 export type SpanOut = components["schemas"]["SpanOut"];
 export type SpanPage = components["schemas"]["SpanPage"];
+export type ArtifactChunk = components["schemas"]["ArtifactChunk"];
 export type RunStatus = RunOut["status"];
 export type AnalyticsSummary = components["schemas"]["Summary"];
 export type CostReport = components["schemas"]["CostReport"];

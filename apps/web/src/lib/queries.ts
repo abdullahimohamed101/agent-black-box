@@ -120,6 +120,28 @@ export function useEventDetail(runId: string, eventId: string | null) {
   });
 }
 
+/** First chunk of an artifact's text, then one more per `fetchNextPage` (lazy: nothing loads until `enabled`). */
+export const ARTIFACT_CHUNK_BYTES = 64 * 1024;
+export function useArtifactText(artifactId: string | null, enabled: boolean) {
+  return useInfiniteQuery({
+    enabled: enabled && artifactId != null,
+    queryKey: ["artifact", artifactId],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }) =>
+      unwrap(
+        await api.GET("/v1/artifacts/{artifact_id}/content", {
+          signal,
+          params: {
+            path: { artifact_id: artifactId! },
+            query: { offset: pageParam, limit: ARTIFACT_CHUNK_BYTES },
+          },
+        }),
+      ),
+    getNextPageParam: (last) => last.next_offset ?? undefined,
+    staleTime: Infinity, // artifacts are immutable (INV-1)
+  });
+}
+
 /** Analytics windows are whole UTC days (the server snaps them): "7 days" is today and the six before it. */
 export type WindowDays = 1 | 7 | 30;
 export const WINDOW_OPTIONS: readonly WindowDays[] = [1, 7, 30];

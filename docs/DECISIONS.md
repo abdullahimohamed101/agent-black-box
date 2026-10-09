@@ -23,6 +23,9 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-020 | Web data fetching: TanStack Query behind a same-origin read proxy | 4 | Accepted ([file](decisions/ADR-020-web-data-fetching-and-cache.md)) |
 | ADR-021 | Web reads the API through a server-side proxy holding a `runs:read` key | 4 | Accepted ([file](decisions/ADR-021-web-api-access-before-auth.md)) |
 | ADR-022 | Live streams resume by arrival time and wake on Postgres NOTIFY | 5 | Accepted ([file](decisions/ADR-022-live-stream-resume-and-wakeup.md)) |
+| ADR-030 | Artifacts behind an `ArtifactStore` contract; client-id upload; chunked reads (implements ADR-005) | 6 | Accepted ([file](decisions/ADR-030-artifact-store-and-upload-api.md)) |
+| ADR-031 | Coding-agent telemetry vocabulary, command risk classes, secret-safe capture | 6 | Accepted ([file](decisions/ADR-031-coding-agent-telemetry-and-capture.md)) |
+| ADR-032 | Syntax highlighting is a local tokenizer rendered as React text | 6 | Accepted ([file](decisions/ADR-032-local-syntax-highlighting.md)) |
 | ADR-040 | Cost engine: versioned, reproducible, computed inside the summarizer | 7 | Accepted ([file](decisions/ADR-040-cost-engine-and-pricing.md)) |
 | ADR-041 | Analytics store over derived tables; aggregates only where measured slow | 7 | Accepted ([file](decisions/ADR-041-analytics-store-and-aggregates.md)) |
 | ADR-042 | Retry cost attribution by retry scope span | 7 | Accepted ([file](decisions/ADR-042-retry-cost-attribution.md)) |

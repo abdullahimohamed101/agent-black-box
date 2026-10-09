@@ -19,7 +19,9 @@ WORKDIR /repo/apps/api
 COPY --from=build --chown=abb:abb /repo/apps/api/.venv .venv
 COPY --chown=abb:abb apps/api/migrations migrations
 COPY --chown=abb:abb apps/api/alembic.ini ./
-ENV PATH="/repo/apps/api/.venv/bin:$PATH" PYTHONUNBUFFERED=1
+# Artifacts (ADR-030): a volume mounted here inherits this ownership when first created.
+RUN mkdir -p /data/artifacts && chown abb:abb /data/artifacts
+ENV PATH="/repo/apps/api/.venv/bin:$PATH" PYTHONUNBUFFERED=1 ABB_ARTIFACT_DIR=/data/artifacts
 USER abb
 EXPOSE 8000
 CMD ["uvicorn", "abb_api.main:app_from_env", "--factory", "--host", "0.0.0.0", "--port", "8000"]

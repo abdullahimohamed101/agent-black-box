@@ -93,3 +93,37 @@ describe("read proxy", () => {
     expect(((await down.json()) as { error: { retryable: boolean } }).error.retryable).toBe(true);
   });
 });
+
+describe("artifact read paths", () => {
+  it("allows only metadata and content reads of well-formed ids", async () => {
+    vi.stubEnv("ABB_WEB_DATA_SOURCE", "fixtures");
+    vi.stubEnv("ABB_WEB_ALLOW_FIXTURES", "1");
+    for (const p of [
+      ["v1", "artifacts", "art_01J90000000000000000000031"],
+      ["v1", "artifacts", "art_01J90000000000000000000031", "content"],
+    ]) {
+      expect((await readThrough(p, new URLSearchParams())).status).toBe(404); // fixtures: not found, but allowed through
+    }
+    vi.stubEnv("ABB_WEB_DATA_SOURCE", "api");
+    vi.stubEnv("ABB_WEB_API_KEY", "k");
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (u: string) => {
+        seen.push(u);
+        return Response.json({});
+      }),
+    );
+    await readThrough(["v1", "artifacts", "art_X", "content"], new URLSearchParams("offset=5"));
+    expect(seen[0]).toMatch(/\/v1\/artifacts\/art_X\/content\?offset=5$/);
+    for (const p of [
+      ["v1", "artifacts"],
+      ["v1", "artifacts", "a.b"],
+      ["v1", "artifacts", "x", "content", "y"],
+      ["v1", "artifacts", "x", "delete"],
+      ["v1", "artifacts", ".."],
+    ])
+      expect((await readThrough(p, new URLSearchParams())).status).toBe(404);
+    expect(seen).toHaveLength(1);
+  });
+});

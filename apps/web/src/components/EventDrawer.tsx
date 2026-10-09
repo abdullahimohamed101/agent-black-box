@@ -5,6 +5,7 @@ import type { EventOut } from "@/lib/api/types";
 import { formatCost, formatDuration, formatInt, formatTimestamp, num } from "@/lib/format";
 import { useEventDetail } from "@/lib/queries";
 import { eventClass, isError } from "@/lib/timeline";
+import { CodingSections } from "./CodingSections";
 import { ErrorState, Loading } from "./States";
 
 const PAYLOAD_CHARS = 20_000;
@@ -160,6 +161,8 @@ export function EventDrawer({
           />
         </section>
       )}
+
+      <CodingSections event={event} />
 
       <section aria-labelledby="d-attrs">
         <h3 id="d-attrs">Attributes</h3>
