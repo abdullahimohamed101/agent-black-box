@@ -1,6 +1,6 @@
 # Phase 15 - Auth, workspaces and RBAC
 
-Status: Planned and reviewed 2026-10-09; ready for implementation (user decisions 1-4 confirmed 2026-10-09; independent review `phase-15-plan-review.md` at 8cc8502 addressed below, see "Review dispositions")
+Status: Implemented; pending security review (steps 1-16 done 2026-10-09; AC-14 needs the user's own OIDC credentials and AC-15 is the independent security review; evidence at the end of this file). History: planned and reviewed 2026-10-09 (user decisions 1-4 confirmed; independent review `phase-15-plan-review.md` at 8cc8502 addressed below, see "Review dispositions")
 Owner: implementer agent
 Branch: `feature/phase-15-auth-rbac` (from `main` 85d4121; worktree `../abb-worktrees/phase-15`)
 Depends on: Phase 2 (API keys, tenancy), Phase 4/5 (web, read proxy, streams), Phase 6 (artifacts), Phase 7 (pricing overrides)
@@ -553,7 +553,7 @@ reviewer cited (`core/config.py` default, `core/logging.py` extras, `streaming/s
 | H-2 | P3 | partially accepted | `GET /v1/audit` keeps only cursor paging and `since` (actor/action filters dropped); `POST /v1/cost/rebuild` is kept because without it an override never applies to past runs from the UI, which is what KI-051 asks for |
 | H-3 | P3 | noted | No change: naming stays `member.write` (plan vocabulary), rotation and RLS remain non-goals as the review agrees |
 
-## Appendix: ADR drafts (to be written with `write-adr` at step 16; numbers follow the 020/030/040/050 per-phase convention)
+## Appendix: ADR drafts (written at step 16 as `docs/decisions/ADR-060..062`, updated for the final design; the files are authoritative, these drafts are kept as the plan's record)
 
 ### ADR-060: Dashboard identity via OIDC with API-owned, database-backed sessions (supersedes ADR-021)
 
@@ -789,3 +789,79 @@ is visible in logs and capped in the table; a future "who viewed what" requireme
   redirect after it, VIEWER sees only Members/Pricing and a clean "not available" note on `/settings/audit`, invite page clears the fragment and shows the API's email-mismatch
   refusal. **Not exercised in a browser (UNVERIFIED, covered by vitest only; step 15's Playwright `auth.spec.ts` should add them)**: payload-withheld in a real event drawer,
   pricing override submit and rebuild, role change/removal, key revoke, a successful invitation accept, `STREAM_UNAUTHORIZED` against a live stream, axe on the new pages.
+
+### Steps 15-16 (E2E on sessions, documentation)
+
+- **Step 15 was split in two commits** (as the plan allowed): `chore(e2e): switch existing E2E to sessions and remove the shared web read key`
+  (the fallback and every consumer of `ABB_WEB_API_KEY` leave in one commit; all four existing E2E scripts were re-run on it) and
+  `feat(e2e): auth E2E through the fake OIDC provider and its CI job`. No intermediate commit leaves an E2E script on the removed key.
+- **Removal.** `legacyKey`, `credentialFor`, `sessionOnly`, key mode in `WorkspaceContext` (`mode: "key"`, a null workspace id), `WEB_UPSTREAM_AUTH` and the
+  `viaKey` 401/403 mapping are gone. The proxy answers `401 SESSION_INVALID` without a session cookie and sends the cookie only; upstream 401/403 are relayed
+  unchanged (a browser's 401 now means its own sign-in, never the web server's key). The home page and the gate treat only fixture mode as "no session needed".
+- **E2E sessions.** Each script provisions its workspace, adds `e2e-owner@local.test` as OWNER (`add-member`) and mints a one-hour session with
+  `ABB_ALLOW_DEV_SESSIONS=1 create-session` for that single command (the API process never gets the variable). Playwright specs sign in with
+  `apps/web/e2e/session.ts` (`E2E_SESSION_TOKEN` as the HttpOnly cookie, `E2E_WORKSPACE` for the URL slug, which now resolves through the API, so the specs'
+  old label slugs became the real unique slugs). Specs that call `/api/abb/...` directly send `X-ABB-Workspace` resolved from `/v1/me`. The fault-injection
+  proxy in `stream.spec.ts` is another host (`127.0.0.1`), so it signs in there too. The scripts keep a **script-only** `runs:read` key to poll the API directly
+  (derivation state, benchmark mode); it is never given to a web server.
+- **Playwright config.** The per-script web servers are gated by `E2E_*_API_URL` (no key variable) and start with `ABB_WEB_ORIGIN` set; an `auth` server on :3160 was added.
+- **Auth E2E.** Ports 8165 (API) and 8166 (fake provider; 8160 belongs to `integrations-e2e`), database `abb_p15`, `ABB_STREAM_REAUTH_SECONDS=2`. People are fresh per run
+  (`owner-<suffix>@auth.test`...: the database is reused, and a stable fake `sub` per email keeps relogins valid). The only minted session is the streamer's (a second signed-in
+  person must already be waiting on a live page). Covered in the real browser: login, redirect with `return_to`, HttpOnly cookie, workspace switch, foreign run and
+  unknown workspace as 404, owner sees a payload, invitation link shown once and consumed once, an invited DEVELOPER joins, downgrade to VIEWER (payload withheld,
+  settings hidden, direct `GET /v1/api-keys` is 403), key token shown once, audit rows visible, `STREAM_UNAUTHORIZED` on a removed member's live page, logout, axe on login,
+  dashboard, settings (members, API keys, pricing, audit), the invite page and the viewer's pages. Eight tests, about nine seconds. The step 14 "not exercised in a browser" list
+  is now covered except pricing override submit and rebuild (vitest and `test_pricing_api.py` only) and key revoke (same).
+- **Compose.** `docker compose --profile app config -q` accepts the new file. Changes: the API gets `ABB_WEB_ORIGIN` and `ABB_OIDC_*`; a dev-only `fake-oidc` service runs
+  `apps/api/tests/fake_oidc.py` (bind-mounted, since the image has no tests) inside the **API container's network namespace** (`network_mode: service:api`, published as
+  127.0.0.1:8900) so `http://localhost:8900` is one and the same issuer URL for the browser and for the API; the web service gets `ABB_WEB_ORIGIN` and no key.
+  **UNVERIFIED (env)**: it was not started here because the host's ports 3000/8000/5433 are held by a running stack of the main checkout that this phase must not disturb
+  (KI-074); `make smoke` and `make sdk-e2e` need that stack and were not run (AC-13).
+- **`make seed`** passes `ABB_ALLOW_DEV_SESSIONS=1` for its own run only, so the local owner exists under the D16 gate without the variable living in `.env`.
+- **Docs.** `.env.example` documents `ABB_WEB_ORIGIN`, `ABB_OIDC_*`, the session lifetimes, `ABB_STREAM_REAUTH_SECONDS` and `ABB_ALLOW_DEV_SESSIONS` (commented). New:
+  `docs/runbooks/auth-and-access.md`. Changed: ADR-021 (superseded), DECISIONS, SECURITY (also the "members visible to every role" and "unscoped lookups" notes asked
+  for by the plan), api-v1, TESTING, ARCHITECTURE, README, setup, stream-issues, KNOWN_ISSUES (KI-029/027/051/033 resolved; KI-067..074 are the new deferrals, GitHub issue
+  "to file"), IMPLEMENTATION_PLAN, PROJECT_STATE.
+- **Not done**: filing the GitHub issues for KI-067..074 (the user files or approves them); AC-14; AC-15; the compose runtime check (KI-074).
+
+## Closing evidence (complete-phase walkthrough, 2026-10-09, branch `feature/phase-15-auth-rbac`)
+
+Environment: Postgres 16 on 5433 (Colima), scratch databases `abb_test_p15` (tests) and `abb_p15` (E2E, curl), Node 22, system Chrome for Playwright. The compose stack of
+the main checkout was running and was not touched. Commands were run from the worktree; "VERIFIED" means the command ran here and its output was observed.
+
+| AC | Result | Command and observed output |
+| --- | --- | --- |
+| AC-1 fail-closed generator | **PASS** (VERIFIED) | `pytest tests/authz/test_registry_is_complete.py -q`: `6 passed`. With `@router.get("/v1/probe", include_in_schema=False)` appended to `health/router.py` the test failed: `Left contains one more item: 'GET /v1/probe: no RouteCase in tests/authz/registry.py'` and `1 failed, 5 passed`; the probe was reverted (`6 passed` again, tree clean). |
+| AC-2 role matrix | **PASS** (VERIFIED) | `pytest tests/authz/test_role_matrix.py -q -rs`: `33 passed`, no skips. `registry.CASES` has 31 routes and the actor sets 13 key + 14 people = 27 actors: **31 routes x 27 actors = 837 cells** (27 per-actor tests, plus HEAD/OPTIONS per actor, the literal-table/route-set equality tests and the pinned-error tests). `test_matrix_data.py` (literal table both directions, data invariants) is in `tests/authz`: 88 passed together. |
+| AC-3 no scattered checks | **PASS** (VERIFIED) | `rg -n "require_principal\(" apps/api/src`: no output (exit 1). `pytest tests/authz/test_no_scattered_checks.py -q`: `3 passed`. |
+| AC-4 cross-workspace | **PASS** (VERIFIED) | `pytest tests/authz/test_cross_workspace.py -q`: `33 passed` (13 acme actors: canary scan of every body and SSE frame, identical 404s for foreign and random ids, analytics magnitudes). |
+| AC-5 sessions | **PASS** (VERIFIED) | `pytest tests/test_auth_sessions.py -q`: `68 passed`. |
+| AC-6 lookup (KI-027) | **PASS** (VERIFIED) | A VIEWER session minted with `create-session` on `abb_p15`, API on :8171: `GET /v1/me` -> workspace `ac6-...`, role `VIEWER`; `curl -H "Cookie: abb_session=..." -H "X-ABB-Workspace: ws_..." /v1/projects` -> `[{'slug': 'web', 'name': 'Web', 'id_prefix': 'prj_'}]`. Web resolution: `auth.spec.ts` (AC-12) and the proxy/session vitest. |
+| AC-7 admin API (KI-051) | **PASS** (VERIFIED) | `pytest tests/test_members_api.py tests/test_api_keys_api.py tests/test_pricing_api.py -q`: `37 passed` (link once and no token in `InvitationOut`, token once, revoked key 401 on the next request, 500/200/200/200/1000 bounds as 409). Settings pages in a real browser: members/invitation and key token (`auth.spec.ts`). Pricing override submit and rebuild through the page are vitest-only. |
+| AC-8 audit | **PASS** (VERIFIED) | `test_audit.py`: `22 passed`; `test_audit_api.py`: `6 passed`; `test_runtime_role.py`: `19 passed` (INSERT/SELECT but no UPDATE/DELETE/TRUNCATE on `audit_log`); `test_cli_access.py` `13 passed` and `test_cli.py` `7 passed` (one row per CLI action). |
+| AC-9 stream re-auth (KI-033) | **PASS** (VERIFIED) | `pytest tests/test_stream_reauth.py -q`: `6 passed` (revoked key, revoked session, removed member end the stream with `event: error`; per-user limit with `scope: user`). Browser: `auth.spec.ts` "removing a person ends the live stream they have open" (`data-stream="unauthorized"` within the 2 s re-check). |
+| AC-10 shared key gone (KI-029) | **PASS** (VERIFIED) | `rg -n "ABB_WEB_API_KEY\|WEB_UPSTREAM_AUTH" apps scripts docker-compose.yml .env.example docs --glob '!docs/decisions/ADR-021*' --glob '!docs/plans/**'`: no output (exit 1). `vitest run tests/proxy-session.test.ts tests/session-gate.test.ts tests/auth-routes.test.ts tests/upstream.test.ts tests/upstream-stream.test.ts`: `63 passed` (header allowlist, no `Authorization`, cross-origin writes refused, redirects and `Set-Cookie` relayed without following, no cookie is 401). |
+| AC-11 contract | **PASS** (VERIFIED in parts; `quality.sh full` was run as its parts, see below) | Every step of `quality.sh full` passed (counts below); `make audit` parts: `pnpm audit --prod`: `No known vulnerabilities found`; `pip-audit` on the API lockfile: `No known vulnerabilities found` (it skips `abb-event-schema`, which is not on PyPI). |
+| AC-12 browser | **PASS** (VERIFIED) | `scripts/auth-e2e.sh`: `8 passed`, `AUTH-E2E PASSED` (axe clean on the login, settings, invite and viewer pages; screenshots in `docs/screenshots/phase-15/`). Existing scripts on sessions: `e2e-web-real.sh` `2 passed`; `coding-e2e.sh` `6 passed`; `stream-e2e.sh` `5 passed` (latency p95 6.1 ms); `analytics-e2e.sh` `4 passed`; fixtures project `9 passed, 25 skipped`. Deviation: the login lands on the workspace's own slug, not `/w/local/...`. |
+| AC-13 compatibility | **PARTIAL**: PASS (VERIFIED) / UNVERIFIED (env) | VERIFIED: `scripts/integrations-e2e.sh` `INTEGRATIONS-E2E PASSED` (keys untouched); `INSUFFICIENT_SCOPE` details pinned by `test_role_matrix.py`; `cli seed` twice on `abb_p15`: run 1 `added owner@local.test as OWNER of 'local' (development only)`, run 2 `dev key ... is still valid; nothing to do` (members: exactly one `owner@local.test OWNER`); `create-session` refused with `ABB_ENVIRONMENT=production` and in development without `ABB_ALLOW_DEV_SESSIONS=1`; `docker compose --profile app config -q` accepts the new file. **UNVERIFIED (env)**: `make smoke`, `make sdk-e2e` and `make up` with the `fake-oidc` login path need Docker Compose on ports 3000/8000/8900/5433, which hold a running stack of the main checkout that this phase may not disturb; verify with `make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e` (KI-074). CI's `containers` job runs the first two. |
+| AC-14 real provider | **UNVERIFIED (env)** | Needs the user's own OIDC client id and secret for one manual login; no provider credentials exist here (KI-067). Record the claims it sends (`email_verified`, `azp`) here when done. |
+| AC-15 security review | **PENDING** | The independent `review-change` pass with the attack list above has not run yet; this phase stays in `plans/active/` until it has and its findings are fixed or filed. |
+
+### `scripts/quality.sh full`, run part by part (foreground)
+
+| Part | Result |
+| --- | --- |
+| event-schema: ruff, format, mypy, pytest | clean; `348 passed` |
+| sdk-python: ruff, format, mypy, pytest with coverage gate | clean; `806 passed`, coverage 94.06% (gate 90%) |
+| examples/coding-agent | ruff clean; `12 passed` |
+| integrations conformance / langgraph / openai / anthropic / mcp | `17` / `74` / `66` / `61` / `44` passed (ruff, format, mypy clean) |
+| `make schema-check`, `openapi --check`, `gen:api:check` | current |
+| api: ruff, format, mypy (161 files) | clean |
+| api: pytest (three groups: `tests/authz` 88, the Phase 15 files 226, the rest 485) | **799 passed** (no skips, no failures) |
+| web: eslint, prettier --check, tsc | clean |
+| web: vitest | **396 passed** (24 files) |
+| migrations 0047: up / down to base / up on `abb_test_p15` | `alembic current`: `0047 (head)` |
+| web: `next build`; api: `uv build --wheel` | built (`Proxy (Middleware)` listed); `abb_api-0.0.0-py3-none-any.whl` |
+
+**Mutation checks** (review step, AC-15) were not repeated in this run. The plan's list (drop the `cookie == query.state` comparison, skip nonce or signature checks, forward `Authorization`
+in the proxy, remove the last-owner `FOR UPDATE`...) is the reviewer's to run; the `FOR UPDATE` mutant was already shown to fail `test_two_owners_removing_each_other_at_once_leave_one` (step 6).

@@ -2,7 +2,7 @@
 # Auth E2E (Phase 15): a real browser signs in through the OIDC flow against the DEVELOPMENT-ONLY fake provider
 # (scripts/fake-oidc.sh), switches workspace, is refused or shown less as a VIEWER, accepts an invitation, sees a key token
 # once, loses a live stream when removed, and signs out. A dedicated database (abb_p15, never the shared ones), the API on
-# :8160 (ABB_STREAM_REAUTH_SECONDS=2 so a revoked stream ends within seconds), the fake provider on :8161, a worker, and the
+# :8165 (ABB_STREAM_REAUTH_SECONDS=2 so a revoked stream ends within seconds), the fake provider on :8166, a worker, and the
 # built web server on :3160 (started by Playwright). Needs `.env` (Postgres on 5433) and `pnpm --filter @abb/web build`.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"
@@ -10,8 +10,8 @@ set -a; . ./.env; set +a
 DB_NAME="${AUTH_E2E_DB_NAME:-abb_p15}"
 export ABB_DATABASE_URL="${ABB_DATABASE_URL%/*}/$DB_NAME"
 export ABB_SUMMARY_DEBOUNCE_SECONDS=1
-PORT="${AUTH_E2E_API_PORT:-8160}"; API="http://localhost:$PORT"
-OIDC_PORT="${AUTH_E2E_OIDC_PORT:-8161}"
+PORT="${AUTH_E2E_API_PORT:-8165}"; API="http://localhost:$PORT"
+OIDC_PORT="${AUTH_E2E_OIDC_PORT:-8166}"
 export ABB_WEB_ORIGIN="http://localhost:3160"           # fixed: playwright.config.ts starts the web server there
 export ABB_OIDC_ISSUER="http://localhost:$OIDC_PORT"
 export ABB_OIDC_CLIENT_ID="abb-dev"

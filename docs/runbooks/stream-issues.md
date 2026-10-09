@@ -30,8 +30,9 @@ The event data itself is safe: streams only read what ingestion already committe
 6. **A viewer sees a gap that REST does not have**: only possible for an event whose transaction stayed open longer than
    `ABB_STREAM_OVERLAP_SECONDS` (30) after later events were already delivered (KI-034). The page reloads the history after a long gap and
    when the run ends; a manual refresh also fixes it. Raise the overlap if long transactions are expected.
-7. **A revoked key is still receiving events**: streams are not re-authenticated, so it lasts at most the stream lifetime (KI-033). Lower
-   `ABB_STREAM_MAX_LIFETIME_SECONDS`, or restart the API to drop every stream at once.
+7. **A revoked key, session or removed member is still receiving events**: open streams re-check their credential every
+   `ABB_STREAM_REAUTH_SECONDS` (default 30), so it should end within that interval with `STREAM_UNAUTHORIZED`. If it does not, check the API log for
+   `stream failed` and that the setting was not raised; restart the API to drop every stream at once.
 
 8. **Ingestion slows while many viewers open a hot run**: every new viewer replays the last `ABB_STREAM_OVERLAP_SECONDS` of events. On a
    5,000-event run, 50 simultaneous viewers took 17 s to replay and ingest p50 rose to about 200 ms meanwhile (`docs/benchmarks/phase-5-streaming.md`).

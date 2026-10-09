@@ -46,6 +46,32 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
   Server-side streaming is tested over a real socket (`apps/api/tests/test_stream_api.py`), because an in-process ASGI transport buffers
   whole responses.
 
+### Auth, workspaces and RBAC (Phase 15)
+- **Authorization generator** (`apps/api/tests/authz/`): `registry.py` lists every route the application serves with the expected outcome for each of
+  27 actors (13 key kinds, six roles, and people who are not members, were removed, were demoted, hold an expired or revoked session, send a session as a
+  bearer or a key as a cookie, or omit the workspace header). `test_registry_is_complete.py` walks `app.routes` (including HEAD/OPTIONS) and fails for a
+  route without a case; `test_role_matrix.py` runs the table against a real database and socket; a literal copy of the matrix in the tests is compared
+  with `authz/matrix.py` in both directions (`test_matrix_data.py`); `test_cross_workspace.py` scans every body and SSE frame for another workspace's
+  canary values and compares analytics magnitudes; `test_no_scattered_checks.py` is an AST scan against role or scope inspection outside `authz/`.
+- **Sign-in** (`tests/test_auth_sessions.py` with `tests/fake_oidc.py`, an in-process OIDC provider with knobs for every bad token, nonce, key, audience,
+  issuer and unverified email): state/cookie binding, identity linking and conflict, discovery and JWKS rules, open redirect, CSRF, expiry, revocation,
+  downgrade and removal taking effect at once, database-down 503, logout idempotence, log hygiene.
+- **Administration**: `test_members_api.py` (last-owner rule under concurrency, owner changes, bounds, invitations), `test_api_keys_api.py`,
+  `test_pricing_api.py`, `test_audit.py`/`test_audit_api.py` (one row per action, denial flood bounded, no secret in `details`),
+  `test_payload_access.py`, `test_runtime_role.py` (append-only tables), `test_stream_reauth.py` (a revoked key or session, or a removed member, ends an
+  open stream within the re-check interval), `test_cli_access.py` (gated `create-session`, dev owner, `relink-user`).
+- **Web unit** (`apps/web/tests`): the proxy forwards exactly the header allowlist and no shared credential, rejects cross-origin writes, sign-in handlers
+  relay `Location` and `Set-Cookie` without following redirects, session helper and gate, settings pages in every state.
+- **Auth E2E** (`make auth-e2e`, `scripts/auth-e2e.sh`, CI job `auth-e2e`): dedicated `abb_p15` database, API (:8165, stream re-check every 2 s), the
+  DEVELOPMENT-ONLY fake provider (:8166, `scripts/fake-oidc.sh`), a worker and the built web server (:3160). `apps/web/e2e/auth.spec.ts` drives a real
+  browser: redirect to sign-in and login through the provider, an HttpOnly cookie, workspace switch and cross-workspace 404, owner sees a payload,
+  invitation link and key token shown once, an invited person joins, role downgrade to VIEWER withholds payloads and hides settings, removing a person ends
+  their live stream (`STREAM_UNAUTHORIZED`), sign-out; axe on the login and settings pages. Screenshots: `docs/screenshots/phase-15/` (committed).
+- **The other E2E scripts no longer use a shared read key**: `e2e-web-real`, `coding-e2e`, `stream-e2e` and `analytics-e2e` mint a development session for a
+  throwaway workspace owner (`create-session`, only with `ABB_ENVIRONMENT=development|test` and `ABB_ALLOW_DEV_SESSIONS=1`, which the scripts set for that one
+  command) and pass it to Playwright as `E2E_SESSION_TOKEN` (`apps/web/e2e/session.ts` puts it in the browser as the HttpOnly cookie) with `E2E_WORKSPACE`.
+  Specs that call the proxy directly add `X-ABB-Workspace` (`workspaceHeader`).
+
 Rules: never skip/weaken a failing test; no mocks where a real Postgres test is feasible; UI
 changes are exercised in a browser; fixtures are deterministic (fixed IDs/timestamps).
 

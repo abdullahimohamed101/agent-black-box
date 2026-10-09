@@ -1,7 +1,7 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./schema";
 
-/** Same-origin read proxy (ADR-021): the browser never holds an API key. */
+/** Same-origin proxy (ADR-060): the browser holds a session cookie, never an API key. */
 export const PROXY_BASE = "/api/abb";
 
 /**

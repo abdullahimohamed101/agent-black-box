@@ -3,23 +3,70 @@
 Reference for the public ingestion and query API. The machine-readable contract is
 [`apps/api/openapi.json`](../../apps/api/openapi.json) (regenerate with `make openapi`; the quality
 gate fails if it is stale). Event bodies are defined by the [event contract](events.md). Spec: §41, §71,
-§101; decisions: ADR-002, ADR-006, ADR-012.
+§101; decisions: ADR-002, ADR-006, ADR-012, ADR-060..062.
 
 ## Authentication
 
-`Authorization: Bearer abb_live_<key_id>.<secret>`. Keys are issued by the CLI
-(`python -m abb_api.cli create-key`) and carry scopes and an optional project:
+Two kinds of caller, one enforcement path (ADR-061). Which one a request is depends on the credential it carries; if both are sent, the
+`Authorization` header wins and the cookie is ignored.
+
+**API keys** (SDKs and tools): `Authorization: Bearer abb_live_<key_id>.<secret>`. Created by the CLI or by `POST /v1/api-keys` and carry scopes and
+an optional project:
 
 | Scope | Allows |
 | --- | --- |
 | `events:write` | `POST /v1/events`, `POST /v1/events/batch`, `POST /v1/runs` (needs a project-bound key) |
-| `runs:read` | every `GET` below (it implies the `payload.read` and `artifact.read` actions, so artifact content stays readable) |
+| `runs:read` | every run, artifact, analytics and pricing `GET` (it implies the `payload.read` and `artifact.read` actions, so artifact content stays readable) |
+| `artifacts:write` | `PUT /v1/artifacts/{id}` |
+| `policy:check` | reserved (Phase 14) |
 
-A **project-bound** key only ever sees its own project. A **workspace-wide** key (no project) can read
-every project of its workspace but cannot ingest. Unknown, malformed, wrong-secret, revoked and expired
-keys all return the same `401 API_KEY_INVALID` (with `WWW-Authenticate: Bearer`). A valid key without the
-needed scope gets `403 INSUFFICIENT_SCOPE`. Resources of another workspace, or of another project for a
-project key, are `404`, indistinguishable from nonexistent ones.
+Every key also reads its own workspace row and its project(s). Keys never receive member, invitation, key-management or audit actions. A
+**project-bound** key only ever sees its own project. A **workspace-wide** key (no project) can read every project of its workspace but cannot
+ingest. Unknown, malformed, wrong-secret, revoked and expired keys, and a request with no credential at all, return the same
+`401 API_KEY_INVALID` (with `WWW-Authenticate: Bearer`). A valid key without the needed scope gets `403 INSUFFICIENT_SCOPE`
+(`details.required_scope` is unchanged since Phase 2). A key may send `X-ABB-Workspace` only with its own workspace id (anything else is 404).
+
+**People** (the dashboard, ADR-060): a session cookie (`__Host-abb_session` on https, `abb_session` on a localhost http origin) set by
+`GET /v1/auth/callback`. A missing, expired or revoked session is `401 SESSION_INVALID`; database trouble is `503`, never 401. A person acts in one
+workspace per request, named by the header `X-ABB-Workspace: ws_...` (missing on a workspace route: `400 WORKSPACE_REQUIRED`; a workspace the person
+is not a member of: `404 WORKSPACE_NOT_FOUND`, the same as one that does not exist). A person without the role's permission gets
+`403 PERMISSION_DENIED` with `details.required_permission`. Any request authenticated by cookie that is not `GET`/`HEAD` must carry an `Origin`
+equal to `ABB_WEB_ORIGIN` (`403 CSRF_REJECTED`). Roles (per workspace) and what they hold:
+
+| Role | Reads | Writes |
+| --- | --- | --- |
+| OWNER | everything, including payloads and the audit log | members (incl. owners), invitations, keys, projects, pricing |
+| ADMIN | everything, including payloads and the audit log | the same, except changing or inviting owners |
+| DEVELOPER | runs, payloads, artifacts, analytics, key list | create keys, revoke their own |
+| VIEWER | run metadata, analytics, prices, members (no payloads or artifact content) | nothing |
+| SECURITY | runs, payloads, key list, audit log | revoke keys |
+| BILLING | analytics, prices, members (no runs, no payloads) | pricing overrides, cost rebuild |
+
+The authoritative table is `apps/api/src/abb_api/authz/matrix.py`; `GET /v1/me` returns each membership's effective `permissions` list and the
+web shows or hides by it. Resources of another workspace, or of another project for a project key, are `404`, indistinguishable from nonexistent ones.
+
+### Sign-in and identity
+- `GET /v1/auth/login?return_to=/w/...`: starts OIDC; `302` to the provider and sets the `abb_login` cookie. `return_to` must be one of the app's
+  own routes (`422 RETURN_TO_INVALID`). `503 AUTH_NOT_CONFIGURED` when no issuer is set.
+- `GET /v1/auth/callback?code=&state=`: finishes it; `302` to the stored `return_to` with the session cookie. Every failure is `400/401 LOGIN_FAILED`
+  (the cause is logged, never returned). Both endpoints are rate-limited (`429`) by a global backstop.
+- `POST /v1/auth/logout`: revokes the session and clears the cookie; `200` even if the cookie was already invalid. Never a GET.
+- `GET /v1/me`: the person, and every membership with workspace id and slug, role, `permissions` and `own_permissions`. The one read across workspaces.
+
+### Workspace administration (all take `X-ABB-Workspace` for people)
+| Operation | Permission | Notes |
+| --- | --- | --- |
+| `GET /v1/projects`, `POST /v1/projects` | `project.read` / `project.write` | id, slug, name; at most 200 per workspace (`409 LIMIT_REACHED`); project keys list their project only |
+| `GET /v1/members`, `PATCH /v1/members/{user_id}`, `DELETE /v1/members/{user_id}` | `member.read` / `member.write` (+ `member.write_owner` when the old or new role is OWNER) | the last owner cannot be demoted or removed (`409 LAST_OWNER`, enforced under a row lock); at most 500 members |
+| `GET /v1/invitations`, `POST /v1/invitations`, `DELETE /v1/invitations/{id}` | `invite.read` / `invite.write` | `POST` returns the one-time link `${ABB_WEB_ORIGIN}/invite#<token>` once; the token is in the fragment and no response or list ever repeats it; `409 ALREADY_MEMBER` / `ALREADY_INVITED`; at most 200 open |
+| `POST /v1/invitations/accept` | a signed-in person | body `{token}`; no workspace header; `404 INVITATION_NOT_FOUND`, `409 INVITATION_USED`, `410 INVITATION_EXPIRED`, `403 INVITATION_EMAIL_MISMATCH` (the verified email must equal the invited one), `409 ALREADY_MEMBER` |
+| `GET /v1/api-keys`, `POST /v1/api-keys`, `DELETE /v1/api-keys/{key_id}` | `api_key.read` / `api_key.create` / `api_key.revoke` (DEVELOPER: own keys only) | `POST` returns the token once (`Cache-Control: no-store`); ingestion scopes need `project_id` (`422 PROJECT_REQUIRED`); a person cannot mint scopes beyond their own (`422 SCOPE_NOT_ALLOWED`); a revoked key is `401` on its next request and ends its open streams; at most 200 active |
+| `GET /v1/pricing`, `POST /v1/pricing/overrides`, `POST /v1/cost/rebuild` | `pricing.read` / `pricing.write` | overrides are append-only, at most 1,000 per workspace; `rebuild` takes `project_id`, `since`, `limit` (<= 10,000) and answers `202 {matched, queued, truncated}` |
+| `GET /v1/audit` | `audit.read` | newest first, keyset `cursor`, optional `since` (an instant with a time zone, `422 INVALID_SINCE`) |
+
+Every mutating call above writes one `audit_log` row (ADR-062); denials of people are audited at most `ABB_AUDIT_DENIALS_PER_MINUTE` a minute per
+person. `payload.read` decides content: without it, `GET /v1/runs/{id}/events/{event_id}` returns the event with `payload: null` and
+`payload_withheld: true`, and `GET /v1/artifacts/{id}/content` is `403 PERMISSION_DENIED` before any lookup (artifact metadata stays readable).
 
 ## Errors
 
@@ -32,7 +79,17 @@ Every non-2xx response, from every route, has this shape and an `X-Request-ID` h
 
 | Code | Status | Meaning |
 | --- | --: | --- |
-| `API_KEY_INVALID` | 401 | missing, malformed, unknown, revoked or expired key |
+| `API_KEY_INVALID` | 401 | missing, malformed, unknown, revoked or expired key, or no credential |
+| `SESSION_INVALID` | 401 | the session cookie is missing, unknown, expired or revoked |
+| `PERMISSION_DENIED` | 403 | a person's role lacks the action; `details.required_permission` |
+| `CSRF_REJECTED` | 403 | a cookie-authenticated write whose `Origin` is not `ABB_WEB_ORIGIN` |
+| `WORKSPACE_REQUIRED` / `WORKSPACE_NOT_FOUND` | 400 / 404 | a person sent no `X-ABB-Workspace`; a workspace they are not in (or that does not exist) |
+| `LOGIN_FAILED`, `AUTH_NOT_CONFIGURED`, `AUTH_UNAVAILABLE`, `RETURN_TO_INVALID` | 400/401, 503, 503, 422 | sign-in (never says why) |
+| `LIMIT_REACHED`, `LAST_OWNER`, `ALREADY_MEMBER`, `ALREADY_INVITED`, `INVITATION_USED`, `PROJECT_EXISTS` | 409 | per-workspace bounds and membership rules |
+| `INVITATION_NOT_FOUND`, `MEMBER_NOT_FOUND`, `KEY_NOT_FOUND` | 404 | absent or not visible |
+| `INVITATION_EXPIRED` | 410 | the invitation lapsed |
+| `INVITATION_EMAIL_MISMATCH` | 403 | the signed-in verified email is not the invited one |
+| `SCOPE_NOT_ALLOWED`, `PROJECT_REQUIRED` | 422 | key creation beyond the creator's own actions; an ingestion key without a project |
 | `INSUFFICIENT_SCOPE` | 403 | `details.required_scope` names the missing scope; `details.required_permission` (additive, Phase 15) names the action it maps to |
 | `PROJECT_KEY_REQUIRED` | 403 | ingestion or run creation with a workspace-wide key |
 | `RUN_NOT_FOUND`, `EVENT_NOT_FOUND`, `PROJECT_NOT_FOUND` | 404 | absent or not visible to this key |
@@ -142,7 +199,7 @@ Prices: `python -m abb_api.cli set-pricing-override` then `rebuild-costs` (ADR-0
 
 ## Live streaming
 
-`GET /v1/runs/{id}/stream` (scope `runs:read`, same visibility rules as the other run reads) returns `text/event-stream`. Design and
+`GET /v1/runs/{id}/stream` (action `run.read`, scope `runs:read`, same visibility rules as the other run reads) returns `text/event-stream`. Design and
 trade-offs: ADR-022.
 
 | Message | Meaning |
@@ -150,7 +207,7 @@ trade-offs: ADR-022.
 | `retry: 3000` | first line: the browser waits 3 s before reconnecting |
 | `id: evt_...` `event: trace_event` `data: {...}` | one event, in the list endpoint's shape **without payload** (`has_payload` says if one exists) |
 | `event: run_end` `data: {"reason":"run_finished"}` | the run has a terminal `run.*` event and nothing arrived for 5 s: do not reconnect |
-| `event: error` `data: {"error": {...}}` | `STREAM_UNAVAILABLE`, retryable: the stream ends, reconnect with `Last-Event-ID` |
+| `event: error` `data: {"error": {...}}` | `STREAM_UNAVAILABLE`, retryable: the stream ends, reconnect with `Last-Event-ID`; or `STREAM_UNAUTHORIZED`, not retryable: the credential, session or membership no longer holds (a reconnect gets the precise 401/403/404) |
 | `: keepalive` / `: open` / `: max-lifetime...` | comments: idle keep-alive every 15 s, stream opened, closed at the maximum lifetime (15 min) |
 
 **Order and duplicates.** Events arrive in *arrival* order, not canonical order. Clients must de-duplicate by `event_id` and sort
@@ -163,10 +220,10 @@ wins. The server re-reads from that event's arrival time minus the overlap. An i
 the start of the run". Without either, the whole run is replayed, then followed live.
 
 **Errors before the stream starts** are ordinary JSON envelopes: `401`, `403`, `404 RUN_NOT_FOUND`, `422`, and
-`429 STREAM_LIMIT` (with `Retry-After`; per key `ABB_STREAM_MAX_PER_KEY`=10, per API process `ABB_STREAM_MAX_TOTAL`=50).
+`429 STREAM_LIMIT` (with `Retry-After`; per key or per person `ABB_STREAM_MAX_PER_KEY`=10, `details.scope` is `key`, `user` or `server`; per API process `ABB_STREAM_MAX_TOTAL`=50). EventSource cannot send headers, so people select the workspace with `?workspace=ws_...` (the web proxy turns it into `X-ABB-Workspace`).
 
 **Lifecycle.** A stream ends at `run_end`, at its maximum lifetime, when the client disconnects, or after a 10 s write timeout against a
-client that stopped reading. Late events after `run_end` appear on a new connection. An open stream is not re-authenticated (KI-033).
+client that stopped reading. Late events after `run_end` appear on a new connection. Every `ABB_STREAM_REAUTH_SECONDS` (default 30) the stream re-checks that its key (active, same scope) or session (not revoked or expired, person still a member with `run.read`) still holds and otherwise ends with `STREAM_UNAUTHORIZED`; the re-check never extends a session.
 
 ## Events and spans
 
@@ -176,7 +233,7 @@ client that stopped reading. Late events after `run_end` appear on a new connect
 `event_type` (repeatable; well-formed names only), `status` (repeatable; `success|error|timeout|cancelled|blocked`), `span_id`; `limit` 1-500 (default 100). The page includes
 `ordering_mode`; cursors embed it, so a cursor from before a mode change gets `409 CURSOR_STALE`.
 Payloads are **not** in lists (`has_payload` says whether one exists); `GET /v1/runs/{id}/events/{event_id}`
-returns the full event with its inline payload.
+returns the full event with its inline payload (or `payload: null`, `payload_withheld: true` to an actor without `payload.read`).
 
 `GET /v1/runs/{id}/spans` returns derived spans (`parent_span_id`, `kind`, `status`, timings, `event_count`)
 by start time (spans that never saw a start event come last), `limit` 1-2000 (default 500). It is empty until

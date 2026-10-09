@@ -13,7 +13,7 @@ import {
 } from "./config";
 
 /**
- * The same-origin proxy between the browser and the API (ADR-021, amended by ADR-060). The browser holds a session
+ * The same-origin proxy between the browser and the API (ADR-060, which supersedes ADR-021). The browser holds a session
  * cookie only; this server forwards it, and nothing else, to the API. What is forwarded is an allowlist (D17):
  * the session cookie, `X-ABB-Workspace`, `Origin`, `Last-Event-ID`, `Accept` and a JSON body. `Authorization`,
  * other cookies, `X-Forwarded-*`, `Forwarded` and `X-Request-ID` from the browser never reach the API, and

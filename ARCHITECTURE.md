@@ -36,10 +36,13 @@ Depends on nothing else in the repo. Status: implemented (Phase 1): IDs, envelop
 
 ### API (`apps/api`) - modular monolith
 Routers -> services -> repositories -> db, with modules `ingestion`, `runs`, `traces`, `jobs`, `auth`, `projects`
-`artifacts` and `analytics` (plus `core` and `db`); evaluations and policies arrive in later phases. Ingestion and query are separate
+`artifacts`, `analytics`, `authz` (one `authorize()` path, the role/scope matrix as data), `audit` and `workspaces` (members, invitations, projects)
+(plus `core` and `db`); evaluations and policies arrive in later phases. Ingestion and query are separate
 routers so a slow query never sits on the SDK path. Repositories take a tenant context (INV-3) and tables are keyed
 `(workspace_id, id)` with composite foreign keys (ADR-002). Status: implemented (Phase 2): health, API-key auth, ingestion,
 run/event/span queries, provisioning CLI, OpenAPI contract (`apps/api/openapi.json`); artifacts (Phase 6) and analytics (Phase 7) are implemented.
+Phase 15 adds people: OIDC login, database-backed sessions, workspace membership with six roles, invitations, API-key management, pricing
+overrides, an append-only audit log and re-authentication of open streams (ADR-060..062). Keys and people share one `Principal` and one enforcement path.
 
 ### Workers (`abb_api.worker`, same image as the API)
 PostgreSQL outbox, `FOR UPDATE SKIP LOCKED` leases, retries with backoff, dead letters, one writer per run via a
@@ -53,7 +56,8 @@ Never raises into the host agent. Status: implemented (Phase 3; `blackbox.coding
 
 ### Web (`apps/web`)
 Next.js App Router. Server-fetched page data; client-side trace viewers (timeline, waterfall,
-diff, replay) with virtualization. Status: implemented (Phases 4-7): dashboard, runs list, run detail with story, timeline, diff and shell panels, live updates, analytics page.
+diff, replay) with virtualization. Status: implemented (Phases 4-7, 15): dashboard, runs list, run detail with story, timeline, diff and shell panels, live updates, analytics page, sign-in, workspace switcher, settings (members, API keys, pricing, audit log).
+The browser holds only a session cookie; the web server is a same-origin relay with a header allowlist (`apps/web/src/server/`), forwarding the cookie to the API, which decides every request.
 
 ### Integrations (`integrations/*`), Processors, Examples
 Adapters translate framework callbacks to SDK calls only; processors are pluggable derived-
@@ -76,7 +80,8 @@ api modules: routers -> services -> repositories -> db   (no cross-module table 
 - **SDK vs host agent**: telemetry is secondary; failures are isolated and bounded.
 - **Ingestion durability**: `202` means committed to PostgreSQL; derived work is async.
 - **Raw events vs derived state**: events immutable; summaries/findings rebuildable.
-- **Tenant boundary**: workspace ID on every record and every repository call.
+- **Tenant boundary**: workspace ID on every record and every repository call. A person selects a workspace per request (`X-ABB-Workspace`); a workspace or id they cannot see is a 404.
+- **Identity**: the API owns sessions and authorization; the web server never holds a credential of its own (ADR-060, ADR-061).
 - **Large payloads**: referenced via `payload_ref` -> `ArtifactStore`, not hot tables.
 - **Live path**: SSE for one-way updates; WebSockets only for approvals/cancel (Phase 14). SSE is built (Phase 5).
 - **Ingestion vs derived state**: ingestion commits events and a job; everything else about a run is derived
@@ -89,7 +94,7 @@ api modules: routers -> services -> repositories -> db   (no cross-module table 
 
 | System | Purpose | Phase | Status |
 | --- | --- | --- | --- |
-| PostgreSQL 16 | system of record: tenancy, runs, events, outbox | 0 | running in Compose; migrations through 0044 |
+| PostgreSQL 16 | system of record: tenancy, runs, events, outbox | 0 | running in Compose; migrations through 0047 |
 | Docker Compose | reproducible local stack | 0 | implemented (`make up`) |
 | Object storage (S3-compatible) | artifacts at hosted scale | 18 | deferred (trigger) |
 | Redis | cache/pub-sub/rate limits | 18 | deferred (trigger) |
