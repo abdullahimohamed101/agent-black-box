@@ -44,3 +44,19 @@ export type PriceOut = components["schemas"]["PriceOut"];
 export type AuditEntryOut = components["schemas"]["AuditEntryOut"];
 export type Role = MemberOut["role"];
 export type KeyScope = ApiKeyOut["scopes"][number];
+
+// The vocabularies of the API contract (OpenAPI enums), for form controls. Not a rights matrix.
+export const ROLES = [
+  "OWNER",
+  "ADMIN",
+  "DEVELOPER",
+  "VIEWER",
+  "SECURITY",
+  "BILLING",
+] as const satisfies readonly Role[];
+export const KEY_SCOPES = [
+  "runs:read",
+  "events:write",
+  "artifacts:write",
+  "policy:check",
+] as const satisfies readonly KeyScope[];

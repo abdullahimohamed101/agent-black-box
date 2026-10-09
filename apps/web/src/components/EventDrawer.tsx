@@ -200,6 +200,11 @@ export function EventDrawer({
           <Loading label="Loading payload" />
         ) : detail.isError ? (
           <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />
+        ) : detail.data?.payload_withheld ? (
+          <p className="withheld" data-testid="payload-withheld">
+            Content hidden by your role. You can see that this event has a payload, not what it
+            says.
+          </p>
         ) : json ? (
           <>
             {/* Captured payloads are untrusted: rendered as text only. */}
