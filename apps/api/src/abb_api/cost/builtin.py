@@ -39,9 +39,10 @@ _EXAMPLE_ENTRIES: tuple[PriceEntry, ...] = (
 
 
 # Version 2026-10-09: Anthropic list prices (USD per million tokens) from claude.com/pricing,
-# fetched 2026-10-09. Not yet checked by a human against an invoice. Not included: Haiku 5.5 (the page
-# tiers its price at 100K prompt tokens, which the engine cannot express), legacy models, and every
-# OpenAI model (the vendor page could not be read here; only third-party figures were available).
+# fetched 2026-10-09. Not yet checked by a human against an invoice.
+# Not included: Haiku 5.5 (the page tiers its price at 100K prompt tokens, which the engine cannot
+# express), legacy models, and every OpenAI model (the vendor page could not be read here; only
+# third-party figures were available).
 ANTHROPIC_VERSION = "2026-10-09"
 _V2 = datetime(2026, 10, 9, tzinfo=UTC)
 _ANTHROPIC_SOURCE = "https://claude.com/pricing (fetched 2026-10-09)"
