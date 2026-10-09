@@ -196,3 +196,38 @@ def test_search_masks_secrets_and_does_not_follow_links_to_secret_files(tmp_path
         shown = box.call("search", {"pattern": "URL|OK|PW|TOKEN"}).text
     assert "search-secret-value-5512" not in shown and "outside-secret-value-3301" not in shown
     assert "OK = 'plain'" in shown  # ordinary hits still work
+
+
+def test_tool_error_text_shown_to_the_model_is_masked(tmp_path: Path) -> None:
+    """Regression (fourth review): a path or message with a known secret reached the model in tool errors."""
+    planted = "err-path-secret-token-6619"
+    root = prepare_workspace(tmp_path)
+    (root / ".env").write_text(f"SVC_KEY={planted}\n")
+    tool_texts: list[str] = []
+
+    class Recording:
+        provider, name = "scripted", "recording"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages: list, schemas: list) -> Reply:  # type: ignore[type-arg]
+            self.calls += 1
+            tool_texts.extend(
+                r["text"] for m in messages if m["role"] == "tool" for r in m["results"]
+            )
+            if (
+                self.calls == 1
+            ):  # the model's own call carries the path it chose: that is its input, not a tool result
+                return Reply(
+                    "try", (ToolCall("c1", "read_file", {"path": f"missing-{planted}.py"}),)
+                )
+            return Reply("done")
+
+    bb = BlackBox(mode="offline", project="d")
+    with bb.run("r") as run:
+        run_agent(bb, run, CodingRecorder(bb, run, root), Recording())  # type: ignore[arg-type]
+    assert len(tool_texts) == 1 and tool_texts[0].startswith(
+        "error:"
+    )  # the failure reached the next prompt
+    assert planted not in tool_texts[0]
