@@ -759,3 +759,33 @@ is visible in logs and capped in the table; a future "who viewed what" requireme
   when it is ignored because the environment is not development or test).
 - **Process note.** The step 11 commit contained one over-long line in `streaming/router.py` that `ruff check` flags (edited after the last lint run);
   it is fixed in the step 12 commit.
+
+### Steps 13-14 (web)
+
+- **`proxy.ts` VERIFIED** for Next 16.3.8 (matcher `/w/:path*`; it needs an absolute redirect URL, built from `ABB_WEB_ORIGIN`, falling back to the request URL).
+- **Gate scope.** The fast path protects `/w/*` only. `/invite` is not redirected by it: a redirect chain through the IdP would lose the URL fragment, so the page reads the
+  token first, keeps it in `sessionStorage` (this tab), clears the address bar, and offers sign-in or an explicit "Accept invitation" button. The gate also stands aside in
+  fixture mode and while `ABB_WEB_API_KEY` is set (`sessionOnly()`).
+- **Workspace on streams.** `EventSource` cannot send `X-ABB-Workspace`, so the stream URL carries `?workspace=ws_...`; the proxy turns it into the header and strips it
+  from the upstream query (for every proxied path; no API route uses that name).
+- **Sign-out is a `fetch`, not a form.** The app sends `Referrer-Policy: no-referrer`, so browsers put `Origin: null` on form POSTs; the exact-origin rule refused it
+  (found in the real browser). `POST /api/auth/logout` stays POST-only with the same rule.
+- **Unknown proxy paths** answer 404 for GET and 405 for other methods (the pre-existing `real.spec.ts` expects 405 for `POST /api/abb/v1/events/batch`).
+- **Two existing vitest expectations changed with the spec** (`tests/upstream.test.ts`): `GET v1/pricing` is now an allowed read, so the "outside the allowlist" list uses
+  `v1/pricing/x` and `v1/auth/login`; with neither a session nor a key the proxy answers `401 SESSION_INVALID` (was `503 WEB_NOT_CONFIGURED`) so the browser goes to sign-in.
+- **Key fallback** (D14): session cookie first, then `ABB_WEB_API_KEY`, reads only (writes without a session are 401). Key mode has no person: the workspace page is built from
+  the URL slug, `permissions` is empty (no Settings link), projects come from `/v1/projects` with the key. All four E2E scripts (`e2e-web-real`, `analytics-e2e`,
+  `stream-e2e`, `coding-e2e`) pass on it.
+- **Login limiter (D15)**: Next keeps a client-supplied `X-Forwarded-For` (`??=` in `base-server.js`), so the address is a hint. The per-client bucket (10/min) is therefore
+  paired with a per-instance bucket over everyone (120/min); the API keeps its global backstop. Unknown address shares one bucket.
+- **Workspace switcher** is a `<details>` list of links, not a `<select>`: option roles collided with the timeline's listbox selectors in the existing Playwright specs.
+- **Fixture mode** serves one person with two workspaces (`default` OWNER, `viewer-only` VIEWER), any other slug as an OWNER workspace (the e2e specs use their own slugs), and
+  read-only settings data; writes through the proxy are `405 FIXTURE_READ_ONLY`.
+- **Settings UI**: tabs and pages are shown by the permission names from `/v1/me` (`member.read`, `api_key.read`, `pricing.read`, `audit.read`; forms by `*.write/create/revoke`;
+  own-revoke by `own_permissions` + `created_by`). OWNER rows and the OWNER option are offered only with `member.write_owner`. The role and scope lists are the OpenAPI enums.
+- **Browser verification (VERIFIED, system Chrome pane against a real API + fake OIDC, scratch DB `abb_p15`)**: redirect to `/login?return_to=`, login through the fake provider
+  landing on the return path, HttpOnly cookie (empty `document.cookie`), dashboard with the workspace header, workspace list, project slug resolution (`/projects/web` ok,
+  unknown slug and non-member workspace 404), members + invitation (link shown once), API key creation (422 shown, token shown once), pricing list, audit list, sign-out and
+  redirect after it, VIEWER sees only Members/Pricing and a clean "not available" note on `/settings/audit`, invite page clears the fragment and shows the API's email-mismatch
+  refusal. **Not exercised in a browser (UNVERIFIED, covered by vitest only; step 15's Playwright `auth.spec.ts` should add them)**: payload-withheld in a real event drawer,
+  pricing override submit and rebuild, role change/removal, key revoke, a successful invitation accept, `STREAM_UNAUTHORIZED` against a live stream, axe on the new pages.
