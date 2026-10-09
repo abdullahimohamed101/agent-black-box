@@ -338,7 +338,9 @@ async def accept_invitation(request: Request, context: SessionContext, body: Acc
         if await members.count() >= MAX_MEMBERS:
             raise limit_reached("members", MAX_MEMBERS)
         await members.add(user.id, current.role, invited_by=current.invited_by)
-        await invitations.mark_accepted(current.id, user.id, now)
+        if not await invitations.mark_accepted(current.id, user.id, now):
+            # Revoked (or accepted) between the read above and this write: nothing may be admitted.
+            raise invitation_not_found()  # the transaction rolls the membership back
         summary = await workspace_summary(conn, current.workspace_id)
     assert summary is not None
     actor = f"user:{public_id(IdKind.USER, context.user.id)}"

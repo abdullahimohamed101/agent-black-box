@@ -167,6 +167,30 @@ async def test_expired_revoked_and_reused_links(web: Api) -> None:
     error(again, 404, "INVITATION_NOT_FOUND")
 
 
+async def test_an_invitation_revoked_during_acceptance_admits_no_one(
+    web: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review F4: the revoke commits between the acceptor's read and its update."""
+    from abb_api.workspaces.repository import InvitationRepository
+
+    admin = await person(web, "a@acme.test", "ADMIN")
+    sent = await invite(web, admin, "racer@acme.test")
+    token = token_of(sent.json()["link"])
+    invitee = await person(web, "racer@acme.test", None, verified=True)
+    original = InvitationRepository.mark_accepted
+
+    async def revoke_first(self: InvitationRepository, *args: object, **kwargs: object) -> bool:
+        async with web.engine.begin() as other:  # a second connection, committed before we write
+            await other.execute(
+                text("UPDATE invitations SET revoked_at = now() WHERE email = 'racer@acme.test'")
+            )
+        return await original(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(InvitationRepository, "mark_accepted", revoke_first)
+    error(await accept(web, invitee, token), 404, "INVITATION_NOT_FOUND")
+    assert await role_in_acme(web, "racer@acme.test") is None
+
+
 async def test_duplicates_and_existing_members_are_conflicts(web: Api) -> None:
     admin = await person(web, "a@acme.test", "ADMIN")
     assert (await invite(web, admin, "dup@acme.test")).status_code == 201
