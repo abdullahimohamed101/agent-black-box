@@ -694,6 +694,7 @@ pre {
   .tok-fn {
     color: #79c0ff;
   }
+}
 
 /* Analytics: bars and columns are built from elements, never from trace-derived HTML. */
 .toolbar {
