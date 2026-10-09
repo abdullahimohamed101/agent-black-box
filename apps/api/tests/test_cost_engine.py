@@ -220,13 +220,54 @@ def test_historical_calculations_reproduce_after_prices_change() -> None:
     assert pinned.total == stored.total  # same tokens, same pinned prices, same cost
 
 
-def test_builtin_table_prices_only_example_models() -> None:
+def test_builtin_table_has_no_invented_vendor_prices() -> None:
     book = builtin_price_book()
     assert book.find("example-provider", "model-x", at(7)) is not None
     mini = book.find("example-provider", "model-x-mini-2", at(7))
     assert mini is not None and mini.model_pattern == "model-x-mini*"
     assert book.find("openai", "gpt-4o", at(7)) is None  # no invented vendor prices
     assert book.find("example-provider", "model-x", datetime(2026, 9, 30, tzinfo=UTC)) is None
+
+
+def test_builtin_anthropic_prices_match_the_recorded_source() -> None:
+    book = builtin_price_book()
+    sonnet = book.find("anthropic", "claude-sonnet-5-5", at(10))
+    assert sonnet is not None and sonnet.source.startswith("https://platform.claude.com/docs")
+    assert (sonnet.input_per_million, sonnet.output_per_million) == (D(2), D(10))
+    assert sonnet.cached_input_per_million == D("0.10")
+    opus = book.find("anthropic", "claude-opus-5-5-20260101", at(10))
+    assert opus is not None and (opus.input_per_million, opus.output_per_million) == (D(4), D(20))
+    fable = book.find("anthropic", "claude-fable-5-1", at(10))
+    assert fable is not None and (fable.input_per_million, fable.output_per_million) == (
+        D(10),
+        D(50),
+    )
+    # Not priced: tiered Haiku 5.5, legacy models, other providers, events before valid_from.
+    assert book.find("anthropic", "claude-haiku-5-5", at(10)) is None
+    assert book.find("anthropic", "claude-haiku-4-5-20251001", at(10)) is None
+    assert book.find("openai", "claude-sonnet-5-5", at(10)) is None
+    assert book.find("anthropic", "claude-sonnet-5-5", at(8)) is None
+
+
+def test_builtin_google_prices_follow_the_dated_and_exact_rows() -> None:
+    book = builtin_price_book()
+    now = book.find("google", "gemini-3.8-flash", at(10))
+    assert now is not None and (now.input_per_million, now.output_per_million) == (
+        D("0.75"),
+        D("3.75"),
+    )
+    after = book.find("google", "gemini-3.8-flash", datetime(2027, 1, 1, tzinfo=UTC))
+    assert after is not None and (after.input_per_million, after.output_per_million) == (
+        D("1.50"),
+        D("7.50"),
+    )
+    lite = book.find("google", "gemini-3.5-flash-lite", at(10))
+    assert lite is not None and lite.cached_input_per_million is None
+    assert book.find("google", "gemini-3.5-flash", at(10)) is not lite
+    # Exact IDs only: a different model sharing the prefix must stay unpriced.
+    assert book.find("google", "gemini-3.8-flash-tts", at(10)) is None
+    assert book.find("google", "gemini-3.1-pro-preview", at(10)) is None
+    assert book.find("anthropic", "gemini-3.5-flash", at(10)) is None
 
 
 def test_summary_totals_are_exact_and_split_by_source() -> None:
