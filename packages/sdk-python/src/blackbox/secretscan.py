@@ -170,6 +170,8 @@ def _worth_learning(value: str, key_is_secret: bool, by_name: bool, template: bo
         return False
     if key_is_secret:
         return len(value) >= 6
+    if re.match(r"^(?:https?://[^/@\s]+(?:/[^\s@]*)?|[/~.][^\s]*)$", value):
+        return False  # a plain URL or path is no secret; masking it would corrupt output
     return by_name and len(value) >= 4
 
 
@@ -196,7 +198,13 @@ def _json_leaves(node: Any, secret_key: bool, out: list[tuple[str, bool]], depth
 def extract_values(path: str, text: str) -> set[str]:
     """The secret values in one sensitive file's text."""
     name = _unquote_git(path).lower().rsplit("/", 1)[-1]
-    by_name = is_sensitive_path(path)
+    # `.git/config` and `.aws/config` are mostly ordinary settings (remote and branch names,
+    # regions):
+    # only their credentials are secrets, so a value there is learned only for a secret-looking key
+    # or a URL login.
+    unquoted = _unquote_git(path).lower().replace("\\", "/")
+    mixed = unquoted.endswith((".git/config", ".aws/config"))
+    by_name = is_sensitive_path(path) and not mixed
     template = bool(_TEMPLATE_FILE.search(name))
     candidates: list[tuple[str, bool]] = []  # (value, key looks secret)
     stripped = text.strip()

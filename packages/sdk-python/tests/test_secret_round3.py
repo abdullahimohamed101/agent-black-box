@@ -300,3 +300,39 @@ def test_an_incomplete_secret_scan_is_reported_once_without_values(
         rec.run_command("echo two", timeout=10)
     warnings = [r.getMessage() for r in caplog.records if "secret scan" in r.getMessage()]
     assert len(warnings) == 1 and "budget-secret-value-4417" not in warnings[0]
+
+
+# 12. mixed-content secret files must not turn ordinary words into masks ---------------------------------------------
+
+
+def test_git_config_teaches_only_its_credentials_not_remote_and_branch_names() -> None:
+    config = (
+        '[remote "origin"]\n\turl = https://bareTokenUser0123456789abcdef@example.com/o/r.git\n'
+        '\tfetch = +refs/heads/*:refs/remotes/origin/*\n[branch "main"]\n\tremote = origin\n'
+        "\tmerge = refs/heads/main\n[user]\n\tname = Jane Dev\n"
+    )
+    got = extract_values(".git/config", config)
+    assert "bareTokenUser0123456789abcdef" in got
+    assert not {"origin", "main", "Jane Dev", "refs/heads/main"} & got
+    assert not any(v.startswith("+refs") for v in got)
+
+
+def test_plain_urls_and_paths_in_a_secret_named_file_are_not_masks() -> None:
+    got = extract_values(
+        ".npmrc",
+        "registry=https://registry.npmjs.org/\ncache=/home/dev/.npm\n_authToken=npm_abcdefghijklmnopqrstuvwxyz0123456789\n",
+    )
+    assert "npm_abcdefghijklmnopqrstuvwxyz0123456789" in got
+    assert "https://registry.npmjs.org/" not in got and "/home/dev/.npm" not in got
+
+
+def test_a_repo_with_a_remote_still_shows_ordinary_git_output(plain: Path) -> None:
+    git(plain, "remote", "add", "origin", "https://example.com/o/r.git")
+    bb = BlackBox(mode="offline", project="d", payload_mode=PayloadMode.FULL)
+    with bb.run("r") as run:
+        rec = CodingRecorder(bb, run, plain)
+        out = (
+            rec.run_command("git remote -v", timeout=10).output
+            + rec.run_command("git branch --show-current", timeout=10).output
+        )
+    assert "origin" in out and "main" in out and "REDACTED" not in out
