@@ -12,6 +12,7 @@ from abb_event_schema.ids import IdKind
 from abb_event_schema.parse import parse_event_in
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.config import Settings
 from abb_api.core.errors import (
@@ -26,7 +27,6 @@ from abb_api.ingestion.body import batch_invalid
 from abb_api.ingestion.ratelimit import RateLimiter, retry_after_seconds
 from abb_api.ingestion.schemas import BatchResponse, EventErrorOut, IssueOut
 from abb_api.ingestion.store import PgEventStore
-from abb_api.tenancy import Principal
 
 logger = logging.getLogger(__name__)
 

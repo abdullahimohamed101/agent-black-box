@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api import cli
 from abb_api.auth.service import authenticate
+from abb_api.authz.matrix import scope_actions
 from abb_api.core.config import Settings
 from abb_api.core.errors import AppError
 from abb_api.projects.repository import ProjectRepository
@@ -41,7 +42,7 @@ async def test_create_workspace_project_and_key_end_to_end(
     assert token.startswith("abb_live_") and token not in err  # secret on stdout only
     async with engine.begin() as conn:
         principal = await authenticate(conn, token, Tick())
-        assert principal.scopes == {"events:write", "runs:read"}
+        assert principal.actions == scope_actions(frozenset({"events:write", "runs:read"}))
 
 
 async def test_errors_are_reported_without_a_traceback(

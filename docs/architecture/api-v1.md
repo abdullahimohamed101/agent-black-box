@@ -13,7 +13,7 @@ gate fails if it is stale). Event bodies are defined by the [event contract](eve
 | Scope | Allows |
 | --- | --- |
 | `events:write` | `POST /v1/events`, `POST /v1/events/batch`, `POST /v1/runs` (needs a project-bound key) |
-| `runs:read` | every `GET` below |
+| `runs:read` | every `GET` below (it implies the `payload.read` and `artifact.read` actions, so artifact content stays readable) |
 
 A **project-bound** key only ever sees its own project. A **workspace-wide** key (no project) can read
 every project of its workspace but cannot ingest. Unknown, malformed, wrong-secret, revoked and expired
@@ -33,7 +33,7 @@ Every non-2xx response, from every route, has this shape and an `X-Request-ID` h
 | Code | Status | Meaning |
 | --- | --: | --- |
 | `API_KEY_INVALID` | 401 | missing, malformed, unknown, revoked or expired key |
-| `INSUFFICIENT_SCOPE` | 403 | `details.required_scope` names the missing scope |
+| `INSUFFICIENT_SCOPE` | 403 | `details.required_scope` names the missing scope; `details.required_permission` (additive, Phase 15) names the action it maps to |
 | `PROJECT_KEY_REQUIRED` | 403 | ingestion or run creation with a workspace-wide key |
 | `RUN_NOT_FOUND`, `EVENT_NOT_FOUND`, `PROJECT_NOT_FOUND` | 404 | absent or not visible to this key |
 | `RUN_PROJECT_MISMATCH` | 409 | the run id belongs to another project (per event in a batch) |

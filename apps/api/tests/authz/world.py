@@ -1,0 +1,191 @@
+"""Two tenants with distinctive data, every key kind, and one way to send any registry request."""
+
+import asyncio
+import json
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from decimal import Decimal
+
+import httpx
+from abb_event_schema.ids import IdKind, new_id
+from sqlalchemy import text
+
+from abb_api.auth import scopes
+from abb_api.auth.repository import ApiKeyRepository
+from abb_api.cost.repository import CostRepository
+from tests.api_fixtures import NOW, Api
+from tests.authz.registry import RequestSpec, RouteCase, Side
+from tests.ingest_helpers import make_run_ids, wire_event
+from tests.stream_fixtures import Live, serve
+
+CANARY = "CANARY-GLOBEX-7f3e"
+CANARY_SLUG = CANARY.lower()  # agent and model names are lower-case slugs
+GLOBEX_RUNS, GLOBEX_RUN_COST = 7, 777.777
+ACME_RUNS, ACME_RUN_COST = 3, 1.5
+
+# The key actors of the matrix, in column order (see EXPECTED in test_role_matrix.py).
+KEY_ACTORS = (
+    "writer", "reader", "wide", "wide_reader", "ingest_only", "beta", "art_alpha", "art_wide",
+    "other", "revoked", "expired",
+)  # fmt: skip
+
+
+@dataclass
+class World:
+    api: Api
+    live: Live
+    acme: Side
+    globex: Side
+
+    def headers(self, token: str | None, spec: RequestSpec) -> dict[str, str]:
+        headers = dict(spec.headers)
+        if token is not None:
+            headers["authorization"] = f"Bearer {self.api.tokens.get(token, token)}"
+        return headers
+
+    async def send(self, case: RouteCase, spec: RequestSpec, token: str | None) -> httpx.Response:
+        """Send over the case's transport; a stream is read until its headers, then closed."""
+        headers = self.headers(token, spec)
+        if case.transport == "socket":
+            async with httpx.AsyncClient(base_url=self.live.base_url, timeout=10) as client:
+                async with client.stream(
+                    "GET", spec.path, params=spec.params, headers=headers
+                ) as r:
+                    if r.status_code != 200:
+                        await r.aread()
+                    return r
+        return await self.api.client.request(
+            spec.method, spec.path, params=spec.params, content=spec.content, headers=headers
+        )
+
+    async def read_stream(self, run_id: str, token: str, seconds: float = 1.2) -> str:
+        """The raw text of a stream for about two polls (the fixture polls every 0.2 s)."""
+        chunks: list[str] = []
+
+        async def read() -> None:
+            async with httpx.AsyncClient(base_url=self.live.base_url, timeout=10) as client:
+                headers = {"authorization": f"Bearer {self.api.tokens[token]}"}
+                async with client.stream("GET", f"/v1/runs/{run_id}/stream", headers=headers) as r:
+                    async for line in r.aiter_lines():
+                        chunks.append(line)
+
+        try:
+            await asyncio.wait_for(read(), seconds)
+        except TimeoutError:
+            pass
+        return "\n".join(chunks)
+
+
+async def _ingest_run(api: Api, token: str, tag: str, cost: float, model: str) -> tuple[str, str]:
+    ids = make_run_ids()
+    llm = {
+        "llm.provider": "example-provider",
+        "llm.model": model,
+        "llm.input_tokens": 9,
+        "cost.estimated_usd": cost,
+    }
+    llm_id = new_id(IdKind.EVENT)
+    events = [
+        wire_event(ids, 1, event_type="run.started", agent_id=tag, span_id=..., attributes={}),
+        wire_event(
+            ids, 2, event_type="llm.request.completed", agent_id=tag, event_id=llm_id,
+            status="success", duration_ms=500, attributes=llm,
+        ),
+        wire_event(
+            ids, 3, event_type="tool.call.completed", agent_id=tag, status="success",
+            duration_ms=10, attributes={"tool.name": f"{tag}-tool"},
+        ),
+        wire_event(
+            ids, 4, event_type="run.completed", agent_id=tag, span_id=..., status="success",
+            attributes={},
+        ),
+    ]  # fmt: skip
+    response = await api.post_batch(events, token=token)
+    assert response.status_code == 202, response.text
+    return ids["run_id"], llm_id
+
+
+async def _upload(api: Api, token: str, run_id: str, name: str, body: str) -> str:
+    artifact_id = new_id(IdKind.ARTIFACT)
+    response = await api.client.put(
+        f"/v1/artifacts/{artifact_id}",
+        params={"run_id": run_id, "kind": "stdout", "name": name},
+        content=body.encode(),
+        headers={
+            "authorization": f"Bearer {api.tokens[token]}",
+            "content-type": "text/plain",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return artifact_id
+
+
+async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[World]:
+    async with api.engine.begin() as conn:
+        for name, tenant, kind in (
+            ("art_alpha", api.tenant, "alpha"),
+            ("art_wide", api.tenant, None),
+            ("art_other", api.other, "p"),
+        ):
+            project = tenant.project_uuids[kind] if kind else None
+            created = await ApiKeyRepository(conn, tenant.context).create(
+                scopes=frozenset({scopes.ARTIFACTS_WRITE}), project_id=project
+            )
+            api.tokens[name] = created.token
+        # The canary lives in every free-text field a globex user could see: project name and
+        # slug, agent and model names, tool name, artifact name and content, price notes.
+        await conn.execute(
+            text("UPDATE projects SET name = :n, slug = :s WHERE workspace_id = :w"),
+            {"n": CANARY, "s": CANARY_SLUG, "w": api.other.context.workspace_id},
+        )
+        await CostRepository(conn, api.other.context).add_override(
+            project_id=None, provider="example-provider", model_pattern=f"{CANARY_SLUG}*",
+            input_per_million=Decimal(1), output_per_million=Decimal(1),
+            cached_input_per_million=None,
+            request_price=Decimal(0), valid_from=NOW, note=CANARY,
+        )  # fmt: skip
+
+    sides: dict[str, Side] = {}
+    for name, token, art_token, tag, count, cost, tenant in (
+        ("acme", "writer", "art_alpha", "acme-agent", ACME_RUNS, ACME_RUN_COST, api.tenant),
+        ("globex", "other", "art_other", CANARY_SLUG, GLOBEX_RUNS, GLOBEX_RUN_COST, api.other),
+    ):
+        run_ids: list[str] = []
+        first_event = ""
+        for _ in range(count):
+            run_id, event_id = await _ingest_run(api, token, tag, cost, f"{tag}-model")
+            run_ids.append(run_id)
+            first_event = first_event or event_id
+        label = CANARY if name == "globex" else "acme"
+        artifact_id = await _upload(api, art_token, run_ids[0], f"{label}.txt", f"{label} output")
+        public_project = tenant.projects["alpha" if name == "acme" else "p"]
+        sides[name] = Side(
+            name=name,
+            workspace_id=tenant.workspace_id,
+            project_id=public_project,
+            run_id=run_ids[0],
+            event_id=first_event,
+            artifact_id=artifact_id,
+            every_id=frozenset(
+                {tenant.workspace_id, public_project, artifact_id, *run_ids, first_event}
+            ),
+        )
+    await api.drain()
+    async for live in serve(api, runtime_database_url):
+        yield World(api, live, sides["acme"], sides["globex"])
+
+
+def outcome(case: RouteCase, response: httpx.Response) -> str:
+    """Reduce a response to the vocabulary of the literal tables: allow, deny, 401, 404."""
+    if response.status_code == case.success:
+        return "allow"
+    return {401: "401", 403: "deny", 404: "404"}.get(
+        response.status_code, f"other:{response.status_code}"
+    )
+
+
+def body_text(response: httpx.Response) -> str:
+    try:
+        return json.dumps(response.json())
+    except ValueError:
+        return response.text

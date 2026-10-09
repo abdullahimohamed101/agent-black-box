@@ -8,18 +8,20 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 
 from abb_api.artifacts.schemas import ArtifactChunk, ArtifactKind, ArtifactOut
 from abb_api.artifacts.service import ALLOWED_MEDIA_TYPES, ArtifactService, artifact_not_found
-from abb_api.auth import scopes
-from abb_api.auth.dependencies import require_principal
+from abb_api.authz import actions
+from abb_api.authz.dependencies import require
+from abb_api.authz.principal import Principal
 from abb_api.core.errors import AppError, ErrorCategory, ErrorEnvelope
 from abb_api.ids import parse_public_id
 from abb_api.ingestion.body import decode_body, read_body
 from abb_api.ingestion.service import project_key_required
-from abb_api.tenancy import Principal
 
 router = APIRouter(prefix="/v1/artifacts", tags=["artifacts"])
 
-Writer = Annotated[Principal, Depends(require_principal(scopes.ARTIFACTS_WRITE))]
-Reader = Annotated[Principal, Depends(require_principal(scopes.RUNS_READ))]
+Writer = Annotated[Principal, Depends(require(actions.ARTIFACT_WRITE))]
+Reader = Annotated[Principal, Depends(require(actions.RUN_READ))]  # metadata only
+# Captured content (spec §93, Class 2) needs payload.read, checked before any lookup.
+ContentReader = Annotated[Principal, Depends(require(actions.PAYLOAD_READ))]
 
 _ERROR_TEXT: dict[int | str, dict[str, Any]] = {
     401: {"description": "Missing, malformed, unknown, revoked or expired API key."},
@@ -145,7 +147,7 @@ async def get_artifact(artifact_id: str, request: Request, principal: Reader) ->
 async def read_artifact(
     artifact_id: str,
     request: Request,
-    principal: Reader,
+    principal: ContentReader,
     offset: Annotated[int, Query(ge=0, le=2**40)] = 0,
     limit: Annotated[int, Query(ge=256, le=256 * 1024)] = 64 * 1024,
 ) -> ArtifactChunk:

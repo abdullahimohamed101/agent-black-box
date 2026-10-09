@@ -10,18 +10,18 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from abb_api.auth import scopes
-from abb_api.auth.dependencies import require_principal
+from abb_api.authz import actions
+from abb_api.authz.dependencies import require
+from abb_api.authz.principal import Principal
 from abb_api.core.errors import ErrorEnvelope
 from abb_api.cost.builtin import BUILTIN_ENTRIES
 from abb_api.cost.pricing import PriceEntry
 from abb_api.cost.repository import CostRepository
 from abb_api.ids import public_id
 from abb_api.projects.access import authorise_project
-from abb_api.tenancy import Principal
 
 router = APIRouter(prefix="/v1/pricing", tags=["cost"])
-Reader = Annotated[Principal, Depends(require_principal(scopes.RUNS_READ))]
+Reader = Annotated[Principal, Depends(require(actions.PRICING_READ))]
 
 
 class PriceOut(BaseModel):

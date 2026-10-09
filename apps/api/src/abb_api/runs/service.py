@@ -8,6 +8,7 @@ from abb_event_schema.event import Event
 from abb_event_schema.ids import IdKind, from_uuid, new_id, to_uuid
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import parse_public_id
@@ -25,7 +26,6 @@ from abb_api.runs.schemas import (
     SpanOut,
     SpanPage,
 )
-from abb_api.tenancy import Principal
 from abb_api.traces.repository import SpanRecord, SpanRepository
 
 

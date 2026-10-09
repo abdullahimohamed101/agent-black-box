@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.auth.keys import parse_key, verify_secret
 from abb_api.auth.repository import ApiKeyLookup, StoredApiKey
+from abb_api.authz.matrix import scope_actions
+from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
-from abb_api.tenancy import Principal
 
 logger = logging.getLogger(__name__)
 
@@ -22,16 +23,6 @@ def invalid_key() -> AppError:
         "The API key is missing, malformed, expired or revoked.",
         category=ErrorCategory.AUTHENTICATION,
         status_code=401,
-    )
-
-
-def insufficient_scope(required: str) -> AppError:
-    return AppError(
-        "INSUFFICIENT_SCOPE",
-        f"This API key lacks the '{required}' scope.",
-        category=ErrorCategory.AUTHORIZATION,
-        status_code=403,
-        details={"required_scope": required},
     )
 
 
@@ -68,13 +59,9 @@ async def authenticate(conn: AsyncConnection, token: str | None, clock: Clock) -
         raise invalid_key()
     await ApiKeyLookup(conn).touch_last_used(stored, now)
     return Principal(
+        kind="api_key",
         workspace_id=stored.workspace_id,
         project_id=stored.project_id,
-        scopes=stored.scopes,
-        key_id=stored.key_id,
+        actions=scope_actions(stored.scopes),
+        actor_id=f"key:{stored.key_id}",
     )
-
-
-def require_scope(principal: Principal, scope: str) -> None:
-    if not principal.has_scope(scope):
-        raise insufficient_scope(scope)

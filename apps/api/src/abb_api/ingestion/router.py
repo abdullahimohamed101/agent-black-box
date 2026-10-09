@@ -6,18 +6,18 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
-from abb_api.auth import scopes
-from abb_api.auth.dependencies import require_principal
+from abb_api.authz import actions
+from abb_api.authz.dependencies import require
+from abb_api.authz.principal import Principal
 from abb_api.core.errors import AppError, ErrorCategory, ErrorEnvelope
 from abb_api.core.request_context import get_request_id
 from abb_api.ingestion.body import decode_body, read_body, require_json_content_type
 from abb_api.ingestion.schemas import BatchResponse, EventResponse
 from abb_api.ingestion.service import IngestionService
-from abb_api.tenancy import Principal
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
 
-Writer = Annotated[Principal, Depends(require_principal(scopes.EVENTS_WRITE))]
+Writer = Annotated[Principal, Depends(require(actions.EVENT_WRITE))]
 
 _ERROR_TEXT: dict[int | str, dict[str, Any]] = {
     400: {"description": "Malformed batch or unsupported schema version."},

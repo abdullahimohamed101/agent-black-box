@@ -632,3 +632,29 @@ counter (needs UPDATE on an append-only table).
 
 **Consequences.** Admin actions are attributable and immutable; retention of the audit log is Phase 19's privileged job (runbook); a flood of denials
 is visible in logs and capped in the table; a future "who viewed what" requirement needs an explicit decision because reads are not recorded.
+
+## Implementation notes (deviations and findings while building)
+
+- **UNVERIFIED (env) items settled (step 1).** (a) Next 16.3.8 (`apps/web/node_modules/next`) defines `PROXY_FILENAME = 'proxy'` located at
+  `(src/)?proxy`: the `proxy.ts` name is VERIFIED. (b) Starlette 1.7 / FastAPI 0.142 do **not** add an implicit `HEAD` to `APIRoute` GET routes:
+  `HEAD /v1/runs` answers `405` before any dependency runs (VERIFIED by a request; only the plain Starlette `Route`s `/docs`, `/redoc`,
+  `/openapi.json`, `/docs/oauth2-redirect` carry `HEAD`). The generator therefore asserts that HEAD and a non-preflight OPTIONS on every GET API route are
+  `405` with no data (`test_head_and_options_serve_nothing_on_any_api_route`), and the literal `PUBLIC` set lists those four docs routes with both methods.
+- **FastAPI 0.142 wraps included routers** in `_IncludedRouter`/`_EffectiveRouteContext`; `app.routes` no longer holds `APIRoute` objects directly. The route
+  walker (`tests/authz/routes.py`) unwraps them and treats any shape it does not recognise (Mount, websocket, unknown) as a finding. It also reads each
+  route's `Depends(require(action))` (the dependency exposes `required_action`), so the registry's `action` per case is checked against the code, not just
+  its existence.
+- **BILLING reads analytics (matrix table vs decision 4).** The matrix table row `run.read, analytics.read` shows BILLING as `-`, but decision 4 says BILLING
+  may read analytics. The two actions are separate: BILLING holds `analytics.read` (and `pricing.read/write`, `billing.read`) but not `run.read`.
+  Analytics responses contain run ids of the most expensive runs (existing behaviour); that is the accepted consequence of decision 4.
+- **Artifact content requires `payload.read` already in step 1** (`ContentReader`): behaviour-preserving for keys (`runs:read` implies it), and step 10
+  only has to add `payload_withheld` for event detail.
+- **Registry shape.** The role-matrix test is parametrized per actor (13 key-kind actors in step 1, each looping over all 17 routes) instead of one pytest
+  item per cell, because a seeded two-tenant world with a socket server costs about a second per test. The cell count is the product: step 1 =
+  17 routes x 13 actors = 221 cells in 13 tests; later steps add the user actors.
+- **`details` of `INSUFFICIENT_SCOPE`** gained `required_permission` (additive). The existing exact-equality assertions in `test_ingestion_api.py` and
+  `test_auth_service.py` were updated to include it; `required_scope` is pinned in `test_role_matrix.py`. The log field `key_id` became `actor_id`
+  (`key:<key_id>`), also asserted in the ingestion log test.
+- **Artifact metadata needs `run.read`, not `artifact.read`.** D10 says a VIEWER can still read `GET /v1/artifacts/{id}` (metadata) while the matrix
+  withholds `artifact.read` from VIEWER. The route demands `run.read` (held by VIEWER, and by `runs:read` keys, so key behaviour is unchanged); content
+  demands `payload.read`. `artifact.read` stays in the vocabulary and the matrix for the roles that hold `payload.read` (future listing/download routes).

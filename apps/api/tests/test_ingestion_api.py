@@ -95,7 +95,10 @@ async def test_a_key_without_the_write_scope_gets_403_naming_the_scope(api: Api)
         403,
         "INSUFFICIENT_SCOPE",
     )
-    assert error["details"] == {"required_scope": "events:write"}
+    assert error["details"] == {
+        "required_scope": "events:write",
+        "required_permission": "event.write",
+    }
 
 
 async def test_a_workspace_wide_key_cannot_ingest(api: Api) -> None:
@@ -494,7 +497,9 @@ async def test_logs_contain_neither_credentials_nor_event_content(
     ingest_line = next(
         line for line in request_lines if line["path"] == BATCH and line["status"] == 202
     )
-    assert ingest_line["workspace_id"].startswith("ws_") and ingest_line["key_id"]
+    assert ingest_line["workspace_id"].startswith("ws_") and ingest_line["actor_id"].startswith(
+        "key:"
+    )
     assert ingest_line["project_id"].startswith("prj_")  # safe identifiers are present
 
 

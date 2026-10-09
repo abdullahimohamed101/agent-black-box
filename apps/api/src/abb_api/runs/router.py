@@ -8,8 +8,9 @@ from abb_event_schema.registry import EVENT_TYPE_PATTERN
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import StringConstraints
 
-from abb_api.auth import scopes
-from abb_api.auth.dependencies import require_principal
+from abb_api.authz import actions
+from abb_api.authz.dependencies import require
+from abb_api.authz.principal import Principal
 from abb_api.core.errors import ErrorEnvelope
 from abb_api.ingestion.service import project_key_required
 from abb_api.runs.schemas import (
@@ -22,7 +23,6 @@ from abb_api.runs.schemas import (
     SpanPage,
 )
 from abb_api.runs.service import RunService
-from abb_api.tenancy import Principal
 
 router = APIRouter(prefix="/v1/runs", tags=["runs"])
 
@@ -30,8 +30,8 @@ router = APIRouter(prefix="/v1/runs", tags=["runs"])
 EventTypeParam = Annotated[str, StringConstraints(pattern=EVENT_TYPE_PATTERN, max_length=64)]
 EventStatusName = Literal["success", "error", "timeout", "cancelled", "blocked"]
 
-Reader = Annotated[Principal, Depends(require_principal(scopes.RUNS_READ))]
-Writer = Annotated[Principal, Depends(require_principal(scopes.EVENTS_WRITE))]
+Reader = Annotated[Principal, Depends(require(actions.RUN_READ))]
+Writer = Annotated[Principal, Depends(require(actions.RUN_WRITE))]
 
 _ERROR_TEXT: dict[int | str, dict[str, Any]] = {
     401: {"description": "Missing, malformed, unknown, revoked or expired API key."},

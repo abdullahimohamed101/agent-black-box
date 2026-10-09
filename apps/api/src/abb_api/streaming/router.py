@@ -4,16 +4,16 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
-from abb_api.auth import scopes
-from abb_api.auth.dependencies import require_principal
+from abb_api.authz import actions
+from abb_api.authz.dependencies import require
+from abb_api.authz.principal import Principal
 from abb_api.core.errors import ErrorEnvelope
 from abb_api.streaming.service import StreamService
 from abb_api.streaming.sse import SseResponse
-from abb_api.tenancy import Principal
 
 router = APIRouter(prefix="/v1/runs", tags=["streams"])
 
-Reader = Annotated[Principal, Depends(require_principal(scopes.RUNS_READ))]
+Reader = Annotated[Principal, Depends(require(actions.RUN_READ))]
 
 _ERRORS: dict[int | str, dict[str, Any]] = {
     status: {"description": text, "model": ErrorEnvelope}
