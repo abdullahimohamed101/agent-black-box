@@ -1,6 +1,6 @@
 # Phase 15 - Auth, workspaces and RBAC
 
-Status: Planned 2026-10-09 (awaiting the decisions below; "go with your recommendation" is enough to start)
+Status: Planned 2026-10-09; decisions D-user-1..4 confirmed by the user 2026-10-09 ("go with your recommendation"); plan review pending before step 1
 Owner: implementer agent
 Branch: `feature/phase-15-auth-rbac` (from `main` 85d4121; worktree `../abb-worktrees/phase-15`)
 Depends on: Phase 2 (API keys, tenancy), Phase 4/5 (web, read proxy, streams), Phase 6 (artifacts), Phase 7 (pricing overrides)
@@ -11,7 +11,7 @@ Known issues: closes KI-029 (S1), KI-027 (S2), KI-051 (S3), KI-033 (S3).
 
 ## Decisions needed from the user
 
-Each has a default; saying "go with your recommendation" starts the work.
+**Confirmed 2026-10-09: the user accepted all four recommendations below.**
 
 1. **Identity provider.** Recommend: generic OIDC (authorization code + PKCE, discovery document), so Google, Okta, Auth0, Keycloak, Entra all work with three settings; development and CI use a local fake provider, so no account or credential is needed until the final manual check. GitHub (OAuth2 without OIDC) is a later adapter if wanted. The real provider's client id/secret are only needed by you, at the end, for one manual login.
 2. **Sign-up model.** Recommend: invite-only. The first OWNER of a workspace is created by the CLI (`add-member`); everyone else joins through an invitation link created by an OWNER/ADMIN. A user who logs in with no membership sees "no workspaces" and can accept an invitation. Self-service "create a workspace on first login" is deferred (product and abuse question).
