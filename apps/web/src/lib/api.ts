@@ -1,5 +1,3 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 export type ReadyResponse = { status: "ok"; version: string; database: "ok" };
 
 export type ApiError = {
@@ -14,13 +12,13 @@ export type HealthResult =
   | { state: "error"; message: string; requestId: string | null }
   | { state: "unreachable"; message: string };
 
-/** Checks API readiness. Never throws: the UI renders every outcome. */
+/** Checks API readiness through the web server (`/api/health`). Never throws: the UI renders every outcome. */
 export async function fetchReadiness(
   fetchImpl: typeof fetch = fetch,
-  baseUrl: string = API_URL,
+  baseUrl: string = "",
 ): Promise<HealthResult> {
   try {
-    const response = await fetchImpl(`${baseUrl}/readyz`, {
+    const response = await fetchImpl(`${baseUrl}/api/health`, {
       cache: "no-store",
       signal: AbortSignal.timeout(4000),
     });
