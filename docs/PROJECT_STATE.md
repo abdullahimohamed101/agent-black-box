@@ -3,8 +3,8 @@
 Last updated: 2026-10-09
 
 ## Current phase
-Phases 0-8 are merged to `main` (CI green). The MVP gate (spec §49, §138) is reached but **not accepted**; it closes when the items under
-"Next actions" are done and the user reviews it. No active plan.
+Phases 0-8 are merged to `main` (CI green). The MVP gate (spec §49, §138) is reached but **not accepted**: the user decides after reviewing the
+items under "Next actions". Phase 15 is being planned.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -28,9 +28,11 @@ None.
 None.
 
 ## Next actions (exact)
-1. Web polish branch `fix/web-demo-polish`: KI-064 (one-day Daily spend chart), KI-065 (status widget blocked by the CSP), KI-066 (reproduce the 404).
-2. MVP gate: KI-050 (real vendor prices), KI-054 (re-measure ingest p99 and summarizer cost), README clean-machine run; then the user decides on acceptance.
-3. Phase 15 (auth, workspaces, RBAC; resolves KI-029). Then Phases 9, 10, 11 and 16 can run in parallel worktrees.
+1. MVP acceptance (user): the gate items are done except KI-050's remainder (OpenAI prices and tiered models are not in the built-in table; the engine has no price tiers).
+   Done 2026-10-09: web polish KI-064..066 (PR #55), Anthropic and Gemini prices, ingest regression check KI-054 and a compose rebuild with `make smoke`
+   (PR #56), clean-clone check of the README Quick Start (everything except the Docker database step).
+2. Phase 15 (auth, workspaces, RBAC; resolves KI-029, KI-027, KI-051): plan in `docs/plans/active/` on `feature/phase-15-auth-rbac`.
+3. Then Phases 9, 10, 11 and 16 can run in parallel worktrees; 13 then 14 in sequence.
 
 ## Open decisions
 - MVP acceptance (after the gate items above).
