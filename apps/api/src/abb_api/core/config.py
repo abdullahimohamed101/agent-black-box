@@ -2,8 +2,9 @@
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -62,6 +63,52 @@ class Settings(BaseSettings):
     stream_db_concurrency: int = Field(default=4, ge=1)
     # How often a stream counts its overlap window to catch a row that became visible late.
     stream_window_check_seconds: float = Field(default=2.0, ge=0)
+
+    # Sign-in for people (ADR-060). OIDC is off until `oidc_issuer` is set; keys work regardless.
+    oidc_issuer: str | None = None
+    oidc_client_id: str | None = None
+    oidc_client_secret: SecretStr | None = None
+    # Extra hosts the provider's endpoints may live on besides the issuer's (Google's token and
+    # key endpoints are on googleapis.com). Comma-separated; empty by default.
+    oidc_extra_hosts: str = ""
+    # The browser-facing origin of the web app: derives the redirect URI and cookie attributes,
+    # and is the only Origin a cookie-authenticated write may carry.
+    web_origin: str | None = None
+    session_absolute_hours: int = Field(default=168, ge=1)
+    session_idle_hours: int = Field(default=24, ge=1)
+    # A backstop on the unauthenticated login endpoints, shared by every client (the API cannot
+    # tell clients apart behind the web relay; per-client limits live in the web app, D15).
+    login_global_per_minute: int = Field(default=600, ge=1)
+    # Lets the CLI mint sessions without an identity provider. Honoured only in development/test.
+    allow_dev_sessions: bool = False
+
+    @model_validator(mode="after")
+    def _sign_in_is_configured_safely(self) -> "Settings":
+        if self.oidc_issuer is None:
+            return self
+        if not self.oidc_client_id or not self.web_origin:
+            raise ValueError("oidc_issuer needs oidc_client_id and web_origin")
+        local = self.environment in ("development", "test")
+        issuer, origin = urlsplit(self.oidc_issuer), urlsplit(self.web_origin)
+        if issuer.scheme != "https" and not (issuer.scheme == "http" and local):
+            raise ValueError("oidc_issuer must be https (http only in development or test)")
+        if origin.scheme not in ("http", "https") or not origin.hostname:
+            raise ValueError("web_origin must look like https://host[:port]")
+        if origin.path not in ("", "/") or origin.query or origin.fragment or origin.username:
+            raise ValueError("web_origin must be an origin: scheme, host and optional port only")
+        if origin.scheme == "http" and not (
+            local and origin.hostname in ("localhost", "127.0.0.1")
+        ):
+            raise ValueError("an http web_origin is only for localhost in development or test")
+        return self
+
+    @property
+    def web_origin_normalised(self) -> str | None:
+        return self.web_origin.rstrip("/").lower() if self.web_origin else None
+
+    @property
+    def dev_sessions_enabled(self) -> bool:
+        return self.allow_dev_sessions and self.environment in ("development", "test")
 
     @model_validator(mode="after")
     def _bursts_fit_a_full_batch(self) -> "Settings":

@@ -3,7 +3,8 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import timedelta
 from decimal import Decimal
 
 import httpx
@@ -14,20 +15,16 @@ from abb_api.auth import scopes
 from abb_api.auth.repository import ApiKeyRepository
 from abb_api.cost.repository import CostRepository
 from tests.api_fixtures import NOW, Api
+from tests.auth_helpers import add_member, mint_session, remove_member, set_role
 from tests.authz.registry import RequestSpec, RouteCase, Side
 from tests.ingest_helpers import make_run_ids, wire_event
 from tests.stream_fixtures import Live, serve
 
+WEB_ORIGIN = "http://localhost:3000"
 CANARY = "CANARY-GLOBEX-7f3e"
 CANARY_SLUG = CANARY.lower()  # agent and model names are lower-case slugs
 GLOBEX_RUNS, GLOBEX_RUN_COST = 7, 777.777
 ACME_RUNS, ACME_RUN_COST = 3, 1.5
-
-# The key actors of the matrix, in column order (see EXPECTED in test_role_matrix.py).
-KEY_ACTORS = (
-    "writer", "reader", "wide", "wide_reader", "ingest_only", "beta", "art_alpha", "art_wide",
-    "other", "revoked", "expired",
-)  # fmt: skip
 
 
 @dataclass
@@ -36,16 +33,15 @@ class World:
     live: Live
     acme: Side
     globex: Side
+    # actor name -> the credential headers it sends (keys, people with sessions, and bad ones)
+    actors: dict[str, dict[str, str]] = field(default_factory=dict)
 
-    def headers(self, token: str | None, spec: RequestSpec) -> dict[str, str]:
-        headers = dict(spec.headers)
-        if token is not None:
-            headers["authorization"] = f"Bearer {self.api.tokens.get(token, token)}"
-        return headers
+    def headers(self, actor: str, spec: RequestSpec) -> dict[str, str]:
+        return {**spec.headers, **self.actors[actor]}
 
-    async def send(self, case: RouteCase, spec: RequestSpec, token: str | None) -> httpx.Response:
+    async def send(self, case: RouteCase, spec: RequestSpec, actor: str) -> httpx.Response:
         """Send over the case's transport; a stream is read until its headers, then closed."""
-        headers = self.headers(token, spec)
+        headers = self.headers(actor, spec)
         if case.transport == "socket":
             async with httpx.AsyncClient(base_url=self.live.base_url, timeout=10) as client:
                 async with client.stream(
@@ -54,18 +50,27 @@ class World:
                     if r.status_code != 200:
                         await r.aread()
                     return r
-        return await self.api.client.request(
+        response = await self.api.client.request(
             spec.method, spec.path, params=spec.params, content=spec.content, headers=headers
         )
+        self.api.client.cookies.clear()
+        return response
 
-    async def read_stream(self, run_id: str, token: str, seconds: float = 1.2) -> str:
+    async def get(self, path: str, actor: str, **params: str | int) -> httpx.Response:
+        response = await self.api.client.get(
+            path, params={k: str(v) for k, v in params.items()}, headers=self.actors[actor]
+        )
+        self.api.client.cookies.clear()
+        return response
+
+    async def read_stream(self, run_id: str, actor: str, seconds: float = 1.2) -> str:
         """The raw text of a stream for about two polls (the fixture polls every 0.2 s)."""
         chunks: list[str] = []
 
         async def read() -> None:
             async with httpx.AsyncClient(base_url=self.live.base_url, timeout=10) as client:
-                headers = {"authorization": f"Bearer {self.api.tokens[token]}"}
-                async with client.stream("GET", f"/v1/runs/{run_id}/stream", headers=headers) as r:
+                path = f"/v1/runs/{run_id}/stream"
+                async with client.stream("GET", path, headers=self.actors[actor]) as r:
                     async for line in r.aiter_lines():
                         chunks.append(line)
 
@@ -171,15 +176,77 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             ),
         )
     await api.drain()
-    async for live in serve(api, runtime_database_url):
-        yield World(api, live, sides["acme"], sides["globex"])
+    async for live in serve(api, runtime_database_url, web_origin=WEB_ORIGIN):
+        world = World(api, live, sides["acme"], sides["globex"])
+        world.actors = await _actors(api, sides["acme"])
+        yield world
+
+
+ROLE_ACTORS = ("owner", "admin", "developer", "viewer", "security", "billing")
+USER_ACTORS = (
+    *ROLE_ACTORS, "no_membership", "removed_member", "downgraded", "expired_session",
+    "revoked_session", "session_as_bearer", "key_as_cookie", "owner_no_header",
+)  # fmt: skip
+
+
+async def _actors(api: Api, acme: Side) -> dict[str, dict[str, str]]:
+    """Every kind of caller, as the headers it sends."""
+    workspace = api.tenant.context.workspace_id
+    now = api.clock()
+    actors: dict[str, dict[str, str]] = {
+        name: {"authorization": f"Bearer {token}"} for name, token in api.tokens.items()
+    }
+    actors["none"] = {}
+    actors["malformed"] = {"authorization": "Bearer not-a-key"}
+
+    def person(token: str, *, header: bool = True) -> dict[str, str]:
+        return {
+            "cookie": f"abb_session={token}",
+            "origin": WEB_ORIGIN,
+            **({"x-abb-workspace": acme.workspace_id} if header else {}),
+        }
+
+    for role in ROLE_ACTORS:
+        user = await add_member(api.engine, workspace, f"{role}@acme.test", role.upper())
+        actors[role] = person(await mint_session(api.engine, user.id, now))
+    stranger = await add_member(api.engine, workspace, "stranger@elsewhere.test", None)
+    actors["no_membership"] = person(await mint_session(api.engine, stranger.id, now))
+    leaver = await add_member(api.engine, workspace, "leaver@acme.test", "OWNER")
+    actors["removed_member"] = person(await mint_session(api.engine, leaver.id, now))
+    await remove_member(api.engine, workspace, leaver.id)
+    demoted = await add_member(api.engine, workspace, "demoted@acme.test", "OWNER")
+    actors["downgraded"] = person(await mint_session(api.engine, demoted.id, now))
+    await set_role(api.engine, workspace, demoted.id, "VIEWER")
+    lapsed = await add_member(api.engine, workspace, "lapsed@acme.test", "OWNER")
+    actors["expired_session"] = person(
+        await mint_session(api.engine, lapsed.id, now, absolute=timedelta(seconds=-1))
+    )
+    revoked = await add_member(api.engine, workspace, "revoked@acme.test", "OWNER")
+    token = await mint_session(api.engine, revoked.id, now)
+    async with api.engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE sessions SET revoked_at = now() WHERE user_id = :u"), {"u": revoked.id}
+        )
+    actors["revoked_session"] = person(token)
+    owner_token = actors["owner"]["cookie"].split("=", 1)[1]
+    actors["session_as_bearer"] = {
+        "authorization": f"Bearer {owner_token}",
+        "x-abb-workspace": acme.workspace_id,
+    }
+    actors["key_as_cookie"] = person(api.tokens["reader"])
+    actors["owner_no_header"] = person(owner_token, header=False)
+    # A member of both workspaces, acting in acme: must see exactly what an acme member sees.
+    dual = await add_member(api.engine, workspace, "dual@both.test", "OWNER")
+    await add_member(api.engine, api.other.context.workspace_id, "dual@both.test", "OWNER")
+    actors["dual"] = person(await mint_session(api.engine, dual.id, now))
+    return actors
 
 
 def outcome(case: RouteCase, response: httpx.Response) -> str:
     """Reduce a response to the vocabulary of the literal tables: allow, deny, 401, 404."""
     if response.status_code == case.success:
         return "allow"
-    return {401: "401", 403: "deny", 404: "404"}.get(
+    return {400: "400", 401: "401", 403: "deny", 404: "404"}.get(
         response.status_code, f"other:{response.status_code}"
     )
 

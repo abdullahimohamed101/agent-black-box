@@ -1184,6 +1184,70 @@
         "title": "IssueOut",
         "type": "object"
       },
+      "LogoutOut": {
+        "properties": {
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "title": "LogoutOut",
+        "type": "object"
+      },
+      "MeOut": {
+        "properties": {
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/MembershipOut"
+            },
+            "title": "Memberships",
+            "type": "array"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserOut"
+          }
+        },
+        "required": [
+          "user",
+          "memberships"
+        ],
+        "title": "MeOut",
+        "type": "object"
+      },
+      "MembershipOut": {
+        "properties": {
+          "own_permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Own Permissions",
+            "type": "array"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/WorkspaceOut"
+          }
+        },
+        "required": [
+          "workspace",
+          "role",
+          "permissions",
+          "own_permissions"
+        ],
+        "title": "MembershipOut",
+        "type": "object"
+      },
       "OtherBucket": {
         "description": "Everything beyond the top-N groups: response size does not depend on how many names exist.",
         "properties": {
@@ -2201,6 +2265,36 @@
         "title": "ToolReliability",
         "type": "object"
       },
+      "UserOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name"
+        ],
+        "title": "UserOut",
+        "type": "object"
+      },
       "Window": {
         "properties": {
           "end": {
@@ -2222,6 +2316,29 @@
         ],
         "title": "Window",
         "type": "object"
+      },
+      "WorkspaceOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name"
+        ],
+        "title": "WorkspaceOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -2229,11 +2346,17 @@
         "description": "Project API key. Create one with `python -m abb_api.cli create-key`.",
         "scheme": "bearer",
         "type": "http"
+      },
+      "sessionCookie": {
+        "description": "Browser session set by `GET /v1/auth/callback`.",
+        "in": "cookie",
+        "name": "abb_session",
+        "type": "apiKey"
       }
     }
   },
   "info": {
-    "description": "Agent Black Box ingestion and query API. Authenticate with a project API key: `Authorization: Bearer abb_live_<key_id>.<secret>`.",
+    "description": "Agent Black Box ingestion and query API. SDKs authenticate with a project key: `Authorization: Bearer abb_live_<key_id>.<secret>`. The dashboard authenticates people with a session cookie and names its workspace in `X-ABB-Workspace`.",
     "title": "Agent Black Box API",
     "version": "0.0.0"
   },
@@ -2360,6 +2483,15 @@
               "title": "Top",
               "type": "integer"
             }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2427,6 +2559,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "Where the money went",
@@ -2504,6 +2639,15 @@
               "title": "Top",
               "type": "integer"
             }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2571,6 +2715,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "Latency percentiles and the slowest operations",
@@ -2648,6 +2795,15 @@
               "title": "Top",
               "type": "integer"
             }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2715,6 +2871,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "Failure trend, tool success and retry-heavy runs",
@@ -2777,6 +2936,15 @@
                 }
               ],
               "title": "To"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -2845,6 +3013,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "Headline figures for a window",
@@ -2863,6 +3034,15 @@
             "required": true,
             "schema": {
               "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
               "type": "string"
             }
           }
@@ -2972,6 +3152,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "Get artifact metadata",
@@ -3212,6 +3395,15 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3319,11 +3511,335 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "Read an artifact in chunks",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/v1/auth/callback": {
+      "get": {
+        "description": "The identity provider's redirect target. Sets the session cookie.",
+        "operationId": "callback_v1_auth_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The sign-in could not be completed (state, code or token refused)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The session is missing, expired or revoked."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A cookie-authenticated write came from the wrong origin."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many sign-in attempts; honour `Retry-After`."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign-in is not configured or the identity provider is unavailable."
+          }
+        },
+        "security": [],
+        "summary": "Finish signing in",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/login": {
+      "get": {
+        "description": "Redirects to the identity provider. `return_to` is a path inside the application (`/`, `/w/...` or `/invite/...`).",
+        "operationId": "login_v1_auth_login_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return To"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The sign-in could not be completed (state, code or token refused)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The session is missing, expired or revoked."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A cookie-authenticated write came from the wrong origin."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many sign-in attempts; honour `Retry-After`."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign-in is not configured or the identity provider is unavailable."
+          }
+        },
+        "security": [],
+        "summary": "Start signing in",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "description": "Revokes the current session and clears the cookie. Always `200` when no session cookie is valid; a cookie-authenticated call needs the web app's `Origin`.",
+        "operationId": "logout_v1_auth_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The sign-in could not be completed (state, code or token refused)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The session is missing, expired or revoked."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A cookie-authenticated write came from the wrong origin."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many sign-in attempts; honour `Retry-After`."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign-in is not configured or the identity provider is unavailable."
+          }
+        },
+        "security": [
+          {},
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Sign out",
+        "tags": [
+          "auth"
         ]
       }
     },
@@ -3540,6 +4056,93 @@
         ]
       }
     },
+    "/v1/me": {
+      "get": {
+        "description": "The signed-in user and every workspace they belong to, with their role and the actions it grants (the web app renders by `permissions`; the API stays the authority).",
+        "operationId": "me_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The sign-in could not be completed (state, code or token refused)."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The session is missing, expired or revoked."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A cookie-authenticated write came from the wrong origin."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many sign-in attempts; honour `Retry-After`."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Sign-in is not configured or the identity provider is unavailable."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Who am I, and where",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/v1/pricing": {
       "get": {
         "description": "Built-in price entries plus the workspace's overrides (a project-bound key sees workspace-wide overrides and its own project's). Built-in entries are illustrative (KI-050).",
@@ -3560,6 +4163,15 @@
                 }
               ],
               "title": "Project Id"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -3618,6 +4230,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "List the prices used to compute cost",
@@ -3771,6 +4386,15 @@
               ],
               "title": "Cursor"
             }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3838,6 +4462,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "List runs",
@@ -3956,6 +4583,15 @@
               "title": "Run Id",
               "type": "string"
             }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4023,6 +4659,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "Get a run",
@@ -4139,6 +4778,15 @@
               ],
               "title": "Cursor"
             }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4216,6 +4864,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "List a run's events in canonical order",
@@ -4243,6 +4894,15 @@
             "required": true,
             "schema": {
               "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
               "type": "string"
             }
           }
@@ -4312,6 +4972,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "Get one event, including its inline payload",
@@ -4361,6 +5024,15 @@
                 }
               ],
               "title": "Cursor"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -4429,6 +5101,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "List a run's spans",
@@ -4483,6 +5158,15 @@
                 }
               ],
               "title": "Last-Event-Id"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -4557,6 +5241,9 @@
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
           }
         ],
         "summary": "Stream a run's events live (SSE)",

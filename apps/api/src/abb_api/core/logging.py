@@ -43,3 +43,6 @@ def configure_logging(level: str, service: str = "abb-api") -> None:
     root.setLevel(level)
     # uvicorn's own access log would duplicate (and not carry) our request-scoped fields.
     logging.getLogger("uvicorn.access").disabled = True
+    # httpx logs full request URLs at INFO; the identity provider calls carry codes and tokens.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)

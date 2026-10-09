@@ -658,3 +658,27 @@ is visible in logs and capped in the table; a future "who viewed what" requireme
 - **Artifact metadata needs `run.read`, not `artifact.read`.** D10 says a VIEWER can still read `GET /v1/artifacts/{id}` (metadata) while the matrix
   withholds `artifact.read` from VIEWER. The route demands `run.read` (held by VIEWER, and by `runs:read` keys, so key behaviour is unchanged); content
   demands `payload.read`. `artifact.read` stays in the vocabulary and the matrix for the roles that hold `payload.read` (future listing/download routes).
+- **Step 2.** `IdKind` gained `USER = "usr"` and `INVITATION = "inv"` in `packages/event-schema` (public ids for people; they never appear in events,
+  so no JSON Schema or generated type changed). The user/session/login-state repositories live in `auth/repository.py` as the plan says. `link_identity`
+  carries `provider_subject IS NULL` in its `UPDATE ... WHERE`, so the "email never re-binds a linked user" rule holds even under a race, and a
+  `CHECK ((provider IS NULL) = (provider_subject IS NULL))` keeps a half identity out of the table.
+- **Step 3.**
+  - *Workspace selection moved up from step 4:* a session actor cannot exist without a workspace, so `X-ABB-Workspace` handling (400 `WORKSPACE_REQUIRED`,
+    404 `WORKSPACE_NOT_FOUND` for non-member/malformed/foreign, key header must equal its workspace) lives in `require(action)` from this step. Step 4 adds
+    the project endpoints and folds `_project_filter`.
+  - *No credential at all stays `401 API_KEY_INVALID`* (SDK compatibility); `SESSION_INVALID` is returned when a cookie is the credential. An
+    `Authorization` header of any kind makes the request a key request; the cookie is then ignored (bearer wins).
+  - *Discovery host rule:* endpoints must be https on the issuer's host **or** a host in the new optional `ABB_OIDC_EXTRA_HOSTS` (comma-separated). A strict
+    same-host rule would make Google (token/JWKS endpoints on googleapis.com) impossible, and the plan lists Google; the default stays strict.
+  - *Time checks use the injected clock:* PyJWT is called with `verify_exp/nbf/iat` off and `exp`/`nbf`/`iat` are checked against `Clock` with 60 s skew,
+    so tests control time (the fake provider stamps tokens from the same clock).
+  - *Unverified-email handling:* `email_verified` absent -> `LOGIN_FAILED` 401 logged `email_verified_missing`; `false` or a non-boolean such as the
+    string `"true"` -> refused (`email_not_verified`), fail closed.
+  - *Callback failures are JSON `400/401 LOGIN_FAILED`* (the web handler turns them into a redirect to `/login?error=`); the `abb_login` cookie is cleared on
+    every outcome of the callback. A state/cookie mismatch does not consume the state row.
+  - *Registry:* the sign-in routes are in the literal `PUBLIC` set (unauthenticated by nature) and `GET /v1/me` in a literal `SESSION_ONLY` set whose guard
+    (`requires_session`) the walker checks; `/v1/me` has its own tests. `tests/authz` now runs 17 routes x 27 actors (13 key + 14 people) = 459 cells in 27
+    tests, plus a dual-workspace actor in the canary tests.
+  - *Session minting for tests* goes straight to the database (`tests/auth_helpers.py`); the CLI `create-session` stays in step 12.
+  - *Startup warning* is emitted by `create_app` (the OIDC client factory) when OIDC is configured and `ABB_ENVIRONMENT != production`.
+  - *Not yet done in step 3 (by design, later steps):* the stream re-check and the sliding opt-out for it (step 11), audit rows for denials (step 5).

@@ -29,8 +29,16 @@ PUBLIC: frozenset[tuple[str, str]] = frozenset(
         ("HEAD", "/redoc"),
         ("GET", "/docs/oauth2-redirect"),
         ("HEAD", "/docs/oauth2-redirect"),
+        # Sign-in: unauthenticated by nature (they create the session) or credential-optional
+        # (logout of an already dead session is still a success). Their own tests cover them.
+        ("GET", "/v1/auth/login"),
+        ("GET", "/v1/auth/callback"),
+        ("POST", "/v1/auth/logout"),
     }
 )
+
+# Routes that need a signed-in person but no particular workspace and no action.
+SESSION_ONLY: frozenset[tuple[str, str]] = frozenset({("GET", "/v1/me")})
 
 
 @dataclass(frozen=True)

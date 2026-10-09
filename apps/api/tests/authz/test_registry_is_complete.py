@@ -5,11 +5,11 @@ from fastapi import FastAPI
 from abb_api.core.config import Settings
 from abb_api.main import create_app
 from abb_api.openapi import build_document
-from tests.authz.registry import CASES, PUBLIC
+from tests.authz.registry import CASES, PUBLIC, SESSION_ONLY
 from tests.authz.routes import enumerate_routes
 
 # Counted by hand when the registry was written; a mismatch means the walker or the registry moved.
-EXPECTED_V1_OPERATIONS = 17
+EXPECTED_V1_OPERATIONS = 17  # operations with an action; sign-in routes are listed apart
 
 
 def _app() -> FastAPI:
@@ -27,8 +27,12 @@ def problems(app: FastAPI) -> list[str]:
             found.append(f"{route.describe()}: mounts, websockets and unknown routes need a review")
             continue
         seen.add(route.key)
+        if route.key in SESSION_ONLY:
+            if not route.requires_session or route.required_actions:
+                found.append(f"{route.describe()}: listed SESSION_ONLY but not guarded that way")
+            continue
         if route.key in PUBLIC:
-            if route.required_actions:
+            if route.required_actions or route.requires_session:
                 found.append(f"{route.describe()}: listed PUBLIC but demands an action")
             continue
         case = CASES.get(route.key)
@@ -43,6 +47,10 @@ def problems(app: FastAPI) -> list[str]:
         f"{m} {p}: RouteCase for a route that does not exist" for m, p in CASES.keys() - seen
     )
     found.extend(f"{m} {p}: PUBLIC entry for a route that does not exist" for m, p in PUBLIC - seen)
+    found.extend(
+        f"{m} {p}: SESSION_ONLY entry for a route that does not exist"
+        for m, p in SESSION_ONLY - seen
+    )
     return found
 
 
@@ -88,7 +96,9 @@ def test_mounts_and_websockets_are_reported() -> None:
 def test_the_openapi_document_and_the_registry_agree_both_ways() -> None:
     document = build_document()
     documented = {(m.upper(), p) for p, ops in document["paths"].items() for m in ops}
-    assert documented - PUBLIC == set(CASES), "OpenAPI and tests/authz/registry.py disagree"
+    assert documented - PUBLIC - SESSION_ONLY == set(CASES), (
+        "OpenAPI and tests/authz/registry.py disagree"
+    )
     assert len([k for k in CASES if k[1].startswith("/v1/")]) == EXPECTED_V1_OPERATIONS
 
 

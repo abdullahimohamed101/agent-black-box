@@ -21,6 +21,7 @@ class RouteInfo:
     method: str  # "" for non-http kinds
     path: str
     required_actions: frozenset[str] = field(default_factory=frozenset)
+    requires_session: bool = False
     in_schema: bool = True
 
     @property
@@ -29,6 +30,16 @@ class RouteInfo:
 
     def describe(self) -> str:
         return f"{self.method or self.kind.upper()} {self.path}"
+
+
+def _requires_session(dependant: Dependant | None) -> bool:
+    stack = [dependant] if dependant is not None else []
+    while stack:
+        node = stack.pop()
+        if getattr(node.call, "requires_session", False):
+            return True
+        stack.extend(node.dependencies)
+    return False
 
 
 def _actions_required(dependant: Dependant | None) -> frozenset[str]:
@@ -49,7 +60,7 @@ def _http(
 ) -> Iterator[RouteInfo]:
     required = _actions_required(dependant)
     for method in sorted(methods):
-        yield RouteInfo("http", method, path, required, in_schema)
+        yield RouteInfo("http", method, path, required, _requires_session(dependant), in_schema)
 
 
 def _walk(routes: list[Any], prefix: str = "") -> Iterator[RouteInfo]:

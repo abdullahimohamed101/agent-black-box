@@ -1,12 +1,22 @@
 """Turning a presented API key into a Principal (or one uniform 401)."""
 
+import hashlib
 import logging
-from datetime import datetime
+import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.auth.keys import parse_key, verify_secret
-from abb_api.auth.repository import ApiKeyLookup, StoredApiKey
+from abb_api.auth.repository import (
+    ApiKeyLookup,
+    SessionRecord,
+    SessionRepository,
+    StoredApiKey,
+    UserRecord,
+    UserRepository,
+)
 from abb_api.authz.matrix import scope_actions
 from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
@@ -65,3 +75,50 @@ async def authenticate(conn: AsyncConnection, token: str | None, clock: Clock) -
         actions=scope_actions(stored.scopes),
         actor_id=f"key:{stored.key_id}",
     )
+
+
+# ---------------------------------------------------------------- sessions
+
+_SESSION_TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")  # token_urlsafe(32)
+
+
+def hash_session_token(token: str) -> bytes:
+    """Sessions are stored and found by this hash; the cookie value itself is never kept."""
+    return hashlib.sha256(token.encode("ascii")).digest()
+
+
+def session_invalid() -> AppError:
+    # One response for missing, malformed, unknown, expired and revoked sessions.
+    return AppError(
+        "SESSION_INVALID",
+        "The session is missing, expired or revoked. Sign in again.",
+        category=ErrorCategory.AUTHENTICATION,
+        status_code=401,
+    )
+
+
+@dataclass(frozen=True)
+class SessionContext:
+    user: UserRecord
+    session: SessionRecord
+
+
+async def authenticate_session(
+    conn: AsyncConnection, token: str | None, clock: Clock, idle: timedelta
+) -> SessionContext:
+    """Resolve a session cookie to its user, or raise the uniform 401."""
+    if token is None or not _SESSION_TOKEN.fullmatch(token):
+        logger.info("session rejected", extra={"reason": "malformed_or_missing"})
+        raise session_invalid()
+    sessions = SessionRepository(conn)
+    found = await sessions.find_by_hash(hash_session_token(token))
+    now = clock()
+    if found is None or not found.usable(now):
+        reason = "unknown" if found is None else ("revoked" if found.revoked_at else "expired")
+        logger.info("session rejected", extra={"reason": reason})
+        raise session_invalid()
+    user = await UserRepository(conn).get(found.user_id)
+    if user is None:  # cannot happen (foreign key); fail closed
+        raise session_invalid()
+    await sessions.slide(found, now=now, idle=idle)
+    return SessionContext(user, found)

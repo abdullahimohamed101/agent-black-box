@@ -159,6 +159,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Finish signing in
+         * @description The identity provider's redirect target. Sets the session cookie.
+         */
+        get: operations["callback_v1_auth_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start signing in
+         * @description Redirects to the identity provider. `return_to` is a path inside the application (`/`, `/w/...` or `/invite/...`).
+         */
+        get: operations["login_v1_auth_login_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out
+         * @description Revokes the current session and clears the cookie. Always `200` when no session cookie is valid; a cookie-authenticated call needs the web app's `Origin`.
+         */
+        post: operations["logout_v1_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/events": {
         parameters: {
             query?: never;
@@ -190,6 +250,26 @@ export interface paths {
          * @description Accepts `{batch_id?, sent_at?, events: [...]}` (at most 1000 events, 5 MiB, optionally gzip). `202` means the valid events are committed. Invalid events are reported per event in `errors` and do not affect the others. Retrying a batch is safe.
          */
         post: operations["ingest_batch_v1_events_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who am I, and where
+         * @description The signed-in user and every workspace they belong to, with their role and the actions it grants (the web app renders by `permissions`; the API stays the authority).
+         */
+        get: operations["me_v1_me_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -800,6 +880,30 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** LogoutOut */
+        LogoutOut: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+        };
+        /** MeOut */
+        MeOut: {
+            /** Memberships */
+            memberships: components["schemas"]["MembershipOut"][];
+            user: components["schemas"]["UserOut"];
+        };
+        /** MembershipOut */
+        MembershipOut: {
+            /** Own Permissions */
+            own_permissions: string[];
+            /** Permissions */
+            permissions: string[];
+            /** Role */
+            role: string;
+            workspace: components["schemas"]["WorkspaceOut"];
+        };
         /**
          * OtherBucket
          * @description Everything beyond the top-N groups: response size does not depend on how many names exist.
@@ -1159,6 +1263,15 @@ export interface components {
             /** Success Rate */
             success_rate: number | null;
         };
+        /** UserOut */
+        UserOut: {
+            /** Email */
+            email: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string | null;
+        };
         /** Window */
         Window: {
             /**
@@ -1173,6 +1286,15 @@ export interface components {
              * @description Inclusive UTC midnight. Windows are whole UTC days; requests snap outward.
              */
             start: string;
+        };
+        /** WorkspaceOut */
+        WorkspaceOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
         };
     };
     responses: never;
@@ -1241,7 +1363,10 @@ export interface operations {
                 /** @description Groups listed before `other`. */
                 top?: number;
             };
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1312,7 +1437,10 @@ export interface operations {
                 /** @description Groups listed before `other`. */
                 top?: number;
             };
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1383,7 +1511,10 @@ export interface operations {
                 /** @description Groups listed before `other`. */
                 top?: number;
             };
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1452,7 +1583,10 @@ export interface operations {
                 from?: string | null;
                 to?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1517,7 +1651,10 @@ export interface operations {
     get_artifact_v1_artifacts__artifact_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path: {
                 artifact_id: string;
             };
@@ -1743,7 +1880,10 @@ export interface operations {
                 offset?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path: {
                 artifact_id: string;
             };
@@ -1833,6 +1973,234 @@ export interface operations {
                 };
             };
             /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    callback_v1_auth_callback_get: {
+        parameters: {
+            query?: {
+                code?: string | null;
+                state?: string | null;
+                error?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description The sign-in could not be completed (state, code or token refused). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session is missing, expired or revoked. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A cookie-authenticated write came from the wrong origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many sign-in attempts; honour `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sign-in is not configured or the identity provider is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    login_v1_auth_login_get: {
+        parameters: {
+            query?: {
+                return_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description The sign-in could not be completed (state, code or token refused). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session is missing, expired or revoked. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A cookie-authenticated write came from the wrong origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many sign-in attempts; honour `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sign-in is not configured or the identity provider is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    logout_v1_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogoutOut"];
+                };
+            };
+            /** @description The sign-in could not be completed (state, code or token refused). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session is missing, expired or revoked. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A cookie-authenticated write came from the wrong origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many sign-in attempts; honour `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sign-in is not configured or the identity provider is unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2027,12 +2395,89 @@ export interface operations {
             };
         };
     };
+    me_v1_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOut"];
+                };
+            };
+            /** @description The sign-in could not be completed (state, code or token refused). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session is missing, expired or revoked. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A cookie-authenticated write came from the wrong origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many sign-in attempts; honour `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sign-in is not configured or the identity provider is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_prices_v1_pricing_get: {
         parameters: {
             query?: {
                 project_id?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2097,7 +2542,10 @@ export interface operations {
                 limit?: number;
                 cursor?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2247,7 +2695,10 @@ export interface operations {
     get_run_v1_runs__run_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path: {
                 run_id: string;
             };
@@ -2320,7 +2771,10 @@ export interface operations {
                 limit?: number;
                 cursor?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path: {
                 run_id: string;
             };
@@ -2396,7 +2850,10 @@ export interface operations {
     get_event_v1_runs__run_id__events__event_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path: {
                 run_id: string;
                 event_id: string;
@@ -2467,7 +2924,10 @@ export interface operations {
                 limit?: number;
                 cursor?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
             path: {
                 run_id: string;
             };
@@ -2538,6 +2998,8 @@ export interface operations {
             };
             header?: {
                 "Last-Event-ID"?: string | null;
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
             };
             path: {
                 run_id: string;

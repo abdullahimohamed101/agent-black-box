@@ -20,18 +20,38 @@ def test_the_document_is_deterministic() -> None:
     assert openapi.render(openapi.build_document()) == openapi.render(openapi.build_document())
 
 
+BEARER: list[dict[str, list[str]]] = [{"bearerAuth": []}]
+EITHER: list[dict[str, list[str]]] = [{"bearerAuth": []}, {"sessionCookie": []}]
+# Which credentials may call what (the single place a reviewer reads it). Everything not listed
+# here is a read that a key or a signed-in person may call.
+EXPECTED_SECURITY: dict[tuple[str, str], list[dict[str, list[str]]]] = {
+    ("post", "/v1/events"): BEARER,
+    ("post", "/v1/events/batch"): BEARER,
+    ("post", "/v1/runs"): BEARER,
+    ("put", "/v1/artifacts/{artifact_id}"): BEARER,
+    ("get", "/v1/me"): [{"sessionCookie": []}],
+    ("get", "/v1/auth/login"): [],
+    ("get", "/v1/auth/callback"): [],
+    ("post", "/v1/auth/logout"): [{}, {"sessionCookie": []}],
+}
+
+
 def test_every_v1_operation_is_authenticated_and_described() -> None:
     document = openapi.build_document()
-    assert document["components"]["securitySchemes"]["bearerAuth"]["scheme"] == "bearer"
+    schemes = document["components"]["securitySchemes"]
+    assert schemes["bearerAuth"]["scheme"] == "bearer"
+    assert schemes["sessionCookie"]["in"] == "cookie"
     seen = 0
     for path, method, op in operations(document):
         if path.startswith("/v1/"):
             seen += 1
-            assert op["security"] == [{"bearerAuth": []}], (method, path)
+            assert op["security"] == EXPECTED_SECURITY.get((method, path), EITHER), (method, path)
             assert op["summary"] and 401 in map(int, op["responses"]), (method, path)
+            has_header = any(p["name"] == "X-ABB-Workspace" for p in op.get("parameters", []))
+            assert has_header == (op["security"] == EITHER), (method, path)
         else:
             assert "security" not in op, (method, path)  # health endpoints are public
-    assert seen == 17
+    assert seen == 21
 
 
 def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
@@ -55,6 +75,10 @@ def test_the_public_surface_is_exactly_what_the_plan_promises() -> None:
     assert surface == {
         ("GET", "/healthz"),
         ("GET", "/readyz"),
+        ("GET", "/v1/auth/login"),
+        ("GET", "/v1/auth/callback"),
+        ("POST", "/v1/auth/logout"),
+        ("GET", "/v1/me"),
         ("POST", "/v1/events"),
         ("POST", "/v1/events/batch"),
         ("POST", "/v1/runs"),

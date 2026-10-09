@@ -91,10 +91,12 @@ async def build_api(
     *,
     settings: Settings | None = None,
     rate_limiter: RateLimiter | None = None,
+    clock: Tick | None = None,
+    app_options: dict[str, Any] | None = None,
 ) -> AsyncIterator[Api]:
     tenant = await make_tenant(engine, "acme", projects=("alpha", "beta"))
     other = await make_tenant(engine, "globex")
-    clock = Tick()
+    clock = clock or Tick()
     tokens: dict[str, str] = {}
     async with engine.begin() as conn:
         keys = ApiKeyRepository(conn, tenant.context)
@@ -132,6 +134,7 @@ async def build_api(
         else make_settings(runtime_url(database_url)),
         clock=clock,
         rate_limiter=rate_limiter,
+        **(app_options or {}),
     )
     worker_engine = create_async_engine(runtime_url(database_url), poolclass=NullPool)
     worker = Worker(worker_engine, HANDLERS, make_settings(database_url), owner="api-test")
