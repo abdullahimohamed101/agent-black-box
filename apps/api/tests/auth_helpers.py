@@ -2,7 +2,7 @@
 
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import insert, update
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -13,12 +13,27 @@ from abb_api.db import tables as t
 
 
 async def add_member(
-    engine: AsyncEngine, workspace_id: uuid.UUID, email: str, role: str | None
+    engine: AsyncEngine,
+    workspace_id: uuid.UUID,
+    email: str,
+    role: str | None,
+    *,
+    verified: bool = False,
 ) -> UserRecord:
-    """The user (created on first use) as a member of the workspace; `role=None` adds no row."""
+    """The user (created on first use) as a member of the workspace; `role=None` adds no row.
+
+    `verified=True` records a verified email (what a completed OIDC login does), which accepting
+    an invitation requires.
+    """
     async with engine.begin() as conn:
         users = UserRepository(conn)
         user = await users.find_by_email(email) or await users.create(email=email)
+        if verified:
+            await conn.execute(
+                update(t.users)
+                .where(t.users.c.id == user.id)
+                .values(email_verified_at=datetime.now(UTC))
+            )
         if role is not None:
             await conn.execute(
                 insert(t.workspace_members).values(

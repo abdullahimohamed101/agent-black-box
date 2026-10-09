@@ -20,6 +20,7 @@ from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
 from abb_api.auth.login import LoginService
 from abb_api.auth.oidc import OidcClient
 from abb_api.auth.router import router as auth_router
+from abb_api.authz.audit import new_denial_limiter
 from abb_api.clock import Clock, system_clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.errors import install_error_handlers
@@ -195,6 +196,7 @@ def create_app(
     app.state.settings = settings
     app.state.clock = clock
     app.state.login_limiter = login_bucket
+    app.state.denial_limiter = new_denial_limiter(settings.audit_denials_per_minute)
     install_error_handlers(app)
     app.add_middleware(
         CORSMiddleware,

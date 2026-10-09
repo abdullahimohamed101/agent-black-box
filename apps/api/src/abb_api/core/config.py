@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     # A backstop on the unauthenticated login endpoints, shared by every client (the API cannot
     # tell clients apart behind the web relay; per-client limits live in the web app, D15).
     login_global_per_minute: int = Field(default=600, ge=1)
+    # Denied requests by one person that are written to the audit log per minute; the rest are
+    # only logged (D11), so a refused client cannot fill the table.
+    audit_denials_per_minute: int = Field(default=10, ge=1)
     # Lets the CLI mint sessions without an identity provider. Honoured only in development/test.
     allow_dev_sessions: bool = False
 

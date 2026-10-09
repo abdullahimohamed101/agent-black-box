@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.authz import actions
+from abb_api.authz.audit import audit_allowed
 from abb_api.authz.dependencies import require
 from abb_api.authz.principal import Principal
 from abb_api.core.domain import AlreadyExistsError
@@ -112,4 +113,9 @@ async def create_project(
                 category=ErrorCategory.CONFLICT,
                 status_code=409,
             ) from None
-    return _out(created)
+    out = _out(created)
+    await audit_allowed(
+        request, principal, "project.create", resource_kind="project", resource_id=out.id,
+        slug=out.slug,
+    )  # fmt: skip
+    return out

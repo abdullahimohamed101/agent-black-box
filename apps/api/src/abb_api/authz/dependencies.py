@@ -21,9 +21,9 @@ from abb_api.auth.service import (
     authenticate_session,
     session_invalid,
 )
+from abb_api.authz.audit import authorize_audited
 from abb_api.authz.matrix import role_actions, role_own_actions
 from abb_api.authz.principal import Principal
-from abb_api.authz.service import authorize
 from abb_api.core.config import Settings
 from abb_api.core.errors import (
     AppError,
@@ -182,11 +182,13 @@ async def _user_principal(request: Request) -> Principal:
     )
 
 
-def require(action: str) -> RequireDependency:
+def require(action: str, *, owned: bool = False) -> RequireDependency:
     """Authenticate the caller, then require that they may perform `action`.
 
     The check runs as a dependency, i.e. before the handler reads a body or looks anything up, so a
-    caller without the action learns nothing about which ids exist.
+    caller without the action learns nothing about which ids exist. With `owned=True`, a caller
+    who holds the action only on resources they created (`Own(...)`) passes here and the handler
+    must call `authorize_audited(..., resource)` once it has loaded the resource.
     """
 
     async def dependency(request: Request) -> Principal:
@@ -194,7 +196,9 @@ def require(action: str) -> RequireDependency:
             principal = await _user_principal(request)
         else:
             principal = await _key_principal(request)
-        authorize(principal, action)
+        if owned and action in principal.own_actions:
+            return principal
+        await authorize_audited(request, principal, action)
         return principal
 
     # Read by the route-walking completeness test: which action does this route demand?

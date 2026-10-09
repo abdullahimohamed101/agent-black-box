@@ -55,6 +55,8 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0043",
         "0044",
         "0045",
+        "0046",
+        "0047",
     ]
 
 
@@ -90,3 +92,15 @@ async def test_migrations_match_the_table_definitions(database_url: str) -> None
         )
     await engine.dispose()
     assert diffs == []
+
+
+def test_a_database_at_0044_upgrades_to_head_and_back_to_0044() -> None:
+    """Phase 15's three migrations apply on top of the previous release and reverse cleanly."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0044")
+        before = asyncio.run(table_names(url))
+        alembic(url, "upgrade", "head")
+        after = asyncio.run(table_names(url))
+        assert {"sessions", "login_states", "invitations", "audit_log"} <= after - before
+        alembic(url, "downgrade", "0044")
+        assert asyncio.run(table_names(url)) == before

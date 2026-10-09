@@ -27,6 +27,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     ForeignKeyConstraint,
+    Identity,
     Index,
     Integer,
     LargeBinary,
@@ -146,8 +147,71 @@ workspace_members = Table(
     Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
     Column("role", Text, nullable=False),
     _ts("created_at", nullable=False, default_now=True),
+    _ts("updated_at"),
+    Column("invited_by", UUID(as_uuid=True), ForeignKey("users.id")),
     PrimaryKeyConstraint("workspace_id", "user_id"),
     CheckConstraint(_in("role", ROLES), name="ck_workspace_members_role"),
+)
+
+# One-time invitation links bound to an email (D12). Found by the SHA-256 of the token before the
+# workspace is known, like sessions; everything else is tenant-keyed.
+invitations = Table(
+    "invitations",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("email", Text, nullable=False),
+    Column("role", Text, nullable=False),
+    Column("token_hash", LargeBinary, nullable=False),
+    Column("invited_by", UUID(as_uuid=True), ForeignKey("users.id")),
+    Column("accepted_by", UUID(as_uuid=True), ForeignKey("users.id")),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("expires_at", nullable=False),
+    _ts("accepted_at"),
+    _ts("revoked_at"),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    UniqueConstraint("token_hash", name="uq_invitations_token_hash"),
+    CheckConstraint("octet_length(token_hash) = 32", name="ck_invitations_token_hash"),
+    CheckConstraint(_in("role", ROLES), name="ck_invitations_role"),
+    CheckConstraint(
+        "email = lower(email) AND char_length(email) BETWEEN 3 AND 254", name="ck_invitations_email"
+    ),
+    Index(
+        "uq_invitations_open_email",
+        "workspace_id",
+        "email",
+        unique=True,
+        postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+    ),
+)
+
+# Administrative history (D11): the runtime role may only SELECT and INSERT (migration 0047).
+audit_log = Table(
+    "audit_log",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False),
+    Column("id", BigInteger, Identity(always=True), nullable=False),
+    Column("actor_kind", Text, nullable=False),
+    Column("actor_id", Text, nullable=False),
+    Column("action", Text, nullable=False),
+    Column("resource_kind", Text),
+    Column("resource_id", Text),
+    Column("outcome", Text, nullable=False),
+    Column("details", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("request_id", Text),
+    _ts("occurred_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    CheckConstraint("actor_kind IN ('user', 'api_key', 'cli')", name="ck_audit_actor_kind"),
+    CheckConstraint("outcome IN ('allowed', 'denied')", name="ck_audit_outcome"),
+    CheckConstraint("jsonb_typeof(details) = 'object'", name="ck_audit_details_object"),
+    CheckConstraint("pg_column_size(details) < 8192", name="ck_audit_details_size"),
+    CheckConstraint(
+        "char_length(actor_id) <= 128 AND char_length(action) <= 64 "
+        "AND char_length(resource_kind) <= 64 AND char_length(resource_id) <= 128 "
+        "AND char_length(request_id) <= 64",
+        name="ck_audit_text_sizes",
+    ),
+    Index("ix_audit_workspace_time", "workspace_id", "occurred_at", "id"),
 )
 
 projects = Table(

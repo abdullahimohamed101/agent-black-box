@@ -20,6 +20,7 @@ be captured with `$(...)`. Secrets are never logged.
 
 import argparse
 import asyncio
+import getpass
 import os
 import stat
 import sys
@@ -30,9 +31,11 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TextIO
 
+from abb_event_schema.ids import IdKind
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.analytics.rollup import refresh_day
+from abb_api.audit.repository import AuditEntry, AuditRepository
 from abb_api.auth import scopes as scope_names
 from abb_api.auth.keys import parse_key
 from abb_api.auth.repository import ApiKeyRepository
@@ -44,6 +47,7 @@ from abb_api.core.errors import AppError
 from abb_api.cost.builtin import BUILTIN_ENTRIES
 from abb_api.cost.repository import CostRepository
 from abb_api.db import create_engine
+from abb_api.ids import public_id
 from abb_api.jobs.outbox import JobQueue, OutboxRepository
 from abb_api.projects.repository import ProjectRepository
 from abb_api.runs.repository import RunRepository
@@ -176,6 +180,35 @@ async def _project_id(conn: AsyncConnection, workspace: Workspace, slug: str):  
     return project.id
 
 
+def _operator() -> str:
+    try:
+        return f"cli:{getpass.getuser()}"[:128]
+    except Exception:  # no passwd entry in a container
+        return "cli"
+
+
+async def _audit(
+    conn: AsyncConnection,
+    workspace_id: uuid.UUID,
+    action: str,
+    *,
+    resource_kind: str | None = None,
+    resource_id: str | None = None,
+    **details: object,
+) -> None:
+    """One audit row per mutating command, in the command's own transaction (D11)."""
+    await AuditRepository(conn, TenantContext(workspace_id)).append(
+        AuditEntry(
+            actor_kind="cli",
+            actor_id=_operator(),
+            action=action,
+            resource_kind=resource_kind,
+            resource_id=resource_id,
+            details=dict(details),
+        )
+    )
+
+
 def _read_key_file(path: Path) -> str | None:
     return path.read_text().strip() if path.exists() else None
 
@@ -199,14 +232,22 @@ async def _seed(
     if settings.environment == "production":
         raise DomainError("seed is for local development and refuses to run in production")
     provisioning = WorkspaceProvisioning(conn)
-    workspace = await provisioning.get_by_slug(SEED_WORKSPACE[1]) or await provisioning.create(
-        name=SEED_WORKSPACE[0], slug=SEED_WORKSPACE[1]
-    )
+    workspace = await provisioning.get_by_slug(SEED_WORKSPACE[1])
+    if workspace is None:
+        workspace = await provisioning.create(name=SEED_WORKSPACE[0], slug=SEED_WORKSPACE[1])
+        await _audit(
+            conn, workspace.id, "workspace.create", resource_kind="workspace",
+            resource_id=public_id(IdKind.WORKSPACE, workspace.id), slug=workspace.slug,
+        )  # fmt: skip
     tenant = TenantContext(workspace.id)
     projects = ProjectRepository(conn, tenant)
-    project = await projects.get_by_slug(SEED_PROJECT[1]) or await projects.create(
-        name=SEED_PROJECT[0], slug=SEED_PROJECT[1]
-    )
+    project = await projects.get_by_slug(SEED_PROJECT[1])
+    if project is None:
+        project = await projects.create(name=SEED_PROJECT[0], slug=SEED_PROJECT[1])
+        await _audit(
+            conn, workspace.id, "project.create", resource_kind="project",
+            resource_id=public_id(IdKind.PROJECT, project.id), slug=project.slug,
+        )  # fmt: skip
 
     existing = _read_key_file(key_file)
     if existing:
@@ -227,6 +268,10 @@ async def _seed(
         project_id=project.id,
         name=SEED_KEY_NAME,
     )
+    await _audit(
+        conn, workspace.id, "api_key.create", resource_kind="api_key",
+        resource_id=created.stored.key_id, scopes=["events:write", "runs:read"],
+    )  # fmt: skip
     _write_key_file(key_file, created.token)
     print(
         f"seeded workspace '{workspace.slug}', project '{project.slug}'; "
@@ -251,12 +296,22 @@ async def run(
         async with engine.begin() as conn:
             if args.command == "create-workspace":
                 ws = await WorkspaceProvisioning(conn).create(name=args.name, slug=args.slug)
+                await _audit(
+                    conn, ws.id, "workspace.create",
+                    resource_kind="workspace", resource_id=public_id(IdKind.WORKSPACE, ws.id),
+                    slug=ws.slug,
+                )  # fmt: skip
                 print(f"created workspace '{ws.slug}' ({ws.id})", file=err)
             elif args.command == "create-project":
                 ws = await _workspace(conn, args.workspace)
                 project = await ProjectRepository(conn, TenantContext(ws.id)).create(
                     name=args.name, slug=args.slug
                 )
+                await _audit(
+                    conn, ws.id, "project.create",
+                    resource_kind="project", resource_id=public_id(IdKind.PROJECT, project.id),
+                    slug=project.slug,
+                )  # fmt: skip
                 print(f"created project '{project.slug}' ({project.id})", file=err)
             elif args.command == "create-key":
                 ws = await _workspace(conn, args.workspace)
@@ -271,6 +326,11 @@ async def run(
                     name=args.name,
                     expires_at=expires,
                 )
+                await _audit(
+                    conn, ws.id, "api_key.create",
+                    resource_kind="api_key", resource_id=created.stored.key_id,
+                    scopes=sorted(args.scopes),
+                )  # fmt: skip
                 print(f"created key {created.stored.key_id}; the secret is shown once:", file=err)
                 print(created.token, file=out)
             elif args.command == "revoke-key":
@@ -282,6 +342,9 @@ async def run(
                 )
                 if not revoked:
                     raise NotFoundError(f"no active key '{args.key_id}' in workspace '{ws.slug}'")
+                await _audit(
+                    conn, ws.id, "api_key.revoke", resource_kind="api_key", resource_id=args.key_id
+                )
                 print(f"revoked key {args.key_id}", file=err)
             elif args.command == "jobs-list":
                 for job in await JobQueue(conn).list_jobs(args.status, args.limit):
@@ -307,6 +370,11 @@ async def run(
                     valid_from=args.valid_from,
                     note=args.note,
                 )
+                await _audit(
+                    conn, ws.id, "pricing_override.create",
+                    resource_kind="pricing_override", resource_id=str(created_id),
+                    model_pattern=args.model_pattern[:128],
+                )  # fmt: skip
                 print(
                     f"added override:{created_id}; run rebuild-costs to apply it to past runs",
                     file=err,
@@ -328,6 +396,7 @@ async def run(
                     project_id=project_id, since=args.since, limit=args.limit
                 )
                 queued = await OutboxRepository(conn, tenant).enqueue_summarize(run_ids)
+                await _audit(conn, ws.id, "cost.rebuild", queued=queued, matched=len(run_ids))
                 print(f"queued {queued} of {len(run_ids)} run(s) for re-derivation", file=err)
                 if len(run_ids) >= args.limit:
                     print(
