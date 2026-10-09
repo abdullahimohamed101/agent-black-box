@@ -232,7 +232,7 @@ def test_builtin_table_has_no_invented_vendor_prices() -> None:
 def test_builtin_anthropic_prices_match_the_recorded_source() -> None:
     book = builtin_price_book()
     sonnet = book.find("anthropic", "claude-sonnet-5-5", at(10))
-    assert sonnet is not None and sonnet.source.startswith("https://claude.com/pricing")
+    assert sonnet is not None and sonnet.source.startswith("https://platform.claude.com/docs")
     assert (sonnet.input_per_million, sonnet.output_per_million) == (D(2), D(10))
     assert sonnet.cached_input_per_million == D("0.10")
     opus = book.find("anthropic", "claude-opus-5-5-20260101", at(10))
