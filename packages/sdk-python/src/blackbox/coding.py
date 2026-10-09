@@ -54,6 +54,8 @@ class Classification:
 
 
 MAX_REASONS = 8
+MAX_ANALYSED_CHARS = 32 * 1024  # a longer command is classified from its start and end only
+MAX_ANALYSED_TAIL = 8 * 1024
 Classifier = Callable[[str], "Classification | None"]
 
 _R0_COMMANDS = frozenset(
@@ -843,6 +845,18 @@ def classify_command(command: str, *, _depth: int = 0) -> Classification:
     Heuristic by nature: a shell string is not fully parseable."""
     if not isinstance(command, str) or not command.strip():
         return Classification("R0", READ_ONLY, ("empty command",))
+    if len(command) > MAX_ANALYSED_CHARS:
+        # Bounded work whatever the input: look at the start and end, and never call it low risk.
+        head = classify_command(command[:MAX_ANALYSED_CHARS], _depth=_depth)
+        tail = classify_command(command[-MAX_ANALYSED_TAIL:], _depth=_depth)
+        top = head if head.level >= tail.level else tail
+        if top.level >= 2:
+            return Classification(
+                top.risk_class, top.category, (*top.reasons, "very large command")
+            )
+        return Classification(
+            "R2", MODIFY_FILES, ("very large command, analysed in part (assumed risky)",)
+        )
     best: Classification | None = None
     for pattern, level, cat, why in _RAW_RULES:
         if pattern.search(command):

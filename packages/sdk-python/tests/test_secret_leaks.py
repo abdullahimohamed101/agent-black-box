@@ -296,3 +296,14 @@ def test_a_real_looking_value_in_a_template_file_is_still_learned() -> None:
     """Someone pasting a real key into .env.example is a leak waiting to happen: keep masking it."""
     got = extract_values(".env.example", "SECRET_KEY=Zq9xKp2LmN8vTr4Wb7Yc\n")
     assert "Zq9xKp2LmN8vTr4Wb7Yc" in got
+
+
+def test_a_huge_command_is_bounded_and_never_low_risk() -> None:
+    big = "echo hi; " * 40_000  # ~360 KB of harmless words
+    started = time.perf_counter()
+    got = classify_command(big)
+    assert time.perf_counter() - started < 1.0
+    assert got.level >= 2  # analysed in part: not assumed safe
+    assert classify_command("rm -rf /; " + big).level >= 3  # a dangerous start is still seen
+    assert classify_command(big + "; rm -rf /").level >= 3  # and so is a dangerous end
+    assert classify_command("echo hi; " * 100).level == 0  # ordinary sizes are unaffected
