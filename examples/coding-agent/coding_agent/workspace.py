@@ -24,7 +24,7 @@ def planted_literals() -> list[str]:
         PLANTED["bearer_token"].split()[1],
         PLANTED["db_url_password"],
         PLANTED["private_key_body"],
-        "rk_" "live_51Hq9dKd8s7Fh2LmPzQw4TxYv",  # the refresh token in the test fixtures
+        "rk_" + "live_51Hq9dKd8s7Fh2LmPzQw4TxYv",  # the refresh token in the test fixtures
     ]
     env_secret = os.environ.get("ABB_DEMO_ENV_SECRET")
     if env_secret:

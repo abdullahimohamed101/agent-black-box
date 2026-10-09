@@ -6,7 +6,7 @@ from app.session import REFRESH_SKEW_SECONDS, Session, SessionStore, get_valid_s
 NOW = 1_000_000.0
 # Realistic-looking fixtures: a JWT access token and a provider refresh token.
 ACCESS = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLTQyIn0.c2lnbmF0dXJlLXZhbHVlLWhlcmU"
-REFRESH = "rk_" "live_51Hq9dKd8s7Fh2LmPzQw4TxYv"
+REFRESH = "rk_" + "live_51Hq9dKd8s7Fh2LmPzQw4TxYv"
 
 
 def make(expires_in: float) -> tuple[SessionStore, IdentityProvider]:
