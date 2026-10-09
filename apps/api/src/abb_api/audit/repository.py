@@ -103,13 +103,30 @@ class AuditRepository:
         )
 
     async def recent(self, limit: int = 100) -> list[AuditRow]:
-        """Newest first. Cursor paging and `since` arrive with `GET /v1/audit`."""
+        """Newest first."""
         rows = await self._conn.execute(
             select(*(c for c in t.audit_log.c if c.name != "workspace_id"))
             .where(t.audit_log.c.workspace_id == self._tenant.workspace_id)
             .order_by(t.audit_log.c.id.desc())
             .limit(limit)
         )
+        return [AuditRow(**r._asdict()) for r in rows]
+
+    async def page(
+        self, *, limit: int, before_id: int | None = None, since: datetime | None = None
+    ) -> list[AuditRow]:
+        """Newest first by id (strictly increasing), so `before_id` is a complete keyset cursor.
+
+        Returns up to `limit` rows; callers ask for one more to learn whether a page follows.
+        """
+        stmt = select(*(c for c in t.audit_log.c if c.name != "workspace_id")).where(
+            t.audit_log.c.workspace_id == self._tenant.workspace_id
+        )
+        if before_id is not None:
+            stmt = stmt.where(t.audit_log.c.id < before_id)
+        if since is not None:
+            stmt = stmt.where(t.audit_log.c.occurred_at >= since)
+        rows = await self._conn.execute(stmt.order_by(t.audit_log.c.id.desc()).limit(limit))
         return [AuditRow(**r._asdict()) for r in rows]
 
 

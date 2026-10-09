@@ -14,6 +14,7 @@ import httpx
 from abb_event_schema.ids import IdKind, new_id
 from sqlalchemy import text
 
+from abb_api.audit.repository import AuditEntry, AuditRepository
 from abb_api.auth import scopes
 from abb_api.auth.repository import ApiKeyRepository, UserRepository
 from abb_api.cost.repository import CostRepository
@@ -190,6 +191,12 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             cached_input_per_million=None,
             request_price=Decimal(0), valid_from=NOW, note=CANARY,
         )  # fmt: skip
+
+        # Audit rows carry free text too (details), so globex's hold the canary.
+        for tenant, detail in ((api.tenant, "acme-note"), (api.other, CANARY_SLUG)):
+            await AuditRepository(conn, tenant.context).append(
+                AuditEntry("cli", "cli:seed", "project.create", details={"slug": detail})
+            )
 
     sides: dict[str, Side] = {}
     for name, token, art_token, tag, count, cost, tenant in (

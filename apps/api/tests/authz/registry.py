@@ -262,6 +262,7 @@ CASES: dict[tuple[str, str], RouteCase] = {
             _target("DELETE", "/v1/api-keys", "key_id", "api_key", None), 204,
             ("key_id",), probe_actors=ADMINS,
         ),
+        RouteCase("GET", "/v1/audit", actions.AUDIT_READ, _get("/v1/audit"), 200),
         RouteCase("POST", "/v1/pricing/overrides", actions.PRICING_WRITE, _post_override, 201),
         RouteCase("POST", "/v1/cost/rebuild", actions.PRICING_WRITE, _post_rebuild, 202),
         RouteCase("PUT", "/v1/artifacts/{artifact_id}", actions.ARTIFACT_WRITE, _put_artifact, 201),

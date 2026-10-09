@@ -43,9 +43,12 @@ U_KEYS_CREATE = "allow allow allow     deny   deny     deny    | 404 404 deny  4
 U_KEYS_REVOKE = U_KEYS_READ
 # pricing.write: owner, admin and billing (who cannot read runs but manages prices).
 U_PRICES = "allow allow deny      deny   deny     allow   | 404 404 deny  401 401 401 401 400"
+# audit.read: owner, admin and the security role.
+U_AUDIT = "allow allow deny      deny   allow    deny    | 404 404 deny  401 401 401 401 400"
 U_ADMIN_ONLY = U_PROJECT_ADMIN  # member.write, invite.read, invite.write: owner and admin
 
 EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
+    ("GET", "/v1/audit"): (NO_KEY, U_AUDIT),
     ("POST", "/v1/pricing/overrides"): (NO_KEY, U_PRICES),
     ("POST", "/v1/cost/rebuild"): (NO_KEY, U_PRICES),
     ("GET", "/v1/api-keys"): (NO_KEY, U_KEYS_READ),

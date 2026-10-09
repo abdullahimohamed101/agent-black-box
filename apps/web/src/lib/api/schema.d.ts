@@ -203,6 +203,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Page through the workspace audit log
+         * @description Newest first. Page with `next_cursor`. `since` (an ISO timestamp with a timezone) keeps entries at or after that instant. Owners, admins and the security role only.
+         */
+        get: operations["list_audit_v1_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/callback": {
         parameters: {
             query?: never;
@@ -752,6 +772,38 @@ export interface components {
             sha256: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /** AuditEntryOut */
+        AuditEntryOut: {
+            /** Action */
+            action: string;
+            /** Actor Id */
+            actor_id: string;
+            /** Actor Kind */
+            actor_kind: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: string;
+            /** Occurred At */
+            occurred_at: string;
+            /** Outcome */
+            outcome: string;
+            /** Request Id */
+            request_id: string | null;
+            /** Resource Id */
+            resource_id: string | null;
+            /** Resource Kind */
+            resource_kind: string | null;
+        };
+        /** AuditPage */
+        AuditPage: {
+            /** Items */
+            items: components["schemas"]["AuditEntryOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** BatchResponse */
         BatchResponse: {
@@ -2639,6 +2691,87 @@ export interface operations {
             };
             /** @description Rate limit exceeded; honour `Retry-After`. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_audit_v1_audit_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                since?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not read the audit log. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace not found, or the caller is not a member. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
