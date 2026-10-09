@@ -5,8 +5,12 @@ import type { BrowserContext, Page } from "@playwright/test";
  * ABB_ENVIRONMENT and ABB_ALLOW_DEV_SESSIONS=1) and pass it as E2E_SESSION_TOKEN. The browser then holds exactly what a
  * signed-in person holds: the HttpOnly session cookie. There is no shared key anywhere.
  */
-export async function signIn(context: BrowserContext, url: string): Promise<void> {
-  const value = process.env.E2E_SESSION_TOKEN;
+export async function signIn(
+  context: BrowserContext,
+  url: string,
+  token: string | undefined = process.env.E2E_SESSION_TOKEN,
+): Promise<void> {
+  const value = token;
   if (!value)
     throw new Error("E2E_SESSION_TOKEN is not set (run the spec through its scripts/*-e2e.sh)");
   await context.addCookies([{ name: "abb_session", value, url, httpOnly: true, sameSite: "Lax" }]);
