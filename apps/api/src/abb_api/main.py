@@ -196,6 +196,15 @@ def create_app(
             await hub.stop()
             await engine.dispose()
 
+    if settings.allow_dev_sessions:
+        # Never log the flag's effect as a secret; do say loudly that it exists.
+        logging.getLogger(__name__).warning(
+            "ABB_ALLOW_DEV_SESSIONS is set: the CLI can mint sign-in sessions and seed adds a "
+            "local owner. %s",
+            "Development convenience only."
+            if settings.dev_sessions_enabled
+            else "It is ignored because ABB_ENVIRONMENT is not development or test.",
+        )
     app = FastAPI(title="Agent Black Box API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.clock = clock

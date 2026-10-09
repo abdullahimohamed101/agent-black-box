@@ -727,3 +727,35 @@ is visible in logs and capped in the table; a future "who viewed what" requireme
     Prices are `0..1,000,000` with at most 9 decimals and finite; `valid_from` must carry a timezone and lie between 1970 and 2100.
   - `POST /v1/cost/rebuild` takes `project_id`, `since`, `limit` (1..10,000, default 10,000), answers `202 {matched, queued, truncated}`; repeated calls
     are idempotent while jobs are pending (dedupe key). BILLING may call it although it cannot read runs: the response carries counts only.
+
+### Steps 9-12 (audit read, payload.read, stream re-auth, CLI access)
+
+- **Step 9 (`GET /v1/audit`).** Keyset paging on the row id (`audit_log.id` is a strictly increasing identity, so the cursor is `[id]`, decoded with the
+  shared cursor codec, kind `audit`); `since` is an ISO instant that must carry a timezone (`422 INVALID_SINCE`). Keys hold no `audit.read`, so they get
+  the usual `403 INSUFFICIENT_SCOPE`. The route is in the registry and the literal matrix (owner, admin, security), and both seeded workspaces carry audit
+  rows (globex's with the canary) so the canary scan covers it. Operation count is now 31 registry operations / 36 `/v1` operations in OpenAPI.
+- **Step 10 (`payload.read`).** Artifact content already demanded `payload.read` since step 1 (see the earlier note). New: event detail returns
+  `payload: null` and `payload_withheld: true` to an actor without `payload.read` (a VIEWER; BILLING has no `run.read` and gets 403). `has_payload` and
+  `payload_ref` stay (they are metadata and the content stays behind `payload.read`). `payload_withheld` is a required response field in the generated
+  client (FastAPI marks defaulted response fields required), so the web fixture builder sets it to `false`. The payload column is still read and then
+  dropped; not selecting it would need a second query shape for no security gain.
+- **Step 11 (stream re-authentication).** `credential_still_grants` (in `auth/service.py`, which may inspect roles and scopes) re-checks by identity,
+  since the bearer secret is not kept: a key by `key_id` (same workspace and project, active, scope still implies `run.read`), a session by row id
+  (`usable`, user matches) plus a fresh `role_of` read. It never slides a session or touches `last_used_at` (tested). The loop runs it every
+  `ABB_STREAM_REAUTH_SECONDS` (default 30, `gt=0`; tests use 0.4) using `loop.time()`, and the poll wait is shortened so a check is never later than its
+  due time. Failure ends the stream with `event: error` code `STREAM_UNAUTHORIZED` (not retryable; the reason is not spelled out in-band, a reconnect gets
+  the precise 401/403/404). A database error during the check falls into the existing `STREAM_UNAVAILABLE` path (the stream ends; fail closed).
+  `StreamService` now receives the app clock (key and session expiry follow the injected clock). The stream-limit key was already `actor_id`; the
+  `scope` in `STREAM_LIMIT.details` is now `user` for people (`key` for keys, `server` unchanged). `stream_max_per_key` (10) is therefore also the
+  per-person limit. **Web follow-up (step 13):** the EventSource client must treat `STREAM_UNAUTHORIZED` as final (go to sign-in or re-check `/v1/me`)
+  rather than reconnect forever.
+- **Step 12 (CLI).** `add-member` refuses an existing member (exit 2) instead of silently changing their role (role changes are the audited API
+  `PATCH`); `remove-member` shares the last-owner rule and the lock order (owners, then target) of the API; `relink-user --clear-subject` (flag required)
+  also revokes the user's sessions and writes `user.relink` into every workspace the user belongs to (the audit log is per workspace; a user with no
+  membership gets a stderr note and no row). `create-session --email --hours` (0 < hours <= 24, default 1) needs `Settings.dev_sessions_enabled`
+  (`ABB_ENVIRONMENT in {development, test}` and `ABB_ALLOW_DEV_SESSIONS=1`), prints the cookie value once on stdout and audits `session.create_dev` per
+  membership; the idle window is capped at the session lifetime. `seed` adds `owner@local.test` as OWNER under the same gate (idempotent, audited).
+  Audit rows carry the user public id, never an email (asserted by a test). `create_app` logs a WARNING when `ABB_ALLOW_DEV_SESSIONS` is set (and says
+  when it is ignored because the environment is not development or test).
+- **Process note.** The step 11 commit contained one over-long line in `streaming/router.py` that `ruff check` flags (edited after the last lint run);
+  it is fixed in the step 12 commit.

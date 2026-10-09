@@ -4714,7 +4714,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description STREAM_LIMIT: too many open streams for this server, key or person; honour Retry-After. */
+            /** @description STREAM_LIMIT: too many open streams (server, key or person); honour Retry-After. */
             429: {
                 headers: {
                     [name: string]: unknown;

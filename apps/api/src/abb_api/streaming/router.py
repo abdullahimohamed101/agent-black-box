@@ -22,7 +22,7 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
         403: "The key lacks `runs:read`.",
         404: "Not found, or not visible to this key.",
         422: "A parameter is invalid.",
-        429: "STREAM_LIMIT: too many open streams for this server, key or person; honour Retry-After.",
+        429: "STREAM_LIMIT: too many open streams (server, key or person); honour Retry-After.",
         503: "A dependency is unavailable; retry with backoff.",
     }.items()
 }

@@ -12,7 +12,15 @@
     python -m abb_api.cli list-pricing --workspace acme
     python -m abb_api.cli rebuild-costs --workspace acme [--project p] [--since 2026-10-01]
     python -m abb_api.cli refresh-analytics --workspace acme [--since 2026-10-01]
+    python -m abb_api.cli add-member --workspace acme --email you@example.com --role OWNER
+    python -m abb_api.cli remove-member --workspace acme --email you@example.com
+    python -m abb_api.cli list-members --workspace acme
+    python -m abb_api.cli relink-user --email you@example.com --clear-subject
+    python -m abb_api.cli create-session --email owner@local.test [--hours 1]   # dev/test only
     python -m abb_api.cli seed            # local development only
+
+`create-session` (and the dev owner that `seed` adds) needs ABB_ENVIRONMENT=development|test and
+ABB_ALLOW_DEV_SESSIONS=1; it prints the session cookie value once, to stdout.
 
 A new key's secret is written to stdout exactly once; everything else goes to stderr so the key can
 be captured with `$(...)`. Secrets are never logged.
@@ -22,6 +30,7 @@ import argparse
 import asyncio
 import getpass
 import os
+import secrets
 import stat
 import sys
 import uuid
@@ -32,14 +41,15 @@ from pathlib import Path
 from typing import TextIO
 
 from abb_event_schema.ids import IdKind
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.analytics.rollup import refresh_day
 from abb_api.audit.repository import AuditEntry, AuditRepository
 from abb_api.auth import scopes as scope_names
 from abb_api.auth.keys import parse_key
-from abb_api.auth.repository import ApiKeyRepository
-from abb_api.auth.service import authenticate
+from abb_api.auth.repository import ApiKeyRepository, SessionRepository, UserRecord, UserRepository
+from abb_api.auth.service import authenticate, hash_session_token
 from abb_api.clock import Clock, system_clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.domain import AlreadyExistsError, DomainError, NotFoundError
@@ -53,10 +63,15 @@ from abb_api.projects.repository import ProjectRepository
 from abb_api.runs.repository import RunRepository
 from abb_api.tenancy import TenantContext
 from abb_api.workspaces import Workspace, WorkspaceProvisioning
+from abb_api.workspaces.members import MAX_MEMBERS, Email
+from abb_api.workspaces.repository import MembershipRepository, memberships_of
 
 SEED_WORKSPACE = ("Local development", "local")
 SEED_PROJECT = ("Demo", "demo")
 SEED_KEY_NAME = "dev-seed"
+SEED_OWNER_EMAIL = "owner@local.test"  # a local-only identity: the fake provider accepts any email
+ROLES = ("OWNER", "ADMIN", "DEVELOPER", "VIEWER", "SECURITY", "BILLING")
+MAX_DEV_SESSION_HOURS = 24.0
 DEFAULT_KEY_FILE = Path(".local/dev-api-key")
 
 
@@ -154,6 +169,35 @@ def build_parser() -> argparse.ArgumentParser:
     refresh.add_argument("--workspace", required=True, help="workspace slug")
     refresh.add_argument("--since", type=_instant, help="first day to rebuild (default: all)")
 
+    add = sub.add_parser("add-member", help="add a person to a workspace (creates the user)")
+    add.add_argument("--workspace", required=True, help="workspace slug")
+    add.add_argument("--email", required=True)
+    add.add_argument("--role", required=True, choices=ROLES)
+
+    drop = sub.add_parser("remove-member", help="remove a person from a workspace")
+    drop.add_argument("--workspace", required=True, help="workspace slug")
+    drop.add_argument("--email", required=True)
+
+    listing = sub.add_parser("list-members", help="show the members of a workspace")
+    listing.add_argument("--workspace", required=True, help="workspace slug")
+
+    relink = sub.add_parser(
+        "relink-user", help="forget a user's identity-provider link (after an issuer change)"
+    )
+    relink.add_argument("--email", required=True)
+    relink.add_argument(
+        "--clear-subject",
+        action="store_true",
+        required=True,
+        help="required: the next verified login with this email links the new identity",
+    )
+
+    session = sub.add_parser(
+        "create-session", help="mint a sign-in session for scripts (development and test only)"
+    )
+    session.add_argument("--email", required=True)
+    session.add_argument("--hours", type=float, default=1.0)
+
     seed = sub.add_parser("seed", help="create a local workspace, project and dev key")
     seed.add_argument("--key-file", type=Path, default=DEFAULT_KEY_FILE)
     return parser
@@ -209,6 +253,105 @@ async def _audit(
     )
 
 
+def _email(text: str) -> str:
+    try:
+        return TypeAdapter(Email).validate_python(text)
+    except ValidationError:
+        raise ValueError("not a valid email address") from None
+
+
+async def _user(conn: AsyncConnection, email: str) -> UserRecord:
+    found = await UserRepository(conn).find_by_email(_email(email))
+    if found is None:
+        raise NotFoundError("no user with that email")
+    return found
+
+
+async def _add_member(
+    conn: AsyncConnection, workspace: Workspace, email: str, role: str
+) -> tuple[UserRecord, bool]:
+    """The user (created on first use) as a member; False when they already were one."""
+    tenant = TenantContext(workspace.id)
+    members = MembershipRepository(conn, tenant)
+    await members.lock_workspace()  # the member bound is checked and used under one lock
+    users = UserRepository(conn)
+    user = await users.find_by_email(_email(email)) or await users.create(email=_email(email))
+    if await members.get(user.id) is not None:
+        return user, False
+    if await members.count() >= MAX_MEMBERS:
+        raise DomainError(f"a workspace holds at most {MAX_MEMBERS} members")
+    await members.add(user.id, role, invited_by=None)
+    await _audit(
+        conn, workspace.id, "member.add", resource_kind="user",
+        resource_id=public_id(IdKind.USER, user.id), role=role,
+    )  # fmt: skip
+    return user, True
+
+
+async def _remove_member(conn: AsyncConnection, workspace: Workspace, email: str) -> None:
+    user = await _user(conn, email)
+    members = MembershipRepository(conn, TenantContext(workspace.id))
+    owners = await members.lock_owners()  # same lock order as the API: owners, then the target
+    target = await members.get(user.id, for_update=True)
+    if target is None:
+        raise NotFoundError(f"that user is not a member of '{workspace.slug}'")
+    if target.role == "OWNER" and len(owners) <= 1:
+        raise DomainError("a workspace needs at least one owner; add another owner first")
+    await members.remove(user.id)
+    await _audit(
+        conn, workspace.id, "member.remove", resource_kind="user",
+        resource_id=public_id(IdKind.USER, user.id), role=target.role,
+    )  # fmt: skip
+
+
+async def _relink_user(conn: AsyncConnection, email: str, now: datetime, err: TextIO) -> None:
+    user = await _user(conn, email)
+    await UserRepository(conn).clear_identity(user.id)
+    ended = await SessionRepository(conn).revoke_all(user.id, now)
+    homes = await memberships_of(conn, user.id)
+    for home in homes:  # the audit log is per workspace: record it where the user can act
+        await _audit(
+            conn, home.workspace_id, "user.relink", resource_kind="user",
+            resource_id=public_id(IdKind.USER, user.id), sessions_revoked=ended,
+        )  # fmt: skip
+    note = "" if homes else " (no workspace membership, so no audit row)"
+    print(f"cleared the identity link; revoked {ended} session(s){note}", file=err)
+
+
+async def _create_session(
+    conn: AsyncConnection, settings: Settings, clock: Clock, args: argparse.Namespace,
+    out: TextIO, err: TextIO,
+) -> None:  # fmt: skip
+    if not settings.dev_sessions_enabled:
+        raise DomainError(
+            "create-session needs ABB_ENVIRONMENT=development or test and ABB_ALLOW_DEV_SESSIONS=1"
+        )
+    if not 0 < args.hours <= MAX_DEV_SESSION_HOURS:
+        raise ValueError(f"--hours must be above 0 and at most {MAX_DEV_SESSION_HOURS:g}")
+    user = await _user(conn, args.email)
+    absolute = timedelta(hours=args.hours)
+    token = secrets.token_urlsafe(32)
+    await SessionRepository(conn).create(
+        user.id, hash_session_token(token), now=clock(), absolute=absolute,
+        idle=min(absolute, timedelta(hours=settings.session_idle_hours)),
+    )  # fmt: skip
+    for home in await memberships_of(conn, user.id):
+        await _audit(
+            conn, home.workspace_id, "session.create_dev", resource_kind="user",
+            resource_id=public_id(IdKind.USER, user.id), hours=args.hours,
+        )  # fmt: skip
+    print(f"session valid for {args.hours:g} hour(s); the cookie value is shown once:", file=err)
+    print(token, file=out)
+
+
+async def _seed_dev_owner(conn: AsyncConnection, workspace: Workspace, err: TextIO) -> None:
+    _, added = await _add_member(conn, workspace, SEED_OWNER_EMAIL, "OWNER")
+    if added:
+        print(
+            f"added {SEED_OWNER_EMAIL} as OWNER of '{workspace.slug}' (development only)", file=err
+        )
+
+
 def _read_key_file(path: Path) -> str | None:
     return path.read_text().strip() if path.exists() else None
 
@@ -248,6 +391,9 @@ async def _seed(
             conn, workspace.id, "project.create", resource_kind="project",
             resource_id=public_id(IdKind.PROJECT, project.id), slug=project.slug,
         )  # fmt: skip
+
+    if settings.dev_sessions_enabled:
+        await _seed_dev_owner(conn, workspace, err)
 
     existing = _read_key_file(key_file)
     if existing:
@@ -411,6 +557,29 @@ async def run(
                 for day in days:
                     await refresh_day(conn, tenant, day)
                 print(f"rebuilt analytics for {len(days)} day(s)", file=err)
+            elif args.command == "add-member":
+                ws = await _workspace(conn, args.workspace)
+                _, added = await _add_member(conn, ws, args.email, args.role)
+                if not added:
+                    raise AlreadyExistsError(f"already a member of '{ws.slug}'")
+                print(f"added a {args.role} to '{ws.slug}'", file=err)
+            elif args.command == "remove-member":
+                ws = await _workspace(conn, args.workspace)
+                await _remove_member(conn, ws, args.email)
+                print(f"removed the member from '{ws.slug}'", file=err)
+            elif args.command == "list-members":
+                ws = await _workspace(conn, args.workspace)
+                for member in await MembershipRepository(conn, TenantContext(ws.id)).list_members(
+                    MAX_MEMBERS
+                ):
+                    print(
+                        f"{member.email}  {member.role}  {public_id(IdKind.USER, member.user_id)}",
+                        file=out,
+                    )
+            elif args.command == "relink-user":
+                await _relink_user(conn, args.email, clock(), err)
+            elif args.command == "create-session":
+                await _create_session(conn, settings, clock, args, out, err)
             elif args.command == "seed":
                 await _seed(conn, args.key_file, settings, clock, out, err)
     except (DomainError, ValueError) as exc:
