@@ -250,3 +250,27 @@ async def test_stream_limits_are_per_person_not_per_session(
         finally:
             for w in watches:
                 await w.stop()
+
+
+async def test_a_database_error_during_the_recheck_fails_closed(
+    live: Live, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review F7: when the check cannot run, the stream ends and sends nothing more."""
+    from sqlalchemy.exc import OperationalError
+
+    run = await run_with_event(live)
+    watch = Watch(live, run["run_id"], live.headers("reader"))
+    try:
+        await watch.opened()
+
+        async def broken(*args: object, **kwargs: object) -> bool:
+            raise OperationalError("SELECT 1", {}, Exception("connection lost"))
+
+        monkeypatch.setattr("abb_api.streaming.service.credential_still_grants", broken)
+        await watch.ended()
+        (frame,) = watch.errors()
+        assert frame["data"]["error"]["code"] == "STREAM_UNAVAILABLE"
+        assert frame["data"]["error"]["retryable"] is True
+        assert not [f for f in watch.frames if f.get("event") == "run_end"]
+    finally:
+        await watch.stop()
