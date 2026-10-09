@@ -5,6 +5,7 @@ tenant is known. Everything else here is tenant-scoped.
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -34,10 +35,14 @@ class StoredApiKey:
     secret_hash: bytes
     scopes: frozenset[str]
     name: str | None
+    created_by: uuid.UUID | None
     created_at: datetime
     last_used_at: datetime | None
     expires_at: datetime | None
     revoked_at: datetime | None
+
+    def is_active(self, now: datetime) -> bool:
+        return self.revoked_at is None and (self.expires_at is None or self.expires_at > now)
 
 
 @dataclass(frozen=True)
@@ -54,6 +59,7 @@ _COLUMNS = (
     t.api_keys.c.secret_hash,
     t.api_keys.c.scopes,
     t.api_keys.c.name,
+    t.api_keys.c.created_by,
     t.api_keys.c.created_at,
     t.api_keys.c.last_used_at,
     t.api_keys.c.expires_at,
@@ -70,6 +76,7 @@ def _stored(row: Any) -> StoredApiKey:
         secret_hash=bytes(row.secret_hash),
         scopes=frozenset(row.scopes),
         name=row.name,
+        created_by=row.created_by,
         created_at=row.created_at,
         last_used_at=row.last_used_at,
         expires_at=row.expires_at,
@@ -150,6 +157,54 @@ class ApiKeyRepository:
             .order_by(t.api_keys.c.created_at, t.api_keys.c.key_id)
         )
         return [_stored(r) for r in rows]
+
+    async def list_current(self, limit: int) -> Sequence[StoredApiKey]:
+        """Keys that are not revoked (active or expired), oldest first."""
+        rows = await self._conn.execute(
+            select(*_COLUMNS)
+            .where(
+                t.api_keys.c.workspace_id == self._tenant.workspace_id,
+                t.api_keys.c.revoked_at.is_(None),
+            )
+            .order_by(t.api_keys.c.created_at, t.api_keys.c.key_id)
+            .limit(limit)
+        )
+        return [_stored(r) for r in rows]
+
+    async def get(self, key_id: str) -> StoredApiKey | None:
+        """A key of this tenant by its public id (revoked ones included)."""
+        row = (
+            await self._conn.execute(
+                select(*_COLUMNS).where(
+                    t.api_keys.c.workspace_id == self._tenant.workspace_id,
+                    t.api_keys.c.key_id == key_id,
+                )
+            )
+        ).first()
+        return _stored(row) if row else None
+
+    async def count_active(self, now: datetime) -> int:
+        return int(
+            (
+                await self._conn.execute(
+                    select(func.count())
+                    .select_from(t.api_keys)
+                    .where(
+                        t.api_keys.c.workspace_id == self._tenant.workspace_id,
+                        t.api_keys.c.revoked_at.is_(None),
+                        (t.api_keys.c.expires_at.is_(None)) | (t.api_keys.c.expires_at > now),
+                    )
+                )
+            ).scalar_one()
+        )
+
+    async def lock_for_create(self) -> None:
+        """Serialise key creation per workspace, so the bound cannot be raced past."""
+        await self._conn.execute(
+            select(t.workspaces.c.id)
+            .where(t.workspaces.c.id == self._tenant.workspace_id)
+            .with_for_update(key_share=True)
+        )
 
     async def revoke(self, key_id: str, now: datetime) -> bool:
         """Revoke a key of this tenant. False if there is no such active key here."""

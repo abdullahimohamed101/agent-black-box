@@ -2,7 +2,8 @@
 
 from typing import Protocol
 
-from abb_api.authz.matrix import scope_for
+from abb_api.authz import actions
+from abb_api.authz.matrix import scope_actions, scope_for
 from abb_api.authz.principal import Principal
 from abb_api.core.errors import AppError, ErrorCategory
 
@@ -53,3 +54,10 @@ def authorize(actor: Principal, action: str, resource: Owned | None = None) -> N
     ):
         return
     raise PermissionDenied(actor, action)
+
+
+def ungrantable_actions(actor: Principal, scopes: frozenset[str]) -> frozenset[str]:
+    """What a key with `scopes` could do that `actor` could not (D9): nobody mints a key stronger
+    than themselves. Ingestion actions are exempt because no role holds them by design: project
+    keys are the only ingestion credential, and `api_key.create` is what permits making one."""
+    return scope_actions(scopes) - actions.INGESTION_ACTIONS - actor.actions

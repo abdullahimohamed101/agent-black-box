@@ -17,6 +17,7 @@ from abb_api.analytics.service import AnalyticsService
 from abb_api.artifacts.router import router as artifacts_router
 from abb_api.artifacts.service import ArtifactService
 from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
+from abb_api.auth.keys_router import router as api_keys_router
 from abb_api.auth.login import LoginService
 from abb_api.auth.oidc import OidcClient
 from abb_api.auth.router import router as auth_router
@@ -218,6 +219,7 @@ def create_app(
     app.include_router(analytics_router)
     app.include_router(projects_router)
     app.include_router(members_router)
+    app.include_router(api_keys_router)
     _install_openapi(app, settings)
     return app
 

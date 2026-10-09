@@ -15,7 +15,7 @@ from abb_event_schema.ids import IdKind, new_id
 from sqlalchemy import text
 
 from abb_api.auth import scopes
-from abb_api.auth.repository import ApiKeyRepository
+from abb_api.auth.repository import ApiKeyRepository, UserRepository
 from abb_api.cost.repository import CostRepository
 from abb_api.ids import new_uuid, public_id
 from abb_api.workspaces.repository import InvitationRepository
@@ -44,9 +44,21 @@ class World:
     def headers(self, actor: str, spec: RequestSpec) -> dict[str, str]:
         return {**spec.headers, **self.actors[actor]}
 
-    async def _fresh_target(self, kind: str) -> str:
-        """A new member or invitation in acme, for a request that consumes its target."""
+    async def _fresh_target(self, kind: str, actor: str) -> str:
+        """A new member, invitation or key in acme, for a request that consumes its target.
+
+        A key is made by `actor` when that is one of the role actors, so `Own` grants can be
+        exercised; otherwise it has no creator (as if made by the CLI).
+        """
         workspace = self.api.tenant.context.workspace_id
+        if kind == "api_key":
+            async with self.api.engine.begin() as conn:
+                creator = await UserRepository(conn).find_by_email(f"{actor}@acme.test")
+                created = await ApiKeyRepository(conn, self.api.tenant.context).create(
+                    scopes=frozenset({scopes.RUNS_READ}),
+                    created_by=creator.id if creator else None,
+                )
+            return created.stored.key_id
         if kind == "member":
             user = await add_member(
                 self.api.engine, workspace, f"target-{uuid.uuid4().hex[:10]}@acme.test", "DEVELOPER"
@@ -68,7 +80,7 @@ class World:
         """Send over the case's transport; a stream is read until its headers, then closed."""
         if spec.fresh is not None:
             spec = replace(
-                spec, path=spec.path.replace("FRESH", await self._fresh_target(spec.fresh))
+                spec, path=spec.path.replace("FRESH", await self._fresh_target(spec.fresh, actor))
             )
         headers = self.headers(actor, spec)
         if case.transport == "socket":
@@ -205,6 +217,10 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
                 invited_by=None,
                 expires_at=api.clock() + timedelta(days=7),
             )
+        async with api.engine.begin() as conn:
+            seeded_key = await ApiKeyRepository(conn, tenant.context).create(
+                scopes=frozenset({scopes.RUNS_READ}), name=f"{label}-key"
+            )
         artifact_id = await _upload(api, art_token, run_ids[0], f"{label}.txt", f"{label} output")
         public_project = tenant.projects["alpha" if name == "acme" else "p"]
         sides[name] = Side(
@@ -216,6 +232,7 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             artifact_id=artifact_id,
             user_id=public_id(IdKind.USER, member.id),
             invitation_id=public_id(IdKind.INVITATION, invitation_id),
+            key_id=seeded_key.stored.key_id,
             every_id=frozenset(
                 {
                     tenant.workspace_id,

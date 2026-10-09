@@ -56,6 +56,7 @@ class Side:
     artifact_id: str
     user_id: str  # another member of the workspace (not a role actor)
     invitation_id: str
+    key_id: str  # an API key of the workspace (made by the CLI: no creator)
     every_id: frozenset[str]  # every id the tenant owns (for leak scans)
 
 
@@ -66,8 +67,8 @@ class RequestSpec:
     params: dict[str, str] = field(default_factory=dict)
     content: bytes | None = None
     headers: dict[str, str] = field(default_factory=dict)
-    # "member" | "invitation": the world creates a fresh target in acme and puts its id where the
-    # path says FRESH, so a mutating request is valid for every actor that may send it.
+    # "member" | "invitation" | "api_key": the world creates a fresh target in acme and puts its
+    # id where the path says FRESH, so a mutating request is valid for every actor that may send it.
     fresh: str | None = None
 
 
@@ -176,6 +177,13 @@ def _post_invitation(side: Side, overrides: dict[str, str]) -> RequestSpec:
 
 
 ADMINS = ("owner", "dual")  # people who can reach the route and are members of both workspaces
+
+
+def _post_key(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    body = {"name": f"probe-{uuid.uuid4().hex[:8]}", "scopes": ["runs:read"]}
+    return RequestSpec("POST", "/v1/api-keys", content=json.dumps(body).encode(), headers=JSON)
+
+
 _ANALYTICS = ("summary", "cost", "reliability", "performance")
 
 CASES: dict[tuple[str, str], RouteCase] = {
@@ -234,6 +242,13 @@ CASES: dict[tuple[str, str], RouteCase] = {
             "DELETE", "/v1/invitations/{invitation_id}", actions.INVITE_WRITE,
             _target("DELETE", "/v1/invitations", "invitation_id", "invitation", None), 204,
             ("invitation_id",), probe_actors=ADMINS,
+        ),
+        RouteCase("GET", "/v1/api-keys", actions.API_KEY_READ, _get("/v1/api-keys"), 200),
+        RouteCase("POST", "/v1/api-keys", actions.API_KEY_CREATE, _post_key, 201),
+        RouteCase(
+            "DELETE", "/v1/api-keys/{key_id}", actions.API_KEY_REVOKE,
+            _target("DELETE", "/v1/api-keys", "key_id", "api_key", None), 204,
+            ("key_id",), probe_actors=ADMINS,
         ),
         RouteCase("PUT", "/v1/artifacts/{artifact_id}", actions.ARTIFACT_WRITE, _put_artifact, 201),
         RouteCase(

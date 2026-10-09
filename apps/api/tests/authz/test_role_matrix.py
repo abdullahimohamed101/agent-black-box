@@ -37,9 +37,16 @@ U_RUNS = "allow allow allow     allow  allow    deny    | 404 404 allow 401 401 
 U_MONEY = "allow allow allow     allow  allow    allow   | 404 404 allow 401 401 401 401 400"
 U_CONTENT = "allow allow allow     deny   allow    deny    | 404 404 deny  401 401 401 401 400"
 
+U_KEYS_READ = "allow allow allow     deny   allow    deny    | 404 404 deny  401 401 401 401 400"
+U_KEYS_CREATE = "allow allow allow     deny   deny     deny    | 404 404 deny  401 401 401 401 400"
+# A developer revokes keys they made (the fixture makes the key as that developer).
+U_KEYS_REVOKE = U_KEYS_READ
 U_ADMIN_ONLY = U_PROJECT_ADMIN  # member.write, invite.read, invite.write: owner and admin
 
 EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
+    ("GET", "/v1/api-keys"): (NO_KEY, U_KEYS_READ),
+    ("POST", "/v1/api-keys"): (NO_KEY, U_KEYS_CREATE),
+    ("DELETE", "/v1/api-keys/{key_id}"): (NO_KEY, U_KEYS_REVOKE),
     ("GET", "/v1/members"): (NO_KEY, U_MONEY),
     ("PATCH", "/v1/members/{user_id}"): (NO_KEY, U_ADMIN_ONLY),
     ("DELETE", "/v1/members/{user_id}"): (NO_KEY, U_ADMIN_ONLY),

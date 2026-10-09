@@ -9,7 +9,7 @@ from tests.authz.registry import CASES, PUBLIC, SESSION_ONLY
 from tests.authz.routes import enumerate_routes
 
 # Counted by hand when the registry was written; a mismatch means the walker or the registry moved.
-EXPECTED_V1_OPERATIONS = 25  # operations with an action; sign-in routes are listed apart
+EXPECTED_V1_OPERATIONS = 28  # operations with an action; sign-in routes are listed apart
 
 
 def _app() -> FastAPI:

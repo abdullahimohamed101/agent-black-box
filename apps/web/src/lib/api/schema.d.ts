@@ -118,6 +118,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the workspace's API keys
+         * @description Keys that are not revoked. Secrets are never shown after creation.
+         */
+        get: operations["list_keys_v1_api_keys_get"];
+        put?: never;
+        /**
+         * Create an API key
+         * @description The token is in this response only. Ingestion scopes need a `project_id`. A key can never do more than its creator can (`SCOPE_NOT_ALLOWED`).
+         */
+        post: operations["create_key_v1_api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/api-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an API key
+         * @description Takes effect on the key's next request. Owners, admins and security may revoke any key; a developer only keys they created.
+         */
+        delete: operations["revoke_key_v1_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/artifacts/{artifact_id}": {
         parameters: {
             query?: never;
@@ -579,6 +623,41 @@ export interface components {
             /** Slug */
             slug: string;
         };
+        /** ApiKeyList */
+        ApiKeyList: {
+            /** Items */
+            items: components["schemas"]["ApiKeyOut"][];
+        };
+        /** ApiKeyOut */
+        ApiKeyOut: {
+            /** Created At */
+            created_at: string;
+            /**
+             * Created By
+             * @description The person who made it; null for the CLI.
+             */
+            created_by: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Key Id
+             * @description The public identifier, not a secret.
+             */
+            key_id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string | null;
+            /** Project Id */
+            project_id: string | null;
+            /** Scopes */
+            scopes: ("events:write" | "runs:read" | "artifacts:write" | "policy:check")[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "expired";
+        };
         /** ArtifactChunk */
         ArtifactChunk: {
             /**
@@ -800,6 +879,17 @@ export interface components {
             retries: components["schemas"]["RetryBreakdown"];
             window: components["schemas"]["Window"];
         };
+        /** CreateKey */
+        CreateKey: {
+            /** Expires In Days */
+            expires_in_days?: number | null;
+            /** Name */
+            name?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Scopes */
+            scopes: ("events:write" | "runs:read" | "artifacts:write" | "policy:check")[];
+        };
         /** CreateProject */
         CreateProject: {
             /** Name */
@@ -824,6 +914,15 @@ export interface components {
             run_id?: string | null;
             /** Trace Id */
             trace_id?: string | null;
+        };
+        /** CreatedKey */
+        CreatedKey: {
+            key: components["schemas"]["ApiKeyOut"];
+            /**
+             * Token
+             * @description Shown once. Store it now; the server keeps only a hash.
+             */
+            token: string;
         };
         /** ErrorBody */
         ErrorBody: {
@@ -1888,6 +1987,223 @@ export interface operations {
                 };
             };
             /** @description The query timed out or a dependency is unavailable; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_keys_v1_api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyList"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace, project or key not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_key_v1_api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateKey"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedKey"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace, project or key not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The workspace already has 200 active keys. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revoke_key_v1_api_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role does not allow this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace, project or key not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -7,10 +7,12 @@ same body (but for the request id), on success paths and error paths alike.
 """
 
 import re
+from collections.abc import Callable
 
 import pytest
 from abb_event_schema.ids import IdKind, new_id
 
+from abb_api.auth.keys import generate_key
 from tests.authz.registry import CASES, RouteCase
 from tests.authz.world import (
     ACME_RUN_COST,
@@ -21,13 +23,15 @@ from tests.authz.world import (
     body_text,
 )
 
-ID_KINDS = {
-    "run_id": IdKind.RUN,
-    "event_id": IdKind.EVENT,
-    "artifact_id": IdKind.ARTIFACT,
-    "project_id": IdKind.PROJECT,
-    "user_id": IdKind.USER,
-    "invitation_id": IdKind.INVITATION,
+# A well-formed id that exists nowhere, per id parameter.
+RANDOM_IDS: dict[str, Callable[[], str]] = {
+    "run_id": lambda: new_id(IdKind.RUN),
+    "event_id": lambda: new_id(IdKind.EVENT),
+    "artifact_id": lambda: new_id(IdKind.ARTIFACT),
+    "project_id": lambda: new_id(IdKind.PROJECT),
+    "user_id": lambda: new_id(IdKind.USER),
+    "invitation_id": lambda: new_id(IdKind.INVITATION),
+    "key_id": lambda: generate_key().key_id,
 }
 # Every credential kind of the acme workspace (the globex key is the attacker's mirror image).
 ACME_ACTORS = (
@@ -77,7 +81,7 @@ async def test_foreign_ids_and_random_ids_are_indistinguishable(
         for param in case.id_params:
             foreign = getattr(foreign_side, param)
             for _ in range(2):  # two random ids, to see that nothing depends on the random value
-                random_id = new_id(ID_KINDS[param])
+                random_id = RANDOM_IDS[param]()
                 a = await world.send(case, case.build(own, {param: foreign}), token)
                 b = await world.send(case, case.build(own, {param: random_id}), token)
                 where = f"{token} {case.template} {param}"
