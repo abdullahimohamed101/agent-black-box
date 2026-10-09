@@ -421,7 +421,7 @@ def test_a_json_blob_in_a_dotenv_value_teaches_its_parts() -> None:
 
 
 def test_a_bom_does_not_hide_the_first_key() -> None:
-    assert "bom-first-secret-4417" in extract_values(".env", "﻿API_TOKEN=bom-first-secret-4417\n")
+    assert "bom-first-secret-4417" in extract_values(".env", "﻿SVC_KEY=bom-first-secret-4417\n")
 
 
 def test_a_secret_file_over_the_size_cap_marks_the_scan_incomplete(tmp_path: Path) -> None:
@@ -439,12 +439,13 @@ def test_a_secret_that_is_also_a_whole_word_in_source_is_dropped_but_a_substring
     (tmp_path / "README.md").write_text(
         "set the timeout to 30 and enjoy correcthorsebatterystaple-ish docs\n"
     )
-    (tmp_path / ".env").write_text("A_KEY=timeout\nB_KEY=correcthorse\n")
+    (tmp_path / ".env").write_text("A_KEY=timeout\nB_KEY=correcthorse\nC_KEY=batterystaple\n")
     values = SecretFiles(tmp_path).refresh()
     assert (
         "timeout" not in values
     )  # a whole word of the repo's own text: masking it would corrupt everything
-    assert "correcthorse" in values  # only a substring of a longer word: still a secret
+    # inside a longer word (at its start, at its end): still secrets
+    assert "correcthorse" in values and "batterystaple" in values
 
 
 @pytest.mark.parametrize(

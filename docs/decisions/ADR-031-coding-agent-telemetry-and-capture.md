@@ -125,3 +125,29 @@ value-masking design, all fixed with regression tests (`tests/test_secret_round3
 **What an operator should do:** capture is opt-in (`PayloadMode.FULL`); keep real credentials out of the agent's reach (a separate user or container, a throwaway working
 directory, no production keys in the environment or the repo); treat the stored artifacts as sensitive anyway (KI-040 retention, KI-042 no server-side scan).
 
+## Fourth review round (2026-10-09): what changed, and the gaps added
+
+A fourth independent pass (new attacks only, against the third-round logic) found no P0. Fixed, with regression tests (`tests/test_secret_round3.py`, section 13):
+
+- **Private keys kept on one line** (a GCP service-account JSON, a quoted `.env` value with `\n` escapes): every line of the key is learned, not only the whole blob and its ends.
+- **Webhook and token-in-path values** were dismissed as plain URLs or paths. A URL or path is harmless only if it has no token-like segment (8+ characters mixing letters and digits, or
+  over 40 characters), no query and no userinfo; this applies to files and to the host environment.
+- **Placeholder rules** (`password123`, `changeme2024`, `dummy...`, `sample...`) now apply only to template files; in a real `.env` a weak password is still somebody's password. Numbers under a
+  secret-looking key (a PIN) are learned.
+- **Redaction**: `'password' => 'x'` (Ruby/PHP) is redacted again; a quoted literal after `==`/`===` on a secret-named variable is hidden (`assert password == "x"` keeps its operator).
+  Comparisons without a literal (`password == other`) and arrow functions are untouched.
+- **JSON inside one dotenv value** teaches its parts; a UTF-8 BOM no longer hides the first key; a secret file over the size cap marks the scan incomplete (one value-free warning); a learned
+  value is dropped as "an ordinary word of the repo's source" only when it is a whole word there, not a substring; the example agent masks its tool error text.
+
+**Accepted gaps added** (not fixed; measured):
+
+- **Single-line structured values**: only whole values and JSON are taught, not sub-tokens of `USERS=bob:PW,al:PW2`, base64 `Authorization: Basic ...`, `.tfvars` maps and lists, YAML flow collections.
+- **Learn-gaps**: values under the 6/8-character minimums, numeric JSON leaves, a custom `extraheader` name, `git config alias` shell strings, INI `value ; comment`, unreachable git objects (a dangling blob), and a rewrite of an
+  already-cached secret file that keeps the same size and mtime.
+- **Host environment**: names in `PYTHON*`, `LC_*`, `XDG_*`, `CONDA_*`, `NVM_*`, `RUNNER_*`, `APPLE_*`, `TERM_*`, `NODE_ENV`, `MAIL`, `EDITOR`, `PAGER`, `PS1` are never masked; values of non-secret names under 8 characters;
+  10-digit numbers; variables added to `os.environ` or passed as `run_command(env=...)` after the recorder was created.
+- **Redaction false positives** that can corrupt source the model reads (`token := f()`, `password: str`, `f(password=pw)`); `edit_file` reads unredacted content, so edits are unaffected.
+- **Cost**: masking 3,000 learned values over a 4 MiB output takes about 3.5-5 s (one large alternation); a 90,000-file tree costs about 1.9 s per command; the scan budget is 2 s per refresh.
+- **Classifier**: a command over 40 KiB with a dangerous command in the middle is classified R2 ("very large command"); `env -iS`, `env -P`, and a process substitution containing nested parentheses can be
+  under-classified. The risk class gates nothing in capture; it is an observability hint.
+
