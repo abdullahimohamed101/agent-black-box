@@ -67,7 +67,47 @@ ANTHROPIC_ENTRIES: tuple[PriceEntry, ...] = tuple(
     )
 )
 
-BUILTIN_ENTRIES: tuple[PriceEntry, ...] = (*_EXAMPLE_ENTRIES, *ANTHROPIC_ENTRIES)
+# Google Gemini paid-tier list prices from ai.google.dev/gemini-api/docs/pricing, read twice on
+# 2026-10-09 (the two reads agreed on these rows). The free tier costs nothing: add a $0 override
+# for it. Exact model IDs, no wildcards: `gemini-3.8-flash*` would also match the differently
+# priced TTS models. Not included: models priced by prompt size or by modality (3.1 Pro, 3.1
+# Flash-Lite, 2.5 family) and batch. Flash-Lite's cache price is unset because the reads
+# disagreed; unset means cached tokens are billed at the input price.
+_GOOGLE_SOURCE = "https://ai.google.dev/gemini-api/docs/pricing (read 2026-10-09)"
+_V3 = datetime(2027, 1, 1, tzinfo=UTC)
+
+
+def _google(
+    model: str,
+    inp: str,
+    out: str,
+    cached: str | None,
+    *,
+    valid_from: datetime = _V2,
+    valid_to: datetime | None = None,
+) -> PriceEntry:
+    return PriceEntry(
+        pricing_version=ANTHROPIC_VERSION,
+        provider="google",
+        model_pattern=model,
+        valid_from=valid_from,
+        valid_to=valid_to,
+        input_per_million=Decimal(inp),
+        output_per_million=Decimal(out),
+        cached_input_per_million=Decimal(cached) if cached is not None else None,
+        source=_GOOGLE_SOURCE,
+    )
+
+
+GOOGLE_ENTRIES: tuple[PriceEntry, ...] = (
+    # Introductory price through 2026-12-31, doubled from 2027-01-01.
+    _google("gemini-3.8-flash", "0.75", "3.75", "0.075", valid_to=_V3),
+    _google("gemini-3.8-flash", "1.50", "7.50", "0.15", valid_from=_V3),
+    _google("gemini-3.5-flash", "1.50", "9.00", "0.15"),
+    _google("gemini-3.5-flash-lite", "0.30", "2.50", None),
+)
+
+BUILTIN_ENTRIES: tuple[PriceEntry, ...] = (*_EXAMPLE_ENTRIES, *ANTHROPIC_ENTRIES, *GOOGLE_ENTRIES)
 
 
 def builtin_price_book() -> PriceBook:

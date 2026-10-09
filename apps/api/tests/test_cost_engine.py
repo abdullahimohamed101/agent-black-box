@@ -249,6 +249,27 @@ def test_builtin_anthropic_prices_match_the_recorded_source() -> None:
     assert book.find("anthropic", "claude-sonnet-5-5", at(8)) is None
 
 
+def test_builtin_google_prices_follow_the_dated_and_exact_rows() -> None:
+    book = builtin_price_book()
+    now = book.find("google", "gemini-3.8-flash", at(10))
+    assert now is not None and (now.input_per_million, now.output_per_million) == (
+        D("0.75"),
+        D("3.75"),
+    )
+    after = book.find("google", "gemini-3.8-flash", datetime(2027, 1, 1, tzinfo=UTC))
+    assert after is not None and (after.input_per_million, after.output_per_million) == (
+        D("1.50"),
+        D("7.50"),
+    )
+    lite = book.find("google", "gemini-3.5-flash-lite", at(10))
+    assert lite is not None and lite.cached_input_per_million is None
+    assert book.find("google", "gemini-3.5-flash", at(10)) is not lite
+    # Exact IDs only: a different model sharing the prefix must stay unpriced.
+    assert book.find("google", "gemini-3.8-flash-tts", at(10)) is None
+    assert book.find("google", "gemini-3.1-pro-preview", at(10)) is None
+    assert book.find("anthropic", "gemini-3.5-flash", at(10)) is None
+
+
 def test_summary_totals_are_exact_and_split_by_source() -> None:
     cheap = engine(entry("v1")).calculate(llm({"llm.input_tokens": 1_000_000}))
     retry = cheap.with_retry(True)
