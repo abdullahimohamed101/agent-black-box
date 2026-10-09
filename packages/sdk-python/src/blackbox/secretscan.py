@@ -143,18 +143,42 @@ def git_excludes() -> list[str]:
     ]
 
 
+_ENTROPY_SAMPLE = (
+    2048  # a prefix tells a generated token from a word; the cost must not grow with the value
+)
+
+
 def _entropy(value: str) -> float:
+    value = value[:_ENTROPY_SAMPLE]
+    if not value:
+        return 0.0
     counts = {c: value.count(c) for c in set(value)}
     return -sum(n / len(value) * math.log2(n / len(value)) for n in counts.values())
 
 
+MAX_WORD_LEN = 64
+
+
+def _is_whole_word_in(text: str, word: str) -> bool:
+    """Is `word` a whole identifier-like word of `text`? Plain search: no regex compile."""
+    start, size = 0, len(word)
+    while (i := text.find(word, start)) != -1:
+        before = text[i - 1] if i else ""
+        after = text[i + size] if i + size < len(text) else ""
+        if not (before.isalnum() or before == "_") and not (after.isalnum() or after == "_"):
+            return True
+        start = i + 1
+    return False
+
+
 def high_entropy(value: str) -> bool:
     """Looks like a generated token, not a word: long enough, varied enough."""
+    head = value[:_ENTROPY_SAMPLE]
     classes = sum(
-        any(f(c) for c in value)
+        any(f(c) for c in head)
         for f in (str.islower, str.isupper, str.isdigit, lambda c: not c.isalnum())
     )
-    return len(value) >= 12 and classes >= 2 and _entropy(value) >= 3.0
+    return len(value) >= 12 and classes >= 2 and _entropy(head) >= 3.0
 
 
 def _is_placeholder(value: str, *, broad: bool = False, key_is_secret: bool = False) -> bool:
@@ -539,9 +563,10 @@ class SecretFiles:
                 continue
             # A word that is also an identifier in the repo's own source is not masked, unless it
             # looks generated: masking `session` everywhere would break the agent.
-            if not high_entropy(value) and re.search(
-                r"(?<![A-Za-z0-9_])" + re.escape(value.lower()) + r"(?![A-Za-z0-9_])",
-                self._source_text(),
+            if (
+                len(value) <= MAX_WORD_LEN  # an identifier is short; never compile a huge pattern
+                and not high_entropy(value)
+                and _is_whole_word_in(self._source_text(), value.lower())
             ):
                 continue
             self._learned[value] = None
