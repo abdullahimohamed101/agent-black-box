@@ -2,7 +2,7 @@ import { fixtureReply } from "@/fixtures/api";
 
 /** Read paths the browser may reach (ADR-021). Anything else is a 404, even though the API would reject writes anyway. */
 const ALLOWED =
-  /^v1\/(runs(\/[A-Za-z0-9_-]{1,64}(\/(spans|stream|events(\/[A-Za-z0-9_-]{1,64})?))?)?|artifacts\/[A-Za-z0-9_-]{1,64}(\/content)?)$/;
+  /^v1\/(runs(\/[A-Za-z0-9_-]{1,64}(\/(spans|stream|events(\/[A-Za-z0-9_-]{1,64})?))?)?|artifacts\/[A-Za-z0-9_-]{1,64}(\/content)?|analytics\/(summary|cost|reliability|performance))$/;
 const STREAM = /^v1\/runs\/[A-Za-z0-9_-]{1,64}\/stream$/;
 const TIMEOUT_MS = 10_000;
 const MAX_QUERY_CHARS = 2048;

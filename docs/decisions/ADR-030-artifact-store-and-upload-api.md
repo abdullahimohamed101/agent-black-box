@@ -20,7 +20,7 @@ block the agent on I/O (INV-4). A skeleton `artifacts` table (migration 0005) al
    An optional `X-Content-SHA256` must match what the server computes (`422 ARTIFACT_HASH_MISMATCH`). Size is capped while streaming
    (`ABB_ARTIFACT_MAX_BYTES`, default 8 MiB, `413`), gzip is accepted with a decompressed cap, uploads count against the project's rate limit,
    and `Content-Type` must be `text/plain`, `application/json` or `application/octet-stream`.
-3. **Schema** (migration 0030, additive): `project_id` (composite foreign key to `projects`), `name`, `media_type`; `content_hash` holds the SHA-256 digest;
+3. **Schema** (migration 0044, additive; numbered 0030 while Phase 7 was in flight, renumbered at merge so the history stays linear after 0043): `project_id` (composite foreign key to `projects`), `name`, `media_type`; `content_hash` holds the SHA-256 digest;
    `artifact_type` holds the kind (`diff|stdout|stderr|file|text|other`). The foreign key to `runs` is **dropped**: an artifact can arrive before the first
    event of its run, and a placeholder run row would corrupt `trace_id`/`agent` (`ON CONFLICT DO NOTHING`). Tenant integrity is kept by `(workspace_id, ...)` keys
    and project scoping on every read. Cost: deleting a run no longer cascades (KI-040, retention is Phase 19).

@@ -15,6 +15,7 @@ export type Event = {
     "approval.id"?: string;
     "cost.estimated_usd"?: number;
     "cost.pricing_version"?: string;
+    "cost.provider_usd"?: number;
     "db.latency_ms"?: number;
     "db.operation"?: string;
     "db.rows_returned"?: number;

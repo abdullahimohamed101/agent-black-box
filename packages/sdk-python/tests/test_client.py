@@ -114,13 +114,15 @@ def test_llm_call_records_usage_and_failures() -> None:
     with bb.run("r") as run:
         with run.llm_call("anthropic", "claude", temperature=0.5, max_tokens=64) as llm:
             llm.record_usage(100, 50, cached_input_tokens=10, cost_usd=0.002)
-            llm.record_usage(-1, True, cost_usd=-3)  # invalid values are ignored
+            llm.record_usage(-1, True, cost_usd=-3, provider_cost_usd=0.0021)  # bad ones ignored
+            llm.record_usage(provider_cost_usd=True)  # a bool is not a number
         with pytest.raises(RuntimeError), run.llm_call("anthropic", "claude"):
             raise RuntimeError("overloaded")
     evs = events_of(bb)
     done = by_type(evs, "llm.request.completed")[0]["attributes"]
     assert done["llm.provider"] == "anthropic" and done["llm.input_tokens"] == 100
     assert done["llm.output_tokens"] == 50 and done["cost.estimated_usd"] == 0.002
+    assert done["cost.provider_usd"] == 0.0021  # kept apart from the estimate (ADR-040)
     assert (
         done["llm.latency_ms"] >= 0
         and by_type(evs, "llm.request.started")[0]["attributes"]["llm.temperature"] == 0.5
@@ -561,3 +563,24 @@ def test_plain_http_to_a_remote_host_warns_but_localhost_does_not(
     caplog.clear()
     BlackBox(api_key="k", endpoint="https://ingest.example.com")
     assert "plain http" not in caplog.text
+
+
+def test_llm_call_accepts_an_explicit_parent_for_adapters() -> None:
+    bb = offline()
+    run = bb.run("r")
+    outer = run.span("step").start()
+    with run.llm_call("p", "m", parent=outer):
+        pass
+    outer.end()
+    run.end()
+    evs = events_of(bb)
+    started = by_type(evs, "llm.request.started")[0]
+    assert started["parent_span_id"] == by_type(evs, "span.started")[0]["span_id"]
+
+
+def test_run_ended_property_flips_once() -> None:
+    bb = offline()
+    run = bb.run("r")
+    assert run.ended is False
+    run.end()
+    assert run.ended is True

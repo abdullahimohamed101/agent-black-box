@@ -9,6 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from abb_api import __version__
+from abb_api.analytics.postgres import PostgresAnalyticsStore
+from abb_api.analytics.router import router as analytics_router
+from abb_api.analytics.service import AnalyticsService
 from abb_api.artifacts.router import router as artifacts_router
 from abb_api.artifacts.service import ArtifactService
 from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
@@ -17,6 +20,7 @@ from abb_api.core.config import Settings, get_settings
 from abb_api.core.errors import install_error_handlers
 from abb_api.core.logging import configure_logging
 from abb_api.core.middleware import RequestContextMiddleware
+from abb_api.cost.router import router as pricing_router
 from abb_api.db import create_engine
 from abb_api.health.router import router as health_router
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter, RateLimiter
@@ -89,6 +93,11 @@ def create_app(
             clock,
             max_bytes=settings.artifact_max_bytes,
         )
+        app.state.analytics = AnalyticsService(
+            engine,
+            PostgresAnalyticsStore(engine, timeout_seconds=settings.analytics_timeout_seconds),
+            clock,
+        )
         hub = StreamHub(settings.database_url)
         app.state.streams = StreamService(engine, hub, app.state.runs, settings)
         hub.start()
@@ -116,6 +125,8 @@ def create_app(
     app.include_router(runs_router)
     app.include_router(artifacts_router)
     app.include_router(streams_router)
+    app.include_router(pricing_router)
+    app.include_router(analytics_router)
     _install_openapi(app)
     return app
 

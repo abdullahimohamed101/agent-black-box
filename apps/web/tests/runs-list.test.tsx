@@ -109,16 +109,17 @@ describe("Dashboard", () => {
     expect(screen.getByText("75%")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Recent failures" })).toBeInTheDocument();
     expect(screen.getByText(/deploy-agent, triage-agent/)).toBeInTheDocument();
-    expect(screen.getByText(/Based on the latest 6 runs/)).toBeInTheDocument();
+    expect(screen.getByText(/6 runs started in the last 7 days/)).toBeInTheDocument();
   });
 
   it("empty and error states", async () => {
-    stubApi({ "/v1/runs": () => Response.json({ items: [], next_cursor: null }) });
-    const { unmount } = renderWithQuery(<Dashboard base={BASE} />);
+    stubApi();
+    const empty = { ...BASE, project: "prj_01J9ZZZZZZZZZZZZZZZZZZZZZZ" }; // matches no fixture run
+    const { unmount } = renderWithQuery(<Dashboard base={empty} />);
     expect(await screen.findByText("No runs yet")).toBeInTheDocument();
     unmount();
     stubApi({
-      "/v1/runs": () =>
+      "/analytics/summary": () =>
         Response.json({ error: { code: "X", message: "down", retryable: true } }, { status: 503 }),
     });
     renderWithQuery(<Dashboard base={BASE} />);

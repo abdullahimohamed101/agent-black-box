@@ -38,6 +38,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/analytics/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the money went
+         * @description Cost per run, per successful run, by day, agent, model, project, the retry breakdown (spec §24) and the most expensive runs. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.
+         */
+        get: operations["cost_v1_analytics_cost_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/analytics/performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latency percentiles and the slowest operations
+         * @description p50/p95 for runs, model calls and tools, and the slowest operations. Only tool and model spans are listed by name; other kinds are grouped by kind. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.
+         */
+        get: operations["performance_v1_analytics_performance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/analytics/reliability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Failure trend, tool success and retry-heavy runs
+         * @description Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.
+         */
+        get: operations["reliability_v1_analytics_reliability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/analytics/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Headline figures for a window
+         * @description Run counts and rates, cost, run latency, behaviour averages. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.
+         */
+        get: operations["summary_v1_analytics_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/artifacts/{artifact_id}": {
         parameters: {
             query?: never;
@@ -110,6 +190,26 @@ export interface paths {
          * @description Accepts `{batch_id?, sent_at?, events: [...]}` (at most 1000 events, 5 MiB, optionally gzip). `202` means the valid events are committed. Invalid events are reported per event in `errors` and do not affect the others. Retrying a batch is safe.
          */
         post: operations["ingest_batch_v1_events_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the prices used to compute cost
+         * @description Built-in price entries plus the workspace's overrides (a project-bound key sees workspace-wide overrides and its own project's). Built-in entries are illustrative (KI-050).
+         */
+        get: operations["list_prices_v1_pricing_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -336,6 +436,130 @@ export interface components {
              */
             server_time: string;
         };
+        /** Behaviour */
+        Behaviour: {
+            /** Avg Files Modified */
+            avg_files_modified: number | null;
+            /** Avg Llm Calls */
+            avg_llm_calls: number | null;
+            /** Avg Retries */
+            avg_retries: number | null;
+            /** Avg Tool Calls */
+            avg_tool_calls: number | null;
+        };
+        /** CostByAgent */
+        CostByAgent: {
+            /** Agent */
+            agent: string;
+            /** Calls */
+            calls: number;
+            /** Cost Usd */
+            cost_usd: number;
+        };
+        /** CostByDay */
+        CostByDay: {
+            /** Cost Usd */
+            cost_usd: number;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Retry Usd */
+            retry_usd: number;
+            /** Runs */
+            runs: number;
+        };
+        /** CostByModel */
+        CostByModel: {
+            /** Calls */
+            calls: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Model */
+            model: string | null;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Provider */
+            provider: string | null;
+            /** Unpriced Calls */
+            unpriced_calls: number;
+        };
+        /** CostByProject */
+        CostByProject: {
+            /** Cost Usd */
+            cost_usd: number;
+            /** Project Id */
+            project_id: string;
+            /** Runs */
+            runs: number;
+        };
+        /** CostBySource */
+        CostBySource: {
+            /** Calls */
+            calls: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /**
+             * Source
+             * @description provider_reported | estimated | client_estimate | unpriced
+             */
+            source: string;
+        };
+        /** CostHeadline */
+        CostHeadline: {
+            /** Per Run Usd */
+            per_run_usd: number | null;
+            /** Per Successful Run Usd */
+            per_successful_run_usd: number | null;
+            /**
+             * Retry Share
+             * @description retry_usd / total_usd
+             */
+            retry_share: number | null;
+            /**
+             * Retry Usd
+             * @description Cost of model calls made after a retry (ADR-042).
+             */
+            retry_usd: number;
+            /** Total Usd */
+            total_usd: number;
+            /**
+             * Unpriced Calls
+             * @description Model calls with no usable cost; counted as $0.
+             */
+            unpriced_calls: number;
+            /**
+             * Unrebuilt Runs
+             * @description Runs summarized before cost lines existed; `rebuild-costs` fills them in.
+             */
+            unrebuilt_runs: number;
+        };
+        /** CostReport */
+        CostReport: {
+            /** By Agent */
+            by_agent: components["schemas"]["CostByAgent"][];
+            by_agent_other: components["schemas"]["OtherBucket"] | null;
+            /** By Day */
+            by_day: components["schemas"]["CostByDay"][];
+            /** By Model */
+            by_model: components["schemas"]["CostByModel"][];
+            by_model_other: components["schemas"]["OtherBucket"] | null;
+            /**
+             * By Project
+             * @description Only when the query is not limited to one project.
+             */
+            by_project: components["schemas"]["CostByProject"][] | null;
+            /** By Source */
+            by_source: components["schemas"]["CostBySource"][];
+            /** Expensive Runs */
+            expensive_runs: components["schemas"]["ExpensiveRun"][];
+            headline: components["schemas"]["CostHeadline"];
+            retries: components["schemas"]["RetryBreakdown"];
+            window: components["schemas"]["Window"];
+        };
         /** CreateRunRequest */
         CreateRunRequest: {
             /** Agent Id */
@@ -505,6 +729,58 @@ export interface components {
              */
             status: "accepted" | "duplicate" | "conflict";
         };
+        /** ExpensiveRun */
+        ExpensiveRun: {
+            /** Agent */
+            agent: string | null;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Name */
+            name: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Retry Count */
+            retry_count: number;
+            /** Retry Usd */
+            retry_usd: number;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Status */
+            status: string;
+        };
+        /** FailureDay */
+        FailureDay: {
+            /** Blocked */
+            blocked: number;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Failed */
+            failed: number;
+            /**
+             * Failure Rate
+             * @description (failed + blocked) / finished, as in `rates`.
+             */
+            failure_rate: number | null;
+            /** Finished */
+            finished: number;
+            /** Success */
+            success: number;
+            /** Timed Out */
+            timed_out: number;
+            /**
+             * Timeout Rate
+             * @description timed out / finished, as in `rates`.
+             */
+            timeout_rate: number | null;
+        };
         /** HealthResponse */
         HealthResponse: {
             /**
@@ -524,6 +800,111 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * OtherBucket
+         * @description Everything beyond the top-N groups: response size does not depend on how many names exist.
+         */
+        OtherBucket: {
+            /** Calls */
+            calls: number;
+            /**
+             * Cost Usd
+             * @default 0
+             */
+            cost_usd: number;
+            /**
+             * Groups
+             * @description How many groups are folded into this bucket.
+             */
+            groups: number;
+        };
+        /**
+         * Percentiles
+         * @description Approximate: read from duration histograms with about 10% wide buckets (ADR-043).
+         */
+        Percentiles: {
+            /** Count */
+            count: number;
+            /** P50 Ms */
+            p50_ms: number | null;
+            /** P95 Ms */
+            p95_ms: number | null;
+        };
+        /** PerformanceReport */
+        PerformanceReport: {
+            llm: components["schemas"]["Percentiles"];
+            run: components["schemas"]["Percentiles"];
+            /** Slow Operations */
+            slow_operations: components["schemas"]["SlowOperation"][];
+            tool: components["schemas"]["Percentiles"];
+            window: components["schemas"]["Window"];
+        };
+        /** PriceOut */
+        PriceOut: {
+            /** Cached Input Per Million */
+            cached_input_per_million: string | null;
+            /** Currency */
+            currency: string;
+            /** Input Per Million */
+            input_per_million: string;
+            /** Model Pattern */
+            model_pattern: string;
+            /**
+             * Origin
+             * @description `builtin` or `override`.
+             */
+            origin: string;
+            /** Output Per Million */
+            output_per_million: string;
+            /** Pricing Version */
+            pricing_version: string;
+            /**
+             * Project Id
+             * @description Set when an override applies to one project only.
+             */
+            project_id: string | null;
+            /** Provider */
+            provider: string | null;
+            /** Request Price */
+            request_price: string;
+            /** Source */
+            source: string;
+            /**
+             * Valid From
+             * Format: date-time
+             */
+            valid_from: string;
+            /** Valid To */
+            valid_to: string | null;
+        };
+        /** PricingOut */
+        PricingOut: {
+            /** Prices */
+            prices: components["schemas"]["PriceOut"][];
+        };
+        /** Rates */
+        Rates: {
+            /**
+             * Failure Rate
+             * @description (failed + blocked) / finished
+             */
+            failure_rate: number | null;
+            /**
+             * Retry Rate
+             * @description runs with at least one retry / runs
+             */
+            retry_rate: number | null;
+            /**
+             * Success Rate
+             * @description success / finished
+             */
+            success_rate: number | null;
+            /**
+             * Timeout Rate
+             * @description timed out / finished
+             */
+            timeout_rate: number | null;
+        };
         /** ReadyResponse */
         ReadyResponse: {
             /**
@@ -538,6 +919,89 @@ export interface components {
             status: "ok";
             /** Version */
             version: string;
+        };
+        /** ReliabilityReport */
+        ReliabilityReport: {
+            /** Failure Trend */
+            failure_trend: components["schemas"]["FailureDay"][];
+            rates: components["schemas"]["Rates"];
+            /** Retry Heavy Runs */
+            retry_heavy_runs: components["schemas"]["RetryHeavyRun"][];
+            runs: components["schemas"]["RunCounts"];
+            /** Tools */
+            tools: components["schemas"]["ToolReliability"][];
+            tools_other: components["schemas"]["OtherBucket"] | null;
+            window: components["schemas"]["Window"];
+        };
+        /**
+         * RetryBreakdown
+         * @description Spec §24: how much of the cost came from retries.
+         */
+        RetryBreakdown: {
+            /** Initial Usd */
+            initial_usd: number;
+            /**
+             * Retries Unattributed
+             * @description `retry.attempted` events with no span id: counted, but no cost attributed.
+             */
+            retries_unattributed: number;
+            /** Retry Share */
+            retry_share: number | null;
+            /** Retry Usd */
+            retry_usd: number;
+            /** Runs With Retry Cost */
+            runs_with_retry_cost: number;
+            /** Total Usd */
+            total_usd: number;
+        };
+        /** RetryHeavyRun */
+        RetryHeavyRun: {
+            /** Agent */
+            agent: string | null;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Name */
+            name: string | null;
+            /** Project Id */
+            project_id: string;
+            /** Retry Count */
+            retry_count: number;
+            /** Retry Usd */
+            retry_usd: number;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Status */
+            status: string;
+        };
+        /** RunCounts */
+        RunCounts: {
+            /**
+             * Active
+             * @description Queued, running or waiting.
+             */
+            active: number;
+            /** Blocked */
+            blocked: number;
+            /** Cancelled */
+            cancelled: number;
+            /** Failed */
+            failed: number;
+            /**
+             * Finished
+             * @description Success, failed, timed out or blocked (cancelled excluded).
+             */
+            finished: number;
+            /** Success */
+            success: number;
+            /** Timed Out */
+            timed_out: number;
+            /** Total */
+            total: number;
         };
         /** RunOut */
         RunOut: {
@@ -610,6 +1074,19 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** SlowOperation */
+        SlowOperation: {
+            /** Calls */
+            calls: number;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string | null;
+            /** P50 Ms */
+            p50_ms: number | null;
+            /** P95 Ms */
+            p95_ms: number | null;
+        };
         /** SpanOut */
         SpanOut: {
             /** Agent Id */
@@ -643,6 +1120,59 @@ export interface components {
             items: components["schemas"]["SpanOut"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** SpanRate */
+        SpanRate: {
+            /**
+             * Calls
+             * @description Spans that finished with a status.
+             */
+            calls: number;
+            /** Success Rate */
+            success_rate: number | null;
+        };
+        /** Summary */
+        Summary: {
+            /**
+             * Active Agents
+             * @description Agents with a run in progress (at most 10).
+             */
+            active_agents: string[];
+            behaviour: components["schemas"]["Behaviour"];
+            cost: components["schemas"]["CostHeadline"];
+            /** @description Model calls; `1 - success_rate` is the request failure rate. */
+            llm: components["schemas"]["SpanRate"];
+            rates: components["schemas"]["Rates"];
+            run_latency: components["schemas"]["Percentiles"];
+            runs: components["schemas"]["RunCounts"];
+            tools: components["schemas"]["SpanRate"];
+            window: components["schemas"]["Window"];
+        };
+        /** ToolReliability */
+        ToolReliability: {
+            /** Calls */
+            calls: number;
+            /** Name */
+            name: string;
+            /** P95 Ms */
+            p95_ms: number | null;
+            /** Success Rate */
+            success_rate: number | null;
+        };
+        /** Window */
+        Window: {
+            /**
+             * End
+             * Format: date-time
+             * @description Exclusive, UTC midnight.
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date-time
+             * @description Inclusive UTC midnight. Windows are whole UTC days; requests snap outward.
+             */
+            start: string;
         };
     };
     responses: never;
@@ -692,6 +1222,288 @@ export interface operations {
                 };
             };
             /** @description The database is unreachable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cost_v1_analytics_cost_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+                /** @description Groups listed before `other`. */
+                top?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostReport"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The key lacks `runs:read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not found or not visible to this key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid (for example a window over 92 days). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The query timed out or a dependency is unavailable; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    performance_v1_analytics_performance_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+                /** @description Groups listed before `other`. */
+                top?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerformanceReport"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The key lacks `runs:read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not found or not visible to this key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid (for example a window over 92 days). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The query timed out or a dependency is unavailable; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    reliability_v1_analytics_reliability_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+                /** @description Groups listed before `other`. */
+                top?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReliabilityReport"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The key lacks `runs:read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not found or not visible to this key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid (for example a window over 92 days). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The query timed out or a dependency is unavailable; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    summary_v1_analytics_summary_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Summary"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The key lacks `runs:read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not found or not visible to this key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid (for example a window over 92 days). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The query timed out or a dependency is unavailable; retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1206,6 +2018,64 @@ export interface operations {
             };
             /** @description A dependency is unavailable; retry with backoff. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_prices_v1_pricing_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingOut"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The key lacks `runs:read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not found or not visible to this key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

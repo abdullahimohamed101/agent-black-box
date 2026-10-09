@@ -8,17 +8,22 @@ or repetition of the same events yields the same result.
 Bump SUMMARY_VERSION when a rule below changes; stored summaries record the version they used.
 """
 
-import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from abb_event_schema.enums import EventStatus, RunStatus, can_transition
+from abb_event_schema.enums import EventStatus, RunStatus, SpanKind, can_transition
 from abb_event_schema.event import Event
 from abb_event_schema.ordering import sort_events
 from abb_event_schema.spans import Span, derive_spans
 
-SUMMARY_VERSION = 1
+from abb_api.cost.builtin import builtin_price_book
+from abb_api.cost.engine import CostEngine, CostLine, cost_summary
+from abb_api.cost.retries import retry_call_ids
+
+SUMMARY_VERSION = (
+    2  # 2: cost comes from the CostEngine (ADR-040) and carries retry attribution (ADR-042)
+)
 
 _ERROR_STATUSES = {EventStatus.ERROR, EventStatus.TIMEOUT}
 _RUN_COMPLETED_STATUS = {
@@ -43,6 +48,7 @@ class RunDerivation:
     name: str | None
     summary: dict[str, Any]
     spans: dict[str, Span]
+    cost_lines: tuple[CostLine, ...] = ()
 
 
 def _status_after(event: Event) -> RunStatus | None:
@@ -68,13 +74,12 @@ def _int_attr(event: Event, key: str) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
-def _number_attr(event: Event, key: str) -> float:
-    value = event.attributes.get(key)
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDerivation:
+    """Derive everything about one run from all of its events. `events` must not be empty.
 
-
-def derive_run(events: list[Event]) -> RunDerivation:
-    """Derive everything about one run from all of its events. `events` must not be empty."""
+    `engine` prices the run's model calls (built-in table when omitted); overrides
+    arrive through it.
+    """
     if not events:
         raise ValueError("cannot derive a run from no events")
     ordered = sort_events(events)
@@ -105,9 +110,9 @@ def derive_run(events: list[Event]) -> RunDerivation:
 
     models: set[str] = set()
     modified_files: set[str] = set()
-    llm_calls = tool_calls = retry_count = error_count = 0
+    llm_calls = tool_calls = retry_count = error_count = retries_unattributed = 0
     input_tokens = output_tokens = 0
-    costs: list[float] = []
+    cost_events: list[Event] = []
     for event in ordered:
         kind = event.event_type
         if kind in ("llm.request.completed", "llm.request.failed"):
@@ -118,17 +123,31 @@ def derive_run(events: list[Event]) -> RunDerivation:
         if kind == "llm.request.completed":
             input_tokens += _int_attr(event, "llm.input_tokens")
             output_tokens += _int_attr(event, "llm.output_tokens")
-            costs.append(_number_attr(event, "cost.estimated_usd"))
+            cost_events.append(event)
         if kind in ("tool.call.completed", "tool.call.failed"):
             tool_calls += 1
         if kind == "retry.attempted":
             retry_count += 1
+            if event.span_id is None:
+                retries_unattributed += (
+                    1  # names no operation, so no cost can be attributed (ADR-042)
+                )
         if event.status in _ERROR_STATUSES or kind.endswith(".failed"):
             error_count += 1  # each event counts once, however it qualifies
         if kind in ("file.created", "file.modified", "file.deleted"):
             path = event.attributes.get("file.path")
             if isinstance(path, str):
                 modified_files.add(path)
+
+    spans = derive_spans(events)
+    pricing = engine or CostEngine(builtin_price_book())
+    retried = retry_call_ids(ordered, spans)
+    cost_lines = tuple(pricing.calculate(e).with_retry(e.event_id in retried) for e in cost_events)
+
+    # Finished tool/model spans: the dashboard's success rates come from here, not from `spans`.
+    finished = [s for s in spans.values() if s.status is not None]
+    tool_spans = [s for s in finished if s.kind is SpanKind.TOOL]
+    llm_spans = [s for s in finished if s.kind is SpanKind.LLM]
 
     summary: dict[str, Any] = {
         "event_count": len(events),
@@ -137,9 +156,14 @@ def derive_run(events: list[Event]) -> RunDerivation:
         "tool_calls": tool_calls,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        # fsum is exact and order-independent, so the total never depends on summation order.
-        "estimated_cost_usd": round(math.fsum(costs), 9),
+        # Decimal sums are exact and order-independent: the total never depends on summation order.
+        **cost_summary(list(cost_lines)),
+        "tool_spans_finished": len(tool_spans),
+        "tool_spans_ok": sum(1 for s in tool_spans if s.status is EventStatus.SUCCESS),
+        "llm_spans_finished": len(llm_spans),
+        "llm_spans_ok": sum(1 for s in llm_spans if s.status is EventStatus.SUCCESS),
         "retry_count": retry_count,
+        "retries_unattributed": retries_unattributed,
         "error_count": error_count,
         "files_modified": len(modified_files),
         "models": sorted(models),
@@ -156,5 +180,6 @@ def derive_run(events: list[Event]) -> RunDerivation:
         agent_slug=first.agent_id,
         name=run_name,
         summary=summary,
-        spans=derive_spans(events),
+        spans=spans,
+        cost_lines=cost_lines,
     )

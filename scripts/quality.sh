@@ -14,6 +14,10 @@ step() { printf '\n==> %s\n' "$*"; }
 step "schema: ruff / mypy / pytest"; (cd packages/event-schema && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q)
 step "sdk-python: ruff / mypy / pytest (coverage gate)"; (cd packages/sdk-python && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q --cov --cov-report=term:skip-covered)
 step "examples/coding-agent: ruff / pytest (scripted demo run)"; (cd examples/coding-agent && uv run --project ../../packages/sdk-python ruff check . && uv run --project ../../packages/sdk-python ruff format --check . && cd ../.. && uv run --project packages/sdk-python pytest examples/coding-agent/tests -q -p no:cacheprovider)
+for pkg in conformance langgraph openai anthropic mcp; do   # framework adapters: separate environments (ADR-050)
+  step "integrations/$pkg: ruff / mypy / pytest (offline)"
+  (cd "integrations/$pkg" && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q --cov --cov-report=term:skip-covered)
+done
 step "schema: generated artifacts are current"; make -s schema-check
 step "api: openapi.json is current"; (cd apps/api && uv run python -m abb_api.openapi --check)
 step "api: ruff check / format";   (cd apps/api && uv run ruff check . && uv run ruff format --check .)

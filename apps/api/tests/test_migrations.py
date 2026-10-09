@@ -49,7 +49,11 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0007",
         "0008",
         "0009",
-        "0030",
+        "0040",
+        "0041",
+        "0042",
+        "0043",
+        "0044",
     ]
 
 

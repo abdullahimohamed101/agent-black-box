@@ -31,7 +31,7 @@ def test_every_v1_operation_is_authenticated_and_described() -> None:
             assert op["summary"] and 401 in map(int, op["responses"]), (method, path)
         else:
             assert "security" not in op, (method, path)  # health endpoints are public
-    assert seen == 12
+    assert seen == 17
 
 
 def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
@@ -64,6 +64,11 @@ def test_the_public_surface_is_exactly_what_the_plan_promises() -> None:
         ("GET", "/v1/runs/{run_id}/events/{event_id}"),
         ("GET", "/v1/runs/{run_id}/spans"),
         ("GET", "/v1/runs/{run_id}/stream"),
+        ("GET", "/v1/pricing"),
+        ("GET", "/v1/analytics/summary"),
+        ("GET", "/v1/analytics/cost"),
+        ("GET", "/v1/analytics/reliability"),
+        ("GET", "/v1/analytics/performance"),
         ("PUT", "/v1/artifacts/{artifact_id}"),
         ("GET", "/v1/artifacts/{artifact_id}"),
         ("GET", "/v1/artifacts/{artifact_id}/content"),

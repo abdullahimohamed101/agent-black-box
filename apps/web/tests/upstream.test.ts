@@ -16,8 +16,21 @@ describe("read proxy", () => {
       ["v1", "runs", "x", "events", "y", "z"],
       ["v1", "runs", "a.b"],
       ["v1", "runs", "..", "keys"],
+      ["v1", "pricing"], // overrides are CLI-managed; the web proxy reads analytics only
+      ["v1", "analytics"],
+      ["v1", "analytics", "secrets"],
+      ["v1", "analytics", "summary", "extra"],
     ]) {
       expect((await readThrough(p, new URLSearchParams())).status).toBe(404);
+    }
+  });
+
+  it("allows exactly the four analytics reads", async () => {
+    vi.stubEnv("ABB_WEB_DATA_SOURCE", "fixtures");
+    for (const kind of ["summary", "cost", "reliability", "performance"]) {
+      expect((await readThrough(["v1", "analytics", kind], new URLSearchParams())).status).toBe(
+        200,
+      );
     }
   });
 

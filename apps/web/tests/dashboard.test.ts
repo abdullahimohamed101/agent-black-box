@@ -1,33 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fixtureRuns } from "@/fixtures";
-import { computeDashboard } from "@/lib/dashboard";
 import { formatCost, formatDuration, formatOffset, formatRelative } from "@/lib/format";
-
-describe("computeDashboard", () => {
-  const runs = fixtureRuns().map((f) => f.run);
-  it("computes rates, cost, active agents from the sample", () => {
-    const d = computeDashboard(runs);
-    expect(d.sampleSize).toBe(runs.length);
-    expect(d.finished).toBe(
-      runs.filter((r) => !["RUNNING", "WAITING_FOR_APPROVAL"].includes(r.status)).length,
-    );
-    expect(d.successRate).toBeCloseTo(d.succeeded / d.finished);
-    expect(d.failures).toBe(1);
-    expect(d.activeRuns).toBe(2);
-    expect(d.activeAgents).toEqual(["deploy-agent", "triage-agent"]);
-    expect(d.totalCostUsd).toBeGreaterThan(10);
-    expect(d.avgDurationMs).toBeGreaterThan(0);
-  });
-  it("is null-safe on an empty project", () => {
-    const d = computeDashboard([]);
-    expect(d).toMatchObject({
-      successRate: null,
-      avgDurationMs: null,
-      failures: 0,
-      totalCostUsd: 0,
-    });
-  });
-});
 
 describe("format", () => {
   it("durations", () => {

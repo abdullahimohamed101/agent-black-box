@@ -4,16 +4,16 @@ The skeleton table from 0005 was never written by any code. An artifact can arri
 event of its run (arrival order is never trusted), so the run foreign key goes; tenant integrity is
 kept by `(workspace_id, ...)` keys and the project foreign key added here.
 
-Revision ID: 0030
-Revises: 0009
+Revision ID: 0044
+Revises: 0043
 Create Date: 2026-10-07
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0030"
-down_revision = "0009"
+revision = "0044"
+down_revision = "0043"
 branch_labels = None
 depends_on = None
 

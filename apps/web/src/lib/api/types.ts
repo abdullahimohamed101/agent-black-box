@@ -9,6 +9,10 @@ export type SpanOut = components["schemas"]["SpanOut"];
 export type SpanPage = components["schemas"]["SpanPage"];
 export type ArtifactChunk = components["schemas"]["ArtifactChunk"];
 export type RunStatus = RunOut["status"];
+export type AnalyticsSummary = components["schemas"]["Summary"];
+export type CostReport = components["schemas"]["CostReport"];
+export type ReliabilityReport = components["schemas"]["ReliabilityReport"];
+export type PerformanceReport = components["schemas"]["PerformanceReport"];
 
 export const ALL_STATUSES: readonly RunStatus[] = [
   "QUEUED",
@@ -29,3 +33,4 @@ export const ACTIVE_STATUSES: readonly RunStatus[] = [
   "WAITING_FOR_APPROVAL",
 ];
 export const isActive = (s: RunStatus): boolean => ACTIVE_STATUSES.includes(s);
+export type ExpensiveRun = components["schemas"]["ExpensiveRun"] & { name: string | null };

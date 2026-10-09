@@ -22,7 +22,7 @@ bb.shutdown()          # optional: an atexit hook flushes too
 | `BlackBox(api_key, project, endpoint, **options)` | cheap; the exporter thread starts with the first event. Env: `BLACKBOX_API_KEY`, `BLACKBOX_ENDPOINT`, `BLACKBOX_MODE`, `BLACKBOX_LOCAL_PATH`. `project` is informational: the key determines the project. |
 | `bb.run(name, metadata=, agent_id=, tags=)` | records `run.started`; as a context manager ends with `run.completed` / `run.failed` (exception) / `run.cancelled` (`KeyboardInterrupt`, `CancelledError`, non-zero `SystemExit`). `run.end(status)` ends it explicitly (`success`, `error`, `timeout`, `blocked`, `cancelled`). Works with `async with`. |
 | `run.span(name, kind=, attributes=, parent=)` | `kind="tool"` -> `tool.call.*`, `"agent"` -> `agent.*`, anything else `span.*` with `span.kind`. `set_attribute(s)`, `set_payload`, `event`. Nested spans parent automatically through context. |
-| `run.llm_call(provider, model, temperature=, max_tokens=)` | `llm.request.*`; `record_usage(input, output, cached_input_tokens=, cost_usd=)`. Cost is yours to supply until Phase 7. |
+| `run.llm_call(provider, model, temperature=, max_tokens=)` | `llm.request.*`; `record_usage(input, output, cached_input_tokens=, cost_usd=)`. Cost: pass token counts and the server prices them (ADR-040); `cost_usd` is your own estimate and `provider_cost_usd` a provider-reported figure. |
 | `run.event(type, attributes, payload=, status=)` / `bb.event(...)` | point event (`custom.<name>` if no dot). |
 | `@bb.observe(kind=, name=)` | sync or async functions; untraced outside a run; arguments/results are never captured. |
 | `bb.flush(timeout)`, `bb.shutdown(timeout)`, `bb.stats()` | bounded, idempotent, never raise. `stats()` holds every drop counter. |
