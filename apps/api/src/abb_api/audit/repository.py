@@ -5,6 +5,7 @@ its own after the action committed, and a failed write is logged and swallowed, 
 can never turn a 403 into a 500 or undo an action (D11). The CLI appends on its own connection.
 """
 
+import json
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -25,6 +26,10 @@ Outcome = Literal["allowed", "denied"]
 
 MAX_DETAIL_VALUE_LENGTH = 200
 MAX_DETAIL_ITEMS = 20
+MAX_DETAIL_KEY_LENGTH = 64
+# Migration 0047 rejects rows whose details exceed 8 KiB, and `record_audit` swallows that error, so
+# the row would vanish silently. Stay well under it (UTF-8 JSON text is what jsonb stores).
+MAX_DETAILS_BYTES = 2048
 # Keys that name secrets. Audit rows are read by many roles and exported, so they never hold these
 # (INV-5); the check is on the key because values are free text.
 _SECRET_KEY_PARTS = ("token", "secret", "cookie", "authorization", "password", "credential")
@@ -40,7 +45,12 @@ def clean_details(details: dict[str, Any]) -> dict[str, Any]:
         lowered = key.lower()
         if lowered in _SECRET_KEYS or any(part in lowered for part in _SECRET_KEY_PARTS):
             raise ValueError(f"audit details may not carry {key!r}")
+        if len(key) > MAX_DETAIL_KEY_LENGTH:
+            raise ValueError("an audit detail name is too long")
         cleaned[key] = _clean_value(key, value)
+    size = len(json.dumps(cleaned, separators=(",", ":"), ensure_ascii=False).encode())
+    if size > MAX_DETAILS_BYTES:
+        raise ValueError("audit details are too large")
     return cleaned
 
 

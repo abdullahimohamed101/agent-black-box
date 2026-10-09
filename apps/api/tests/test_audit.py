@@ -53,11 +53,28 @@ async def test_rows_are_workspace_scoped(web: Api) -> None:
         {"token": "x"}, {"api_secret": "x"}, {"Cookie": "x"}, {"authorization": "x"},
         {"code": "x"}, {"state": "x"}, {"nested": {"a": 1}}, {"long": "x" * 201},
         {f"k{i}": i for i in range(21)},
+        {f"k{i}": "x" * 200 for i in range(20)},  # each value fine, far over 8 KiB together
+        {"k" * 65: 1},
+        {"lists": [["x" * 200] * 20] * 20},
     ],
 )  # fmt: skip
 def test_details_refuse_secret_names_and_unbounded_values(details: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         clean_details(details)
+
+
+async def test_the_largest_accepted_details_always_fit_the_database_check(web: Api) -> None:
+    """Review F11: whatever `clean_details` accepts, the 8 KiB CHECK accepts (no silent drops)."""
+    from abb_api.audit.repository import MAX_DETAILS_BYTES
+
+    widest = {f"key{i:02d}": "é" * 95 for i in range(10)}  # multi-byte text, near the byte bound
+    compact = json.dumps(widest, separators=(",", ":"), ensure_ascii=False)
+    assert 1900 < len(compact.encode()) <= MAX_DETAILS_BYTES
+    async with web.engine.begin() as conn:
+        await AuditRepository(conn, web.tenant.context).append(
+            AuditEntry("cli", "cli:ops", "project.create", details=widest)
+        )
+    assert (await rows(web))[0].details == widest
 
 
 def test_details_accept_small_scalars_and_lists() -> None:
