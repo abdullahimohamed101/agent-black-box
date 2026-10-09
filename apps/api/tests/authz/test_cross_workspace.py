@@ -26,6 +26,8 @@ ID_KINDS = {
     "event_id": IdKind.EVENT,
     "artifact_id": IdKind.ARTIFACT,
     "project_id": IdKind.PROJECT,
+    "user_id": IdKind.USER,
+    "invitation_id": IdKind.INVITATION,
 }
 # Every credential kind of the acme workspace (the globex key is the attacker's mirror image).
 ACME_ACTORS = (
@@ -67,7 +69,7 @@ async def test_no_response_to_an_acme_caller_contains_globex_data(world: World, 
 async def test_foreign_ids_and_random_ids_are_indistinguishable(
     world: World, case: RouteCase
 ) -> None:
-    for token in ("reader", "wide_reader", "owner", "dual", "other"):
+    for token in case.probe_actors or ("reader", "wide_reader", "owner", "dual", "other"):
         # Each key replays its own workspace's valid request with the other workspace's ids.
         own, foreign_side = (
             (world.globex, world.acme) if token == "other" else (world.acme, world.globex)

@@ -30,6 +30,7 @@ EXPECTED_SECURITY: dict[tuple[str, str], list[dict[str, list[str]]]] = {
     ("post", "/v1/runs"): BEARER,
     ("put", "/v1/artifacts/{artifact_id}"): BEARER,
     ("get", "/v1/me"): [{"sessionCookie": []}],
+    ("post", "/v1/invitations/accept"): [{"sessionCookie": []}],
     ("get", "/v1/auth/login"): [],
     ("get", "/v1/auth/callback"): [],
     ("post", "/v1/auth/logout"): [{}, {"sessionCookie": []}],
@@ -51,7 +52,7 @@ def test_every_v1_operation_is_authenticated_and_described() -> None:
             assert has_header == (op["security"] == EITHER), (method, path)
         else:
             assert "security" not in op, (method, path)  # health endpoints are public
-    assert seen == 23
+    assert seen == 30
 
 
 def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
@@ -81,6 +82,13 @@ def test_the_public_surface_is_exactly_what_the_plan_promises() -> None:
         ("GET", "/v1/me"),
         ("GET", "/v1/projects"),
         ("POST", "/v1/projects"),
+        ("GET", "/v1/members"),
+        ("PATCH", "/v1/members/{user_id}"),
+        ("DELETE", "/v1/members/{user_id}"),
+        ("GET", "/v1/invitations"),
+        ("POST", "/v1/invitations"),
+        ("DELETE", "/v1/invitations/{invitation_id}"),
+        ("POST", "/v1/invitations/accept"),
         ("POST", "/v1/events"),
         ("POST", "/v1/events/batch"),
         ("POST", "/v1/runs"),

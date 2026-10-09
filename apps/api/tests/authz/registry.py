@@ -39,7 +39,9 @@ PUBLIC: frozenset[tuple[str, str]] = frozenset(
 )
 
 # Routes that need a signed-in person but no particular workspace and no action.
-SESSION_ONLY: frozenset[tuple[str, str]] = frozenset({("GET", "/v1/me")})
+SESSION_ONLY: frozenset[tuple[str, str]] = frozenset(
+    {("GET", "/v1/me"), ("POST", "/v1/invitations/accept")}
+)
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,8 @@ class Side:
     run_id: str
     event_id: str
     artifact_id: str
+    user_id: str  # another member of the workspace (not a role actor)
+    invitation_id: str
     every_id: frozenset[str]  # every id the tenant owns (for leak scans)
 
 
@@ -62,6 +66,9 @@ class RequestSpec:
     params: dict[str, str] = field(default_factory=dict)
     content: bytes | None = None
     headers: dict[str, str] = field(default_factory=dict)
+    # "member" | "invitation": the world creates a fresh target in acme and puts its id where the
+    # path says FRESH, so a mutating request is valid for every actor that may send it.
+    fresh: str | None = None
 
 
 Builder = Callable[[Side, dict[str, str]], RequestSpec]
@@ -76,6 +83,9 @@ class RouteCase:
     success: int
     id_params: tuple[str, ...] = ()
     transport: Literal["asgi", "socket"] = "asgi"
+    # Who replays foreign/random ids for this route (None: the five read actors). Routes that keys
+    # never reach list only people.
+    probe_actors: tuple[str, ...] | None = None
 
     @property
     def key(self) -> tuple[str, str]:
@@ -142,6 +152,30 @@ def _create_project(side: Side, overrides: dict[str, str]) -> RequestSpec:
     )
 
 
+JSON = {"content-type": "application/json"}
+
+
+def _target(
+    method: str, prefix: str, param: str, kind: str, body: dict[str, str] | None
+) -> Builder:
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        ident = overrides.get(param)
+        return RequestSpec(
+            method, f"{prefix}/{ident or 'FRESH'}",
+            content=json.dumps(body).encode() if body is not None else None,
+            headers=JSON if body is not None else {},
+            fresh=None if ident else kind,
+        )  # fmt: skip
+
+    return build
+
+
+def _post_invitation(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    body = {"email": f"invitee-{uuid.uuid4().hex[:10]}@acme.test", "role": "VIEWER"}
+    return RequestSpec("POST", "/v1/invitations", content=json.dumps(body).encode(), headers=JSON)
+
+
+ADMINS = ("owner", "dual")  # people who can reach the route and are members of both workspaces
 _ANALYTICS = ("summary", "cost", "reliability", "performance")
 
 CASES: dict[tuple[str, str], RouteCase] = {
@@ -183,6 +217,24 @@ CASES: dict[tuple[str, str], RouteCase] = {
             )
             for name in _ANALYTICS
         ],
+        RouteCase("GET", "/v1/members", actions.MEMBER_READ, _get("/v1/members"), 200),
+        RouteCase(
+            "PATCH", "/v1/members/{user_id}", actions.MEMBER_WRITE,
+            _target("PATCH", "/v1/members", "user_id", "member", {"role": "VIEWER"}), 200,
+            ("user_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "DELETE", "/v1/members/{user_id}", actions.MEMBER_WRITE,
+            _target("DELETE", "/v1/members", "user_id", "member", None), 204,
+            ("user_id",), probe_actors=ADMINS,
+        ),
+        RouteCase("GET", "/v1/invitations", actions.INVITE_READ, _get("/v1/invitations"), 200),
+        RouteCase("POST", "/v1/invitations", actions.INVITE_WRITE, _post_invitation, 201),
+        RouteCase(
+            "DELETE", "/v1/invitations/{invitation_id}", actions.INVITE_WRITE,
+            _target("DELETE", "/v1/invitations", "invitation_id", "invitation", None), 204,
+            ("invitation_id",), probe_actors=ADMINS,
+        ),
         RouteCase("PUT", "/v1/artifacts/{artifact_id}", actions.ARTIFACT_WRITE, _put_artifact, 201),
         RouteCase(
             "GET", "/v1/artifacts/{artifact_id}", actions.RUN_READ,

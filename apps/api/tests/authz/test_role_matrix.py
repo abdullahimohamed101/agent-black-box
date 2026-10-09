@@ -37,7 +37,15 @@ U_RUNS = "allow allow allow     allow  allow    deny    | 404 404 allow 401 401 
 U_MONEY = "allow allow allow     allow  allow    allow   | 404 404 allow 401 401 401 401 400"
 U_CONTENT = "allow allow allow     deny   allow    deny    | 404 404 deny  401 401 401 401 400"
 
+U_ADMIN_ONLY = U_PROJECT_ADMIN  # member.write, invite.read, invite.write: owner and admin
+
 EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
+    ("GET", "/v1/members"): (NO_KEY, U_MONEY),
+    ("PATCH", "/v1/members/{user_id}"): (NO_KEY, U_ADMIN_ONLY),
+    ("DELETE", "/v1/members/{user_id}"): (NO_KEY, U_ADMIN_ONLY),
+    ("GET", "/v1/invitations"): (NO_KEY, U_ADMIN_ONLY),
+    ("POST", "/v1/invitations"): (NO_KEY, U_ADMIN_ONLY),
+    ("DELETE", "/v1/invitations/{invitation_id}"): (NO_KEY, U_ADMIN_ONLY),
     ("POST", "/v1/events"): (INGEST, U_NEVER),
     ("POST", "/v1/events/batch"): (INGEST, U_NEVER),
     ("POST", "/v1/runs"): (INGEST, U_NEVER),

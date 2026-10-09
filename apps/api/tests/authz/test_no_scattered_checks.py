@@ -6,8 +6,8 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[2] / "src" / "abb_api"
 FORBIDDEN_ATTRIBUTES = {"role", "scopes", "actions"}
 # Where reading a role or scope is the job: the authorization package, authentication, the CLI
-# that provisions keys and members, and the membership repository.
-ALLOWED = ("authz/", "auth/", "cli.py", "workspaces/repository.py")
+# that provisions keys and members, the membership repository and the member/invitation rules.
+ALLOWED = ("authz/", "auth/", "cli.py", "workspaces/repository.py", "workspaces/members.py")
 
 
 def findings(source: str, filename: str) -> list[str]:

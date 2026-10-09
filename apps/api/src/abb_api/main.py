@@ -37,6 +37,7 @@ from abb_api.runs.service import RunService
 from abb_api.streaming.hub import StreamHub
 from abb_api.streaming.router import router as streams_router
 from abb_api.streaming.service import StreamService
+from abb_api.workspaces.members_router import router as members_router
 from abb_api.workspaces.router import router as projects_router
 
 # Which credentials may call an operation (documented, and checked by test_openapi).
@@ -46,7 +47,7 @@ _BEARER_ONLY = {
     ("post", "/v1/runs"),
     ("put", "/v1/artifacts/{artifact_id}"),
 }
-_SESSION_ONLY = {("get", "/v1/me")}
+_SESSION_ONLY = {("get", "/v1/me"), ("post", "/v1/invitations/accept")}
 _NO_CREDENTIAL = {("get", "/v1/auth/login"), ("get", "/v1/auth/callback")}
 _OPTIONAL_SESSION = {("post", "/v1/auth/logout")}
 WORKSPACE_PARAMETER: dict[str, Any] = {
@@ -216,6 +217,7 @@ def create_app(
     app.include_router(pricing_router)
     app.include_router(analytics_router)
     app.include_router(projects_router)
+    app.include_router(members_router)
     _install_openapi(app, settings)
     return app
 

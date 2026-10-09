@@ -168,7 +168,7 @@ async def web(
 
 
 async def person(
-    api: Api, email: str, role: str, workspace: str = "acme", *, verified: bool = False
+    api: Api, email: str, role: str | None, workspace: str = "acme", *, verified: bool = False
 ) -> dict[str, str]:
     """Headers of a signed-in member (cookie, origin, workspace); creates the user if needed."""
     from tests.auth_helpers import add_member, mint_session

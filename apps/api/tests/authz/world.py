@@ -1,9 +1,12 @@
 """Two tenants with distinctive data, every key kind, and one way to send any registry request."""
 
 import asyncio
+import hashlib
 import json
+import secrets
+import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal
 
@@ -14,6 +17,8 @@ from sqlalchemy import text
 from abb_api.auth import scopes
 from abb_api.auth.repository import ApiKeyRepository
 from abb_api.cost.repository import CostRepository
+from abb_api.ids import new_uuid, public_id
+from abb_api.workspaces.repository import InvitationRepository
 from tests.api_fixtures import NOW, Api
 from tests.auth_helpers import add_member, mint_session, remove_member, set_role
 from tests.authz.registry import RequestSpec, RouteCase, Side
@@ -39,8 +44,32 @@ class World:
     def headers(self, actor: str, spec: RequestSpec) -> dict[str, str]:
         return {**spec.headers, **self.actors[actor]}
 
+    async def _fresh_target(self, kind: str) -> str:
+        """A new member or invitation in acme, for a request that consumes its target."""
+        workspace = self.api.tenant.context.workspace_id
+        if kind == "member":
+            user = await add_member(
+                self.api.engine, workspace, f"target-{uuid.uuid4().hex[:10]}@acme.test", "DEVELOPER"
+            )
+            return public_id(IdKind.USER, user.id)
+        invitation_id = new_uuid(IdKind.INVITATION)
+        async with self.api.engine.begin() as conn:
+            await InvitationRepository(conn, self.api.tenant.context).create(
+                invitation_id,
+                email=f"fresh-{uuid.uuid4().hex[:10]}@acme.test",
+                role="VIEWER",
+                token_hash=hashlib.sha256(secrets.token_bytes(32)).digest(),
+                invited_by=None,
+                expires_at=self.api.clock() + timedelta(days=7),
+            )
+        return public_id(IdKind.INVITATION, invitation_id)
+
     async def send(self, case: RouteCase, spec: RequestSpec, actor: str) -> httpx.Response:
         """Send over the case's transport; a stream is read until its headers, then closed."""
+        if spec.fresh is not None:
+            spec = replace(
+                spec, path=spec.path.replace("FRESH", await self._fresh_target(spec.fresh))
+            )
         headers = self.headers(actor, spec)
         if case.transport == "socket":
             async with httpx.AsyncClient(base_url=self.live.base_url, timeout=10) as client:
@@ -162,6 +191,20 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             run_ids.append(run_id)
             first_event = first_event or event_id
         label = CANARY if name == "globex" else "acme"
+        workspace_uuid = tenant.context.workspace_id
+        member = await add_member(
+            api.engine, workspace_uuid, f"{label.lower()}-member@{name}.test", "DEVELOPER"
+        )
+        invitation_id = new_uuid(IdKind.INVITATION)
+        async with api.engine.begin() as conn:
+            await InvitationRepository(conn, tenant.context).create(
+                invitation_id,
+                email=f"{label.lower()}-invitee@{name}.test",
+                role="VIEWER",
+                token_hash=hashlib.sha256(secrets.token_bytes(32)).digest(),
+                invited_by=None,
+                expires_at=api.clock() + timedelta(days=7),
+            )
         artifact_id = await _upload(api, art_token, run_ids[0], f"{label}.txt", f"{label} output")
         public_project = tenant.projects["alpha" if name == "acme" else "p"]
         sides[name] = Side(
@@ -171,8 +214,18 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             run_id=run_ids[0],
             event_id=first_event,
             artifact_id=artifact_id,
+            user_id=public_id(IdKind.USER, member.id),
+            invitation_id=public_id(IdKind.INVITATION, invitation_id),
             every_id=frozenset(
-                {tenant.workspace_id, public_project, artifact_id, *run_ids, first_event}
+                {
+                    tenant.workspace_id,
+                    public_project,
+                    artifact_id,
+                    *run_ids,
+                    first_event,
+                    public_id(IdKind.USER, member.id),
+                    public_id(IdKind.INVITATION, invitation_id),
+                }
             ),
         )
     await api.drain()
