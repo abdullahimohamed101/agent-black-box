@@ -114,3 +114,29 @@ async def test_a_workspace_holds_at_most_200_projects_even_under_a_race(web: Api
             )
         ).scalar_one()
     assert count == 200
+
+
+async def test_creating_a_project_does_not_block_foreign_key_inserts_into_the_workspace(
+    web: Api,
+) -> None:
+    """Review F8: the creation lock must be `FOR NO KEY UPDATE`, which a key-share lock passes."""
+    from sqlalchemy.exc import DBAPIError
+
+    from abb_api.projects.repository import ProjectRepository
+
+    async with web.engine.connect() as holder, web.engine.connect() as other:
+        await holder.begin()
+        await ProjectRepository(holder, web.tenant.context).lock_for_create()
+        await other.begin()
+        await other.execute(text("SET LOCAL lock_timeout = '500ms'"))
+        try:
+            # Every insert into members, keys, invitations or audit_log takes this on the workspace.
+            await other.execute(
+                text("SELECT 1 FROM workspaces WHERE id = :w FOR KEY SHARE"),
+                {"w": web.tenant.context.workspace_id},
+            )
+        except DBAPIError as exc:  # pragma: no cover - the failure this test exists to catch
+            pytest.fail(f"project creation blocked a key-share lock: {exc.orig}")
+        finally:
+            await other.rollback()
+            await holder.rollback()

@@ -69,11 +69,15 @@ class ProjectRepository:
         )
 
     async def lock_for_create(self) -> None:
-        """Serialise project creation per workspace, so the bound cannot be raced past."""
+        """Serialise project creation per workspace, so the bound cannot be raced past.
+
+        `FOR NO KEY UPDATE`, like `lock_workspace`: a plain `FOR UPDATE` would also block the
+        key-share locks every foreign-key insert into `workspaces` takes (members, keys, audit).
+        """
         await self._conn.execute(
             select(t.workspaces.c.id)
             .where(t.workspaces.c.id == self._tenant.workspace_id)
-            .with_for_update()
+            .with_for_update(key_share=True)
         )
 
     async def get(self, project_id: uuid.UUID) -> Project | None:
