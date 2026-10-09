@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ALL_STATUSES, type RunStatus } from "@/lib/api/types";
 import { useRuns } from "@/lib/queries";
 import type { Base } from "@/lib/routes";
-import { projectFilter } from "@/lib/routes";
+import { useProjectId } from "@/components/WorkspaceProvider";
 import { RunsTable } from "./RunsTable";
 import { statusLabel } from "./StatusBadge";
 import { Empty, ErrorState, Loading } from "./States";
@@ -50,9 +50,10 @@ export function RunsList({
       span == null ? undefined : new Date(Math.floor((now - span) / 60_000) * 60_000).toISOString(),
     [span, now],
   );
+  const project = useProjectId(base.project);
   const q = useRuns(
     {
-      project: projectFilter(base.project),
+      project,
       statuses: filters.statuses,
       agent,
       startedAfter,

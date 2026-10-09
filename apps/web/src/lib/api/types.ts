@@ -34,3 +34,13 @@ export const ACTIVE_STATUSES: readonly RunStatus[] = [
 ];
 export const isActive = (s: RunStatus): boolean => ACTIVE_STATUSES.includes(s);
 export type ExpensiveRun = components["schemas"]["ExpensiveRun"] & { name: string | null };
+
+export type MeOut = components["schemas"]["MeOut"];
+export type ProjectOut = components["schemas"]["ProjectOut"];
+export type MemberOut = components["schemas"]["MemberOut"];
+export type InvitationOut = components["schemas"]["InvitationOut"];
+export type ApiKeyOut = components["schemas"]["ApiKeyOut"];
+export type PriceOut = components["schemas"]["PriceOut"];
+export type AuditEntryOut = components["schemas"]["AuditEntryOut"];
+export type Role = MemberOut["role"];
+export type KeyScope = ApiKeyOut["scopes"][number];

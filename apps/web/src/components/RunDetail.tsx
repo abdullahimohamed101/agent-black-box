@@ -86,8 +86,10 @@ function LiveBar({
         ? { glyph: "◌", text: "Connecting" }
         : state === "reconnecting"
           ? { glyph: "↻", text: "Reconnecting" }
-          : { glyph: "⏸", text: "Live updates unavailable, refreshing periodically" };
-  const partial = state === "reconnecting" || state === "unavailable";
+          : state === "unauthorized"
+            ? { glyph: "⏸", text: "Live updates stopped: your access to this run changed" }
+            : { glyph: "⏸", text: "Live updates unavailable, refreshing periodically" };
+  const partial = state === "reconnecting" || state === "unavailable" || state === "unauthorized";
   return (
     <div
       className="live-bar"

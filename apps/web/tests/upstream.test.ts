@@ -16,7 +16,8 @@ describe("read proxy", () => {
       ["v1", "runs", "x", "events", "y", "z"],
       ["v1", "runs", "a.b"],
       ["v1", "runs", "..", "keys"],
-      ["v1", "pricing"], // overrides are CLI-managed; the web proxy reads analytics only
+      ["v1", "pricing", "x"], // only the list itself (`GET /v1/pricing`) is a read; overrides are POST /v1/pricing/overrides
+      ["v1", "auth", "login"], // sign-in has its own handlers (/api/auth/*), never the generic proxy
       ["v1", "analytics"],
       ["v1", "analytics", "secrets"],
       ["v1", "analytics", "summary", "extra"],
@@ -61,9 +62,11 @@ describe("read proxy", () => {
     expect(ok.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  it("fails closed without a key and never exposes it to the caller", async () => {
+  it("fails closed without a session or a key: 401, so the browser goes to sign-in (phase 15)", async () => {
     vi.stubEnv("ABB_WEB_API_KEY", "");
-    expect((await readThrough(["v1", "runs"], new URLSearchParams())).status).toBe(503);
+    const r = await readThrough(["v1", "runs"], new URLSearchParams());
+    expect(r.status).toBe(401);
+    expect(((await r.json()) as { error: { code: string } }).error.code).toBe("SESSION_INVALID");
   });
 
   it("forwards the key server-side only, relays request id, maps upstream auth failure to 502", async () => {

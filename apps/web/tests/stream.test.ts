@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setApiWorkspace } from "@/lib/api/client";
 import {
   defaultBackoff,
   openRunStream,
@@ -234,6 +235,30 @@ describe("openRunStream", () => {
       expect(h.states.at(-1)).toBe(i < 2 ? "reconnecting" : "unavailable");
     }
     expect(es.closed).toBe(true); // and the client stops the browser's own retrying
+  });
+
+  it("treats STREAM_UNAUTHORIZED as final: no reconnect, no failure counting, state 'unauthorized'", () => {
+    const h = harness({ backoffMs: () => 1 });
+    const es = h.sources[0]!;
+    es.open();
+    es.onerror?.({
+      data: '{"error":{"code":"STREAM_UNAUTHORIZED","retryable":false}}',
+    } as unknown as Event);
+    expect(h.states.at(-1)).toBe("unauthorized");
+    expect(es.closed).toBe(true);
+    vi.advanceTimersByTime(60_000);
+    expect(h.sources).toHaveLength(1); // never reconnects, so a revoked session is not retried forever
+  });
+
+  it("carries the workspace in the query (EventSource cannot set headers)", () => {
+    setApiWorkspace("ws_00000000000000000000000001");
+    try {
+      expect(streamUrl("run_1", "evt_9")).toBe(
+        "/api/abb/v1/runs/run_1/stream?workspace=ws_00000000000000000000000001&last_event_id=evt_9",
+      );
+    } finally {
+      setApiWorkspace(null);
+    }
   });
 
   it("by default gives up after five failures in a row, not before", () => {

@@ -1,3 +1,4 @@
+import { getApiWorkspace } from "@/lib/api/client";
 import type { EventOut } from "@/lib/api/types";
 
 /**
@@ -13,7 +14,14 @@ import type { EventOut } from "@/lib/api/types";
  *   accepts connections and then errors cannot reconnect forever.
  */
 
-export type StreamState = "connecting" | "live" | "reconnecting" | "ended" | "unavailable";
+export type StreamState =
+  | "connecting"
+  | "live"
+  | "reconnecting"
+  | "ended"
+  | "unavailable"
+  /** The server ended the stream because the session, key or role no longer allows it: final, never retried. */
+  | "unauthorized";
 
 export type StreamEvent = EventOut;
 
@@ -48,7 +56,13 @@ const CLOSED = 2;
 
 export const streamUrl = (runId: string, lastEventId?: string | null): string => {
   const base = `/api/abb/v1/runs/${encodeURIComponent(runId)}/stream`;
-  return lastEventId ? `${base}?last_event_id=${encodeURIComponent(lastEventId)}` : base;
+  // EventSource cannot set headers: the workspace (D8) rides in the query and the proxy turns it into the header.
+  const query = new URLSearchParams();
+  const workspace = getApiWorkspace();
+  if (workspace) query.set("workspace", workspace);
+  if (lastEventId) query.set("last_event_id", lastEventId);
+  const qs = query.toString();
+  return qs ? `${base}?${qs}` : base;
 };
 
 /** A wire event is only trusted for the fields the timeline orders and renders by. */
@@ -68,6 +82,18 @@ export function parseEvent(data: unknown): StreamEvent | null {
       !Array.isArray(o.attributes) &&
       (o.sequence === null || o.sequence === undefined || typeof o.sequence === "number");
     return ok ? (e as StreamEvent) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The `error.code` of the server's in-band `event: error` frame, when this error event carries one. */
+function frameCode(ev: unknown): string | null {
+  const data = (ev as { data?: unknown } | null)?.data;
+  if (typeof data !== "string") return null;
+  try {
+    const code = (JSON.parse(data) as { error?: { code?: unknown } }).error?.code;
+    return typeof code === "string" ? code : null;
   } catch {
     return null;
   }
@@ -161,8 +187,13 @@ export function openRunStream(options: StreamOptions): StreamHandle {
       finish("ended");
       onEnd();
     });
-    es.onerror = () => {
+    es.onerror = (ev) => {
       if (closed || source !== es) return;
+      if (frameCode(ev) === "STREAM_UNAUTHORIZED") {
+        // Access ended mid-stream (revoked key or session, removed member). Reconnecting only repeats the refusal.
+        finish("unauthorized");
+        return;
+      }
       if (stableTimer) {
         clearTimeout(stableTimer);
         stableTimer = null;

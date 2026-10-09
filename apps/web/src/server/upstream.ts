@@ -1,28 +1,184 @@
 import { fixtureReply } from "@/fixtures/api";
+import {
+  MAX_BODY_BYTES,
+  UPSTREAM_TIMEOUT_MS,
+  apiBase,
+  credentialFor,
+  envelope,
+  fixturesBlocked,
+  fixturesMode,
+  jsonSafeHeaders as SAFE,
+  sessionCookieName,
+  webOrigin,
+} from "./config";
 
-/** Read paths the browser may reach (ADR-021). Anything else is a 404, even though the API would reject writes anyway. */
-const ALLOWED =
-  /^v1\/(runs(\/[A-Za-z0-9_-]{1,64}(\/(spans|stream|events(\/[A-Za-z0-9_-]{1,64})?))?)?|artifacts\/[A-Za-z0-9_-]{1,64}(\/content)?|analytics\/(summary|cost|reliability|performance))$/;
-const STREAM = /^v1\/runs\/[A-Za-z0-9_-]{1,64}\/stream$/;
-const TIMEOUT_MS = 10_000;
+/**
+ * The same-origin proxy between the browser and the API (ADR-021, amended by ADR-060). The browser holds a session
+ * cookie only; this server forwards it, and nothing else, to the API. What is forwarded is an allowlist (D17):
+ * the session cookie, `X-ABB-Workspace`, `Origin`, `Last-Event-ID`, `Accept` and a JSON body. `Authorization`,
+ * other cookies, `X-Forwarded-*`, `Forwarded` and `X-Request-ID` from the browser never reach the API, and
+ * `Set-Cookie` never comes back (sign-in has its own handlers). `ABB_WEB_API_KEY` remains a read-only fallback
+ * for visitors without a session until step 15 of phase 15 removes it.
+ */
+
+const ID = "[A-Za-z0-9_-]{1,64}";
+type Route = { method: string; re: RegExp };
+const route = (method: string, pattern: string): Route => ({
+  method,
+  re: new RegExp(`^v1/${pattern}$`),
+});
+const ROUTES: readonly Route[] = [
+  route(
+    "GET",
+    `(runs(/${ID}(/(spans|stream|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance))`,
+  ),
+  route("GET", "(me|projects|members|invitations|api-keys|pricing|audit)"),
+  route(
+    "POST",
+    "(projects|invitations|invitations/accept|api-keys|pricing/overrides|cost/rebuild)",
+  ),
+  route("PATCH", `members/${ID}`),
+  route("DELETE", `(members|invitations|api-keys)/${ID}`),
+];
+const STREAM = new RegExp(`^v1/runs/${ID}/stream$`);
 const MAX_QUERY_CHARS = 2048;
-// Proxy responses carry tenant data: never cacheable, never sniffed.
-const SAFE = { "cache-control": "no-store", "x-content-type-options": "nosniff" } as const;
-
-const envelope = (status: number, code: string, message: string, retryable = false) =>
-  Response.json(
-    { error: { code, message, category: "WEB", retryable, request_id: null, details: {} } },
-    { status, headers: SAFE },
-  );
+const LAST_EVENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const WORKSPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 export type ReadOptions = {
+  method?: string;
+  /** The browser's request headers; only the allowlisted ones are used. */
+  headers?: Headers;
+  /** The browser's request body (JSON writes); read with a hard cap. */
+  body?: ReadableStream<Uint8Array> | null;
   /** The browser's `Last-Event-ID` header, forwarded so a reconnect resumes (streams only). */
   lastEventId?: string | null;
   /** Aborted when the browser goes away: the upstream stream is closed with it. */
   signal?: AbortSignal;
 };
 
-const LAST_EVENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+type Prepared =
+  | { ok: false; response: Response }
+  | {
+      ok: true;
+      url: string;
+      method: string;
+      headers: Record<string, string>;
+      body: string | undefined;
+      viaKey: boolean;
+    };
+
+async function readCapped(
+  stream: ReadableStream<Uint8Array> | null | undefined,
+  declared: string | null,
+): Promise<string | null> {
+  if (declared !== null && Number(declared) > MAX_BODY_BYTES) return null;
+  if (!stream) return "";
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
+async function prepare(
+  segments: string[],
+  search: URLSearchParams,
+  options: ReadOptions,
+): Promise<Prepared> {
+  const fail = (response: Response): Prepared => ({ ok: false, response });
+  const method = (options.method ?? "GET").toUpperCase();
+  const path = segments.join("/");
+  const known = ROUTES.filter((r) => r.re.test(path));
+  if (known.length === 0) {
+    // Unknown paths keep the contract from before writes existed: GET is "not found", anything else "not allowed".
+    if (method === "GET") return fail(envelope(404, "NOT_FOUND", "Not found."));
+    const res = envelope(405, "METHOD_NOT_ALLOWED", "Method not allowed.");
+    res.headers.set("allow", "GET");
+    return fail(res);
+  }
+  if (!known.some((r) => r.method === method)) {
+    const res = envelope(405, "METHOD_NOT_ALLOWED", "Method not allowed.");
+    res.headers.set("allow", known.map((r) => r.method).join(", "));
+    return fail(res);
+  }
+  const query = new URLSearchParams(search);
+  const workspaceParam = query.get("workspace"); // EventSource cannot set headers: streams carry it here
+  query.delete("workspace");
+  if (query.toString().length > MAX_QUERY_CHARS)
+    return fail(envelope(414, "QUERY_TOO_LONG", "Query string too long."));
+
+  const incoming = options.headers ?? new Headers();
+  const credential = credentialFor(incoming.get("cookie"));
+  if (method !== "GET") {
+    const origin = webOrigin();
+    if (!origin) return fail(envelope(503, "WEB_NOT_CONFIGURED", "ABB_WEB_ORIGIN is not set."));
+    // Exact match, scheme and port included. `null` and a missing header are refused (D17).
+    if (incoming.get("origin") !== origin)
+      return fail(envelope(403, "CSRF_REJECTED", "Cross-origin request refused."));
+  }
+  if (credential.kind === "none" || (credential.kind === "key" && method !== "GET"))
+    return fail(envelope(401, "SESSION_INVALID", "Sign in to continue."));
+
+  const headers: Record<string, string> = {
+    accept: STREAM.test(path) ? "text/event-stream" : "application/json",
+  };
+  if (credential.kind === "session") {
+    headers.cookie = `${sessionCookieName()}=${credential.cookie}`;
+  } else {
+    headers.authorization = `Bearer ${credential.key}`;
+  }
+  const workspace = incoming.get("x-abb-workspace") ?? workspaceParam;
+  if (workspace && WORKSPACE_ID.test(workspace)) headers["x-abb-workspace"] = workspace;
+  const lastEventId = options.lastEventId ?? incoming.get("last-event-id");
+  if (lastEventId && LAST_EVENT_ID.test(lastEventId)) headers["last-event-id"] = lastEventId;
+
+  let body: string | undefined;
+  if (method === "POST" || method === "PATCH") {
+    if (!(incoming.get("content-type") ?? "").toLowerCase().startsWith("application/json"))
+      return fail(envelope(415, "UNSUPPORTED_MEDIA_TYPE", "A JSON body is required."));
+    const text = await readCapped(options.body, incoming.get("content-length"));
+    if (text === null) return fail(envelope(413, "BODY_TOO_LARGE", "Request body too large."));
+    body = text;
+    headers["content-type"] = "application/json";
+    headers.origin = webOrigin()!; // the API applies the same exact-origin rule to cookie writes
+  } else if (method === "DELETE") {
+    headers.origin = webOrigin()!;
+  }
+  const qs = query.toString();
+  return {
+    ok: true,
+    url: `${apiBase()}/${path}${qs ? `?${qs}` : ""}`,
+    method,
+    headers,
+    body,
+    viaKey: credential.kind === "key",
+  };
+}
+
+const keyRejected = () =>
+  envelope(502, "WEB_UPSTREAM_AUTH", "The web server's API key was rejected by the API.");
+
+const redirected = () =>
+  envelope(502, "WEB_UPSTREAM_REDIRECT", "The API answered with a redirect.");
+
+function relayHeaders(upstream: Response): Headers {
+  const headers = new Headers({ "content-type": "application/json", ...SAFE });
+  for (const name of ["x-request-id", "retry-after"]) {
+    const value = upstream.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  return headers;
+}
 
 export async function readThrough(
   segments: string[],
@@ -30,47 +186,47 @@ export async function readThrough(
   options: ReadOptions = {},
 ): Promise<Response> {
   const path = segments.join("/");
-  if (!ALLOWED.test(path)) return envelope(404, "NOT_FOUND", "Not found.");
-  if (STREAM.test(path)) return streamThrough(segments, search, options);
-  if (search.toString().length > MAX_QUERY_CHARS)
-    return envelope(414, "QUERY_TOO_LONG", "Query string too long.");
-  if (process.env.ABB_WEB_DATA_SOURCE === "fixtures") {
-    // Fixtures must never stand in for real data in production unless explicitly allowed (e2e runs `next start`).
-    if (process.env.NODE_ENV === "production" && process.env.ABB_WEB_ALLOW_FIXTURES !== "1") {
-      return envelope(503, "FIXTURES_DISABLED", "Fixture data is disabled in production.");
-    }
+  if (fixturesBlocked() && ROUTES.some((r) => r.re.test(path))) {
+    return envelope(503, "FIXTURES_DISABLED", "Fixture data is disabled in production.");
+  }
+  if (fixturesMode() && !fixturesBlocked() && ROUTES.some((r) => r.re.test(path))) {
+    if (STREAM.test(path))
+      return envelope(404, "STREAM_NOT_AVAILABLE", "Fixture data has no live stream.");
+    if ((options.method ?? "GET").toUpperCase() !== "GET")
+      return envelope(405, "FIXTURE_READ_ONLY", "Fixture data is read-only.");
+    if (search.toString().length > MAX_QUERY_CHARS)
+      return envelope(414, "QUERY_TOO_LONG", "Query string too long.");
     const r = fixtureReply(segments, search);
     return Response.json(r.body, {
       status: r.status,
       headers: { ...SAFE, "x-request-id": "req_fixture" },
     });
   }
-  const key = process.env.ABB_WEB_API_KEY;
-  if (!key) {
-    return envelope(503, "WEB_NOT_CONFIGURED", "The web server has no ABB_WEB_API_KEY configured.");
-  }
-  const base = process.env.ABB_API_INTERNAL_URL ?? "http://localhost:8000";
-  const qs = search.toString();
+  const prepared = await prepare(segments, search, options);
+  if (!prepared.ok) return prepared.response;
+  if (STREAM.test(path)) return streamThrough(prepared, options.signal);
   try {
-    const upstream = await fetch(`${base}/${segments.join("/")}${qs ? `?${qs}` : ""}`, {
-      headers: { authorization: `Bearer ${key}`, accept: "application/json" },
+    const upstream = await fetch(prepared.url, {
+      method: prepared.method,
+      headers: prepared.headers,
+      body: prepared.body,
+      redirect: "manual",
       cache: "no-store",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
-    const headers = new Headers({ "content-type": "application/json", ...SAFE });
-    const rid = upstream.headers.get("x-request-id");
-    if (rid) headers.set("x-request-id", rid);
-    const ra = upstream.headers.get("retry-after");
-    if (ra) headers.set("retry-after", ra);
-    // Upstream 401/403 mean the proxy's own key is wrong: do not pass them through as if the visitor's login failed.
-    if (upstream.status === 401 || upstream.status === 403) {
-      return envelope(
-        502,
-        "WEB_UPSTREAM_AUTH",
-        "The web server's API key was rejected by the API.",
-      );
+    if (upstream.status >= 300 && upstream.status < 400) {
+      await upstream.body?.cancel();
+      return redirected();
     }
-    return new Response(upstream.body, { status: upstream.status, headers });
+    // A rejected shared key is the web server's fault, not the visitor's login.
+    if (prepared.viaKey && (upstream.status === 401 || upstream.status === 403))
+      return keyRejected();
+    const headers = relayHeaders(upstream);
+    if (upstream.status === 204) headers.delete("content-type");
+    return new Response(upstream.status === 204 ? null : upstream.body, {
+      status: upstream.status,
+      headers,
+    });
   } catch {
     return envelope(503, "API_UNREACHABLE", "The API could not be reached.", true);
   }
@@ -78,57 +234,38 @@ export async function readThrough(
 
 /**
  * Live run events (SSE). Unlike reads, the body is relayed as it arrives and has no overall deadline:
- * only reaching the API is time-limited. Fixtures have no live source, so the UI falls back to polling.
+ * only reaching the API is time-limited.
  */
 async function streamThrough(
-  segments: string[],
-  search: URLSearchParams,
-  { lastEventId, signal }: ReadOptions,
+  prepared: Extract<Prepared, { ok: true }>,
+  signal: AbortSignal | undefined,
 ): Promise<Response> {
-  if (search.toString().length > MAX_QUERY_CHARS)
-    return envelope(414, "QUERY_TOO_LONG", "Query string too long.");
-  if (process.env.ABB_WEB_DATA_SOURCE === "fixtures") {
-    return envelope(404, "STREAM_NOT_AVAILABLE", "Fixture data has no live stream.");
-  }
-  const key = process.env.ABB_WEB_API_KEY;
-  if (!key) {
-    return envelope(503, "WEB_NOT_CONFIGURED", "The web server has no ABB_WEB_API_KEY configured.");
-  }
-  const base = process.env.ABB_API_INTERNAL_URL ?? "http://localhost:8000";
-  const qs = search.toString();
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${key}`,
-    accept: "text/event-stream",
-  };
-  if (lastEventId && LAST_EVENT_ID.test(lastEventId)) headers["last-event-id"] = lastEventId;
-
   const connect = new AbortController();
-  const timer = setTimeout(() => connect.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => connect.abort(), UPSTREAM_TIMEOUT_MS);
   const anySignal = signal ? AbortSignal.any([connect.signal, signal]) : connect.signal;
   try {
-    const upstream = await fetch(`${base}/${segments.join("/")}${qs ? `?${qs}` : ""}`, {
-      headers,
+    const upstream = await fetch(prepared.url, {
+      headers: prepared.headers,
+      redirect: "manual",
       cache: "no-store",
       signal: anySignal,
     });
     clearTimeout(timer); // connected: from here on the stream may run for as long as the API allows
-    if (upstream.status === 401 || upstream.status === 403) {
+    if (upstream.status >= 300 && upstream.status < 400) {
       await upstream.body?.cancel();
-      return envelope(
-        502,
-        "WEB_UPSTREAM_AUTH",
-        "The web server's API key was rejected by the API.",
-      );
+      return redirected();
+    }
+    if (prepared.viaKey && (upstream.status === 401 || upstream.status === 403)) {
+      await upstream.body?.cancel();
+      return keyRejected();
     }
     const type = upstream.headers.get("content-type") ?? "";
     if (!upstream.ok || !type.startsWith("text/event-stream")) {
-      // An API error (404, 429 STREAM_LIMIT, 503...) is a normal JSON envelope: relay it unchanged.
-      const out = new Headers({ "content-type": "application/json", ...SAFE });
-      for (const name of ["x-request-id", "retry-after"]) {
-        const value = upstream.headers.get(name);
-        if (value) out.set(name, value);
-      }
-      return new Response(upstream.body, { status: upstream.status, headers: out });
+      // An API error (401, 404, 429 STREAM_LIMIT, 503...) is a normal JSON envelope: relay it unchanged.
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: relayHeaders(upstream),
+      });
     }
     return new Response(upstream.body, {
       status: 200,
