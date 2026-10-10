@@ -164,7 +164,7 @@ def build_event(
     trace_id: str,
     agent_id: str,
     agent_version: str | None,
-    sequence: int,
+    sequence: int | None,
     span_id: str | None = None,
     parent_span_id: str | None = None,
     status: str | None = None,
@@ -182,10 +182,11 @@ def build_event(
         "agent_id": agent_id,
         "event_type": event_type,
         "occurred_at": now_rfc3339(),
-        "sequence": sequence,
         "attributes": attributes or {},
         "sdk": {"name": "agent-black-box-python", "version": sdk_version},
     }
+    if sequence is not None:  # remote emitters send none: the run is then ordered by time
+        event["sequence"] = sequence
     if span_id:
         event["span_id"] = span_id
     if parent_span_id:

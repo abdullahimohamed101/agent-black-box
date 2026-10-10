@@ -177,3 +177,17 @@ def test_nul_characters_in_payload_strings_and_keys_are_removed_not_rejected() -
     (event,) = [e for e in events_of(bb) if e["event_type"] == "custom.nul"]
     assert event["payload"] == {"key": ["ab", {"n": ""}]}
     assert_contract(event)
+
+
+def test_an_event_without_a_sequence_validates() -> None:
+    event = events.build_event(
+        event_type="custom.remote",
+        run_id="run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+        trace_id="trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+        agent_id="child",
+        agent_version=None,
+        sequence=None,
+        sdk_version="0.3.0",
+    )
+    assert "sequence" not in event
+    assert_contract(event)
