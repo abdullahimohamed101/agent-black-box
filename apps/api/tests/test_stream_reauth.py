@@ -211,7 +211,7 @@ async def test_a_demotion_to_viewer_withholds_command_text_from_the_frames_that_
             for f in watch.frames:
                 if f.get("event") == "trace_event" and f["data"]["event_type"].startswith("shell"):
                     if text in str(f["data"]["attributes"]["shell.command"]):
-                        return f["data"]
+                        return dict(f["data"])
             await asyncio.sleep(0.1)
         raise AssertionError(f"no frame carried {text}")
 
