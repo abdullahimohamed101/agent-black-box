@@ -142,7 +142,19 @@ def check_payload(payload: dict[str, Any], stats: Stats) -> dict[str, Any] | Non
     if size > MAX_INLINE_PAYLOAD_BYTES:
         stats.add("payloads_dropped")
         return None
-    return payload
+    cleaned = _without_nul(payload)
+    return cleaned if isinstance(cleaned, dict) else None
+
+
+def _without_nul(value: Any) -> Any:
+    """NUL is invalid in the contract's strings and keys; one would get the whole event rejected."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {_without_nul(k): _without_nul(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_without_nul(v) for v in value]
+    return value
 
 
 def build_event(

@@ -63,6 +63,10 @@ _RUN_END = {  # requested status -> (event type, event status)
 }
 
 
+def _is_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
 def _outcome(exc: BaseException | None) -> str:
     """Map an exception leaving a `with` block to a status."""
     if exc is None:
@@ -91,6 +95,9 @@ class Span:
         kind: str = "custom",
         attributes: dict[str, Any] | None = None,
         parent: "Span | None" = None,
+        *,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
     ) -> None:
         self.run = run
         self.name = name_attr(name)
@@ -98,6 +105,11 @@ class Span:
         self.kind = span_kind(kind)
         self.span_id = ids.new_id(ids.SPAN)
         self._parent = parent
+        # Identity (multi-agent traces): explicit, else the parent span's, else the run's. A span
+        # whose parent is only known at start() (the current span) re-resolves there.
+        self._own_agent_id = agent_slug(agent_id, "") or None if isinstance(agent_id, str) else None
+        self._own_agent_version = name_attr(agent_version, 128) if _is_text(agent_version) else None
+        self.agent_id, self.agent_version = self._resolve_identity()
         self._types = _TYPED_SPANS.get(self.kind, _GENERIC_SPAN)  # kind is always a str here
         self._base = self._base_attributes()
         self._attrs: dict[str, Any] = as_mapping(attributes)
@@ -107,6 +119,14 @@ class Span:
         self._ended = False
         self._lock = threading.Lock()
         self._token: contextvars.Token[Span | None] | None = None
+
+    def _resolve_identity(self) -> tuple[str, str | None]:
+        parent = self._parent
+        agent_id = self._own_agent_id or (parent.agent_id if parent else self.run.agent_id)
+        version = self._own_agent_version or (
+            parent.agent_version if parent else self.run.agent_version
+        )
+        return agent_id, version
 
     def _base_attributes(self) -> dict[str, Any]:
         if self.kind == "tool":
@@ -137,7 +157,15 @@ class Span:
         status: str | None = None,
     ) -> None:
         """A point event inside this span."""
-        self.run._event(event_type, attributes, payload, status, span_id=self.span_id)
+        self.run._event(
+            event_type,
+            attributes,
+            payload,
+            status,
+            span_id=self.span_id,
+            agent_id=self.agent_id,
+            agent_version=self.agent_version,
+        )
 
     # -- lifecycle ---------------------------------------------------------------------------------
 
@@ -150,14 +178,21 @@ class Span:
         if self._parent is None:
             current = _current_span.get()
             self._parent = current if current is not None and current.run is self.run else None
+        self.agent_id, self.agent_version = self._resolve_identity()
+        self._before_open()
         self.run._emit(
             self._types[0],
             span_id=self.span_id,
             parent_span_id=self._parent.span_id if self._parent else None,
             attributes={**self._attrs, **self._base},
+            agent_id=self.agent_id,
+            agent_version=self.agent_version,
         )
         self._attrs = {}  # attributes given at start are on the started event only
         return self
+
+    def _before_open(self) -> None:
+        """Hook for spans that record something before their opening event (AgentSpan)."""
 
     def end(self, status: str = _SUCCESS, exc: BaseException | None = None) -> None:
         status = status if isinstance(status, str) else _SUCCESS
@@ -180,6 +215,8 @@ class Span:
             duration_ms=duration,
             attributes=attributes,
             payload=self._payload,
+            agent_id=self.agent_id,
+            agent_version=self.agent_version,
         )
 
     def __enter__(self: _S) -> _S:
@@ -274,6 +311,61 @@ class LlmCall(Span):
         super().end(status, exc)
 
 
+class AgentSpan(Span):
+    """A child agent inside the run: its own `agent_id`, recorded as `agent.started`/`completed`.
+
+    Entering it first records `agent.spawned` as the delegating side (the parent's identity, in
+    the delegating span when there is one), then opens the span with the child's identity, so
+    every event inside carries the child's `agent_id` (spec §84). `input` and `set_result` are
+    payloads: they follow `PayloadMode` and the redactor like every other payload.
+    """
+
+    def __init__(
+        self,
+        run: "Run",
+        name: str,
+        *,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        input: Any = None,
+        attributes: dict[str, Any] | None = None,
+        parent: Span | None = None,
+    ) -> None:
+        # The slug may need the delegator's identity (known at start), so keep the candidate only.
+        candidate = agent_slug(agent_id, "") if isinstance(agent_id, str) else ""
+        super().__init__(
+            run,
+            name,
+            "agent",
+            attributes,
+            parent,
+            agent_id=candidate
+            or agent_slug(name if isinstance(name, str) else name_attr(name), ""),
+            agent_version=agent_version,
+        )
+        self._input = input
+
+    def set_result(self, result: Any) -> None:
+        """The agent's result, sent as the payload of `agent.completed` (FULL mode only)."""
+        self._payload = {"result": result}
+
+    def _before_open(self) -> None:
+        delegator = self._parent.agent_id if self._parent else self.run.agent_id
+        delegator_version = self._parent.agent_version if self._parent else self.run.agent_version
+        if not self._own_agent_id or self._own_agent_id == delegator:
+            # No usable name, or the root's own: never silently share the delegator's identity.
+            self._own_agent_id = self.run._child_slug(delegator)
+            self.agent_id = self._own_agent_id
+        self.run._emit(
+            "agent.spawned",
+            span_id=self._parent.span_id if self._parent else None,
+            attributes={"agent.child_id": self.agent_id},
+            payload=None if self._input is None else {"input": self._input},
+            agent_id=delegator,
+            agent_version=delegator_version,
+        )
+
+
 class Run:
     """One execution of an agent. Created by `BlackBox.run`; use as a context manager."""
 
@@ -294,7 +386,9 @@ class Run:
             if isinstance(agent_id, str) and agent_id
             else bb.config.agent_id
         )
+        self.agent_version = bb.config.agent_version
         self._tags = clean_tags(tuple(bb.config.tags) + as_strings(tags))
+        self._children = itertools.count(1)
         self._seq = itertools.count(1)  # next() on a C counter is atomic: no lock on the hot path
         self._t0 = time.monotonic()
         self._ended = False
@@ -324,6 +418,32 @@ class Run:
         parent: Span | None = None,
     ) -> Span:
         return Span(self, name, kind, attributes, parent)  # arguments are coerced, never raised on
+
+    def agent(
+        self,
+        name: str,
+        *,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        input: Any = None,
+        attributes: dict[str, Any] | None = None,
+        parent: Span | None = None,
+    ) -> AgentSpan:
+        """A child agent in this run (D1): `with run.agent("researcher") as researcher: ...`."""
+        return AgentSpan(
+            self,
+            name,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            input=input,
+            attributes=attributes,
+            parent=parent,
+        )
+
+    def _child_slug(self, parent_agent: str) -> str:
+        """`<parent>-child-<n>`, within the 64-character slug limit."""
+        suffix = f"-child-{next(self._children)}"
+        return agent_slug(parent_agent[: 64 - len(suffix)] + suffix, "agent")
 
     def llm_call(
         self,
@@ -355,8 +475,18 @@ class Run:
     ) -> None:
         """Record a point event (inside the current span of this run, if any)."""
         span = _current_span.get()
-        span_id = span.span_id if span is not None and span.run is self else None
-        self._event(event_type, attributes, payload, status, span_id=span_id)
+        if span is None or span.run is not self:
+            self._event(event_type, attributes, payload, status, span_id=None)
+            return
+        self._event(
+            event_type,
+            attributes,
+            payload,
+            status,
+            span_id=span.span_id,
+            agent_id=span.agent_id,
+            agent_version=span.agent_version,
+        )
 
     def _event(
         self,
@@ -366,6 +496,8 @@ class Run:
         status: str | None,
         *,
         span_id: str | None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
     ) -> None:
         if not isinstance(event_type, str):
             event_type = ""
@@ -377,7 +509,13 @@ class Run:
             self._bb.stats_.add("dropped_invalid")
             return
         self._emit(
-            event_type, span_id=span_id, attributes=attributes, payload=payload, status=status
+            event_type,
+            span_id=span_id,
+            attributes=attributes,
+            payload=payload,
+            status=status,
+            agent_id=agent_id,
+            agent_version=agent_version,
         )
 
     def end(self, status: str = _SUCCESS, exc: BaseException | None = None) -> None:
@@ -408,6 +546,8 @@ class Run:
         duration_ms: float | None = None,
         attributes: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
     ) -> None:
         self._bb._emit(
             self,
@@ -419,6 +559,8 @@ class Run:
             duration_ms,
             attributes,
             payload,
+            agent_id,
+            agent_version,
         )
 
     def __enter__(self) -> "Run":
@@ -727,6 +869,8 @@ class BlackBox:
         duration_ms: float | None,
         attributes: dict[str, Any] | None,
         payload: dict[str, Any] | None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
     ) -> None:
         if not self._enabled or self._closed:
             return
@@ -737,8 +881,8 @@ class BlackBox:
                 event_type=event_type,
                 run_id=run.run_id,
                 trace_id=run.trace_id,
-                agent_id=run.agent_id,
-                agent_version=self.config.agent_version,
+                agent_id=agent_id or run.agent_id,
+                agent_version=agent_version or self.config.agent_version,
                 sequence=sequence,
                 span_id=span_id,
                 parent_span_id=parent_span_id,
@@ -752,11 +896,12 @@ class BlackBox:
             redacted = self._redactor.apply(event, p0=priority == 0)
             if redacted is None:
                 return
-            if (
-                redacted.get("payload") is not None
-                and check_payload(redacted["payload"], self.stats_) is None
-            ):
-                del redacted["payload"]
+            if redacted.get("payload") is not None:
+                checked = check_payload(redacted["payload"], self.stats_)
+                if checked is None:
+                    del redacted["payload"]
+                else:
+                    redacted["payload"] = checked
             self.stats_.add("events_created")
             if self._buffer.put(redacted, priority):
                 self._exporter.notify()

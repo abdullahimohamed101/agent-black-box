@@ -7,12 +7,13 @@ with bb.run("fix bug") as run:
 bb.shutdown()
 """
 
-from blackbox.client import BlackBox, LlmCall, Run, Span
+from blackbox.client import AgentSpan, BlackBox, LlmCall, Run, Span
 from blackbox.context import bind, current_run, current_span
 from blackbox.redaction import PayloadMode
 from blackbox.version import __version__
 
 __all__ = [
+    "AgentSpan",
     "BlackBox",
     "LlmCall",
     "PayloadMode",
