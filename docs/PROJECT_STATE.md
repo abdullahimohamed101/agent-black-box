@@ -3,9 +3,9 @@
 Last updated: 2026-10-09 (Phase 15 branch `feature/phase-15-auth-rbac`)
 
 ## Current phase
-Phases 0-8 are merged to `main` (CI green). The MVP gate (spec §49, §138) is reached but **not accepted**; it closes when the items under
-"Next actions" are done and the user reviews it. **Active plan: `docs/plans/active/phase-15-auth-rbac.md`** (auth, workspaces, RBAC): steps 1-16 are implemented
-and committed on `feature/phase-15-auth-rbac` (worktree `../abb-worktrees/phase-15`); status "Implemented; pending security review". Not pushed, no PR.
+Phases 0-8 are merged to `main` (CI green). The MVP gate (spec §49, §138) is reached but **not accepted**: the user decides after reviewing the
+items under "Next actions". **Active plan: `docs/plans/active/phase-15-auth-rbac.md`** (auth, workspaces, RBAC): steps 1-16 are implemented, the independent
+security review is done and its findings fixed or filed (`phase-15-security-review.md`), on `feature/phase-15-auth-rbac`; PR opened for review.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -35,9 +35,12 @@ sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074: the host's 
 None.
 
 ## Next actions (exact)
-1. Run the security review of the Phase 15 branch against the plan's "Security review note"; fix or file findings; re-run `scripts/quality.sh full` and the five E2E scripts.
-2. User: the AC-14 manual real-provider login; decide MVP gate acceptance (KI-050 vendor prices, README clean-machine run remain; KI-054 and KI-064..066 are done).
-3. After the review: `complete-phase` for Phase 15 (plan to `completed/`), approve the push and PR. Then Phases 9, 10, 11 and 16 can run in parallel worktrees.
+1. Merge the Phase 15 PR once CI is green; then `complete-phase` for Phase 15 (plan and review to `docs/plans/completed/`) and file the GitHub issues for
+   KI-067..078 (marked "to file" in the register).
+2. User: the AC-14 manual real-provider login (needs your own OIDC client id and secret, KI-067); decide MVP gate acceptance. Remaining gate item: KI-050
+   (OpenAI prices and tiered models are not in the built-in table; the engine has no price tiers). Done 2026-10-09: web polish KI-064..066, Anthropic and
+   Gemini prices, ingest regression check KI-054, compose rebuild with `make smoke`, clean-clone check of the README Quick Start.
+3. Then Phases 9, 10, 11 and 16 can run in parallel worktrees; 13 then 14 in sequence.
 
 ## Open decisions
 - MVP acceptance (after the gate items above).
