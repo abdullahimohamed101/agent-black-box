@@ -16,6 +16,7 @@ from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import parse_public_id
 from abb_api.projects.access import authorise_project
 from abb_api.runs import cursors
+from abb_api.runs.content import span_name_is_content, withhold_attributes
 from abb_api.runs.event_queries import EventQueries
 from abb_api.runs.queries import RunQueries, RunRecord
 from abb_api.runs.repository import RunRepository
@@ -44,14 +45,26 @@ def project_not_found() -> AppError:
 
 
 def event_out(
-    event: Event, has_payload: bool, *, with_payload: bool, withheld: bool = False
+    event: Event,
+    has_payload: bool,
+    *,
+    with_payload: bool,
+    reads_content: bool,
 ) -> EventOut:
-    """`withheld`: the caller lacks `payload.read`, so the body is dropped and the response says so
-    (D10). Lists and streams never carry payloads at all, so they never set it."""
+    """`reads_content`: the caller holds `payload.read`. Without it, command text and file paths
+    in the attributes are replaced by a marker (review F3) and, on the detail endpoint, the body is
+    dropped and the response says so (D10). Lists and streams never carry payloads at all, so they
+    never set `payload_withheld`. The stored event is untouched (INV-1)."""
     wire = event.to_wire()
-    wire.setdefault("attributes", {})
-    wire["payload"] = wire.get("payload") if with_payload and not withheld else None
-    return EventOut(**wire, has_payload=has_payload, payload_withheld=withheld)
+    attributes = wire.setdefault("attributes", {})
+    hidden: list[str] = []
+    if not reads_content:
+        wire["attributes"], hidden = withhold_attributes(attributes)
+    withheld = with_payload and not reads_content
+    wire["payload"] = wire.get("payload") if with_payload and reads_content else None
+    return EventOut(
+        **wire, has_payload=has_payload, payload_withheld=withheld, withheld_attributes=hidden
+    )
 
 
 def _run_out(record: RunRecord, state: str) -> RunOut:
@@ -75,7 +88,8 @@ def _run_out(record: RunRecord, state: str) -> RunOut:
     )
 
 
-def _span_out(record: SpanRecord) -> SpanOut:
+def _span_out(record: SpanRecord, *, reads_content: bool) -> SpanOut:
+    hide = not reads_content and record.name is not None and span_name_is_content(record.kind)
     return SpanOut(
         id=from_uuid(IdKind.SPAN, record.id),
         run_id=from_uuid(IdKind.RUN, record.run_id),
@@ -83,7 +97,8 @@ def _span_out(record: SpanRecord) -> SpanOut:
         parent_span_id=from_uuid(IdKind.SPAN, record.parent_span_id)
         if record.parent_span_id
         else None,
-        name=record.name,
+        name=None if hide else record.name,
+        name_withheld=hide,
         kind=record.kind,
         agent_id=record.agent_slug,
         status=record.status,
@@ -231,8 +246,9 @@ class RunService:
             next_cursor = cursors.encode(
                 cursors.Cursor("events", _event_key(last, mode), mode=mode)
             )
+        reads = holds(principal, actions.PAYLOAD_READ)
         return EventPage(
-            items=[event_out(e, has, with_payload=False) for e, has in page],
+            items=[event_out(e, has, with_payload=False, reads_content=reads) for e, has in page],
             next_cursor=next_cursor,
             ordering_mode=mode,  # type: ignore[arg-type]
         )
@@ -252,7 +268,7 @@ class RunService:
             event,
             event.payload is not None,
             with_payload=True,
-            withheld=not holds(principal, actions.PAYLOAD_READ),
+            reads_content=holds(principal, actions.PAYLOAD_READ),
         )
 
     async def list_spans(
@@ -270,7 +286,12 @@ class RunService:
             last = page[-1]
             started = last.started_at.isoformat() if last.started_at else None
             next_cursor = cursors.encode(cursors.Cursor("spans", [started, str(last.id)]))
-        return SpanPage(items=[_span_out(s) for s in page], next_cursor=next_cursor)
+        return SpanPage(
+            items=[
+                _span_out(s, reads_content=holds(principal, actions.PAYLOAD_READ)) for s in page
+            ],
+            next_cursor=next_cursor,
+        )
 
     # ---------------------------------------------------------------- helpers
 

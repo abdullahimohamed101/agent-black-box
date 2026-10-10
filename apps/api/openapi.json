@@ -1444,6 +1444,14 @@
             "title": "Trace Id",
             "type": "string"
           },
+          "withheld_attributes": {
+            "description": "Attribute keys whose value is replaced by a marker because the caller's role lacks `payload.read` (shell command text, file paths and similar content). Empty for actors that hold it.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Withheld Attributes",
+            "type": "array"
+          },
           "workspace_id": {
             "title": "Workspace Id",
             "type": "string"
@@ -2888,6 +2896,12 @@
               }
             ],
             "title": "Name"
+          },
+          "name_withheld": {
+            "default": false,
+            "description": "True when `name` is null because it would show a command or a path and the caller's role lacks `payload.read`.",
+            "title": "Name Withheld",
+            "type": "boolean"
           },
           "parent_span_id": {
             "anyOf": [

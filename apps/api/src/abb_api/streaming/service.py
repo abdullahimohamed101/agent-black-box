@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from abb_api.auth.service import credential_still_grants
 from abb_api.authz import actions
 from abb_api.authz.principal import Principal
+from abb_api.authz.service import holds
 from abb_api.clock import Clock, system_clock
 from abb_api.core.config import Settings
 from abb_api.core.errors import ErrorBody, ErrorCategory
@@ -83,6 +84,8 @@ class StreamService:
         deadline = loop.time() + s.stream_max_lifetime_seconds
         last_write = last_fresh = last_check = last_reauth = loop.time()
         subscription = self._hub.subscribe(key)
+        # Re-read with the credential: a demotion to VIEWER keeps `run.read` but loses the content.
+        reads_content = holds(stream.principal, actions.PAYLOAD_READ)
         try:
             yield sse.retry_frame()
             yield sse.comment("open")
@@ -99,6 +102,7 @@ class StreamService:
                     if not await self._still_authorised(stream):
                         yield self._unauthorised_frame()
                         return
+                    reads_content = await self._still_authorised(stream, actions.PAYLOAD_READ)
                 check = polled - last_check >= s.stream_window_check_seconds
                 if check:
                     last_check = polled
@@ -106,7 +110,9 @@ class StreamService:
                     for event, has_payload in batch:
                         yield sse.frame(
                             "trace_event",
-                            event_out(event, has_payload, with_payload=False).model_dump_json(),
+                            event_out(
+                                event, has_payload, with_payload=False, reads_content=reads_content
+                            ).model_dump_json(),
                             event.event_id,
                         )
                         if event.event_type in TERMINAL:
@@ -137,11 +143,9 @@ class StreamService:
         finally:
             subscription.close()
 
-    async def _still_authorised(self, stream: OpenStream) -> bool:
+    async def _still_authorised(self, stream: OpenStream, action: str = actions.RUN_READ) -> bool:
         async with self._db, self._engine.connect() as conn:
-            return await credential_still_grants(
-                conn, stream.principal, actions.RUN_READ, self._clock
-            )
+            return await credential_still_grants(conn, stream.principal, action, self._clock)
 
     async def _last_lifecycle(self, stream: OpenStream) -> str | None:
         async with self._db, self._engine.connect() as conn:

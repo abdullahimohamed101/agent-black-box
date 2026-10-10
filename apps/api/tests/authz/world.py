@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal
+from typing import Any
 
 import httpx
 from abb_event_schema.ids import IdKind, new_id
@@ -31,6 +32,12 @@ CANARY = "CANARY-GLOBEX-7f3e"
 CANARY_SLUG = CANARY.lower()  # agent and model names are lower-case slugs
 GLOBEX_RUNS, GLOBEX_RUN_COST = 7, 777.777
 ACME_RUNS, ACME_RUN_COST = 3, 1.5
+# Captured content in acme's first run: what an actor without `payload.read` must never receive
+# (review F3). The third sits under an attribute name the schema has never heard of.
+COMMAND_CANARY = "CMDCANARY-curl-H-Bearer-s3cr3t"
+PATH_CANARY = "/home/PATHCANARY/.ssh/id_rsa"
+CUSTOM_CANARY = "CUSTOMCANARY-rm-rf"
+CONTENT_CANARIES = (COMMAND_CANARY, PATH_CANARY, CUSTOM_CANARY, "CWDCANARY")
 
 
 @dataclass
@@ -123,7 +130,33 @@ class World:
         return "\n".join(chunks)
 
 
-async def _ingest_run(api: Api, token: str, tag: str, cost: float, model: str) -> tuple[str, str]:
+def _content_events(ids: dict[str, str], tag: str) -> list[dict[str, Any]]:
+    """A shell span, a file edit with its own span and an event with an unregistered attribute."""
+    shell_span = new_id(IdKind.SPAN)
+    return [
+        wire_event(
+            ids, 5, event_type="shell.command.started", agent_id=tag, span_id=shell_span,
+            attributes={"shell.command": COMMAND_CANARY, "shell.cwd": "/srv/CWDCANARY"},
+        ),
+        wire_event(
+            ids, 6, event_type="shell.command.completed", agent_id=tag, span_id=shell_span,
+            status="success", duration_ms=40,
+            attributes={"shell.command": COMMAND_CANARY, "shell.exit_code": 0},
+        ),
+        wire_event(
+            ids, 7, event_type="file.modified", agent_id=tag, status="success",
+            attributes={"file.path": PATH_CANARY, "file.lines_added": 3, "file.language": "python"},
+        ),
+        wire_event(
+            ids, 8, event_type="custom.thing.happened", agent_id=tag,
+            attributes={"thing.command": CUSTOM_CANARY, "thing.count": 2},
+        ),
+    ]  # fmt: skip
+
+
+async def _ingest_run(
+    api: Api, token: str, tag: str, cost: float, model: str, *, content: bool = False
+) -> tuple[str, str]:
     ids = make_run_ids()
     llm = {
         "llm.provider": "example-provider",
@@ -147,6 +180,8 @@ async def _ingest_run(api: Api, token: str, tag: str, cost: float, model: str) -
             attributes={},
         ),
     ]  # fmt: skip
+    if content:
+        events += _content_events(ids, tag)
     response = await api.post_batch(events, token=token)
     assert response.status_code == 202, response.text
     return ids["run_id"], llm_id
@@ -206,7 +241,9 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
         run_ids: list[str] = []
         first_event = ""
         for _ in range(count):
-            run_id, event_id = await _ingest_run(api, token, tag, cost, f"{tag}-model")
+            run_id, event_id = await _ingest_run(
+                api, token, tag, cost, f"{tag}-model", content=name == "acme" and not run_ids
+            )
             run_ids.append(run_id)
             first_event = first_event or event_id
         label = CANARY if name == "globex" else "acme"

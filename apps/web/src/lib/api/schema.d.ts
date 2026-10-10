@@ -1184,6 +1184,11 @@ export interface components {
             tags: string[];
             /** Trace Id */
             trace_id: string;
+            /**
+             * Withheld Attributes
+             * @description Attribute keys whose value is replaced by a marker because the caller's role lacks `payload.read` (shell command text, file paths and similar content). Empty for actors that hold it.
+             */
+            withheld_attributes?: string[];
             /** Workspace Id */
             workspace_id: string;
         };
@@ -1727,6 +1732,12 @@ export interface components {
             kind: string | null;
             /** Name */
             name: string | null;
+            /**
+             * Name Withheld
+             * @description True when `name` is null because it would show a command or a path and the caller's role lacks `payload.read`.
+             * @default false
+             */
+            name_withheld: boolean;
             /** Parent Span Id */
             parent_span_id: string | null;
             /** Run Id */

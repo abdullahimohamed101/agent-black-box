@@ -192,6 +192,48 @@ async def test_removal_and_loss_of_run_read_end_the_stream_but_a_lesser_role_doe
             await watch.stop()
 
 
+async def test_a_demotion_to_viewer_withholds_command_text_from_the_frames_that_follow(
+    live: Live,
+) -> None:
+    """`run.read` survives the demotion, so the stream goes on; the content must not (review F3)."""
+    api = live.api
+    workspace = api.tenant.context.workspace_id
+    run = await run_with_event(live)
+    user = await add_member(api.engine, workspace, "demoted@acme.test", "OWNER")
+    token = await mint_session(api.engine, user.id, api.clock())
+    watch = Watch(live, run["run_id"], cookie_headers(api, token))
+
+    def command_attr(n: int) -> dict[str, Any]:
+        return {"event_type": "shell.command.started", "attributes": {"shell.command": f"CMD-{n}"}}
+
+    async def frame_with(text: str) -> dict[str, Any]:
+        for _ in range(60):
+            for f in watch.frames:
+                if f.get("event") == "trace_event" and f["data"]["event_type"].startswith("shell"):
+                    if text in str(f["data"]["attributes"]["shell.command"]):
+                        return f["data"]
+            await asyncio.sleep(0.1)
+        raise AssertionError(f"no frame carried {text}")
+
+    try:
+        await watch.opened()
+        await send(api, run, 2, **command_attr(2))
+        assert (await frame_with("CMD-2"))["withheld_attributes"] == []
+        await set_role(api.engine, workspace, user.id, "VIEWER")
+        await asyncio.sleep(REAUTH * 3)
+        await send(api, run, 3, **command_attr(3))
+        for _ in range(60):
+            later = [f["data"] for f in watch.frames if f.get("event") == "trace_event"]
+            if len(later) >= 3:
+                break
+            await asyncio.sleep(0.1)
+        assert "CMD-3" not in str(watch.frames)
+        assert later[-1]["withheld_attributes"] == ["shell.command"]
+        assert not watch.done and not watch.errors()
+    finally:
+        await watch.stop()
+
+
 async def test_a_still_valid_stream_survives_many_checks_and_does_not_slide_the_session(
     live: Live,
 ) -> None:

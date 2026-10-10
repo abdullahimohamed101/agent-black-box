@@ -124,6 +124,12 @@ class EventOut(BaseModel):
         description="True when the caller's role lacks `payload.read`: `payload` is then null "
         "although `has_payload` may be true. Never set on lists.",
     )
+    withheld_attributes: list[str] = Field(
+        default_factory=list,
+        description="Attribute keys whose value is replaced by a marker because the caller's role "
+        "lacks `payload.read` (shell command text, file paths and similar content). Empty for "
+        "actors that hold it.",
+    )
 
 
 class EventPage(BaseModel):
@@ -138,6 +144,11 @@ class SpanOut(BaseModel):
     trace_id: str
     parent_span_id: str | None
     name: str | None
+    name_withheld: bool = Field(
+        default=False,
+        description="True when `name` is null because it would show a command or a path and the "
+        "caller's role lacks `payload.read`.",
+    )
     kind: str | None
     agent_id: str
     status: str | None
