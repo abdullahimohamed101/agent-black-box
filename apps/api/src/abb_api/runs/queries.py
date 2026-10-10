@@ -38,6 +38,19 @@ class RunRecord:
     updated_at: datetime
 
 
+@dataclass(frozen=True)
+class FindingsInputs:
+    """What the detector job reads from the run row (everything else comes from the events)."""
+
+    project_id: uuid.UUID
+    agent_slug: str | None
+    started_at: datetime
+    ordering_mode: str
+    summary_version: int
+    cost_usd: Decimal
+    retry_cost_usd: Decimal
+
+
 _COLUMNS = (
     t.runs.c.id,
     t.runs.c.project_id,
@@ -78,6 +91,23 @@ class RunQueries:
     async def get(self, run_id: uuid.UUID) -> RunRecord | None:
         row = (await self._conn.execute(self._base().where(t.runs.c.id == run_id))).first()
         return _record(row) if row else None
+
+    async def findings_inputs(self, run_id: uuid.UUID) -> FindingsInputs | None:
+        c = t.runs.c
+        row = (
+            await self._conn.execute(
+                select(
+                    c.project_id,
+                    c.agent_slug,
+                    c.started_at,
+                    c.ordering_mode,
+                    c.summary_version,
+                    c.cost_usd,
+                    c.retry_cost_usd,
+                ).where(c.workspace_id == self._tenant.workspace_id, c.id == run_id)
+            )
+        ).first()
+        return FindingsInputs(**row._mapping) if row else None
 
     async def page(
         self,

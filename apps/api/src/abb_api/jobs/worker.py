@@ -21,6 +21,7 @@ from abb_api.clock import Clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.logging import configure_logging
 from abb_api.db import create_engine
+from abb_api.jobs.context import reset_job_settings, set_job_settings
 from abb_api.jobs.handlers import HANDLERS
 from abb_api.jobs.outbox import Job, JobQueue, backoff_seconds
 
@@ -94,6 +95,7 @@ class Worker:
             )
             return
         heartbeat = asyncio.create_task(self._keep_lease(job))
+        settings_token = set_job_settings(self._settings)
         try:
             async with self._engine.begin() as conn:
                 await handler(job, conn)
@@ -106,6 +108,7 @@ class Worker:
         except Exception as exc:
             await self._record_failure(job, exc)
         finally:
+            reset_job_settings(settings_token)
             heartbeat.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat
