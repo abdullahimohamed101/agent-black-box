@@ -377,7 +377,10 @@ async def test_two_owners_removing_each_other_at_once_leave_one(web: Api) -> Non
             web.client.delete(f"/v1/members/{ids['b@acme.test']}", headers=a),
             web.client.delete(f"/v1/members/{ids['a@acme.test']}", headers=b),
         )
-        assert sorted([first.status_code, second.status_code]) == [204, 409], round_
+        # Exactly one removal wins. The loser is refused as the last owner (409) if it was already
+        # authenticated, or as a non-member (404) if the winner removed it before it authenticated.
+        codes = sorted([first.status_code, second.status_code])
+        assert codes[0] == 204 and codes[1] in (404, 409), (round_, codes)
         async with web.engine.connect() as conn:
             owners = (
                 await conn.execute(
