@@ -68,7 +68,8 @@ STREAMER_SESSION="$(ABB_ALLOW_DEV_SESSIONS=1 cli create-session --email "$STREAM
 
 step "ingest a finished run whose first event carries a payload, and a run that stays in progress"
 PAYLOAD_TEXT="AUTH-E2E-PAYLOAD-$RANDOM$RANDOM"
-WRITE_KEY="$WRITE_KEY" API="$API" PAYLOAD_TEXT="$PAYLOAD_TEXT" uv run python - >"$WORK/runs.env" <<'PY'
+COMMAND_TEXT="curl-AUTH-E2E-CMD-$RANDOM$RANDOM"; PATH_TEXT="/home/AUTH-E2E-PATH-$RANDOM$RANDOM/id_rsa"   # content a VIEWER must not see (review F3)
+WRITE_KEY="$WRITE_KEY" API="$API" PAYLOAD_TEXT="$PAYLOAD_TEXT" COMMAND_TEXT="$COMMAND_TEXT" PATH_TEXT="$PATH_TEXT" uv run python - >"$WORK/runs.env" <<'PY'
 import json, os, urllib.request
 from datetime import datetime, timedelta, timezone
 from abb_event_schema.ids import IdKind, new_id
@@ -94,6 +95,11 @@ def build(name, finish):
     ev("run.started", {"run.name": name}, payload={"note": os.environ["PAYLOAD_TEXT"]})
     ev("agent.started", span_id=root)
     if finish:
+        shell = new_id(IdKind.SPAN)
+        ev("shell.command.started", {"shell.command": os.environ["COMMAND_TEXT"]}, span_id=shell)
+        ev("shell.command.completed", {"shell.command": os.environ["COMMAND_TEXT"], "shell.exit_code": 0},
+           span_id=shell, status="success")
+        ev("file.modified", {"file.path": os.environ["PATH_TEXT"], "file.lines_added": 2}, status="success")
         ev("agent.completed", span_id=root, status="success")
         ev("run.completed", status="success")
     post(out)
@@ -118,6 +124,6 @@ step "Playwright: real browser <-> web server <-> API <-> fake provider"
 cd "$root/apps/web"
 mkdir -p "$root/docs/screenshots/phase-15"
 E2E_AUTH_API_URL="$API" E2E_WORKSPACE="$A" E2E_WORKSPACE_B="$B" E2E_STREAMER_SESSION="$STREAMER_SESSION" E2E_OWNER_EMAIL="$OWNER" E2E_INVITEE_EMAIL="$INVITEE" E2E_STREAMER_EMAIL="$STREAMER" \
-  E2E_RUN_PAYLOAD="$E2E_RUN_PAYLOAD" E2E_RUN_LIVE="$E2E_RUN_LIVE" E2E_PAYLOAD_TEXT="$PAYLOAD_TEXT" \
+  E2E_RUN_PAYLOAD="$E2E_RUN_PAYLOAD" E2E_RUN_LIVE="$E2E_RUN_LIVE" E2E_PAYLOAD_TEXT="$PAYLOAD_TEXT" E2E_COMMAND_TEXT="$COMMAND_TEXT" E2E_PATH_TEXT="$PATH_TEXT" \
   pnpm exec playwright test e2e/auth.spec.ts
 printf '\nAUTH-E2E PASSED\n'

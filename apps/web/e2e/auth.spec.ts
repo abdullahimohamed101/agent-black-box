@@ -10,8 +10,13 @@ const B = process.env.E2E_WORKSPACE_B;
 const payloadRun = process.env.E2E_RUN_PAYLOAD;
 const liveRun = process.env.E2E_RUN_LIVE;
 const payloadText = process.env.E2E_PAYLOAD_TEXT;
+const commandText = process.env.E2E_COMMAND_TEXT;
+const pathText = process.env.E2E_PATH_TEXT;
 const streamerSession = process.env.E2E_STREAMER_SESSION;
-test.skip(!A || !B || !payloadRun || !liveRun || !payloadText, "needs scripts/auth-e2e.sh");
+test.skip(
+  !A || !B || !payloadRun || !liveRun || !payloadText || !commandText || !pathText,
+  "needs scripts/auth-e2e.sh",
+);
 test.use({ baseURL: "http://localhost:3160" });
 test.describe.configure({ mode: "serial" }); // the steps build on each other: one person, one invitation, one session
 const SHOTS = "../../docs/screenshots/phase-15";
@@ -189,6 +194,12 @@ test("a role downgrade to viewer takes effect at once: metadata stays, content i
     await expect(viewer.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     await expect(viewer.getByRole("link", { name: "API keys" })).toHaveCount(0);
 
+    // before the downgrade this person holds payload.read: the command and the path are on the page
+    await viewer.goto(`/w/${A}/projects/all/runs/${payloadRun}`);
+    await expect(viewer.getByTestId("headline")).toContainText("Succeeded");
+    await expect(viewer.locator("body")).toContainText(commandText!);
+    await expect(viewer.locator("body")).toContainText(pathText!);
+
     await page.goto(`/w/${A}/settings/members`);
     await page.getByLabel(`Role of ${INVITEE}`).selectOption("VIEWER");
     await expect(page.getByLabel(`Role of ${INVITEE}`)).toHaveValue("VIEWER");
@@ -199,6 +210,25 @@ test("a role downgrade to viewer takes effect at once: metadata stays, content i
     const drawer = viewer.getByRole("dialog");
     await expect(drawer.getByTestId("payload-withheld")).toBeVisible();
     await expect(viewer.locator("body")).not.toContainText(payloadText!);
+    // command text and file paths are content too (review F3): the page says they are withheld, never shows them
+    await expect(viewer.locator("body")).not.toContainText(commandText!);
+    await expect(viewer.locator("body")).not.toContainText(pathText!);
+    await expect(viewer.locator("body")).toContainText("content withheld for your role");
+    const wsId = (
+      (await (await viewer.request.get("/api/abb/v1/me")).json()) as {
+        memberships: { workspace: { id: string; slug: string } }[];
+      }
+    ).memberships.find((m) => m.workspace.slug === A)!.workspace.id;
+    for (const path of [
+      `/api/abb/v1/runs/${payloadRun}/events?limit=100`,
+      `/api/abb/v1/runs/${payloadRun}/spans`,
+    ]) {
+      const raw = await (
+        await viewer.request.get(path, { headers: { "x-abb-workspace": wsId } })
+      ).text();
+      expect(raw).not.toContain(commandText!);
+      expect(raw).not.toContain(pathText!);
+    }
     await viewer.screenshot({ path: `${SHOTS}/viewer-payload-withheld.png`, fullPage: true });
     await axe(viewer);
 
