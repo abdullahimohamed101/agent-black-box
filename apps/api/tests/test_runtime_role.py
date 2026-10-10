@@ -4,6 +4,7 @@ Privileges are checked by connecting as `abb_runtime` for real (not by `SET ROLE
 that only works for a superuser cannot pass.
 """
 
+import importlib.util
 from collections.abc import AsyncIterator
 
 import pytest
@@ -12,9 +13,22 @@ from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from tests.conftest import RUNTIME_ROLE, runtime_url
+from tests.conftest import API_DIR, RUNTIME_ROLE, runtime_url
 from tests.ingest_helpers import build_event, make_run_ids, make_tenant
 from tests.test_event_store import ingest
+
+
+def _append_only_tables() -> tuple[str, ...]:
+    """Declared by the migration that made the latest table append-only (not by the test)."""
+    path = next((API_DIR / "migrations" / "versions").glob("0047_*.py"))
+    spec = importlib.util.spec_from_file_location("migration_0047", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return tuple(module.APPEND_ONLY_TABLES)
+
+
+APPEND_ONLY_TABLES = _append_only_tables()
 
 
 @pytest.fixture
@@ -53,6 +67,9 @@ async def test_the_runtime_engine_really_is_the_restricted_role(
         "UPDATE events SET status = 'error'",
         "DELETE FROM events",
         "TRUNCATE events",
+        "UPDATE audit_log SET action = 'x'",
+        "DELETE FROM audit_log",
+        "TRUNCATE audit_log",
         "DROP TABLE events",
         "ALTER TABLE events ADD COLUMN x int",
         "CREATE TABLE sneaky (id int)",
@@ -79,7 +96,7 @@ async def test_runtime_role_can_append_and_read_events_and_use_the_other_tables(
         await conn.execute(text("DELETE FROM outbox_jobs"))
 
 
-async def test_every_table_except_events_is_fully_writable_by_the_runtime_role(
+async def test_append_only_tables_are_exactly_the_declared_ones_and_the_rest_are_writable(
     engine: AsyncEngine,
 ) -> None:
     """Guards against a future migration adding an append-only table without saying so."""
@@ -89,16 +106,22 @@ async def test_every_table_except_events_is_fully_writable_by_the_runtime_role(
                 "SELECT c.relname, "
                 "  has_table_privilege('abb_runtime', c.oid, 'UPDATE') AS can_update, "
                 "  has_table_privilege('abb_runtime', c.oid, 'DELETE') AS can_delete, "
-                "  has_table_privilege('abb_runtime', c.oid, 'TRUNCATE') AS can_truncate "
+                "  has_table_privilege('abb_runtime', c.oid, 'TRUNCATE') AS can_truncate, "
+                "  has_table_privilege('abb_runtime', c.oid, 'SELECT') AS can_select, "
+                "  has_table_privilege('abb_runtime', c.oid, 'INSERT') AS can_insert "
                 "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
                 "WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname <> 'alembic_version'"
             )
         )
-        privileges = {r.relname: (r.can_update, r.can_delete, r.can_truncate) for r in rows}
-    assert privileges.pop("events") == (False, False, False)
+        privileges = {r.relname: r for r in rows}
+    assert set(APPEND_ONLY_TABLES) == {"events", "audit_log"}
+    for name in APPEND_ONLY_TABLES:
+        row = privileges.pop(name)
+        assert (row.can_update, row.can_delete, row.can_truncate) == (False, False, False), name
+        assert (row.can_select, row.can_insert) == (True, True), name
     deletes_blocked = {"runs", "agents", "projects", "workspaces"}  # parents of events (0008)
-    for name, (can_update, can_delete, _) in privileges.items():
-        assert can_update and can_delete == (name not in deletes_blocked), name
+    for name, row in privileges.items():
+        assert row.can_update and row.can_delete == (name not in deletes_blocked), name
 
 
 @pytest.mark.parametrize("table", ["runs", "agents", "projects", "workspaces"])

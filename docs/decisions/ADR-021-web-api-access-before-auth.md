@@ -1,6 +1,6 @@
 # ADR-021: The Web App Reads the API Through a Server-Side Proxy Holding a `runs:read` Key
 
-Status: Accepted
+Status: Superseded by [ADR-060](ADR-060-dashboard-identity-oidc-sessions.md) (Phase 15, 2026-10-09). Kept for history: the web server no longer holds a key; `ABB_WEB_API_KEY` is gone.
 Date: 2026-10-07
 
 ## Context

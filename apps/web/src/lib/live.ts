@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EventOut } from "@/lib/api/types";
 import { mergeEvents, micros } from "./ordering";
+import { api } from "./api/client";
 import { openRunStream, type StreamState } from "./stream";
 
 /** After a gap in live delivery longer than this, reload through REST rather than trust the resume alone. */
@@ -22,6 +23,18 @@ export interface LiveOptions {
   onEnd?: () => void;
   /** Injected for tests. */
   now?: () => number;
+}
+
+/**
+ * After `STREAM_UNAUTHORIZED`: ask who we are again. A dead session goes to sign-in (the client's 401 handler); a session
+ * that is fine but lost this run (role change) keeps the page, with live updates stopped.
+ */
+async function recheckSession(): Promise<void> {
+  try {
+    await api.GET("/v1/me"); // a 401 SESSION_INVALID runs the client's sign-in redirect itself
+  } catch {
+    /* offline: the stopped-live notice already tells the story */
+  }
 }
 
 /** The id of the event the server received last: where a stream resumes (ADR-022). */
@@ -79,6 +92,7 @@ export function useLiveEvents(
       },
       onState: (s) => {
         setState(s);
+        if (s === "unauthorized") void recheckSession();
         const t = callbacks.current.now();
         if (s === "live") {
           if (lostAt !== null && t - lostAt > RECONCILE_GAP_MS) {

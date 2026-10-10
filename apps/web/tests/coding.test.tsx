@@ -14,6 +14,7 @@ import {
 } from "@/lib/coding";
 import { diffPath, diffStats, parseDiff } from "@/lib/diff";
 import { languageFor, tokenize } from "@/lib/highlight";
+import { liveStatus } from "@/lib/liveStatus";
 import { describe as describeEvent } from "@/lib/timeline";
 import { renderWithQuery } from "./helpers";
 
@@ -433,5 +434,111 @@ describe("file and git panels", () => {
       />,
     );
     expect(screen.getByTestId("file-section")).toHaveTextContent("never the content");
+  });
+});
+
+describe("command text and file paths withheld by role (review F3)", () => {
+  const hidden = (type: string, attrs: Record<string, unknown>, keys: string[], more = {}) =>
+    ev(
+      type,
+      Object.fromEntries(
+        Object.entries(attrs).map(([k, v]) => [k, keys.includes(k) ? "[withheld]" : v]),
+      ),
+      { withheld_attributes: keys, ...more },
+    );
+  const NOTICE = "content withheld for your role";
+
+  it("describes events without the command or the path, and keeps the metadata", () => {
+    const sh = hidden(
+      "shell.command.completed",
+      { "shell.command": "curl -H 'Authorization: Bearer abc'", "shell.exit_code": 2 },
+      ["shell.command"],
+    );
+    expect(describeEvent(sh)).toBe(`${NOTICE} · exit 2`);
+    const file = hidden(
+      "file.modified",
+      { "file.path": "/home/me/.ssh/id_rsa", "file.lines_added": 3, "file.lines_removed": 1 },
+      ["file.path"],
+    );
+    expect(describeEvent(file)).toBe(`${NOTICE} +3 -1`);
+    const push = hidden("git.push", { "git.push_target": "https://u:p@host/r.git" }, [
+      "git.push_target",
+    ]);
+    expect(describeEvent(push)).toBe(NOTICE);
+  });
+
+  it("tells the story from non-content fields", () => {
+    const steps = buildStory([
+      hidden("file.read", { "file.path": "secret.py" }, ["file.path"]),
+      hidden("file.modified", { "file.path": "secret.py", "file.lines_added": 2 }, ["file.path"]),
+      hidden("shell.command.failed", { "shell.command": "rm -rf /", "shell.exit_code": 1 }, [
+        "shell.command",
+      ]),
+    ]);
+    expect(steps.map((s) => s.label)).toEqual([
+      "Read",
+      "Edit (modified)",
+      "Command failed (exit 1)",
+    ]);
+    expect(JSON.stringify(steps)).not.toContain("secret.py");
+    expect(JSON.stringify(steps)).not.toContain("[withheld]");
+    expect(steps[2]!.detail).toBe(NOTICE);
+  });
+
+  it("shows the shell panel without the command line but with how it went", () => {
+    stubArtifacts({});
+    const e = hidden(
+      "shell.command.failed",
+      {
+        "shell.command": "curl -H 'Authorization: Bearer abc'",
+        "shell.cwd": "/srv/app",
+        "shell.exit_code": 7,
+        "shell.risk_class": "R2",
+      },
+      ["shell.command", "shell.cwd"],
+      { duration_ms: 120 },
+    );
+    renderWithQuery(<EventDrawer runId="run_X" event={e} onClose={() => {}} />);
+    const panel = screen.getByTestId("shell-panel");
+    expect(screen.getByTestId("command-withheld")).toHaveTextContent("hidden by your role");
+    expect(panel.querySelector("pre.cmd")).toBeNull();
+    expect(panel).not.toHaveTextContent("Bearer");
+    expect(panel).not.toHaveTextContent("[withheld]");
+    expect(screen.getByTestId("exit-code")).toHaveTextContent("7");
+    expect(screen.getByTestId("risk-class")).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("[withheld]");
+  });
+
+  it("shows the file panel without the path, no sensitive-path badge, hashes kept", () => {
+    const e = hidden(
+      "file.modified",
+      {
+        "file.path": ".github/workflows/deploy.yml",
+        "file.language": "yaml",
+        "file.hash_after": "sha256:bbbbbbbbbbbbbbbb",
+      },
+      ["file.path"],
+    );
+    renderWithQuery(<EventDrawer runId="run_X" event={e} onClose={() => {}} />);
+    const panel = screen.getByTestId("file-section");
+    expect(panel).toHaveTextContent(NOTICE);
+    expect(panel).toHaveTextContent("bbbbbbbbbb");
+    expect(screen.queryByTestId("sensitive-path")).toBeNull();
+    expect(document.body).not.toHaveTextContent("deploy.yml");
+    expect(document.body).not.toHaveTextContent("[withheld]");
+  });
+
+  it("does not turn the Reading and Editing lines into a notice", () => {
+    expect(
+      liveStatus([hidden("file.modified", { "file.path": "a/b.py" }, ["file.path"])])?.label,
+    ).toBe("Editing files");
+  });
+
+  it("renders a hostile attribute value as text only", () => {
+    const e = ev("file.modified", { "file.path": "<img src=x onerror=alert(1)>" });
+    const { container } = renderWithQuery(
+      <EventDrawer runId="run_X" event={e} onClose={() => {}} />,
+    );
+    expect(container.querySelector("img")).toBeNull();
   });
 });

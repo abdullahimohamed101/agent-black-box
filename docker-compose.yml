@@ -2,6 +2,8 @@
 name: agent-black-box
 
 x-api-env: &api-env
+    # Development only. ABB_ENVIRONMENT=production is mandatory for any reachable deployment (docs/runbooks/auth-and-access.md):
+    # it is what switches off http issuers, dev sessions and the seeded owner.
     ABB_ENVIRONMENT: development
     # The API and worker connect as the least-privilege role (KI-020): it can append to `events` but
     # never update or delete. Only the one-shot `migrate` job below uses the owner.
@@ -55,8 +57,17 @@ services:
   api:
     <<: *api
     profiles: ["app"]
+    environment:
+      <<: *api-env
+      # Sign-in for people (ADR-060). The issuer is the dev-only fake provider below; point these three at a real
+      # OpenID Connect provider (and drop the fake-oidc service) for anything but a local demo.
+      ABB_WEB_ORIGIN: http://localhost:3000
+      ABB_OIDC_ISSUER: ${ABB_OIDC_ISSUER:-http://localhost:8900}
+      ABB_OIDC_CLIENT_ID: ${ABB_OIDC_CLIENT_ID:-abb-dev}
+      ABB_OIDC_CLIENT_SECRET: ${ABB_OIDC_CLIENT_SECRET:-}
     ports:
       - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8900:8900" # the fake provider shares this container's network namespace (see fake-oidc)
     volumes:
       - artifacts:/data/artifacts
     depends_on:
@@ -67,6 +78,28 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # DEVELOPMENT ONLY: a fake OpenID Connect provider that accepts any email and signs tokens with a throwaway key.
+  # It shares the API container's network so `http://localhost:8900` is the same issuer URL for the browser and the API.
+  # Never run it anywhere reachable: remove this service and set ABB_OIDC_* for a real provider.
+  fake-oidc:
+    <<: *api
+    profiles: ["app"]
+    network_mode: "service:api"
+    working_dir: /repo/apps/api
+    volumes:
+      - ./apps/api/tests/fake_oidc.py:/repo/apps/api/fake_oidc.py:ro
+    command:
+      - python
+      - fake_oidc.py
+      - --host=0.0.0.0
+      - --port=8900
+      - --client-id=${ABB_OIDC_CLIENT_ID:-abb-dev}
+      - --redirect-uri=http://localhost:3000/api/auth/callback
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
 
   worker:
     <<: *api
@@ -85,9 +118,9 @@ services:
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
     environment:
-      # Server-side only (ADR-021). Create the key with `python -m abb_api.cli create-key --scopes runs:read` and export it.
+      # Server-side only. The web server holds no credential: it forwards the visitor's session cookie (ADR-060).
       ABB_API_INTERNAL_URL: http://api:8000
-      ABB_WEB_API_KEY: ${ABB_WEB_API_KEY:-}
+      ABB_WEB_ORIGIN: http://localhost:3000
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

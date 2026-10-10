@@ -11,7 +11,8 @@ import {
   type WindowDays,
 } from "@/lib/queries";
 import { formatCost, formatDuration, formatInt, formatRelative } from "@/lib/format";
-import { projectFilter, runPath, type Base } from "@/lib/routes";
+import { runPath, type Base } from "@/lib/routes";
+import { useProjectId } from "@/components/WorkspaceProvider";
 import { BarList, DayColumns } from "./charts";
 import { StatusBadge } from "./StatusBadge";
 import { Empty, ErrorState, Loading } from "./States";
@@ -111,7 +112,7 @@ function RunRows({
 }
 
 export function Analytics({ base }: { base: Base }) {
-  const project = projectFilter(base.project);
+  const project = useProjectId(base.project);
   const [days, setDays] = useState<WindowDays>(7);
   const cost = useCostReport(project, days);
   const reliability = useReliabilityReport(project, days);

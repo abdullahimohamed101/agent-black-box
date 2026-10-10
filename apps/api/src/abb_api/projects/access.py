@@ -5,10 +5,10 @@ import uuid
 from abb_event_schema.ids import IdKind
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from abb_api.authz.principal import Principal
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import parse_public_id
 from abb_api.projects.repository import ProjectRepository
-from abb_api.tenancy import Principal
 
 
 def project_not_found() -> AppError:

@@ -40,14 +40,18 @@ uv run python -m abb_api.worker >"$WORK/worker.log" 2>&1 & pids+=($!)
 for _ in $(seq 1 40); do curl -sf "$API/readyz" >/dev/null && break; sleep 0.5; done
 curl -sf "$API/readyz" >/dev/null || fail "API did not become ready: $(tail -5 "$WORK/api.log")"
 
-step "provision a workspace, a project, a write key (events + artifacts) and a workspace-wide read-only key"
+step "provision a workspace, a project, a write key (events + artifacts) and a dev owner session"
 suffix="$(date +%s)$RANDOM"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Coding E2E" --slug "coding-e2e-$suffix" >/dev/null
 cli create-project --workspace "coding-e2e-$suffix" --name Demo --slug demo >/dev/null
 WRITE_KEY="$(cli create-key --workspace "coding-e2e-$suffix" --project demo --scopes events:write artifacts:write --name coding-write)"
-READ_KEY="$(cli create-key --workspace "coding-e2e-$suffix" --scopes runs:read --name coding-web-read)"
-[[ "$WRITE_KEY" == abb_live_* && "$READ_KEY" == abb_live_* ]] || fail "key creation"
+[[ "$WRITE_KEY" == abb_live_* ]] || fail "key creation"
+
+step "mint a development session for a workspace owner (the browser's only credential; gated by ABB_ENVIRONMENT + ABB_ALLOW_DEV_SESSIONS)"
+cli add-member --workspace "coding-e2e-$suffix" --email e2e-owner@local.test --role OWNER >/dev/null
+SESSION="$(ABB_ENVIRONMENT=development ABB_ALLOW_DEV_SESSIONS=1 cli create-session --email e2e-owner@local.test --hours 1)"
+[ -n "$SESSION" ] || fail "could not mint a session"
 
 cd "$root"
 step "run the scripted coding agent (a secret of unknown shape is planted in its environment)"
@@ -69,6 +73,6 @@ CODING_E2E_PLANTED="$PLANTED" CODING_E2E_ARTIFACT_DIR="$ABB_ARTIFACT_DIR" \
 
 step "Playwright: browser <-> web server <-> API"
 cd "$root/apps/web"; [ -n "${CODING_E2E_SPEC:-}" ] && set -- "$CODING_E2E_SPEC" || set -- e2e/coding.spec.ts
-E2E_CODING_API_KEY="$READ_KEY" E2E_CODING_API_URL="$API" E2E_CODING_RUN_ID="$RUN_ID" \
+E2E_SESSION_TOKEN="$SESSION" E2E_WORKSPACE="coding-e2e-$suffix" E2E_CODING_API_URL="$API" E2E_CODING_RUN_ID="$RUN_ID" \
   E2E_CODING_PLANTED="$PLANTED" pnpm exec playwright test "$1"
 printf '\nCODING-E2E PASSED\n'

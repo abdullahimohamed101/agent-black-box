@@ -53,7 +53,11 @@ curl localhost:8000/readyz
 make test lint typecheck
 ```
 
-Whole stack in containers: `make up` (migrate, api, worker, web, postgres), `make down` to stop.
+Whole stack in containers: `make up` (migrate, api, worker, web, postgres, and a dev-only fake sign-in provider), `make down` to stop.
+
+Signing in to the dashboard (no identity-provider account needed locally): `make seed` adds the workspace `local` and its owner
+`owner@local.test` (development only), `scripts/fake-oidc.sh` serves a fake provider that accepts any email, and the dashboard's "Sign in"
+button takes you through it. Details, roles and a real provider: `docs/development/setup.md` and `docs/runbooks/auth-and-access.md`.
 `scripts/quality.sh full` is the single gate used by CI and agents.
 
 Try the data plane (needs `make up`):
@@ -74,7 +78,7 @@ API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operat
 
 ## Phase Status
 
-See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-8 merged, MVP gate open). Summary: Phases 0-7 build the MVP
+See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-8 merged, MVP gate open; Phase 15 implemented, pending security review). Summary: Phases 0-7 build the MVP
 (foundation, event contract, ingestion, SDK, web, live streaming, coding-agent demo,
 analytics) followed by a human review gate; Phases 8-20 add integrations, multi-agent
 tracing, reliability intelligence, evaluations, replay, security, policy/approvals, RBAC,

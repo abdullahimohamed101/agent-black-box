@@ -56,7 +56,11 @@ export function ArtifactText({
         (q.isPending ? (
           <Loading label={`Loading ${label}`} />
         ) : q.isError ? (
-          q.error instanceof ApiRequestError && q.error.status === 404 ? (
+          q.error instanceof ApiRequestError && q.error.status === 403 ? (
+            <p className="withheld" data-testid="content-withheld">
+              Content hidden by your role.
+            </p>
+          ) : q.error instanceof ApiRequestError && q.error.status === 404 ? (
             <p className="muted">
               Not available: it was not uploaded, was withheld, or has been removed.
             </p>

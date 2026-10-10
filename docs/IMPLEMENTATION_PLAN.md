@@ -23,7 +23,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 12 | Visual replay | §87 (level 1) | | Not started |
 | 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Not started |
 | 14 | Policy engine and human approvals | §88-89, §151 | M8 | Not started |
-| 15 | Auth, workspaces, RBAC | §91-92 | | Not started |
+| 15 | Auth, workspaces, RBAC | §91-92 | | Implemented; pending security review (plan: `docs/plans/active/phase-15-auth-rbac.md`) |
 | 16 | Search and investigation | §77, §152 | | Not started |
 | 17 | Alerting and integrations | §35 | | Not started |
 | 18 | Performance and scale hardening (measure first) | §57, §74, §107, §119-120 | | Deferred (trigger) |
@@ -208,6 +208,8 @@ OAuth dashboard login, workspace membership, roles (OWNER, ADMIN, DEVELOPER, VIE
 BILLING), central authorization helper (actor, action, resource), sensitive-payload permissions,
 key management UI, audit of admin actions. **Acceptance**: authorization failure tests per role;
 explicit cross-workspace leakage tests across every endpoint (parametrized from the OpenAPI spec).
+Built as: generic OIDC with API-owned sessions (ADR-060), one `authorize()` path and a role matrix kept as data (ADR-061), an append-only
+audit log (ADR-062); resolves KI-029, KI-027, KI-051, KI-033. The route-walking test registry fails CI for any route without an authorization case.
 
 ## Phase 16 - Search and investigation
 Filter AST + parser for the §152 grammar, compiled to storage queries; server-side; FTS for

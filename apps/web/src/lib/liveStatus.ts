@@ -1,9 +1,11 @@
 import type { EventOut } from "@/lib/api/types";
+import { isWithheld } from "./withheld";
 
 /** What the agent is doing right now, read from the newest event (the run record lags by about a second). */
 export type LiveStatus = { label: string; tone: "work" | "wait" | "done" | "bad" };
 
 const attr = (e: EventOut, key: string): string | null => {
+  if (isWithheld(e, key)) return null; // "Reading files", not a notice shaped like a path
   const v = e.attributes[key];
   return typeof v === "string" && v ? v : null;
 };

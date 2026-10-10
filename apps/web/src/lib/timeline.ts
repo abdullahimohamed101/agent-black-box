@@ -1,4 +1,5 @@
 import type { EventOut } from "@/lib/api/types";
+import { contentText } from "./withheld";
 import { formatCost, formatDuration, formatInt, num } from "./format";
 
 /** Pure timeline logic: classification, filtering, grouping, causal-error detection. Rendering lives elsewhere. */
@@ -103,18 +104,18 @@ export function describe(e: EventOut): string {
     const added = num(a["file.lines_added"]);
     const removed = num(a["file.lines_removed"]);
     const delta = added != null || removed != null ? ` +${added ?? 0} -${removed ?? 0}` : "";
-    return `${attr(e, "file.path") ?? "file"}${delta}`;
+    return `${contentText(e, "file.path") ?? "file"}${delta}`;
   }
   if (e.event_type.startsWith("git.")) {
     return (
-      attr(e, "git.push_target") ??
-      attr(e, "git.branch") ??
+      contentText(e, "git.push_target") ??
+      contentText(e, "git.branch") ??
       attr(e, "git.commit_hash")?.slice(0, 10) ??
       ""
     );
   }
   if (e.event_type.startsWith("shell.")) {
-    const cmd = attr(e, "shell.command") ?? "command";
+    const cmd = contentText(e, "shell.command") ?? "command";
     const code = num(a["shell.exit_code"]);
     const failed = num(a["test.failed"]);
     const tests =
@@ -157,7 +158,8 @@ export type Row = EventRow | GroupRow;
 
 const groupLabel = (first: EventOut): string => {
   const base = first.event_type.replace(/\.(started|completed|failed)$/, "");
-  const who = attr(first, "tool.name") ?? attr(first, "llm.model") ?? attr(first, "shell.command");
+  const who =
+    attr(first, "tool.name") ?? attr(first, "llm.model") ?? contentText(first, "shell.command");
   return who ? `${base} · ${who}` : base;
 };
 

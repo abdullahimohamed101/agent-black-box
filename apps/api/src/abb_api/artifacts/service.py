@@ -10,13 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from abb_api.artifacts.repository import ArtifactRecord, ArtifactRepository
 from abb_api.artifacts.schemas import ArtifactChunk, ArtifactOut
 from abb_api.artifacts.store import ArtifactMissing, ArtifactStore, ArtifactStoreError, valid_key
+from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import public_id
 from abb_api.ingestion.ratelimit import RateLimiter
 from abb_api.ingestion.service import project_key_required, rate_limited
 from abb_api.runs.queries import RunQueries
-from abb_api.tenancy import Principal
 
 logger = logging.getLogger(__name__)
 

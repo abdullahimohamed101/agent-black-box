@@ -42,10 +42,27 @@ Database roles: Compose runs `migrate` as the owner (`abb`) and the API/worker a
 
 Native `make dev` does not start the worker, so runs stay `processing` unless you start one (or use `make up`).
 
-## Web app against the API (Phase 4)
-`pnpm --filter @abb/web dev` serves the UI on 3000 (`next dev --port 3100` for a second instance). It reads the API through a
-server-side proxy (ADR-021): set `ABB_WEB_API_KEY` (a workspace-wide `runs:read` key) and `ABB_API_INTERNAL_URL` in `.env`, or set
-`ABB_WEB_DATA_SOURCE=fixtures` to browse deterministic fixtures with no API. Open `/w/<workspace>/projects/all`.
-With Compose (`--profile app`) the web service gets `ABB_API_INTERNAL_URL=http://api:8000` and passes `ABB_WEB_API_KEY` through from
-your shell or `.env`; without a key it answers 503 `WEB_NOT_CONFIGURED`. `ABB_WEB_DATA_SOURCE=fixtures` is refused in production
-builds unless `ABB_WEB_ALLOW_FIXTURES=1` (Playwright sets it).
+## Web app against the API (Phase 4, sign-in in Phase 15)
+`pnpm --filter @abb/web dev` serves the UI on 3000 (`next dev --port 3100` for a second instance). The browser holds a session cookie and
+nothing else; the server-side proxy forwards that cookie to the API (ADR-060), so there is no web key to configure. Set
+`ABB_API_INTERNAL_URL` and `ABB_WEB_ORIGIN` (see `.env.example`), or set `ABB_WEB_DATA_SOURCE=fixtures` to browse deterministic
+fixtures with no API and no sign-in. With Compose (`--profile app`) the web service gets `ABB_API_INTERNAL_URL=http://api:8000`.
+`ABB_WEB_DATA_SOURCE=fixtures` is refused in production builds unless `ABB_WEB_ALLOW_FIXTURES=1` (Playwright sets it).
+
+### Signing in locally (no identity-provider account needed)
+1. `make dev` (API :8000 and web :3000) and, in another terminal, `scripts/fake-oidc.sh` (a DEVELOPMENT-ONLY provider on :8900 that
+   accepts any email; client id `abb-dev`). In `.env` set `ABB_OIDC_ISSUER=http://localhost:8900`, `ABB_OIDC_CLIENT_ID=abb-dev` and
+   `ABB_WEB_ORIGIN=http://localhost:3000`, then restart the API.
+2. `make seed` creates the `local` workspace, a project, a dev API key and the local owner `owner@local.test` (OWNER). The owner exists only
+   under `ABB_ENVIRONMENT=development|test` (`make seed` sets `ABB_ALLOW_DEV_SESSIONS=1` for its own run).
+3. Open http://localhost:3000, choose "Sign in", type `owner@local.test` on the fake provider's page. You land on `/w/local/projects/all`.
+   Any other email signs in too but sees "no workspaces" until an owner invites it (Settings, Members; the link is shown once) or
+   `python -m abb_api.cli add-member --workspace local --email you@example.com --role VIEWER`.
+4. `make up` (Compose, `app` profile) does the same with a `fake-oidc` service (dev only) and ABB_ENVIRONMENT=development; run `make seed`
+   against the published Postgres, then sign in at http://localhost:3000.
+
+Scripts and Playwright never log in through a provider: `python -m abb_api.cli create-session --email <member> --hours 1` mints a
+session (prints the cookie value once; refused unless `ABB_ENVIRONMENT` is development or test **and** `ABB_ALLOW_DEV_SESSIONS=1`). The
+only browser test that logs in for real is `make auth-e2e` (fake provider). A real provider needs only `ABB_OIDC_ISSUER`,
+`ABB_OIDC_CLIENT_ID` (+ `ABB_OIDC_CLIENT_SECRET`) and `ABB_WEB_ORIGIN`; the provider must send `email_verified: true`
+([auth-and-access runbook](../runbooks/auth-and-access.md)).

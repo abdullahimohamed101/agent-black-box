@@ -11,10 +11,10 @@ from abb_api.analytics.store import (
     AnalyticsScope,
     AnalyticsStore,
 )
+from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.projects.access import authorise_project
-from abb_api.tenancy import Principal
 
 
 def _invalid(message: str) -> AppError:

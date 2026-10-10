@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -64,7 +64,7 @@ typecheck:
 # Local development only: workspace "local", project "demo" and a dev API key in .local/dev-api-key
 # (owner-only file, gitignored). Safe to repeat; it keeps a still-valid key.
 seed:
-	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run python -m abb_api.cli seed --key-file $(CURDIR)/.local/dev-api-key
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && ABB_ALLOW_DEV_SESSIONS=1 uv run python -m abb_api.cli seed --key-file $(CURDIR)/.local/dev-api-key
 
 # Regenerate the committed JSON Schema and TypeScript types from the Pydantic models.
 schema:
@@ -130,6 +130,10 @@ coding-e2e:
 
 e2e-real:
 	pnpm --filter @abb/web build && scripts/e2e-web-real.sh
+
+# Sign-in, workspaces, roles and the stream re-check in a real browser against the dev-only fake OIDC provider (Phase 15).
+auth-e2e:
+	pnpm --filter @abb/web build && scripts/auth-e2e.sh
 
 # Analytics: browser E2E over known runs, and the Stage A benchmark (docs/benchmarks/phase-7-analytics.md).
 analytics-e2e:

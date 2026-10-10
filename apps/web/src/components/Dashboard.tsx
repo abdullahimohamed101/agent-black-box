@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { formatCost, formatDuration } from "@/lib/format";
-import { analyticsPath, runsPath, projectFilter, type Base } from "@/lib/routes";
+import { analyticsPath, runsPath, type Base } from "@/lib/routes";
+import { useProjectId } from "@/components/WorkspaceProvider";
 import { useAnalyticsSummary, useRuns } from "@/lib/queries";
 import { RunsTable } from "./RunsTable";
 import { Empty, ErrorState, Loading } from "./States";
@@ -28,7 +29,7 @@ const pct = (r: number | null) => (r == null ? "—" : `${Math.round(r * 100)}%`
  * are the newest runs, fetched separately.
  */
 export function Dashboard({ base }: { base: Base }) {
-  const project = projectFilter(base.project);
+  const project = useProjectId(base.project);
   const stats = useAnalyticsSummary(project, DAYS);
   const recent = useRuns({ project }, 8);
   const failed = useRuns({ project, statuses: ["FAILED", "TIMED_OUT", "BLOCKED"] }, 5);

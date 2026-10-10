@@ -21,7 +21,7 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-012 | Run state derived asynchronously through a transactional outbox | 2 | Accepted ([file](decisions/ADR-012-derived-run-state-and-outbox.md)) |
 | ADR-013 | Python SDK is standard-library only; contract tests replace pydantic | 3 | Accepted ([file](decisions/ADR-013-stdlib-python-sdk.md)) |
 | ADR-020 | Web data fetching: TanStack Query behind a same-origin read proxy | 4 | Accepted ([file](decisions/ADR-020-web-data-fetching-and-cache.md)) |
-| ADR-021 | Web reads the API through a server-side proxy holding a `runs:read` key | 4 | Accepted ([file](decisions/ADR-021-web-api-access-before-auth.md)) |
+| ADR-021 | Web reads the API through a server-side proxy holding a `runs:read` key | 4 | Superseded by ADR-060 ([file](decisions/ADR-021-web-api-access-before-auth.md)) |
 | ADR-022 | Live streams resume by arrival time and wake on Postgres NOTIFY | 5 | Accepted ([file](decisions/ADR-022-live-stream-resume-and-wakeup.md)) |
 | ADR-030 | Artifacts behind an `ArtifactStore` contract; client-id upload; chunked reads (implements ADR-005) | 6 | Accepted ([file](decisions/ADR-030-artifact-store-and-upload-api.md)) |
 | ADR-031 | Coding-agent telemetry vocabulary, command risk classes, secret-safe capture | 6 | Accepted ([file](decisions/ADR-031-coding-agent-telemetry-and-capture.md)) |
@@ -33,3 +33,6 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-050 | Adapters are separate distributions depending only on the SDK; frameworks are optional extras | 8 | Accepted ([file](decisions/ADR-050-adapter-packaging-and-optional-dependencies.md)) |
 | ADR-051 | Shared conformance suite: scenarios, structural rules, golden fixtures | 8 | Accepted ([file](decisions/ADR-051-adapter-conformance-suite.md)) |
 | ADR-052 | Adapter behavior contract: never raise, run ownership, explicit parenting, no payloads by default | 8 | Accepted ([file](decisions/ADR-052-adapter-behavior-contract.md)) |
+| ADR-060 | Dashboard identity via OIDC with API-owned, database-backed sessions (supersedes ADR-021) | 15 | Accepted ([file](decisions/ADR-060-dashboard-identity-oidc-sessions.md)) |
+| ADR-061 | One authorization helper; keys and people share the enforcement path; the matrix is data | 15 | Accepted ([file](decisions/ADR-061-authorization-helper-and-role-matrix.md)) |
+| ADR-062 | Append-only, bounded workspace audit log | 15 | Accepted ([file](decisions/ADR-062-append-only-audit-log.md)) |

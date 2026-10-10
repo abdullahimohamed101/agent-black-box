@@ -735,7 +735,7 @@ async def test_an_unexpected_error_during_authentication_is_a_generic_500(
     async def boom(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("internal-detail")
 
-    monkeypatch.setattr("abb_api.auth.dependencies.authenticate", boom)
+    monkeypatch.setattr("abb_api.authz.dependencies.authenticate", boom)
     response = await api.get("/v1/runs")
     error(response, 500, "INTERNAL_ERROR")
     assert "internal-detail" not in response.text

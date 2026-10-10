@@ -1,5 +1,6 @@
 import type { EventOut } from "@/lib/api/types";
 import { num } from "./format";
+import { contentText, isWithheld } from "./withheld";
 
 /** Pure logic for coding-agent runs: risk labels, artifact references, sensitive paths and the run's story. */
 
@@ -82,7 +83,7 @@ export function buildStory(events: readonly EventOut[]): Step[] {
           kind: "read",
           tone: "neutral",
           label: "Read",
-          detail: shortPath(str(a["file.path"])),
+          detail: shortPath(contentText(e, "file.path")),
         });
         break;
       case "llm.request.completed":
@@ -107,7 +108,7 @@ export function buildStory(events: readonly EventOut[]): Step[] {
           kind: "edit",
           tone: "neutral",
           label: `Edit (${op})`,
-          detail: `${shortPath(str(a["file.path"]))}${added != null || removed != null ? ` +${added ?? 0} -${removed ?? 0}` : ""}`,
+          detail: `${shortPath(contentText(e, "file.path"))}${added != null || removed != null ? ` +${added ?? 0} -${removed ?? 0}` : ""}`,
         });
         break;
       }
@@ -121,6 +122,7 @@ export function buildStory(events: readonly EventOut[]): Step[] {
           const ok = (failed ?? 0) === 0 && (code ?? 0) === 0;
           const passed = num(a["test.passed"]) ?? 0;
           const names = Array.isArray(a["test.failing"]) ? (a["test.failing"] as string[]) : [];
+          const namesHidden = isWithheld(e, "test.failing");
           steps.push({
             key,
             eventId: key,
@@ -129,9 +131,10 @@ export function buildStory(events: readonly EventOut[]): Step[] {
             label: `Tests, attempt ${attempt}: ${ok ? "pass" : "fail"}`,
             detail: ok
               ? `${passed} of ${total} passed`
-              : `${failed ?? "?"} failed, ${passed} passed${names.length ? `: ${names.join(", ")}` : ""}`,
+              : `${failed ?? "?"} failed, ${passed} passed${namesHidden ? `: failing tests ${contentText(e, "test.failing")}` : names.length ? `: ${names.join(", ")}` : ""}`,
           });
         } else if (!(str(a["shell.command"]) ?? "").startsWith("git ")) {
+          // a withheld command reads as the marker, so it cannot be told from git here: it is a plain "Command"
           // git commands are told by their own branch/commit/push steps
           steps.push({
             key,
@@ -139,7 +142,7 @@ export function buildStory(events: readonly EventOut[]): Step[] {
             kind: "command",
             tone: code ? "bad" : "neutral",
             label: code ? `Command failed (exit ${code})` : "Command",
-            detail: str(a["shell.command"]) ?? "",
+            detail: contentText(e, "shell.command") ?? "",
           });
         }
         break;
@@ -171,8 +174,8 @@ export function buildStory(events: readonly EventOut[]): Step[] {
                 ? "Commit"
                 : "Branch",
           detail:
-            str(a["git.push_target"]) ??
-            str(a["git.branch"]) ??
+            contentText(e, "git.push_target") ??
+            contentText(e, "git.branch") ??
             str(a["git.commit_hash"])?.slice(0, 10) ??
             "",
         });

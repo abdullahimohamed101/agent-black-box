@@ -8,11 +8,15 @@ from abb_event_schema.event import Event
 from abb_event_schema.ids import IdKind, from_uuid, new_id, to_uuid
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from abb_api.authz import actions
+from abb_api.authz.principal import Principal
+from abb_api.authz.service import holds
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import parse_public_id
-from abb_api.projects.repository import ProjectRepository
+from abb_api.projects.access import authorise_project
 from abb_api.runs import cursors
+from abb_api.runs.content import span_name_is_content, withhold_attributes
 from abb_api.runs.event_queries import EventQueries
 from abb_api.runs.queries import RunQueries, RunRecord
 from abb_api.runs.repository import RunRepository
@@ -25,7 +29,6 @@ from abb_api.runs.schemas import (
     SpanOut,
     SpanPage,
 )
-from abb_api.tenancy import Principal
 from abb_api.traces.repository import SpanRecord, SpanRepository
 
 
@@ -41,11 +44,27 @@ def project_not_found() -> AppError:
     return _not_found("PROJECT_NOT_FOUND", "Project")
 
 
-def event_out(event: Event, has_payload: bool, *, with_payload: bool) -> EventOut:
+def event_out(
+    event: Event,
+    has_payload: bool,
+    *,
+    with_payload: bool,
+    reads_content: bool,
+) -> EventOut:
+    """`reads_content`: the caller holds `payload.read`. Without it, command text and file paths
+    in the attributes are replaced by a marker (review F3) and, on the detail endpoint, the body is
+    dropped and the response says so (D10). Lists and streams never carry payloads at all, so they
+    never set `payload_withheld`. The stored event is untouched (INV-1)."""
     wire = event.to_wire()
-    wire.setdefault("attributes", {})
-    wire["payload"] = wire.get("payload") if with_payload else None
-    return EventOut(**wire, has_payload=has_payload)
+    attributes = wire.setdefault("attributes", {})
+    hidden: list[str] = []
+    if not reads_content:
+        wire["attributes"], hidden = withhold_attributes(attributes)
+    withheld = with_payload and not reads_content
+    wire["payload"] = wire.get("payload") if with_payload and reads_content else None
+    return EventOut(
+        **wire, has_payload=has_payload, payload_withheld=withheld, withheld_attributes=hidden
+    )
 
 
 def _run_out(record: RunRecord, state: str) -> RunOut:
@@ -69,7 +88,8 @@ def _run_out(record: RunRecord, state: str) -> RunOut:
     )
 
 
-def _span_out(record: SpanRecord) -> SpanOut:
+def _span_out(record: SpanRecord, *, reads_content: bool) -> SpanOut:
+    hide = not reads_content and record.name is not None and span_name_is_content(record.kind)
     return SpanOut(
         id=from_uuid(IdKind.SPAN, record.id),
         run_id=from_uuid(IdKind.RUN, record.run_id),
@@ -77,7 +97,8 @@ def _span_out(record: SpanRecord) -> SpanOut:
         parent_span_id=from_uuid(IdKind.SPAN, record.parent_span_id)
         if record.parent_span_id
         else None,
-        name=record.name,
+        name=None if hide else record.name,
+        name_withheld=hide,
         kind=record.kind,
         agent_id=record.agent_slug,
         status=record.status,
@@ -160,7 +181,7 @@ class RunService:
     ) -> RunPage:
         after_key = self._run_cursor(cursor)
         async with self._engine.connect() as conn:
-            scope_project = await self._project_filter(conn, principal, project_id)
+            scope_project = await authorise_project(conn, principal, project_id)
             queries = RunQueries(conn, principal.tenant, principal.project_id)
             records = await queries.page(
                 statuses=statuses,
@@ -225,8 +246,9 @@ class RunService:
             next_cursor = cursors.encode(
                 cursors.Cursor("events", _event_key(last, mode), mode=mode)
             )
+        reads = holds(principal, actions.PAYLOAD_READ)
         return EventPage(
-            items=[event_out(e, has, with_payload=False) for e, has in page],
+            items=[event_out(e, has, with_payload=False, reads_content=reads) for e, has in page],
             next_cursor=next_cursor,
             ordering_mode=mode,  # type: ignore[arg-type]
         )
@@ -242,7 +264,12 @@ class RunService:
             )
         if event is None:
             raise _not_found("EVENT_NOT_FOUND", "Event")
-        return event_out(event, event.payload is not None, with_payload=True)
+        return event_out(
+            event,
+            event.payload is not None,
+            with_payload=True,
+            reads_content=holds(principal, actions.PAYLOAD_READ),
+        )
 
     async def list_spans(
         self, principal: Principal, run_id: str, *, limit: int, cursor: str | None
@@ -259,7 +286,12 @@ class RunService:
             last = page[-1]
             started = last.started_at.isoformat() if last.started_at else None
             next_cursor = cursors.encode(cursors.Cursor("spans", [started, str(last.id)]))
-        return SpanPage(items=[_span_out(s) for s in page], next_cursor=next_cursor)
+        return SpanPage(
+            items=[
+                _span_out(s, reads_content=holds(principal, actions.PAYLOAD_READ)) for s in page
+            ],
+            next_cursor=next_cursor,
+        )
 
     # ---------------------------------------------------------------- helpers
 
@@ -282,21 +314,6 @@ class RunService:
         if record is None:
             raise run_not_found()
         return record
-
-    async def _project_filter(
-        self, conn: AsyncConnection, principal: Principal, project_id: str | None
-    ) -> uuid.UUID | None:
-        if project_id is None:
-            return None
-        requested = parse_public_id(IdKind.PROJECT, project_id)
-        if requested is None:
-            raise project_not_found()
-        if principal.project_id is not None:
-            if requested != principal.project_id:
-                raise project_not_found()  # a project key cannot even probe other projects
-        elif await ProjectRepository(conn, principal.tenant).get(requested) is None:
-            raise project_not_found()
-        return requested
 
     @staticmethod
     def _run_cursor(token: str | None) -> tuple[datetime, uuid.UUID] | None:

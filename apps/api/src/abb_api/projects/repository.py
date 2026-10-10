@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from abb_event_schema.ids import IdKind
-from sqlalchemy import ColumnElement, Select, select
+from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -56,6 +56,29 @@ class ProjectRepository:
         if row is None:
             raise AlreadyExistsError(f"project '{slug}' already exists")
         return Project(row.id, row.name, row.slug, row.created_at)
+
+    async def count(self) -> int:
+        return int(
+            (
+                await self._conn.execute(
+                    select(func.count())
+                    .select_from(t.projects)
+                    .where(t.projects.c.workspace_id == self._tenant.workspace_id)
+                )
+            ).scalar_one()
+        )
+
+    async def lock_for_create(self) -> None:
+        """Serialise project creation per workspace, so the bound cannot be raced past.
+
+        `FOR NO KEY UPDATE`, like `lock_workspace`: a plain `FOR UPDATE` would also block the
+        key-share locks every foreign-key insert into `workspaces` takes (members, keys, audit).
+        """
+        await self._conn.execute(
+            select(t.workspaces.c.id)
+            .where(t.workspaces.c.id == self._tenant.workspace_id)
+            .with_for_update(key_share=True)
+        )
 
     async def get(self, project_id: uuid.UUID) -> Project | None:
         return await self._one(t.projects.c.id == project_id)

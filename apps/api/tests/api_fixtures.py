@@ -91,10 +91,12 @@ async def build_api(
     *,
     settings: Settings | None = None,
     rate_limiter: RateLimiter | None = None,
+    clock: Tick | None = None,
+    app_options: dict[str, Any] | None = None,
 ) -> AsyncIterator[Api]:
     tenant = await make_tenant(engine, "acme", projects=("alpha", "beta"))
     other = await make_tenant(engine, "globex")
-    clock = Tick()
+    clock = clock or Tick()
     tokens: dict[str, str] = {}
     async with engine.begin() as conn:
         keys = ApiKeyRepository(conn, tenant.context)
@@ -132,6 +134,7 @@ async def build_api(
         else make_settings(runtime_url(database_url)),
         clock=clock,
         rate_limiter=rate_limiter,
+        **(app_options or {}),
     )
     worker_engine = create_async_engine(runtime_url(database_url), poolclass=NullPool)
     worker = Worker(worker_engine, HANDLERS, make_settings(database_url), owner="api-test")
@@ -148,3 +151,33 @@ async def api(
 ) -> AsyncIterator[Api]:
     async for instance in build_api(database_url, engine):
         yield instance
+
+
+WEB_ORIGIN = "http://localhost:3000"
+
+
+@pytest.fixture
+async def web(
+    database_url: str, runtime_database_url: str, engine: AsyncEngine
+) -> AsyncIterator[Api]:
+    """The `api` fixture with cookie sessions switched on (a web origin is configured)."""
+    async for instance in build_api(
+        database_url, engine, settings=make_settings(database_url, web_origin=WEB_ORIGIN)
+    ):
+        yield instance
+
+
+async def person(
+    api: Api, email: str, role: str | None, workspace: str = "acme", *, verified: bool = False
+) -> dict[str, str]:
+    """Headers of a signed-in member (cookie, origin, workspace); creates the user if needed."""
+    from tests.auth_helpers import add_member, mint_session
+
+    tenant = api.tenant if workspace == "acme" else api.other
+    user = await add_member(api.engine, tenant.context.workspace_id, email, role, verified=verified)
+    token = await mint_session(api.engine, user.id, api.clock())
+    return {
+        "cookie": f"abb_session={token}",
+        "origin": WEB_ORIGIN,
+        "x-abb-workspace": tenant.workspace_id,
+    }

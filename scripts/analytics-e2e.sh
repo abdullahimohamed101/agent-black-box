@@ -73,13 +73,18 @@ PY
   exit 0
 fi
 
-step "provision a workspace, a project, a write key and a workspace-wide read-only key (secrets never printed)"
+step "provision a workspace, a project, a write key and a script-only read key (secrets never printed)"
 suffix="$(date +%s)$RANDOM"
 cli create-workspace --name "Analytics E2E" --slug "analytics-e2e-$suffix" >/dev/null
 cli create-project --workspace "analytics-e2e-$suffix" --name Demo --slug demo >/dev/null
 WRITE_KEY="$(cli create-key --workspace "analytics-e2e-$suffix" --project demo --scopes events:write runs:read --name analytics-write)"
-READ_KEY="$(cli create-key --workspace "analytics-e2e-$suffix" --scopes runs:read --name analytics-web-read)"
+READ_KEY="$(cli create-key --workspace "analytics-e2e-$suffix" --scopes runs:read --name analytics-script-read)"
 [[ "$WRITE_KEY" == abb_live_* && "$READ_KEY" == abb_live_* ]] || fail "key creation"
+
+step "mint a development session for a workspace owner (the browser's only credential; gated by ABB_ENVIRONMENT + ABB_ALLOW_DEV_SESSIONS)"
+cli add-member --workspace "analytics-e2e-$suffix" --email e2e-owner@local.test --role OWNER >/dev/null
+SESSION="$(ABB_ENVIRONMENT=development ABB_ALLOW_DEV_SESSIONS=1 cli create-session --email e2e-owner@local.test --hours 1)"
+[ -n "$SESSION" ] || fail "could not mint a session"
 
 step "write the known runs and wait for the worker to derive them"
 DRIVER_API_URL="$API" DRIVER_WRITE_KEY="$WRITE_KEY" \
@@ -95,6 +100,6 @@ echo "$body" | grep -q '"finished":4' || fail "worker did not derive the runs: $
 step "Playwright: browser <-> web server <-> API"
 cd "$root/apps/web"
 mkdir -p "$root/docs/screenshots/phase-7"
-E2E_ANALYTICS_API_KEY="$READ_KEY" E2E_ANALYTICS_API_URL="$API" E2E_ANALYTICS_EXPECT="$WORK/expect.json" \
+E2E_SESSION_TOKEN="$SESSION" E2E_WORKSPACE="analytics-e2e-$suffix" E2E_ANALYTICS_API_URL="$API" E2E_ANALYTICS_EXPECT="$WORK/expect.json" \
   pnpm exec playwright test e2e/analytics.spec.ts
 printf '\nANALYTICS-E2E PASSED\n'

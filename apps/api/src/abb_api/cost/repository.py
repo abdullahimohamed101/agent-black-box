@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from abb_event_schema.ids import to_uuid
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.cost.builtin import BUILTIN_ENTRIES
@@ -15,6 +15,7 @@ from abb_api.cost.engine import CostLine
 from abb_api.cost.pricing import PriceBook, PriceEntry
 from abb_api.db import tables as t
 from abb_api.tenancy import TenantContext
+from abb_api.workspaces.repository import lock_workspace
 
 LINE_CHUNK = 1000  # 25 bind parameters per line; one statement allows at most 32767
 
@@ -86,6 +87,21 @@ class CostRepository:
             OverrideRecord(**{c: getattr(r, c) for c in OverrideRecord.__dataclass_fields__})
             for r in rows
         ]
+
+    async def count_overrides(self) -> int:
+        return int(
+            (
+                await self._conn.execute(
+                    select(func.count())
+                    .select_from(t.pricing_overrides)
+                    .where(t.pricing_overrides.c.workspace_id == self._tenant.workspace_id)
+                )
+            ).scalar_one()
+        )
+
+    async def lock_for_create(self) -> None:
+        """Serialise override creation per workspace, so the bound cannot be raced past."""
+        await lock_workspace(self._conn, self._tenant)
 
     async def price_book(self, project_id: uuid.UUID | None) -> PriceBook:
         records = await self.overrides(project_id)

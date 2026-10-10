@@ -155,4 +155,4 @@ async def client_db_down() -> AsyncIterator[httpx.AsyncClient]:
 
 # Registered last: api_fixtures imports helpers defined above, so the import cannot be at the top.
 from tests.analytics_fixtures import seeded  # noqa: E402, F401
-from tests.api_fixtures import api  # noqa: E402, F401  (re-exported so pytest finds the fixture)
+from tests.api_fixtures import api, web  # noqa: E402, F401  (re-exported for pytest)

@@ -786,3 +786,112 @@ h3 {
 .updating {
   margin: 0.25rem 0;
 }
+
+/* ---- Phase 15: sign-in, workspace switcher, settings ---- */
+a.button,
+button.primary {
+  display: inline-block;
+  font: inherit;
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 4px;
+  text-decoration: none;
+  cursor: pointer;
+}
+button[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+button.danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+.who form {
+  display: inline;
+}
+.switcher {
+  position: relative;
+}
+.switcher summary {
+  cursor: pointer;
+}
+.switcher ul {
+  position: absolute;
+  z-index: 5;
+  margin: 0.3rem 0 0;
+  padding: 0.4rem 0.75rem;
+  list-style: none;
+  min-width: 12rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.switcher li {
+  padding: 0.15rem 0;
+}
+.field input,
+.field select,
+.field textarea {
+  font: inherit;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0.5rem 0 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.subnav a {
+  text-decoration: none;
+  padding: 0.3rem 0.1rem;
+  border-bottom: 2px solid transparent;
+}
+.subnav a[aria-current="page"] {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: end;
+  margin: 0.75rem 0 1rem;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+.field-error {
+  color: var(--bad);
+  font-size: 0.8rem;
+}
+.secret {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  margin: 0.4rem 0;
+}
+.withheld {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}

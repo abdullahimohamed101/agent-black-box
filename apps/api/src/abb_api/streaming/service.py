@@ -11,6 +11,11 @@ from abb_event_schema.event import Event
 from abb_event_schema.ids import IdKind, to_uuid
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from abb_api.auth.service import credential_still_grants
+from abb_api.authz import actions
+from abb_api.authz.principal import Principal
+from abb_api.authz.service import holds
+from abb_api.clock import Clock, system_clock
 from abb_api.core.config import Settings
 from abb_api.core.errors import ErrorBody, ErrorCategory
 from abb_api.core.request_context import get_request_id
@@ -21,7 +26,6 @@ from abb_api.streaming import sse
 from abb_api.streaming.hub import StreamHub
 from abb_api.streaming.limits import StreamLease, StreamLimiter
 from abb_api.streaming.resume import ArrivalCursor
-from abb_api.tenancy import Principal
 
 log = logging.getLogger("abb.streaming")
 
@@ -41,8 +45,14 @@ class OpenStream:
 
 class StreamService:
     def __init__(
-        self, engine: AsyncEngine, hub: StreamHub, runs: RunService, settings: Settings
+        self,
+        engine: AsyncEngine,
+        hub: StreamHub,
+        runs: RunService,
+        settings: Settings,
+        clock: Clock = system_clock,
     ) -> None:
+        self._clock = clock
         self._engine = engine
         self._hub = hub
         self._runs = runs
@@ -61,7 +71,9 @@ class StreamService:
             event_uuid = parse_public_id(IdKind.EVENT, last_event_id) if last_event_id else None
             if event_uuid is not None:  # an unknown or malformed id just means "from the start"
                 start = await EventQueries(conn, principal.tenant).arrival_of(record.id, event_uuid)
-        lease = self.limiter.acquire(principal.key_id)
+        # Per actor: ten streams per person across tabs and devices, ten per key.
+        scope = "user" if principal.kind == "user" else "key"
+        lease = self.limiter.acquire(principal.actor_id, scope=scope)
         return OpenStream(principal, record.id, start, lease)
 
     async def frames(self, stream: OpenStream) -> AsyncIterator[bytes]:
@@ -70,8 +82,10 @@ class StreamService:
         cursor = ArrivalCursor(stream.start, timedelta(seconds=s.stream_overlap_seconds))
         key = (stream.principal.workspace_id, stream.run_id)
         deadline = loop.time() + s.stream_max_lifetime_seconds
-        last_write = last_fresh = last_check = loop.time()
+        last_write = last_fresh = last_check = last_reauth = loop.time()
         subscription = self._hub.subscribe(key)
+        # Re-read with the credential: a demotion to VIEWER keeps `run.read` but loses the content.
+        reads_content = holds(stream.principal, actions.PAYLOAD_READ)
         try:
             yield sse.retry_frame()
             yield sse.comment("open")
@@ -83,6 +97,12 @@ class StreamService:
                 if (pause := s.stream_min_poll_seconds - (loop.time() - polled)) > 0:
                     await asyncio.sleep(pause)
                 polled = loop.time()
+                if polled - last_reauth >= s.stream_reauth_seconds:
+                    last_reauth = polled
+                    if not await self._still_authorised(stream):
+                        yield self._unauthorised_frame()
+                        return
+                    reads_content = await self._still_authorised(stream, actions.PAYLOAD_READ)
                 check = polled - last_check >= s.stream_window_check_seconds
                 if check:
                     last_check = polled
@@ -90,7 +110,9 @@ class StreamService:
                     for event, has_payload in batch:
                         yield sse.frame(
                             "trace_event",
-                            event_out(event, has_payload, with_payload=False).model_dump_json(),
+                            event_out(
+                                event, has_payload, with_payload=False, reads_content=reads_content
+                            ).model_dump_json(),
                             event.event_id,
                         )
                         if event.event_type in TERMINAL:
@@ -111,6 +133,7 @@ class StreamService:
                 wait = min(s.stream_fallback_poll_seconds, max(0.05, deadline - now))
                 if terminal:
                     wait = min(wait, max(0.05, s.stream_end_quiet_seconds - (now - last_fresh)))
+                wait = min(wait, max(0.05, s.stream_reauth_seconds - (now - last_reauth)))
                 await subscription.wait(wait)
         except (
             Exception
@@ -119,6 +142,10 @@ class StreamService:
             yield self._error_frame()
         finally:
             subscription.close()
+
+    async def _still_authorised(self, stream: OpenStream, action: str = actions.RUN_READ) -> bool:
+        async with self._db, self._engine.connect() as conn:
+            return await credential_still_grants(conn, stream.principal, action, self._clock)
 
     async def _last_lifecycle(self, stream: OpenStream) -> str | None:
         async with self._db, self._engine.connect() as conn:
@@ -173,6 +200,20 @@ class StreamService:
                 return
             last = rows[-1][0]
             after = (last.received_at, to_uuid(last.event_id))
+
+    @staticmethod
+    def _unauthorised_frame() -> bytes:
+        """The credential, session or role no longer holds. Not retryable: a reconnect would be
+        refused with the precise 401/403/404, and the reason is not spelled out in-band."""
+        body = ErrorBody(
+            code="STREAM_UNAUTHORIZED",
+            message="The credential, session or permission behind this stream no longer holds.",
+            category=ErrorCategory.AUTHENTICATION,
+            retryable=False,
+            request_id=get_request_id(),
+            details={},
+        )
+        return sse.json_frame("error", {"error": body.model_dump(mode="json")})
 
     @staticmethod
     def _error_frame() -> bytes:

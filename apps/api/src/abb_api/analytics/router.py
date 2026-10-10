@@ -9,13 +9,13 @@ from fastapi import APIRouter, Depends, Query, Request
 from abb_api.analytics.schemas import CostReport, PerformanceReport, ReliabilityReport, Summary
 from abb_api.analytics.service import AnalyticsService
 from abb_api.analytics.store import DEFAULT_TOP, MAX_TOP, AnalyticsScope
-from abb_api.auth import scopes
-from abb_api.auth.dependencies import require_principal
+from abb_api.authz import actions
+from abb_api.authz.dependencies import require
+from abb_api.authz.principal import Principal
 from abb_api.core.errors import ErrorEnvelope
-from abb_api.tenancy import Principal
 
 router = APIRouter(prefix="/v1/analytics", tags=["analytics"])
-Reader = Annotated[Principal, Depends(require_principal(scopes.RUNS_READ))]
+Reader = Annotated[Principal, Depends(require(actions.ANALYTICS_READ))]
 
 _ERROR_TEXT = {
     401: "Missing, malformed, unknown, revoked or expired API key.",

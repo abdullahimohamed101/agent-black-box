@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.auth import scopes
 from abb_api.auth.repository import LAST_USED_RESOLUTION, ApiKeyLookup, ApiKeyRepository
-from abb_api.auth.service import authenticate, require_scope
+from abb_api.auth.service import authenticate
+from abb_api.authz.matrix import scope_actions
+from abb_api.authz.service import PermissionDenied, authorize
 from abb_api.core.domain import NotFoundError
 from abb_api.core.errors import AppError
 from abb_api.projects.repository import ProjectRepository
@@ -47,8 +49,9 @@ async def test_create_and_authenticate_a_project_key(engine: AsyncEngine) -> Non
         principal = await authenticate(conn, created.token, Tick())
     assert principal.workspace_id == a.workspace_id
     assert principal.project_id == project_a.id
-    assert principal.scopes == ALL
-    assert principal.key_id == created.stored.key_id
+    assert principal.kind == "api_key"
+    assert principal.actions == scope_actions(ALL)
+    assert principal.actor_id == f"key:{created.stored.key_id}"
     assert created.token not in repr(principal)  # the secret never travels with the principal
 
 
@@ -93,7 +96,7 @@ async def test_all_failure_modes_give_the_same_401(engine: AsyncEngine) -> None:
         bodies.append((exc.value.code, exc.value.message, exc.value.details))
     assert len(set(map(repr, bodies))) == 1  # indistinguishable to the caller
     async with engine.begin() as conn:
-        assert (await authenticate(conn, good.token, clock)).key_id == good.stored.key_id
+        assert (await authenticate(conn, good.token, clock)).actor_id == f"key:{good.stored.key_id}"
 
 
 async def test_expiry_is_exclusive_of_the_expiry_instant(engine: AsyncEngine) -> None:
@@ -112,14 +115,21 @@ async def test_expiry_is_exclusive_of_the_expiry_instant(engine: AsyncEngine) ->
 def test_scope_enforcement_is_a_403_with_the_missing_scope() -> None:
     import uuid
 
-    from abb_api.tenancy import Principal
+    from abb_api.authz import actions
+    from abb_api.authz.principal import Principal
 
-    principal = Principal(uuid.uuid4(), None, frozenset({scopes.RUNS_READ}), "k")
-    require_scope(principal, scopes.RUNS_READ)
-    with pytest.raises(AppError) as exc:
-        require_scope(principal, scopes.EVENTS_WRITE)
+    principal = Principal(
+        "api_key", uuid.uuid4(), None, scope_actions(frozenset({scopes.RUNS_READ})), "key:k"
+    )
+    authorize(principal, actions.RUN_READ)
+    with pytest.raises(PermissionDenied) as exc:
+        authorize(principal, actions.EVENT_WRITE)
     assert exc.value.status_code == 403 and exc.value.code == "INSUFFICIENT_SCOPE"
-    assert exc.value.details == {"required_scope": "events:write"}
+    # `required_scope` is what existing SDK clients read; `required_permission` is additive.
+    assert exc.value.details == {
+        "required_scope": "events:write",
+        "required_permission": "event.write",
+    }
 
 
 async def test_last_used_is_throttled_to_once_a_minute(engine: AsyncEngine) -> None:
@@ -190,10 +200,10 @@ async def test_concurrent_authentication_is_safe(engine: AsyncEngine) -> None:
 
     async def once() -> str:
         async with engine.begin() as conn:
-            return (await authenticate(conn, created.token, Tick())).key_id
+            return (await authenticate(conn, created.token, Tick())).actor_id
 
     results = await asyncio.gather(*[once() for _ in range(20)])
-    assert set(results) == {created.stored.key_id}
+    assert set(results) == {f"key:{created.stored.key_id}"}
 
 
 @pytest.mark.parametrize(
