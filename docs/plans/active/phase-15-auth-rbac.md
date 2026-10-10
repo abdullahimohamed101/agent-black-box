@@ -13,7 +13,7 @@ Known issues: closes KI-029 (S1), KI-027 (S2), KI-051 (S3), KI-033 (S3).
 
 1. **Identity provider.** Generic OIDC (authorization code + PKCE, discovery document), so Google, Okta, Auth0, Keycloak, Entra all work with three settings; development and CI use a local fake provider, so no account or credential is needed until the final manual check. GitHub (OAuth2 without OIDC) is a later adapter if wanted. The real provider's client id/secret are only needed by the user, at the end, for one manual login.
 2. **Sign-up model.** Invite-only. The first OWNER of a workspace is created by the CLI (`add-member`); everyone else joins through an invitation link created by an OWNER/ADMIN. A user who logs in with no membership sees "no workspaces" and can accept an invitation. Self-service "create a workspace on first login" is deferred.
-3. **What a VIEWER sees.** Metadata only. Captured content (inline payloads, event payloads via the detail endpoint, artifacts such as diffs and shell output) needs `payload.read`, which VIEWER and BILLING do not have (spec §93: Class 2 content; §91 lists `payload.read` as its own permission). The run page still works for a VIEWER: panels say "content hidden by your role".
+3. **What a VIEWER sees.** Metadata only. Captured content (inline payloads, event payloads via the detail endpoint, artifacts such as diffs and shell output) needs `payload.read`, which VIEWER and BILLING do not have (spec §93: Class 2 content; §91 lists `payload.read` as its own permission). The run page still works for a VIEWER: panels say "content hidden by your role". Shell command text and file paths count as captured content (review F3, below).
 4. **BILLING and prices.** BILLING may read analytics and prices and write pricing overrides, but not read runs or payloads.
 
 ## Outcome
@@ -869,3 +869,35 @@ the main checkout was running and was not touched. Commands were run from the wo
 
 **Mutation checks** (review step, AC-15) were not repeated in this run. The plan's list (drop the `cookie == query.state` comparison, skip nonce or signature checks, forward `Authorization`
 in the proxy, remove the last-owner `FOR UPDATE`...) is the reviewer's to run; the `FOR UPDATE` mutant was already shown to fail `test_two_owners_removing_each_other_at_once_leave_one` (step 6).
+
+### Review F3: command text and file paths are content
+
+Decision (the user, "Option 1"): `shell.command` and `file.path` are captured content. Actors without `payload.read` (VIEWER; BILLING cannot read runs)
+must not receive them; actors with it (OWNER, ADMIN, DEVELOPER, SECURITY, `runs:read` keys) see everything as before. Stored events and derived
+summaries are unchanged (INV-1/INV-2): the API projects per actor at read time (`runs/content.py`, `event_out(..., reads_content=...)`).
+
+- **Paths traced.** Event list, detail and stream frames (`attributes`): redacted. Spans (`name` is built from `shell.command`, `file.path` or
+  `span.name`/`tool.name`/`llm.model` by `spans.py:_display_name`): for kinds `shell`, `file`, `git` and `null` (a span with no opener, named by a
+  point event) `name` is `null` with `name_withheld: true`. Run summary and list: carry only counts (`files_modified` is a number), `run.name` and
+  `metadata` are caller labels; no command or path. Analytics: tool and model names only (`NAMED_KINDS`), no shell or file span names. Audit
+  details: auth actions only. Artifact content and payloads: already `payload.read`. `first_error` and the headline are UI strings built from
+  `describe(event)`, so they are covered by the event redaction, not stored.
+- **Included** (`CONTENT_ATTRIBUTES` in the event registry): `shell.command`, `shell.cwd`, `file.path`, `git.repo`, `git.branch`,
+  `git.push_target`, `http.url`, `test.failing` (test ids carry file paths). Also any unregistered attribute whose last segment is `command`, `cmd`,
+  `argv`, `args`, `path`, `paths`, `file`, `filename`, `cwd`, `url` or `uri` (unknown attributes are stored as sent, so an integration can name a
+  command anything).
+- **Excluded on purpose:** metadata (`shell.exit_code`, `shell.duration_ms`, `shell.risk_class`, `shell.category`, byte counts, `file.lines_*`,
+  `file.language`, `file.operation`, hashes, `diff.artifact` and `*_artifact` ids, `git.*_commit`/`commit_hash`, counts); labels (`tool.name`,
+  `llm.model`, `run.name`, `span.name` of custom spans, `tool.operation`, `policy.*`, `retry.reason`, `loop.pattern`). The labels are the schema's
+  contract for non-content text; filed as KI-078 with the unregistered-key heuristic.
+- **Fail closed.** `tests/authz/test_content_withheld.py` fails for any string attribute in `KNOWN_ATTRIBUTES` that is in neither
+  `CONTENT_ATTRIBUTES` nor the reviewed-metadata set in the test.
+- **Streams.** The frame writer re-reads `payload.read` at every credential re-check, so a demotion to VIEWER (which keeps `run.read`) stops content in
+  the frames that follow (`test_a_demotion_to_viewer_withholds_command_text_from_the_frames_that_follow`).
+- **Response shape.** `EventOut.withheld_attributes: list[str]` (default `[]`), `SpanOut.name_withheld: bool`; the value is the marker `[withheld]`.
+  The web renders "content withheld for your role" (`lib/withheld.ts`), as text only, in the story, timeline, drawer attributes and the shell and
+  file/git panels, and drops the sensitive-path badge for a withheld path.
+- **Evidence.** New tests fail without the fix (attribute projection removed, span projection removed, stream re-read removed, an attribute left
+  unclassified, `isWithheld` always false in the web): each was run and failed, then restored. `scripts/auth-e2e.sh`: a downgraded invitee sees the
+  command and path before the downgrade and neither (nor in the events and spans JSON) after it.
+

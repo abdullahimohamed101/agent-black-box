@@ -67,6 +67,11 @@ web shows or hides by it. Resources of another workspace, or of another project 
 Every mutating call above writes one `audit_log` row (ADR-062); denials of people are audited at most `ABB_AUDIT_DENIALS_PER_MINUTE` a minute per
 person. `payload.read` decides content: without it, `GET /v1/runs/{id}/events/{event_id}` returns the event with `payload: null` and
 `payload_withheld: true`, and `GET /v1/artifacts/{id}/content` is `403 PERMISSION_DENIED` before any lookup (artifact metadata stays readable).
+Command text and file paths are content too (ADR-061, review F3): to an actor without `payload.read`, event lists, detail and stream frames carry
+`"[withheld]"` in place of the registry's content attributes (`shell.command`, `shell.cwd`, `file.path`, `git.repo`, `git.branch`,
+`git.push_target`, `http.url`, `test.failing`, and unregistered keys ending in `command`, `path`, `url` and similar) and list those keys in
+`withheld_attributes`; spans of kind `shell`, `file`, `git` or `null` return `name: null, name_withheld: true`. Metadata (exit code, duration, risk
+class, line counts, hashes) is unchanged. Actors with `payload.read` see the stored values.
 
 ## Errors
 
@@ -233,7 +238,8 @@ client that stopped reading. Late events after `run_end` appear on a new connect
 `event_type` (repeatable; well-formed names only), `status` (repeatable; `success|error|timeout|cancelled|blocked`), `span_id`; `limit` 1-500 (default 100). The page includes
 `ordering_mode`; cursors embed it, so a cursor from before a mode change gets `409 CURSOR_STALE`.
 Payloads are **not** in lists (`has_payload` says whether one exists); `GET /v1/runs/{id}/events/{event_id}`
-returns the full event with its inline payload (or `payload: null`, `payload_withheld: true` to an actor without `payload.read`).
+returns the full event with its inline payload (or `payload: null`, `payload_withheld: true` to an actor without `payload.read`; their `attributes`
+also omit command text and file paths, see `withheld_attributes` under Authorization).
 
 `GET /v1/runs/{id}/spans` returns derived spans (`parent_span_id`, `kind`, `status`, timings, `event_count`)
 by start time (spans that never saw a start event come last), `limit` 1-2000 (default 500). It is empty until

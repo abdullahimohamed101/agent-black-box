@@ -169,7 +169,7 @@ when `email_verified` is true (if the new email collides with another user under
 `identity_conflict` and change nothing); then acceptance really compares the current verified email. Add the scenario to
 `test_members_api.py`.
 
-**F3. VIEWER reads `shell.command`, `file.path` and span names built from them.** `packages/event-schema/src/abb_event_schema/registry.py:76,98`
+**F3. VIEWER reads `shell.command`, `file.path` and span names built from them.** *(Resolved by the user's decision "Option 1": command text and file paths are content; see the plan's Implementation notes, ADR-061 and SECURITY.md.)* `packages/event-schema/src/abb_event_schema/registry.py:76,98`
 (`shell.command` and `file.path` are STRING attributes), `spans.py:44` (span names derive from `shell.command`); event lists,
 event detail and spans are `run.read` routes (`runs/router.py`) and a VIEWER holds `run.read`. `SECURITY.md:3` lists "shell
 output, file names, database query text and tool arguments" as the stored assets, and decision 3 promised "metadata only" for
@@ -245,7 +245,7 @@ so a future caller cannot lose audit rows silently.
 | 6 | session in URL/bearer, after logout, after absolute lifetime with open stream, cookie attributes, no Set-Cookie on error or via proxy | all per tests and reading; the open-stream absolute-expiry case is `test_a_revoked_or_expired_session_ends_its_stream` |
 | 7 | DEVELOPER revoking others'/CLI keys, scope outside enum, ADMIN touching OWNER, last owner incl. concurrent, accept as member/other email/after email change/twice, duplicate invite | all refused (M5, M23, M24, M29) **except** "after an IdP email change", which is F2 |
 | 8 | key as cookie, session as bearer, key on admin routes, key with foreign header, project key listing projects | 401/403 `INSUFFICIENT_SCOPE`/404/own project only (matrix actors, M18, M19) |
-| 9 | VIEWER payload, artifact content for existing/missing/foreign, stream frames, audit details of key/invitation, `/v1/me` of a dual member | withheld (M13), 403/403/403, no payload, no secret or email, no project canary; but see F3 for `shell.command` |
+| 9 | VIEWER payload, artifact content for existing/missing/foreign, stream frames, audit details of key/invitation, `/v1/me` of a dual member | withheld (M13), 403/403/403, no payload, no secret or email, no project canary; `shell.command` and `file.path` withheld too (F3 fixed) |
 | 10 | revoke mid-stream, 11 streams across two sessions | ends within the interval (M12); `429 STREAM_LIMIT` scope `user` (test) |
 | 11 | bounds, 65 KiB body, login limits, backstop, 1,000 denials, abandoned logins | 409s, 413, per-client 429 (but F1), global backstop test, bounded rows (M25), purge on insert (read) |
 | 12 | logs | hygiene test over every record field (read; it covers state, nonce, challenge, code, email, session, `id_token`) |

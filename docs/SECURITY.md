@@ -63,6 +63,15 @@ ingestion edge | control plane | database/object storage | human approvers.
   second copy in the tests (both directions), every route in a registry the tests walk (a route without a case fails CI), an AST test against
   scattered role checks, canary tests that nothing of another workspace leaks, `404` (never `403`) for a workspace or id the actor cannot see.
   VIEWER and BILLING never receive captured content (`payload.read`; event payloads are withheld, artifact content is `403`).
+  Captured content includes shell command text and file paths (review F3, ADR-061). **A VIEWER can see**: that a run, a model call, a tool
+  call, a shell command, a file edit or a git step happened; times, durations, statuses, exit codes, risk classes and categories, token
+  counts, costs, model and tool names, line counts, languages, content hashes, run names, project and agent names, test counts and the
+  analytics built from them. **A VIEWER cannot see**: inline payloads, artifact content (diffs, stdout, stderr), `shell.command`,
+  `shell.cwd`, `file.path`, `git.repo`, `git.branch`, `git.push_target`, `http.url`, `test.failing`, the same-class attributes sent under
+  an unregistered name (last segment `command`, `path`, `url` ...), and the names of shell, file and git spans: those values are replaced by
+  `[withheld]` on the server (events, spans, streams), so the page cannot leak what the API did not send. Free text an integration puts in
+  other fields (`span.name` of a custom span, `tool.operation`, `policy.reason`, `retry.reason`, `run.name`, tags, run `metadata`) is not
+  classified as content; tracked as KI-078.
 - Members are visible to every role of a workspace (`member.read` is in every role, including BILLING and VIEWER: names, emails and roles of the
   people one works with). If that is too open for an organisation, remove `member.read` from a role in `authz/matrix.py` and the literal table
   (one line in two places); tracked as KI-070.

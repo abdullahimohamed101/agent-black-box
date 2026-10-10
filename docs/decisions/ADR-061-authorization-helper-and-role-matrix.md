@@ -42,6 +42,17 @@ must never administer a workspace. Another tenant's resources must stay indistin
 - **Open streams are re-authorized** every `ABB_STREAM_REAUTH_SECONDS` (30): a revoked or expired key, a revoked session or a removed or
   demoted member ends the stream with `event: error` `STREAM_UNAUTHORIZED` (not retryable). The per-process stream cap per credential is now
   per actor, so ten streams per person across tabs and devices.
+- **Command text and file paths are content (amendment, review F3).** `payload.read` governs captured content, and a shell command line or a
+  file path is captured content: a command routinely holds tokens, hostnames and user names. An actor without `payload.read` (VIEWER; BILLING
+  cannot read runs at all) receives, on every route, the attributes in `abb_event_schema.registry.CONTENT_ATTRIBUTES` (`shell.command`,
+  `shell.cwd`, `file.path`, `git.repo`, `git.branch`, `git.push_target`, `http.url`, `test.failing`) and any unregistered attribute whose last
+  name segment is `command`, `cmd`, `argv`, `args`, `path`, `paths`, `file`, `filename`, `cwd`, `url` or `uri`, replaced by the marker
+  `[withheld]`, with the keys listed in the additive `withheld_attributes` of the event (lists, detail and stream frames). The span name of a
+  `shell`, `file`, `git` or unopened (kind `null`) span is returned as `null` with `name_withheld: true`. The kind, status, exit code,
+  duration, risk class, category, line counts, language, hashes, artifact ids and counts stay: "a command ran and failed with exit 2" is
+  metadata. The projection happens at read time (`runs/content.py`); stored events and derived rows are untouched (INV-1, INV-2). Open
+  streams re-read `payload.read` at every credential re-check, so a demotion to VIEWER stops content in the frames that follow. A test
+  fails for any new string attribute that is in neither `CONTENT_ATTRIBUTES` nor the reviewed-metadata list (fail closed).
 
 ## Alternatives
 Per-router role checks (what §91 forbids). Separate principal types for keys and people (two enforcement paths, twice the tests). The workspace
