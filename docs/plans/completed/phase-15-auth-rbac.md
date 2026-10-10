@@ -1,6 +1,6 @@
 # Phase 15 - Auth, workspaces and RBAC
 
-Status: Implemented; pending security review (steps 1-16 done 2026-10-09; AC-14 needs the user's own OIDC credentials and AC-15 is the independent security review; evidence at the end of this file). History: planned and reviewed 2026-10-09 (user decisions 1-4 confirmed; independent review `phase-15-plan-review.md` at 8cc8502 addressed below, see "Review dispositions")
+Status: Completed 2026-10-10 (merged as PR #58; the independent security review is done and its findings fixed or filed; AC-14, a real OIDC provider login, remains UNVERIFIED (env) and is KI-067; evidence at the end of this file). History: planned and reviewed 2026-10-09 (user decisions 1-4 confirmed; independent review `phase-15-plan-review.md` at 8cc8502 addressed below, see "Review dispositions")
 Owner: implementer agent
 Branch: `feature/phase-15-auth-rbac` (from `main` 85d4121; worktree `../abb-worktrees/phase-15`)
 Depends on: Phase 2 (API keys, tenancy), Phase 4/5 (web, read proxy, streams), Phase 6 (artifacts), Phase 7 (pricing overrides)
@@ -826,7 +826,7 @@ is visible in logs and capped in the table; a future "who viewed what" requireme
   `docs/runbooks/auth-and-access.md`. Changed: ADR-021 (superseded), DECISIONS, SECURITY (also the "members visible to every role" and "unscoped lookups" notes asked
   for by the plan), api-v1, TESTING, ARCHITECTURE, README, setup, stream-issues, KNOWN_ISSUES (KI-029/027/051/033 resolved; KI-067..074 are the new deferrals, GitHub issue
   "to file"), IMPLEMENTATION_PLAN, PROJECT_STATE.
-- **Not done**: filing the GitHub issues for KI-067..074 (the user files or approves them); AC-14; AC-15; the compose runtime check (KI-074).
+- **Not done**: AC-14 (real-provider login, KI-067) and the compose runtime check (KI-074). The GitHub issues for KI-067..078 were filed on 2026-10-10 (#59 to #70).
 
 ## Closing evidence (complete-phase walkthrough, 2026-10-09, branch `feature/phase-15-auth-rbac`)
 
@@ -849,7 +849,7 @@ the main checkout was running and was not touched. Commands were run from the wo
 | AC-12 browser | **PASS** (VERIFIED) | `scripts/auth-e2e.sh`: `8 passed`, `AUTH-E2E PASSED` (axe clean on the login, settings, invite and viewer pages; screenshots in `docs/screenshots/phase-15/`). Existing scripts on sessions: `e2e-web-real.sh` `2 passed`; `coding-e2e.sh` `6 passed`; `stream-e2e.sh` `5 passed` (latency p95 6.1 ms); `analytics-e2e.sh` `4 passed`; fixtures project `9 passed, 25 skipped`. Deviation: the login lands on the workspace's own slug, not `/w/local/...`. |
 | AC-13 compatibility | **PARTIAL**: PASS (VERIFIED) / UNVERIFIED (env) | VERIFIED: `scripts/integrations-e2e.sh` `INTEGRATIONS-E2E PASSED` (keys untouched); `INSUFFICIENT_SCOPE` details pinned by `test_role_matrix.py`; `cli seed` twice on `abb_p15`: run 1 `added owner@local.test as OWNER of 'local' (development only)`, run 2 `dev key ... is still valid; nothing to do` (members: exactly one `owner@local.test OWNER`); `create-session` refused with `ABB_ENVIRONMENT=production` and in development without `ABB_ALLOW_DEV_SESSIONS=1`; `docker compose --profile app config -q` accepts the new file. **UNVERIFIED (env)**: `make smoke`, `make sdk-e2e` and `make up` with the `fake-oidc` login path need Docker Compose on ports 3000/8000/8900/5433, which hold a running stack of the main checkout that this phase may not disturb; verify with `make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e` (KI-074). CI's `containers` job runs the first two. |
 | AC-14 real provider | **UNVERIFIED (env)** | Needs the user's own OIDC client id and secret for one manual login; no provider credentials exist here (KI-067). Record the claims it sends (`email_verified`, `azp`) here when done. |
-| AC-15 security review | **PENDING** | The independent `review-change` pass with the attack list above has not run yet; this phase stays in `plans/active/` until it has and its findings are fixed or filed. |
+| AC-15 security review | **PASS** | Independent `review-change` pass by a different model on 2026-10-09 (`phase-15-security-review.md`): no P0, one P1 (login lockout via a spoofed `X-Forwarded-For`, F1), P2s F2-F4 and P3s; 26 mutation checks all killed by tests. F1-F4, F7, F8, F10, F11, F12 fixed with tests that fail without the fix, F3 (command text and file paths withheld from viewers) implemented as an ADR-061 amendment, F5, F6, F9 filed as KI-075..077 and the free-text gap as KI-078. F1 is only partly solvable without a trusted proxy: KI-073 (S2). |
 
 ### `scripts/quality.sh full`, run part by part (foreground)
 

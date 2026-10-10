@@ -1,15 +1,14 @@
 # Project State
 
-Last updated: 2026-10-09 (Phase 15 branch `feature/phase-15-auth-rbac`)
+Last updated: 2026-10-10
 
 ## Current phase
-Phases 0-8 are merged to `main` (CI green). The MVP gate (spec §49, §138) is reached but **not accepted**: the user decides after reviewing the
-items under "Next actions". **Active plan: `docs/plans/active/phase-15-auth-rbac.md`** (auth, workspaces, RBAC): steps 1-16 are implemented, the independent
-security review is done and its findings fixed or filed (`phase-15-security-review.md`), on `feature/phase-15-auth-rbac`; PR opened for review.
+Phases 0-8 and 15 are merged to `main` (CI green; Phase 15 is PR #58). The MVP gate (spec §49, §138) is reached but **not accepted**: the user decides after
+reviewing the items under "Next actions". No active plan; the next phases to plan are 9, 10, 11 and 16 (independent of each other).
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
-post-MVP and also done. M4 starts with Phase 9, after Phase 15.
+post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 starts with Phase 9.
 
 ## Completed work
 - Phases 0-2: foundation, event contract, ingestion/outbox/query API (`docs/plans/completed/`).
@@ -21,35 +20,31 @@ post-MVP and also done. M4 starts with Phase 9, after Phase 15.
   `examples/coding-agent`, `scripts/coding-e2e.sh`.
 - Phase 7: CostEngine, analytics rollups (migrations 0040-0043), `/v1/analytics/*`, analytics page (ADR-040..043).
 - Phase 8: adapters for LangGraph, OpenAI, Anthropic and MCP, conformance suite, SDK 0.2.0 (ADR-050..052).
-- Phase 15 (branch, unmerged): OIDC sign-in with API-owned sessions (ADR-060), one `authorize()` path and a role/scope matrix with a route-walking test registry (ADR-061),
+- Phase 15: OIDC sign-in with API-owned sessions (ADR-060), one `authorize()` path and a role/scope matrix with a route-walking test registry (ADR-061),
   invitations, members, API-key and pricing-override management, append-only audit log (ADR-062, migrations 0045-0047), `payload.read` (VIEWER/BILLING never see content),
-  stream re-authentication, web sign-in/switcher/settings, the shared web key removed; resolves KI-029, KI-027, KI-051, KI-033. Closing evidence is in the plan.
+  stream re-authentication, web sign-in/switcher/settings, the shared web key removed; resolves KI-029, KI-027, KI-051, KI-033; viewers also never see command text or file paths. Closing evidence is in the plan; the independent security
+  review (26 mutation checks, none survived) and its fixes are in `docs/plans/completed/phase-15-security-review.md`.
 
 ## In-progress work
-Phase 15 awaits (1) the independent security review (`review-change`, plan AC-15 and its attack list), whose findings are fixed or filed; (2) the user's one manual
-login with a real OIDC provider (AC-14, needs their own client id/secret; see `docs/runbooks/auth-and-access.md`); (3) a compose runtime check (`make up && make seed`,
-sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074: the host's compose ports were busy). Then `complete-phase` (move the plan to `completed/`), push and PR
-(needs approval), and file the GitHub issues for KI-067..074 ("to file" in `KNOWN_ISSUES.md`).
+None.
 
 ## Blocked work
 None.
 
 ## Next actions (exact)
-1. Merge the Phase 15 PR once CI is green; then `complete-phase` for Phase 15 (plan and review to `docs/plans/completed/`) and file the GitHub issues for
-   KI-067..078 (marked "to file" in the register).
-2. User: the AC-14 manual real-provider login (needs your own OIDC client id and secret, KI-067); decide MVP gate acceptance. Remaining gate item: KI-050
-   (OpenAI prices and tiered models are not in the built-in table; the engine has no price tiers). Done 2026-10-09: web polish KI-064..066, Anthropic and
-   Gemini prices, ingest regression check KI-054, compose rebuild with `make smoke`, clean-clone check of the README Quick Start.
-3. Then Phases 9, 10, 11 and 16 can run in parallel worktrees; 13 then 14 in sequence.
+1. User: the one manual sign-in with a real OIDC provider (AC-14, KI-067; needs your own client id and secret, see `docs/runbooks/auth-and-access.md`), and a compose
+   runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
+2. User: decide MVP gate acceptance. Remaining gate item: KI-050 (OpenAI prices and tiered models are not in the built-in table; the engine has no price tiers).
+3. Plan and run Phases 9, 10, 11 and 16 in parallel worktrees; then 13 and 14 in sequence.
 
 ## Open decisions
 - MVP acceptance (after the gate items above).
 - Remove the `Co-Authored-By` trailers from the 5 earliest commits (needs a force-push; not done).
-- Until Phase 15 is merged and a real provider is configured, `main` still has the shared-key web proxy (ADR-021, KI-029): do not expose it publicly. On the branch the key is gone.
+- The shared web read key is gone (Phase 15), but sign-in has only run against the fake provider (KI-067): configure a real provider and run the manual check before exposing the app.
 - Whether to stamp `received_at` with the database clock (multi-instance clock skew vs the stream overlap, ADR-022).
 
 ## Known technical debt
-`docs/KNOWN_ISSUES.md` (severity, target and GitHub issue per item): notably (Phase 15 additions KI-067..074: real-provider login unverified, no session list, no `email_verified`-less providers, audit retention, trusted proxies, compose login unverified) full recomputation of very large active runs (KI-016), no quotas (KI-018), no failed-auth throttling (KI-019).
+`docs/KNOWN_ISSUES.md` (severity, target and GitHub issue per item): notably (Phase 15 additions KI-067..078: real-provider login unverified, no session list, no `email_verified`-less providers, audit retention, trusted proxies, compose login unverified) full recomputation of very large active runs (KI-016), no quotas (KI-018), no failed-auth throttling (KI-019).
 
 ## Last verified test status
 2026-10-09, Phase 15 branch: `scripts/quality.sh full` run as its parts, all green: event-schema 348, sdk 806 (coverage 94%), examples 12, integrations 17/74/66/61/44, api 799, web 396; migrations 0045-0047 up/down/up; `next build`.
