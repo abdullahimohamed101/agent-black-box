@@ -5,6 +5,7 @@ import type { EventOut } from "@/lib/api/types";
 import { formatCost, formatDuration, formatInt, formatTimestamp, num } from "@/lib/format";
 import { useEventDetail } from "@/lib/queries";
 import { eventClass, isError } from "@/lib/timeline";
+import { isWithheld, WITHHELD_TEXT } from "@/lib/withheld";
 import { CodingSections } from "./CodingSections";
 import { ErrorState, Loading } from "./States";
 
@@ -174,7 +175,12 @@ export function EventDrawer({
               .sort(([x], [y]) => x.localeCompare(y))
               .map(
                 ([k, v]) =>
-                  [k, clip(typeof v === "string" ? v : JSON.stringify(v))] as [string, string],
+                  [
+                    k,
+                    isWithheld(event, k)
+                      ? WITHHELD_TEXT
+                      : clip(typeof v === "string" ? v : JSON.stringify(v)),
+                  ] as [string, string],
               )}
           />
         )}

@@ -10,6 +10,7 @@ import {
   shortHash,
 } from "@/lib/coding";
 import { formatDuration, formatInt, num } from "@/lib/format";
+import { contentText, isWithheld } from "@/lib/withheld";
 import { ArtifactText } from "./ArtifactText";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -47,8 +48,9 @@ function Badge({
 
 function FileSection({ event }: { event: EventOut }) {
   const a = event.attributes;
-  const path = str(a["file.path"]);
-  const label = sensitivePathLabel(path);
+  const path = contentText(event, "file.path");
+  // The notice must not be matched as a path: only a real path earns a sensitive-path badge.
+  const label = isWithheld(event, "file.path") ? null : sensitivePathLabel(path);
   const added = num(a["file.lines_added"]);
   const removed = num(a["file.lines_removed"]);
   const diff = artifactId(a["diff.artifact"]);
@@ -114,14 +116,14 @@ function GitSection({ event }: { event: EventOut }) {
       <h3 id="d-git">Git</h3>
       <Rows
         rows={[
-          ["Branch", str(a["git.branch"])],
+          ["Branch", contentText(event, "git.branch")],
           ["Base commit", str(a["git.base_commit"])?.slice(0, 10)],
           ["Commit", str(a["git.commit_hash"])?.slice(0, 10)],
           [
             "Changed files",
             num(a["git.changed_files"]) != null ? formatInt(num(a["git.changed_files"])) : null,
           ],
-          ["Push target", str(a["git.push_target"])],
+          ["Push target", contentText(event, "git.push_target")],
         ]}
       />
       {diff && <ArtifactText id={diff} label="diff" mode="diff" defaultOpen />}
@@ -129,10 +131,12 @@ function GitSection({ event }: { event: EventOut }) {
   );
 }
 
-function TestResult({ a }: { a: EventOut["attributes"] }) {
+function TestResult({ event }: { event: EventOut }) {
+  const a = event.attributes;
   const total = num(a["test.total"]);
   if (!str(a["test.framework"]) || total == null) return null;
   const failed = num(a["test.failed"]) ?? 0;
+  const failingHidden = isWithheld(event, "test.failing");
   const failing = Array.isArray(a["test.failing"])
     ? (a["test.failing"] as unknown[]).map(String)
     : [];
@@ -145,6 +149,11 @@ function TestResult({ a }: { a: EventOut["attributes"] }) {
           skipped of {total} <span className="muted">({str(a["test.framework"])})</span>
         </span>
       </p>
+      {failingHidden && (
+        <p className="withheld" data-testid="failing-withheld">
+          Failing test names: {contentText(event, "test.failing")}.
+        </p>
+      )}
       {failing.length > 0 && (
         <ul className="failing" aria-label="Failing tests">
           {failing.map((id) => (
@@ -166,12 +175,22 @@ function ShellPanel({ event }: { event: EventOut }) {
   return (
     <section aria-labelledby="d-shell" data-testid="shell-panel">
       <h3 id="d-shell">Shell command</h3>
-      <pre className="cmd" tabIndex={0} aria-label="Command">
-        {str(a["shell.command"]) ?? "(no command recorded)"}
-      </pre>
+      {isWithheld(event, "shell.command") ? (
+        <p className="withheld" data-testid="command-withheld">
+          The command line is hidden by your role. You can see that a command ran and how it went,
+          not what it said.
+        </p>
+      ) : (
+        <pre className="cmd" tabIndex={0} aria-label="Command">
+          {str(a["shell.command"]) ?? "(no command recorded)"}
+        </pre>
+      )}
       <Rows
         rows={[
-          ["Working directory", str(a["shell.cwd"]) && <code>{str(a["shell.cwd"])}</code>],
+          [
+            "Working directory",
+            contentText(event, "shell.cwd") && <code>{contentText(event, "shell.cwd")}</code>,
+          ],
           [
             "Duration",
             event.duration_ms != null
@@ -199,7 +218,7 @@ function ShellPanel({ event }: { event: EventOut }) {
           ["Category", str(a["shell.category"])],
         ]}
       />
-      <TestResult a={a} />
+      <TestResult event={event} />
       {closed && (
         <>
           <ArtifactText

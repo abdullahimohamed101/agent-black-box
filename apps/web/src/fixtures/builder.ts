@@ -154,6 +154,7 @@ export class RunBuilder {
       name: String(
         es[0]!.attributes["tool.name"] ?? es[0]!.attributes["llm.model"] ?? es[0]!.event_type,
       ),
+      name_withheld: false,
       kind: es[0]!.event_type.split(".")[0] ?? null,
       agent_id: this.agent,
       status: es.find((e) => e.status)?.status ?? null,
