@@ -1,0 +1,10 @@
+{
+  "scenario": "fetch_page called 7 times with one inline payload (started events 7, 9, ..., 19); two identical summarize calls are below the threshold of 3.",
+  "findings": [
+    {
+      "detector": "identical-request", "finding_type": "identical_request", "kind": "deterministic",
+      "severity": "warning", "confidence": 1.0, "start_seq": 7, "end_seq": 19,
+      "evidence": {"agent_id": "coder", "event_type": "tool.call.started", "tool_name": "fetch_page", "count": 7}
+    }
+  ]
+}

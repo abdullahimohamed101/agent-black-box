@@ -1,0 +1,13 @@
+{
+  "scenario": "Ten database/tool calls: queries q1..q9 then the tool fallback. q2, q3, q5, q8 fail (events 8, 11, 18, 27) with retries after q2, q3, q5 (events 9, 12, 19). Failures at call positions 1, 2, 4, 7 merge into one stretch of 7 calls; the agent then used a different tool.",
+  "findings": [
+    {
+      "detector": "tool-failure-cascade", "finding_type": "tool_failure_cascade", "kind": "deterministic",
+      "severity": "warning", "confidence": 1.0, "start_seq": 8, "end_seq": 27,
+      "evidence": {
+        "agent_id": "coder", "calls_in_window": 7, "retries_between": 3, "alternates": ["fallback"],
+        "failures.0.event_type": "db.query.failed", "failures.3.event_type": "db.query.failed"
+      }
+    }
+  ]
+}
