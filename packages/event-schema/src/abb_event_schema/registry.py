@@ -145,7 +145,8 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
 
 # Attributes that carry captured content (what the agent ran, read or touched), not metadata about
 # it. The API withholds them from actors without `payload.read` (ADR-061, review F3). A new string
-# attribute must be classified: a test fails until it is listed here or in the reviewed-metadata set.
+# attribute must be classified: a test fails until it is listed here or in the reviewed-metadata
+# set.
 CONTENT_ATTRIBUTES: frozenset[str] = frozenset(
     {
         "shell.command",
