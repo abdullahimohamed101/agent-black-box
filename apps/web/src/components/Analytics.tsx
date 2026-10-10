@@ -163,8 +163,9 @@ export function Analytics({ base }: { base: Base }) {
               </dl>
               {c.headline.unrebuilt_runs > 0 && (
                 <p role="note" className="muted">
-                  {c.headline.unrebuilt_runs} runs predate cost calculation; breakdowns by model and
-                  agent exclude them until their costs are rebuilt.
+                  {c.headline.unrebuilt_runs} runs were summarised by an older version; per-agent
+                  figures, and cost breakdowns for runs that predate pricing, may be missing until
+                  their costs are rebuilt.
                 </p>
               )}
               <h3>Daily spend</h3>

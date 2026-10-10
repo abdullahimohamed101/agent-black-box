@@ -606,3 +606,34 @@ survive stored data anyway). Consequences: span derivation cost moves to the cli
 mismatch between the Python and TypeScript derivations is caught by the golden file; very large runs show an aggregated tree until expanded; a
 hand-edited registry copy fails `make schema-check`. Revisit: if a trace exceeds what a browser can hold (then a server-side windowed tree
 endpoint, with its matrix case).
+
+## Implementation notes (steps 1-4, recorded by the implementer)
+
+Deviations and choices where the plan was ambiguous (simplest secure option):
+
+- **Golden spans (step 1).** `spans-golden.json` stores the 10,000-deep chain as a generator description (`generated[0]`: length, event
+  pair, step) with the expected count, first and last span, not as 10,000 events (the file stays 190 KB and reviewable). The web replay
+  builds the same events from it. `apps/web/.prettierignore` gains `src/lib/generated` (the registry copy is written verbatim by
+  `make schema`; `make schema-check` verifies it with `cmp`).
+- **Payload shapes (step 2).** `run.agent(..., input=x)` sends the payload `{"input": x}` on `agent.spawned`; `set_result(x)` sends
+  `{"result": x}` on `agent.completed` (so non-dict values work and the shapes cannot collide with user keys).
+- **Slug fallback.** An explicit but unusable `agent_id` falls back to the name; a name with no slug characters (including `""`), or a
+  slug equal to the delegator's agent id (explicit or derived), becomes `<delegator>-child-<n>` (n per run, truncated to 64 characters).
+- **Pre-existing SDK defect fixed on the way.** `check_payload` validated the payload but `BlackBox._emit` discarded its result, and
+  NUL characters in payload strings or keys made the whole event invalid at the server (`string_contains_nul`). `check_payload` now
+  strips NUL and `_emit` uses the checked payload; regression test in `test_contract.py`.
+- **Propagation (step 3).** An invalid or missing context passed to `continue_run` returns an inert run (no events) plus a warning, never
+  a new standalone run. `spawn_context` on a continued run uses the context's span as the delegating span when no span is open.
+  `remote_run_end_ignored` is a new `Stats` counter. SDK 0.3.0: the five integration `uv.lock` files were refreshed (`uv lock`) because
+  they record the editable SDK's version.
+- **Coverage gate.** `pyproject.toml` has `fail_under = 90` (the plan said 94); measured 94.18% after this step.
+- **`summary.agents` (step 4).** At most 50 entries *including* the `(other)` row (49 agents + `(other)` when there are more than 50),
+  `state` of the `(other)` row is `"mixed"`. Order is first appearance in canonical order, where an `agent.spawned` naming a child counts
+  as the child's first appearance (so a skewed child may sort before its parent in a time-ordered run). Agent `state`: from the agent's
+  last `agent.*` span (open: `started`; closed with error/timeout: `failed`; else `completed`); an agent with events but no agent span is
+  `started`, except the root agent, which follows the run's terminal status. `agent.child_id` is truncated to 64 characters when used as a
+  label for a spawned-only agent.
+- **Tests not added.** The VIEWER clause of the plan's `test_runs_api.py` line is the existing, unchanged behaviour covered by
+  `tests/authz/test_content_withheld.py` (the plan keeps `tests/authz` untouched); `summary.agents` holds only agent ids and counts.
+- **Not done in this run (steps 5-11):** web derivation and waterfall, fixtures, example, E2E, KI-063 spike, ADR files, the AC-9 regression
+  benchmark (`derive_run` on 30,000 events gained one extra linear pass; not measured), `KNOWN_ISSUES.md`, `PROJECT_STATE.md`.
