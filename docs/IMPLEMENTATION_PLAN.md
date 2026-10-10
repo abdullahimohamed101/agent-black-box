@@ -234,3 +234,7 @@ README with screenshots, architecture, quickstart, SDK/API/events/deployment/sec
 troubleshooting docs, three examples (coding, simple custom, multi-agent), deterministic seed
 data (`make demo`), short demo recording, release polish checklist (no placeholder text, broken
 routes, fake charts, debug logging, or secrets).
+
+## Ideas beyond Phase 20 (not planned)
+
+- A hub for all LLM usage (gateway, tool hooks, usage import): `docs/ideas/llm-hub.md`. Revisit when the roadmap above is nearing completion.
