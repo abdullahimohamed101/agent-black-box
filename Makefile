@@ -4,6 +4,8 @@ INTEGRATIONS := conformance langgraph openai anthropic mcp
 API := apps/api
 SCHEMA := packages/event-schema
 SDK := packages/sdk-python
+# The web's copy of the event-type registry (span roles and kinds for lib/spans.ts, Phase 9 D5).
+WEB_GENERATED := apps/web/src/lib/generated
 ENV_FILE := .env
 
 help:
@@ -70,12 +72,15 @@ seed:
 schema:
 	cd $(SCHEMA) && uv run python -m abb_event_schema.export
 	pnpm --filter @abb/event-schema generate
+	mkdir -p $(WEB_GENERATED)
+	cp $(SCHEMA)/schemas/1.0/event-types.json $(WEB_GENERATED)/event-types.json
 
 # Fails if the committed schema/types differ from what the models generate.
 schema-check:
 	cd $(SCHEMA) && uv run python -m abb_event_schema.export --check
 	pnpm --filter @abb/event-schema generate
 	git diff --exit-code -- $(SCHEMA)/ts $(SCHEMA)/schemas
+	cmp $(SCHEMA)/schemas/1.0/event-types.json $(WEB_GENERATED)/event-types.json
 
 # The committed API contract (apps/api/openapi.json), generated from the FastAPI app.
 openapi:
