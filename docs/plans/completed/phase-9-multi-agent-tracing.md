@@ -1,6 +1,6 @@
 # Phase 9 - Multi-agent distributed tracing and waterfall
 
-Status: Implemented 2026-10-11 (steps 1-11 committed on the branch); pending security review (`review-change`), then `complete-phase`. Closing evidence for AC-1..15 is at the end of this file. Independent plan review `phase-9-plan-review.md` at f0698e6 addressed below, see "Review dispositions".
+Status: Completed 2026-10-11 (merged as PR #73, CI green). The independent security review of the implementation is done and its findings are fixed (`phase-9-security-review.md`); the plan review is `phase-9-plan-review.md`. Closing evidence for AC-1..15 is at the end of this file. KI-084..086 are GitHub issues #74 to #76. History: Implemented 2026-10-11 (steps 1-11 committed on the branch); pending security review (`review-change`), then `complete-phase`. Closing evidence for AC-1..15 is at the end of this file. Independent plan review `phase-9-plan-review.md` at f0698e6 addressed below, see "Review dispositions".
 Owner: implementer agent
 Branch: `feature/phase-9-multi-agent-tracing` (from `main` c212058; worktree `../abb-worktrees/phase-9`)
 Depends on: Phase 1 (span derivation, ordering), Phase 3 (SDK context), Phase 4/5 (run page, virtualized timeline, live merge), Phase 7 (cost lines, analytics rollups), Phase 8 (adapter contract), Phase 15 (`payload.read` projection)
