@@ -117,6 +117,8 @@ test.describe("as a viewer", () => {
     expect(await everything()).not.toContain(COMMAND);
     await page.getByRole("radio", { name: "Timeline" }).check();
     expect(await everything()).not.toContain(COMMAND);
+    // the API's own placeholder is never shown as text either: the UI words the notice itself
+    expect(await everything()).not.toContain("[withheld]");
     // the command's row says why it is blank
     await page.getByRole("radio", { name: "Waterfall" }).check();
     await expect(page.getByTestId("waterfall")).toContainText(WITHHELD);
@@ -130,5 +132,34 @@ test.describe("as a viewer", () => {
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
     await expect(drawer).not.toContainText(COMMAND);
+    await expect(drawer).not.toContainText("[withheld]");
+  });
+
+  test("a viewer's drawer says the payload is withheld, not what it holds", async ({ page }) => {
+    await open(page);
+    await page.getByRole("radio", { name: "Timeline" }).check();
+    // The example captures full payloads (delegation input, tool and shell output): at least one event
+    // has a payload, and for a viewer its drawer must say so without showing it or the API's placeholder.
+    const options = page.locator('[role="listbox"] [role="option"]:not([aria-label^="Group"])');
+    const drawer = page.getByRole("dialog");
+    let withheldDrawers = 0;
+    const total = await options.count();
+    for (let i = 0; i < total; i++) {
+      await options.nth(i).click();
+      await expect(drawer).toBeVisible();
+      await expect(drawer).not.toContainText(COMMAND);
+      await expect(drawer).not.toContainText("[withheld]");
+      // wait for the payload section to settle (loaded, withheld or absent) before counting
+      await expect(
+        drawer
+          .getByText(/No payload was captured/)
+          .or(drawer.getByTestId("payload-withheld"))
+          .or(drawer.getByLabel("Event payload")),
+      ).toBeVisible();
+      if ((await drawer.getByTestId("payload-withheld").count()) > 0) withheldDrawers++;
+      await page.keyboard.press("Escape");
+      await expect(drawer).toBeHidden();
+    }
+    expect(withheldDrawers).toBeGreaterThan(0);
   });
 });
