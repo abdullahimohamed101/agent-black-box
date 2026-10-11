@@ -559,3 +559,15 @@ def test_run_started_without_any_sequence_falls_back_to_the_earliest() -> None:
         ev(run, 2, "run.started", agent_id="early", span_id=..., sequence=..., occurred_at=at(10)),
     ]
     assert derive_run(events).agent_slug == "early"
+
+
+def test_a_client_child_id_of_other_does_not_collide_with_the_fold_row() -> None:
+    run = make_run_ids()
+    events = [
+        ev(run, 1, "run.started", agent_id="root", span_id=...),
+        ev(run, 2, "agent.spawned", agent_id="root", attributes={"agent.child_id": "(other)"}),
+    ]
+    for i in range(3, 62):
+        events.append(ev(run, i, "tool.call.completed", agent_id=f"worker-{i:02d}"))
+    ids = [a["agent_id"] for a in derive_run(events).summary["agents"]]
+    assert len(ids) == len(set(ids)) and ids.count("(other)") == 1

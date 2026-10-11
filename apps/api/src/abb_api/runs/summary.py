@@ -140,6 +140,8 @@ def _agents(
             child = event.attributes.get("agent.child_id")
             if isinstance(child, str) and child:
                 child = child[:64]  # a label by contract; never a key format (KI-078)
+                if child == OTHER_AGENTS:  # the fold row's label is reserved (slugs cannot hold it)
+                    child = f"{child} (client id)"
                 spawned_by.setdefault(child, event.agent_id)
                 if child not in tallies:
                     tallies[child] = _AgentTally(child)
