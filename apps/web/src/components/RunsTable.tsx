@@ -9,6 +9,7 @@ import {
   num,
 } from "@/lib/format";
 import { runPath, type Base } from "@/lib/routes";
+import { matchedLabels, matchedOf } from "@/lib/search";
 import { findingsCell } from "@/lib/findings";
 import { StatusBadge } from "./StatusBadge";
 
@@ -39,6 +40,8 @@ export function RunsTable({
   caption: string;
   now?: number;
 }) {
+  // The column exists only for a search that named indexed fields or words; the API sends `matched` for those.
+  const showMatched = runs.some((r) => matchedOf(r) !== null);
   return (
     <div className="table-wrap">
       <table>
@@ -61,6 +64,7 @@ export function RunsTable({
             <th scope="col" className="num">
               Errors
             </th>
+            {showMatched && <th scope="col">Matched</th>}
             <th scope="col">Findings</th>
           </tr>
         </thead>
@@ -88,6 +92,7 @@ export function RunsTable({
                 <td className="num">{formatCost(num(r.summary["estimated_cost_usd"]))}</td>
                 <td className="num">{formatInt(num(r.summary["event_count"]))}</td>
                 <td className="num">{errors ? <strong>{errors}</strong> : 0}</td>
+                {showMatched && <MatchedCell run={r} />}
                 <FindingsCell badge={r.findings} />
               </tr>
             );
@@ -95,5 +100,31 @@ export function RunsTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function MatchedCell({ run }: { run: RunOut }) {
+  const m = matchedOf(run);
+  const labels = m ? matchedLabels(m) : [];
+  const truncated = !!m && (m.metadata_truncated === true || m.content_truncated === true);
+  return (
+    <td data-testid="matched">
+      <span className="matched">
+        {labels.map((l) => (
+          <span key={l} className="tag">
+            {l}
+          </span>
+        ))}
+        {truncated && (
+          <span
+            className="tag tag-warn"
+            title="This run has more values than the search index holds, so some may not be searchable."
+          >
+            index truncated
+          </span>
+        )}
+        {labels.length === 0 && !truncated && "—"}
+      </span>
+    </td>
   );
 }

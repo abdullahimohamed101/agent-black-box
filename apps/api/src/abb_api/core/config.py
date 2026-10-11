@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # Analytics queries are cut off by the database after this long (ADR-041).
     analytics_timeout_seconds: float = Field(default=10.0, gt=0)
 
+    # Search (ADR-100): one wall-clock budget per request, and a per-process cap on concurrent
+    # searches (acquired before a connection, so ingestion is never starved). Per process (KI-082).
+    search_timeout_seconds: float = Field(default=5.0, gt=0)
+    search_max_concurrent: int = Field(default=4, ge=1, le=14)
+
     # Live streams (spec §76, ADR-022). Limits are per API process until Phase 19.
     stream_max_total: int = Field(default=50, ge=1)
     stream_max_per_key: int = Field(default=10, ge=1)

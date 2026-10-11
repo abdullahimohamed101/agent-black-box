@@ -101,6 +101,26 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
   fingerprints, evidence and `created_at`. `apps/web/e2e/findings.spec.ts` drives a real browser as OWNER and VIEWER (loop, cascade and failure chain panels, "Show
   evidence" opening the cited event, the runs-list column, axe). Screenshots: `docs/screenshots/phase-10/`.
 
+### Search (Phase 16)
+- **Grammar and compiler without a database** (`apps/api/tests/search/test_parser.py`, `test_tokens.py`, `test_tsliteral.py`, `test_compiler.py`): every §152/§34 example, negation, limits and
+  positions, a seeded 10,000-string fuzzer (only `QueryError`, under 10 ms), the tsvector/tsquery literal serialisers and a self-match property, and the compiled SQL text of a corpus of queries:
+  for a principal without `payload.read` it never contains `content_doc`, `file_paths`, `commands` or `content_truncated`; every statement binds the workspace; user strings are bound parameters;
+  `to_tsquery` never appears.
+- **Postgres semantics** (`test_search_api.py`, `test_search_http.py`, `test_search_index.py`, `test_document.py`): the literal syntax pinned against the real server, every field, operator, negation, prefix,
+  glob and phrase, null and unindexed behaviour, keyset paging of 120 runs while matches arrive, the hash-skipped upsert, `search-rebuild`, no total count and no relevance field.
+- **Oracle and tenancy** (`test_search_oracle.py`, `tests/authz/test_content_withheld.py`, `test_cross_workspace.py`): a VIEWER and a downgraded owner get identical items, facets and cursor for a content canary in
+  every syntactic form as for a nonsense word; `file:`/`command:` is `403` with the canonical field, no run statement executed, logged and audited without the query; BILLING gets `403` before parsing;
+  no facet, `matched` or `content_truncated` leaks; the globex canaries are never found from acme.
+- **Cost bounds** (`test_search_budget.py`, `test_search_hostile.py`): timeout and busy are retryable `503`s, a flood of slow searches leaves ingestion and the plain list at `202`/`200` and no search backend running,
+  at most two statements per search, `q=` equals the plain statements, hostile strings are `422` or literal matches and never `500`.
+- **Web unit** (`apps/web/tests/search.test.tsx`): chips from `query.terms`, removal by span, legacy URLs converted to `q`, caret on a 422, a 403 explained without echoing the value (never "no results"),
+  414 like 422, busy/timeout with a retry, the unindexed notice, hostile strings rendered as text, a viewer's help listing only what the API allows; `upstream.test.ts` pins the 414 case.
+- **Browser** (`make auth-e2e` also runs `apps/web/e2e/search.spec.ts`; the fixtures spec has a search test): an owner finds a run by command text and path; a VIEWER typing `file:` or `command:` gets the
+  refusal and nothing else, sees the same page for captured text as for a nonsense word, searches metadata with chips, facets and keyboard only; axe on every state; no horizontal scroll at 375 px.
+  Screenshots: `docs/screenshots/phase-16/`.
+- **Mutation checks** are recorded in `docs/plans/active/phase-16-search-investigation.md` ("Implementation notes").
+- **Benchmarks**: `scripts/bench_search.py` (latency on a seeded database) and the A/B ingest comparison in `docs/benchmarks/phase-16-regression-check.md`.
+
 Rules: never skip/weaken a failing test; no mocks where a real Postgres test is feasible; UI
 changes are exercised in a browser; fixtures are deterministic (fixed IDs/timestamps).
 

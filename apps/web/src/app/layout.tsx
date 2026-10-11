@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Providers } from "@/components/Providers";
 import "./globals.css";
 import "./waterfall.css";
+import "./search.css";
 
 export const metadata: Metadata = {
   title: "Agent Black Box",

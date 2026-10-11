@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from abb_event_schema.ids import IdKind, id_pattern
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_serializer
 
 MAX_METADATA_BYTES = 16 * 1024
 _MAX_METADATA_DEPTH = 8
@@ -20,6 +20,30 @@ RunStatusName = Literal[
     "TIMED_OUT",
     "BLOCKED",
 ]
+
+
+class MatchedOut(BaseModel):
+    tools: list[str] = Field(default_factory=list)
+    models: list[str] = Field(default_factory=list)
+    event_types: list[str] = Field(default_factory=list)
+    agents: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    metadata_truncated: bool = Field(
+        description="The run's metadata index hit its bounds; some values may not be searchable."
+    )
+    content_truncated: bool | None = Field(
+        default=None,
+        description="Same for captured content. Absent unless the caller holds `payload.read`.",
+    )
+
+    @model_serializer(mode="wrap")
+    def _omit_unknown_content_flag(self, handler: Any) -> dict[str, Any]:
+        # The flag is a volume bit about content: for a caller who may not read content the key
+        # does not exist at all, rather than being null (ADR-101).
+        data: dict[str, Any] = handler(self)
+        if self.content_truncated is None:
+            data.pop("content_truncated", None)
+        return data
 
 
 class RunFindingsBadge(BaseModel):
@@ -60,11 +84,74 @@ class RunOut(BaseModel):
         default=None,
         description="Derived findings summary; null when the response does not carry it.",
     )
+    # Appended after the existing fields (Phase 16). After Phase 10's `findings`.
+    matched: MatchedOut | None = Field(
+        default=None,
+        description="Why the run matched a search: the indexed values the query named. Only "
+        "present when `q` named at least one indexed field or word.",
+    )
+
+
+class QueryTermOut(BaseModel):
+    """One parsed term of `q`, echoed so the UI renders chips and removes a term exactly."""
+
+    kind: Literal["field", "text"]
+    field: str | None = Field(description="Canonical field name (field terms).")
+    op: str | None = Field(description="`=`, `>=`, `<=`, `>`, `<` or `between` (field terms).")
+    value: str | None = Field(description="Normalised value; times are resolved to instants.")
+    value_end: str | None = Field(description="End of a `between` range (a whole UTC day).")
+    lexemes: list[str] | None = Field(description="Normalised words (text terms).")
+    phrase: bool
+    prefix: bool
+    negated: bool
+    span: tuple[int, int] = Field(description="[start, end) character offsets within `q`.")
+
+
+class QueryFieldOut(BaseModel):
+    name: str
+    kind: str
+    description: str
+    ordered: bool
+    prefix: bool
+
+
+class QueryOut(BaseModel):
+    terms: list[QueryTermOut]
+    fields: list[QueryFieldOut] = Field(
+        description="The fields this caller may search (content fields only with `payload.read`)."
+    )
+    content_allowed: bool
+    unindexed: int | None = Field(
+        description="Runs in scope with no search document yet (they match no indexed term); "
+        "null when the query does not use the index."
+    )
+    unindexed_capped: bool = Field(description="True when `unindexed` stopped counting at its cap.")
+
+
+class FacetValueOut(BaseModel):
+    value: str
+    count: int
+
+
+class FacetsOut(BaseModel):
+    """Counts over the newest 1,000 matching runs, metadata only (never content)."""
+
+    status: list[FacetValueOut]
+    agents: list[FacetValueOut]
+    tools: list[FacetValueOut]
+    models: list[FacetValueOut]
+    event_types: list[FacetValueOut]
 
 
 class RunPage(BaseModel):
     items: list[RunOut]
     next_cursor: str | None
+    # Present whenever `q` is sent (Phase 16); additive.
+    query: QueryOut | None = None
+    facets: FacetsOut | None = None
+    facets_skipped: Literal["budget"] | None = Field(
+        default=None, description="`budget` when the facets were left out to keep the time budget."
+    )
 
 
 class CreateRunRequest(BaseModel):

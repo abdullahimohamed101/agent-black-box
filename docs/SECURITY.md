@@ -72,6 +72,13 @@ ingestion edge | control plane | database/object storage | human approvers.
   `[withheld]` on the server (events, spans, streams), so the page cannot leak what the API did not send. Free text an integration puts in
   other fields (`span.name` of a custom span, `tool.operation`, `policy.reason`, `retry.reason`, `run.name`, tags, run `metadata`) is not
   classified as content; tracked as KI-078.
+- Search (implemented, Phase 16, ADR-100/101): `GET /v1/runs?q=` is permission-safe by construction. *An actor may search a field, or receive a derived flag or count, only if the same actor receives that
+  field's values on the existing read routes.* `file:` and `command:` need `payload.read` and are refused with `403 PERMISSION_DENIED` (canonical `details.field`, through `authorize_audited`, before any
+  statement); free text for everyone else compiles to the metadata document only; the derived `run_search` table keeps metadata and content in separate columns with separate truncation flags, a statement
+  for an actor without `payload.read` never references a content column (asserted on the compiled SQL); facets are metadata-only; there is no total count and no ranking; error positions depend only on the
+  text; the `span.name` *attribute* is indexed, never the derived span name; unregistered attributes that are not content by name are not indexed (KI-080). `run_search` holds commands and paths: it is as
+  sensitive as the events and is reachable only through the compiler. Search terms are the searcher's own input: the API logs no query text, the audit log never records `q`, and the web sends
+  `Referrer-Policy: no-referrer`. A search runs under a per-process permit and a time budget (KI-082).
 - Members are visible to every role of a workspace (`member.read` is in every role, including BILLING and VIEWER: names, emails and roles of the
   people one works with). If that is too open for an organisation, remove `member.read` from a role in `authz/matrix.py` and the literal table
   (one line in two places); tracked as KI-070.

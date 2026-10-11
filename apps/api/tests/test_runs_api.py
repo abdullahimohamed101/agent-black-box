@@ -841,7 +841,7 @@ async def test_run_detail_carries_the_per_agent_breakdown_and_lists_only_its_cou
     run, _, _ = await ingest_two_agents(api)
     detail = (await api.get(f"/v1/runs/{run['run_id']}")).json()
     assert detail["agent_id"] == "planner" and detail["ordering_mode"] == "time"
-    assert detail["summary_version"] == 3
+    assert detail["summary_version"] == 4
     summary = detail["summary"]
     assert summary["agent_count"] == 2
     by_id = {a["agent_id"]: a for a in summary["agents"]}

@@ -23,6 +23,7 @@ from abb_api.runs.schemas import (
     SpanPage,
 )
 from abb_api.runs.service import RunService
+from abb_api.search.reads import SearchGate
 
 router = APIRouter(prefix="/v1/runs", tags=["runs"])
 
@@ -48,6 +49,19 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
 def _service(request: Request) -> RunService:
     service: RunService = request.app.state.runs
     return service
+
+
+def _search_gate(request: Request) -> SearchGate:
+    """The per-process cap on concurrent searches, created on first use."""
+    state = request.app.state
+    gate: SearchGate | None = getattr(state, "search_gate", None)
+    if gate is None:
+        settings = state.settings
+        gate = state.search_gate = SearchGate(
+            max_concurrent=settings.search_max_concurrent,
+            timeout_seconds=settings.search_timeout_seconds,
+        )
+    return gate
 
 
 @router.post(
@@ -80,7 +94,12 @@ async def create_run(
     response_model=RunPage,
     responses=_ERRORS,
     summary="List runs",
-    description="Newest first by default. Page with `next_cursor`; filters combine with AND.",
+    description=(
+        "Newest first by default. Page with `next_cursor`; filters combine with AND. `q` takes "
+        "the search grammar (docs/architecture/api-v1.md, Search): `QUERY_INVALID` (422) for a "
+        "bad query, `PERMISSION_DENIED` (403, `details.field`) for a content field without "
+        "`payload.read`, `SEARCH_BUSY` and `SEARCH_TIMEOUT` (503, retryable)."
+    ),
 )
 async def list_runs(
     request: Request,
@@ -93,6 +112,9 @@ async def list_runs(
     sort: Literal["-started_at", "started_at"] = "-started_at",
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     cursor: Annotated[str | None, Query(max_length=512)] = None,
+    q: Annotated[
+        str | None, Query(description="Search query (the §152 grammar); at most 512 characters.")
+    ] = None,
 ) -> RunPage:
     return await _service(request).list_runs(
         principal,
@@ -104,6 +126,9 @@ async def list_runs(
         ascending=sort == "started_at",
         limit=limit,
         cursor=cursor,
+        q=q,
+        request=request,
+        gate=_search_gate(request) if q else None,
     )
 
 

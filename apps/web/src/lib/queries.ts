@@ -15,6 +15,8 @@ export type RunFilters = {
   statuses?: readonly RunStatus[];
   agent?: string;
   startedAfter?: string;
+  /** The search text (spec §152), sent verbatim; the API parses it. Absent or empty means the plain list. */
+  q?: string;
   sort?: "-started_at" | "started_at";
 };
 
@@ -37,6 +39,7 @@ export function useRuns(f: RunFilters, limit = 50) {
               status: f.statuses?.length ? [...f.statuses] : undefined,
               agent_id: f.agent || undefined,
               started_after: f.startedAfter,
+              q: f.q || undefined,
               sort: f.sort,
             },
           },
@@ -46,6 +49,24 @@ export function useRuns(f: RunFilters, limit = 50) {
     staleTime: 5000,
     refetchInterval: POLL_MS * 5,
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * The fields this person may search, from the API's own echo (`query.fields` hides content fields without
+ * `payload.read`). One light request (`q=` is the plain list plus the catalogue) so the help never guesses a role.
+ */
+export function useSearchCatalogue(project: string | null) {
+  return useQuery({
+    queryKey: ["search-catalogue", project],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/runs", {
+          signal,
+          params: { query: { limit: 1, q: "", project_id: project || undefined } },
+        }),
+      ).query ?? null,
+    staleTime: 5 * 60_000,
   });
 }
 

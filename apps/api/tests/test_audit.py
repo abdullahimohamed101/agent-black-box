@@ -203,6 +203,7 @@ async def test_every_mutating_cli_command_writes_exactly_one_row(
         "--input-per-million", "1", "--output-per-million", "2",
     )  # fmt: skip
     await run("rebuild-costs", "--workspace", "acme")
+    await run("search-rebuild", "--workspace", "acme")
     await run("revoke-key", "--workspace", "acme", "--key-id", key_id)
     await run("list-pricing", "--workspace", "acme")  # reads leave nothing behind
     async with engine.connect() as conn:
@@ -215,7 +216,7 @@ async def test_every_mutating_cli_command_writes_exactly_one_row(
         found = result.all()
     assert [r.action for r in found] == [
         "workspace.create", "project.create", "api_key.create", "pricing_override.create",
-        "cost.rebuild", "api_key.revoke",
+        "cost.rebuild", "search.rebuild", "api_key.revoke",
     ]  # fmt: skip
     assert {r.actor_kind for r in found} == {"cli"}
     assert all(r.actor_id.startswith("cli") for r in found)

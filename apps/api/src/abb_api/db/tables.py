@@ -41,7 +41,8 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 
 metadata = MetaData()
 
@@ -727,4 +728,52 @@ run_findings = Table(
         "max_severity IS NULL OR " + _in("max_severity", FINDING_SEVERITIES),
         name="ck_run_findings_severity",
     ),
+)
+
+# ---------------------------------------------------------------- search (ADR-100, ADR-101)
+
+_EMPTY_TEXT_ARRAY = text("'{}'::text[]")
+
+# Derived per-run search document, written by the summarizer (INV-2). Metadata and content are
+# separate columns with their own truncation flags so a statement for an actor without
+# `payload.read` can be proven never to touch the content columns.
+run_search = Table(
+    "run_search",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    _ts("started_at", nullable=False),
+    Column("summary_version", Integer, nullable=False),
+    Column("document_hash", LargeBinary, nullable=False),
+    Column("error_count", Integer, nullable=False, server_default="0"),
+    Column("security_events", Integer, nullable=False, server_default="0"),
+    Column("event_types", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("tools", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("models", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("providers", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("agents", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("tags", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("metadata_doc", TSVECTOR, nullable=False, server_default=text("''::tsvector")),
+    Column("metadata_truncated", Boolean, nullable=False, server_default=text("false")),
+    Column("file_paths", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("commands", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("content_doc", TSVECTOR, nullable=False, server_default=text("''::tsvector")),
+    Column("content_truncated", Boolean, nullable=False, server_default=text("false")),
+    _ts("updated_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "run_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
+    ),
+    Index(
+        "ix_run_search_project_started",
+        "workspace_id",
+        "project_id",
+        text("started_at DESC"),
+        "run_id",
+    ),
+    Index("ix_run_search_meta", "metadata_doc", postgresql_using="gin"),
+    Index("ix_run_search_content", "content_doc", postgresql_using="gin"),
+    Index("ix_run_search_event_types", "event_types", postgresql_using="gin"),
+    Index("ix_run_search_tools", "tools", postgresql_using="gin"),
 )
