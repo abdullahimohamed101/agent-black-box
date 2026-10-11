@@ -108,7 +108,8 @@ rendered as text in the web app. Writes need the web app's `Origin` (people) and
 KI-101). The judge treats the run as untrusted data (a delimited, escaped block; clamped score, allowlisted label; `include_content` is opt-in and sends commands and paths only, INV-5); a reply above `max_cost_usd` fails the row and
 pauses the evaluator for `ABB_JUDGE_COOLDOWN_SECONDS`. The fake judge refuses to start outside development or test unless `ABB_JUDGE_ALLOW_FAKE=1`. An evaluator can never change a run: the handler writes only to `evaluations`,
 runs under a cooperative time budget, and stores only a built-in's own error text or a fixed code (never `str(exc)` of anything else); the `evaluations` table refuses updates of terminal rows with a database trigger.
-Open: KI-100 (injection through client-controlled labels cannot be excluded by construction; no real provider), KI-106.
+Evaluations are derived from telemetry the sender controls: `tests_passed` trusts the `test.failed` and `test.framework` attributes of the last test event the client sent, so `ground_truth: true` means "not a model opinion", not "verified" (KI-116).
+Open: KI-100 (injection through client-controlled labels cannot be excluded by construction; no real provider), KI-106, KI-116.
 
 Reliability findings (Phase 10, ADR-080): evidence is metadata only by construction (an allowlist of keys per finding type; no command, path, payload, payload digest, run name or
 error text; the `fingerprint` and the `id` derived from it are functions of public metadata only, never of payload bytes, so they cannot be used to test a guessed payload; a reader learns only that the events cited by an `identical_request` finding carried equal payloads), so `GET /v1/runs/{id}/findings` needs only `run.read` and returns the same body to every reader; a detector failure surfaces as a fixed-text job error that cannot quote an
