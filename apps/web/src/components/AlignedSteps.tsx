@@ -1,0 +1,212 @@
+"use client";
+
+import { useEffect, useId, useRef, useState } from "react";
+import type { RowOut, StepOut } from "@/lib/api/types";
+import {
+  RELATION_LABEL,
+  ROW_PAGE,
+  differenceIndexes,
+  nextDifference,
+  stepMeta,
+  stepText,
+  visibleCount,
+} from "@/lib/comparison";
+
+function Cell({ step, side }: { step: StepOut | null; side: "left" | "right" }) {
+  if (!step)
+    return (
+      <div className="step-cell" data-empty="true" data-side={side}>
+        <span className="muted">No step on this side</span>
+      </div>
+    );
+  const t = stepText(step);
+  return (
+    <div className="step-cell" data-side={side} data-event-id={step.event_id}>
+      <span className="step-kind">{t.kind}</span>{" "}
+      {t.label !== null && <span className="step-label">{t.label}</span>}
+      {t.withheld && <span className="muted"> (details withheld)</span>}
+      {stepMeta(step) && <span className="muted step-meta"> {stepMeta(step)}</span>}
+    </div>
+  );
+}
+
+/**
+ * The two runs' steps side by side. `rows` come from the API already aligned (its `steps[index]` is the divergence
+ * row); this component only lays them out, marks the divergence and the first outcome difference, and moves focus.
+ * Free text (labels) is rendered as text. Keyboard: Up/Down/Home/End move between rows, `n` and `p` jump to the next
+ * and previous difference, and the toolbar's buttons do the same.
+ */
+export function AlignedSteps({
+  rows,
+  divergence,
+  outcome,
+}: {
+  rows: readonly RowOut[];
+  divergence: number | null;
+  outcome: number | null;
+}) {
+  const heading = useId();
+  const [shown, setShown] = useState(ROW_PAGE);
+  const [active, setActive] = useState(divergence ?? 0);
+  const [want, setWant] = useState<number | null>(null);
+  const [announce, setAnnounce] = useState("");
+  const refs = useRef(new Map<number, HTMLLIElement>());
+  const diffs = differenceIndexes(rows);
+  const count = visibleCount(shown, rows.length, want);
+
+  // Move focus after the row that was asked for has rendered.
+  useEffect(() => {
+    if (want === null) return;
+    const el = refs.current.get(want);
+    if (!el) return;
+    el.focus();
+    el.scrollIntoView?.({ block: "center" });
+    setWant(null);
+  }, [want, count]);
+
+  const go = (index: number | null, message?: string) => {
+    if (index === null) return;
+    setShown((s) => Math.max(s, index + 21));
+    setActive(index);
+    setWant(index);
+    if (message) setAnnounce(message);
+  };
+  const describe = (i: number) =>
+    `${RELATION_LABEL[rows[i]!.relation]} at step ${i + 1} of ${rows.length}.`;
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const t = e.target as HTMLElement;
+    if (t.tagName === "BUTTON" || t.tagName === "A") return;
+    const last = Math.max(0, count - 1);
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        go(Math.min(active + 1, last));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        go(Math.max(active - 1, 0));
+        break;
+      case "Home":
+        e.preventDefault();
+        go(0);
+        break;
+      case "End":
+        e.preventDefault();
+        go(last);
+        break;
+      case "n": {
+        const i = nextDifference(diffs, active, 1);
+        go(i, i === null ? "No later difference." : describe(i));
+        break;
+      }
+      case "p": {
+        const i = nextDifference(diffs, active, -1);
+        go(i, i === null ? "No earlier difference." : describe(i));
+        break;
+      }
+    }
+  };
+
+  if (rows.length === 0)
+    return (
+      <p className="muted" data-testid="no-steps">
+        Neither run has steps to compare.
+      </p>
+    );
+  return (
+    <div className="aligned" data-testid="aligned-steps">
+      <div className="aligned-toolbar" role="group" aria-labelledby={heading}>
+        <span id={heading} className="muted">
+          Steps ({rows.length}; {diffs.length} differ)
+        </span>
+        <button
+          type="button"
+          disabled={divergence === null}
+          onClick={() =>
+            go(divergence, divergence === null ? undefined : `Divergence: ${describe(divergence)}`)
+          }
+        >
+          Jump to divergence
+        </button>
+        <button
+          type="button"
+          disabled={nextDifference(diffs, active, -1) === null}
+          onClick={() => {
+            const i = nextDifference(diffs, active, -1);
+            go(i, i === null ? undefined : describe(i));
+          }}
+        >
+          Previous difference
+        </button>
+        <button
+          type="button"
+          disabled={nextDifference(diffs, active, 1) === null}
+          onClick={() => {
+            const i = nextDifference(diffs, active, 1);
+            go(i, i === null ? undefined : describe(i));
+          }}
+        >
+          Next difference
+        </button>
+      </div>
+      <p className="muted">
+        Keys: arrows move between steps, <kbd>n</kbd> and <kbd>p</kbd> jump to the next and previous
+        difference.
+      </p>
+      <p role="status" aria-live="polite" className="aligned-announce" data-testid="aligned-live">
+        {announce}
+      </p>
+      <div className="aligned-head" aria-hidden="true">
+        <span>Step</span>
+        <span>Left run</span>
+        <span>Right run</span>
+      </div>
+      <ol className="aligned-list" aria-label="Aligned steps" onKeyDown={onKeyDown}>
+        {rows.slice(0, count).map((r, i) => (
+          <li
+            key={i}
+            ref={(el) => {
+              if (el) refs.current.set(i, el);
+              else refs.current.delete(i);
+            }}
+            tabIndex={i === active ? 0 : -1}
+            className="aligned-row"
+            data-testid="aligned-row"
+            data-index={i}
+            data-relation={r.relation}
+            data-divergence={i === divergence ? "true" : undefined}
+            data-outcome={i === outcome ? "true" : undefined}
+            onFocus={() => setActive(i)}
+          >
+            <div className="aligned-flags">
+              <span className="muted">{i + 1}</span>
+              {r.relation !== "equal" && <span className="tag">{RELATION_LABEL[r.relation]}</span>}
+              {i === divergence && (
+                <span className="badge" data-tone="warn" data-testid="divergence-flag">
+                  Divergence
+                </span>
+              )}
+              {i === outcome && (
+                <span className="badge" data-tone="bad" data-testid="outcome-flag">
+                  First outcome difference
+                </span>
+              )}
+            </div>
+            <Cell step={r.left} side="left" />
+            <Cell step={r.right} side="right" />
+          </li>
+        ))}
+      </ol>
+      {count < rows.length && (
+        <button
+          type="button"
+          data-testid="show-more-steps"
+          onClick={() => setShown((s) => s + ROW_PAGE)}
+        >
+          Show more steps ({rows.length - count} hidden)
+        </button>
+      )}
+    </div>
+  );
+}

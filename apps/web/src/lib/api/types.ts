@@ -100,6 +100,7 @@ export type ExperimentIn = components["schemas"]["ExperimentIn"];
 export type VariantOut = components["schemas"]["VariantOut"];
 export type VariantIn = components["schemas"]["VariantIn"];
 export type VariantMetricsOut = components["schemas"]["VariantMetricsOut"];
+export type WarningOut = components["schemas"]["WarningOut"];
 export type EvaluateOut = components["schemas"]["EvaluateOut"];
 
 /** Evaluation states that can still change: the run page polls while any of them is the newest word. */

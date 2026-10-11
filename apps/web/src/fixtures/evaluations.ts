@@ -374,16 +374,19 @@ export function fixtureComparison(a: FixtureRun, b: FixtureRun, viewer: Viewer):
     left: side(a, left.length),
     right: side(b, right.length),
     steps,
+    // The names are the API's (`comparison/compare.py`).
     summary: [
-      "estimated_cost_usd",
       "duration_ms",
+      "estimated_cost_usd",
+      "retry_cost_usd",
       "llm_calls",
       "tool_calls",
       "retry_count",
       "error_count",
-    ].map((m) =>
-      metric(m === "estimated_cost_usd" ? "cost_usd" : m, a.run.summary[m], b.run.summary[m]),
-    ),
+      "files_modified",
+      "input_tokens",
+      "output_tokens",
+    ].map((m) => metric(m, a.run.summary[m], b.run.summary[m])),
   };
 }
 
