@@ -23,8 +23,10 @@ from abb_api.cost.retries import retry_call_ids
 
 # 2: cost comes from the CostEngine (ADR-040) and carries retry attribution (ADR-042).
 # 3: per-agent breakdown (`agents`, `agent_count`) and the run's agent and trace id come from
-#    `run.started` instead of the first event (Phase 9, ADR-070). The next bump is 4 (Phase 16).
-SUMMARY_VERSION = 3
+#    `run.started` instead of the first event (Phase 9, ADR-070).
+# 4: runs gain a search document (ADR-100); its `agents` array reads `summary["agents"]`.
+#    The next bump is 5.
+SUMMARY_VERSION = 4
 
 MAX_AGENTS = 50  # entries in `summary.agents`; more agents fold into one "(other)" row (KI-018)
 OTHER_AGENTS = "(other)"

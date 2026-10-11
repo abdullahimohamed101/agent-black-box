@@ -48,6 +48,47 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await page.screenshot({ path: `${SHOTS}/runs-list.png`, fullPage: true });
 });
 
+test("search: chips from the server parse, matched column, facets, refusal and keyboard use (fixtures)", async ({
+  page,
+}) => {
+  const SHOTS16 = "../../docs/screenshots/phase-16";
+  await page.goto(`${BASE}/runs`);
+  const box = page.getByRole("searchbox", { name: "Search" });
+  await box.fill("tool:run_migration");
+  await box.press("Enter");
+  await expect(page.getByRole("list", { name: "Search terms" })).toContainText(
+    "tool:run_migration",
+  );
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByTestId("matched").first()).toContainText("tool:run_migration");
+  await expect(page.getByRole("region", { name: "Narrow the results" })).toBeVisible();
+  await expect(page).toHaveURL(/q=tool%3Arun_migration/);
+  await axe(page);
+  await page.screenshot({ path: `${SHOTS16}/fixtures-search-results.png`, fullPage: true });
+  // a facet appends a term; a chip removes one
+  await page.getByRole("button", { name: /^Failed/ }).click();
+  await expect(page.getByRole("list", { name: "Search terms" })).toContainText("status:FAILED");
+  await page.getByRole("button", { name: "Remove status:FAILED" }).click();
+  await expect(page.getByRole("list", { name: "Search terms" })).not.toContainText("status:FAILED");
+  // a query the server rejects is explained, with a caret, never shown as "no runs"
+  await box.fill("tool:run_migration nope:1");
+  await box.press("Enter");
+  await expect(page.locator(".search-problem")).toContainText("could not be understood");
+  await expect(page.getByText("No runs match")).toHaveCount(0);
+  await axe(page);
+  await page.screenshot({ path: `${SHOTS16}/fixtures-search-error.png`, fullPage: true });
+  await box.fill("status:failed");
+  await box.press("Enter");
+  // two fixture runs failed: the billing migration and the failure chain (Phase 10)
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  // mobile: no horizontal scroll
+  await page.setViewportSize({ width: 375, height: 812 });
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
 test("failed run: headline, first error, drawer, keyboard navigation and focus return", async ({
   page,
 }) => {

@@ -4,7 +4,7 @@ import { vi } from "vitest";
 import { fixtureReply } from "@/fixtures/api";
 
 /** Routes the typed client's requests to the in-memory fixture API; `overrides` can force failures per path. */
-export function stubApi(overrides: Record<string, () => Response> = {}) {
+export function stubApi(overrides: Record<string, (url: URL) => Response> = {}) {
   const calls: string[] = [];
   vi.stubGlobal(
     "fetch",
@@ -12,7 +12,7 @@ export function stubApi(overrides: Record<string, () => Response> = {}) {
       const url = new URL(typeof input === "string" ? input : input.url);
       calls.push(url.pathname + url.search);
       const hit = Object.keys(overrides).find((k) => url.pathname.endsWith(k));
-      if (hit) return overrides[hit]!();
+      if (hit) return overrides[hit]!(url);
       const segs = url.pathname.replace(/^\/api\/abb\//, "").split("/");
       const r = fixtureReply(segs, url.searchParams);
       return Response.json(r.body, { status: r.status });

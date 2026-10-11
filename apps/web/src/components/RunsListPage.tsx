@@ -2,17 +2,18 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
-import { ALL_STATUSES, type RunStatus } from "@/lib/api/types";
 import type { Base } from "@/lib/routes";
+import { convertLegacy } from "@/lib/search";
 import { DEFAULT_FILTERS, RunsList, type ListFilters, type RangeKey } from "./RunsList";
 
 export function parseFilters(sp: URLSearchParams): ListFilters {
   const range = sp.get("range");
+  // `?status=FAILED&agent=x` from an older bookmark becomes `q=status:failed agent:x` (plan F11).
+  const legacy = convertLegacy(sp);
   return {
-    statuses: (sp.get("status")?.split(",") ?? []).filter((s): s is RunStatus =>
-      (ALL_STATUSES as readonly string[]).includes(s),
-    ),
-    agent: sp.get("agent") ?? "",
+    q: legacy.q,
+    statuses: legacy.statuses,
+    agent: legacy.agent,
     range: (["1h", "24h", "7d"] as const).includes(range as "1h") ? (range as RangeKey) : "all",
   };
 }
@@ -29,6 +30,7 @@ export function RunsListPage({ base }: { base: Base }) {
     (f: ListFilters) => {
       setFilters(f);
       const p = new URLSearchParams();
+      if (f.q) p.set("q", f.q); // URLSearchParams percent-encodes it (including `+` and `&`)
       if (f.statuses.length) p.set("status", f.statuses.join(","));
       if (f.agent) p.set("agent", f.agent);
       if (f.range !== DEFAULT_FILTERS.range) p.set("range", f.range);

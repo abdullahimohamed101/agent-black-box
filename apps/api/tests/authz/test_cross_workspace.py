@@ -6,6 +6,7 @@ not the acme-only expectation. Foreign ids and random ids must be indistinguisha
 same body (but for the request id), on success paths and error paths alike.
 """
 
+import json
 import re
 from collections.abc import Callable
 
@@ -134,3 +135,95 @@ async def test_a_dual_member_sees_only_the_workspace_they_name(world: World) -> 
     globex_headers = {**world.actors["dual"], "x-abb-workspace": world.globex.workspace_id}
     globex = await world.api.client.get("/v1/runs", headers=globex_headers, params={"limit": "100"})
     assert world.globex.run_id in globex.text and world.acme.run_id not in globex.text
+
+
+# What a search by an acme actor must never turn up: globex's canary in every searchable shape.
+SEARCH_PROBES = (
+    CANARY,
+    "tool:canary-globex-7f3e-tool",
+    "tool:canary-globex*",
+    "model:canary-globex-7f3e-model",
+    "model:canary-globex*",
+    "agent:canary-globex-7f3e",
+    "agent:canary*",
+    "root_agent:canary-globex-7f3e",
+    "name:CANARY",
+    "-tool:canary-globex-7f3e-tool",
+    "canary-globex-7f3e-tool",
+    "cost:>=777",
+)
+SEARCH_ACTORS = tuple(a for a in ACME_ACTORS if a not in ("art_alpha", "art_wide"))
+
+
+def without_echo(response_text: str) -> str:
+    """The body minus `query.terms`: the caller's own typed text is allowed to come back."""
+    body = json.loads(response_text)
+    if isinstance(body.get("query"), dict):
+        body["query"].pop("terms", None)
+    return json.dumps(body)
+
+
+@pytest.mark.parametrize("actor", SEARCH_ACTORS)
+async def test_a_search_by_an_acme_caller_never_finds_globex(world: World, actor: str) -> None:
+    for q in SEARCH_PROBES:
+        response = await world.get("/v1/runs", actor, q=q, limit=100)
+        if response.status_code == 403:  # billing, a key without the read scope
+            assert_clean(world, without_echo(response.text), f"{actor} {q}")
+            continue
+        assert response.status_code == 200, (actor, q, response.text)
+        body = response.json()
+        text = without_echo(response.text)
+        assert_clean(world, text, f"{actor} {q}")
+        if not q.startswith("-") and q != "cost:>=777":
+            assert body["items"] == [], (actor, q)
+        assert not {i["id"] for i in body["items"]} & world.globex.every_id
+        for values in (body["facets"] or {}).values():
+            assert all(CANARY.lower() not in v["value"].lower() for v in values), (actor, q)
+
+
+async def test_the_probes_are_potent_the_globex_owner_does_find_its_own_canary(
+    world: World,
+) -> None:
+    """Guards the test above: the same probes do find globex's runs from inside globex."""
+    for q in ("tool:canary-globex-7f3e-tool", "model:canary-globex*", "agent:canary-globex-7f3e"):
+        found = await world.get("/v1/runs", "other", q=q, limit=100)
+        assert len(found.json()["items"]) == 7, q
+        assert not {i["id"] for i in found.json()["items"]} & world.acme.every_id
+
+
+async def test_a_dual_member_searches_only_the_workspace_they_name(world: World) -> None:
+    acme_run_ids = {world.acme.run_id}
+    mine = await world.get("/v1/runs", "dual", q="tool:canary-globex-7f3e-tool")
+    assert mine.json()["items"] == []
+    in_globex = await world.api.client.get(
+        "/v1/runs",
+        params={"q": "tool:canary-globex-7f3e-tool", "limit": "100"},
+        headers={**world.actors["dual"], "x-abb-workspace": world.globex.workspace_id},
+    )
+    assert len(in_globex.json()["items"]) == 7
+    assert not {i["id"] for i in in_globex.json()["items"]} & world.acme.every_id
+    ours = await world.get("/v1/runs", "dual", q="tool:acme-agent-tool", limit=100)
+    assert len(ours.json()["items"]) == 3 and acme_run_ids <= {
+        i["id"] for i in ours.json()["items"]
+    }
+
+
+async def test_a_cursor_from_one_workspace_reveals_nothing_in_the_other(world: World) -> None:
+    first = await world.get("/v1/runs", "dual", q="tool:acme-agent-tool", limit=1)
+    cursor = first.json()["next_cursor"]
+    assert cursor
+    replay = await world.api.client.get(
+        "/v1/runs",
+        params={"q": "tool:acme-agent-tool", "limit": "100", "cursor": cursor},
+        headers={**world.actors["dual"], "x-abb-workspace": world.globex.workspace_id},
+    )
+    assert replay.status_code in (200, 400)
+    assert not [i for i in world.acme.every_id if i in without_echo(replay.text)]
+    assert replay.status_code == 400 or replay.json()["items"] == []  # globex has no such tool
+    # And the plain replay under a stranger's search of globex's own data stays inside globex.
+    own = await world.api.client.get(
+        "/v1/runs",
+        params={"q": "tool:canary-globex-7f3e-tool", "limit": "100", "cursor": cursor},
+        headers={**world.actors["dual"], "x-abb-workspace": world.globex.workspace_id},
+    )
+    assert not [i for i in world.acme.every_id if i in without_echo(own.text)]

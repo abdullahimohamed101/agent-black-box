@@ -4,7 +4,7 @@ A flight recorder, observability, debugging, evaluation and (eventually) control
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell
 command, retry and failure, with cost and latency, live.
 
-> Status: Phases 0-8 merged (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters). Phase 10 (reliability findings: loops, retry storms, cost spikes, failure chains, explained health) is implemented on its branch, pending review. The MVP gate is open; see `docs/IMPLEMENTATION_PLAN.md`.
+> Status: Phases 0-10 and 15 merged (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters, sign-in and roles, multi-agent tracing with a waterfall, reliability findings with explained health). Search and run comparison are being built. The MVP gate is open; see `docs/IMPLEMENTATION_PLAN.md`.
 > You can run the stack, trace an agent with the Python SDK or a framework adapter, and watch the run in the web UI, live.
 > See `docs/PROJECT_STATE.md`.
 
@@ -76,11 +76,14 @@ shows how to point it at your own stack and open the run (diff, shell and cost p
 `examples/multi-agent` records a planner, a researcher, a coder, a tester in a separate process and a reviewer in one run (`--skew-ms` skews the
 tester's clock); open the run and switch to Waterfall. `scripts/multiagent-e2e.sh` runs it against the real API and web.
 
+Search runs with `status:failed tool:github retries:>=2 started:>=-7d "npm test"` (runs page search box, or `GET /v1/runs?q=`); a VIEWER searches
+metadata only, never the text of commands or file paths (`docs/architecture/api-v1.md`, "Search").
+
 API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operations: `docs/OPERATIONS.md`.
 
 ## Phase Status
 
-See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-9 and 15 merged, MVP gate open). Summary: Phases 0-7 build the MVP
+See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-10 and 15 merged, MVP gate open). Summary: Phases 0-7 build the MVP
 (foundation, event contract, ingestion, SDK, web, live streaming, coding-agent demo,
 analytics) followed by a human review gate; Phases 8-20 add integrations, multi-agent
 tracing, reliability intelligence, evaluations, replay, security, policy/approvals, RBAC,

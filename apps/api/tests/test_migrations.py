@@ -50,6 +50,18 @@ async def column_names(url: str, table: str) -> set[str]:
     return names
 
 
+async def index_names(url: str, table: str) -> set[str]:
+    engine = create_async_engine(url, poolclass=NullPool)
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = :t"),
+            {"t": table},
+        )
+        names = {r[0] for r in rows}
+    await engine.dispose()
+    return names
+
+
 def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
     assert revisions() == [
         "0001",
@@ -70,6 +82,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0046",
         "0047",
         "0060",
+        "0080",
         "0070",
         "0071",
     ]
@@ -132,10 +145,29 @@ def test_a_database_at_0047_upgrades_to_0060_and_back_to_0047() -> None:
         assert asyncio.run(table_names(url)) == before
 
 
-def test_a_database_at_0060_upgrades_to_0071_and_back_to_0060() -> None:
-    """Phase 11's two migrations add exactly their tables and columns and reverse cleanly."""
+def test_0080_creates_the_search_table_and_drops_it_again() -> None:
+    """Phase 16: an empty derived table with its five indexes; the parent keeps working."""
     with temporary_database(migrate=False) as url:
         alembic(url, "upgrade", "0060")
+        assert "run_search" not in asyncio.run(table_names(url))
+        alembic(url, "upgrade", "0080")
+        assert "run_search" in asyncio.run(table_names(url))
+        assert asyncio.run(index_names(url, "run_search")) == {
+            "run_search_pkey",
+            "ix_run_search_project_started",
+            "ix_run_search_meta",
+            "ix_run_search_content",
+            "ix_run_search_event_types",
+            "ix_run_search_tools",
+        }
+        alembic(url, "downgrade", "0060")
+        assert "run_search" not in asyncio.run(table_names(url))
+
+
+def test_a_database_at_0080_upgrades_to_0071_and_back_to_0080() -> None:
+    """Phase 11's two migrations add exactly their tables and columns and reverse cleanly."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0080")
         before = asyncio.run(table_names(url))
         columns_before = asyncio.run(column_names(url, "evaluations"))
         alembic(url, "upgrade", "0071")
@@ -148,6 +180,6 @@ def test_a_database_at_0060_upgrades_to_0071_and_back_to_0060() -> None:
         assert {"state", "evaluator_id", "explanation", "config_snapshot"} <= (
             asyncio.run(column_names(url, "evaluations")) - columns_before
         )
-        alembic(url, "downgrade", "0060")
+        alembic(url, "downgrade", "0080")
         assert asyncio.run(table_names(url)) == before
         assert asyncio.run(column_names(url, "evaluations")) == columns_before

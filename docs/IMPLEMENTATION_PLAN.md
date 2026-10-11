@@ -18,13 +18,13 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | | **MVP gate** (spec §49, §138): human review, launch quality bar | | | Open: KI-050 (OpenAI and tiered prices); user acceptance |
 | 8 | Framework integrations | §70, §18 | post-MVP | Complete (merged, CI green) |
 | 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Complete (merged, CI green; plan: `docs/plans/completed/phase-9-multi-agent-tracing.md`) |
-| 10 | Reliability intelligence | §80-81 | M5 | Implemented; independent review done and its findings fixed; pending merge (PR #79) (plan: `docs/plans/active/phase-10-reliability-intelligence.md`) |
+| 10 | Reliability intelligence | §80-81 | M5 | Complete (merged, CI green; plan: `docs/plans/completed/phase-10-reliability-intelligence.md`) |
 | 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Not started |
 | 12 | Visual replay | §87 (level 1) | | Not started |
 | 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Not started |
 | 14 | Policy engine and human approvals | §88-89, §151 | M8 | Not started |
 | 15 | Auth, workspaces, RBAC | §91-92 | | Complete (merged, CI green; plan: `docs/plans/completed/phase-15-auth-rbac.md`) |
-| 16 | Search and investigation | §77, §152 | | Not started |
+| 16 | Search and investigation | §77, §152 | | Implemented; independent review done and its findings fixed; pending merge (plan: `docs/plans/active/phase-16-search-investigation.md`) |
 | 17 | Alerting and integrations | §35 | | Not started |
 | 18 | Performance and scale hardening (measure first) | §57, §74, §107, §119-120 | | Deferred (trigger) |
 | 19 | Production hardening | §43, §116-125 | | Not started |
@@ -214,6 +214,10 @@ audit log (ADR-062); resolves KI-029, KI-027, KI-051, KI-033. The route-walking 
 ## Phase 16 - Search and investigation
 Filter AST + parser for the §152 grammar, compiled to storage queries; server-side; FTS for
 selected text metadata; natural language (optional) compiles to the AST only.
+Built as (implemented; independent review done and its findings fixed): `GET /v1/runs?q=` (the grammar in `docs/architecture/api-v1.md`), a derived `run_search` table written by the summarizer (migration
+0080, `SUMMARY_VERSION` 4, `search-rebuild`), bounded reads (concurrency cap and time budget), permission-safe content search (ADR-100, ADR-101), the investigation view (chips from the
+server's parse, matched column, facets, unindexed notice) and the rule-based `QueryCompiler` fake. Evidence: `docs/plans/active/phase-16-search-investigation.md`; benchmarks:
+`docs/benchmarks/phase-16-regression-check.md`. KI-080..083.
 
 ## Phase 17 - Alerting and integrations
 Alert rules evaluated by workers; webhook, email, Slack behind an extension interface.

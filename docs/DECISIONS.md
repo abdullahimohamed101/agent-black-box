@@ -40,6 +40,8 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-071 | The waterfall is derived in the browser from the loaded events; critical path by last-finishing child | 9 | Accepted ([file](decisions/ADR-071-browser-derived-waterfall.md)) |
 | ADR-080 | Findings are derived, versioned, metadata-only records from a bounded detector job over the outbox | 10 | Accepted ([file](decisions/ADR-080-findings-derived-versioned-metadata-only.md)) |
 | ADR-081 | Health is a set of explained dimensions with recorded thresholds, not a score | 10 | Accepted ([file](decisions/ADR-081-health-explained-dimensions.md)) |
+| ADR-100 | Search is a typed filter grammar compiled server-side over a derived per-run Postgres search document (literal tsvector/tsquery, bounded reads, measured triggers) | 16 | Accepted ([file](decisions/ADR-100-search-grammar-and-derived-search-document.md)) |
+| ADR-101 | Search never reveals withheld content: permission-split documents, a compile-time gate, no counts, flags or ranking (amends ADR-061) | 16 | Accepted ([file](decisions/ADR-101-search-never-an-oracle-for-withheld-content.md)) |
 | ADR-090 | Evaluations are derived, versioned records with independent state, computed by the outbox worker in a budgeted thread | 11 | Proposed ([file](decisions/ADR-090-evaluations-derived-versioned-budgeted-worker.md)) |
 | ADR-091 | Model judges behind a one-method provider interface; a deterministic fake is the only shipped provider | 11 | Proposed ([file](decisions/ADR-091-model-judge-interface-fake-provider.md)) |
 | ADR-092 | Run comparison by normalised step alignment, computed on read, bounded by a work budget, role-aware | 11 | Proposed ([file](decisions/ADR-092-run-comparison-normalised-alignment.md)) |

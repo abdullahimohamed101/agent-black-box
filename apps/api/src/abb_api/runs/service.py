@@ -6,11 +6,13 @@ from typing import Any
 
 from abb_event_schema.event import Event
 from abb_event_schema.ids import IdKind, from_uuid, new_id, to_uuid
+from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from abb_api.authz import actions
+from abb_api.authz.audit import authorize_audited
 from abb_api.authz.principal import Principal
-from abb_api.authz.service import holds
+from abb_api.authz.service import PermissionDenied, holds
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.findings.detectors import DETECTORS_VERSION
@@ -20,7 +22,7 @@ from abb_api.projects.access import authorise_project
 from abb_api.runs import cursors
 from abb_api.runs.content import span_name_is_content, withhold_attributes
 from abb_api.runs.event_queries import EventQueries
-from abb_api.runs.queries import RunQueries, RunRecord
+from abb_api.runs.queries import FacetCounts, RunQueries, RunRecord
 from abb_api.runs.repository import RunRepository
 from abb_api.runs.schemas import (
     CreateRunRequest,
@@ -32,6 +34,11 @@ from abb_api.runs.schemas import (
     SpanOut,
     SpanPage,
 )
+from abb_api.runs.search_view import facets_out, matched_out, query_out
+from abb_api.search.compiler import CompiledSearch, compile_query
+from abb_api.search.errors import QueryError, query_invalid
+from abb_api.search.parser import parse
+from abb_api.search.reads import SearchGate
 from abb_api.traces.repository import SpanRecord, SpanRepository
 
 
@@ -86,6 +93,7 @@ def _run_out(
     badge: RunFindingsBadge | None = None,
     *,
     with_agents: bool = True,
+    search: CompiledSearch | None = None,
 ) -> RunOut:
     summary = record.summary
     if not with_agents and "agents" in summary:
@@ -110,6 +118,7 @@ def _run_out(
         created_at=record.created_at,
         updated_at=record.updated_at,
         findings=badge,
+        matched=matched_out(search, record.search) if search is not None else None,
     )
 
 
@@ -203,24 +212,88 @@ class RunService:
         ascending: bool,
         limit: int,
         cursor: str | None,
+        q: str | None = None,
+        request: Request | None = None,
+        gate: SearchGate | None = None,
     ) -> RunPage:
+        """The run listing. With `q` (the search grammar, §152) the listing is a search; without
+        it, or with an empty one, the statements are exactly those of the plain listing."""
+        query = None
+        compiled: CompiledSearch | None = None
+        if q is not None:
+            try:
+                query = parse(q, self._clock)
+            except QueryError as error:
+                raise query_invalid(error) from None
+            compiled = compile_query(query, principal)
+            if compiled.refused:
+                # Before any statement: the refusal never depends on stored data (ADR-101).
+                await self._refuse_content_field(request, principal, compiled)
+            if not query.terms:
+                compiled = None
         after_key = self._run_cursor(cursor)
-        async with self._engine.connect() as conn:
-            scope_project = await authorise_project(conn, principal, project_id)
-            queries = RunQueries(conn, principal.tenant, principal.project_id)
-            records = await queries.page(
-                statuses=statuses,
-                agent_slug=agent_id,
-                project_id=scope_project,
-                started_after=_aware(started_after, "started_after"),
-                started_before=_aware(started_before, "started_before"),
-                ascending=ascending,
-                limit=limit + 1,
-                after=after_key,
-            )
-            page = records[:limit]
-            states = await queries.summary_states([r.id for r in page])
-            badges = await FindingsRepository(conn, principal.tenant).badges([r.id for r in page])
+        after = _aware(started_after, "started_after")
+        before = _aware(started_before, "started_before")
+        counts: FacetCounts | None = None
+        skipped = None
+        if compiled is None:
+            async with self._engine.connect() as conn:
+                scope_project = await authorise_project(conn, principal, project_id)
+                queries = RunQueries(conn, principal.tenant, principal.project_id)
+                records = await queries.page(
+                    statuses=statuses,
+                    agent_slug=agent_id,
+                    started_after=after,
+                    started_before=before,
+                    project_id=scope_project,
+                    ascending=ascending,
+                    limit=limit + 1,
+                    after=after_key,
+                )
+                page = records[:limit]
+                states = await queries.summary_states([r.id for r in page])
+                badges = await FindingsRepository(conn, principal.tenant).badges(
+                    [r.id for r in page]
+                )
+        else:
+            assert gate is not None and query is not None
+            async with gate.request() as budget, self._engine.connect() as conn:
+                scope_project = await authorise_project(conn, principal, project_id)
+                queries = RunQueries(conn, principal.tenant, principal.project_id)
+                records = await queries.page(
+                    statuses=statuses,
+                    agent_slug=agent_id,
+                    started_after=after,
+                    started_before=before,
+                    project_id=scope_project,
+                    ascending=ascending,
+                    limit=limit + 1,
+                    after=after_key,
+                    search=compiled,
+                    budget=budget,
+                )
+                page = records[:limit]
+                states = await queries.summary_states([r.id for r in page])
+                badges = await FindingsRepository(conn, principal.tenant).badges(
+                    [r.id for r in page]
+                )
+                # Last, and optional: a cancelled facets statement aborts the transaction, which
+                # is fine because nothing runs after it.
+                if budget.allows_facets():
+                    try:
+                        counts = await queries.facets_and_unindexed(
+                            compiled,
+                            statuses=statuses,
+                            agent_slug=agent_id,
+                            started_after=after,
+                            started_before=before,
+                            project_id=scope_project,
+                            budget=budget,
+                        )
+                    except AppError as error:
+                        if error.code != "SEARCH_TIMEOUT":
+                            raise
+                skipped = None if counts else "budget"
         next_cursor = None
         if len(records) > limit:
             last = page[-1]
@@ -229,10 +302,35 @@ class RunService:
             )
         return RunPage(
             items=[
-                _run_out(r, states[r.id], _badge(badges.get(r.id)), with_agents=False) for r in page
+                _run_out(
+                    r, states[r.id], _badge(badges.get(r.id)), with_agents=False, search=compiled
+                )
+                for r in page
             ],
             next_cursor=next_cursor,
+            query=query_out(
+                query, content_allowed=holds(principal, actions.PAYLOAD_READ), counts=counts
+            )
+            if query is not None
+            else None,
+            facets=facets_out(counts) if counts else None,
+            facets_skipped=skipped,  # type: ignore[arg-type]
         )
+
+    @staticmethod
+    async def _refuse_content_field(
+        request: Request | None, principal: Principal, compiled: CompiledSearch
+    ) -> None:
+        """403 through the one audited authorisation path, naming the canonical field."""
+        denied: PermissionDenied | None = None
+        try:
+            assert request is not None
+            await authorize_audited(request, principal, actions.PAYLOAD_READ)
+        except PermissionDenied as error:
+            denied = error
+        denied = denied or PermissionDenied(principal, actions.PAYLOAD_READ)
+        denied.details["field"] = compiled.content_fields[0]  # the catalogue's name, not the typed
+        raise denied
 
     async def get_run(self, principal: Principal, run_id: str) -> RunOut:
         async with self._engine.connect() as conn:

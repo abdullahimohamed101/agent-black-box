@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Auth E2E (Phase 15): a real browser signs in through the OIDC flow against the DEVELOPMENT-ONLY fake provider
+# Auth E2E (Phase 15; also runs e2e/search.spec.ts, Phase 16): a real browser signs in through the OIDC flow against the DEVELOPMENT-ONLY fake provider
 # (scripts/fake-oidc.sh), switches workspace, is refused or shown less as a VIEWER, accepts an invitation, sees a key token
 # once, loses a live stream when removed, and signs out. A dedicated database (abb_p15, never the shared ones), the API on
 # :8165 (ABB_STREAM_REAUTH_SECONDS=2 so a revoked stream ends within seconds), the fake provider on :8166, a worker, and the
@@ -53,7 +53,8 @@ curl -sf "http://localhost:$OIDC_PORT/.well-known/openid-configuration" >/dev/nu
 step "provision two workspaces, people (generated, local-only) and a write key (secrets never printed)"
 suffix="$(date +%s)$RANDOM"
 A="auth-a-$suffix"; B="auth-b-$suffix"
-OWNER="owner-$suffix@auth.test"; INVITEE="invitee-$suffix@auth.test"; STREAMER="streamer-$suffix@auth.test"   # fresh people per run: the database is reused
+OWNER="owner-$suffix@auth.test"; INVITEE="invitee-$suffix@auth.test"; STREAMER="streamer-$suffix@auth.test"
+SEARCH_OWNER="searcher-$suffix@auth.test"; SEARCH_VIEWER="viewer-$suffix@auth.test"   # fresh people per run: the database is reused
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Auth Alpha" --slug "$A" >/dev/null
 cli create-workspace --name "Auth Beta" --slug "$B" >/dev/null
@@ -61,10 +62,15 @@ cli create-project --workspace "$A" --name Demo --slug demo >/dev/null
 cli add-member --workspace "$A" --email "$OWNER" --role OWNER >/dev/null
 cli add-member --workspace "$B" --email "$OWNER" --role OWNER >/dev/null
 cli add-member --workspace "$A" --email "$STREAMER" --role DEVELOPER >/dev/null
+cli add-member --workspace "$A" --email "$SEARCH_OWNER" --role OWNER >/dev/null     # search.spec: may read content
+cli add-member --workspace "$A" --email "$SEARCH_VIEWER" --role VIEWER >/dev/null   # search.spec: metadata only (Phase 16)
 WRITE_KEY="$(cli create-key --workspace "$A" --project demo --scopes events:write runs:read --name auth-e2e-write)"
 [[ "$WRITE_KEY" == abb_live_* ]] || fail "key creation"
 STREAMER_SESSION="$(ABB_ALLOW_DEV_SESSIONS=1 cli create-session --email "$STREAMER" --hours 1)"
 [ -n "$STREAMER_SESSION" ] || fail "could not mint a session"
+SEARCH_OWNER_SESSION="$(ABB_ALLOW_DEV_SESSIONS=1 cli create-session --email "$SEARCH_OWNER" --hours 1)"
+SEARCH_VIEWER_SESSION="$(ABB_ALLOW_DEV_SESSIONS=1 cli create-session --email "$SEARCH_VIEWER" --hours 1)"
+[ -n "$SEARCH_OWNER_SESSION" ] && [ -n "$SEARCH_VIEWER_SESSION" ] || fail "could not mint the search sessions"
 
 step "ingest a finished run whose first event carries a payload, and a run that stays in progress"
 PAYLOAD_TEXT="AUTH-E2E-PAYLOAD-$RANDOM$RANDOM"
@@ -122,8 +128,9 @@ done
 
 step "Playwright: real browser <-> web server <-> API <-> fake provider"
 cd "$root/apps/web"
-mkdir -p "$root/docs/screenshots/phase-15"
+mkdir -p "$root/docs/screenshots/phase-15" "$root/docs/screenshots/phase-16"
 E2E_AUTH_API_URL="$API" E2E_WORKSPACE="$A" E2E_WORKSPACE_B="$B" E2E_STREAMER_SESSION="$STREAMER_SESSION" E2E_OWNER_EMAIL="$OWNER" E2E_INVITEE_EMAIL="$INVITEE" E2E_STREAMER_EMAIL="$STREAMER" \
+  E2E_SEARCH_OWNER_SESSION="$SEARCH_OWNER_SESSION" E2E_SEARCH_VIEWER_SESSION="$SEARCH_VIEWER_SESSION" \
   E2E_RUN_PAYLOAD="$E2E_RUN_PAYLOAD" E2E_RUN_LIVE="$E2E_RUN_LIVE" E2E_PAYLOAD_TEXT="$PAYLOAD_TEXT" E2E_COMMAND_TEXT="$COMMAND_TEXT" E2E_PATH_TEXT="$PATH_TEXT" \
-  pnpm exec playwright test e2e/auth.spec.ts
+  pnpm exec playwright test e2e/auth.spec.ts e2e/search.spec.ts
 printf '\nAUTH-E2E PASSED\n'

@@ -534,7 +534,7 @@ async def test_a_multi_emitter_run_is_time_ordered_and_nests_by_parent_not_by_cl
     row = await run_row(engine, run["run_id"])
     assert row.ordering_mode == "time"
     assert row.agent_slug == "planner" and row.trace_id == to_uuid(run["trace_id"])
-    assert row.summary_version == SUMMARY_VERSION == 3
+    assert row.summary_version == SUMMARY_VERSION == 4
     assert {a["agent_id"] for a in row.summary["agents"]} == {"planner", "tester"}
     assert row.summary["agent_count"] == 2
     spans = await span_rows(engine, run["run_id"])
