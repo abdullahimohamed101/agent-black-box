@@ -235,6 +235,17 @@ troubleshooting docs, three examples (coding, simple custom, multi-agent), deter
 data (`make demo`), short demo recording, release polish checklist (no placeholder text, broken
 routes, fake charts, debug logging, or secrets).
 
+## Planned additions (decided 2026-10-11)
+
+Added at the user's request ("go with your recommendation"); neither has a plan yet.
+
+- **UI design pass.** After the feature phases and before Phase 20's release polish. The UI today is functional and unbranded (dark theme, system fonts, dense tables,
+  no logo or design system). The pass would give it one visual system, branding, a light theme and polish on the busiest screens (run page, waterfall, dashboard).
+  Show two or three visual directions as mockups before building anything.
+- **Private hosting.** After Phase 19 (production hardening). A hosting guide and recipe for one small server: the compose stack behind a reverse proxy with automatic
+  HTTPS, a domain, a persistent volume for artifacts (object storage stays deferred, Phase 18), Postgres backups, a real OIDC provider (KI-067) and
+  `ABB_TRUST_PROXY` behind the proxy (KI-073). Pull a minimal slice earlier only if the user asks. Assumed audience: the user and a small team (not confirmed).
+
 ## Ideas beyond Phase 20 (not planned)
 
 - A hub for all LLM usage (gateway, tool hooks, usage import): `docs/ideas/llm-hub.md`. Revisit when the roadmap above is nearing completion.
