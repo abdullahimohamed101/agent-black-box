@@ -538,7 +538,7 @@ export interface paths {
         };
         /**
          * List runs
-         * @description Newest first by default. Page with `next_cursor`; filters combine with AND.
+         * @description Newest first by default. Page with `next_cursor`; filters combine with AND. `q` takes the search grammar (docs/architecture/api-v1.md, Search): `QUERY_INVALID` (422) for a bad query, `PERMISSION_DENIED` (403, `details.field`) for a content field without `payload.read`, `SEARCH_BUSY` and `SEARCH_TIMEOUT` (503, retryable).
          */
         get: operations["list_runs_v1_runs_get"];
         put?: never;
@@ -1245,6 +1245,29 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** FacetValueOut */
+        FacetValueOut: {
+            /** Count */
+            count: number;
+            /** Value */
+            value: string;
+        };
+        /**
+         * FacetsOut
+         * @description Counts over the newest 1,000 matching runs, metadata only (never content).
+         */
+        FacetsOut: {
+            /** Agents */
+            agents: components["schemas"]["FacetValueOut"][];
+            /** Event Types */
+            event_types: components["schemas"]["FacetValueOut"][];
+            /** Models */
+            models: components["schemas"]["FacetValueOut"][];
+            /** Status */
+            status: components["schemas"]["FacetValueOut"][];
+            /** Tools */
+            tools: components["schemas"]["FacetValueOut"][];
+        };
         /** FailureDay */
         FailureDay: {
             /** Blocked */
@@ -1344,6 +1367,9 @@ export interface components {
              * @default true
              */
             ok: boolean;
+        };
+        MatchedOut: {
+            [key: string]: unknown;
         };
         /** MeOut */
         MeOut: {
@@ -1477,6 +1503,91 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** QueryFieldOut */
+        QueryFieldOut: {
+            /** Description */
+            description: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Ordered */
+            ordered: boolean;
+            /** Prefix */
+            prefix: boolean;
+        };
+        /** QueryOut */
+        QueryOut: {
+            /** Content Allowed */
+            content_allowed: boolean;
+            /**
+             * Fields
+             * @description The fields this caller may search (content fields only with `payload.read`).
+             */
+            fields: components["schemas"]["QueryFieldOut"][];
+            /** Terms */
+            terms: components["schemas"]["QueryTermOut"][];
+            /**
+             * Unindexed
+             * @description Runs in scope with no search document yet (they match no indexed term); null when the query does not use the index.
+             */
+            unindexed: number | null;
+            /**
+             * Unindexed Capped
+             * @description True when `unindexed` stopped counting at its cap.
+             */
+            unindexed_capped: boolean;
+        };
+        /**
+         * QueryTermOut
+         * @description One parsed term of `q`, echoed so the UI renders chips and removes a term exactly.
+         */
+        QueryTermOut: {
+            /**
+             * Field
+             * @description Canonical field name (field terms).
+             */
+            field: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "field" | "text";
+            /**
+             * Lexemes
+             * @description Normalised words (text terms).
+             */
+            lexemes: string[] | null;
+            /** Negated */
+            negated: boolean;
+            /**
+             * Op
+             * @description `=`, `>=`, `<=`, `>`, `<` or `between` (field terms).
+             */
+            op: string | null;
+            /** Phrase */
+            phrase: boolean;
+            /** Prefix */
+            prefix: boolean;
+            /**
+             * Span
+             * @description [start, end) character offsets within `q`.
+             */
+            span: [
+                number,
+                number
+            ];
+            /**
+             * Value
+             * @description Normalised value; times are resolved to instants.
+             */
+            value: string | null;
+            /**
+             * Value End
+             * @description End of a `between` range (a whole UTC day).
+             */
+            value_end: string | null;
         };
         /** Rates */
         Rates: {
@@ -1650,6 +1761,8 @@ export interface components {
             duration_ms: number | null;
             /** Id */
             id: string;
+            /** @description Why the run matched a search: the indexed values the query named. Only present when `q` named at least one indexed field or word. */
+            matched?: components["schemas"]["MatchedOut"] | null;
             /** Metadata */
             metadata: {
                 [key: string]: unknown;
@@ -1698,10 +1811,17 @@ export interface components {
         };
         /** RunPage */
         RunPage: {
+            facets?: components["schemas"]["FacetsOut"] | null;
+            /**
+             * Facets Skipped
+             * @description `budget` when the facets were left out to keep the time budget.
+             */
+            facets_skipped?: "budget" | null;
             /** Items */
             items: components["schemas"]["RunOut"][];
             /** Next Cursor */
             next_cursor: string | null;
+            query?: components["schemas"]["QueryOut"] | null;
         };
         /** SlowOperation */
         SlowOperation: {
@@ -4213,6 +4333,8 @@ export interface operations {
                 sort?: "-started_at" | "started_at";
                 limit?: number;
                 cursor?: string | null;
+                /** @description Search query (the §152 grammar); at most 512 characters. */
+                q?: string | null;
             };
             header?: {
                 /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */

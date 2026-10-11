@@ -1621,6 +1621,73 @@
         "title": "ExpensiveRun",
         "type": "object"
       },
+      "FacetValueOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "FacetValueOut",
+        "type": "object"
+      },
+      "FacetsOut": {
+        "description": "Counts over the newest 1,000 matching runs, metadata only (never content).",
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/FacetValueOut"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/FacetValueOut"
+            },
+            "title": "Event Types",
+            "type": "array"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/FacetValueOut"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "status": {
+            "items": {
+              "$ref": "#/components/schemas/FacetValueOut"
+            },
+            "title": "Status",
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/FacetValueOut"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "agents",
+          "tools",
+          "models",
+          "event_types"
+        ],
+        "title": "FacetsOut",
+        "type": "object"
+      },
       "FailureDay": {
         "properties": {
           "blocked": {
@@ -1864,6 +1931,10 @@
           }
         },
         "title": "LogoutOut",
+        "type": "object"
+      },
+      "MatchedOut": {
+        "additionalProperties": true,
         "type": "object"
       },
       "MeOut": {
@@ -2240,6 +2311,205 @@
           "name"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "QueryFieldOut": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ordered": {
+            "title": "Ordered",
+            "type": "boolean"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "description",
+          "ordered",
+          "prefix"
+        ],
+        "title": "QueryFieldOut",
+        "type": "object"
+      },
+      "QueryOut": {
+        "properties": {
+          "content_allowed": {
+            "title": "Content Allowed",
+            "type": "boolean"
+          },
+          "fields": {
+            "description": "The fields this caller may search (content fields only with `payload.read`).",
+            "items": {
+              "$ref": "#/components/schemas/QueryFieldOut"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/QueryTermOut"
+            },
+            "title": "Terms",
+            "type": "array"
+          },
+          "unindexed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Runs in scope with no search document yet (they match no indexed term); null when the query does not use the index.",
+            "title": "Unindexed"
+          },
+          "unindexed_capped": {
+            "description": "True when `unindexed` stopped counting at its cap.",
+            "title": "Unindexed Capped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "terms",
+          "fields",
+          "content_allowed",
+          "unindexed",
+          "unindexed_capped"
+        ],
+        "title": "QueryOut",
+        "type": "object"
+      },
+      "QueryTermOut": {
+        "description": "One parsed term of `q`, echoed so the UI renders chips and removes a term exactly.",
+        "properties": {
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Canonical field name (field terms).",
+            "title": "Field"
+          },
+          "kind": {
+            "enum": [
+              "field",
+              "text"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "lexemes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Normalised words (text terms).",
+            "title": "Lexemes"
+          },
+          "negated": {
+            "title": "Negated",
+            "type": "boolean"
+          },
+          "op": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`=`, `>=`, `<=`, `>`, `<` or `between` (field terms).",
+            "title": "Op"
+          },
+          "phrase": {
+            "title": "Phrase",
+            "type": "boolean"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "boolean"
+          },
+          "span": {
+            "description": "[start, end) character offsets within `q`.",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Span",
+            "type": "array"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Normalised value; times are resolved to instants.",
+            "title": "Value"
+          },
+          "value_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End of a `between` range (a whole UTC day).",
+            "title": "Value End"
+          }
+        },
+        "required": [
+          "kind",
+          "field",
+          "op",
+          "value",
+          "value_end",
+          "lexemes",
+          "phrase",
+          "prefix",
+          "negated",
+          "span"
+        ],
+        "title": "QueryTermOut",
         "type": "object"
       },
       "Rates": {
@@ -2657,6 +2927,17 @@
             "title": "Id",
             "type": "string"
           },
+          "matched": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchedOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the run matched a search: the indexed values the query named. Only present when `q` named at least one indexed field or word."
+          },
           "metadata": {
             "additionalProperties": true,
             "title": "Metadata",
@@ -2758,6 +3039,29 @@
       },
       "RunPage": {
         "properties": {
+          "facets": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FacetsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "facets_skipped": {
+            "anyOf": [
+              {
+                "const": "budget",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`budget` when the facets were left out to keep the time budget.",
+            "title": "Facets Skipped"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/RunOut"
@@ -2775,6 +3079,16 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QueryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -6660,7 +6974,7 @@
     },
     "/v1/runs": {
       "get": {
-        "description": "Newest first by default. Page with `next_cursor`; filters combine with AND.",
+        "description": "Newest first by default. Page with `next_cursor`; filters combine with AND. `q` takes the search grammar (docs/architecture/api-v1.md, Search): `QUERY_INVALID` (422) for a bad query, `PERMISSION_DENIED` (403, `details.field`) for a content field without `payload.read`, `SEARCH_BUSY` and `SEARCH_TIMEOUT` (503, retryable).",
         "operationId": "list_runs_v1_runs_get",
         "parameters": [
           {
@@ -6802,6 +7116,24 @@
                 }
               ],
               "title": "Cursor"
+            }
+          },
+          {
+            "description": "Search query (the §152 grammar); at most 512 characters.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search query (the §152 grammar); at most 512 characters.",
+              "title": "Q"
             }
           },
           {
