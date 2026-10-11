@@ -17,7 +17,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 7 | Cost and analytics | §79, §22-23, §61 | M3 | Complete (merged, CI green) |
 | | **MVP gate** (spec §49, §138): human review, launch quality bar | | | Open: KI-050 (OpenAI and tiered prices); user acceptance |
 | 8 | Framework integrations | §70, §18 | post-MVP | Complete (merged, CI green) |
-| 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Implemented; pending security review (plan: `docs/plans/active/phase-9-multi-agent-tracing.md`) |
+| 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Complete (merged, CI green; plan: `docs/plans/completed/phase-9-multi-agent-tracing.md`) |
 | 10 | Reliability intelligence | §80-81 | M5 | Not started |
 | 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Not started |
 | 12 | Visual replay | §87 (level 1) | | Not started |
@@ -238,6 +238,17 @@ README with screenshots, architecture, quickstart, SDK/API/events/deployment/sec
 troubleshooting docs, three examples (coding, simple custom, multi-agent), deterministic seed
 data (`make demo`), short demo recording, release polish checklist (no placeholder text, broken
 routes, fake charts, debug logging, or secrets).
+
+## Planned additions (decided 2026-10-11)
+
+Added at the user's request ("go with your recommendation"); neither has a plan yet.
+
+- **UI design pass.** After the feature phases and before Phase 20's release polish. The UI today is functional and unbranded (dark theme, system fonts, dense tables,
+  no logo or design system). The pass would give it one visual system, branding, a light theme and polish on the busiest screens (run page, waterfall, dashboard).
+  Show two or three visual directions as mockups before building anything.
+- **Private hosting.** After Phase 19 (production hardening). A hosting guide and recipe for one small server: the compose stack behind a reverse proxy with automatic
+  HTTPS, a domain, a persistent volume for artifacts (object storage stays deferred, Phase 18), Postgres backups, a real OIDC provider (KI-067) and
+  `ABB_TRUST_PROXY` behind the proxy (KI-073). Pull a minimal slice earlier only if the user asks. Assumed audience: the user and a small team (not confirmed).
 
 ## Ideas beyond Phase 20 (not planned)
 
