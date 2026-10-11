@@ -45,3 +45,7 @@ changing the classification in one place (`abb_api/content.py`). A future rankin
 - `matched` omits the `content_truncated` key (not null) for an actor without `payload.read`; `query.fields` lists only the fields the caller may search, and the web help renders
   that list, so a viewer is never offered `file:` or `command:` (verified in the browser by `apps/web/e2e/search.spec.ts`).
 - The oracle tests compare `items`, `facets` and `next_cursor` of a content canary against a nonsense term in every syntactic form (free text, prefix, phrase, negated, NFKC confusable).
+- Pinned after the security review (F4): `test_the_refusal_comes_before_the_cursor_is_decoded` (a garbage cursor plus a content field is the `403`, not a `400`) and
+  `test_a_search_runs_in_a_read_only_transaction` (a write through the search connection fails with "read-only transaction"; each was shown to fail without its guard).
+- Known limit (review F8, KI-082): the search permit is taken before a pooled connection, so it is held while the request waits for one (up to `pool_timeout`, 5 s),
+  outside the 5 s statement budget. Accepted: the cap protects ingestion and the plain list, which never wait on a permit.

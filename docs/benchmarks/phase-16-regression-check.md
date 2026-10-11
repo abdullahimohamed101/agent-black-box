@@ -80,3 +80,12 @@ Against the plan's thresholds (metadata text and arrays below 500 ms, substring 
 runs they are the first class to cross 1 s (roughly 200,000 runs inside the searched window), which is the signal to schedule the trigram index (ADR-100 (8)).
 Not measured: the plan's 9,000,000-run Stage A volume, concurrent searches (the semaphore caps them at four per process), a cold cache, a viewer's
 metadata-only query shapes (they take the same statements without the content branch).
+
+## Caveats to carry (security review F11, KI-114)
+
+- Both measurements ran in native processes, not in the Colima VM that the acceptance criterion names; the VM re-measurement is an open follow-up, not a result.
+- Each A/B cell is three rounds of medians. The 30,000-event p95 is bimodal and is not compared. The 4-client case I p95 (+18%) comes from one 215 ms run.
+- Two numbers sit close to the trigger: summary freshness +13.1% (2,000 events) against the 20% threshold with a 14% noise band, from three samples with one 1.77 s outlier,
+  and that 4-client p95. "Trigger not tripped" holds under the plan's own rule (a change must exceed both the band and the threshold), but it is not margin.
+- `scripts/bench_search.py` seeds `to_tsvector` corpora (plain words), not documents from `build_document`: the recorded GIN sizes and the latency of the text classes are those of a benchmark
+  corpus, not of the production builder's tokens and positions. Re-measure with real documents in the VM before the next volume step.

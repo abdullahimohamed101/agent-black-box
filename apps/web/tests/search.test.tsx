@@ -1,3 +1,4 @@
+import { fixtureSearch, FixtureQueryError } from "@/fixtures/search";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
@@ -404,6 +405,36 @@ describe("search page", () => {
     expect(screen.queryByRole("button", { name: /\(other\)/ })).toBeNull();
     await user.click(screen.getByRole("button", { name: /v1\.2-bot/ }));
     await waitFor(() => expect(seen).toContain("tool:github agent:v1.2-bot"));
+  });
+
+  it("fixture mode reads the API parser's canonical examples the same way for its field subset (review F10)", () => {
+    // [q, field, negated, value, prefix]: the expectations of apps/api/tests/search/test_parser.py
+    const shared: [string, string, boolean, string, boolean][] = [
+      ["status:failed", "status", false, "failed", false],
+      ["tool:github", "tool", false, "github", false],
+      ["event:shell.*", "event", false, "shell.", true],
+      ['model:"claude*"', "model", false, "claude", true],
+      ["agent:planner", "agent", false, "planner", false],
+      ["agent:my_agent", "agent", false, "my_agent", false],
+      ["agent:V1.2-Bot", "agent", false, "v1.2-bot", false],
+      ["agent:plan*", "agent", false, "plan", true],
+      ["-tool:github", "tool", true, "github", false],
+      ["name:deploy", "name", false, "deploy", false],
+    ];
+    for (const [q, field, negated, value, prefix] of shared) {
+      const { query } = fixtureSearch(fixtureRuns(), q);
+      expect(query.terms, q).toHaveLength(1);
+      const t = query.terms[0]!;
+      expect([t.field, t.negated, t.value?.toLowerCase(), t.prefix], q).toEqual([
+        field,
+        negated,
+        value,
+        prefix,
+      ]);
+    }
+    // what the fixtures cannot answer is refused, never answered differently
+    for (const q of ["file:x", "command:curl", "cost:>1"])
+      expect(() => fixtureSearch(fixtureRuns(), q), q).toThrow(FixtureQueryError);
   });
 
   it("counts a capped unindexed figure as N+", async () => {
