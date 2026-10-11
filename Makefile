@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e findings-e2e
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -134,6 +134,10 @@ e2e-real:
 # Sign-in, workspaces, roles and the stream re-check in a real browser against the dev-only fake OIDC provider (Phase 15).
 auth-e2e:
 	pnpm --filter @abb/web build && scripts/auth-e2e.sh
+
+# Reliability findings: pathological runs through ingestion, the worker and a real browser (Phase 10).
+findings-e2e:
+	pnpm --filter @abb/web build && scripts/findings-e2e.sh
 
 # Analytics: browser E2E over known runs, and the Stage A benchmark (docs/benchmarks/phase-7-analytics.md).
 analytics-e2e:
