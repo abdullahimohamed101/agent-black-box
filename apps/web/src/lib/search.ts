@@ -19,6 +19,15 @@ export function quoteValue(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+/**
+ * Whether a facet value can become a search term. A `*` is the grammar's prefix mark, and the agents facet also lists
+ * the summary's `(other)` overflow bucket, which no `agent:` value can name (review F2): those stay plain labels.
+ */
+export function facetClickable(facet: string, value: string): boolean {
+  if (value.includes("*")) return false;
+  return facet !== "agents" || AGENT_SLUG.test(value.toLowerCase());
+}
+
 /** `q` plus one more term, separated by a space. The server parses it again; nothing is validated here. */
 export function appendTerm(q: string, term: string): string {
   const base = q.trim();

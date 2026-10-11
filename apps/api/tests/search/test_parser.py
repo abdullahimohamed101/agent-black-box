@@ -71,6 +71,11 @@ def fail(q: str) -> QueryError:
         ("duration:>250ms", ("duration", ">", 250.0)),
         ("agent:planner", ("agent", "=", "planner")),
         ("root_agent:Planner", ("root_agent", "=", "planner")),
+        # review F2: the event schema's agent id rule, `.` and `_` included
+        ("agent:my_agent", ("agent", "=", "my_agent")),
+        ("agent:V1.2-Bot", ("agent", "=", "v1.2-bot")),
+        ("root_agent:my_agent", ("root_agent", "=", "my_agent")),
+        ('agent:"my_agent"', ("agent", "=", "my_agent")),
         ("name:deploy", ("name", "=", "deploy")),
         ("command:curl", ("command", "=", "curl")),
         ("errors:>0", ("errors", ">", 0)),
@@ -89,6 +94,7 @@ def test_prefixes() -> None:
     assert (glob.value, glob.prefix) == ("claude", True)
     assert field("event:shell.*").value == "shell." and field("event:shell.*").prefix
     assert field("agent:plan*").prefix
+    assert field("agent:my_ag*").value == "my_ag" and field("agent:my_ag*").prefix
     # `*` is a literal where prefixes are not defined
     assert field("name:a*b").value == "a*b" and not field("name:a*b").prefix
     assert text("src/au*").prefix and text("src/au*").lexemes == ("src/au",)
@@ -259,6 +265,10 @@ def test_relative_time_limit() -> None:
         ("event:../../etc", 6, "not an event type"),
         ("event:shell", 6, "not an event type"),
         ("agent:-bad", 6, "not a valid agent slug"),
+        ("agent:_bad", 6, "not a valid agent slug"),
+        ("agent:.bad", 6, "not a valid agent slug"),
+        ('agent:"(other)"', 7, "not a valid agent slug"),
+        (f"agent:a{'b' * 64}", 6, "not a valid agent slug"),
         ("security:maybe", 9, "expected true or false"),
         ("severity:warning", 9, "only severity:error is supported"),
         ("started:today", 8, "not a date, time or relative time (like -24h)"),

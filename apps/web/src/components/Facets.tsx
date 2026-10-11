@@ -1,5 +1,5 @@
 import type { FacetsOut } from "@/lib/api/types";
-import { FACET_FIELDS } from "@/lib/search";
+import { FACET_FIELDS, facetClickable } from "@/lib/search";
 import { statusLabel } from "./StatusBadge";
 
 const TITLES: Record<keyof typeof FACET_FIELDS, string> = {
@@ -38,7 +38,7 @@ export function Facets({
           <ul>
             {facets[k].map((v) => (
               <li key={v.value}>
-                {v.value.includes("*") ? (
+                {!facetClickable(k, v.value) ? (
                   <span>
                     {v.value} <span className="muted">({v.count})</span>
                   </span>

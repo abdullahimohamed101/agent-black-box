@@ -32,7 +32,9 @@ MAX_RELATIVE_DAYS = 3660
 _MIN_YEAR, _MAX_YEAR = 1970, 2999
 
 _FIELD_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*:")
-_SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
+# The event schema's `AgentSlug` and the `agent_id` rule of `GET /v1/runs`, so a legacy
+# `?agent=my_agent` bookmark converts to a valid term (review F2).
+_SLUG = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 _DECIMAL = re.compile(r"-?[0-9]{1,20}(\.[0-9]{1,9})?")
 _INT = re.compile(r"-?[0-9]{1,10}")
 _DURATION = re.compile(r"([0-9]{1,12}(?:\.[0-9]{1,6})?)(ms|s|m|h)")

@@ -96,6 +96,13 @@ describe("search helpers", () => {
       agent: "",
     });
     expect(convertLegacy(new URLSearchParams("agent=Bad Agent!")).agent).toBe("Bad Agent!");
+    // review F2: ids with `.` and `_` are valid agent ids and valid `agent:` values
+    expect(convertLegacy(new URLSearchParams("agent=my_agent&status=FAILED"))).toEqual({
+      q: "status:failed agent:my_agent",
+      statuses: [],
+      agent: "",
+    });
+    expect(convertLegacy(new URLSearchParams("agent=v1.2-bot")).q).toBe("agent:v1.2-bot");
     const f = parseFilters(new URLSearchParams("status=FAILED&agent=x&range=24h"));
     expect(f).toMatchObject({ q: "status:failed agent:x", range: "24h", statuses: [], agent: "" });
     // anything that is not a status name is dropped, never forwarded into q
@@ -362,6 +369,41 @@ describe("search page", () => {
     expect(cells[1]).toHaveTextContent("model:model-x");
     await user.click(screen.getByRole("button", { name: /model x/ }));
     await waitFor(() => expect(seen).toContain('tool:github model:"model x"'));
+  });
+
+  it("offers agent ids with dots and underscores, and leaves (other) as a plain label (review F2)", async () => {
+    const runs = fixtureRuns()
+      .slice(0, 1)
+      .map((f) => f.run);
+    const seen: string[] = [];
+    stubApi({
+      "/v1/runs": (url) => {
+        const q = url.searchParams.get("q");
+        if (q) seen.push(q);
+        if (!q) return Response.json({ items: [], next_cursor: null, query: echo([]) });
+        return Response.json({
+          items: [runs[0]!],
+          next_cursor: null,
+          query: echo([term("tool", "github", [0, 11])]),
+          facets: {
+            ...emptyFacets,
+            agents: [
+              { value: "my_agent", count: 3 },
+              { value: "v1.2-bot", count: 2 },
+              { value: "(other)", count: 1 },
+            ],
+          },
+        });
+      },
+    });
+    const user = userEvent.setup();
+    renderWithQuery(<Harness initial={{ q: "tool:github" }} />);
+    expect(await screen.findByRole("button", { name: /my_agent/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /v1\.2-bot/ })).toBeInTheDocument();
+    expect(screen.getByText("(other)")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /\(other\)/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /v1\.2-bot/ }));
+    await waitFor(() => expect(seen).toContain("tool:github agent:v1.2-bot"));
   });
 
   it("counts a capped unindexed figure as N+", async () => {

@@ -483,6 +483,27 @@ async def test_the_legacy_filters_and_a_query_are_anded(
     assert await find(engine, seeded, "tool:github", statuses=["SUCCESS"]) == {"multi"}
 
 
+async def test_agent_ids_with_dots_and_underscores_are_searchable(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """Review F2: the agent id rule of the schema and of `?agent_id=` is also the `agent:` rule."""
+    tenant, run = await make_tenant(engine, "acme"), make_run_ids()
+    spec = [
+        ("run.started", {"run.name": "Dotted"}, {"agent_id": "my_agent"}),
+        ("tool.call.completed", {"tool.name": "github"}, {"agent_id": "v1.2-bot"}),
+        ("run.completed", {}, {"agent_id": "my_agent"}),
+    ]
+    await ingest(engine, tenant, run_events(tenant, run, 0, spec))
+    await drain(worker_for(engine, database_url))
+    world = Seeded(tenant, {"dotted": to_uuid(run["run_id"])})
+    assert await find(engine, world, "agent:my_agent") == {"dotted"}
+    assert await find(engine, world, "agent:v1.2-bot") == {"dotted"}
+    assert await find(engine, world, "agent:v1.*") == {"dotted"}
+    assert await find(engine, world, "root_agent:my_agent") == {"dotted"}
+    assert await find(engine, world, "agent:my_agent", agent_slug="my_agent") == {"dotted"}
+    assert await find(engine, world, "agent:my_other") == set()
+
+
 # ------------------------------------------------------------------ budget and gate
 
 
