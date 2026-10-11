@@ -1,6 +1,6 @@
 # Phase 11 - Evaluations, experiments and run comparison
 
-Status: Planned and reviewed 2026-10-10; ready for implementation (independent review `phase-11-plan-review.md` at cd4e4aa addressed below under "Review dispositions"; the user's decisions 1-6 still to confirm)
+Status: Implemented 2026-10-11; pending security review (closing evidence below; the plan stays in `active/` until the review and its fixes land)
 Owner: implementer agent
 Branch: `feature/phase-11-evaluations` (from `main` c212058; worktree `../abb-worktrees/phase-11`). **Merges last** of the four parallel phases (order 9, 10, 16, 11); see Merge notes.
 Depends on: Phase 2 (outbox, run queries), Phase 6 (coding telemetry, artifacts), Phase 7 (cost lines, typed run columns), Phase 15 (`require(action)`, matrix, registry, `payload.read`); at merge time Phase 10 (`load_run(limit)`, `summary_states(job_type)`, `IdKind.FINDING`, migration 0060) and Phase 16 (migration 0080)
@@ -818,3 +818,41 @@ are compared partially, which the response and UI state (KI-105).
   evaluator, failed `only-app-files` (TIMEOUT), completed `tests-pass` (score 0.0 fail) and "Earlier results (1)", with both forms; the viewer workspace shows the same scores/labels with
   "Explanation withheld for your role." (2) and no forms; the baseline's hostile explanation renders as text (no `img`); Show evidence opens the cited test run in the drawer; the runs list picks two
   runs, disables the other ten boxes, builds the compare link and has no horizontal overflow. The Playwright fixtures spec (19 tests) exercises the same with axe.
+
+## Implementation notes (steps 13-15)
+
+- Compare page: a static `runs/compare` route (it takes precedence over `[runId]`), query parameters `left` and `right` (the plan's `a`/`b` of D11 became the names `comparePath` already used). Aligned rows are the API's
+  `steps` rendered as they come (`divergence.index` addresses `steps[index]`); at most 400 rows render at first with a "Show more" button and a jump always includes its target row (no virtualiser: KI-109). Keyboard:
+  arrows, Home/End, `n`/`p`, and the toolbar buttons; a live region says where focus went. Tables sit in focusable scroll regions (`TableScroll`). Equal rows are not dimmed with opacity (it broke axe contrast).
+- Experiments pages: list with a create form, detail with the control banner, warnings, variants, a metrics table with variants as columns (so a phone scrolls inside one region), evaluate-all with the 500 cap and
+  batch-delay notice, attach/detach, add-variant (`key=value` lines). Forms follow `/v1/me` (`experiment.write`, `evaluation.run`). No archive button (KI-108). One nav link (`Experiments`) in `AppShell`.
+- Fixed while building the E2E: (1) `tests_passed` ignored a failing suite, because the recorder ends a failing test command as `shell.command.failed` and the evaluator read only `.completed` (the wrong-fix run
+  answered `unknown`); it now reads both (test added). (2) "Evaluate all" failed in the browser with `415 A JSON body is required.`: the proxy requires JSON on every POST and the route takes no body, so the hook sends `{}`
+  (vitest asserts it). (3) The new nav link made the signed-in header wider than a phone (the `search.spec.ts` phone test in `auth-e2e` caught it): `.topbar nav` wraps (rule in `compare.css`).
+- Fixture change: the compare fixture's summary now uses the API's metric names (`estimated_cost_usd`, plus `retry_cost_usd`, `files_modified`, tokens).
+- E2E (`scripts/eval-e2e.sh` with `scripts/eval_e2e_check.py`): the deliberately failing evaluator is a judge whose rubric (4,000 `"` characters, JSON-escaped to 8,000) leaves no room in `max_input_chars` 5,000, so the row is
+  `failed` with the evaluator's own text; the check compares the whole run row (without `findings`/`matched`) before and after, including `updated_at`. The experiment's two variants differ in `model` and `variant`
+  (AC-9's not-controlled banner), and "Evaluate all" is clicked in the browser on two evaluators nobody ran yet. Built-in explanations (templated numbers) are visible to a viewer by design; only a human's and a judge's free
+  text is withheld, and the checks say so. The plan's `evaluations-list` CLI command was not built (KI-108); the runbook points at the route.
+- Deviation: ports 8180/3180 as planned; the Playwright spec is `apps/web/e2e/eval.spec.ts` (the plan said `evaluations.spec.ts`).
+
+## Closing evidence (final tree, 2026-10-11, own databases `abb_test_p11`, `abb_p11_*`; all dropped afterwards)
+
+Gate, piecewise (`scripts/quality.sh full` was run as its parts): event-schema 351 passed; sdk 893 passed (coverage 94.27%); examples 16 + 10; integrations conformance 17, langgraph 74, openai 66, anthropic 61, mcp 44;
+API authz 151, search 359, rest 742 + 447 (files `test_[a-h]*` and `test_[i-z]*`): 1,699 passed; ruff format/check and mypy clean for the API (258 files), event-schema, sdk, both examples and every integration;
+`schema-check`, `openapi --check` and `gen:api:check` clean (no diff); web vitest 626 passed (37 files), eslint, prettier, tsc clean, `next build` clean; migrations up / down to 0080 / up / down to base / up to 0071 (head).
+Fixtures Playwright 21 passed. E2E: `auth-e2e` 13 passed (its phone-overflow test caught the nav regression above; green after the fix), `findings-e2e` 6, `multiagent-e2e` 6, `coding-e2e` 6, `eval-e2e` 7 (all VERIFIED).
+
+| AC | Result | Evidence |
+| --- | --- | --- |
+| AC-1 Contract and registry | PASS | `tests/authz` 151 passed (every route has a `RouteCase`, a literal `EXPECTED` row, matrix both ways); `test_openapi.py` and `test_registry_is_complete.py` in the 742 + 447; openapi, schema and client checks clean; migrations 0070-0071 up/down/up; `next build` |
+| AC-2 Isolation | PASS | `test_evaluation_isolation.py`, `test_evaluate_handler.py` in the 742 (busy-loop `failed/TIMEOUT`, lease extended, run row byte-identical, no summary job, garbage `error` canary-free); the E2E asserts the run row before/after a failed evaluation over the real worker |
+| AC-3 Independent states and immutability | PASS | `test_evaluations_api.py`, `test_evaluators_api.py` (trigger/coalesce/21st/30 concurrent/verdict/mismatch/judge flags/stale pending) in the 742 |
+| AC-4 Built-ins pure and content-free | PASS | `test_evaluators_builtin.py` 62 passed (content-freedom, canaries, metric keys, evidence membership, cooperative glob budget; plus the new failed-suite test) |
+| AC-5 Withholding and tenancy | PASS | `authz/test_content_withheld.py`, `test_cross_workspace.py` (authz 151), `test_comparison_api.py`; E2E: a viewer's page has no explanation text, no `session.py`/`oauth.py`/`unittest`/`git push`, per-side file counts only |
+| AC-6 Comparison | PASS | `test_comparison_align.py` and `test_comparison_api.py` (fixture generated from the real example, event-id assertions, same-file-edit mutation); the E2E asserts the divergence rows in a real browser: owner `file.read` of `app/session.py` vs `app/oauth.py` followed by the changed `file.modified`, first outcome difference `shell.command.completed` vs `.failed`; viewer: the second test run is both |
+| AC-7 Bounded cost | PASS | alignment and 500 x 20 metrics tests in the 742; figures in `docs/benchmarks/phase-11-compare.md` (3-key random 2,000: 28.5 ms, `partial`) |
+| AC-8 Experiments | PASS | `test_experiments_api.py` in the 742 (baseline, control check at 0/1/2 keys, `variant_models_vary`, oracle metrics, evaluate caps and skips) |
+| AC-9 Web | PASS | vitest 626; `make eval-e2e` equivalent (`scripts/eval-e2e.sh`) 7 browser tests: evaluations, badge text, verdict as OWNER, VIEWER withheld text and no forms, not-controlled banner naming `model` and `variant`, metrics, compare divergence and "Jump to divergence", viewer divergence row; axe clean on every page; screenshots in `docs/screenshots/phase-11/` |
+| AC-10 Compatibility | PARTIAL: PASS for what ran, UNVERIFIED (env) for the rest | `coding-e2e`, `auth-e2e`, `findings-e2e`, `multiagent-e2e` pass unchanged; examples pass for both variants (16); `test_runtime_role.py` in the 742 (four tables writable by `abb_runtime`, `APPEND_ONLY_TABLES` unchanged). `make smoke`, `make sdk-e2e`, `stream-e2e`, `analytics-e2e` need the compose stack or ports reserved for other worktrees: UNVERIFIED (env) (run `make up && make smoke && make sdk-e2e`; `make stream-e2e`; `make analytics-e2e`) |
+| AC-11 Security review | OPEN | the `review-change` pass with the attack list is the next step; see the report's "attack first" list |
