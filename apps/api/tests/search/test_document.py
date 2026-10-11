@@ -145,6 +145,47 @@ def test_the_hash_changes_with_any_searchable_fact() -> None:
     assert build([*rich(), ev(10, "tool.call.completed", {"tool.name": "slack"})]).hash != base.hash
 
 
+def changed_fields(a: Any, b: Any) -> set[str]:
+    return {name for name in a.__dataclass_fields__ if getattr(a, name) != getattr(b, name)}
+
+
+def test_a_content_only_change_changes_the_hash() -> None:
+    """Review F1: the sensitive half of the index must be rewritten when only content changes.
+
+    Each case adds an event whose type, tool and vocabulary are already in the base document, so
+    nothing on the metadata side moves; only the hash can tell the stored row is stale.
+    """
+    base = build(rich())
+    extra_command = build(
+        [*rich(), ev(10, "shell.command.completed", {"shell.command": "curl -H x https://y.test"})]
+    )
+    extra_path = build([*rich(), ev(10, "file.modified", {"file.path": "/srv/other/key.pem"})])
+    extra_text = build(
+        [*rich(), ev(10, "tool.call.failed", {"tool.name": "x", "custom.command": "OTHERCANARY"})]
+    )
+    full = [
+        ev(i + 100, "shell.command.completed", {"shell.command": f"c{i}"})
+        for i in range(MAX_VALUES)
+    ]
+    at_the_bound = build(full)
+    over_the_bound = build(
+        [*full, ev(5_000, "shell.command.completed", {"shell.command": "one-more"})]
+    )
+    cases = {
+        "commands": extra_command,
+        "file_paths": extra_path,
+        "content_doc": extra_text,
+    }
+    for field, doc in cases.items():
+        changed = changed_fields(base, doc)
+        assert field in changed, field
+        assert not changed & {"metadata_doc", "metadata_truncated", "tools", "event_types"}, field
+        assert doc.hash != base.hash, field
+    # the flag alone: the dropped value leaves every other field as it was
+    assert changed_fields(at_the_bound, over_the_bound) == {"content_truncated"}
+    assert over_the_bound.hash != at_the_bound.hash
+
+
 def test_arrays_are_bounded_and_set_only_the_metadata_flag() -> None:
     events = [ev(1, "run.started")] + [
         ev(i + 2, "tool.call.completed", {"tool.name": f"tool-{i}"}) for i in range(MAX_VALUES + 1)

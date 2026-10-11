@@ -141,6 +141,58 @@ async def test_an_unchanged_resummarisation_writes_nothing_and_a_change_does(
         assert again is False
 
 
+async def test_a_content_only_change_rewrites_the_index_row(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """Review F1: a new command / path (nothing else new) must reach `commands`, `file_paths`
+    and `content_doc`; an unchanged re-summarisation must not touch the row."""
+    tenant, run = await make_tenant(engine, "acme"), make_run_ids()
+    await ingest(engine, tenant, events_for(tenant, run))
+    worker = worker_for(engine, database_url)
+    await drain(worker)
+    first = await search_row(engine, run["run_id"])
+
+    async def resummarise() -> Any:
+        async with engine.begin() as conn:
+            await OutboxRepository(conn, tenant.context).enqueue_summarize([to_uuid(run["run_id"])])
+        await drain(worker)
+        return await search_row(engine, run["run_id"])
+
+    unchanged = await resummarise()
+    assert unchanged.updated_at == first.updated_at
+
+    new_command = "NEWCMDCANARY --flag"
+    new_path = "/srv/NEWPATHCANARY/key"
+    await ingest(
+        engine,
+        tenant,
+        [
+            build_event(
+                tenant,
+                run,
+                n=6,
+                event_type="shell.command.completed",
+                attributes={"shell.command": new_command},
+            ),
+            build_event(
+                tenant,
+                run,
+                n=7,
+                event_type="file.modified",
+                attributes={"file.path": new_path},
+            ),
+        ],
+    )
+    await drain(worker)
+    changed = await search_row(engine, run["run_id"])
+    assert changed.document_hash != first.document_hash
+    assert changed.tools == first.tools and changed.event_types == first.event_types
+    assert set(changed.commands) == {COMMAND, new_command}
+    assert set(changed.file_paths) == {PATH, new_path}
+    assert changed.content_doc != first.content_doc and changed.metadata_doc == first.metadata_doc
+    assert changed.updated_at > first.updated_at
+
+
 async def test_search_rebuild_restores_missing_documents_and_is_audited(
     engine: AsyncEngine, database_url: str
 ) -> None:
