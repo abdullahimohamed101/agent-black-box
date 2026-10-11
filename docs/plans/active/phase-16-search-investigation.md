@@ -681,3 +681,12 @@ changing the classification in one place (`abb_api/content.py`). A future rankin
 - The search document's `agents` array now reads Phase 9's `summary["agents"]` (`search/document.py::summary_agents`, at most 50 entries plus
   `(other)`), replacing the earlier `distinct_agents(events)`: one source list for the run page and `agent:`.
 - No 0047 round-trip test added; `openapi.json` and `schema.d.ts` unchanged by the merge (checks green).
+
+### Implementation notes (steps 4-6)
+- Wire shapes: `query` = `{terms[{kind,field,op,value,value_end,lexemes,phrase,prefix,negated,span}], fields, content_allowed, unindexed, unindexed_capped}`; `facets` = `{status,agents,tools,models,event_types}` of `{value,count}`; `matched` omits the `content_truncated` key (custom serializer) for actors without `payload.read`. Run-row-only queries have `matched = null` and `query.unindexed = null`.
+- Refusal: parse (422) first, then the compile-time gate (`authorize_audited(PAYLOAD_READ)`, `details.field` = first content field in query order), both before the cursor is decoded, any connection is taken or the gate permit is acquired. An empty/whitespace `q` runs the plain statements (no permit, no timeout).
+- Facets are the last statement; a facets statement cancelled by the budget degrades to `facets: null, facets_skipped: "budget"` (200) instead of failing the request. `summary_states` runs inside the same read-only transaction.
+- Timeout code is `503 SEARCH_TIMEOUT` as in D8 (not 504).
+- `SearchGate` is created lazily on `app.state.search_gate` from the router (`main.py` untouched).
+- `RuleBasedCompiler` is exported beside `QueryCompiler` (tests need it); both carry no vendor, no SQL.
+- Tests: `tests/search/conftest.py` re-exports the Phase 15 `world` fixture. Mutation checks (each failed a test, reverted): gate dropped (oracle refusal test), viewer text compiled against `content_doc` (content-word vs nonsense test), content column selected for viewers (viewer statement-text test), workspace predicate dropped from `_base` (cross-workspace test), content flag read inside the unindexed count (statement-text test), refusal error made data-dependent (refusal test).
