@@ -67,6 +67,8 @@ now calls `_without_nul` (`events.py:145-157`) on every payload string and key. 
 the string with the NUL inside and match nothing; the strip then reassembles the secret. VERIFIED with a probe
 (`BlackBox(mode="offline", payload_mode=FULL)`, scratchpad `nul_probe.py`), output of the buffered events:
 
+**Resolution (e81fde0):** NUL is stripped before any redaction (`BlackBox._emit` on the whole built event; `Redactor.redact_string/redact_text/_key_denied`, `secretscan.mask_text/strip_ansi/withhold_sensitive_hunks`, so the coding recorder's `sanitize` sees the joined string); `check_payload` keeps a strip as defence in depth. Artifact names turn NUL into a space before redaction. Tests: `tests/test_secret_nul.py` (AWS, GitHub, Slack, denied key, attributes, tags, nested, agent input/result, coding `sanitize`); 7 of 8 fail without the fix.
+
 ```
 custom.probe    {"a": "AKIAIOSFODNN7EXAMPLE", "password": "hunter2", "b": "ghp_AAAA...(36)"}
 agent.spawned   {"input": {"token": "[REDACTED:token]"}}          <- key without NUL: still redacted
@@ -103,6 +105,8 @@ forged child *agent* events. Fix: either (a) reword the three places to "a forge
 one under D4; a continued run never sends it), falling back to any `run.started`, then the first event; add the probe as a
 test either way.
 
+**Resolution (f26b11e):** `derive_run` takes the first `run.started` carrying a `sequence`, else the earliest `run.started`; ADR-070, `api-v1.md` and the plan now say it is consistency, not authentication (a same-project key can still write a `run.started` with a `sequence`). Tests: `test_a_sequenceless_earlier_run_started_cannot_displace_the_root` (fails without the fix) and a fallback test.
+
 **F3. The example's filtered child environment, which the plan and README present as the mitigation for handing
 `BLACKBOX_API_KEY` to tools, has no test: the mutation survived.** Replacing
 `env = {k: os.environ[k] for k in _CHILD_ENV_KEYS if k in os.environ}` with `env = dict(os.environ)` in
@@ -110,6 +114,8 @@ test either way.
 by D3/D11, the security note ("tools get a filtered environment"), ADR-070 and both READMEs. Fix: in `test_example.py` plant a
 variable (`FAKE_SECRET=1`) and `BLACKBOX_TRACE_CONTEXT=garbage` in the parent environment and assert, through a unit test of
 `child_environment`, that the child env equals the allowlist plus the fresh context and nothing else.
+
+**Resolution (30fee27):** `tests/test_example.py` spies on `subprocess.run` and asserts the child's environment lacks a planted `SOME_SECRET_TOKEN` and is a subset of the documented variables; a unit test pins `child_environment`. With `env = dict(os.environ)` both fail.
 
 ### P3
 
@@ -120,11 +126,15 @@ variable (`FAKE_SECRET=1`) and `BLACKBOX_TRACE_CONTEXT=garbage` in the parent en
 indistinguishable from the fold. Fix: mark the fold row (`folded: true`) and render it from that flag, or map a client id
 equal to `OTHER_AGENTS` to a different label.
 
+**Resolution (8d201df):** a client `agent.child_id` equal to `(other)` is listed as `(other) (client id)`; the fold label is reserved and agent ids are unique, so the React key is unique. Test `test_a_client_child_id_of_other_does_not_collide_with_the_fold_row` fails without the fix.
+
 **F5. `spawn_context` on an inert continued run hands the child a context for a run that does not exist.** `continue_run` with
 an invalid context builds a `Run` with fresh random ids (`client.py:777-781`) and `spawn_context` on it (inert: emits nothing)
 still returns `TraceContext(self.run_id, ...)` (`:496`, exercised by `test_propagation.py:248`). A grandchild with a valid key
 then writes a phantom run (no `run.started`, created by `store.py` from its first event) into the project. Fix: return `""`
 from `spawn_context`/`trace_context` when `_inert` (the child parses it to `None` and is inert too), and count it.
+
+**Resolution (6a424b6):** `spawn_context` and `trace_context` return `""` on an inert run (the child parses it to `None` and is inert too). Test `test_an_inert_continued_run_hands_out_no_context`.
 
 **F6. `spawn_context(parent=...)`, `run.agent(parent=...)` and `Span(parent=...)` accept a `Span` of another `Run`.**
 `_delegating_span` (`client.py:513-517`) checks only `isinstance(parent, Span)`; the implicit path checks `current.run is
@@ -132,10 +142,14 @@ self`. The child then parents to a span of another run/trace (an orphan to the s
 called). Programmer error rather than attack, but the SDK's contract is "arguments are coerced, never raised on". Fix: treat a
 foreign-run parent as `None`.
 
+**Resolution (6a424b6):** a parent `Span` of another `Run` is ignored (debug log, never raised) in `Span.__init__` and `_delegating_span`. Test `test_a_parent_span_of_another_run_is_ignored_not_adopted`.
+
 **F7. E2E viewer assertions key on one string.** `multiagent.spec.ts:98-134` proves the tester's command never appears to a
 VIEWER (after proving the OWNER sees it, so the check is not vacuous) but does not assert that the `[withheld]` marker never
 renders, nor that the drawer shows the payload as withheld. Add `expect(everything()).not.toContain("[withheld]")` and a
 `payload_withheld` check in the viewer drawer test. Optional.
+
+**Resolution (ff3d277):** the viewer E2E asserts `[withheld]` never renders and walks every timeline event's drawer, requiring at least one `payload-withheld` notice and no command or marker. `scripts/multiagent-e2e.sh` passed (6 Playwright tests). Not mutation-proved.
 
 ### Dropped (checked, not supportable as findings)
 

@@ -721,3 +721,17 @@ Vocabulary: PASS = a command was run and its output observed here.
 
 Not verified: `make up`/compose (ports in use, as since Phase 15), CI itself, the other worktrees' merge behaviour (rebase notes above). The independent security
 review is the next step.
+
+### After the security review (fixes F1..F7, commits e81fde0..ff3d277)
+
+Rows below supersede the counts above where they differ. VERIFIED in this worktree:
+
+| AC | Update | Evidence |
+| --- | --- | --- |
+| AC-2 Propagation | PASS | SDK `uv run pytest -q --cov`: 893 passed, total coverage 94.24%; `tests/test_secret_nul.py` (new) proves redaction sees NUL-stripped strings (F1); inert/foreign-parent tests (F5, F6) |
+| AC-4 Summary and analytics | PASS | `apps/api`: ruff, format, mypy clean; `pytest tests --ignore=tests/authz` 743 passed; `tests/authz` 99 passed; new `test_run_summary.py` cases for F2 and F4 |
+| AC-11 Example offline | PASS | `uv run --project packages/sdk-python pytest examples/multi-agent/tests -q`: 10 passed (filtered child environment, F3) |
+| AC-12 Example end to end | PASS locally | `scripts/multiagent-e2e.sh`: `MULTIAGENT-E2E PASSED`, Playwright 6 passed (F7) |
+| AC-14 | PASS in parts | event-schema 351; integrations anthropic 61, conformance 17, langgraph 74, mcp 44, openai 66; web vitest 517 passed, eslint, prettier, tsc clean |
+| Security note | updated | The root-identity rule is consistency, not authentication: a same-project key can write a `run.started` with a `sequence` (ADR-070, `api-v1.md`). NUL is stripped before redaction (INV-5). |
+
