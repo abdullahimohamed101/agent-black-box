@@ -637,3 +637,29 @@ Deviations and choices where the plan was ambiguous (simplest secure option):
   `tests/authz/test_content_withheld.py` (the plan keeps `tests/authz` untouched); `summary.agents` holds only agent ids and counts.
 - **Not done in this run (steps 5-11):** web derivation and waterfall, fixtures, example, E2E, KI-063 spike, ADR files, the AC-9 regression
   benchmark (`derive_run` on 30,000 events gained one extra linear pass; not measured), `KNOWN_ISSUES.md`, `PROJECT_STATE.md`.
+
+## Implementation notes (steps 5-7, recorded by the implementer)
+
+- **`spans.ts` (step 5).** `DerivedSpan` carries `head` (opener, else first event) and `closer` event references, so labels never need
+  the events array: `spanLabel(span)` replaces the plan's `spanLabel(span, events)`. `rawName` exists only for golden parity and is
+  never rendered. `SpanIndex.update` expects the canonical-ordered array (what `mergeEvents` returns) and exposes `spanIdOf(eventId)` and
+  `rederived` (test and benchmark use). The 10,000-deep golden case is replayed from its generator description.
+- **`waterfall.ts`.** The root's extent is `min/max` of the run bounds and every span (a live page can be ahead of the run summary).
+  A child is `skewed` when it starts before its parent, or ends after a finished parent while itself finished (an unfinished child
+  of a finished parent is not skew). A collapsed subtree is an `aggregate` row that replaces the node's own row (count, extent, error
+  flag). Rows are `span`, `aggregate` or `lane`; the root and lane headers are labels and not selectable. In the Lanes view, "delegating
+  span drawn as a dotted link" is simplified to the text "delegated by <agent>" on the lane header.
+- **View state.** `?view=` is read with `useSearchParams` and written with `window.history.replaceState` (as `RunsListPage` does);
+  the choice is mirrored in component state so it works before the router syncs. The run page is wrapped in `<Suspense>`.
+- **Agent tree.** Built from `summary.agents` when present, else from the events (runs summarised before this phase). It also
+  drives a new optional `filters.agents` in `lib/timeline.ts`; the waterfall dims other agents' rows.
+- **Fixtures (step 7).** `RunBuilder.add` takes `sequence: null` and `atMs` (shifts `occurred_at` only); `build()` sorts with
+  `sortEvents`, sets `ordering_mode` from `orderingMode`, derives span `agent_id` per event and adds `summary.agents`/`agent_count`
+  for runs with more than one agent. `multiAgentRun` (run 7) has the tester 1.5 s behind (`atMs: -1500`, no sequence), so it starts
+  before the coder and is flagged. The runs list and dashboard tests and the fixtures spec count 7 runs (dashboard success rate 80%).
+  The stress fixture has 2,838 spans, not about 3,900; it is a flat tree, so auto-collapse folds nothing there (covered by a unit
+  test on a deep generated tree).
+- **Performance.** `docs/benchmarks/phase-9-waterfall.md`: derivation 7.8 ms, incremental update 0.3 ms per 500-event batch, zoom
+  step median about 16 ms (frame-bound), at most 80 rows mounted. Playwright regenerates `docs/screenshots/phase-4/*` as a side
+  effect; those were not committed.
+- **Contrast.** The agent chip colours were darkened after axe flagged `#b45309` on the selected-row background.

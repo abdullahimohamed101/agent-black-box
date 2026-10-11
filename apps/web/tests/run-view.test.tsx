@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunDetail } from "@/components/RunDetail";
-import { failureRetryRun, successRun } from "@/fixtures/runs";
+import { failureRetryRun, multiAgentRun, successRun } from "@/fixtures/runs";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
 
 // The run page reads `?view=` through next/navigation; each test sets what the URL says.
@@ -97,5 +97,52 @@ describe("RunDetail view switch", () => {
           .some((r) => r.getAttribute("aria-selected") === "true"),
       ).toBe(true),
     );
+  });
+
+  it("a multi-agent run shows the agent tree, agent chips, and an agent filter that narrows the timeline", async () => {
+    stubApi();
+    const user = userEvent.setup();
+    const { run, events } = multiAgentRun();
+    renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
+    const tree = await screen.findByTestId("agent-tree");
+    expect(within(tree).getByRole("heading", { name: "Agents (5)" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("progress")).toHaveTextContent(
+        `${events.length} of ${events.length}`,
+      ),
+    );
+    expect(document.querySelectorAll(".tl-agent").length).toBeGreaterThan(0);
+    await user.click(within(tree).getByRole("button", { name: /^coder/ }));
+    const coderEvents = events.filter((e) => e.agent_id === "coder").length;
+    await waitFor(() =>
+      expect(screen.getByTestId("progress")).toHaveTextContent(
+        `${coderEvents} of ${events.length}`,
+      ),
+    );
+    await user.click(within(tree).getByRole("button", { name: "Show all agents" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("progress")).toHaveTextContent(
+        `${events.length} of ${events.length}`,
+      ),
+    );
+  });
+
+  it("a single-agent run has no agent tree", async () => {
+    stubApi();
+    const { run } = successRun();
+    renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    expect(screen.queryByTestId("agent-tree")).toBeNull();
+    expect(document.querySelector(".tl-agent")).toBeNull();
+  });
+
+  it("the failure run's root span is finished in the waterfall", async () => {
+    stubApi();
+    nav.query = "view=waterfall";
+    const { run } = failureRetryRun();
+    renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
+    const grid = await screen.findByRole("treegrid");
+    await waitFor(() => expect(within(grid).getAllByRole("row").length).toBeGreaterThan(2));
+    expect(within(grid).queryByText("no end recorded")).toBeNull();
   });
 });

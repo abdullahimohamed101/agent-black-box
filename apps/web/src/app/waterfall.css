@@ -9,14 +9,14 @@
   --wf-other: #5b6370;
   --wf-error-c: #b3261e;
   --wf-timeout-c: #b45309;
-  --wf-a0: #0b6bcb;
-  --wf-a1: #1b7a3a;
-  --wf-a2: #b45309;
-  --wf-a3: #6b4fbb;
-  --wf-a4: #006d77;
-  --wf-a5: #a3246b;
-  --wf-a6: #5b6370;
-  --wf-a7: #7a5c00;
+  --wf-a0: #0a58a8;
+  --wf-a1: #176b32;
+  --wf-a2: #8f4107;
+  --wf-a3: #5b3fa8;
+  --wf-a4: #00606a;
+  --wf-a5: #92205f;
+  --wf-a6: #4f5764;
+  --wf-a7: #6b4f00;
 }
 @media (prefers-color-scheme: dark) {
   :root {
