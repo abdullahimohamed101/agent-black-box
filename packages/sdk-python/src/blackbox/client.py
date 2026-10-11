@@ -35,6 +35,7 @@ from blackbox.events import (
     name_attr,
     priority_of,
     span_kind,
+    without_nul,
 )
 from blackbox.exporter import Exporter, HttpSink, LocalSink, Sink
 from blackbox.propagation import TraceContext
@@ -893,7 +894,10 @@ class BlackBox:
         """A short printable label: redacted first, then cut (never a secret's prefix)."""
         if not isinstance(name, str) or not name:
             return None
-        return _CONTROL.sub(" ", self._redactor.redact_text(name))[:120] or None
+        # NUL becomes a space before redaction: the label keeps its shape, no secret is reassembled
+        return (
+            _CONTROL.sub(" ", self._redactor.redact_text(name.replace("\x00", " ")))[:120] or None
+        )
 
     def flush(self, timeout: float | None = None) -> bool:
         """Wait (bounded) until queued events were handed to the sink. Never raises."""
@@ -1000,6 +1004,7 @@ class BlackBox:
                 tags=run._tags if event_type == "run.started" else None,
                 sdk_version=__version__,
             )
+            event = without_nul(event)  # before redaction, so rules see the final strings
             redacted = self._redactor.apply(event, p0=priority == 0)
             if redacted is None:
                 return

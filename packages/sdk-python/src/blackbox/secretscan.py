@@ -412,6 +412,7 @@ def mask_text(text: str, values: tuple[str, ...], marker: str) -> str:
     """Replace every occurrence of every value (longest first) with `marker`."""
     if not values or not text:
         return text
+    text = text.replace("\x00", "")  # a NUL inside a secret would hide it from the masker
     if len(values) <= 24:  # the common case: plain substring replacement is fastest
         for value in values:
             if len(value) < 8:
@@ -766,7 +767,7 @@ _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)
 
 
 def strip_ansi(text: str) -> str:
-    return _ANSI.sub("", text)
+    return _ANSI.sub("", text.replace("\x00", ""))
 
 
 _SECTION = re.compile(r"^(?:diff (?:--git|--cc|--combined) .*|--- \S.*(?=\n\+\+\+ ))$", re.M)
@@ -779,7 +780,7 @@ def withhold_sensitive_hunks(text: str) -> str:
     diffs. ANSI colour is removed first so a coloured header cannot hide a path. Masking of the
     values is the main defence; this is the second.
     """
-    text = _ANSI.sub("", text)
+    text = _ANSI.sub("", text.replace("\x00", ""))
     heads = list(_SECTION.finditer(text))
     if not heads:
         return text

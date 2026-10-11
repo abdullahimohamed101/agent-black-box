@@ -142,18 +142,21 @@ def check_payload(payload: dict[str, Any], stats: Stats) -> dict[str, Any] | Non
     if size > MAX_INLINE_PAYLOAD_BYTES:
         stats.add("payloads_dropped")
         return None
-    cleaned = _without_nul(payload)
+    cleaned = without_nul(payload)  # defence in depth: the strip belongs BEFORE redaction
     return cleaned if isinstance(cleaned, dict) else None
 
 
-def _without_nul(value: Any) -> Any:
-    """NUL is invalid in the contract's strings and keys; one would get the whole event rejected."""
+def without_nul(value: Any) -> Any:
+    """NUL is invalid in the contract's strings and keys; one would get the whole event rejected.
+
+    Must run before the redactor: a secret or denied key split by NUL would otherwise match
+    no rule and be reassembled by the strip (INV-5)."""
     if isinstance(value, str):
         return value.replace("\x00", "")
     if isinstance(value, dict):
-        return {_without_nul(k): _without_nul(v) for k, v in value.items()}
+        return {without_nul(k): without_nul(v) for k, v in value.items()}
     if isinstance(value, list):
-        return [_without_nul(v) for v in value]
+        return [without_nul(v) for v in value]
     return value
 
 

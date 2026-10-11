@@ -207,6 +207,7 @@ class Redactor:
     # -- building blocks (public so rules can be unit-tested locally) ------------------------------
 
     def redact_string(self, text: str) -> str:
+        text = text.replace("\x00", "")  # NUL could split a secret from the patterns (INV-5)
         if len(text) > MAX_STRING:
             text = text[:MAX_STRING]
         return self._scrub(text)
@@ -218,6 +219,8 @@ class Redactor:
         many lines is matched. Bounded by `max_chars` (cut, never skipped), so a huge output
         cannot stall the caller.
         """
+        text = text.replace("\x00", "")
+        text = text.replace("\x00", "")  # before the cut and the scan: NUL splits secrets
         text = _ANSI.sub("", text[:max_chars] if len(text) > max_chars else text)  # ghp_\x1b[0m...
         return self._scrub(text)
 
@@ -231,7 +234,7 @@ class Redactor:
         return text
 
     def _key_denied(self, key: str) -> bool:
-        k = _norm(key)
+        k = _norm(key.replace("\x00", ""))
         if k in self._allow or k.rsplit(".", 1)[-1] in self._allow:
             return False
         return any(d in k for d in self._deny)
@@ -240,6 +243,7 @@ class Redactor:
         self, value: Any, key: str = "", depth: int = 0, budget: list[int] | None = None
     ) -> Any:
         """Redact a JSON-like value. Non-JSON objects become `<TypeName>`; deep or huge is cut."""
+        key = key.replace("\x00", "")
         if budget is None:
             budget = [MAX_NODES]
         budget[0] -= 1
