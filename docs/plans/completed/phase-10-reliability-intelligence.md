@@ -1,6 +1,6 @@
 # Phase 10 - Reliability intelligence
 
-Status: Implemented; pending security review (steps 1-7 done 2026-10-11; closing evidence below; the plan stays in `active/` until `review-change` and `complete-phase`)
+Status: Completed 2026-10-11 (merged as PR #79, CI green). The independent security review of the implementation is done and its findings are fixed (`phase-10-security-review.md`); the plan review is `phase-10-plan-review.md`. KI-090..099 are GitHub issues #81 to #90. History: Implemented; pending security review (steps 1-7 done 2026-10-11; closing evidence below; the plan stays in `active/` until `review-change` and `complete-phase`)
 Owner: implementer agent
 Branch: `feature/phase-10-reliability-intelligence` (from `main` c212058; worktree `../abb-worktrees/phase-10`; Phases 9, 11 and 16 are planned in parallel worktrees)
 Depends on: Phase 2 (events, outbox, summarizer), Phase 7 (cost lines, typed run columns), Phase 15 (`require(action)`, `payload.read`, route registry)

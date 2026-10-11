@@ -3,9 +3,9 @@
 Last updated: 2026-10-11
 
 ## Current phase
-Phases 0-9 and 15 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73). The MVP gate (spec §49, §138) is reached but **not accepted**: the user decides
-after reviewing the items under "Next actions". Phases 10, 16 and 11 are being built on their own branches (worktrees), merge order 10, 16, 11; Phase 10 is built and
-reviewed and its review findings are being fixed, Phase 16 is in its first build chunk, Phase 11 starts after 16.
+Phases 0-10 and 15 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
+decides after reviewing the items under "Next actions". Phase 16 (search) is built, reviewed and fixed on its branch and is being rebased onto main; Phase 11 (evaluations and
+comparison) builds next; Phase 21 (UI application shell and design pass) is planned and lands after them.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -21,7 +21,7 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, 
   `examples/coding-agent`, `scripts/coding-e2e.sh`.
 - Phase 7: CostEngine, analytics rollups (migrations 0040-0043), `/v1/analytics/*`, analytics page (ADR-040..043).
 - Phase 8: adapters for LangGraph, OpenAI, Anthropic and MCP, conformance suite, SDK 0.2.0 (ADR-050..052).
-- Phase 10 (implemented on its branch, pending review): reliability findings. Eight pure detectors (repeated sequence, identical request, retry storm, context growth, cost spike,
+- Phase 10: reliability findings. Eight pure detectors (repeated sequence, identical request, retry storm, context growth, cost spike,
   tool-failure cascade, failure chain with probable causes, reported loop), the §81.2 finding contract, explained health dimensions with no score (ADR-080/081, migration 0060,
   `GET /v1/runs/{id}/findings`, `RunOut.findings` badge, web panel with "Show evidence", `rebuild-findings` CLI, `docs/runbooks/findings.md`). Evidence is metadata only, so viewers see what owners see.
 - Phase 15: OIDC sign-in with API-owned sessions (ADR-060), one `authorize()` path and a role/scope matrix with a route-walking test registry (ADR-061),
@@ -35,9 +35,8 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, 
   route. KI-063 spike measured and not shipped (`docs/benchmarks/phase-9-ki063-langgraph-threads.md`); KI-084..086 are GitHub issues. An independent security review (13 mutation checks; one P1, the SDK stripped NUL bytes after redaction, now fixed with regression tests) is in `docs/plans/completed/phase-9-security-review.md`.
 
 ## In-progress work
-Phase 10 (reliability intelligence, PR #79, plan `docs/plans/active/phase-10-reliability-intelligence.md`) is built, independently reviewed (its findings are fixed, see
-`phase-10-security-review.md`) and verified; it awaits its merge, then `complete-phase` (move the plan and reviews to `completed/`, file KI-090..099 as GitHub issues and replace
-the "to file" placeholders). Phase 10 (review fixes), Phase 16 (build) and then Phase 11, each in its own worktree under `../abb-worktrees/`; nothing is pushed from them until a phase is fully ready.
+Phase 16 is being rebased onto main (worktree `../abb-worktrees/phase-16`) before its PR; Phase 11 builds next (`../abb-worktrees/phase-11`). Nothing is pushed from a worktree until its phase
+is fully ready (built, independently reviewed, fixed, verified).
 
 ## Blocked work
 None.
@@ -46,7 +45,7 @@ None.
 1. User: the one manual sign-in with a real OIDC provider (AC-14, KI-067; needs your own client id and secret, see `docs/runbooks/auth-and-access.md`), and a compose
    runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
 2. User: decide MVP gate acceptance. Remaining gate item: KI-050 (OpenAI prices and tiered models are not in the built-in table; the engine has no price tiers).
-3. Finish and merge Phase 10, then 16 and 11 (rebase notes in each plan's "Merge notes"; Phase 16 must use `SUMMARY_VERSION` 4); then 13 and 14 in sequence.
+3. Merge Phase 16, then 11 (rebase notes in each plan's "Merge notes"; Phase 16 uses `SUMMARY_VERSION` 4); then Phase 21 (UI shell), then 12, 13 and 14, 17, 19, 20.
 
 ## Open decisions
 - MVP acceptance (after the gate items above).
