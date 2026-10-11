@@ -37,7 +37,7 @@ Depends on nothing else in the repo. Status: implemented (Phase 1): IDs, envelop
 ### API (`apps/api`) - modular monolith
 Routers -> services -> repositories -> db, with modules `ingestion`, `runs`, `traces`, `jobs`, `auth`, `projects`
 `artifacts`, `analytics`, `authz` (one `authorize()` path, the role/scope matrix as data), `audit` and `workspaces` (members, invitations, projects)
-(plus `core` and `db`); evaluations and policies arrive in later phases. Ingestion and query are separate
+`findings` (Phase 10: detectors, finding contract, health, `GET /v1/runs/{id}/findings`) (plus `core` and `db`); evaluations and policies arrive in later phases. Ingestion and query are separate
 routers so a slow query never sits on the SDK path. Repositories take a tenant context (INV-3) and tables are keyed
 `(workspace_id, id)` with composite foreign keys (ADR-002). Status: implemented (Phase 2): health, API-key auth, ingestion,
 run/event/span queries, provisioning CLI, OpenAPI contract (`apps/api/openapi.json`); artifacts (Phase 6) and analytics (Phase 7) are implemented.
@@ -47,7 +47,7 @@ overrides, an append-only audit log and re-authentication of open streams (ADR-0
 ### Workers (`abb_api.worker`, same image as the API)
 PostgreSQL outbox, `FOR UPDATE SKIP LOCKED` leases, retries with backoff, dead letters, one writer per run via a
 row lock, debounced and coalesced `summarize_run` jobs; run state is a pure function of the run's events
-(`runs/summary.py`) so it is rebuildable (ADR-012). Status: implemented (Phase 2); cost and analytics refresh jobs (Phase 7); detectors and alert jobs
+(`runs/summary.py`) so it is rebuildable (ADR-012). Status: implemented (Phase 2); cost and analytics refresh jobs (Phase 7); the `detect_findings` job (Phase 10: pure detectors over a capped canonical event load, derived findings, ADR-080); alert jobs
 arrive in later phases.
 
 ### Python SDK (`packages/sdk-python`)

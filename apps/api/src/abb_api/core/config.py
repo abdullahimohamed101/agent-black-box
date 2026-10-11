@@ -66,6 +66,23 @@ class Settings(BaseSettings):
     # How often a stream counts its overlap window to catch a row that became visible late.
     stream_window_check_seconds: float = Field(default=2.0, ge=0)
 
+    # Reliability findings (ADR-080/081). The detector job analyses at most `findings_max_events`
+    # events of a run; thresholds are deployment-wide and every finding records the ones it used.
+    findings_delay_seconds: float = Field(default=5.0, ge=0)
+    findings_max_events: int = Field(default=50_000, ge=100)
+    findings_loop_min_repetitions: int = Field(default=3, ge=2)
+    findings_loop_min_repetitions_single: int = Field(default=8, ge=2)
+    findings_identical_min_count: int = Field(default=3, ge=2)
+    findings_retry_storm_min: int = Field(default=5, ge=1)
+    findings_retry_burst_window_seconds: int = Field(default=60, ge=1)
+    findings_context_growth_min_delta_tokens: int = Field(default=4_000, ge=1)
+    findings_context_growth_factor: float = Field(default=2.0, gt=1)
+    findings_context_growth_warning_tokens: int = Field(default=100_000, ge=1)
+    findings_cascade_min_failures: int = Field(default=3, ge=2)
+    findings_cascade_window_calls: int = Field(default=10, ge=2)
+    findings_cost_spike_min_baseline: int = Field(default=20, ge=1)
+    findings_cost_spike_window_days: int = Field(default=30, ge=1)
+
     # Sign-in for people (ADR-060). OIDC is off until `oidc_issuer` is set; keys work regardless.
     oidc_issuer: str | None = None
     oidc_client_id: str | None = None
@@ -114,6 +131,14 @@ class Settings(BaseSettings):
     @property
     def dev_sessions_enabled(self) -> bool:
         return self.allow_dev_sessions and self.environment in ("development", "test")
+
+    @model_validator(mode="after")
+    def _cascade_window_holds_its_failures(self) -> "Settings":
+        if self.findings_cascade_window_calls < self.findings_cascade_min_failures:
+            raise ValueError(
+                "findings_cascade_window_calls must be >= findings_cascade_min_failures"
+            )
+        return self
 
     @model_validator(mode="after")
     def _bursts_fit_a_full_batch(self) -> "Settings":

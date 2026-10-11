@@ -21,6 +21,9 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, 
   `examples/coding-agent`, `scripts/coding-e2e.sh`.
 - Phase 7: CostEngine, analytics rollups (migrations 0040-0043), `/v1/analytics/*`, analytics page (ADR-040..043).
 - Phase 8: adapters for LangGraph, OpenAI, Anthropic and MCP, conformance suite, SDK 0.2.0 (ADR-050..052).
+- Phase 10 (implemented on its branch, pending review): reliability findings. Eight pure detectors (repeated sequence, identical request, retry storm, context growth, cost spike,
+  tool-failure cascade, failure chain with probable causes, reported loop), the §81.2 finding contract, explained health dimensions with no score (ADR-080/081, migration 0060,
+  `GET /v1/runs/{id}/findings`, `RunOut.findings` badge, web panel with "Show evidence", `rebuild-findings` CLI, `docs/runbooks/findings.md`). Evidence is metadata only, so viewers see what owners see.
 - Phase 15: OIDC sign-in with API-owned sessions (ADR-060), one `authorize()` path and a role/scope matrix with a route-walking test registry (ADR-061),
   invitations, members, API-key and pricing-override management, append-only audit log (ADR-062, migrations 0045-0047), `payload.read` (VIEWER/BILLING never see content),
   stream re-authentication, web sign-in/switcher/settings, the shared web key removed; resolves KI-029, KI-027, KI-051, KI-033; viewers also never see command text or file paths. Closing evidence is in the plan; the independent security
@@ -32,7 +35,9 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, 
   route. KI-063 spike measured and not shipped (`docs/benchmarks/phase-9-ki063-langgraph-threads.md`); KI-084..086 are GitHub issues. An independent security review (13 mutation checks; one P1, the SDK stripped NUL bytes after redaction, now fixed with regression tests) is in `docs/plans/completed/phase-9-security-review.md`.
 
 ## In-progress work
-Phase 10 (review fixes), Phase 16 (build) and then Phase 11, each in its own worktree under `../abb-worktrees/`; nothing is pushed from them until a phase is fully ready.
+Phase 10 (reliability intelligence, PR #79, plan `docs/plans/active/phase-10-reliability-intelligence.md`) is built, independently reviewed (its findings are fixed, see
+`phase-10-security-review.md`) and verified; it awaits its merge, then `complete-phase` (move the plan and reviews to `completed/`, file KI-090..099 as GitHub issues and replace
+the "to file" placeholders). Phase 10 (review fixes), Phase 16 (build) and then Phase 11, each in its own worktree under `../abb-worktrees/`; nothing is pushed from them until a phase is fully ready.
 
 ## Blocked work
 None.
@@ -53,6 +58,9 @@ None.
 `docs/KNOWN_ISSUES.md` (severity, target and GitHub issue per item): notably (Phase 15 additions KI-067..078: real-provider login unverified, no session list, no `email_verified`-less providers, audit retention, trusted proxies, compose login unverified) full recomputation of very large active runs (KI-016), no quotas (KI-018), no failed-auth throttling (KI-019).
 
 ## Last verified test status
+2026-10-11, Phase 10 branch (run as parts of `scripts/quality.sh full`, own databases): event-schema 348, sdk 806 (coverage 94.06%), examples 12, integrations 17/74/66/61/44, api 1002 (901 + authz 101),
+web vitest 431, lint/format/mypy/tsc clean, `schema-check`/openapi/web client current, migrations up/down/up to 0060, `next build`. E2E: `findings-e2e` passed (6 browser tests), `fixtures.spec.ts` 12 passed.
+`coding-e2e`, `stream-e2e`, `analytics-e2e`, `e2e-web-real`, `auth-e2e` not run on this branch (UNVERIFIED (env): ports reserved for parallel worktrees). Benchmark: `docs/benchmarks/phase-10-regression-check.md`.
 2026-10-11, Phase 9 branch (parts of `scripts/quality.sh full`, own databases `abb_test_p9`/`abb_p9`): event-schema 351, sdk 883 (coverage 94.18%), examples 20 (12 coding-agent, 8 multi-agent),
 integrations 17/74/66/61/44, api 860 passed, 1 failed (environment-dependent: `test_summarizer.py::test_a_burst_of_batches...` fails on `c212058`'s code too because the shared Docker
 Postgres clock runs about 2.2 s ahead of the host; `test_hostile_numbers` flaked once for the same reason), web vitest 517, eslint/prettier/tsc/`next build` clean, migrations up/down/up (head 0047), openapi/schema checks clean

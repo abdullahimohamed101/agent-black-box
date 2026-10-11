@@ -222,6 +222,10 @@ CASES: dict[tuple[str, str], RouteCase] = {
             _get("/v1/runs/{run_id}/spans"), 200, ("run_id",),
         ),
         RouteCase(
+            "GET", "/v1/runs/{run_id}/findings", actions.RUN_READ,
+            _get("/v1/runs/{run_id}/findings"), 200, ("run_id",),
+        ),
+        RouteCase(
             "GET", "/v1/runs/{run_id}/stream", actions.RUN_READ,
             _get("/v1/runs/{run_id}/stream"), 200, ("run_id",), transport="socket",
         ),

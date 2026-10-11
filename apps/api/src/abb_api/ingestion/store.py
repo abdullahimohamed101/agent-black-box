@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from abb_event_schema.dedup import content_hash
 from abb_event_schema.event import Event
@@ -78,7 +78,9 @@ class EventStore(Protocol):
 
     async def ingest(self, events: Sequence[Event]) -> IngestOutcome: ...
 
-    async def load_run(self, run_id: uuid.UUID) -> list[Event]: ...
+    async def load_run(
+        self, run_id: uuid.UUID, limit: int | None = None, ordering_mode: str | None = None
+    ) -> list[Event]: ...
 
 
 class PgEventStore:
@@ -199,14 +201,29 @@ class PgEventStore:
             results.append(EventResult(event.event_id, status[i], codes.get(i)))  # type: ignore[arg-type]
         return IngestOutcome(results)
 
-    async def load_run(self, run_id: uuid.UUID) -> list[Event]:
-        """Every stored event of one run (the summarizer's input), in no particular order."""
-        rows = await self._conn.execute(
-            select(t.events).where(
-                t.events.c.workspace_id == self._tenant.workspace_id,
-                t.events.c.run_id == run_id,
-            )
+    async def load_run(
+        self, run_id: uuid.UUID, limit: int | None = None, ordering_mode: str | None = None
+    ) -> list[Event]:
+        """Stored events of one run (the summarizer's input), in no particular order.
+
+        With `limit` (the detector job's bound, KI-016/022) at most that many are read: the first
+        ones in the run's canonical order, which SQL applies with the *full* key of the mode
+        (`ordering_mode`: sequence, occurred_at, received_at, event_id, or occurred_at, sequence,
+        received_at, event_id), so ties never make the capped set differ from the prefix of
+        `sort_events`. Without `limit` nothing is ordered and nothing is capped.
+        """
+        c = t.events.c
+        statement = select(t.events).where(
+            c.workspace_id == self._tenant.workspace_id, c.run_id == run_id
         )
+        if limit is not None:
+            keys: tuple[Any, ...]
+            if ordering_mode == "sequence":
+                keys = (c.sequence, c.occurred_at, c.received_at, c.event_id)
+            else:
+                keys = (c.occurred_at, func.coalesce(c.sequence, 0), c.received_at, c.event_id)
+            statement = statement.order_by(*keys).limit(limit)
+        rows = await self._conn.execute(statement)
         return [row_to_event(row) for row in rows]
 
     async def _stored_hashes(self, event_ids: list[uuid.UUID]) -> dict[uuid.UUID, bytes]:

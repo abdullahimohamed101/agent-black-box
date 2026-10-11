@@ -895,3 +895,118 @@ button.danger {
   border-radius: 6px;
   padding: 0.5rem 0.75rem;
 }
+
+/* ---- Phase 10: findings and health ---- */
+.findings {
+  margin: 1rem 0;
+}
+.findings-state[data-tone="bad"] {
+  color: var(--bad);
+}
+.findings-state[data-tone="warn"] {
+  color: var(--warn);
+}
+.health-overall {
+  margin: 0.5rem 0;
+}
+.health-dims {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+}
+.health-dim {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 0.5rem 0.75rem;
+}
+.health-dim dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.health-dim dd {
+  margin: 0.15rem 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+.health-rule {
+  font-size: 0.9rem;
+}
+.health-inputs {
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+.finding-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.finding {
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.finding[data-severity="critical"] {
+  border-left-color: var(--bad);
+}
+.finding[data-severity="warning"] {
+  border-left-color: var(--warn);
+}
+.finding[data-severity="info"] {
+  border-left-color: var(--info);
+}
+.finding-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+}
+.finding-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.finding p {
+  margin: 0.4rem 0;
+}
+.finding .chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.4rem 0;
+  padding: 0;
+}
+.chip-static {
+  cursor: default;
+}
+.finding-steps ol {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.5rem;
+  display: grid;
+  gap: 0.15rem;
+}
+.finding-foot {
+  font-size: 0.78rem;
+}
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+/* Visually hidden text inside a cell must be clipped by the scrolling wrapper, not widen the page. */
+.table-wrap {
+  position: relative;
+}

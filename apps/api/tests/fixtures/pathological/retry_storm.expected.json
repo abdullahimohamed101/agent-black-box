@@ -1,0 +1,13 @@
+{
+  "scenario": "9 retries: 4 on one model call within 12 s (events 5, 7, 9, 11) and 5 more on five other calls, 90 s apart (events 17, 23, 29, 35, 41). 9 rate-limit hits.",
+  "findings": [
+    {
+      "detector": "retry-storm", "finding_type": "retry_storm", "kind": "deterministic",
+      "severity": "warning", "confidence": 1.0, "start_seq": 5, "end_seq": 41,
+      "evidence": {
+        "agent_id": "coder", "retries": 9, "retries_unattributed": 0, "burst": true,
+        "rate_limit_hits": 9, "window_seconds": 60, "by_scope.0.count": 4
+      }
+    }
+  ]
+}

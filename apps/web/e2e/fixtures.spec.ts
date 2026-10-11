@@ -4,6 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 const BASE = "/w/demo/projects/all";
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 const SHOTS = "../../docs/screenshots/phase-4";
+const SHOTS10 = "../../docs/screenshots/phase-10";
 
 async function axe(page: Page) {
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
@@ -28,15 +29,21 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await page.goto(`${BASE}/runs`);
   await expect(page.getByRole("table")).toBeVisible();
   const all = await page.locator("tbody tr").count();
-  expect(all).toBe(7);
+  expect(all).toBe(10);
   await page.getByLabel("Failed").check();
   await expect(page).toHaveURL(/status=FAILED/);
-  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr")).toHaveCount(2);
   await expect(page.locator("tbody tr").first()).toContainText("Failed");
   await page.getByLabel("Agent").fill("nobody");
   await expect(page.getByText("No runs match these filters")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(7);
+  await expect(page.locator("tbody tr")).toHaveCount(10);
+  // the findings column reads as text: count and worst severity, or a dash with plain words
+  const looping = page.locator("tbody tr", { hasText: "Resolve flaky docs search" });
+  await expect(looping.getByTestId("findings-cell")).toContainText("1 · info");
+  await expect(
+    page.locator("tbody tr", { hasText: "Fix login session expiry" }).getByTestId("findings-cell"),
+  ).toContainText("No findings");
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/runs-list.png`, fullPage: true });
 });
@@ -97,6 +104,51 @@ test("successful and in-progress runs read at a glance", async ({ page }) => {
   await expect(page.getByTestId("headline")).toContainText("Waiting for approval");
 });
 
+test("looping run shows a probable loop finding whose evidence jump selects the event", async ({
+  page,
+}) => {
+  await page.goto(`${BASE}/runs/${RUN(8)}`);
+  const panel = page.getByTestId("findings");
+  await expect(panel.getByRole("heading", { name: "Findings" })).toBeVisible();
+  await expect(panel.getByTestId("findings-state")).toContainText("Analysis is current");
+  const loop = panel.getByTestId("finding");
+  await expect(loop).toHaveCount(1);
+  await expect(loop.getByRole("heading", { level: 3 })).toHaveText(
+    "Probable: the agent may be looping",
+  );
+  await expect(loop).toContainText("Probable");
+  await expect(loop.getByLabel("Pattern")).toContainText("tool:search_docs");
+  await expect(panel.getByTestId("health")).toContainText("Loops");
+  await expect(page.getByTestId("progress")).toContainText("events shown");
+  await loop.getByRole("button", { name: "Show evidence" }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toContainText("tool.call.completed");
+  await expect(page.getByRole("option", { selected: true })).toContainText("tool.call.completed");
+  await axe(page);
+  await page.screenshot({ path: `${SHOTS10}/run-findings-loop.png`, fullPage: true });
+});
+
+test("failed run: the failure chain lists linked events and each one opens", async ({ page }) => {
+  await page.goto(`${BASE}/runs/${RUN(10)}`);
+  const chain = page.getByTestId("finding").filter({ hasText: "the run failed" });
+  await expect(chain).toContainText("Observed");
+  await expect(chain.getByRole("listitem")).toHaveCount(4);
+  await expect(page.getByTestId("finding").filter({ hasText: "Probable:" })).toHaveCount(1);
+  await expect(page.getByTestId("progress")).toContainText("events shown");
+  await chain.getByRole("button", { name: "mutation · file.modified" }).click();
+  await expect(page.getByRole("dialog")).toContainText("file.modified");
+  await page.screenshot({ path: `${SHOTS10}/run-findings-chain.png`, fullPage: true });
+});
+
+test("analysis states are stated: processing and not analysed", async ({ page }) => {
+  await page.goto(`${BASE}/runs/${RUN(4)}`);
+  await expect(page.getByTestId("findings-state")).toContainText("Analysing");
+  await page.goto(`${BASE}/runs/${RUN(5)}`);
+  await expect(page.getByTestId("findings-state")).toContainText("Not analysed yet");
+  await expect(page.getByTestId("health")).toContainText("No data");
+});
+
 test("unknown run shows a not-found state", async ({ page }) => {
   await page.goto(`${BASE}/runs/run_00000000000000000000000999`);
   await expect(page.locator('[data-state="error"]')).toContainText("Not found");
@@ -123,6 +175,7 @@ test("mobile layout has no horizontal page scroll", async ({ page }) => {
     BASE,
     `${BASE}/runs`,
     `${BASE}/runs/${RUN(2)}`,
+    `${BASE}/runs/${RUN(10)}`,
     `${BASE}/runs/${RUN(7)}?view=waterfall`,
   ]) {
     await page.goto(path);

@@ -1,6 +1,6 @@
 const pad = (n: number) => n.toString().padStart(26, "0");
 /** Deterministic Crockford-valid ids (digits only) so fixtures satisfy the API id patterns. */
-export const fid = (prefix: "prj" | "run" | "evt" | "spn" | "trc", n: number): string =>
+export const fid = (prefix: "prj" | "run" | "evt" | "spn" | "trc" | "fnd", n: number): string =>
   `${prefix}_${pad(n)}`;
 
 /** mulberry32: tiny seeded PRNG so fixtures are byte-identical on every run. */

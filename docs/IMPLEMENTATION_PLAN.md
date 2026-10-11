@@ -18,7 +18,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | | **MVP gate** (spec §49, §138): human review, launch quality bar | | | Open: KI-050 (OpenAI and tiered prices); user acceptance |
 | 8 | Framework integrations | §70, §18 | post-MVP | Complete (merged, CI green) |
 | 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Complete (merged, CI green; plan: `docs/plans/completed/phase-9-multi-agent-tracing.md`) |
-| 10 | Reliability intelligence | §80-81 | M5 | Not started |
+| 10 | Reliability intelligence | §80-81 | M5 | Implemented; independent review done and its findings fixed; pending merge (PR #79) (plan: `docs/plans/active/phase-10-reliability-intelligence.md`) |
 | 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Not started |
 | 12 | Visual replay | §87 (level 1) | | Not started |
 | 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Not started |

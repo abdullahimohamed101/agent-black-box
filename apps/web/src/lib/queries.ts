@@ -105,6 +105,26 @@ export function useRunEvents(runId: string, active: boolean) {
   return q;
 }
 
+/**
+ * A run's derived findings and health. The analysis lags the events (a job), so the query polls while the run is
+ * active or the analysis is in flight, and is never refetched once `current` on a finished run (findings are a
+ * function of immutable events, INV-1/2).
+ */
+export function useRunFindings(runId: string, poll: boolean) {
+  return useQuery({
+    queryKey: ["run-findings", runId],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/runs/{run_id}/findings", {
+          signal,
+          params: { path: { run_id: runId } },
+        }),
+      ),
+    refetchInterval: (q) => (poll || q.state.data?.state.status === "processing" ? POLL_MS : false),
+    staleTime: (q) => (!poll && q.state.data?.state.status === "current" ? Infinity : 0),
+  });
+}
+
 export function useEventDetail(runId: string, eventId: string | null) {
   return useQuery({
     enabled: eventId != null,

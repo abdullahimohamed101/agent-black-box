@@ -68,6 +68,7 @@ EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/v1/runs/{run_id}/events"): (READ_ID, U_RUNS),
     ("GET", "/v1/runs/{run_id}/events/{event_id}"): (READ_ID, U_RUNS),
     ("GET", "/v1/runs/{run_id}/spans"): (READ_ID, U_RUNS),
+    ("GET", "/v1/runs/{run_id}/findings"): (READ_ID, U_RUNS),
     ("GET", "/v1/runs/{run_id}/stream"): (READ_ID, U_RUNS),
     ("GET", "/v1/projects"): (EVERY_KEY, U_PROJECTS),
     ("POST", "/v1/projects"): (NO_KEY, U_PROJECT_ADMIN),

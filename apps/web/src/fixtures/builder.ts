@@ -1,11 +1,17 @@
-import type { EventOut, RunOut, SpanOut } from "@/lib/api/types";
+import type { EventOut, RunFindingsOut, RunOut, SpanOut } from "@/lib/api/types";
 import { orderingMode, sortEvents } from "@/lib/ordering";
 import { fid } from "./ids";
 
 export const FIXTURE_PROJECT = fid("prj", 1);
 export const FIXTURE_EPOCH = Date.parse("2026-10-07T09:00:00Z");
 
-export type FixtureRun = { run: RunOut; events: EventOut[]; spans: SpanOut[] };
+export type FixtureRun = {
+  run: RunOut;
+  events: EventOut[];
+  spans: SpanOut[];
+  /** What `GET /v1/runs/{id}/findings` returns; attached by `fixtureRuns()`. */
+  findings?: RunFindingsOut;
+};
 
 type Extra = Partial<
   Pick<EventOut, "status" | "duration_ms" | "span_id" | "parent_span_id" | "payload" | "agent_id">
