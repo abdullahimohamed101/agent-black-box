@@ -1,6 +1,6 @@
 # Phase 10 - Reliability intelligence
 
-Status: Planned and reviewed 2026-10-10; ready for implementation (independent review `docs/plans/active/phase-10-plan-review.md` at bee3948 addressed under "Review dispositions"; the user's answers to the decisions below are still wanted, "go with your recommendation" suffices)
+Status: Implemented; pending security review (steps 1-7 done 2026-10-11; closing evidence below; the plan stays in `active/` until `review-change` and `complete-phase`)
 Owner: implementer agent
 Branch: `feature/phase-10-reliability-intelligence` (from `main` c212058; worktree `../abb-worktrees/phase-10`; Phases 9, 11 and 16 are planned in parallel worktrees)
 Depends on: Phase 2 (events, outbox, summarizer), Phase 7 (cost lines, typed run columns), Phase 15 (`require(action)`, `payload.read`, route registry)
@@ -314,3 +314,43 @@ Merge order is **Phase 9, then 10, then 16, then 11**. Phase 10 merges second an
 - **Fixtures.** Three runs were added (`loopingRun`, `cascadeRun`, `failingChainRun`, started before the other fixtures so they sort last) with hand-written findings citing their real events by sequence number (`fixtures/findings.ts`); the running run is `processing` and the approval run `none`. The fixture set grew from 6 to 9 runs, so the counts in `runs-list.test.tsx` (rows, pagination, dashboard 75% -> 71%, "9 runs") and `e2e/fixtures.spec.ts` (9 rows, 2 failed) were updated; no assertion was weakened.
 - **CSS.** The findings block is appended at the end of `globals.css`, followed by `.table-wrap { position: relative }`: the visually hidden text in the findings cell is absolutely positioned and otherwise escaped the scrolling wrapper and widened the page on mobile (caught by the mobile spec).
 - **Browser.** Verified in the in-app browser against `next start` in fixtures mode (port 3191, because 3100 was held by another worktree's server): the looping run's panel, "Show evidence" opening the drawer on the cited event, the failure chain with linked events, and the runs-list column. Playwright `fixtures.spec.ts` ran against that port with a temporary config (deleted; the repository config is unchanged).
+
+## Implementation notes (steps 6-7)
+
+- **E2E ports and files.** `scripts/findings-e2e.sh` uses the API on :8135 and the web server on :3105 (not the :8170/:3170 of the plan: other parallel worktrees hold neighbouring ports); both are
+  constants of the script and `apps/web/playwright.config.ts` (the config gains a `findings` web server behind `E2E_FINDINGS_API_URL`, 14 lines). The API-side assertions live in
+  `scripts/findings_e2e_check.py` (httpx, run with `uv run --project apps/api`), which the plan did not name; it prints counts only and no credential or event content.
+- **Settle rebuild.** The cost-spike finding depends on the other runs being summarised when the expensive run is analysed, which ingestion order cannot guarantee (AC-3 excludes it for the same
+  reason). The script therefore waits for every run to be `current`, runs one `rebuild-findings` to settle the baseline, asserts the findings, then compares a second rebuild with a snapshot
+  by `(detector, finding_type, fingerprint, id, created_at, evidence)`: all equal.
+- **Fingerprints are exposed** (`fingerprint` is part of the contract), so the "no long hex run" check of the viewer-parity assertion ignores that one field; everything else in the response is scanned.
+- **AC-9 scale.** The tie-ordering truncation test (`test_a_capped_load_is_the_canonical_prefix_even_with_ties`) uses 450 events with `ABB_FINDINGS_MAX_EVENTS=200` (the setting's floor is 100) instead of 60,000
+  events with 50,000: the property under test (the analysed set is the first N of the canonical order, with ties on `sequence` and `occurred_at`) does not depend on the scale, and a
+  60,000-row ingestion in the unit suite would cost minutes. The real 30,000-event case is covered by the benchmark below (event_count 30,000, analysed whole).
+- **Benchmark method (AC-11).** The compose stack belongs to the user and was not rebuilt. `docs/benchmarks/phase-10-regression-check.md` compares the base commit and this branch as native
+  processes on scratch databases, three alternating repetitions, medians and raw triples. It is **not** comparable with the Phase 2 and 7 tables, and the container half of AC-11 stays
+  UNVERIFIED (env) (KI-096). The detect job for a 30,000-event run took 1.33 s, above the plan's 1 s trigger; tuning does not reduce a linear cost, so it is filed as KI-096 with a trigger, as AC-11 allows.
+- **KI ids.** KI-090..096 filed in `docs/KNOWN_ISSUES.md` (placeholder issue "to file"); KI-016, KI-021 and KI-022 got their notes.
+
+## Closing evidence (2026-10-11; native run on the worktree, own databases `abb_test_p10`, `abb_p10`)
+
+Vocabulary: VERIFIED = command run here and output seen; UNVERIFIED (env) = could not be run here, reason given.
+
+| AC | Result | Evidence |
+| --- | --- | --- |
+| AC-1 Detector fixtures | PASS (VERIFIED) | `pytest tests/test_detectors.py -q`: 67 passed; `scripts/pathological_runs.py --check tests/fixtures/pathological`: "10 fixtures are current" |
+| AC-2 Metadata only, bounded | PASS (VERIFIED) | `pytest tests/test_detectors.py -k "content or bounds" tests/authz/test_content_withheld.py tests/authz/test_cross_workspace.py -q`: 22 passed, 90 deselected |
+| AC-3 Rebuildable | PASS (VERIFIED) | `pytest tests/test_findings_job.py -q`: 26 passed (random batching vs from-scratch, rebuild same ids and `created_at`, concurrency, dead-letter isolation with canary absent from `last_error` and `caplog`) |
+| AC-4 Route and authorization | PASS (VERIFIED) | `pytest tests/authz -q`: 101 passed (`EXPECTED_V1_OPERATIONS = 32`); `pytest tests/test_openapi.py tests/authz/test_registry_is_complete.py -q`: 11 passed (`seen == 37`) |
+| AC-5 Finding contract | PASS (VERIFIED) | `pytest tests/test_findings_api.py tests/test_findings_repository.py -q`: 36 passed (contract, state walk none/processing/current/outdated/failed with previous items) |
+| AC-6 Health | PASS (VERIFIED) | `pytest tests/test_findings_health.py -q`: 44 passed |
+| AC-7 Viewer parity | PASS (VERIFIED) | in `test_findings_api.py` / `tests/authz/test_findings_content.py` (above) and in the browser run of AC-12: byte-identical items and health for OWNER and VIEWER |
+| AC-8 Cost spike baseline | PASS (VERIFIED) | `test_findings_job.py::test_cost_spike_uses_exactly_the_comparable_baseline_runs` (in the 26) |
+| AC-9 Huge runs | PASS with a documented scale deviation (VERIFIED) | tie-ordering truncation test at 450/200 events (note above), delay clamp test, UI text in `findings.test.tsx`; 50,000-event detector micro-benchmark under 3 s in `test_detectors.py`; real 30,000-event analysis in the benchmark |
+| AC-10 Rebuild CLI | PASS (VERIFIED) | `test_findings_job.py::test_rebuild_findings_*` (queue, one `findings.rebuild` audit row, `--limit` 0, 10001, -1 and non-numeric refused) |
+| AC-11 Performance | PARTIAL: native comparison VERIFIED, compose comparison UNVERIFIED (env), one budget miss filed | `docs/benchmarks/phase-10-regression-check.md`: realistic cases within +-5%, 30,000-event p99 3,044 to 2,228 ms (no regression), runs list p95 +2.3 ms, detect job 54 ms (1,000 events), 422 ms (10,000), **1,332 ms (30,000) > 1 s**: KI-096. The Colima stack could not be rebuilt without disturbing the user's |
+| AC-12 Browser | PARTIAL | `scripts/findings-e2e.sh`: PASSED, 6 browser tests (looping, cascade, failure chain, healthy, runs-list column, VIEWER parity), axe clean on the looping run page, 12 findings across 10 scenarios, rebuild reproduces them; screenshots `docs/screenshots/phase-10/e2e-*.png`. `playwright test e2e/fixtures.spec.ts` (what `make e2e` runs): 12 passed. `coding-e2e`, `stream-e2e`, `analytics-e2e`, `e2e-web-real`, `auth-e2e`: **UNVERIFIED (env)**: their fixed ports (3140, 3103, 3150, 3102, 3160 and API 8140/8150/8165) are reserved for parallel worktrees' scripts in this session and were not run here; nothing in this phase touches their paths (proxy allowlist gained one token, covered by the vitest `upstream` tests). They run in CI |
+| AC-13 Contract and migrations | PASS (VERIFIED, piecewise) | event-schema 348 passed; sdk 806 passed (coverage 94.06%); examples 12; integrations 17/74/66/61/44; api 901 (non-authz) + 101 (authz) = 1002 passed (collected 1002); web vitest 431 passed (25 files); ruff, format, mypy (191 files) clean for every package; web eslint, prettier, tsc clean; `schema-check` and `openapi --check` and `gen:api:check` current; `next build` compiled; `alembic upgrade head`, `downgrade base`, `upgrade head` on `abb_test_p10` ends at 0060 (head); `test_migrations.py` and `test_runtime_role.py`: 43 passed (includes the 0044 up/down test) |
+| AC-14 Review | OPEN | the independent `review-change` pass with the attack list is the next step; findings to be fixed or filed |
+
+Environment note: the Colima Postgres clock runs about 2.2 s ahead of the host; no test was observed to fail on that in this run (`scripts/quality.sh` was run as its parts, not as one command).

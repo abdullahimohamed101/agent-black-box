@@ -90,6 +90,10 @@ ingestion edge | control plane | database/object storage | human approvers.
 - Local/demo credentials are generated, documented as dev-only, never real. `owner@local.test` and the E2E people (`*@auth.test`) are fake
   addresses that only the fake provider can authenticate.
 
+Reliability findings (Phase 10, ADR-080): evidence is metadata only by construction (an allowlist of keys per finding type; no command, path, payload, payload digest, run name or
+error text), so `GET /v1/runs/{id}/findings` needs only `run.read` and returns the same body to every reader; a detector failure surfaces as a fixed-text job error that cannot quote an
+attribute value; the cost baseline is scoped to the caller's workspace, project and agent.
+
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
 Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop; a real shared limiter,

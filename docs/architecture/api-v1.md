@@ -172,6 +172,23 @@ Events are put in canonical order, then folded:
 (`retry.attempted`), `error_count` (events with status `error`/`timeout` or a `*.failed` type, each counted
 once), `files_modified` (distinct `file.path` of created/modified/deleted), `models`, `first_event_at`, `last_event_at`.
 
+### Findings and health
+
+`GET /v1/runs/{id}/findings` (`run.read`; a key needs `runs:read`; BILLING people get 403) returns `{run_id, state, health, items}`. Derived by the `detect_findings` job
+(ADR-080); a run not yet analysed returns `state.status: none` and empty `items`. The body is the same for every caller who may read the run.
+
+- `state`: `status` (`none | processing | current | outdated | failed`), `detectors_version`, `summary_version_seen`, `computed_at`, `event_count_seen` and `truncated`
+  (true when only the first `ABB_FINDINGS_MAX_EVENTS` events were read). After a dead letter the previous items are still returned, status `failed`.
+- `items[]` (the §81.2 contract): `id` (`fnd_...`, stable across rebuilds), `detector`, `detector_version` (`name@x.y.z`), `finding_type`, `kind`
+  (`deterministic | probable`), `severity` (`info | warning | critical`), `confidence` (0 to 1), `title` (starts with `Probable:` iff `kind` is `probable`),
+  `message`, `start_event_id`, `end_event_id`, `evidence_event_ids` (every cited `evt_` id; each resolves through `GET /v1/runs/{id}/events/{event_id}`),
+  `fingerprint`, `evidence` and `created_at`/`updated_at`. `evidence` is typed per `finding_type`, holds metadata only (ids, counts, tool and model names,
+  codes) and lists the `thresholds` the detector used.
+- `health`: `overall` and `dimensions[]` (`reliability`, `tool_reliability`, `cost_efficiency`, `loops`, `context`), each `ok | warn | bad | no_data` with
+  `inputs`, a one-sentence `rule` and `finding_ids`. No numeric score exists (ADR-081); finding-based dimensions are `no_data` unless the analysis is `current`.
+
+`RunOut` (list and detail) gains `findings`: `{count, max_severity, state}` with `state` one of `none | current | outdated`, read from one query per page.
+
 ## Cost and analytics
 
 All endpoints need `runs:read`. A project-bound key is confined to its project: `project_id` of another project is

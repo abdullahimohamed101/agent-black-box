@@ -28,3 +28,10 @@ Targets (not promises until measured): ingest ack p50 <50 ms, p95 <150 ms; live 
 run detail p95 <500 ms; dashboard p95 <1.5 s. Measured results are recorded in `docs/benchmarks/`.
 Live streams (per API process, settings): 50 total, 10 per key, 15 min lifetime, 15 s keepalive, 2 s fallback poll, 30 s resume overlap,
 10 s write timeout. Measured accept-to-display p95 is about 9 ms on one machine (`docs/benchmarks/phase-5-streaming.md`).
+
+Findings (ADR-080): the `detect_findings` job is the only writer of `findings` and `run_findings`, one writer per run (an advisory lock; the loser re-enqueues), derived
+and rebuildable from events. Bounds: at most `ABB_FINDINGS_MAX_EVENTS` (50,000) events read per run in canonical order (`truncated` is reported); 50 findings per detector and 200
+per run; 50 event ids and 20 pattern tokens per finding; client strings truncated to 128 characters; evidence under 15 KiB; delay `ABB_FINDINGS_DELAY_SECONDS` (5 s) growing with run size
+to at most 60 s. A detector exception dead-letters only its own job (fixed error text, no attribute values), the summary stays `current` and the route reports `failed` while still
+serving the last good findings. Every cost rebuild also re-runs the detectors (about double the per-run worker work). Measured: about 44 microseconds per event, 1.33 s for a 30,000-event run
+(`docs/benchmarks/phase-10-regression-check.md`, KI-096).
