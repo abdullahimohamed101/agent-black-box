@@ -73,6 +73,23 @@ async def try_lock_run(conn: AsyncConnection, tenant: TenantContext, run_id: uui
 async def detect_run(
     conn: AsyncConnection, tenant: TenantContext, run_id: uuid.UUID, settings: Settings
 ) -> Outcome:
+    """Every failure inside the job, whichever statement raised it, leaves as a `DetectorError`
+    with fixed text and no cause: a stored event that no longer validates, a driver error quoting
+    bind parameters or a detector bug could otherwise reach `outbox_jobs.last_error` and the
+    dead-letter log with attribute values in them (INV-5; security review P2-1)."""
+    try:
+        return await _detect_run(conn, tenant, run_id, settings)
+    except DetectorError:
+        raise
+    except Exception as exc:
+        # Only the class is logged: the message may quote attribute values.
+        logger.warning("findings job failed", extra={"error_type": type(exc).__name__})
+        raise DetectorError("job", 0) from None
+
+
+async def _detect_run(
+    conn: AsyncConnection, tenant: TenantContext, run_id: uuid.UUID, settings: Settings
+) -> Outcome:
     started = time.perf_counter()
     if not await try_lock_run(conn, tenant, run_id):
         return "busy"

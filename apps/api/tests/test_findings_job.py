@@ -26,6 +26,7 @@ from abb_api.findings.build import build_context, make_baseline
 from abb_api.findings.detectors import DETECTORS_VERSION, run_all
 from abb_api.findings.model import Detector, DetectorConfig, DetectorContext, Finding
 from abb_api.findings.repository import FindingsRepository
+from abb_api.ingestion.store import PgEventStore
 from abb_api.jobs.handlers import HANDLERS, detect_findings
 from abb_api.jobs.outbox import DETECT_FINDINGS, Job, OutboxRepository
 from abb_api.jobs.worker import Worker
@@ -737,3 +738,41 @@ async def test_rebuild_findings_accepts_the_bounds_and_reports_a_missing_workspa
     assert code == 1 and "not found" in err
     code, err = await invoke(settings, "rebuild-findings", "--workspace", "nope", "--limit", "1")
     assert code == 1
+
+
+async def test_a_failure_while_loading_events_dead_letters_with_fixed_text(
+    engine: AsyncEngine,
+    database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Security review P2-1: the load and row reads are inside the same fixed-message wrapper."""
+    caplog.set_level(logging.DEBUG)
+    tenant = await make_tenant(engine, "acme")
+    (wire_run,) = load_runs("failing").values()
+    run_id = wire_run[0]["run_id"]
+    worker = Worker(
+        engine,
+        HANDLERS,
+        make_settings(
+            database_url, worker_backoff_base_seconds=0.0, worker_backoff_max_seconds=0.0
+        ),
+        owner="w",
+    )
+    await ingest(engine, tenant, [wire_to_event(tenant, w) for w in wire_run])
+    await drain(worker)
+
+    async def broken(*args: Any, **kwargs: Any) -> list[Event]:
+        raise ValueError(f"bad stored row {CANARY}")
+
+    monkeypatch.setattr(PgEventStore, "load_run", broken)
+    async with engine.begin() as conn:
+        await OutboxRepository(conn, tenant.context).enqueue_detect([to_uuid(run_id)])
+    for _ in range(12):
+        await worker.run_once()
+    (dead,) = [j for j in await jobs(engine) if j.status == "dead_letter"]
+    assert dead.last_error == "DetectorError: detector job failed over 0 events"
+    assert CANARY not in dead.last_error
+    logged = "\n".join(f"{r.getMessage()} {r.exc_text or ''} {r.__dict__}" for r in caplog.records)
+    assert "job failed" in logged and CANARY not in logged
+    assert "ValueError" in logged  # the class is logged, the message never
