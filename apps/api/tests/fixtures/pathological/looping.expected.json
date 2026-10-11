@@ -1,14 +1,14 @@
 {
-  "scenario": "search -> read -> reason x 11 (events 4..68), a loop reported by the integration (event 69), then read x 9 (events 71..87). The run succeeds.",
+  "scenario": "search -> read -> reason x 11 (events 4..68), a loop reported by the integration (event 69), then read x 9 (events 71..87). The run succeeds, so both probable loops are info however long they are (ADR-081).",
   "findings": [
     {
       "detector": "repeated-sequence", "finding_type": "possible_loop", "kind": "probable",
-      "severity": "critical", "confidence": 0.95, "start_seq": 4, "end_seq": 68,
+      "severity": "info", "confidence": 0.95, "start_seq": 4, "end_seq": 68,
       "evidence": {"agent_id": "coder", "pattern": ["tool:search", "tool:read", "llm"], "repetitions": 11}
     },
     {
       "detector": "repeated-sequence", "finding_type": "possible_loop", "kind": "probable",
-      "severity": "warning", "confidence": 0.95, "start_seq": 71, "end_seq": 87,
+      "severity": "info", "confidence": 0.95, "start_seq": 71, "end_seq": 87,
       "evidence": {"agent_id": "coder", "pattern": ["tool:read"], "repetitions": 9}
     },
     {

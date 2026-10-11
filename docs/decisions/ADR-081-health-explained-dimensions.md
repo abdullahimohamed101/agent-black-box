@@ -22,7 +22,7 @@ says "explainable health dimensions only (no unexplained score)"; §80.3 require
   below 100,000 tokens; five spaced retries are `info`, a burst is `warning`.
 - Findings are `deterministic` (restating typed events, confidence 1.0) or `probable` (interpretations, confidence from the rule's own evidence).
   Probable findings carry "Probable:" in their title and the UI never signals kind or severity by colour alone. A probable loop on a successful run is
-  `info`, and the UI says that severity may change until the run ends.
+  `info` however many times it repeats (`warning`, or `critical` from 10 repetitions, only when the run did not succeed or is still active), and the UI says that severity may change until the run ends.
 
 ## Alternatives
 A weighted 0-100 score (arbitrary weights, not actionable, contradicts the roadmap); per-project thresholds now (needs a table, write route, action, UI

@@ -98,10 +98,13 @@ class RepeatedSequence(Detector):
         pattern = [tokens[start + i].text for i in range(n)]
         first, last = tokens[start].event, tokens[end - 1].event
         succeeded = ctx.facts.status.value == "SUCCESS"
-        if reps >= 10:
-            severity = Severity.CRITICAL
-        elif succeeded and reps < 6:
+        # ADR-081: a probable loop on a run that succeeded is `info` however long (a coding agent
+        # that read-edit-tests twelve files is not in trouble); only a run that did not succeed, or
+        # is still active, can read `warning`/`critical`, and it may change when the run ends.
+        if succeeded:
             severity = Severity.INFO
+        elif reps >= 10:
+            severity = Severity.CRITICAL
         else:
             severity = Severity.WARNING
         return self.make(

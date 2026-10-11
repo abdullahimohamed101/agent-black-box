@@ -232,6 +232,30 @@ def test_a_short_loop_on_a_successful_run_is_info() -> None:
     assert finding.severity is Severity.INFO and finding.evidence["repetitions"] == 3
 
 
+@pytest.mark.parametrize(
+    ("reps", "finish", "expected"),
+    [
+        (12, ("run.completed", "success"), Severity.INFO),  # ADR-081: success is info, however long
+        (6, ("run.completed", "success"), Severity.INFO),
+        (12, ("run.failed", None), Severity.CRITICAL),
+        (12, ("run.completed", "blocked"), Severity.CRITICAL),
+        (6, ("run.failed", None), Severity.WARNING),
+    ],
+)
+def test_a_probable_loop_is_info_on_a_successful_run_and_rises_only_when_it_did_not_succeed(
+    reps: int, finish: tuple[str, str | None], expected: Severity
+) -> None:
+    synth = Synth()
+    synth.add("run.started")
+    for _ in range(reps):
+        synth.tool("search")
+        synth.tool("read")
+    synth.add(finish[0], status=finish[1])
+    (loop,) = [f for f in run_all(build_context(synth.events)) if f.finding_type == "possible_loop"]
+    assert loop.evidence["repetitions"] == reps
+    assert loop.severity is expected
+
+
 def test_a_block_that_is_itself_repeating_is_reported_by_its_shorter_form() -> None:
     synth = Synth()
     for _ in range(6):

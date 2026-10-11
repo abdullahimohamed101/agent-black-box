@@ -65,7 +65,7 @@ function findingsFor(f: FixtureRun): FindingOut[] {
           detector_version: "repeated-sequence@1.0.0",
           finding_type: "possible_loop",
           kind: "probable",
-          severity: "warning",
+          severity: "info",
           confidence: 0.8,
           title: "Probable: the agent may be looping",
           message: `The agent repeated tool:search_docs -> tool:read_file -> llm 6 times in ${Math.round(ms / 1000)} s.`,

@@ -69,11 +69,12 @@ async def test_findings_round_trip_with_derived_stable_ids(engine: AsyncEngine) 
     await replace(engine, w, produced)
     state, records = await read(engine, w)
 
-    assert state.finding_count == 3 and state.max_severity == "critical"
+    # the successful looping run: both probable loops are info (ADR-081), the reported loop warns
+    assert state.finding_count == 3 and state.max_severity == "warning"
     assert (state.detectors_version, state.summary_version_seen) == (DETECTORS_VERSION, 2)
     assert state.event_count_seen == 89 and state.truncated is False
     assert state.ordering_mode_seen == "sequence" and state.project_id == w.project
-    assert [r.severity for r in records] == ["critical", "warning", "warning"]  # worst first
+    assert [r.severity for r in records] == ["warning", "info", "info"]  # worst first
     by_print = {f.fingerprint: f for f in produced}
     for record in records:
         source = by_print[record.fingerprint]
@@ -106,12 +107,12 @@ async def test_a_rewrite_follows_the_new_findings_and_deletes_the_rest(engine: A
     w = await world(engine)
     produced = findings_for("looping")
     await replace(engine, w, produced)
-    softer = Finding(**{**produced[0].__dict__, "severity": Severity.INFO})
-    await replace(engine, w, [softer, produced[1]])
+    harsher = Finding(**{**produced[1].__dict__, "severity": Severity.CRITICAL})
+    await replace(engine, w, [produced[0], harsher])
     state, records = await read(engine, w)
-    assert state.finding_count == 2 and state.max_severity == "warning"
-    assert {r.fingerprint for r in records} == {softer.fingerprint, produced[1].fingerprint}
-    assert next(r for r in records if r.fingerprint == softer.fingerprint).severity == "info"
+    assert state.finding_count == 2 and state.max_severity == "critical"
+    assert {r.fingerprint for r in records} == {produced[0].fingerprint, harsher.fingerprint}
+    assert next(r for r in records if r.fingerprint == harsher.fingerprint).severity == "critical"
 
     await replace(engine, w, [], dataclass_state(computed=START))
     state, records = await read(engine, w)

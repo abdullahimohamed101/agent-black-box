@@ -302,7 +302,7 @@ describe("runs list findings column", () => {
     const rowOf = (name: string) => screen.getByRole("link", { name }).closest("tr")!;
     expect(
       within(rowOf("Resolve flaky docs search")).getByTestId("findings-cell"),
-    ).toHaveTextContent("1 · warning");
+    ).toHaveTextContent("1 · info");
     expect(within(rowOf("Fix flaky checkout test")).getByTestId("findings-cell")).toHaveTextContent(
       "2 · critical",
     );
