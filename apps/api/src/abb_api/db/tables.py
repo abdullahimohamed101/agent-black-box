@@ -41,6 +41,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 
 metadata = MetaData()
@@ -669,16 +670,16 @@ run_search = Table(
     Column("document_hash", LargeBinary, nullable=False),
     Column("error_count", Integer, nullable=False, server_default="0"),
     Column("security_events", Integer, nullable=False, server_default="0"),
-    Column("event_types", ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
-    Column("tools", ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
-    Column("models", ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
-    Column("providers", ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
-    Column("agents", ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
-    Column("tags", ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("event_types", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("tools", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("models", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("providers", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("agents", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("tags", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
     Column("metadata_doc", TSVECTOR, nullable=False, server_default=text("''::tsvector")),
     Column("metadata_truncated", Boolean, nullable=False, server_default=text("false")),
-    Column("file_paths", ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
-    Column("commands", ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("file_paths", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
+    Column("commands", PG_ARRAY(Text), nullable=False, server_default=_EMPTY_TEXT_ARRAY),
     Column("content_doc", TSVECTOR, nullable=False, server_default=text("''::tsvector")),
     Column("content_truncated", Boolean, nullable=False, server_default=text("false")),
     _ts("updated_at", nullable=False, default_now=True),

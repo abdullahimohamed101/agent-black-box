@@ -644,3 +644,34 @@ unredacted part).
 names the permission, not the value). Server-side redaction (Phase 13) can later move individual attributes between the two documents by
 changing the classification in one place (`abb_api/content.py`). A future ranking feature must rank on metadata only or be gated by
 `payload.read` as a whole. Every denial of a content field is visible in the audit log like any other denial.
+
+## Implementation notes (steps 1-3; deviations and choices, recorded as built)
+
+- **Verified (was UNVERIFIED (env)).** `uv sync` works. Postgres 16 accepts the literal syntax of D4: `CAST(:d AS tsvector) @@ CAST(:q AS
+  tsquery)` with quoted lexemes, `'it''s'`, doubled backslashes, `<->` and `:*` behaves as designed, `foo_bar` is not re-split, and
+  same-position expansion is not adjacent (pinned by `test_search_api.py::test_postgres_accepts_the_literal_syntax_we_build`). Postgres keeps at most
+  256 positions per lexeme and drops the rest silently (observed); with distinct values and the 8,000-position cap this is harmless. The
+  asyncpg binding of the casts works (`CAST($1::VARCHAR AS TSVECTOR)`). `pnpm install` was not run (no web work in steps 1-3).
+- **Normalisation.** Array values for `agents`, `tools`, `models`, `providers`, `tags` are stored NFKC + case-folded (`tokens.normalise`), and
+  query values are normalised the same way, so those fields are case-insensitive; `matched` therefore shows the normalised spelling.
+- **Tokeniser.** `.`, `-`, `/` are trimmed from both ends of a token (so `-force` and `--force` both tokenise to `force`); letters, marks,
+  digits, `_ . - /` are word characters. Positions start at 1 and consecutive values are separated by one empty position; the 8,000 cap counts
+  those gaps. Segment/part expansion is `tokens.expansions`.
+- **Parser.** An unknown or reserved `name:` prefix is `422 unknown field` at the name (so `http://x` must be quoted); `<`/`>` are operators only on
+  ordered fields (elsewhere they are part of the value); a relative time needs an operator; an RFC 3339 instant needs `Z` or an offset;
+  accepted years are 1970-2999; `duration` needs a unit; integers are bounded to 2^31-1; a wildcard run (`**`) counts once toward the 8
+  wildcard limit; `severity:error` is rewritten in the AST to `errors:>0`. Event prefixes keep the trailing dot (`event:shell.*` -> `shell.`).
+- **Glob (D6).** The plan's "no wildcard = substring" and "`file:/etc/passwd` matches exactly" conflict; implemented: no wildcard and absolute
+  path -> exact (case-insensitive); no wildcard otherwise -> substring; with wildcards -> end-anchored, start-anchored only if it begins with `/`.
+- **Document.** `build_document(events, *, run_name, run_metadata, agents, error_count)`: `error_count` is the derivation's own figure (one rule
+  for "error"). Values longer than 256 characters (4,096 for content) are dropped and set that half's truncation flag; arrays also stop at 64 KiB.
+  The stored `document_hash` covers the document plus project, start time and `SUMMARY_VERSION`, so a version bump or a moved start rewrites the row.
+- **`unindexed` and facets (D8/D9).** The unindexed count also applies the query's run-row-only predicates (`CompiledSearch.row_predicates`), so it
+  counts runs that would otherwise have matched; a query without index terms left-joins `run_search` in the facets statement (the status facet
+  counts every run, array facets count indexed runs) and reports no unindexed count.
+- **Gate placement.** `SearchGate`/`SearchBudget` live in `search/reads.py`; the gate is created lazily per application in step 4 (so `main.py` stays
+  untouched). `search_timeout_seconds` and `search_max_concurrent` (1-14) were added to `Settings` in step 3 because the budget tests need them.
+- **Tables.** `run_search` uses the PostgreSQL `ARRAY` type (the generic one has no `contains`). `SUMMARY_VERSION` is 3 in this tree (comment in
+  `runs/summary.py`); it becomes merged value + 1 on rebase.
+- **Mutation checks run (each failed a test):** viewer text compiled against `content_doc`; content gate removed; `content_truncated` selected for
+  everyone; tenant dropped from the join's ON (this one survived until the test asserted a bound parameter on the joined side; fixed).
