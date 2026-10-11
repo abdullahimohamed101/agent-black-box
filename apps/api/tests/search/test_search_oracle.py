@@ -132,6 +132,20 @@ async def test_a_content_field_is_refused_the_same_whether_or_not_anything_would
 
 
 @pytest.mark.parametrize("actor", WITHHELD_FROM)
+async def test_the_refusal_comes_before_the_cursor_is_decoded(world: World, actor: str) -> None:
+    """ADR-101 (review F4): a stale or garbage cursor must not turn the permission refusal into a
+    paging error; the web would explain a 400 as a paging problem, not a permission one."""
+    refused = await search(world, actor, "file:PATHCANARY*")
+    for cursor in ("not-a-cursor", "e30", "AAAA" * 20):
+        response = await search(world, actor, "file:PATHCANARY*", cursor=cursor)
+        assert response.status_code == 403, cursor
+        assert without_echo(response) == without_echo(refused), cursor
+    # the same cursor on an allowed query is the paging error, so the order is what decides
+    paging = await search(world, actor, ALLOWED, cursor="not-a-cursor")
+    assert paging.status_code == 400
+
+
+@pytest.mark.parametrize("actor", WITHHELD_FROM)
 async def test_the_refusal_is_logged_and_audited_without_the_query(
     world: World,
     actor: str,

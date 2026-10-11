@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.runs.queries import RunQueries
@@ -76,6 +77,34 @@ async def test_a_search_past_its_budget_is_a_retryable_503(
     error = response.json()["error"]
     assert error["code"] == "SEARCH_TIMEOUT" and error["retryable"] is True
     assert api.app.state.engine.pool.checkedout() == 0  # the connection is back in the pool
+
+
+async def test_a_search_runs_in_a_read_only_transaction(
+    engine: AsyncEngine, make_api: MakeApi, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-101 (review F4): a bug in a compiled statement cannot write. A write attempted through
+    the budget's connection fails, in the unit and on the request path."""
+    budget = SearchBudget(5.0)
+    write = text("UPDATE run_search SET error_count = error_count WHERE false")
+    async with engine.connect() as conn:
+        await budget.run(conn, text("SELECT 1"))
+        with pytest.raises(DBAPIError, match="read-only transaction"):
+            await conn.execute(write)
+
+    api = await make_api()
+    original = RunQueries.page
+
+    async def writing_page(self: RunQueries, *args: Any, **kwargs: Any) -> Any:
+        budget = kwargs.get("budget")
+        if budget is not None:
+            await budget.run(self._conn, text("SELECT 1"))  # arms the read-only transaction
+            await self._conn.execute(write)
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(RunQueries, "page", writing_page)
+    response = await api.get("/v1/runs", token=READER, q="tool:github")
+    assert response.status_code >= 500, response.text
+    assert api.app.state.engine.pool.checkedout() == 0
 
 
 async def test_a_flood_gets_timeouts_and_one_busy_while_ingestion_and_plain_reads_are_fine(
