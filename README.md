@@ -37,7 +37,7 @@ contract, not any single datastore. Details: `ARCHITECTURE.md`.
 
 ```text
 apps/{api,web}  packages/{event-schema,sdk-python}  integrations/{langgraph,openai,anthropic,mcp,conformance}
-examples/coding-agent  infrastructure/  scripts/  docs/
+examples/{coding-agent,multi-agent}  infrastructure/  scripts/  docs/
 ```
 New directories appear when their phase begins (for example `processors/`).
 
@@ -73,6 +73,8 @@ See a real run in about two minutes (needs the Quick Start above, `make seed`, a
 the flagship demo is a small coding agent that fixes a broken OAuth service, hits a failing test, retries and passes.
 `scripts/coding-e2e.sh` runs it end to end on a throwaway database and drives a browser; `examples/coding-agent/README.md`
 shows how to point it at your own stack and open the run (diff, shell and cost panels).
+`examples/multi-agent` records a planner, a researcher, a coder, a tester in a separate process and a reviewer in one run (`--skew-ms` skews the
+tester's clock); open the run and switch to Waterfall. `scripts/multiagent-e2e.sh` runs it against the real API and web.
 
 API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operations: `docs/OPERATIONS.md`.
 

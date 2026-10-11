@@ -1,6 +1,6 @@
 # Phase 9 - Multi-agent distributed tracing and waterfall
 
-Status: Planned and reviewed 2026-10-10; ready for implementation (independent review `phase-9-plan-review.md` at f0698e6 addressed below, see "Review dispositions"; the user's answers to the decisions below are still needed, "go with your recommendation" suffices)
+Status: Implemented 2026-10-11 (steps 1-11 committed on the branch); pending security review (`review-change`), then `complete-phase`. Closing evidence for AC-1..15 is at the end of this file. Independent plan review `phase-9-plan-review.md` at f0698e6 addressed below, see "Review dispositions".
 Owner: implementer agent
 Branch: `feature/phase-9-multi-agent-tracing` (from `main` c212058; worktree `../abb-worktrees/phase-9`)
 Depends on: Phase 1 (span derivation, ordering), Phase 3 (SDK context), Phase 4/5 (run page, virtualized timeline, live merge), Phase 7 (cost lines, analytics rollups), Phase 8 (adapter contract), Phase 15 (`payload.read` projection)
@@ -663,3 +663,56 @@ Deviations and choices where the plan was ambiguous (simplest secure option):
   step median about 16 ms (frame-bound), at most 80 rows mounted. Playwright regenerates `docs/screenshots/phase-4/*` as a side
   effect; those were not committed.
 - **Contrast.** The agent chip colours were darkened after axe flagged `#b45309` on the selected-row background.
+
+## Implementation notes (steps 8-11, recorded by the implementer)
+
+- **Example (step 8).** `examples/multi-agent` is split into `agent.py` (CLI: `--skew-ms`, `--fail-tool`, `--pace`, `--full-payloads`, `--offline`),
+  `multi_agent/{planner,workers,fake_model,tester_proc}.py`. The tester is `tester_proc.py` run as a script by the coder through `subprocess.run`
+  with a filtered environment (`PATH`, the `BLACKBOX_*` settings and `BLACKBOX_TRACE_CONTEXT`); `--skew-ms` patches `blackbox.events.now_rfc3339`
+  inside the child (example code only). The coder delegates inside a `delegate` span, so researcher, coder and reviewer are siblings under it
+  (the planner has no agent span of its own: it is the run's root agent). The asyncio reviewer uses `asyncio.to_thread`, which copies the context.
+  In tests the tester runs in `mode="local"` (a file) because offline buffers are per process. The planted secret is an AWS documentation key id in
+  the delegation input; it is redacted in FULL mode and absent in metadata mode. `scripts/quality.sh` gained the example step (one line).
+- **E2E (step 9).** Ports 8130 (API) and 3104 (web), database `abb_p9`, as the plan named. Two throwaway people are minted per run (an OWNER and a
+  VIEWER, `add-member` plus `create-session` with `ABB_ALLOW_DEV_SESSIONS=1` set for those commands only); the VIEWER token is passed to Playwright as
+  `E2E_VIEWER_SESSION_TOKEN`. The script asserts the stored run before the browser runs (root agent `planner`, `ordering_mode == "time"`, five agents,
+  tester span parented to the coder's, summary version 3, exactly one `tool.call.failed`) and the spec checks nesting, the skew badge, critical path,
+  lanes, the agent tree, the failed-tool jump, and for the VIEWER that rows, tooltip, lanes, timeline and drawer never contain the tester's command.
+  The screenshot is `docs/screenshots/phase-9/waterfall-real-run.png` (not the plan's `phase-9-waterfall.png`, which would collide with the fixture
+  screenshots directory convention). `playwright.config.ts` gained one project block, `Makefile` one target, `ci.yml` one job.
+- **KI-063 (step 10).** Measured, not shipped: see `docs/benchmarks/phase-9-ki063-langgraph-threads.md`. Nesting inside a node works in every scenario
+  (LangGraph copies the context after `on_chain_start`), but in async graphs `on_chain_end` runs in a different context than `on_chain_start`
+  (a token reset raises) and sync nodes under `ainvoke` run off the callback thread, so the D10 gate is not met. The adapter is unchanged; KI-063 is
+  retargeted to "on demand" with the measurement and KI-061 likewise.
+- **Docs (step 11).** ADR-070/071 are the appendix drafts updated for the final design (payload shapes, the 50-entry bound including `(other)`,
+  `SUMMARY_VERSION` 3 with the next bump 4). `events.md` has "Agents and delegation" and "Propagation". `sdk-python.md`, the SDK README and
+  `api-v1.md` were written with steps 3-4. KI-084..086 are filed in the register with the placeholder "to file" (no GitHub issues were created: filing
+  needs the user).
+- **Environment observation.** The shared Docker Postgres clock runs about 2.2 s ahead of the host. `test_summarizer.py::test_a_burst_of_batches...`
+  (untouched by this phase) fails on `c212058`'s code with it (the test advances the host clock by 31 s and the analytics refresh job is stamped with the
+  database clock); `test_hostile_numbers` flaked once for the same reason. Not a Phase 9 regression; UNVERIFIED (env) for those two until the clocks agree.
+
+## Closing evidence (2026-10-11, `feature/phase-9-multi-agent-tracing`, own databases `abb_test_p9` and `abb_p9`)
+
+Vocabulary: PASS = a command was run and its output observed here.
+
+| AC | Result | Evidence |
+| --- | --- | --- |
+| AC-1 Agent spans | PASS | `cd packages/sdk-python && uv run pytest -q tests/test_agents.py tests/test_contract.py`: 41 passed |
+| AC-2 Propagation | PASS | `uv run pytest -q tests/test_propagation.py`: 49 passed; `uv run pytest -q --cov`: 883 passed, total coverage 94.18% (gate 90%; the plan said 94, see steps 1-4 notes) |
+| AC-3 Golden spans and registry copy | PASS | `packages/event-schema`: `pytest -q tests/test_spans_golden.py` 3 passed; `git diff --exit-code packages/event-schema/tests/data apps/web/src/lib/generated` empty; `make -s schema-check` OK; `pnpm --filter @abb/web exec vitest run spans`: 41 passed (golden cases, cycle, deep chain, `SpanIndex` 20-batch equality) |
+| AC-4 Summary and analytics | PASS | `apps/api`: `pytest -q tests/test_run_summary.py tests/test_summarizer.py tests/test_runs_api.py tests/test_analytics_api.py`: 166 passed, 1 failed = `test_a_burst_of_batches_is_summarized_once_after_the_debounce_delay`, which is not a Phase 9 test and fails identically on `c212058`'s `apps/api/src` (database clock 2.2 s ahead of the host; UNVERIFIED (env) for that one test) |
+| AC-5 No contract drift | PASS | `git diff --exit-code apps/api/openapi.json apps/web/src/lib/api/schema.d.ts apps/api/migrations` empty; `python -m abb_api.openapi --check` and `pnpm --filter @abb/web gen:api:check` clean; `pytest -q tests/test_openapi.py tests/authz tests/test_migrations.py`: 126 passed; `alembic upgrade head / downgrade base / upgrade head` on `abb_test_p9`, head 0047 |
+| AC-6 Waterfall logic | PASS | `pnpm --filter @abb/web exec vitest run waterfall`: 4 files, 58 passed |
+| AC-7 Waterfall UI | PASS | `vitest run Waterfall RunDetail Analytics`: 5 files, 70 passed |
+| AC-8 Performance | PASS | Playwright `e2e/fixtures.spec.ts`: 13 passed, including the 10,000-event stress case: at most 80 rows mounted (asserted), zoom step median 16.4 ms (gate 100 ms); numbers in `docs/benchmarks/phase-9-waterfall.md` |
+| AC-9 Server cost | PASS | `docs/benchmarks/phase-9-regression-check.md`: `derive_run` on 30,002 events, mean of four medians 117.0 ms before (`c212058`) vs 127.4 ms after (+10 ms, +9%); against the 1.7 to 2.6 s stall of KI-016 this is noise; the HTTP ingest harness of Phase 7 was not re-run |
+| AC-10 Fixture and a11y | PASS | same Playwright run: multi-agent fixture 5 lanes, tester nested under the coder with the skew badge, critical path legend, axe clean in both views, keyboard to the drawer, failure fixture root span finished with status error |
+| AC-11 Example offline | PASS | `uv run --project packages/sdk-python pytest examples/multi-agent/tests -q`: 8 passed |
+| AC-12 Example end to end | PASS locally; CI UNVERIFIED (env) | `scripts/multiagent-e2e.sh`: stored run 28 events, 11 spans, 5 agents, `ordering_mode time`; Playwright 5 passed; `MULTIAGENT-E2E PASSED`. The CI job `multiagent-e2e` runs on the PR |
+| AC-13 KI-063 spike | PASS (measured, adapter unchanged) | `cd integrations/langgraph && uv run pytest -q`: 74 passed; measurement in `docs/benchmarks/phase-9-ki063-langgraph-threads.md`; KI-063 retargeted in the register |
+| AC-14 Whole gate | PASS in parts; `scripts/quality.sh full` not run as one command | event-schema 351; sdk 883 (94.18%); examples 20; integrations 17/74/66/61/44 (ruff, format, mypy, pytest each); api ruff/format/mypy clean, pytest 860 passed + the 1 environment failure above; web eslint, prettier, tsc clean, vitest 517 passed, `next build` ok, `uv build --wheel` ok. `stream-e2e` 5, `coding-e2e` 6, `analytics-e2e` 4 passed; `auth-e2e` 8 passed on the second run (the first had one Chrome/axe `CVDisplayLinkCreate` infrastructure error in a test this phase did not change) |
+| AC-15 Docs | PASS except GitHub issues | ADR-070/071 and `DECISIONS.md` rows; `events.md`, `api-v1.md`, `sdk-python.md`, SDK README, `TESTING.md`, `ARCHITECTURE.md`, `README.md`, `IMPLEMENTATION_PLAN.md`, `PROJECT_STATE.md` updated; KI-084..086 filed in the register with the placeholder "to file" (the GitHub issues need the user); KI-063 and KI-061 retargeted |
+
+Not verified: `make up`/compose (ports in use, as since Phase 15), CI itself, the other worktrees' merge behaviour (rebase notes above). The independent security
+review is the next step.
