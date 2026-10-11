@@ -1,0 +1,4 @@
+{
+  "scenario": "An ordinary coding run: monotonic context 8k -> 24k over 8 calls, one failed test run, one failed fetch, two spaced retries. Every detector's negative side.",
+  "findings": []
+}

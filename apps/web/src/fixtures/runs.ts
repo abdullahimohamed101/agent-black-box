@@ -190,6 +190,77 @@ export function stressRun(): FixtureRun {
   return b.build();
 }
 
+/** A probable loop: search -> read -> reason six times, then success. Findings: fixtures/findings.ts. */
+export function loopingRun(): FixtureRun {
+  const b = new RunBuilder(8, "Resolve flaky docs search", "search-agent", FIXTURE_EPOCH + 1 * MIN);
+  open(b, "Resolve flaky docs search");
+  for (let i = 0; i < 6; i++) {
+    tool(b, 10 + i * 3, "search_docs", 420);
+    tool(b, 11 + i * 3, "read_file", 180);
+    llm(b, 12 + i * 3, "model-x", 1500, 90, 0.004, 700);
+  }
+  b.add("agent.completed", {}, 200, { span_id: b.span(1), status: "success" });
+  b.add("run.completed", {}, 100, { status: "success" });
+  return b.build();
+}
+
+/** Three failures of one tool in nine calls with two retries, then a different tool works. */
+export function cascadeRun(): FixtureRun {
+  const b = new RunBuilder(9, "Sync customer records", "sync-agent", FIXTURE_EPOCH + 2 * MIN);
+  open(b, "Sync customer records");
+  llm(b, 2, "model-x", 1200, 140, 0.007, 900);
+  tool(b, 3, "list_customers", 350);
+  tool(b, 4, "upsert_record", 800, "Timeout");
+  b.add("retry.attempted", { "retry.attempt": 1, "retry.delay_ms": 500 }, 500);
+  tool(b, 5, "upsert_record", 800, "Timeout");
+  b.add("retry.attempted", { "retry.attempt": 2, "retry.delay_ms": 1000 }, 1000);
+  tool(b, 6, "upsert_record", 800, "Timeout");
+  tool(b, 7, "bulk_import", 1200);
+  tool(b, 8, "verify_import", 300);
+  b.add("agent.completed", {}, 200, { span_id: b.span(1), status: "success" });
+  b.add("run.completed", {}, 100, { status: "success" });
+  return b.build();
+}
+
+/** A change, a failing test command, a retry, a second failure (exit 2), then run.failed. */
+export function failingChainRun(): FixtureRun {
+  const b = new RunBuilder(10, "Fix flaky checkout test", "coding-agent", FIXTURE_EPOCH + 3 * MIN);
+  open(b, "Fix flaky checkout test");
+  b.add("file.read", { "file.path": "src/checkout/cart.ts" });
+  llm(b, 2, "model-x", 1700, 160, 0.01, 1200);
+  b.add("file.modified", {
+    "file.path": "src/checkout/cart.ts",
+    "file.lines_added": 4,
+    "file.lines_removed": 1,
+  });
+  b.add("shell.command.started", { "shell.command": "pnpm test checkout" }, 300, {
+    span_id: b.span(20),
+    parent_span_id: b.span(1),
+  });
+  b.add(
+    "shell.command.completed",
+    { "shell.command": "pnpm test checkout", "shell.exit_code": 1, "test.failed": 3 },
+    3800,
+    { span_id: b.span(20), parent_span_id: b.span(1), status: "error", duration_ms: 3800 },
+  );
+  b.add("retry.attempted", { "retry.attempt": 1, "retry.delay_ms": 1000 }, 1000, {
+    span_id: b.span(21),
+    parent_span_id: b.span(1),
+  });
+  b.add("shell.command.started", { "shell.command": "pnpm test checkout --retry" }, 300, {
+    span_id: b.span(21),
+    parent_span_id: b.span(1),
+  });
+  b.add(
+    "shell.command.completed",
+    { "shell.command": "pnpm test checkout --retry", "shell.exit_code": 2 },
+    900,
+    { span_id: b.span(21), parent_span_id: b.span(1), status: "error", duration_ms: 900 },
+  );
+  b.add("run.failed", {}, 100, { status: "error" });
+  return b.build();
+}
+
 /**
  * Five agents in one run (§84, §135): a planner delegates to a researcher and a coder that work in parallel, the coder
  * runs a tester in another process (its clock 1.5 s behind, no `sequence`, so the run is time-ordered), and a reviewer

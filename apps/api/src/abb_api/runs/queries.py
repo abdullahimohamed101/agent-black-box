@@ -7,7 +7,8 @@ into every statement, so a run of another project is simply not found.
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import Select, and_, exists, func, literal, select, tuple_, union_all
@@ -77,6 +78,19 @@ class RunRecord:
     search: SearchRowData | None = None
 
 
+@dataclass(frozen=True)
+class FindingsInputs:
+    """What the detector job reads from the run row (everything else comes from the events)."""
+
+    project_id: uuid.UUID
+    agent_slug: str | None
+    started_at: datetime
+    ordering_mode: str
+    summary_version: int
+    cost_usd: Decimal
+    retry_cost_usd: Decimal
+
+
 _COLUMNS = (
     t.runs.c.id,
     t.runs.c.project_id,
@@ -137,6 +151,23 @@ class RunQueries:
         if f.started_before is not None:
             statement = statement.where(t.runs.c.started_at < f.started_before)
         return statement
+
+    async def findings_inputs(self, run_id: uuid.UUID) -> FindingsInputs | None:
+        c = t.runs.c
+        row = (
+            await self._conn.execute(
+                select(
+                    c.project_id,
+                    c.agent_slug,
+                    c.started_at,
+                    c.ordering_mode,
+                    c.summary_version,
+                    c.cost_usd,
+                    c.retry_cost_usd,
+                ).where(c.workspace_id == self._tenant.workspace_id, c.id == run_id)
+            )
+        ).first()
+        return FindingsInputs(**row._mapping) if row else None
 
     async def page(
         self,
@@ -293,6 +324,10 @@ class RunQueries:
     async def summary_states(self, run_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
         """`processing` while a summarize job waits or runs; `failed` if the newest finished job
         was dead-lettered (an operator must look); otherwise `current`."""
+        return await self.job_states(run_ids, SUMMARIZE_RUN)
+
+    async def job_states(self, run_ids: Sequence[uuid.UUID], job_type: str) -> dict[uuid.UUID, str]:
+        """The same states for any per-run job type whose dedupe key is `workspace:run`."""
         if not run_ids:
             return {}
         keys = {f"{self._tenant.workspace_id}:{run_id}": run_id for run_id in run_ids}
@@ -301,7 +336,7 @@ class RunQueries:
             select(j.dedupe_key, j.status, func.max(j.updated_at).label("at"))
             .where(
                 j.workspace_id == self._tenant.workspace_id,
-                j.job_type == SUMMARIZE_RUN,
+                j.job_type == job_type,
                 j.dedupe_key.in_(list(keys)),
             )
             .group_by(j.dedupe_key, j.status)
@@ -321,3 +356,36 @@ class RunQueries:
             else:
                 states[run_id] = "current"
         return states
+
+    async def cost_baseline(
+        self,
+        project_id: uuid.UUID,
+        agent_slug: str,
+        before: datetime,
+        *,
+        window_days: int,
+        limit: int,
+    ) -> list[tuple[datetime, Decimal]]:
+        """(started_at, cost_usd) of the newest finished, summarised runs of one agent.
+
+        Same workspace, project and agent; started before `before` and within `window_days` of it
+        (relative to the run under analysis, so the answer does not depend on today's date); at
+        most `limit`, newest first. Unsummarised runs (`summary_version = 0`) have no cost yet.
+        """
+        statement = (
+            select(t.runs.c.started_at, t.runs.c.cost_usd)
+            .where(
+                t.runs.c.workspace_id == self._tenant.workspace_id,
+                t.runs.c.project_id == project_id,
+                t.runs.c.agent_slug == agent_slug,
+                t.runs.c.status.in_(("SUCCESS", "FAILED", "TIMED_OUT", "BLOCKED")),
+                t.runs.c.summary_version > 0,
+                t.runs.c.started_at < before,
+                t.runs.c.started_at >= before - timedelta(days=window_days),
+            )
+            .order_by(t.runs.c.started_at.desc(), t.runs.c.id.desc())
+            .limit(limit)
+        )
+        if self._scope is not None:
+            statement = statement.where(t.runs.c.project_id == self._scope)
+        return [(r.started_at, r.cost_usd) for r in await self._conn.execute(statement)]

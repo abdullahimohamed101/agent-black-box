@@ -111,6 +111,9 @@ export function fixtureReply(segments: string[], q: URLSearchParams): Reply {
     const p = page(f.spans, q, 2000, 500);
     return p ? { status: 200, body: p } : invalid("Malformed cursor.");
   }
+  if (sub === "findings" && !eventId) {
+    return f.findings ? { status: 200, body: f.findings } : notFound("NOT_FOUND", "Not found.");
+  }
   if (sub !== "events") return notFound("NOT_FOUND", "Not found.");
   if (eventId) {
     const e = f.events.find((x) => x.event_id === eventId);

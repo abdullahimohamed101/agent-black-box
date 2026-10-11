@@ -29,7 +29,7 @@ const route = (method: string, pattern: string): Route => ({
 const ROUTES: readonly Route[] = [
   route(
     "GET",
-    `(runs(/${ID}(/(spans|stream|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance))`,
+    `(runs(/${ID}(/(spans|stream|findings|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance))`,
   ),
   route("GET", "(me|projects|members|invitations|api-keys|pricing|audit)"),
   route(

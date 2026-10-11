@@ -1,0 +1,10 @@
+{
+  "scenario": "agent-b's clock runs 5 minutes ahead. agent-a retries one call three times within 22 s (events 8, 10, 12); agent-b retries its call twice (events 9, 11). Judged per emitter: one burst for agent-a with 3 retries, nothing for agent-b (merged there would be 5 retries). Windows are best effort under skew (KI-095).",
+  "findings": [
+    {
+      "detector": "retry-storm", "finding_type": "retry_storm", "kind": "deterministic",
+      "severity": "warning", "confidence": 1.0, "start_seq": 8, "end_seq": 12,
+      "evidence": {"agent_id": "agent-a", "retries": 3, "burst": true, "by_scope.0.count": 3}
+    }
+  ]
+}

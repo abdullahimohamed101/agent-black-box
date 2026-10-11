@@ -11,6 +11,7 @@
         --input-per-million 3 --output-per-million 15 [--project p] [--valid-from 2026-10-01]
     python -m abb_api.cli list-pricing --workspace acme
     python -m abb_api.cli rebuild-costs --workspace acme [--project p] [--since 2026-10-01]
+    python -m abb_api.cli rebuild-findings --workspace acme [--project p] [--since T] [--limit N]
     python -m abb_api.cli refresh-analytics --workspace acme [--since 2026-10-01]
     python -m abb_api.cli search-rebuild --workspace acme [--project p] [--since 2026-10-01]
     python -m abb_api.cli add-member --workspace acme --email you@example.com --role OWNER
@@ -87,6 +88,19 @@ def _price(text: str) -> Decimal:
         raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
     if not value.is_finite() or value < 0:
         raise argparse.ArgumentTypeError("must be a finite number >= 0")
+    return value
+
+
+MAX_REBUILD_FINDINGS = 10_000
+
+
+def _findings_limit(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not an integer: {text!r}") from None
+    if not 1 <= value <= MAX_REBUILD_FINDINGS:
+        raise argparse.ArgumentTypeError(f"must be between 1 and {MAX_REBUILD_FINDINGS}")
     return value
 
 
@@ -176,6 +190,19 @@ def build_parser() -> argparse.ArgumentParser:
     search_rebuild.add_argument("--project", help="project slug")
     search_rebuild.add_argument("--since", type=_instant, help="only runs started at or after this")
     search_rebuild.add_argument("--limit", type=int, default=10_000)
+
+    findings = sub.add_parser(
+        "rebuild-findings", help="re-run the reliability detectors (after a detector version bump)"
+    )
+    findings.add_argument("--workspace", required=True, help="workspace slug")
+    findings.add_argument("--project", help="project slug")
+    findings.add_argument("--since", type=_instant, help="only runs started at or after this")
+    findings.add_argument(
+        "--limit",
+        type=_findings_limit,
+        default=MAX_REBUILD_FINDINGS,
+        help=f"at most this many runs, newest first (1..{MAX_REBUILD_FINDINGS}; a bound)",
+    )
 
     refresh = sub.add_parser(
         "refresh-analytics",
@@ -587,6 +614,22 @@ async def run(
                     print(
                         f"WARNING: stopped at --limit {limit}; older runs were NOT queued. "
                         "Run again after the worker has drained the queue.",
+                        file=err,
+                    )
+            elif args.command == "rebuild-findings":
+                ws = await _workspace(conn, args.workspace)
+                tenant = TenantContext(ws.id)
+                project_id = await _project_id(conn, ws, args.project) if args.project else None
+                run_ids = await RunRepository(conn, tenant).run_ids(
+                    project_id=project_id, since=args.since, limit=args.limit
+                )
+                queued = await OutboxRepository(conn, tenant).enqueue_detect(run_ids)
+                await _audit(conn, ws.id, "findings.rebuild", queued=queued, matched=len(run_ids))
+                print(f"queued {queued} of {len(run_ids)} run(s) for re-analysis", file=err)
+                if len(run_ids) >= args.limit:
+                    print(
+                        f"WARNING: stopped at --limit {args.limit}; older runs were NOT queued. "
+                        "Narrow the range with --since / --project and run again.",
                         file=err,
                     )
             elif args.command == "refresh-analytics":

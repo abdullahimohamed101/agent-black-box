@@ -10,7 +10,24 @@ import {
 } from "@/lib/format";
 import { runPath, type Base } from "@/lib/routes";
 import { matchedLabels, matchedOf } from "@/lib/search";
+import { findingsCell } from "@/lib/findings";
 import { StatusBadge } from "./StatusBadge";
+
+function FindingsCell({ badge }: { badge: RunOut["findings"] }) {
+  const c = findingsCell(badge);
+  return (
+    <td data-testid="findings-cell" data-state={c.state} title={c.title}>
+      {c.visible ? (
+        <span className="badge" data-tone={c.tone}>
+          <span aria-hidden="true">{c.glyph}</span> {c.visible}
+        </span>
+      ) : (
+        <span aria-hidden="true">—</span>
+      )}
+      <span className="sr-only">{c.title}</span>
+    </td>
+  );
+}
 
 export function RunsTable({
   runs,
@@ -48,6 +65,7 @@ export function RunsTable({
               Errors
             </th>
             {showMatched && <th scope="col">Matched</th>}
+            <th scope="col">Findings</th>
           </tr>
         </thead>
         <tbody>
@@ -75,6 +93,7 @@ export function RunsTable({
                 <td className="num">{formatInt(num(r.summary["event_count"]))}</td>
                 <td className="num">{errors ? <strong>{errors}</strong> : 0}</td>
                 {showMatched && <MatchedCell run={r} />}
+                <FindingsCell badge={r.findings} />
               </tr>
             );
           })}

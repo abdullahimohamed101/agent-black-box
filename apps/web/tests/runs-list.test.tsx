@@ -27,14 +27,14 @@ describe("RunsList", () => {
     const user = userEvent.setup();
     renderWithQuery(<Harness />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading runs");
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(8));
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(11));
     await user.click(screen.getByLabelText("Failed"));
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
     expect(calls.some((c) => c.includes("status=FAILED"))).toBe(true);
     await user.type(screen.getByLabelText("Agent"), "nobody");
     expect(await screen.findByText("No runs match these filters")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(8));
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(11));
   });
 
   it("does not send an invalid half-typed agent slug to the API", async () => {
@@ -50,16 +50,16 @@ describe("RunsList", () => {
   it("paginates with a cursor without repeating or dropping runs", async () => {
     stubApi();
     const user = userEvent.setup();
-    renderWithQuery(<Harness pageSize={4} />);
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(5));
-    expect(screen.getByText(/4 runs loaded/)).toBeInTheDocument();
+    renderWithQuery(<Harness pageSize={5} />);
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(6));
+    expect(screen.getByText(/5 runs loaded/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Load more" }));
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(8));
-    expect(screen.getByText(/7 runs loaded \(end of list\)/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(11));
+    expect(screen.getByText(/10 runs loaded \(end of list\)/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
     const hrefs = screen.getAllByRole("link").map((l) => l.getAttribute("href"));
-    expect(hrefs).toHaveLength(7);
-    expect(new Set(hrefs).size).toBe(7);
+    expect(hrefs).toHaveLength(10);
+    expect(new Set(hrefs).size).toBe(10);
   });
 
   it("shows the empty state for a project with no runs", async () => {
@@ -106,10 +106,10 @@ describe("Dashboard", () => {
     stubApi();
     renderWithQuery(<Dashboard base={BASE} />);
     expect(await screen.findByText("Success rate")).toBeInTheDocument();
-    expect(screen.getByText("80%")).toBeInTheDocument();
+    expect(screen.getByText("75%")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Recent failures" })).toBeInTheDocument();
     expect(screen.getByText(/deploy-agent, triage-agent/)).toBeInTheDocument();
-    expect(screen.getByText(/7 runs started in the last 7 days/)).toBeInTheDocument();
+    expect(screen.getByText(/10 runs started in the last 7 days/)).toBeInTheDocument();
   });
 
   it("empty and error states", async () => {

@@ -46,6 +46,16 @@ class MatchedOut(BaseModel):
         return data
 
 
+class RunFindingsBadge(BaseModel):
+    """What the runs list shows of a run's findings (the full list is `GET .../findings`)."""
+
+    count: int
+    max_severity: Literal["info", "warning", "critical"] | None
+    state: Literal["none", "current", "outdated"] = Field(
+        description="`none`: not analysed yet; `outdated`: detector rules changed since."
+    )
+
+
 class RunOut(BaseModel):
     id: str
     project_id: str
@@ -70,8 +80,11 @@ class RunOut(BaseModel):
     metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
-    # Appended after the existing fields (Phase 16). Phase 10 adds `findings` right after
-    # `updated_at`: on merge, keep `findings` first and this block after it.
+    findings: RunFindingsBadge | None = Field(
+        default=None,
+        description="Derived findings summary; null when the response does not carry it.",
+    )
+    # Appended after the existing fields (Phase 16). After Phase 10's `findings`.
     matched: MatchedOut | None = Field(
         default=None,
         description="Why the run matched a search: the indexed values the query named. Only "

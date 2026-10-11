@@ -11,8 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from abb_api.analytics.rollup import refresh_day
 from abb_api.cost.engine import CostEngine
 from abb_api.cost.repository import CostRepository
+from abb_api.findings.job import detect_delay, detect_run
 from abb_api.ingestion.store import PgEventStore
-from abb_api.jobs.outbox import REFRESH_ANALYTICS_DAY, SUMMARIZE_RUN, Job, OutboxRepository
+from abb_api.jobs.context import job_settings
+from abb_api.jobs.outbox import (
+    DETECT_FINDINGS,
+    REFRESH_ANALYTICS_DAY,
+    SUMMARIZE_RUN,
+    Job,
+    OutboxRepository,
+    summarize_key,
+)
 from abb_api.runs.repository import RunRepository
 from abb_api.runs.summary import SUMMARY_VERSION, derive_run
 from abb_api.search.document import build_document, summary_agents
@@ -86,6 +95,20 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
                 "spans left untouched: ids already belong to another run",
                 extra={"run_id": str(run_id), "skipped": skipped},
             )
+        await _enqueue_detect(outbox, tenant, run_id, len(events))
+
+
+async def _enqueue_detect(
+    outbox: OutboxRepository, tenant: TenantContext, run_id: uuid.UUID, event_count: int
+) -> None:
+    """Ask for the run's findings. Always, even when the event count is unchanged: a cost rebuild
+    changes an input of the cost-spike detector (ADR-080 (6)). Coalesces per run."""
+    await outbox.enqueue(
+        job_type=DETECT_FINDINGS,
+        dedupe_key=summarize_key(tenant.workspace_id, run_id),
+        payload={"run_id": str(run_id)},
+        delay=detect_delay(job_settings().findings_delay_seconds, event_count),
+    )
 
 
 async def refresh_analytics_day(job: Job, conn: AsyncConnection) -> None:
@@ -93,7 +116,25 @@ async def refresh_analytics_day(job: Job, conn: AsyncConnection) -> None:
     await refresh_day(conn, TenantContext(job.workspace_id), date.fromisoformat(job.payload["day"]))
 
 
+async def detect_findings(job: Job, conn: AsyncConnection) -> None:
+    """Recompute a run's findings from its events (idempotent, one writer per run)."""
+    settings = job_settings()
+    tenant = TenantContext(job.workspace_id)
+    run_id = uuid.UUID(job.payload["run_id"])
+    outcome = await detect_run(conn, tenant, run_id, settings)
+    if outcome == "busy":
+        # Another worker is writing this run's findings. Do not hold a worker slot waiting: come
+        # back later (coalesced), when its result is in.
+        await OutboxRepository(conn, tenant).enqueue(
+            job_type=DETECT_FINDINGS,
+            dedupe_key=job.dedupe_key,
+            payload=job.payload,
+            delay=timedelta(seconds=max(settings.findings_delay_seconds, 1.0)),
+        )
+
+
 HANDLERS: dict[str, Callable[[Job, AsyncConnection], Awaitable[None]]] = {
     SUMMARIZE_RUN: summarize_run,
     REFRESH_ANALYTICS_DAY: refresh_analytics_day,
+    DETECT_FINDINGS: detect_findings,
 }

@@ -15,6 +15,8 @@ from abb_api.authz.principal import Principal
 from abb_api.authz.service import PermissionDenied, holds
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
+from abb_api.findings.detectors import DETECTORS_VERSION
+from abb_api.findings.repository import Badge, FindingsRepository
 from abb_api.ids import parse_public_id
 from abb_api.projects.access import authorise_project
 from abb_api.runs import cursors
@@ -26,6 +28,7 @@ from abb_api.runs.schemas import (
     CreateRunRequest,
     EventOut,
     EventPage,
+    RunFindingsBadge,
     RunOut,
     RunPage,
     SpanOut,
@@ -74,9 +77,20 @@ def event_out(
     )
 
 
+def _badge(badge: Badge | None) -> RunFindingsBadge:
+    if badge is None:
+        return RunFindingsBadge(count=0, max_severity=None, state="none")
+    return RunFindingsBadge(
+        count=badge.count,
+        max_severity=badge.max_severity,  # type: ignore[arg-type]
+        state="outdated" if badge.detectors_version < DETECTORS_VERSION else "current",
+    )
+
+
 def _run_out(
     record: RunRecord,
     state: str,
+    badge: RunFindingsBadge | None = None,
     *,
     with_agents: bool = True,
     search: CompiledSearch | None = None,
@@ -103,6 +117,7 @@ def _run_out(
         metadata=record.metadata,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        findings=badge,
         matched=matched_out(search, record.search) if search is not None else None,
     )
 
@@ -237,6 +252,9 @@ class RunService:
                 )
                 page = records[:limit]
                 states = await queries.summary_states([r.id for r in page])
+                badges = await FindingsRepository(conn, principal.tenant).badges(
+                    [r.id for r in page]
+                )
         else:
             assert gate is not None and query is not None
             async with gate.request() as budget, self._engine.connect() as conn:
@@ -256,6 +274,9 @@ class RunService:
                 )
                 page = records[:limit]
                 states = await queries.summary_states([r.id for r in page])
+                badges = await FindingsRepository(conn, principal.tenant).badges(
+                    [r.id for r in page]
+                )
                 # Last, and optional: a cancelled facets statement aborts the transaction, which
                 # is fine because nothing runs after it.
                 if budget.allows_facets():
@@ -280,7 +301,12 @@ class RunService:
                 cursors.Cursor("runs", [last.started_at.isoformat(), str(last.id)])
             )
         return RunPage(
-            items=[_run_out(r, states[r.id], with_agents=False, search=compiled) for r in page],
+            items=[
+                _run_out(
+                    r, states[r.id], _badge(badges.get(r.id)), with_agents=False, search=compiled
+                )
+                for r in page
+            ],
             next_cursor=next_cursor,
             query=query_out(
                 query, content_allowed=holds(principal, actions.PAYLOAD_READ), counts=counts
@@ -312,7 +338,8 @@ class RunService:
             states = await RunQueries(conn, principal.tenant, principal.project_id).summary_states(
                 [record.id]
             )
-        return _run_out(record, states[record.id])
+            badges = await FindingsRepository(conn, principal.tenant).badges([record.id])
+        return _run_out(record, states[record.id], _badge(badges.get(record.id)))
 
     async def list_events(
         self,

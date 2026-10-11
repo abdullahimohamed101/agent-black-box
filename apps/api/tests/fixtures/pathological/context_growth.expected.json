@@ -1,0 +1,13 @@
+{
+  "scenario": "Seven model calls with input 8k, 9k, 12k, 20k, 38k, 70k, 120k tokens (events 4 .. 28): mean increment 18,666.7, last/first 15x, increments grow, last >= 100k.",
+  "findings": [
+    {
+      "detector": "context-growth", "finding_type": "context_growth", "kind": "probable",
+      "severity": "warning", "confidence": 0.7, "start_seq": 4, "end_seq": 28,
+      "evidence": {
+        "agent_id": "coder", "calls": 7, "first_tokens": 8000, "last_tokens": 120000,
+        "growth_factor": 15.0, "mean_delta_tokens": 18666.7, "superlinear": true
+      }
+    }
+  ]
+}

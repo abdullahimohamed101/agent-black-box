@@ -188,6 +188,23 @@ earliest `occurred_at`. Span nesting uses `parent_span_id` only and is unaffecte
 root rule above, so a run whose first event was a skewed child may move to its true root agent (and between agents in the run
 rollups).
 
+### Findings and health
+
+`GET /v1/runs/{id}/findings` (`run.read`; a key needs `runs:read`; BILLING people get 403) returns `{run_id, state, health, items}`. Derived by the `detect_findings` job
+(ADR-080); a run not yet analysed returns `state.status: none` and empty `items`. The body is the same for every caller who may read the run.
+
+- `state`: `status` (`none | processing | current | outdated | failed`), `detectors_version`, `summary_version_seen`, `computed_at`, `event_count_seen` and `truncated`
+  (true when only the first `ABB_FINDINGS_MAX_EVENTS` events were read). After a dead letter the previous items are still returned, status `failed`.
+- `items[]` (the §81.2 contract): `id` (`fnd_...`, stable across rebuilds), `detector`, `detector_version` (`name@x.y.z`), `finding_type`, `kind`
+  (`deterministic | probable`), `severity` (`info | warning | critical`), `confidence` (0 to 1), `title` (starts with `Probable:` iff `kind` is `probable`),
+  `message`, `start_event_id`, `end_event_id`, `evidence_event_ids` (every cited `evt_` id; each resolves through `GET /v1/runs/{id}/events/{event_id}`),
+  `fingerprint`, `evidence` and `created_at`/`updated_at`. `evidence` is typed per `finding_type`, holds metadata only (ids, counts, tool and model names,
+  codes) and lists the `thresholds` the detector used.
+- `health`: `overall` and `dimensions[]` (`reliability`, `tool_reliability`, `cost_efficiency`, `loops`, `context`), each `ok | warn | bad | no_data` with
+  `inputs`, a one-sentence `rule` and `finding_ids`. No numeric score exists (ADR-081); finding-based dimensions are `no_data` unless the analysis is `current`.
+
+`RunOut` (list and detail) gains `findings`: `{count, max_severity, state}` with `state` one of `none | current | outdated`, read from one query per page.
+
 ### Search (`GET /v1/runs?q=`)
 
 `q` is a flat conjunction of terms separated by whitespace, parsed on the server into a typed AST (spec §152; the web app sends the text and renders what the server parsed):

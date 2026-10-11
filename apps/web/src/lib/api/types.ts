@@ -26,6 +26,11 @@ export type MatchedOut = {
   metadata_truncated?: boolean;
   content_truncated?: boolean;
 };
+export type RunFindingsOut = components["schemas"]["RunFindingsOut"];
+export type FindingOut = components["schemas"]["FindingOut"];
+export type HealthOut = components["schemas"]["HealthOut"];
+export type DimensionOut = components["schemas"]["DimensionOut"];
+export type FindingsBadge = components["schemas"]["RunFindingsBadge"];
 export type AnalyticsSummary = components["schemas"]["Summary"];
 export type CostReport = components["schemas"]["CostReport"];
 export type ReliabilityReport = components["schemas"]["ReliabilityReport"];

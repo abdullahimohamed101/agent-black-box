@@ -14,7 +14,7 @@ import {
 } from "@/lib/format";
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
-import { useRun, useRunEvents } from "@/lib/queries";
+import { useEventDetail, useRun, useRunEvents } from "@/lib/queries";
 import { codingKind } from "@/lib/coding";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
@@ -35,6 +35,7 @@ import {
 import { AgentTree } from "./AgentTree";
 import { CodingSummary } from "./CodingSummary";
 import { EventDrawer } from "./EventDrawer";
+import { Findings } from "./Findings";
 import { StatusBadge } from "./StatusBadge";
 import { ErrorState, Loading } from "./States";
 import { Timeline } from "./Timeline";
@@ -227,7 +228,16 @@ export function RunDetail({
     });
   // A filter or collapse can remove the selected row; never leave aria-activedescendant pointing at nothing.
   const selectedKey = selected && rows.some((r) => r.key === selected) ? selected : null;
-  const drawerEvent = drawerEventId ? events.find((e) => e.event_id === drawerEventId) : undefined;
+  const loadedDrawerEvent = drawerEventId
+    ? events.find((e) => e.event_id === drawerEventId)
+    : undefined;
+  // A finding can cite an event the timeline has not paged in yet: fetch just that event (content is withheld
+  // per actor by the same route the drawer always uses).
+  const remoteDrawer = useEventDetail(
+    runId,
+    drawerEventId && !loadedDrawerEvent ? drawerEventId : null,
+  );
+  const drawerEvent = loadedDrawerEvent ?? remoteDrawer.data;
 
   const focusTimeline = () =>
     timelineWrap.current
@@ -252,14 +262,16 @@ export function RunDetail({
     } else setDrawerEventId(row.event.event_id);
   };
 
-  const jumpToError = () => {
-    if (!err) return;
-    // If a filter hides it, clear filters so the jump always lands.
-    const visible = filtered.some((e) => e.event_id === err.event_id);
-    if (!visible) setFilters(NO_FILTERS);
+  const jumpTo = (eventId: string) => {
+    // If a filter hides a loaded event, clear filters so the jump always lands.
+    const loaded = events.some((e) => e.event_id === eventId);
+    if (loaded && !filtered.some((e) => e.event_id === eventId)) setFilters(NO_FILTERS);
     setCollapsed(new Set());
-    setSelected(err.event_id);
-    setDrawerEventId(err.event_id);
+    setSelected(eventId);
+    setDrawerEventId(eventId);
+  };
+  const jumpToError = () => {
+    if (err) jumpTo(err.event_id);
   };
 
   const toggleClass = (c: EventClass) =>
@@ -335,6 +347,13 @@ export function RunDetail({
         </div>
       )}
 
+      <Findings
+        runId={runId}
+        runActive={active}
+        summaryProcessing={r.summary_state === "processing"}
+        onShowEvent={jumpTo}
+      />
+
       <CodingSummary
         events={events}
         onOpen={(id) => {
@@ -387,6 +406,20 @@ export function RunDetail({
               {collapsed.size ? "Expand groups" : "Collapse groups"}
             </button>
           </div>
+        )}
+        {drawerEventId && !loadedDrawerEvent && (
+          <p
+            role={remoteDrawer.isError ? "alert" : "status"}
+            className="notice"
+            data-testid="event-notice"
+          >
+            {remoteDrawer.isError
+              ? "That event could not be loaded; it may not exist in this run."
+              : "Loading the event…"}{" "}
+            <button type="button" onClick={() => setDrawerEventId(null)}>
+              Dismiss
+            </button>
+          </p>
         )}
         <p className="muted" role="status" aria-live="polite" data-testid="progress">
           {loadingMore

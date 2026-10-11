@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fixtureRuns } from "@/fixtures";
 import { readThrough } from "@/server/upstream";
 
 const SESSION = "s".repeat(43);
@@ -16,6 +17,8 @@ describe("read proxy", () => {
       ["admin"],
       ["x", "v1", "runs"],
       ["v1", "runs", "x", "events", "y", "z"],
+      ["v1", "runs", "x", "findings", "y"], // the findings route is one read, nothing below it
+      ["v1", "runs", "x", "findings.json"],
       ["v1", "runs", "a.b"],
       ["v1", "runs", "..", "keys"],
       ["v1", "pricing", "x"], // only the list itself (`GET /v1/pricing`) is a read; overrides are POST /v1/pricing/overrides
@@ -26,6 +29,20 @@ describe("read proxy", () => {
     ]) {
       expect((await readThrough(p, new URLSearchParams())).status).toBe(404);
     }
+  });
+
+  it("allows the findings read, and only as a GET", async () => {
+    vi.stubEnv("ABB_WEB_DATA_SOURCE", "fixtures");
+    const run = fixtureRuns()[0]!.run.id;
+    const ok = await readThrough(["v1", "runs", run, "findings"], new URLSearchParams());
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { run_id: string; state: { status: string } };
+    expect(body.run_id).toBe(run);
+    const unknown = await readThrough(
+      ["v1", "runs", "run_nope", "findings"],
+      new URLSearchParams(),
+    );
+    expect(unknown.status).toBe(404);
   });
 
   it("allows exactly the four analytics reads", async () => {

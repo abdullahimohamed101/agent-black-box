@@ -12,7 +12,7 @@ EXCLUSIVE lock on `runs` that waits behind long transactions: run this outside a
 The runtime role gets DML through the default privileges of 0007 (derived state, not append-only).
 
 Revision ID: 0080
-Revises: 0047
+Revises: 0060
 Create Date: 2026-10-10
 """
 
@@ -21,7 +21,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0080"
-down_revision = "0047"
+down_revision = "0060"
 branch_labels = None
 depends_on = None
 

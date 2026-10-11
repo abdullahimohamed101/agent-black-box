@@ -607,6 +607,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/runs/{run_id}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a run's findings and health
+         * @description Derived by the `detect_findings` job; every finding cites events and records its detector version. Evidence is metadata only, so the body is the same for every caller who may read the run. `state` says whether the analysis is current.
+         */
+        get: operations["get_findings_v1_runs__run_id__findings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runs/{run_id}/spans": {
         parameters: {
             query?: never;
@@ -1056,6 +1076,27 @@ export interface components {
              */
             token: string;
         };
+        /** DimensionOut */
+        DimensionOut: {
+            /** Finding Ids */
+            finding_ids: string[];
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /**
+             * Rule
+             * @description The one sentence that decided the status.
+             */
+            rule: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "warn" | "bad" | "no_data";
+        };
         /** ErrorBody */
         ErrorBody: {
             category: components["schemas"]["ErrorCategory"];
@@ -1295,6 +1336,99 @@ export interface components {
              * @description timed out / finished, as in `rates`.
              */
             timeout_rate: number | null;
+        };
+        /** FindingOut */
+        FindingOut: {
+            /** Confidence */
+            confidence: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Detector */
+            detector: string;
+            /**
+             * Detector Version
+             * @description `name@x.y.z`.
+             */
+            detector_version: string;
+            /** End Event Id */
+            end_event_id: string | null;
+            /**
+             * Evidence
+             * @description Typed per `finding_type`; metadata only (ids, counts, names, thresholds).
+             */
+            evidence: {
+                [key: string]: unknown;
+            };
+            /** Evidence Event Ids */
+            evidence_event_ids: string[];
+            /** Finding Type */
+            finding_type: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "deterministic" | "probable";
+            /** Message */
+            message: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "critical";
+            /** Start Event Id */
+            start_event_id: string | null;
+            /**
+             * Title
+             * @description Starts with "Probable:" iff `kind` is `probable`.
+             */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FindingsState */
+        FindingsState: {
+            /** Computed At */
+            computed_at: string | null;
+            /** Detectors Version */
+            detectors_version: number | null;
+            /** Event Count Seen */
+            event_count_seen: number | null;
+            /**
+             * Status
+             * @description `none`: not analysed yet; `processing`: an analysis is queued or running; `current`: up to date; `outdated`: the detector rules changed since this analysis (re-run `rebuild-findings`); `failed`: the newest analysis was dead-lettered and the items, if any, are from the last successful one.
+             * @enum {string}
+             */
+            status: "none" | "processing" | "current" | "outdated" | "failed";
+            /** Summary Version Seen */
+            summary_version_seen: number | null;
+            /**
+             * Truncated
+             * @description True when only the first events of a huge run were read.
+             */
+            truncated: boolean;
+        };
+        /** HealthOut */
+        HealthOut: {
+            /** Dimensions */
+            dimensions: components["schemas"]["DimensionOut"][];
+            /**
+             * Overall
+             * @description The worst dimension; `no_data` never masks `warn`.
+             * @enum {string}
+             */
+            overall: "ok" | "warn" | "bad" | "no_data";
         };
         /** HealthResponse */
         HealthResponse: {
@@ -1743,6 +1877,31 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * RunFindingsBadge
+         * @description What the runs list shows of a run's findings (the full list is `GET .../findings`).
+         */
+        RunFindingsBadge: {
+            /** Count */
+            count: number;
+            /** Max Severity */
+            max_severity: ("info" | "warning" | "critical") | null;
+            /**
+             * State
+             * @description `none`: not analysed yet; `outdated`: detector rules changed since.
+             * @enum {string}
+             */
+            state: "none" | "current" | "outdated";
+        };
+        /** RunFindingsOut */
+        RunFindingsOut: {
+            health: components["schemas"]["HealthOut"];
+            /** Items */
+            items: components["schemas"]["FindingOut"][];
+            /** Run Id */
+            run_id: string;
+            state: components["schemas"]["FindingsState"];
+        };
         /** RunOut */
         RunOut: {
             /**
@@ -1759,6 +1918,8 @@ export interface components {
             created_at: string;
             /** Duration Ms */
             duration_ms: number | null;
+            /** @description Derived findings summary; null when the response does not carry it. */
+            findings?: components["schemas"]["RunFindingsBadge"] | null;
             /** Id */
             id: string;
             /** @description Why the run matched a search: the indexed values the query named. Only present when `q` named at least one indexed field or word. */
@@ -4693,6 +4854,76 @@ export interface operations {
                 };
             };
             /** @description A parameter or the request body is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_findings_v1_runs__run_id__findings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunFindingsOut"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks `run.read` / the key lacks `runs:read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid. */
             422: {
                 headers: {
                     [name: string]: unknown;
