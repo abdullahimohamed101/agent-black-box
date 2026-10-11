@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.api_fixtures import WEB_ORIGIN, Api, build_api, person
 from tests.conftest import make_settings
-from tests.evaluation_helpers import add_evaluator, trigger
+from tests.evaluation_helpers import add_evaluator, seeded_run, trigger
 from tests.ingest_helpers import RECEIVED, make_run_ids, wire_event
 from tests.test_summarizer import ingest
 
@@ -301,3 +301,23 @@ async def test_long_runs_are_cut_at_the_caps_and_a_hard_middle_answers_partial(t
     index = body["divergence"]["index"]
     assert body["steps"][index]["relation"] in ("left_only", "right_only", "changed")
     assert len(body["steps"]) <= 60
+
+
+async def test_cost_by_model_never_reads_another_workspaces_cost_lines(
+    web: Api,
+) -> None:
+    from abb_api.comparison.repository import CostRepository as ComparisonCosts
+
+    priced = {
+        "llm.provider": "example-provider",
+        "llm.model": "model-x",
+        "llm.input_tokens": 1_000_000,
+        "cost.provider_usd": 1.25,
+    }
+    foreign_run = await seeded_run(
+        web.engine, web.other, web.worker, [("llm.request.completed", priced)]
+    )
+    async with web.engine.connect() as conn:
+        theirs = await ComparisonCosts(conn, web.other.context).by_model([foreign_run])
+        assert theirs[foreign_run], "the seeded run must carry a cost line for the check to bite"
+        assert await ComparisonCosts(conn, web.tenant.context).by_model([foreign_run]) == {}

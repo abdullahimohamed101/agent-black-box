@@ -172,9 +172,7 @@ class ExperimentOut(BaseModel):
     archived_at: datetime | None
 
 
-SkipReason = Literal[
-    "missing", "archived", "project_mismatch", "human", "judge_not_configured", "cooling_down"
-]
+SkipReason = Literal["missing", "archived", "human", "judge_not_configured", "cooling_down"]
 
 
 class SkippedEvaluatorOut(BaseModel):

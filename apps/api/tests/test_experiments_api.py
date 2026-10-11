@@ -744,3 +744,43 @@ async def test_foreign_and_random_ids_are_one_404(web: Api) -> None:
             bodies.append({**response.json()["error"], "request_id": None})
     assert all(b == bodies[0] for b in bodies)
     assert (await web.client.get(f"/v1/experiments/{mine}", headers=owner)).status_code == 200
+
+
+async def test_pair_states_never_read_another_workspaces_experiment(web: Api) -> None:
+    """INV-3 below the HTTP layer: the pair read carries the workspace, whatever ids it is given."""
+    from abb_api.evaluations.repository import EvaluationRepository
+    from abb_api.experiments.repository import ExperimentRepository
+
+    other = web.other
+    run = await seeded_run(web.engine, other, web.worker)
+    evaluator = await add_evaluator(web.engine, other, "run_succeeded", name="theirs")
+    experiment, variant_id = new_uuid(IdKind.EXPERIMENT), new_uuid(IdKind.VARIANT)
+    async with web.engine.begin() as conn:
+        theirs = ExperimentRepository(conn, other.context)
+        await theirs.create(
+            experiment, project_id=other.project_uuids["p"], name="x", description=None,
+            dataset_label=None, evaluator_ids=[from_uuid(IdKind.EVALUATOR, evaluator.id)],
+            created_by=None,
+        )  # fmt: skip
+        await theirs.create_variant(
+            variant_id, experiment_id=experiment, name="b", role="baseline", config={}
+        )
+        await theirs.attach(experiment, run, variant_id, None)
+        await EvaluationRepository(conn, other.context).insert_pending(
+            new_uuid(IdKind.EVALUATION), run_id=run, evaluator=evaluator, requested_by=None
+        )
+    async with web.engine.connect() as conn:
+        assert (
+            len(
+                await ExperimentRepository(conn, other.context).pair_states(
+                    experiment, [evaluator.id]
+                )
+            )
+            == 1
+        )
+        assert (
+            await ExperimentRepository(conn, web.tenant.context).pair_states(
+                experiment, [evaluator.id]
+            )
+            == []
+        )

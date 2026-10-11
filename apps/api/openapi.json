@@ -4814,7 +4814,6 @@
             "enum": [
               "missing",
               "archived",
-              "project_mismatch",
               "human",
               "judge_not_configured",
               "cooling_down"

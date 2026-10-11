@@ -444,12 +444,12 @@ class ExperimentService:
     def _skip_reason(
         self, found: EvaluatorRecord | None, record: ExperimentRecord
     ) -> SkipReason | None:
+        # No project check: `create` refuses another project's evaluator and an evaluator's
+        # project never changes, so a mismatch cannot reach here.
         if found is None:
             return "missing"
         if found.archived_at is not None:
             return "archived"
-        if found.project_id is not None and found.project_id != record.project_id:
-            return "project_mismatch"
         if found.kind == "human":
             return "human"
         if found.kind == "llm_judge" and self._settings.judge_provider == "none":

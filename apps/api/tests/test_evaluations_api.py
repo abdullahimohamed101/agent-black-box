@@ -419,3 +419,42 @@ async def test_the_evaluation_reads_never_cross_the_tenant_even_with_a_foreign_r
         assert await mine.count_for_evaluator(foreign_run, foreign.id) == 0
         theirs = EvaluationReads(conn, web.other.context)
         assert len(await theirs.latest_per_evaluator([foreign_run])) == 1
+
+
+async def test_a_viewer_never_sees_the_error_text_of_a_failed_row(web: Api) -> None:
+    owner = await person(web, "o@acme.test", "OWNER")
+    viewer = await person(web, "v@acme.test", "VIEWER")
+    run = await run_in_alpha(web)
+    evaluator = await add_evaluator(web.engine, web.tenant, "run_succeeded", name="ok")
+    async with web.engine.begin() as conn:
+        await conn.execute(
+            t.evaluations.insert().values(
+                workspace_id=web.tenant.context.workspace_id, id=uuid.uuid4(), run_id=run,
+                evaluator_id=evaluator.id, evaluator_name="ok", evaluator_version="1",
+                kind="deterministic", implementation="run_succeeded", state="failed",
+                error_code="EVALUATOR_ERROR", error=SECRET,
+            )
+        )  # fmt: skip
+    (seen,) = await listing(web, viewer, run)
+    assert seen["error_code"] == "EVALUATOR_ERROR" and seen["error"] is None
+    assert SECRET not in repr(seen)
+    (full,) = await listing(web, owner, run)
+    assert full["error"] == SECRET
+
+
+async def test_claim_pending_never_claims_another_workspaces_rows(web: Api) -> None:
+    """INV-3 below the HTTP layer: the claim carries the workspace, whatever run id it is given."""
+    from abb_api.evaluations.repository import EvaluationRepository
+
+    foreign_run = await seeded_run(web.engine, web.other, web.worker)
+    foreign = await add_evaluator(web.engine, web.other, "run_succeeded", name="theirs")
+    await trigger(web.engine, web.other, foreign_run, foreign)  # pending, not drained
+    async with web.engine.begin() as conn:
+        assert (
+            await EvaluationRepository(conn, web.tenant.context).claim_pending(foreign_run, 10)
+            == []
+        )
+        assert (
+            len(await EvaluationRepository(conn, web.other.context).claim_pending(foreign_run, 10))
+            == 1
+        )

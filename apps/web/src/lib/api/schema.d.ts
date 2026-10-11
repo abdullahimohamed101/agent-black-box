@@ -2702,7 +2702,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "missing" | "archived" | "project_mismatch" | "human" | "judge_not_configured" | "cooling_down";
+            reason: "missing" | "archived" | "human" | "judge_not_configured" | "cooling_down";
         };
         /** SlowOperation */
         SlowOperation: {
