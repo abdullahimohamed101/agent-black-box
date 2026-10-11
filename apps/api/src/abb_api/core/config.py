@@ -83,6 +83,20 @@ class Settings(BaseSettings):
     findings_cost_spike_min_baseline: int = Field(default=20, ge=1)
     findings_cost_spike_window_days: int = Field(default=30, ge=1)
 
+    # Evaluations (ADR-090/091) and run comparison (ADR-092). The evaluator timeout must leave the
+    # lease heartbeat room to run (validated below); the event caps bound memory per job/request.
+    eval_timeout_seconds: float = Field(default=25.0, gt=0)
+    eval_max_events: int = Field(default=50_000, ge=100)
+    eval_stale_seconds: float = Field(default=3600.0, gt=0)
+    eval_batch_delay_seconds: float = Field(default=5.0, ge=0)
+    compare_max_events: int = Field(default=20_000, ge=100)
+    compare_max_steps: int = Field(default=2_000, ge=10)
+    compare_max_edits: int = Field(default=600, ge=1)
+    # "none": judge evaluators cannot be created. "fake": a deterministic scorer, plumbing only.
+    judge_provider: Literal["none", "fake"] = "none"
+    judge_allow_fake: bool = False
+    judge_cooldown_seconds: float = Field(default=300.0, ge=0)
+
     # Sign-in for people (ADR-060). OIDC is off until `oidc_issuer` is set; keys work regardless.
     oidc_issuer: str | None = None
     oidc_client_id: str | None = None
@@ -131,6 +145,29 @@ class Settings(BaseSettings):
     @property
     def dev_sessions_enabled(self) -> bool:
         return self.allow_dev_sessions and self.environment in ("development", "test")
+
+    @model_validator(mode="after")
+    def _evaluators_leave_the_heartbeat_room(self) -> "Settings":
+        # The handler awaits its evaluator, so the lease heartbeat runs; a timeout of half the
+        # lease or more could let the lease lapse mid-evaluation (ADR-090).
+        if "eval_timeout_seconds" not in self.model_fields_set:
+            # Unset: the default shrinks with a short lease (tests, small deployments) instead of
+            # refusing to start; an explicit value is validated as written.
+            self.eval_timeout_seconds = min(
+                self.eval_timeout_seconds, self.worker_lease_seconds * 0.4
+            )
+        if self.eval_timeout_seconds >= self.worker_lease_seconds / 2:
+            raise ValueError("eval_timeout_seconds must be < worker_lease_seconds / 2")
+        return self
+
+    @model_validator(mode="after")
+    def _a_fake_judge_never_judges_production(self) -> "Settings":
+        local = self.environment in ("development", "test")
+        if self.judge_provider == "fake" and not (local or self.judge_allow_fake):
+            raise ValueError(
+                "judge_provider=fake is only for development or test (or set judge_allow_fake)"
+            )
+        return self
 
     @model_validator(mode="after")
     def _cascade_window_holds_its_failures(self) -> "Settings":

@@ -34,7 +34,21 @@ POLICY_WRITE: Final = "policy.write"
 APPROVAL_DECIDE: Final = "approval.decide"
 RETENTION_WRITE: Final = "retention.write"
 
-RESERVED_ACTIONS: Final = frozenset({POLICY_WRITE, APPROVAL_DECIDE, RETENTION_WRITE})
+# Phase 11 (evaluations, experiments): defined first, granted with the routes (ADR-090).
+EVALUATION_READ: Final = "evaluation.read"
+EVALUATION_RUN: Final = "evaluation.run"
+EVALUATION_LABEL: Final = "evaluation.label"
+EVALUATOR_WRITE: Final = "evaluator.write"
+EXPERIMENT_READ: Final = "experiment.read"
+EXPERIMENT_WRITE: Final = "experiment.write"
+
+RESERVED_ACTIONS: Final = frozenset(
+    {
+        POLICY_WRITE, APPROVAL_DECIDE, RETENTION_WRITE,
+        EVALUATION_READ, EVALUATION_RUN, EVALUATION_LABEL, EVALUATOR_WRITE,
+        EXPERIMENT_READ, EXPERIMENT_WRITE,
+    }
+)  # fmt: skip
 
 ALL_ACTIONS: Final = frozenset(
     {

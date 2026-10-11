@@ -722,3 +722,11 @@ labels (an equality oracle).
 
 **Consequences.** Any two visible runs compare in one bounded request; divergence points can differ by role, by design; very long or very noisy runs
 are compared partially, which the response and UI state (KI-105).
+
+## Implementation notes (steps 1-5)
+
+- Environment baseline (step 1, VERIFIED): `uv sync` in `apps/api` and `packages/event-schema`; event-schema `pytest` 351 passed; API tests use throwaway
+  databases `abb_test_<random>` on the compose server (localhost:5433), so no shared test database is touched. First `--ignore=tests/authz -x` run: 652 passed
+  before it stopped on `test_a_slow_job_keeps_its_lease_and_runs_exactly_once`, which the first draft of the timeout validator broke (fixed below).
+- Deviation (D13): `eval_timeout_seconds` defaults to 25 (not 30): 30 is not `< lease / 2` for the default 60 s lease. When it is **not set** it is clamped to
+  `0.4 * worker_lease_seconds` so existing tests with a 1 s lease still start; an explicitly set value is validated as written (`< lease / 2`).
