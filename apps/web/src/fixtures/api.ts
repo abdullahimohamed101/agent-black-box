@@ -2,6 +2,7 @@ import type { EventOut } from "@/lib/api/types";
 import { fixtureAnalytics } from "./analytics";
 import { fixtureSettings } from "./auth";
 import { fixtureRuns } from "./index";
+import { FixtureQueryError, fixtureSearch } from "./search";
 
 export type Reply = { status: number; body: unknown };
 
@@ -61,7 +62,29 @@ export function fixtureReply(segments: string[], q: URLSearchParams): Reply {
   if (v1 !== "v1" || runs !== "runs") return notFound("NOT_FOUND", "Not found.");
   const all = fixtureRuns();
   if (!runId) {
-    let list = all.map((f) => f.run);
+    let searched: ReturnType<typeof fixtureSearch> | null = null;
+    const qText = q.get("q");
+    if (qText !== null && qText.trim() !== "") {
+      try {
+        searched = fixtureSearch(all, qText);
+      } catch (e) {
+        if (!(e instanceof FixtureQueryError)) throw e;
+        return {
+          status: 422,
+          body: {
+            error: {
+              code: "QUERY_INVALID",
+              message: `Invalid search: ${e.reason}.`,
+              category: "VALIDATION",
+              retryable: false,
+              request_id: "req_fixture",
+              details: { position: e.position, reason: e.reason },
+            },
+          },
+        };
+      }
+    }
+    let list = searched ? searched.runs : all.map((f) => f.run);
     const statuses = q.getAll("status");
     if (statuses.length) list = list.filter((r) => statuses.includes(r.status));
     const agent = q.get("agent_id");
@@ -74,7 +97,12 @@ export function fixtureReply(segments: string[], q: URLSearchParams): Reply {
     if (before) list = list.filter((r) => Date.parse(r.started_at) < Date.parse(before));
     if (q.get("sort") === "started_at") list = [...list].reverse();
     const p = page(list, q, 200, 50);
-    return p ? { status: 200, body: p } : invalid("Malformed cursor.");
+    if (!p) return invalid("Malformed cursor.");
+    if (searched)
+      return { status: 200, body: { ...p, query: searched.query, facets: searched.facets } };
+    // `q=` alone asks for the catalogue (the search help); the list is the plain one.
+    if (qText !== null) return { status: 200, body: { ...p, query: fixtureSearch(all, "").query } };
+    return { status: 200, body: p };
   }
   const f = all.find((x) => x.run.id === runId);
   if (!f) return notFound("RUN_NOT_FOUND", "Run not found.");

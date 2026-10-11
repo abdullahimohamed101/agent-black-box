@@ -1,30 +1,34 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ALL_STATUSES, type RunStatus } from "@/lib/api/types";
-import { useRuns } from "@/lib/queries";
+import { ALL_STATUSES, type QueryTermOut, type RunStatus } from "@/lib/api/types";
+import { useRuns, useSearchCatalogue } from "@/lib/queries";
+import {
+  AGENT_SLUG,
+  appendTerm,
+  effectiveQuery,
+  fieldTerm,
+  removeSpan,
+  searchProblem,
+} from "@/lib/search";
 import type { Base } from "@/lib/routes";
 import { useProjectId } from "@/components/WorkspaceProvider";
 import { RunsTable } from "./RunsTable";
 import { statusLabel } from "./StatusBadge";
 import { Empty, ErrorState, Loading } from "./States";
+import { Facets } from "./Facets";
+import { QueryChips } from "./QueryChips";
+import { SearchBox, SearchProblemNotice } from "./SearchBox";
+import { UnindexedNotice } from "./UnindexedNotice";
 
 export type RangeKey = "1h" | "24h" | "7d" | "all";
-export type ListFilters = { statuses: RunStatus[]; agent: string; range: RangeKey };
-export const DEFAULT_FILTERS: ListFilters = { statuses: [], agent: "", range: "all" };
-const RANGE_MS: Record<RangeKey, number | null> = {
-  "1h": 3.6e6,
-  "24h": 8.64e7,
-  "7d": 6.048e8,
-  all: null,
-};
+export type ListFilters = { q: string; statuses: RunStatus[]; agent: string; range: RangeKey };
+export const DEFAULT_FILTERS: ListFilters = { q: "", statuses: [], agent: "", range: "all" };
 const RANGE_LABEL: Record<RangeKey, string> = {
   "1h": "Last hour",
   "24h": "Last 24 hours",
   "7d": "Last 7 days",
   all: "All time",
 };
-const AGENT_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 export function RunsList({
   base,
@@ -39,29 +43,42 @@ export function RunsList({
   now?: number;
   pageSize?: number;
 }) {
-  // Fixed at mount: a clock in the query key would refetch on every render.
-  const [mounted] = useState(() => Date.now());
-  const now = nowProp ?? mounted;
+  // Relative times ("Last 24 hours") are `started:>=-24h` terms the server resolves against its own clock, so the
+  // query key is stable and a bookmarked URL stays relative.
+  const now = nowProp;
   // A half-typed agent slug would be a 422 from the API; only send valid ones.
-  const agent = AGENT_RE.test(filters.agent) ? filters.agent : "";
-  const span = RANGE_MS[filters.range];
-  const startedAfter = useMemo(
-    () =>
-      span == null ? undefined : new Date(Math.floor((now - span) / 60_000) * 60_000).toISOString(),
-    [span, now],
-  );
+  const agent = AGENT_SLUG.test(filters.agent) ? filters.agent : "";
   const project = useProjectId(base.project);
+  const typed = filters.q.trim();
+  const effective = effectiveQuery(typed, filters.range);
   const q = useRuns(
     {
       project,
       statuses: filters.statuses,
       agent,
-      startedAfter,
+      q: effective,
     },
     pageSize,
   );
+  const catalogue = useSearchCatalogue(project);
   const runs = q.data?.pages.flatMap((p) => p.items) ?? [];
-  const filtered = filters.statuses.length > 0 || filters.agent !== "" || filters.range !== "all";
+  const first = q.data?.pages[0];
+  const echo = q.isPlaceholderData ? null : (first?.query ?? null);
+  const fields = echo?.fields ?? catalogue.data?.fields ?? null;
+  const problem = q.isError && effective !== "" ? searchProblem(q.error) : null;
+  const filtered =
+    filters.q !== "" ||
+    filters.statuses.length > 0 ||
+    filters.agent !== "" ||
+    filters.range !== "all";
+
+  // A chip past the typed text is the range control's term: removing it resets the control.
+  const removeTerm = (t: QueryTermOut) =>
+    (t.span[0] ?? 0) >= typed.length
+      ? onFilters({ ...filters, range: "all" })
+      : onFilters({ ...filters, q: removeSpan(typed, t.span) });
+  const addFacet = (field: string, value: string) =>
+    onFilters({ ...filters, q: appendTerm(typed, fieldTerm(field, value)) });
 
   const toggle = (s: RunStatus) =>
     onFilters({
@@ -74,6 +91,14 @@ export function RunsList({
   return (
     <>
       <h1>Runs</h1>
+      <SearchBox
+        value={filters.q}
+        fields={fields}
+        onSubmit={(next) => onFilters({ ...filters, q: next })}
+      />
+      {echo && effective !== "" && (
+        <QueryChips q={effective} terms={echo.terms} onRemove={removeTerm} />
+      )}
       <form
         className="filters"
         role="search"
@@ -125,14 +150,21 @@ export function RunsList({
 
       {q.isPending ? (
         <Loading label="Loading runs" />
+      ) : problem ? (
+        <SearchProblemNotice problem={problem} q={effective} onRetry={() => void q.refetch()} />
       ) : q.isError ? (
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
       ) : runs.length === 0 ? (
-        <Empty title={filtered ? "No runs match these filters" : "No runs yet"}>
-          {filtered ? "Try clearing a filter." : "Runs appear here once an agent sends events."}
-        </Empty>
+        <>
+          {echo && <UnindexedNotice count={echo.unindexed} capped={echo.unindexed_capped} />}
+          <Empty title={filtered ? "No runs match these filters" : "No runs yet"}>
+            {filtered ? "Try clearing a filter." : "Runs appear here once an agent sends events."}
+          </Empty>
+        </>
       ) : (
         <>
+          {echo && <UnindexedNotice count={echo.unindexed} capped={echo.unindexed_capped} />}
+          <Facets facets={first?.facets} skipped={first?.facets_skipped} onAdd={addFacet} />
           <RunsTable runs={runs} base={base} caption="Runs" now={now} />
           <p className="muted" aria-live="polite">
             {runs.length} run{runs.length === 1 ? "" : "s"} loaded

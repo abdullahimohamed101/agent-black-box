@@ -64,6 +64,21 @@ describe("read proxy", () => {
     expect(ok.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
+  it("a legal 512-character ASCII q passes the proxy; a non-ASCII one can exceed it and gets the 414 the UI explains (plan F22)", async () => {
+    vi.stubEnv("ABB_WEB_DATA_SOURCE", "fixtures");
+    const ascii = await readThrough(
+      ["v1", "runs"],
+      new URLSearchParams({ q: 'tool:"a b" '.repeat(46) }),
+    );
+    expect(ascii.status).toBe(200);
+    const wide = await readThrough(
+      ["v1", "runs"],
+      new URLSearchParams({ q: "\u4e2d".repeat(512) }),
+    );
+    expect(wide.status).toBe(414);
+    expect(((await wide.json()) as { error: { code: string } }).error.code).toBe("QUERY_TOO_LONG");
+  });
+
   it("fails closed without a session: 401, so the browser goes to sign-in (phase 15)", async () => {
     const r = await readThrough(["v1", "runs"], new URLSearchParams());
     expect(r.status).toBe(401);

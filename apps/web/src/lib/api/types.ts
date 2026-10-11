@@ -9,6 +9,23 @@ export type SpanOut = components["schemas"]["SpanOut"];
 export type SpanPage = components["schemas"]["SpanPage"];
 export type ArtifactChunk = components["schemas"]["ArtifactChunk"];
 export type RunStatus = RunOut["status"];
+export type QueryOut = components["schemas"]["QueryOut"];
+// The generated tuple type does not survive the wire typing of list responses; the span is validated where it is used.
+export type QueryTermOut = Omit<components["schemas"]["QueryTermOut"], "span"> & {
+  span: readonly number[];
+};
+export type QueryFieldOut = components["schemas"]["QueryFieldOut"];
+export type FacetsOut = components["schemas"]["FacetsOut"];
+export type FacetValueOut = components["schemas"]["FacetValueOut"];
+export type MatchedOut = {
+  tools?: string[];
+  models?: string[];
+  event_types?: string[];
+  agents?: string[];
+  tags?: string[];
+  metadata_truncated?: boolean;
+  content_truncated?: boolean;
+};
 export type AnalyticsSummary = components["schemas"]["Summary"];
 export type CostReport = components["schemas"]["CostReport"];
 export type ReliabilityReport = components["schemas"]["ReliabilityReport"];
