@@ -21,7 +21,7 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.core.config import Settings
-from abb_api.evaluations import builtin
+from abb_api.evaluations import builtin, judge
 from abb_api.evaluations.protocol import (
     Budget,
     BudgetExceeded,
@@ -54,6 +54,8 @@ def _failure(exc: BaseException) -> tuple[str, str]:
     anything else just the class, because pydantic and `KeyError` messages embed values."""
     if isinstance(exc, BudgetExceeded | TimeoutError):
         return "TIMEOUT", "The evaluator exceeded its time budget."
+    if isinstance(exc, judge.JudgeError):  # fixed, templated text (the provider's own is dropped)
+        return exc.code, f"{type(exc).__name__}: {exc}"[:MAX_ERROR]
     if isinstance(exc, EvaluatorError):
         return "EVALUATOR_ERROR", f"EvaluatorError: {exc}"[:MAX_ERROR]
     if isinstance(exc, InvalidResult):
@@ -86,10 +88,26 @@ async def _evaluate_one(
 ) -> None:
     if not await repo.start(row.id):
         return  # not pending any more: a terminal row is never touched
-    impl = builtin.REGISTRY.get(row.implementation or "")
+    impl = judge.evaluator_for(settings) if row.kind == "llm_judge" else None
+    if row.kind != "llm_judge":
+        impl = builtin.REGISTRY.get(row.implementation or "")
     if impl is None:
         code = "JUDGE_UNAVAILABLE" if row.kind == "llm_judge" else "EVALUATOR_ERROR"
-        return await _record_failure(repo, row, code, "No such evaluator implementation.")
+        message = (
+            "No model-judge provider is configured."
+            if row.kind == "llm_judge"
+            else "No such evaluator implementation."
+        )
+        return await _record_failure(repo, row, code, message)
+    if row.kind == "llm_judge" and row.evaluator_id is not None:
+        # A reply that cost more than the evaluator's bound refuses the evaluator for a while.
+        if await repo.judge_cooling_down(row.evaluator_id, settings.judge_cooldown_seconds):
+            return await _record_failure(
+                repo,
+                row,
+                "JUDGE_BUDGET",
+                "The evaluator is cooling down after exceeding its bound.",
+            )
     try:
         config = impl.config_model.model_validate(row.config_snapshot)
         budget = Budget(settings.eval_timeout_seconds)

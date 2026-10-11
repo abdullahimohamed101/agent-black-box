@@ -181,7 +181,7 @@ def create_app(
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)
-        app.state.evaluators = EvaluatorService(engine)
+        app.state.evaluators = EvaluatorService(engine, settings.judge_provider)
         app.state.run_evaluations = RunEvaluationService(
             engine,
             stale_seconds=settings.eval_stale_seconds,

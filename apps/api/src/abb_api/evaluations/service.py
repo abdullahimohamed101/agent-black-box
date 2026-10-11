@@ -14,6 +14,7 @@ from abb_api.authz.principal import Principal
 from abb_api.authz.service import holds
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.evaluations.builtin import REGISTRY, WITHHELD_CONFIG_FIELDS
+from abb_api.evaluations.judge import JudgeEvaluator
 from abb_api.evaluations.repository import EvaluatorRecord, EvaluatorRepository
 from abb_api.evaluations.schemas import EvaluatorIn, EvaluatorOut, EvaluatorPage
 from abb_api.ids import new_uuid, parse_public_id, public_id
@@ -21,6 +22,10 @@ from abb_api.projects.access import authorise_project
 
 MAX_EVALUATORS = 100  # active, per workspace (D10)
 MAX_CONFIG_BYTES = 16_384  # the CHECK on `evaluators.config` is the backstop for this
+
+
+# Config validation only: the provider-bound instance lives in the job (`judge.evaluator_for`).
+JUDGE = JudgeEvaluator
 
 
 def not_found(code: str, what: str) -> AppError:
@@ -55,16 +60,17 @@ def jsonb_size(value: Any) -> int:
 
 
 def validate_config(
-    kind: str, implementation: str, config: dict[str, Any]
+    kind: str, implementation: str, config: dict[str, Any], judge_provider: str = "none"
 ) -> tuple[int, dict[str, Any]]:
     """The implementation's version and its normalised configuration, or a 4xx.
 
     Errors name fields and rule types only: a rejected value may be a path (Class 2 content) and
     must not be echoed.
     """
-    if kind == "llm_judge":
-        raise judge_not_configured()  # until a provider exists (step 7 replaces this)
-    impl = REGISTRY.get(implementation)
+    if kind == "llm_judge" and judge_provider == "none":
+        raise judge_not_configured()
+    impl: Any = JUDGE if kind == "llm_judge" and implementation == JUDGE.name else None
+    impl = impl or REGISTRY.get(implementation)
     if impl is None:
         raise _invalid("EVALUATOR_INVALID", "Unknown evaluator implementation.")
     if impl.kind != kind:
@@ -116,8 +122,9 @@ def evaluator_out(record: EvaluatorRecord, principal: Principal) -> EvaluatorOut
 
 
 class EvaluatorService:
-    def __init__(self, engine: AsyncEngine) -> None:
+    def __init__(self, engine: AsyncEngine, judge_provider: str = "none") -> None:
         self._engine = engine
+        self._judge_provider = judge_provider
 
     async def list(self, principal: Principal, *, include_archived: bool) -> EvaluatorPage:
         async with self._engine.connect() as conn:
@@ -127,7 +134,9 @@ class EvaluatorService:
         return EvaluatorPage(items=[evaluator_out(r, principal) for r in records])
 
     async def create(self, principal: Principal, body: EvaluatorIn) -> EvaluatorOut:
-        version, config = validate_config(body.kind, body.implementation, body.config)
+        version, config = validate_config(
+            body.kind, body.implementation, body.config, self._judge_provider
+        )
         async with self._engine.begin() as conn:
             project = await authorise_project(conn, principal, body.project_id)
             repo = EvaluatorRepository(conn, principal.tenant, principal.project_id)

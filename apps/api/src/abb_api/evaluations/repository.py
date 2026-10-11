@@ -215,6 +215,24 @@ class EvaluationRepository:
             ).scalar_one()
         )
 
+    async def judge_cooling_down(self, evaluator_id: uuid.UUID, seconds: float) -> bool:
+        """A `JUDGE_BUDGET` failure of this evaluator in the last `seconds` (database clock)."""
+        if seconds <= 0:
+            return False
+        c = t.evaluations.c
+        found = await self._conn.execute(
+            select(c.id)
+            .where(
+                c.workspace_id == self._tenant.workspace_id,
+                c.evaluator_id == evaluator_id,
+                c.state == "failed",
+                c.error_code == "JUDGE_BUDGET",
+                c.completed_at > func.now() - func.make_interval(0, 0, 0, 0, 0, 0, seconds),
+            )
+            .limit(1)
+        )
+        return found.first() is not None
+
     async def start(self, evaluation_id: uuid.UUID) -> bool:
         """pending -> running. False when the row is not pending (already handled)."""
         c = t.evaluations.c
