@@ -37,6 +37,8 @@ from abb_api.evaluations.router import router as evaluators_router
 from abb_api.evaluations.run_router import router as run_evaluations_router
 from abb_api.evaluations.runs import RunEvaluationService
 from abb_api.evaluations.service import EvaluatorService
+from abb_api.experiments.router import router as experiments_router
+from abb_api.experiments.service import ExperimentService
 from abb_api.findings.router import router as findings_router
 from abb_api.findings.service import FindingsService
 from abb_api.health.router import router as health_router
@@ -184,6 +186,7 @@ def create_app(
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)
         app.state.comparison = ComparisonService(engine, settings)
+        app.state.experiments = ExperimentService(engine, settings)
         app.state.evaluators = EvaluatorService(engine, settings.judge_provider)
         app.state.run_evaluations = RunEvaluationService(
             engine,
@@ -253,6 +256,7 @@ def create_app(
     app.include_router(evaluators_router)
     app.include_router(run_evaluations_router)
     app.include_router(comparison_router)
+    app.include_router(experiments_router)
     _install_openapi(app, settings)
     return app
 

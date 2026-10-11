@@ -31,3 +31,13 @@ Reading the table:
   random pair of 20,000 answers `partial` in 50 ms (mutation check recorded in the Phase 11 plan).
 - `difflib.SequenceMatcher` is not used (ADR-092): quadratic on low-cardinality input with `autojunk=False`, and
   `autojunk=True` discards every frequent key.
+
+## Experiment metrics statement (AC-7)
+
+`tests/test_experiments_api.py::test_metrics_over_five_hundred_runs_and_twenty_evaluators_stay_under_the_timeout`
+seeds an experiment at its bounds (500 attached runs in two variants, 20 evaluators, 10,000 completed evaluation rows,
+bulk inserted) and times `GET /v1/experiments/{id}` five times through the ASGI client on the same machine and Postgres
+(compose, port 5433): median 61 ms for the whole request (the metrics statement, the variants, the attached runs and the
+evaluator lookups), against the `ABB_ANALYTICS_TIMEOUT_SECONDS` bound of 10 s that the statement runs under
+(`SET LOCAL statement_timeout`). The statement is one query: exact `percentile_cont` over the finished runs of each
+variant and the latest terminal result per (run, evaluator) with `DISTINCT ON`.

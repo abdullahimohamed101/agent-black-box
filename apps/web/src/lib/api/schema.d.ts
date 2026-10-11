@@ -384,6 +384,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/experiments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List experiments
+         * @description Newest first, at most 200. A project-bound key sees its project's experiments.
+         */
+        get: operations["list_experiments_v1_experiments_get"];
+        put?: never;
+        /**
+         * Create an experiment
+         * @description A named group of runs of one project with a baseline and candidate variants added afterwards. At most 200 active experiments per workspace and 20 evaluators each.
+         */
+        post: operations["create_experiment_v1_experiments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/experiments/{experiment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an experiment with its variants, control check and metrics
+         * @description Per candidate `changed_variables` and `controlled` (exactly one variable differs from the baseline, spec §86), observed `warnings` (`not_single_variable`, `variant_models_vary`, `variant_agents_vary`, `unevaluated_runs`) and per-variant metrics over finished runs: success rate, cost and duration (mean, median, p95), retry rate, failure categories and the latest evaluation results per evaluator. Model-judge scores are opinions (`ground_truth: false` on the evaluator).
+         */
+        get: operations["get_experiment_v1_experiments__experiment_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Archive an experiment
+         * @description Archived experiments stay readable and accept no further changes. Idempotent.
+         */
+        delete: operations["archive_experiment_v1_experiments__experiment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/experiments/{experiment_id}/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate every run of the experiment
+         * @description Starts the experiment's evaluators on each (run, evaluator) pair that has no pending and no completed result (a failed one is retried), at most 500 new evaluations per call; `remaining` says whether to call again. One job per run. A repeat while evaluations are pending creates nothing. Archived, human, other-project and unconfigured judge evaluators are skipped and reported.
+         */
+        post: operations["evaluate_experiment_v1_experiments__experiment_id__evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/experiments/{experiment_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach a run to a variant
+         * @description The run must belong to the experiment's project (`422 RUN_PROJECT_MISMATCH`). A run is in at most one variant of an experiment (`409 RUN_ALREADY_ATTACHED`); at most 500 runs.
+         */
+        post: operations["attach_run_v1_experiments__experiment_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/experiments/{experiment_id}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Detach a run
+         * @description The run itself and its evaluations are untouched.
+         */
+        delete: operations["detach_run_v1_experiments__experiment_id__runs__run_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/experiments/{experiment_id}/variants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a variant
+         * @description Exactly one baseline, added first, then up to nine candidates. `config` is a flat map of declared settings visible to every reader: do not put secrets, prompts or paths in it.
+         */
+        post: operations["add_variant_v1_experiments__experiment_id__variants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/invitations": {
         parameters: {
             query?: never;
@@ -906,6 +1034,32 @@ export interface components {
             /** Size Bytes */
             size_bytes: number;
         };
+        /** AttachIn */
+        AttachIn: {
+            /** Run Id */
+            run_id: string;
+            /** Variant Id */
+            variant_id: string;
+        };
+        /** AttachedRunOut */
+        AttachedRunOut: {
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Status */
+            status: string;
+            /** Variant Id */
+            variant_id: string;
+        };
         /** AuditEntryOut */
         AuditEntryOut: {
             /** Action */
@@ -1248,6 +1402,15 @@ export interface components {
              */
             status: "ok" | "warn" | "bad" | "no_data";
         };
+        /** Distribution */
+        Distribution: {
+            /** Mean */
+            mean: number | null;
+            /** Median */
+            median: number | null;
+            /** P95 */
+            p95: number | null;
+        };
         /** DivergenceOut */
         DivergenceOut: {
             /**
@@ -1297,6 +1460,31 @@ export interface components {
          */
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /** EvaluateOut */
+        EvaluateOut: {
+            /**
+             * At Limit
+             * @description Pairs skipped: 20 results already exist for the evaluator.
+             */
+            at_limit: number;
+            /**
+             * Enqueued
+             * @description New pending evaluations created by this call.
+             */
+            enqueued: number;
+            /**
+             * Jobs
+             * @description Runs whose evaluation job was queued or already waiting.
+             */
+            jobs: number;
+            /**
+             * Remaining
+             * @description Pairs still to start; call again.
+             */
+            remaining: number;
+            /** Skipped Evaluators */
+            skipped_evaluators: components["schemas"]["SkippedEvaluatorOut"][];
         };
         /** EvaluationDiffOut */
         EvaluationDiffOut: {
@@ -1432,6 +1620,35 @@ export interface components {
              * @description Omit for an evaluator that applies to every project of the workspace.
              */
             project_id?: string | null;
+        };
+        /** EvaluatorInfoOut */
+        EvaluatorInfoOut: {
+            /** Archived */
+            archived: boolean;
+            /** Ground Truth */
+            ground_truth: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "deterministic" | "metric" | "human" | "llm_judge";
+            /** Name */
+            name: string;
+        };
+        /** EvaluatorMetricsOut */
+        EvaluatorMetricsOut: {
+            /** Completed */
+            completed: number;
+            /** Evaluator Id */
+            evaluator_id: string;
+            /** Failed */
+            failed: number;
+            /** Mean Score */
+            mean_score: number | null;
+            /** Pass Rate */
+            pass_rate: number | null;
         };
         /** EvaluatorOut */
         EvaluatorOut: {
@@ -1630,6 +1847,84 @@ export interface components {
             started_at: string;
             /** Status */
             status: string;
+        };
+        /** ExperimentIn */
+        ExperimentIn: {
+            /**
+             * Dataset Label
+             * @description A label for the task set; this product does not run tasks.
+             */
+            dataset_label?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Evaluator Ids
+             * @description Evaluated by `evaluate`; up to 20.
+             */
+            evaluator_ids?: string[];
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id: string;
+        };
+        /** ExperimentOut */
+        ExperimentOut: {
+            /** Archived At */
+            archived_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Dataset Label */
+            dataset_label: string | null;
+            /** Description */
+            description: string | null;
+            /** Evaluators */
+            evaluators: components["schemas"]["EvaluatorInfoOut"][];
+            /** Id */
+            id: string;
+            /** Metrics */
+            metrics: components["schemas"]["VariantMetricsOut"][];
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id: string;
+            /** Runs */
+            runs: components["schemas"]["AttachedRunOut"][];
+            /** Variants */
+            variants: components["schemas"]["VariantOut"][];
+            /** Warnings */
+            warnings: components["schemas"]["WarningOut"][];
+        };
+        /** ExperimentPage */
+        ExperimentPage: {
+            /** Items */
+            items: components["schemas"]["ExperimentSummaryOut"][];
+        };
+        /** ExperimentSummaryOut */
+        ExperimentSummaryOut: {
+            /** Archived At */
+            archived_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Dataset Label */
+            dataset_label: string | null;
+            /** Description */
+            description: string | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id: string;
+            /** Run Count */
+            run_count: number;
+            /** Variant Count */
+            variant_count: number;
         };
         /** FacetValueOut */
         FacetValueOut: {
@@ -2399,6 +2694,16 @@ export interface components {
              */
             truncated_at_event: string | null;
         };
+        /** SkippedEvaluatorOut */
+        SkippedEvaluatorOut: {
+            /** Evaluator Id */
+            evaluator_id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "missing" | "archived" | "project_mismatch" | "human" | "judge_not_configured";
+        };
         /** SlowOperation */
         SlowOperation: {
             /** Calls */
@@ -2528,6 +2833,83 @@ export interface components {
             /** Name */
             name: string | null;
         };
+        /** VariantIn */
+        VariantIn: {
+            /**
+             * Config
+             * @description Declared settings of the variant (model, prompt version, ...). Flat, at most 32 keys, values at most 256 characters. Visible to every reader: do not put secrets, prompts or paths here.
+             */
+            config?: {
+                [key: string]: string;
+            };
+            /** Name */
+            name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "baseline" | "candidate";
+        };
+        /** VariantMetricsOut */
+        VariantMetricsOut: {
+            cost_usd: components["schemas"]["Distribution"];
+            duration_ms: components["schemas"]["Distribution"];
+            /** Evaluations */
+            evaluations: components["schemas"]["EvaluatorMetricsOut"][];
+            /**
+             * Failure Categories
+             * @description Finished runs by non-success status; `recovered`: successes with errors.
+             */
+            failure_categories: {
+                [key: string]: number;
+            };
+            /**
+             * Finished
+             * @description Runs with a terminal status; the figures below use them.
+             */
+            finished: number;
+            /**
+             * Retry Rate
+             * @description Share of finished runs with at least one retry.
+             */
+            retry_rate: number | null;
+            /** Runs */
+            runs: number;
+            /** Success Rate */
+            success_rate: number | null;
+            /** Tool Calls Mean */
+            tool_calls_mean: number | null;
+            /** Variant Id */
+            variant_id: string;
+        };
+        /** VariantOut */
+        VariantOut: {
+            /**
+             * Changed Variables
+             * @description Keys that differ from the baseline (a missing key counts); null for it.
+             */
+            changed_variables: string[] | null;
+            /** Config */
+            config: {
+                [key: string]: string;
+            };
+            /**
+             * Controlled
+             * @description True when exactly one variable changed against the baseline (spec §86).
+             */
+            controlled: boolean | null;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "baseline" | "candidate";
+            /** Run Count */
+            run_count: number;
+        };
         /** VerdictIn */
         VerdictIn: {
             /**
@@ -2544,6 +2926,20 @@ export interface components {
             label: string;
             /** Score */
             score?: number | null;
+        };
+        /** WarningOut */
+        WarningOut: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "not_single_variable" | "variant_models_vary" | "variant_agents_vary" | "unevaluated_runs";
+            /** Count */
+            count?: number | null;
+            /** Keys */
+            keys?: string[];
+            /** Variant Id */
+            variant_id: string | null;
         };
         /** Window */
         Window: {
@@ -4257,6 +4653,655 @@ export interface operations {
             };
             /** @description Rate limit exceeded; honour `Retry-After`. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_experiments_v1_experiments_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                include_archived?: boolean;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentPage"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A bound, a name, the baseline or an archived resource conflicts with the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid, or a run or evaluator does not belong to the project. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_experiment_v1_experiments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperimentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentOut"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A bound, a name, the baseline or an archived resource conflicts with the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid, or a run or evaluator does not belong to the project. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_experiment_v1_experiments__experiment_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentOut"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A bound, a name, the baseline or an archived resource conflicts with the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid, or a run or evaluator does not belong to the project. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    archive_experiment_v1_experiments__experiment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A bound, a name, the baseline or an archived resource conflicts with the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid, or a run or evaluator does not belong to the project. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    evaluate_experiment_v1_experiments__experiment_id__evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluateOut"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A bound, a name, the baseline or an archived resource conflicts with the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid, or a run or evaluator does not belong to the project. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    attach_run_v1_experiments__experiment_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachIn"];
+            };
+        };
+        responses: {
+            /** @description The run was already attached to that variant. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedRunOut"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachedRunOut"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A bound, a name, the baseline or an archived resource conflicts with the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid, or a run or evaluator does not belong to the project. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    detach_run_v1_experiments__experiment_id__runs__run_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                experiment_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A bound, a name, the baseline or an archived resource conflicts with the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid, or a run or evaluator does not belong to the project. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    add_variant_v1_experiments__experiment_id__variants_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                experiment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariantIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VariantOut"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A bound, a name, the baseline or an archived resource conflicts with the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid, or a run or evaluator does not belong to the project. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

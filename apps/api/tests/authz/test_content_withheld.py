@@ -81,6 +81,8 @@ async def test_no_route_returns_command_text_or_paths_to_an_actor_without_payloa
         await world.get("/v1/audit", actor),
         await world.get(f"/v1/runs/{run}/evaluations", actor),
         await world.get("/v1/evaluators", actor),
+        await world.get("/v1/experiments", actor),
+        await world.get(f"/v1/experiments/{world.acme.experiment_id}", actor),
         await world.get(f"/v1/runs/{run}/compare", actor, with_run_id=world.acme.with_run_id),
         await world.get(f"/v1/runs/{world.acme.with_run_id}/compare", actor, with_run_id=run),
     ]

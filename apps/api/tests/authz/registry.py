@@ -244,6 +244,36 @@ def _compare(side: Side, overrides: dict[str, str]) -> RequestSpec:
     )
 
 
+def _post_experiment(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    body = {"name": f"probe-{uuid.uuid4().hex[:8]}",
+            "project_id": overrides.get("project_id", side.project_id)}  # fmt: skip
+    return RequestSpec("POST", "/v1/experiments", content=json.dumps(body).encode(), headers=JSON)
+
+
+def _on_experiment(
+    method: str, suffix: str = "", body: Callable[[dict[str, str]], dict[str, object]] | None = None
+) -> Builder:
+    """A call on the seeded experiment; `suffix` may name Side fields, `body` builds the JSON."""
+
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        ids = _ids(side, overrides)
+        content = json.dumps(body(ids)).encode() if body else None
+        return RequestSpec(
+            method, f"/v1/experiments/{ids['experiment_id']}{suffix.format(**ids)}",
+            content=content, headers=JSON if content else {},
+        )  # fmt: skip
+
+    return build
+
+
+def _variant_body(ids: dict[str, str]) -> dict[str, object]:
+    return {"name": f"c-{uuid.uuid4().hex[:8]}", "role": "candidate", "config": {"model": "x"}}
+
+
+def _attach_body(ids: dict[str, str]) -> dict[str, object]:
+    return {"run_id": ids["with_run_id"], "variant_id": ids["variant_id"]}
+
+
 _ANALYTICS = ("summary", "cost", "reliability", "performance")
 
 CASES: dict[tuple[str, str], RouteCase] = {
@@ -339,6 +369,41 @@ CASES: dict[tuple[str, str], RouteCase] = {
         RouteCase(
             "POST", "/v1/runs/{run_id}/verdicts", actions.EVALUATION_LABEL, _post_verdict, 201,
             ("run_id", "human_evaluator_id"), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/experiments", actions.EXPERIMENT_READ, _get("/v1/experiments"), 200,
+            ("project_id",),
+        ),
+        RouteCase(
+            "POST", "/v1/experiments", actions.EXPERIMENT_WRITE, _post_experiment, 201,
+            ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/experiments/{experiment_id}", actions.EXPERIMENT_READ,
+            _get("/v1/experiments/{experiment_id}"), 200, ("experiment_id",),
+        ),
+        RouteCase(
+            "POST", "/v1/experiments/{experiment_id}/variants", actions.EXPERIMENT_WRITE,
+            _on_experiment("POST", "/variants", _variant_body), 201,
+            ("experiment_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/experiments/{experiment_id}/runs", actions.EXPERIMENT_WRITE,
+            _on_experiment("POST", "/runs", _attach_body),
+            201, ("experiment_id", "with_run_id", "variant_id"), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/experiments/{experiment_id}/evaluate", actions.EVALUATION_RUN,
+            _on_experiment("POST", "/evaluate"), 202, ("experiment_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "DELETE", "/v1/experiments/{experiment_id}/runs/{run_id}", actions.EXPERIMENT_WRITE,
+            _on_experiment("DELETE", "/runs/{run_id}"), 204, ("experiment_id", "run_id"),
+            probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "DELETE", "/v1/experiments/{experiment_id}", actions.EXPERIMENT_WRITE,
+            _on_experiment("DELETE"), 204, ("experiment_id",), probe_actors=ADMINS,
         ),
         RouteCase("POST", "/v1/pricing/overrides", actions.PRICING_WRITE, _post_override, 201),
         RouteCase("POST", "/v1/cost/rebuild", actions.PRICING_WRITE, _post_rebuild, 202),
