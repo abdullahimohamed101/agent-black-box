@@ -24,6 +24,8 @@ from abb_api.auth.oidc import OidcClient
 from abb_api.auth.router import router as auth_router
 from abb_api.authz.audit import new_denial_limiter
 from abb_api.clock import Clock, system_clock
+from abb_api.comparison.router import router as comparison_router
+from abb_api.comparison.service import ComparisonService
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.errors import install_error_handlers
 from abb_api.core.logging import configure_logging
@@ -181,6 +183,7 @@ def create_app(
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)
+        app.state.comparison = ComparisonService(engine, settings)
         app.state.evaluators = EvaluatorService(engine, settings.judge_provider)
         app.state.run_evaluations = RunEvaluationService(
             engine,
@@ -249,6 +252,7 @@ def create_app(
     app.include_router(audit_router)
     app.include_router(evaluators_router)
     app.include_router(run_evaluations_router)
+    app.include_router(comparison_router)
     _install_openapi(app, settings)
     return app
 

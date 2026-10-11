@@ -614,6 +614,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/runs/{run_id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare two runs
+         * @description Computed on read from derived data; nothing is stored. Steps are aligned by what the agent did, with ids, timestamps and temporary paths normalised, and the first divergence and the first outcome difference are reported. Without `payload.read` the alignment uses tool, model and span kinds only (`alignment: metadata`), every relation is computed from that projection, and files are per-side counts. Runs longer than the event or step caps are cut and flagged; a middle too different to align within the work budget is reported as unaligned blocks (`alignment_quality: partial`). Comparing a run with itself is allowed.
+         */
+        get: operations["compare_runs_v1_runs__run_id__compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runs/{run_id}/evaluations": {
         parameters: {
             query?: never;
@@ -971,6 +991,38 @@ export interface components {
              */
             role: "OWNER" | "ADMIN" | "DEVELOPER" | "VIEWER" | "SECURITY" | "BILLING";
         };
+        /** ComparisonOut */
+        ComparisonOut: {
+            /**
+             * Alignment
+             * @description `metadata` without `payload.read`: steps align on kinds, tool and model names only, and every relation below is computed from that projection.
+             * @enum {string}
+             */
+            alignment: "content" | "metadata";
+            /**
+             * Alignment Quality
+             * @description `partial`: the middle was too different to align within the work budget.
+             * @enum {string}
+             */
+            alignment_quality: "full" | "partial";
+            /** Cost By Model */
+            cost_by_model: components["schemas"]["CostModelOut"][];
+            divergence: components["schemas"]["DivergenceOut"] | null;
+            /** Evaluations */
+            evaluations: components["schemas"]["EvaluationDiffOut"][];
+            files: components["schemas"]["FilesOut"];
+            /**
+             * First Outcome Difference
+             * @description Index of the first aligned pair whose status differs.
+             */
+            first_outcome_difference: number | null;
+            left: components["schemas"]["SideOut"];
+            right: components["schemas"]["SideOut"];
+            /** Steps */
+            steps: components["schemas"]["RowOut"][];
+            /** Summary */
+            summary: components["schemas"]["MetricOut"][];
+        };
         /** CostByAgent */
         CostByAgent: {
             /** Agent */
@@ -1060,6 +1112,17 @@ export interface components {
              * @description Runs summarized before cost lines existed; `rebuild-costs` fills them in.
              */
             unrebuilt_runs: number;
+        };
+        /** CostModelOut */
+        CostModelOut: {
+            /** Delta */
+            delta: number;
+            /** Left */
+            left: number;
+            /** Model */
+            model: string;
+            /** Right */
+            right: number;
         };
         /** CostReport */
         CostReport: {
@@ -1185,6 +1248,19 @@ export interface components {
              */
             status: "ok" | "warn" | "bad" | "no_data";
         };
+        /** DivergenceOut */
+        DivergenceOut: {
+            /**
+             * Index
+             * @description Index into `steps`.
+             */
+            index: number;
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "changed" | "left_only" | "right_only";
+        };
         /** ErrorBody */
         ErrorBody: {
             category: components["schemas"]["ErrorCategory"];
@@ -1221,6 +1297,21 @@ export interface components {
          */
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /** EvaluationDiffOut */
+        EvaluationDiffOut: {
+            /** Delta */
+            delta: number | null;
+            /** Evaluator Id */
+            evaluator_id: string | null;
+            /** Evaluator Name */
+            evaluator_name: string;
+            /** Ground Truth */
+            ground_truth: boolean;
+            /** Kind */
+            kind: string;
+            left: components["schemas"]["ScoreOut"] | null;
+            right: components["schemas"]["ScoreOut"] | null;
         };
         /** EvaluationOut */
         EvaluationOut: {
@@ -1591,6 +1682,26 @@ export interface components {
              */
             timeout_rate: number | null;
         };
+        /** FilesOut */
+        FilesOut: {
+            /** Both */
+            both: string[];
+            /** Left Count */
+            left_count: number;
+            /** Only Left */
+            only_left: string[];
+            /** Only Right */
+            only_right: string[];
+            /**
+             * Paths Withheld
+             * @description True without `payload.read`: per-side counts only, no paths, no overlap.
+             */
+            paths_withheld: boolean;
+            /** Right Count */
+            right_count: number;
+            /** Truncated */
+            truncated: boolean;
+        };
         /** FindingOut */
         FindingOut: {
             /** Confidence */
@@ -1795,6 +1906,20 @@ export interface components {
             /** Role */
             role: string;
             workspace: components["schemas"]["WorkspaceOut"];
+        };
+        /** MetricOut */
+        MetricOut: {
+            /**
+             * Delta
+             * @description `right - left`; null when either is missing.
+             */
+            delta: number | null;
+            /** Left */
+            left: number | null;
+            /** Metric */
+            metric: string;
+            /** Right */
+            right: number | null;
         };
         /**
          * OtherBucket
@@ -2106,6 +2231,16 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** RowOut */
+        RowOut: {
+            left: components["schemas"]["StepOut"] | null;
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "equal" | "changed" | "left_only" | "right_only";
+            right: components["schemas"]["StepOut"] | null;
+        };
         /** RunCounts */
         RunCounts: {
             /**
@@ -2238,6 +2373,32 @@ export interface components {
             next_cursor: string | null;
             query?: components["schemas"]["QueryOut"] | null;
         };
+        /** ScoreOut */
+        ScoreOut: {
+            /** Label */
+            label: string | null;
+            /** Score */
+            score: number | null;
+        };
+        /** SideOut */
+        SideOut: {
+            /** Run Id */
+            run_id: string;
+            /** Status */
+            status: string;
+            /**
+             * Steps
+             * @description Steps compared (after the event and step caps).
+             */
+            steps: number;
+            /** Truncated */
+            truncated: boolean;
+            /**
+             * Truncated At Event
+             * @description The last event compared when the run was cut by the caps.
+             */
+            truncated_at_event: string | null;
+        };
         /** SlowOperation */
         SlowOperation: {
             /** Calls */
@@ -2300,6 +2461,30 @@ export interface components {
             calls: number;
             /** Success Rate */
             success_rate: number | null;
+        };
+        /** StepOut */
+        StepOut: {
+            /** Duration Ms */
+            duration_ms: number | null;
+            /** Event Id */
+            event_id: string;
+            /** Event Type */
+            event_type: string;
+            /** Family */
+            family: string;
+            /**
+             * Label
+             * @description Tool, model, span or (with `payload.read`) command, path or branch. Null when `label_withheld`.
+             */
+            label: string | null;
+            /** Label Withheld */
+            label_withheld: boolean;
+            /** Offset Ms */
+            offset_ms: number | null;
+            /** Span Id */
+            span_id: string | null;
+            /** Status */
+            status: string | null;
         };
         /** Summary */
         Summary: {
@@ -5211,6 +5396,79 @@ export interface operations {
                 };
             };
             /** @description A parameter or the request body is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    compare_runs_v1_runs__run_id__compare_get: {
+        parameters: {
+            query: {
+                /** @description The run to compare against (either order). */
+                with_run_id: string;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparisonOut"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks `run.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A run was not found, or is not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid. */
             422: {
                 headers: {
                     [name: string]: unknown;

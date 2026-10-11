@@ -237,6 +237,13 @@ def _post_verdict(side: Side, overrides: dict[str, str]) -> RequestSpec:
     )  # fmt: skip
 
 
+def _compare(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    ids = _ids(side, overrides)
+    return RequestSpec(
+        "GET", f"/v1/runs/{ids['run_id']}/compare", params={"with_run_id": ids["with_run_id"]}
+    )
+
+
 _ANALYTICS = ("summary", "cost", "reliability", "performance")
 
 CASES: dict[tuple[str, str], RouteCase] = {
@@ -316,6 +323,10 @@ CASES: dict[tuple[str, str], RouteCase] = {
             "DELETE", "/v1/evaluators/{evaluator_id}", actions.EVALUATOR_WRITE,
             _target("DELETE", "/v1/evaluators", "evaluator_id", "evaluator", None), 204,
             ("evaluator_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/runs/{run_id}/compare", actions.RUN_READ, _compare, 200,
+            ("run_id", "with_run_id"),
         ),
         RouteCase(
             "GET", "/v1/runs/{run_id}/evaluations", actions.EVALUATION_READ,

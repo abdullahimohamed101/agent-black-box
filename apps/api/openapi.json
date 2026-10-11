@@ -552,6 +552,102 @@
         "title": "ChangeRole",
         "type": "object"
       },
+      "ComparisonOut": {
+        "properties": {
+          "alignment": {
+            "description": "`metadata` without `payload.read`: steps align on kinds, tool and model names only, and every relation below is computed from that projection.",
+            "enum": [
+              "content",
+              "metadata"
+            ],
+            "title": "Alignment",
+            "type": "string"
+          },
+          "alignment_quality": {
+            "description": "`partial`: the middle was too different to align within the work budget.",
+            "enum": [
+              "full",
+              "partial"
+            ],
+            "title": "Alignment Quality",
+            "type": "string"
+          },
+          "cost_by_model": {
+            "items": {
+              "$ref": "#/components/schemas/CostModelOut"
+            },
+            "title": "Cost By Model",
+            "type": "array"
+          },
+          "divergence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DivergenceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationDiffOut"
+            },
+            "title": "Evaluations",
+            "type": "array"
+          },
+          "files": {
+            "$ref": "#/components/schemas/FilesOut"
+          },
+          "first_outcome_difference": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Index of the first aligned pair whose status differs.",
+            "title": "First Outcome Difference"
+          },
+          "left": {
+            "$ref": "#/components/schemas/SideOut"
+          },
+          "right": {
+            "$ref": "#/components/schemas/SideOut"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RowOut"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "summary": {
+            "items": {
+              "$ref": "#/components/schemas/MetricOut"
+            },
+            "title": "Summary",
+            "type": "array"
+          }
+        },
+        "required": [
+          "left",
+          "right",
+          "alignment",
+          "alignment_quality",
+          "summary",
+          "steps",
+          "divergence",
+          "first_outcome_difference",
+          "cost_by_model",
+          "files",
+          "evaluations"
+        ],
+        "title": "ComparisonOut",
+        "type": "object"
+      },
       "CostByAgent": {
         "properties": {
           "agent": {
@@ -774,6 +870,34 @@
           "unrebuilt_runs"
         ],
         "title": "CostHeadline",
+        "type": "object"
+      },
+      "CostModelOut": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "number"
+          },
+          "left": {
+            "title": "Left",
+            "type": "number"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "right": {
+            "title": "Right",
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "left",
+          "right",
+          "delta"
+        ],
+        "title": "CostModelOut",
         "type": "object"
       },
       "CostReport": {
@@ -1205,6 +1329,30 @@
         "title": "DimensionOut",
         "type": "object"
       },
+      "DivergenceOut": {
+        "properties": {
+          "index": {
+            "description": "Index into `steps`.",
+            "title": "Index",
+            "type": "integer"
+          },
+          "relation": {
+            "enum": [
+              "changed",
+              "left_only",
+              "right_only"
+            ],
+            "title": "Relation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "relation"
+        ],
+        "title": "DivergenceOut",
+        "type": "object"
+      },
       "ErrorBody": {
         "properties": {
           "category": {
@@ -1280,6 +1428,75 @@
           "error"
         ],
         "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "EvaluationDiffOut": {
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "evaluator_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluator Id"
+          },
+          "evaluator_name": {
+            "title": "Evaluator Name",
+            "type": "string"
+          },
+          "ground_truth": {
+            "title": "Ground Truth",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "left": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScoreOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "right": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScoreOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "evaluator_id",
+          "evaluator_name",
+          "kind",
+          "ground_truth",
+          "left",
+          "right",
+          "delta"
+        ],
+        "title": "EvaluationDiffOut",
         "type": "object"
       },
       "EvaluationOut": {
@@ -2220,6 +2437,59 @@
         "title": "FailureDay",
         "type": "object"
       },
+      "FilesOut": {
+        "properties": {
+          "both": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Both",
+            "type": "array"
+          },
+          "left_count": {
+            "title": "Left Count",
+            "type": "integer"
+          },
+          "only_left": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Only Left",
+            "type": "array"
+          },
+          "only_right": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Only Right",
+            "type": "array"
+          },
+          "paths_withheld": {
+            "description": "True without `payload.read`: per-side counts only, no paths, no overlap.",
+            "title": "Paths Withheld",
+            "type": "boolean"
+          },
+          "right_count": {
+            "title": "Right Count",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paths_withheld",
+          "left_count",
+          "right_count",
+          "only_left",
+          "only_right",
+          "both",
+          "truncated"
+        ],
+        "title": "FilesOut",
+        "type": "object"
+      },
       "FindingOut": {
         "properties": {
           "confidence": {
@@ -2748,6 +3018,65 @@
           "own_permissions"
         ],
         "title": "MembershipOut",
+        "type": "object"
+      },
+      "MetricOut": {
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`right - left`; null when either is missing.",
+            "title": "Delta"
+          },
+          "left": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Left"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right"
+          }
+        },
+        "required": [
+          "metric",
+          "left",
+          "right",
+          "delta"
+        ],
+        "title": "MetricOut",
         "type": "object"
       },
       "OtherBucket": {
@@ -3527,6 +3856,47 @@
         "title": "RetryHeavyRun",
         "type": "object"
       },
+      "RowOut": {
+        "properties": {
+          "left": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "relation": {
+            "enum": [
+              "equal",
+              "changed",
+              "left_only",
+              "right_only"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "relation",
+          "left",
+          "right"
+        ],
+        "title": "RowOut",
+        "type": "object"
+      },
       "RunCounts": {
         "properties": {
           "active": {
@@ -3876,6 +4246,80 @@
         "title": "RunPage",
         "type": "object"
       },
+      "ScoreOut": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "score",
+          "label"
+        ],
+        "title": "ScoreOut",
+        "type": "object"
+      },
+      "SideOut": {
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "description": "Steps compared (after the event and step caps).",
+            "title": "Steps",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "truncated_at_event": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last event compared when the run was cut by the caps.",
+            "title": "Truncated At Event"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "steps",
+          "truncated",
+          "truncated_at_event"
+        ],
+        "title": "SideOut",
+        "type": "object"
+      },
       "SlowOperation": {
         "properties": {
           "calls": {
@@ -4107,6 +4551,95 @@
           "success_rate"
         ],
         "title": "SpanRate",
+        "type": "object"
+      },
+      "StepOut": {
+        "properties": {
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tool, model, span or (with `payload.read`) command, path or branch. Null when `label_withheld`.",
+            "title": "Label"
+          },
+          "label_withheld": {
+            "title": "Label Withheld",
+            "type": "boolean"
+          },
+          "offset_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offset Ms"
+          },
+          "span_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "event_id",
+          "span_id",
+          "family",
+          "event_type",
+          "status",
+          "duration_ms",
+          "offset_ms",
+          "label",
+          "label_withheld"
+        ],
+        "title": "StepOut",
         "type": "object"
       },
       "Summary": {
@@ -8583,6 +9116,118 @@
         "summary": "Get a run",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/compare": {
+      "get": {
+        "description": "Computed on read from derived data; nothing is stored. Steps are aligned by what the agent did, with ids, timestamps and temporary paths normalised, and the first divergence and the first outcome difference are reported. Without `payload.read` the alignment uses tool, model and span kinds only (`alignment: metadata`), every relation is computed from that projection, and files are per-side counts. Runs longer than the event or step caps are cut and flagged; a middle too different to align within the work budget is reported as unaligned blocks (`alignment_quality: partial`). Comparing a run with itself is allowed.",
+        "operationId": "compare_runs_v1_runs__run_id__compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The run to compare against (either order).",
+            "in": "query",
+            "name": "with_run_id",
+            "required": true,
+            "schema": {
+              "description": "The run to compare against (either order).",
+              "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+              "title": "With Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks `run.read`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A run was not found, or is not visible to this caller (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Compare two runs",
+        "tags": [
+          "comparison"
         ]
       }
     },

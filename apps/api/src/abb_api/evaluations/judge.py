@@ -21,6 +21,7 @@ from typing import Annotated, Any, ClassVar, Protocol
 from abb_event_schema.event import Event
 from pydantic import BaseModel, Field, StringConstraints
 
+from abb_api.comparison.steps import is_step
 from abb_api.core.config import Settings
 from abb_api.evaluations.builtin import DEFAULT_LABELS, Label, StrictConfig
 from abb_api.evaluations.protocol import (
@@ -42,8 +43,6 @@ MAX_RAW_CHARS = 2_000
 MAX_EXPLANATION_CHARS = 1_000
 MAX_LABEL_NAME = 128  # a step's name is cut to this before it enters the prompt
 UNRATED = "unrated"
-STEP_SUFFIXES = (".completed", ".failed")
-POINT_FAMILIES = ("file.", "git.", "policy.", "approval.", "retry.", "timeout.", "loop.")
 SUMMARY_COUNTERS = (
     "llm_calls", "tool_calls", "retry_count", "error_count", "files_modified", "event_count",
 )  # fmt: skip
@@ -172,11 +171,6 @@ def _safe(text: str) -> str:
     return text[:MAX_LABEL_NAME]
 
 
-def _is_step(event: Event) -> bool:
-    kind = event.event_type
-    return kind.endswith(STEP_SUFFIXES) or kind.startswith(POINT_FAMILIES)
-
-
 def _step(event: Event, include_content: bool) -> dict[str, Any]:
     """One event as a prompt line: the metadata projection (what a VIEWER sees), plus command text
     and paths only for an evaluator that opted in."""
@@ -251,7 +245,7 @@ def build_prompt(snapshot: RunSnapshot, config: JudgeConfig, budget: Budget) -> 
     for index, event in enumerate(snapshot.events):
         if index % EVENTS_PER_CHECK == 0:
             budget.check()
-        if not _is_step(event):
+        if not is_step(event.event_type):
             continue
         step = _step(event, config.include_content)
         size = len(_encode(step)) + 1

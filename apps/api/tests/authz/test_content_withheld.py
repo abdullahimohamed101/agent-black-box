@@ -81,6 +81,8 @@ async def test_no_route_returns_command_text_or_paths_to_an_actor_without_payloa
         await world.get("/v1/audit", actor),
         await world.get(f"/v1/runs/{run}/evaluations", actor),
         await world.get("/v1/evaluators", actor),
+        await world.get(f"/v1/runs/{run}/compare", actor, with_run_id=world.acme.with_run_id),
+        await world.get(f"/v1/runs/{world.acme.with_run_id}/compare", actor, with_run_id=run),
     ]
     for event_id in await _seeded_event_ids(world):
         seen.append(await world.get(f"/v1/runs/{run}/events/{event_id}", actor))
@@ -110,6 +112,34 @@ async def test_actors_with_payload_read_see_judge_explanations(world: World, act
     (judge,) = [i for i in items if i["kind"] == "llm_judge"]
     assert judge["explanation"].startswith("EXPLCANARY") and judge["explanation_withheld"] is False
     assert judge["metadata"]["raw"].startswith("EXPLCANARY")
+
+
+@pytest.mark.parametrize("actor", WITHHELD_FROM)
+async def test_a_comparison_aligns_on_metadata_and_counts_files_for_a_viewer(
+    world: World, actor: str
+) -> None:
+    run = world.acme.run_id
+    body = (
+        await world.get(f"/v1/runs/{run}/compare", actor, with_run_id=world.acme.with_run_id)
+    ).json()
+    assert body["alignment"] == "metadata" and body["files"]["paths_withheld"] is True
+    assert body["files"]["only_left"] == body["files"]["both"] == []
+    shell = [r["left"] for r in body["steps"] if r["left"] and r["left"]["family"] == "shell"]
+    assert shell and all(s["label"] is None and s["label_withheld"] for s in shell)
+
+
+@pytest.mark.parametrize("actor", SEES_CONTENT)
+async def test_a_comparison_shows_commands_and_paths_to_actors_with_payload_read(
+    world: World, actor: str
+) -> None:
+    run = world.acme.run_id
+    body = (
+        await world.get(f"/v1/runs/{run}/compare", actor, with_run_id=world.acme.with_run_id)
+    ).json()
+    assert body["alignment"] == "content"
+    text = json.dumps(body)
+    assert COMMAND_CANARY in text and PATH_CANARY in text
+    assert PATH_CANARY.lstrip("/") in body["files"]["only_left"]  # shown relative
 
 
 @pytest.mark.parametrize("actor", WITHHELD_FROM)
