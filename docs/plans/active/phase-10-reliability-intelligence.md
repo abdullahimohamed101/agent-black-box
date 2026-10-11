@@ -374,3 +374,8 @@ Environment note: the Colima Postgres clock runs about 2.2 s ahead of the host; 
 - **P2-3 dead shrink loop.** Deleted. The bounds hold by construction (`LIST_LIMITS`, 128-character labels, the key allowlist; the 4,095-character-label and 64 x 4,000-character `loop.pattern` tests still pass);
   `validate_evidence` keeps two checks that raise `EvidenceError` (-> fixed-message `DetectorError`) instead of trimming silently. Test
   `test_validate_evidence_refuses_evidence_that_breaks_the_bounds` relaxes `LIST_LIMITS` with `monkeypatch` to reach both checks; mutating either check to never fire makes it fail.
+- **P3s.** `loop.detected` without `loop.repetitions` now reads "repeated an unknown number of times" (test `test_a_reported_loop_without_a_repetition_count_says_so_in_words`). Added
+  `test_a_project_bound_key_cannot_read_findings_of_another_project` (a beta-bound key gets the 404 of a random id, an empty runs list; the workspace-wide key still reads it) and
+  `test_the_badge_and_findings_of_one_workspace_never_reach_another`. Filed as KI-097 (health `no_data` during an active run), KI-098 (E2E verifies after the settle rebuild) and KI-099
+  (truncated runs fold status from the prefix; runbook says so). Not done: P3-4 (a cross-tenant test reusing one run id in two workspaces; INV-3 holds by the predicates, the run FK
+  makes such a test awkward), `hide_parameters=True` on the engine (repo-wide; the job wrapper already makes this job content-free).

@@ -44,6 +44,13 @@ def _plural(n: Any, word: str) -> str:
     return f"{n} {word}" if n == 1 else f"{n} {word}s"
 
 
+def _times(n: Any) -> str:
+    """`3 times`; words when the integration omitted `loop.repetitions` (it is optional)."""
+    if isinstance(n, bool) or not isinstance(n, int):
+        return "an unknown number of times"
+    return _plural(n, "time")
+
+
 def _text(value: Any, fallback: str = "?") -> str:
     return label(value) if isinstance(value, str) else fallback
 
@@ -67,7 +74,7 @@ def _words(finding_type: str, e: dict[str, Any]) -> tuple[str, str]:
         return (
             "the agent may be looping",
             f"The agent repeated {_pattern(e.get('pattern'))}"
-            f" {_plural(e.get('repetitions'), 'time')} in {_seconds(e.get('duration_ms'))}.",
+            f" {_times(e.get('repetitions'))} in {_seconds(e.get('duration_ms'))}.",
         )
     if finding_type == "identical_request":
         what = (
@@ -126,6 +133,6 @@ def _words(finding_type: str, e: dict[str, Any]) -> tuple[str, str]:
         return (
             "loop reported by the integration",
             f"The integration reported {_pattern(e.get('pattern'))}"
-            f" repeated {_plural(e.get('repetitions'), 'time')}.",
+            f" repeated {_times(e.get('repetitions'))}.",
         )
     return "finding", "A detector reported something."

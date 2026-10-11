@@ -57,14 +57,16 @@ There is no HTTP route for this.
 
 A detector bug is not swallowed: the job retries like any handler and is dead-lettered after five attempts, the route reports `state.status: failed`, and the
 run's `summary_state` stays `current` (the summary is unaffected). Find them with `python -m abb_api.cli jobs-list --status dead_letter`, fix and deploy the
-detector, then `jobs-retry` (see `dead-letters.md`). **`last_error` is a fixed message by design** (`DetectorError`): it names the detector and the event count, and never
-the exception text, because an exception could quote an attribute value. To see the traceback, reproduce locally by feeding the run's events to
+detector, then `jobs-retry` (see `dead-letters.md`). **`last_error` is a fixed message by design** (`DetectorError`): it names the detector (or `job` for a failure outside the detectors, such as loading the events or writing the rows, with event count 0) and the event count, and never
+the exception text (the worker logs only the exception class), because an exception could quote an attribute value. To see the traceback, reproduce locally by feeding the run's events to
 `run_all` (the fixtures in `apps/api/tests/fixtures/pathological/` show how); nothing about the cause is logged.
 
 ## Things that are not bugs
 
 - A repetitive agent shows probable loops on every run (no dismissals yet, KI-091). Raise `ABB_FINDINGS_LOOP_MIN_REPETITIONS`, or accept the `info` severity on successful runs.
 - Short loops of a single payload-less tool below the single-token threshold are not reported (KI-094).
+- While a run is active, the `loops` and `context` health dimensions read `no_data` ("Analysis in progress") whenever the analysis is being recomputed, although the previous findings are listed (KI-097).
+- A run above `ABB_FINDINGS_MAX_EVENTS` is analysed from its first events only (state `truncated`): its status is folded from that prefix, so cost-spike never runs on it and a loop may read `warning` instead of `info` (KI-099).
 - Retry windows are judged per emitter on `occurred_at`; clocks that differ between agents of one run make windows approximate (KI-095).
 - Findings carry no command text, paths, payloads, run names or error messages (ADR-080); to see the content, open the cited event as a person with `payload.read`.
 - `rebuild-findings` after a baseline change can legitimately add or drop a cost spike (the baseline moved).

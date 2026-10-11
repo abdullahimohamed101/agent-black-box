@@ -32,7 +32,7 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 starts with Phase 9.
 Phase 10 (reliability intelligence, branch `feature/phase-10-reliability-intelligence`, plan `docs/plans/active/phase-10-reliability-intelligence.md`): steps 1-7 are implemented and
 committed (pure detectors and the finding contract, migration 0060, `detect_findings` job, `rebuild-findings`, `GET /v1/runs/{id}/findings`, web Findings panel and runs-list column,
 `make findings-e2e`, ADR-080/081, runbook, benchmark). Status "Implemented; pending security review": next are `review-change` with the plan's attack list (AC-14), then
-`complete-phase` (move the plan and review to `completed/`, file KI-090..096 as GitHub issues and replace the "to file" placeholders). Merge order: Phase 9, then 10, then 16, then 11 (plan "Merge notes").
+`complete-phase` (move the plan and review to `completed/`, file KI-090..099 as GitHub issues and replace the "to file" placeholders). Merge order: Phase 9, then 10, then 16, then 11 (plan "Merge notes").
 Open for the merge: the five E2E scripts of other phases were not run here (ports reserved for parallel worktrees; CI runs them), and the container half of the regression check (KI-096).
 
 ## Blocked work

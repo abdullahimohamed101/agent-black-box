@@ -759,3 +759,14 @@ def test_validate_evidence_refuses_evidence_that_breaks_the_bounds(
     monkeypatch.setitem(model.LIST_LIMITS, "pattern", 200)
     with pytest.raises(EvidenceError, match="too large"):
         validate_evidence("possible_loop", {"pattern": ["x" * 4096] * 200})
+
+
+def test_a_reported_loop_without_a_repetition_count_says_so_in_words() -> None:
+    synth = Synth()
+    synth.add("loop.detected", attrs={"loop.pattern": ["a", "b"]})
+    (finding,) = [
+        f for f in run_all(build_context(synth.events)) if f.finding_type == "reported_loop"
+    ]
+    _, message = describe(finding)
+    assert message == "The integration reported a -> b repeated an unknown number of times."
+    assert "None" not in message

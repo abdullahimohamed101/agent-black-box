@@ -329,3 +329,33 @@ async def test_a_key_without_runs_read_is_refused(api: Api) -> None:
     )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "INSUFFICIENT_SCOPE"
+
+
+async def test_a_project_bound_key_cannot_read_findings_of_another_project(api: Api) -> None:
+    """A run of project alpha, read with a key bound to beta: the same 404 as a random id, an
+    empty runs list, and the workspace-wide key (which may see both) still reads it."""
+    await post_wires(api, fixture_wires("looping"))  # the writer is bound to alpha
+    await api.drain()
+    run_id = run_id_of("looping")
+    assert (await api.get(f"/v1/runs/{run_id}/findings", token="wide_reader")).status_code == 200
+
+    unknown = await api.get("/v1/runs/run_01M4QNE6M04CKP6JH7TAZ62Q99/findings", token="beta")
+    hidden = await api.get(f"/v1/runs/{run_id}/findings", token="beta")
+    assert hidden.status_code == unknown.status_code == 404
+    bodies = []
+    for response in (hidden, unknown):
+        error = response.json()["error"]
+        error.pop("request_id", None)
+        bodies.append(error)
+    assert bodies[0] == bodies[1]
+    assert (await api.get("/v1/runs", token="beta")).json()["items"] == []
+
+
+async def test_the_badge_and_findings_of_one_workspace_never_reach_another(api: Api) -> None:
+    await post_wires(api, fixture_wires("looping"))
+    await api.drain()
+    run_id = run_id_of("looping")
+    assert (await api.get(f"/v1/runs/{run_id}", token="other")).status_code == 404
+    assert (await api.get(f"/v1/runs/{run_id}/findings", token="other")).status_code == 404
+    listed = (await api.get("/v1/runs", token="other", limit=50)).json()["items"]
+    assert run_id not in {r["id"] for r in listed}
