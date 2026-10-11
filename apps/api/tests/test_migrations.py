@@ -38,6 +38,18 @@ async def table_names(url: str) -> set[str]:
     return names
 
 
+async def column_names(url: str, table: str) -> set[str]:
+    engine = create_async_engine(url, poolclass=NullPool)
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            text("SELECT column_name FROM information_schema.columns WHERE table_name = :t"),
+            {"t": table},
+        )
+        names = {r[0] for r in rows}
+    await engine.dispose()
+    return names
+
+
 def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
     assert revisions() == [
         "0001",
@@ -58,6 +70,8 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0046",
         "0047",
         "0060",
+        "0070",
+        "0071",
     ]
 
 
@@ -116,3 +130,24 @@ def test_a_database_at_0047_upgrades_to_0060_and_back_to_0047() -> None:
         assert asyncio.run(table_names(url)) - before == {"findings", "run_findings"}
         alembic(url, "downgrade", "0047")
         assert asyncio.run(table_names(url)) == before
+
+
+def test_a_database_at_0060_upgrades_to_0071_and_back_to_0060() -> None:
+    """Phase 11's two migrations add exactly their tables and columns and reverse cleanly."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0060")
+        before = asyncio.run(table_names(url))
+        columns_before = asyncio.run(column_names(url, "evaluations"))
+        alembic(url, "upgrade", "0071")
+        assert asyncio.run(table_names(url)) - before == {
+            "evaluators",
+            "experiments",
+            "experiment_variants",
+            "experiment_runs",
+        }
+        assert {"state", "evaluator_id", "explanation", "config_snapshot"} <= (
+            asyncio.run(column_names(url, "evaluations")) - columns_before
+        )
+        alembic(url, "downgrade", "0060")
+        assert asyncio.run(table_names(url)) == before
+        assert asyncio.run(column_names(url, "evaluations")) == columns_before
