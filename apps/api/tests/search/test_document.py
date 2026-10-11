@@ -12,7 +12,7 @@ from abb_api.search.document import (
     MAX_POSITIONS,
     MAX_VALUES,
     build_document,
-    distinct_agents,
+    summary_agents,
 )
 from abb_api.search.tsliteral import parse_tsvector
 from abb_api.tenancy import TenantContext
@@ -62,7 +62,7 @@ def build(events: list[Event], **kw: Any) -> Any:
     options: dict[str, Any] = {
         "run_name": derived.name,
         "run_metadata": {"ticket": "ABC-123", "nested": {"owner": "Dana"}, "n": 4},
-        "agents": distinct_agents(events),
+        "agents": summary_agents(derived.summary),
         "error_count": derived.summary["error_count"],
     }
     options.update(kw)

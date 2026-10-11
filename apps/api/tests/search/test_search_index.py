@@ -11,7 +11,7 @@ from abb_api import cli
 from abb_api.db import tables as t
 from abb_api.jobs.outbox import OutboxRepository
 from abb_api.runs.summary import SUMMARY_VERSION, derive_run
-from abb_api.search.document import build_document, distinct_agents
+from abb_api.search.document import build_document, summary_agents
 from abb_api.search.repository import RunSearchRepository
 from tests.conftest import make_settings
 from tests.ingest_helpers import build_event, make_run_ids, make_tenant
@@ -64,7 +64,7 @@ async def test_the_summarizer_writes_the_document_and_it_is_rebuildable(
         events,
         run_name=derived.name,
         run_metadata={},
-        agents=distinct_agents(events),
+        agents=summary_agents(derived.summary),
         error_count=derived.summary["error_count"],
     )
     assert (
@@ -119,7 +119,7 @@ async def test_an_unchanged_resummarisation_writes_nothing_and_a_change_does(
             events,
             run_name="Index me",
             run_metadata={},
-            agents=distinct_agents(events),
+            agents=summary_agents(derive_run(events).summary),
             error_count=0,
         )
         repository = RunSearchRepository(conn, tenant.context)

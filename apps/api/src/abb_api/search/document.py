@@ -96,9 +96,19 @@ class _Bounded:
         self._bytes += size
 
 
-def distinct_agents(events: Iterable[Event]) -> tuple[str, ...]:
-    """The distinct agent ids of the events in canonical order (before multi-agent derivation)."""
-    return tuple(dict.fromkeys(e.agent_id for e in sort_events(events)))
+def summary_agents(summary: Mapping[str, Any]) -> tuple[str, ...]:
+    """The agent ids of the run summary's per-agent list (Phase 9: at most 50 plus `(other)`).
+
+    One source of truth: `agent:` matches exactly the agents the run page lists.
+    """
+    entries = summary.get("agents")
+    if not isinstance(entries, list):
+        return ()
+    return tuple(
+        e["agent_id"]
+        for e in entries
+        if isinstance(e, Mapping) and isinstance(e.get("agent_id"), str)
+    )
 
 
 def _strings(value: object) -> list[str]:

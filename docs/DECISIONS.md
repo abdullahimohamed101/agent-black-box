@@ -36,3 +36,5 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-060 | Dashboard identity via OIDC with API-owned, database-backed sessions (supersedes ADR-021) | 15 | Accepted ([file](decisions/ADR-060-dashboard-identity-oidc-sessions.md)) |
 | ADR-061 | One authorization helper; keys and people share the enforcement path; the matrix is data | 15 | Accepted ([file](decisions/ADR-061-authorization-helper-and-role-matrix.md)) |
 | ADR-062 | Append-only, bounded workspace audit log | 15 | Accepted ([file](decisions/ADR-062-append-only-audit-log.md)) |
+| ADR-070 | Multi-agent trace semantics: one run, agent spans with their own id, explicit trace-context propagation, remote emitters omit `sequence` | 9 | Accepted ([file](decisions/ADR-070-multi-agent-trace-semantics-and-propagation.md)) |
+| ADR-071 | The waterfall is derived in the browser from the loaded events; critical path by last-finishing child | 9 | Accepted ([file](decisions/ADR-071-browser-derived-waterfall.md)) |

@@ -95,8 +95,41 @@ are reported by `spans.check_span_relationships`: two parents, a cycle, one span
 
 `ordering.sort_events`: if every event has a `sequence`, order by `(sequence, occurred_at,
 received_at, event_id)`; otherwise by `(occurred_at, sequence, received_at, event_id)`. Arrival order
-is never used. `sequence` is comparable only within one emitter; multi-process agents are a Phase 9
-concern.
+is never used. `sequence` is comparable only within one emitter (see "Propagation" for multi-process runs).
+
+## Agents and delegation (Phase 9, ADR-070)
+
+One run, one trace, many agents (spec §84). A child agent is an `agent.started` ... `agent.completed` span with its own `agent_id` (and
+optionally `agent_version`) inside the parent's run; every event emitted inside it carries the child's `agent_id`. The run's own
+`agent_id` stays the root agent's. Delegation is recorded by both sides:
+
+| Who | Event | Identity and shape |
+| --- | --- | --- |
+| delegator | `agent.spawned` (point) | the delegator's `agent_id`; in the delegating span when there is one, else at run level with no `span_id`; `agent.child_id` = the child's slug (required); the optional delegation input is the payload `{"input": ...}` |
+| child | `agent.started` (opens a span) | the child's `agent_id`; `parent_span_id` = the delegating span when there is one, else a root span |
+| child | `agent.completed` (closes it) | `status`; the optional result is the payload `{"result": ...}` |
+
+A child that never starts is still visible as a spawn without a start. Payloads are gated by the payload mode and redacted like every other
+payload. A child slug that would be empty (a name with no slug characters) or equal to the delegator's becomes `<delegator>-child-<n>`.
+There is no `agent.failed` type: a failed agent closes with `agent.completed` and `status: "error"`. `agent.child_id` is a label (any string,
+up to 4,096 characters); readers render it as text and truncate it.
+
+## Propagation (Phase 9, ADR-070)
+
+In one process the SDK follows contextvars (asyncio tasks inherit; threads use `blackbox.bind`). Across processes a serializable trace
+context carries the address of the delegating span: `abb1;run=run_<ULID>;trace=trc_<ULID>;span=spn_<ULID>;agent=<slug>` (`span` and `agent`
+optional, at most 256 characters; every id matches the contract patterns). Conventions: the environment variable `BLACKBOX_TRACE_CONTEXT`, the
+HTTP header name `X-Blackbox-Trace-Context` (the API never reads it). The string is an address, not a credential: the child still needs an API key
+of the same project, and the server rejects events whose run belongs to another project (`RUN_PROJECT_MISMATCH`). W3C `traceparent` cannot carry
+a 128-bit span id; mapping it belongs to the OpenTelemetry adapter (ADR-007, KI-086).
+
+A continued run emits no `run.*` events (the root owns the run) and parents its root spans to the context's span. **Ordering consequence (D4):**
+a continued run, and a forked child that kept using its parent's `Run`, omit `sequence`. A run with any event lacking `sequence` is ordered by
+`(occurred_at, sequence, received_at, event_id)` (`ordering_mode: time`), so under clock skew the chronological list interleaves emitters by
+their own clocks and the earliest `occurred_at` sets the run's `started_at` and the page's `t0` (KI-085). Structure never depends on time: spans
+nest by `parent_span_id` only, so a skewed child still nests under its parent (§65.3). The run's root agent and `trace_id` come from the first
+`run.started` in canonical order (fallback: the first event for runs created by `POST /v1/runs`), so a skewed or forged child event cannot become
+the run's agent or trace.
 
 ## Delivery and idempotency
 

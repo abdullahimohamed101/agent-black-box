@@ -675,3 +675,9 @@ changing the classification in one place (`abb_api/content.py`). A future rankin
   `runs/summary.py`); it becomes merged value + 1 on rebase.
 - **Mutation checks run (each failed a test):** viewer text compiled against `content_doc`; content gate removed; `content_truncated` selected for
   everyone; tenant dropped from the join's ON (this one survived until the test asserted a bound parameter on the joined side; fixed).
+
+### Merge of main (Phase 9) - done
+- `SUMMARY_VERSION = 4` (Phase 9's 3 + 1); pin updated in `tests/test_run_summary.py`; KI-081 reads `>= 4` (plan text above).
+- The search document's `agents` array now reads Phase 9's `summary["agents"]` (`search/document.py::summary_agents`, at most 50 entries plus
+  `(other)`), replacing the earlier `distinct_agents(events)`: one source list for the run page and `agent:`.
+- No 0047 round-trip test added; `openapi.json` and `schema.d.ts` unchanged by the merge (checks green).

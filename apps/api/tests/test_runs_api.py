@@ -796,3 +796,72 @@ async def test_run_listing_state_lookup_uses_the_dedupe_index(api: Api) -> None:
         )
         text_plan = "\n".join(row[0] for row in plan)
     assert "ix_outbox_dedupe" in text_plan and "Seq Scan" not in text_plan, text_plan
+
+
+# ------------------------------------------------------------------ multiple agents (Phase 9)
+
+
+async def ingest_two_agents(api: Api) -> tuple[dict[str, str], str, str]:
+    """A planner run whose tester child (another process: no sequence, clock behind) nests in it."""
+    run = make_run_ids()
+    deleg, child, llm = (new_id(IdKind.SPAN) for _ in range(3))
+
+    def stamp(seconds: float) -> str:
+        return (T0 + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+
+    events = [
+        wire_event(run, 1, agent_id="planner", event_type="run.started", span_id=..., attributes={},
+                   occurred_at=stamp(100)),
+        wire_event(run, 2, agent_id="planner", event_type="tool.call.started", span_id=deleg,
+                   attributes={"tool.name": "delegate"}, occurred_at=stamp(101)),
+        wire_event(run, 3, agent_id="planner", event_type="agent.spawned", span_id=deleg,
+                   attributes={"agent.child_id": "tester"}, occurred_at=stamp(101.5)),
+        wire_event(run, 4, agent_id="tester", event_type="agent.started", span_id=child,
+                   parent_span_id=deleg, sequence=..., attributes={}, occurred_at=stamp(90)),
+        wire_event(run, 5, agent_id="tester", event_type="llm.request.completed", span_id=llm,
+                   parent_span_id=child, sequence=..., status="success", occurred_at=stamp(92),
+                   attributes={"llm.provider": "p", "llm.model": "m", "cost.provider_usd": 0.5}),
+        wire_event(run, 6, agent_id="tester", event_type="agent.completed", span_id=child,
+                   parent_span_id=deleg, sequence=..., status="success", attributes={},
+                   occurred_at=stamp(95)),
+        wire_event(run, 7, agent_id="planner", event_type="tool.call.completed", span_id=deleg,
+                   status="success", attributes={"tool.name": "delegate"}, occurred_at=stamp(110)),
+        wire_event(run, 8, agent_id="planner", event_type="run.completed", span_id=...,
+                   attributes={}, occurred_at=stamp(111)),
+    ]  # fmt: skip
+    response = await api.post_batch(events, token="writer")
+    assert response.json()["accepted"] == 8, response.text
+    await api.drain()
+    return run, deleg, child
+
+
+async def test_run_detail_carries_the_per_agent_breakdown_and_lists_only_its_count(
+    api: Api,
+) -> None:
+    run, _, _ = await ingest_two_agents(api)
+    detail = (await api.get(f"/v1/runs/{run['run_id']}")).json()
+    assert detail["agent_id"] == "planner" and detail["ordering_mode"] == "time"
+    assert detail["summary_version"] == 4
+    summary = detail["summary"]
+    assert summary["agent_count"] == 2
+    by_id = {a["agent_id"]: a for a in summary["agents"]}
+    assert set(by_id) == {"planner", "tester"}
+    assert by_id["tester"]["parent_agent_id"] == "planner" and by_id["tester"]["llm_calls"] == 1
+    assert (
+        by_id["tester"]["estimated_cost_usd"] == 0.5
+        and by_id["planner"]["estimated_cost_usd"] == 0.0
+    )
+
+    listed = (await api.get("/v1/runs", limit=50)).json()["items"]
+    item = next(r for r in listed if r["id"] == run["run_id"])
+    assert "agents" not in item["summary"] and item["summary"]["agent_count"] == 2
+    assert item["summary"]["estimated_cost_usd"] == detail["summary"]["estimated_cost_usd"]
+
+
+async def test_the_spans_endpoint_shows_the_child_agent_nested_under_the_delegating_span(
+    api: Api,
+) -> None:
+    run, deleg, child = await ingest_two_agents(api)
+    spans = {s["id"]: s for s in (await api.get(f"/v1/runs/{run['run_id']}/spans")).json()["items"]}
+    assert spans[child]["agent_id"] == "tester" and spans[child]["parent_span_id"] == deleg
+    assert spans[deleg]["agent_id"] == "planner"

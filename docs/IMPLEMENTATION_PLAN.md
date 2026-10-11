@@ -17,7 +17,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 7 | Cost and analytics | §79, §22-23, §61 | M3 | Complete (merged, CI green) |
 | | **MVP gate** (spec §49, §138): human review, launch quality bar | | | Open: KI-050 (OpenAI and tiered prices); user acceptance |
 | 8 | Framework integrations | §70, §18 | post-MVP | Complete (merged, CI green) |
-| 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Not started |
+| 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Implemented; pending security review (plan: `docs/plans/active/phase-9-multi-agent-tracing.md`) |
 | 10 | Reliability intelligence | §80-81 | M5 | Not started |
 | 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Not started |
 | 12 | Visual replay | §87 (level 1) | | Not started |
@@ -234,3 +234,7 @@ README with screenshots, architecture, quickstart, SDK/API/events/deployment/sec
 troubleshooting docs, three examples (coding, simple custom, multi-agent), deterministic seed
 data (`make demo`), short demo recording, release polish checklist (no placeholder text, broken
 routes, fake charts, debug logging, or secrets).
+
+## Ideas beyond Phase 20 (not planned)
+
+- A hub for all LLM usage (gateway, tool hooks, usage import): `docs/ideas/llm-hub.md`. Revisit when the roadmap above is nearing completion.

@@ -25,6 +25,7 @@ COUNTERS = (
     "batches_sent",
     "retries",
     "internal_errors",
+    "remote_run_end_ignored",  # end() on a continued run: the root run owns the run's end
 )
 
 

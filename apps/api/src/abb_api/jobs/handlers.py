@@ -15,7 +15,7 @@ from abb_api.ingestion.store import PgEventStore
 from abb_api.jobs.outbox import REFRESH_ANALYTICS_DAY, SUMMARIZE_RUN, Job, OutboxRepository
 from abb_api.runs.repository import RunRepository
 from abb_api.runs.summary import SUMMARY_VERSION, derive_run
-from abb_api.search.document import build_document, distinct_agents
+from abb_api.search.document import build_document, summary_agents
 from abb_api.search.repository import RunSearchRepository
 from abb_api.tenancy import TenantContext
 
@@ -62,7 +62,7 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
             events,
             run_name=facts.name,
             run_metadata=facts.metadata,
-            agents=distinct_agents(events),
+            agents=summary_agents(derived.summary),
             error_count=int(derived.summary["error_count"]),
         )
         await search.upsert_if_changed(

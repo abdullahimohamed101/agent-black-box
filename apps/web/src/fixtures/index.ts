@@ -3,6 +3,7 @@ import {
   approvalRun,
   expensiveRun,
   failureRetryRun,
+  multiAgentRun,
   runningRun,
   stressRun,
   successRun,
@@ -20,6 +21,7 @@ export function fixtureRuns(): FixtureRun[] {
     runningRun(),
     approvalRun(),
     stressRun(),
+    multiAgentRun(),
   ].sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));
   return cache;
 }

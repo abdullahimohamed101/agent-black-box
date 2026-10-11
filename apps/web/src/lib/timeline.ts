@@ -131,13 +131,16 @@ export type Filters = {
   /** null = every class */
   classes: ReadonlySet<EventClass> | null;
   errorsOnly: boolean;
+  /** Only these agents' events; null or absent = every agent. Set from the agent tree in multi-agent runs. */
+  agents?: ReadonlySet<string> | null;
 };
-export const NO_FILTERS: Filters = { classes: null, errorsOnly: false };
+export const NO_FILTERS: Filters = { classes: null, errorsOnly: false, agents: null };
 
 export function filterEvents(events: readonly EventOut[], f: Filters): EventOut[] {
   return events.filter((e) => {
     if (f.errorsOnly && !isError(e)) return false;
     if (f.classes && !f.classes.has(eventClass(e.event_type))) return false;
+    if (f.agents && !f.agents.has(e.agent_id)) return false;
     return true;
   });
 }

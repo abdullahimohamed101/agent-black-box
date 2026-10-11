@@ -1,4 +1,5 @@
 import type { EventOut, RunOut, SpanOut } from "@/lib/api/types";
+import { orderingMode, sortEvents } from "@/lib/ordering";
 import { fid } from "./ids";
 
 export const FIXTURE_PROJECT = fid("prj", 1);
@@ -8,9 +9,18 @@ export type FixtureRun = { run: RunOut; events: EventOut[]; spans: SpanOut[] };
 
 type Extra = Partial<
   Pick<EventOut, "status" | "duration_ms" | "span_id" | "parent_span_id" | "payload" | "agent_id">
->;
+> & {
+  /** A remote emitter (another process): no `sequence`, so the run is time-ordered (D4). */
+  sequence?: null;
+  /** The emitter's clock offset in ms: shifts `occurred_at` only, never `received_at` or the builder's clock. */
+  atMs?: number;
+};
 
-/** Builds one run's events in canonical (sequence) order and derives its summary like the API worker does. */
+/**
+ * Builds one run's events and derives its summary like the API worker does. `build()` puts the events in canonical
+ * order (`sortEvents`) and reports the `ordering_mode` that order implies, so a run with events from a remote emitter
+ * is time-ordered exactly as the API would serve it.
+ */
 export class RunBuilder {
   readonly events: EventOut[] = [];
   private seq = 0;
@@ -41,10 +51,11 @@ export class RunBuilder {
     gapMs = 400,
     extra: Extra = {},
   ): EventOut {
-    this.seq += 1;
+    if (extra.sequence !== null) this.seq += 1;
     this.evtN += 1;
     this.t += gapMs;
     const at = new Date(this.t).toISOString();
+    const occurred = extra.atMs ? new Date(this.t + extra.atMs).toISOString() : at;
     const e: EventOut = {
       schema_version: "1.0",
       event_id: fid("evt", this.evtN),
@@ -57,9 +68,9 @@ export class RunBuilder {
       agent_id: extra.agent_id ?? this.agent,
       agent_version: "1.4.2",
       event_type,
-      occurred_at: at,
+      occurred_at: occurred,
       received_at: at,
-      sequence: this.seq,
+      sequence: extra.sequence === null ? null : this.seq,
       status: extra.status ?? null,
       duration_ms: extra.duration_ms ?? null,
       attributes,
@@ -75,7 +86,8 @@ export class RunBuilder {
   }
 
   build(): FixtureRun {
-    const ev = this.events;
+    const ev = sortEvents(this.events);
+    const mode = orderingMode(ev);
     const first = ev[0]!;
     const last = ev[ev.length - 1]!;
     const sum = (t: string, a: string) =>
@@ -120,7 +132,7 @@ export class RunBuilder {
       started_at: first.occurred_at,
       completed_at: terminal ? last.occurred_at : null,
       duration_ms: duration,
-      ordering_mode: "sequence",
+      ordering_mode: mode,
       summary: {
         event_count: ev.length,
         duration_ms: Date.parse(last.occurred_at) - Date.parse(first.occurred_at),
@@ -137,6 +149,7 @@ export class RunBuilder {
         models,
         first_event_at: first.occurred_at,
         last_event_at: last.occurred_at,
+        ...agentSummary(ev),
       },
       summary_version: 1,
       summary_state: "current",
@@ -156,7 +169,7 @@ export class RunBuilder {
       ),
       name_withheld: false,
       kind: es[0]!.event_type.split(".")[0] ?? null,
-      agent_id: this.agent,
+      agent_id: es[0]!.agent_id,
       status: es.find((e) => e.status)?.status ?? null,
       started_at: es[0]!.occurred_at,
       ended_at: es[es.length - 1]!.occurred_at,
@@ -165,4 +178,45 @@ export class RunBuilder {
     }));
     return { run, events: ev, spans };
   }
+}
+
+/** `summary.agents` and `agent_count` for a run with more than one agent, shaped like the API worker's. */
+function agentSummary(ev: EventOut[]): Record<string, unknown> {
+  const ids = [...new Set(ev.map((e) => e.agent_id))];
+  if (ids.length < 2) return {};
+  const agentOfSpan = new Map<string, string>();
+  for (const e of ev)
+    if (e.span_id && !agentOfSpan.has(e.span_id)) agentOfSpan.set(e.span_id, e.agent_id);
+  const agents = ids.map((id) => {
+    const mine = ev.filter((e) => e.agent_id === id);
+    const opener = mine.find((e) => e.event_type === "agent.started");
+    const closer = [...mine].reverse().find((e) => e.event_type === "agent.completed");
+    const parentSpan = opener?.parent_span_id;
+    const parent = parentSpan ? (agentOfSpan.get(parentSpan) ?? null) : null;
+    return {
+      agent_id: id,
+      parent_agent_id: parent === id ? null : parent,
+      state: closer ? (closer.status === "error" ? "failed" : "completed") : "started",
+      event_count: mine.length,
+      llm_calls: mine.filter((e) => /^llm\.request\.(completed|failed)$/.test(e.event_type)).length,
+      tool_calls: mine.filter((e) => /^tool\.call\.(completed|failed)$/.test(e.event_type)).length,
+      error_count: mine.filter(
+        (e) => e.status === "error" || e.status === "timeout" || e.event_type.endsWith(".failed"),
+      ).length,
+      estimated_cost_usd: Number(
+        mine
+          .reduce((sum, e) => sum + Number(e.attributes["cost.estimated_usd"] ?? 0), 0)
+          .toFixed(6),
+      ),
+      first_event_at: mine.reduce(
+        (m, e) => (e.occurred_at < m ? e.occurred_at : m),
+        mine[0]!.occurred_at,
+      ),
+      last_event_at: mine.reduce(
+        (m, e) => (e.occurred_at > m ? e.occurred_at : m),
+        mine[0]!.occurred_at,
+      ),
+    };
+  });
+  return { agents, agent_count: agents.length };
 }
