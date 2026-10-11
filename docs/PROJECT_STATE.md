@@ -3,14 +3,13 @@
 Last updated: 2026-10-11
 
 ## Current phase
-Phases 0-8 and 15 are merged to `main` (CI green; Phase 15 is PR #58). The MVP gate (spec §49, §138) is reached but **not accepted**: the user decides after
-reviewing the items under "Next actions". **Phase 9 (multi-agent tracing and waterfall) is implemented on `feature/phase-9-multi-agent-tracing` and awaits its
-independent security review** (`docs/plans/active/phase-9-multi-agent-tracing.md`, status "Implemented; pending security review"; closing evidence for AC-1..15 is in
-the plan). Phases 10, 11 and 16 are planned or in progress elsewhere; merge order 9, 10, 16, 11.
+Phases 0-9 and 15 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73). The MVP gate (spec §49, §138) is reached but **not accepted**: the user decides
+after reviewing the items under "Next actions". Phases 10, 16 and 11 are being built on their own branches (worktrees), merge order 10, 16, 11; Phase 10 is built and
+reviewed and its review findings are being fixed, Phase 16 is in its first build chunk, Phase 11 starts after 16.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
-post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 starts with Phase 9.
+post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, Phase 9) is done.
 
 ## Completed work
 - Phases 0-2: foundation, event contract, ingestion/outbox/query API (`docs/plans/completed/`).
@@ -27,13 +26,13 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 starts with Phase 9.
   stream re-authentication, web sign-in/switcher/settings, the shared web key removed; resolves KI-029, KI-027, KI-051, KI-033; viewers also never see command text or file paths. Closing evidence is in the plan; the independent security
   review (26 mutation checks, none survived) and its fixes are in `docs/plans/completed/phase-15-security-review.md`.
 
-- Phase 9 (branch, not merged): `run.agent()`/`agent.spawned`, trace-context propagation across threads, asyncio tasks, forks and processes (SDK 0.3.0, ADR-070),
+- Phase 9: `run.agent()`/`agent.spawned`, trace-context propagation across threads, asyncio tasks, forks and processes (SDK 0.3.0, ADR-070),
   per-agent run summary and root identity from `run.started` (`SUMMARY_VERSION` 3, **the next bump is 4**), browser-derived span tree and waterfall with lanes, zoom,
   critical path and agent tree (ADR-071), multi-agent fixture, `examples/multi-agent`, `scripts/multiagent-e2e.sh` (CI job `multiagent-e2e`); no migration, no new
-  route. KI-063 spike measured and not shipped (`docs/benchmarks/phase-9-ki063-langgraph-threads.md`); KI-084..086 filed as "to file".
+  route. KI-063 spike measured and not shipped (`docs/benchmarks/phase-9-ki063-langgraph-threads.md`); KI-084..086 are GitHub issues. An independent security review (13 mutation checks; one P1, the SDK stripped NUL bytes after redaction, now fixed with regression tests) is in `docs/plans/completed/phase-9-security-review.md`.
 
 ## In-progress work
-Phase 9 needs the `review-change` security pass (what to attack first is in the plan's "Security review note"), then `complete-phase` (move the plan to `completed/`).
+Phase 10 (review fixes), Phase 16 (build) and then Phase 11, each in its own worktree under `../abb-worktrees/`; nothing is pushed from them until a phase is fully ready.
 
 ## Blocked work
 None.
@@ -42,8 +41,7 @@ None.
 1. User: the one manual sign-in with a real OIDC provider (AC-14, KI-067; needs your own client id and secret, see `docs/runbooks/auth-and-access.md`), and a compose
    runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
 2. User: decide MVP gate acceptance. Remaining gate item: KI-050 (OpenAI prices and tiered models are not in the built-in table; the engine has no price tiers).
-3. Review Phase 9, merge it first, then 10, 16 and 11 (rebase notes in each plan's "Merge notes"; Phase 16 must use `SUMMARY_VERSION` 4); then 13 and 14 in sequence.
-4. File GitHub issues for KI-084..086 (placeholders say "to file").
+3. Finish and merge Phase 10, then 16 and 11 (rebase notes in each plan's "Merge notes"; Phase 16 must use `SUMMARY_VERSION` 4); then 13 and 14 in sequence.
 
 ## Open decisions
 - MVP acceptance (after the gate items above).
