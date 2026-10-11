@@ -1,6 +1,6 @@
 # Phase 16 - Search and investigation
 
-Status: Implemented; pending security review (2026-10-11). Decisions 1-5 were taken at their recommended defaults. Evidence for every AC is in "Closing evidence" at the end. History: planned 2026-10-09 (4d4075e); independent review `phase-16-plan-review.md` (d7f805f) addressed below, see "Review dispositions".
+Status: Completed 2026-10-11 (merged as PR #92, CI green). The independent security review of the implementation is done and its findings are fixed or filed (`phase-16-security-review.md`); the plan review is `phase-16-plan-review.md`. KI-080..083 and KI-110..115 are GitHub issues #93 to #102. History: Implemented; pending security review (2026-10-11). Decisions 1-5 were taken at their recommended defaults. Evidence for every AC is in "Closing evidence" at the end. History: planned 2026-10-09 (4d4075e); independent review `phase-16-plan-review.md` (d7f805f) addressed below, see "Review dispositions".
 Owner: implementer agent
 Branch: `feature/phase-16-search-investigation` (from `main` c212058; worktree `../abb-worktrees/phase-16`; Phases 9, 10 and 11 are planned in parallel; merge order 9, 10, 16, 11)
 Depends on: Phase 2 (runs query API, cursors, summarizer), Phase 7 (typed run columns `cost_usd`, `retry_count`, ADR-043), Phase 15 (`authorize()`, `payload.read`, read-time withholding in `runs/content.py`, the route registry and canary tests); on rebase: Phase 9 (`SUMMARY_VERSION` 3, `summary["agents"]`), Phase 10 (migration 0060, `summary_states(job_type=...)`, `RunOut.findings`)
