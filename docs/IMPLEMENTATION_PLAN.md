@@ -214,6 +214,10 @@ audit log (ADR-062); resolves KI-029, KI-027, KI-051, KI-033. The route-walking 
 ## Phase 16 - Search and investigation
 Filter AST + parser for the §152 grammar, compiled to storage queries; server-side; FTS for
 selected text metadata; natural language (optional) compiles to the AST only.
+Built as (implemented, pending security review): `GET /v1/runs?q=` (the grammar in `docs/architecture/api-v1.md`), a derived `run_search` table written by the summarizer (migration
+0080, `SUMMARY_VERSION` 4, `search-rebuild`), bounded reads (concurrency cap and time budget), permission-safe content search (ADR-100, ADR-101), the investigation view (chips from the
+server's parse, matched column, facets, unindexed notice) and the rule-based `QueryCompiler` fake. Evidence: `docs/plans/active/phase-16-search-investigation.md`; benchmarks:
+`docs/benchmarks/phase-16-regression-check.md`. KI-080..083.
 
 ## Phase 17 - Alerting and integrations
 Alert rules evaluated by workers; webhook, email, Slack behind an extension interface.

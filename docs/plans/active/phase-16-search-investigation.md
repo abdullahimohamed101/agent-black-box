@@ -1,6 +1,6 @@
 # Phase 16 - Search and investigation
 
-Status: Planned and reviewed 2026-10-10; ready for implementation (user decisions 1-5 below still open; "go with your recommendation" suffices). History: planned 2026-10-09 (4d4075e); independent review `phase-16-plan-review.md` (d7f805f) addressed below, see "Review dispositions".
+Status: Implemented; pending security review (2026-10-11). Decisions 1-5 were taken at their recommended defaults. Evidence for every AC is in "Closing evidence" at the end. History: planned 2026-10-09 (4d4075e); independent review `phase-16-plan-review.md` (d7f805f) addressed below, see "Review dispositions".
 Owner: implementer agent
 Branch: `feature/phase-16-search-investigation` (from `main` c212058; worktree `../abb-worktrees/phase-16`; Phases 9, 10 and 11 are planned in parallel; merge order 9, 10, 16, 11)
 Depends on: Phase 2 (runs query API, cursors, summarizer), Phase 7 (typed run columns `cost_usd`, `retry_count`, ADR-043), Phase 15 (`authorize()`, `payload.read`, read-time withholding in `runs/content.py`, the route registry and canary tests); on rebase: Phase 9 (`SUMMARY_VERSION` 3, `summary["agents"]`), Phase 10 (migration 0060, `summary_states(job_type=...)`, `RunOut.findings`)
@@ -690,3 +690,56 @@ changing the classification in one place (`abb_api/content.py`). A future rankin
 - `SearchGate` is created lazily on `app.state.search_gate` from the router (`main.py` untouched).
 - `RuleBasedCompiler` is exported beside `QueryCompiler` (tests need it); both carry no vendor, no SQL.
 - Tests: `tests/search/conftest.py` re-exports the Phase 15 `world` fixture. Mutation checks (each failed a test, reverted): gate dropped (oracle refusal test), viewer text compiled against `content_doc` (content-word vs nonsense test), content column selected for viewers (viewer statement-text test), workspace predicate dropped from `_base` (cross-workspace test), content flag read inside the unindexed count (statement-text test), refusal error made data-dependent (refusal test).
+
+### Implementation notes (steps 7-9)
+- **Web (step 7).** The browser never parses `q`: `lib/search.ts` only edits the typed text by the spans the server echoed (`removeSpan`, `termText`), quotes facet values, converts legacy
+  URLs and classifies the API's refusals. The status checkboxes and the Agent input stay as they were (legacy API parameters, ANDed with `q`; the existing tests and Playwright flow keep passing); an old
+  bookmark `?status=FAILED&agent=x&range=24h` is converted once on load to `q=status:failed agent:x` plus `range`. **Deviation:** the grammar is a conjunction, so *several* statuses in an old URL stay the
+  legacy `status` parameter (the API ORs them) instead of becoming terms. The range control becomes a `started:>=-24h` term added to the sent `q` (so the page is a search whenever a range is chosen, and its
+  chip removes the range). The search help lists exactly `query.fields` from the API (`GET /v1/runs?q=&limit=1`, one light request), so a viewer is never offered `file:` or `command:` and the UI never
+  guesses a role; `/v1/me` permissions were not needed. A busy or timed-out search is not auto-retried (`shouldRetry`), it shows a retry button. `414` (proxy) and a locally checked 512-character limit show
+  the same "too long" message; the proxy test pins that 512 ASCII characters pass and 512 CJK characters exceed 2,048 encoded characters (F22). A new `app/search.css` (imported in `layout.tsx`) holds the styles; `globals.css`
+  is untouched. Fixture mode answers a small subset (status, agent, tool, model, event, name, started, free words over the run name) and answers anything else with a `422` that says so.
+- **E2E (step 8).** `scripts/auth-e2e.sh` provisions a second OWNER and a VIEWER (`searcher-*`, `viewer-*@auth.test`) with minted development sessions (so `auth.spec.ts`'s members, invitation and downgrade
+  steps stay independent) and runs `auth.spec.ts` and `search.spec.ts` together. The fixtures spec gained one search test.
+- **Test added in step 9:** `test_a_search_page_has_no_total_count_and_no_relevance_field` (no deferred mutation check killed "a total count added" until it existed).
+- **Docs (step 9).** ADR-100/101, `docs/runbooks/search.md`, api-v1 "Search", TESTING, SECURITY, KI-080..083 (placeholder "to file"), README, ARCHITECTURE, IMPLEMENTATION_PLAN, PROJECT_STATE; benchmarks in
+  `docs/benchmarks/phase-16-regression-check.md` (the file name replaces the plan's `phase-16-search.md`: one document for AC-11 and AC-12).
+
+### Deferred mutation checks (steps 4-6), run in step 9 (each reverted at once; `git status` clean afterwards)
+| Mutation | Result |
+| --- | --- |
+| tsvector built with `to_tsvector('simple', ...)` over the pre-tokenised words instead of the literal | killed: `test_search_api.py::test_free_text_reads_metadata_and_content_for_content_readers["deploy api"]` (phrase) |
+| facets computed over `file_paths` (the tools facet reads it) | killed: `test_search_oracle.py::test_no_response_to_a_viewer_search_carries_content_or_content_flags[viewer]` |
+| a `total` count added to the page | **survived** the existing suites; test added (`test_a_search_page_has_no_total_count_and_no_relevance_field`); killed after |
+| ranking-style ordering (by `cardinality(tools)` ahead of time) | killed: `test_compiler.py::test_search_without_index_terms_does_not_join_and_facets_left_join` (statement text); the order is also asserted newest-first by the new test |
+| the semaphore removed | killed: `test_search_budget.py::test_a_flood_gets_timeouts_and_one_busy_while_ingestion_and_plain_reads_are_fine` |
+| `SET LOCAL statement_timeout` removed | killed: `test_search_budget.py::test_a_search_past_its_budget_is_a_retryable_503` |
+| facets/search path for an empty `q` (the `if not query.terms: compiled = None` shortcut removed) | killed: `test_search_budget.py::test_the_plain_listing_takes_no_permit_and_has_no_timeout` (the request crashes instead of taking the plain path) |
+| `authorize_audited` removed from the refusal | killed: `test_search_oracle.py::test_the_refusal_is_logged_and_audited_without_the_query[viewer]` |
+| `MAX_TERMS` 16 -> 32 | killed: `test_parser.py::test_term_limits` |
+
+### Closing evidence (command, observed output, verdict; 2026-10-11, own databases `abb_test_p16`, `abb_p16`, `abb_p16_base` (dropped), native processes)
+| AC | Command | Observed | Verdict |
+| --- | --- | --- | --- |
+| AC-1 grammar | `uv run pytest tests/search/test_parser.py tests/search/test_tokens.py -q` (inside `tests/search`: 345 passed, 1:59) | 82 + 12 tests: every §152/§34 example, negation forms, limits with positions, 10,000-string fuzzer under 10 ms | PASS |
+| AC-2 literals and compiler gate | `tests/search/test_tsliteral.py` (13), `test_compiler.py` (32) | serialiser, self-match property, compiled SQL has no content column for a viewer, workspace bound, `CAST(... AS tsquery)` only | PASS |
+| AC-3 semantics on Postgres | `tests/search/test_search_api.py` (91), `test_search_http.py` (16), `test_search_index.py` (4) | every field, operator, negation, prefix, glob, phrase, relative time, null and unindexed behaviour, 120-run paging, `q` ANDed with legacy filters | PASS |
+| AC-4 oracle (viewer) | `tests/search/test_search_oracle.py` (19) + `tests/authz/test_content_withheld.py` | identical items/facets/cursor for canaries vs a nonsense term; 403 with canonical field; no run statement; log + audit row; BILLING 403 before parsing; no content flag | PASS |
+| AC-5 tenancy | `tests/authz` (119 passed, 2:21; cross-workspace file has the search probes); registry and OpenAPI counts unchanged | acme actors never see globex canaries; cursor replay refused | PASS |
+| AC-6 hostile input | `tests/search/test_search_hostile.py` (44) | `422` or a literal match, never `500`; no ERROR log line | PASS |
+| AC-7 cost bounds | `tests/search/test_search_budget.py` (5) + statement-count tests in `test_search_http.py` | 503 SEARCH_TIMEOUT/BUSY retryable; ingest `202` and plain list `200` during a flood; at most two statements; `q=` equals the plain request | PASS |
+| AC-8 derived and rebuildable | `tests/search/test_document.py` (12), `test_search_index.py`, `tests/test_run_summary.py` (pins `SUMMARY_VERSION == 4`) | bounded, order-independent, `span.name` attribute only, unchanged hash writes nothing, `search-rebuild` restores the row and audits | PASS |
+| AC-9 migration | `alembic downgrade 0047 && upgrade head` twice on a scratch DB; `downgrade base && upgrade head` on `abb_test_p16`; `tests/test_migrations.py` | `0080 (head)` -> `0047` -> `0080 (head)`; drift test passes | PASS |
+| AC-10 web | `pnpm --filter @abb/web test` 539 passed (31 files); `scripts/auth-e2e.sh`: 13 passed (5 search + 8 auth); fixtures Playwright 14 passed (1 search); `next build` ok | chips, removal by span, legacy URL conversion, caret, 403 without echo or "no results", 414, busy/timeout retry, unindexed notice, hostile text as text, viewer help without content fields; axe clean on every search state; no horizontal scroll at 375 px; screenshots `docs/screenshots/phase-16/` | PASS |
+| AC-11 ingest cost | A/B interleaved, native, three rounds (`docs/benchmarks/phase-16-regression-check.md`) | 1,000-event-run p95 +2.0%; freshness +13.1% (2,000) / +7.5% (10,000); D7 trigger not tripped, step 3b not needed; Colima VM numbers **UNVERIFIED (env)** (stack not rebuilt) | PASS (native); UNVERIFIED (env) on the VM |
+| AC-12 search latency | `scripts/bench_search.py` at 10,000 and 100,000 runs (plan says 100,000: done, 100 variations per class there, 200 at 10,000) | worst p95 at 100,000: `file:` 520 ms, `command:` 449 ms (< 1 s), metadata text 242 ms, arrays 191 ms (< 500 ms): no `pg_trgm` index needed | PASS |
+| AC-13 natural-language fake | `tests/search/test_natural.py` (15); `rg -n "anthropic|openai" apps/api/src/abb_api/search` | each phrase parses, compiles for an owner, refused for a viewer when it names a content field; `rg` exit 1 (no match) | PASS |
+| AC-14 quality gate | piecewise (below); `python -m abb_api.openapi --check` exit 0; `gen:api:check` clean | all green; the compose-based CI jobs and a PR run were not available here | PASS locally; CI UNVERIFIED (env) |
+
+Piecewise gate: event-schema 351 passed; sdk-python 893 passed (coverage 94.27%); examples 12 + 10; integrations 17 / 74 / 66 / 61 / 44; api ruff, format, mypy (192 files) clean, pytest `tests/authz` 119,
+`tests/search` 345, the rest 745 passed (1,209 in all, no time-margin flakes this run); web eslint/prettier/tsc clean, vitest 539, `next build`; schema-check, openapi `--check`, `gen:api:check`; migrations 0047 <-> 0080 and
+base <-> head; `uv build --wheel`.
+
+Phase 10 had **not** merged when this was run (`origin/main` at `84491c6` has no migration 0060), so none of the rebase notes were applied: `0080.down_revision` is still `"0047"`, the `run_search` upsert has
+no `_enqueue_detect` neighbour, and RunOut/RunPage field order is the Phase 9 one. They apply exactly as written under "Merge notes" when Phase 10 lands first.

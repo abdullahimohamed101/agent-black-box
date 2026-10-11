@@ -7,6 +7,8 @@ Phases 0-8 and 15 are merged to `main` (CI green; Phase 15 is PR #58). The MVP g
 reviewing the items under "Next actions". **Phase 9 (multi-agent tracing and waterfall) is implemented on `feature/phase-9-multi-agent-tracing` and awaits its
 independent security review** (`docs/plans/active/phase-9-multi-agent-tracing.md`, status "Implemented; pending security review"; closing evidence for AC-1..15 is in
 the plan). Phases 10, 11 and 16 are planned or in progress elsewhere; merge order 9, 10, 16, 11.
+**Phase 16 (search and investigation) is implemented on `feature/phase-16-search-investigation` and awaits its independent security review** (plan status "Implemented; pending security review";
+closing evidence for AC-1..14 is in the plan).
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -32,7 +34,15 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 starts with Phase 9.
   critical path and agent tree (ADR-071), multi-agent fixture, `examples/multi-agent`, `scripts/multiagent-e2e.sh` (CI job `multiagent-e2e`); no migration, no new
   route. KI-063 spike measured and not shipped (`docs/benchmarks/phase-9-ki063-langgraph-threads.md`); KI-084..086 filed as "to file".
 
+- Phase 16 (branch, not merged): `GET /v1/runs?q=` (§152 grammar, `docs/architecture/api-v1.md` "Search"), the derived `run_search` table (migration 0080, `SUMMARY_VERSION` 4, written by the summarizer in the run's
+  transaction, hash-skipped, `search-rebuild` CLI, `docs/runbooks/search.md`), permission-safe content search for actors with `payload.read` (ADR-100, ADR-101: viewers get `403` for `file:`/`command:`, and
+  nothing else differs from a nonsense word), bounded reads (4 permits per process, 5 s budget, two statements), the web search box with chips from the server's parse, matched column, facets and the unindexed
+  notice (`apps/web/e2e/search.spec.ts` in `auth-e2e`), the rule-based `QueryCompiler` fake; `scripts/bench_search.py`; KI-080..083 filed as "to file". Measured: no D7 trigger, no `pg_trgm` need at 100,000 runs
+  (`docs/benchmarks/phase-16-regression-check.md`).
+
 ## In-progress work
+Phase 16 needs the `review-change` security pass (attack first: the oracle suite, `search/compiler.py` content gate, `runs/service.py::_refuse_content_field`, the statement-text assertions, `search/reads.py`), then `complete-phase`.
+When Phase 10 merges first, apply the plan's "Merge notes" (0080 -> parent 0060, upsert before `_enqueue_detect`, field order, regenerate openapi/schema).
 Phase 9 needs the `review-change` security pass (what to attack first is in the plan's "Security review note"), then `complete-phase` (move the plan to `completed/`).
 
 ## Blocked work
@@ -42,8 +52,8 @@ None.
 1. User: the one manual sign-in with a real OIDC provider (AC-14, KI-067; needs your own client id and secret, see `docs/runbooks/auth-and-access.md`), and a compose
    runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
 2. User: decide MVP gate acceptance. Remaining gate item: KI-050 (OpenAI prices and tiered models are not in the built-in table; the engine has no price tiers).
-3. Review Phase 9, merge it first, then 10, 16 and 11 (rebase notes in each plan's "Merge notes"; Phase 16 must use `SUMMARY_VERSION` 4); then 13 and 14 in sequence.
-4. File GitHub issues for KI-084..086 (placeholders say "to file").
+3. Review Phase 9 (merged), then 10, 16 and 11 (rebase notes in each plan's "Merge notes"; Phase 16 must use `SUMMARY_VERSION` 4); then 13 and 14 in sequence.
+4. File GitHub issues for KI-080..083 and KI-084..086 (placeholders say "to file"). After deploying Phase 16, run `search-rebuild` for existing workspaces (KI-081).
 
 ## Open decisions
 - MVP acceptance (after the gate items above).
@@ -55,6 +65,10 @@ None.
 `docs/KNOWN_ISSUES.md` (severity, target and GitHub issue per item): notably (Phase 15 additions KI-067..078: real-provider login unverified, no session list, no `email_verified`-less providers, audit retention, trusted proxies, compose login unverified) full recomputation of very large active runs (KI-016), no quotas (KI-018), no failed-auth throttling (KI-019).
 
 ## Last verified test status
+2026-10-11, Phase 16 branch (own databases `abb_test_p16`, `abb_p16`): event-schema 351, sdk 893 (coverage 94.27%), examples 12 + 10, integrations 17/74/66/61/44, api 1,209 passed (authz 119, search 345, rest 745),
+web vitest 539, eslint/prettier/tsc/`next build` clean, migrations 0047 <-> 0080 and base <-> head, openapi/schema/gen:api checks clean. E2E: `auth-e2e` 13 (8 auth + 5 search), fixtures Playwright 14.
+Not run: compose-based jobs and `make smoke`/`sdk-e2e`/`up` (UNVERIFIED (env), as in KI-074); ingest A/B on the Colima VM (native only).
+Previous:
 2026-10-11, Phase 9 branch (parts of `scripts/quality.sh full`, own databases `abb_test_p9`/`abb_p9`): event-schema 351, sdk 883 (coverage 94.18%), examples 20 (12 coding-agent, 8 multi-agent),
 integrations 17/74/66/61/44, api 860 passed, 1 failed (environment-dependent: `test_summarizer.py::test_a_burst_of_batches...` fails on `c212058`'s code too because the shared Docker
 Postgres clock runs about 2.2 s ahead of the host; `test_hostile_numbers` flaked once for the same reason), web vitest 517, eslint/prettier/tsc/`next build` clean, migrations up/down/up (head 0047), openapi/schema checks clean

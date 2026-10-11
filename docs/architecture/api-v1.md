@@ -107,6 +107,8 @@ Every non-2xx response, from every route, has this shape and an `X-Request-ID` h
 | `PAYLOAD_TOO_LARGE` | 413 | body (compressed or decompressed) over 5 MiB; on the single-event endpoint also an event over 256 KB (inside a batch an oversized event is a per-event `EVENT_TOO_LARGE` entry in `errors`) |
 | `UNSUPPORTED_MEDIA_TYPE` / `UNSUPPORTED_ENCODING` | 415 | not `application/json`; `Content-Encoding` other than gzip/identity |
 | `REQUEST_INVALID` | 422 | invalid query parameter or run-creation body |
+| `QUERY_INVALID` | 422 | the search text `q` could not be parsed (`details.position`, `details.reason`) |
+| `SEARCH_BUSY` / `SEARCH_TIMEOUT` | 503 | all search permits of this process are in use / the search exceeded its time budget; retryable |
 | `RATE_LIMITED` | 429 | retryable; honour `Retry-After` |
 | `DEPENDENCY_UNAVAILABLE` | 503 | database trouble; retryable; `Retry-After: 2` |
 | `INTERNAL_ERROR` | 500 | a bug; no internals are exposed, the stack trace is in the server log |
@@ -145,7 +147,8 @@ idempotent on `run_id`; `metadata` is at most 16 KB and 8 levels deep.
 `GET /v1/runs` lists newest first (`sort=started_at` for oldest first) with `status` (repeatable), `agent_id`,
 `project_id`, `started_after` (inclusive), `started_before` (exclusive) (RFC 3339 with offset; values with no UTC
 representation are `422`), `limit` (1-200, default 50) and
-`cursor`. Paging is keyset-based, so runs arriving between page requests never cause repeats or gaps.
+`cursor`, and `q` (the search grammar below, at most 512 characters, combined with the other filters by AND). Paging is keyset-based, so runs arriving between page
+requests never cause repeats or gaps.
 
 `GET /v1/runs/{id}` returns the run: `status`, `name`, `agent_id`, `trace_id`, `started_at`, `completed_at`,
 `duration_ms`, `ordering_mode`, `summary`, `summary_version`, `summary_state`, `metadata`.
@@ -184,6 +187,55 @@ emitters in the chronological list; `started_at`, `duration_ms`, the runs-list p
 earliest `occurred_at`. Span nesting uses `parent_span_id` only and is unaffected. Re-deriving a run (`rebuild-costs`) applies the
 root rule above, so a run whose first event was a skewed child may move to its true root agent (and between agents in the run
 rollups).
+
+### Search (`GET /v1/runs?q=`)
+
+`q` is a flat conjunction of terms separated by whitespace, parsed on the server into a typed AST (spec §152; the web app sends the text and renders what the server parsed):
+
+```text
+term  := '-'? ( field ':' op? value | value )          op := '>=' | '<=' | '>' | '<'  (numeric and time fields)
+value := '"' ... '"'  (escapes \" and \\) | bare word up to whitespace;  a trailing '*' = prefix
+```
+
+A value without a field is free text (quoted = phrase); a leading `-` negates the term once (`--force` is NOT the word `force`; a quoted value is never negation; after an operator `-` is part of the
+value). Names and enum values are case-insensitive; text is NFKC-normalised and case-folded. There is no `OR`, no parentheses and no `NOT` keyword. Example:
+`status:failed tool:github retries:>=2 started:>=-7d "npm test"`.
+
+| Field | Matches |
+| --- | --- |
+| `status` | the run status (case-insensitive) |
+| `agent`, `root_agent` | any agent of the run (children included), or the run's first agent; `*` prefix |
+| `name` | the run name contains (case-insensitive) |
+| `cost` (USD), `retries`, `errors`, `duration` (`ms|s|m|h`, a unit is required) | numeric comparison; `severity:error` is `errors:>0` |
+| `started` | a date (`2026-10-01`: that UTC day for `=`, midnight for comparisons), an RFC 3339 instant (`Z` recommended; send `+` offsets as `%2B`), or a relative time `-<n><m|h|d|w>` resolved by the server at request time (the echo shows the instant), so a bookmarked `started:>=-24h` stays relative |
+| `event`, `tool`, `model`, `provider`, `tag` | the run has such a value; `*` prefix (`event:shell.*`) |
+| `security` | `true` or `false`: the run has security-class events |
+| `file` (content), `command` (content) | glob over file paths (`src/auth/**` matches `/home/x/src/auth/login.ts`; `*.ts`; `/etc/passwd` is exact; `*` and `**` cross `/`; `?` is one character); case-insensitive substring over command lines |
+| free text | all words present in the run's metadata document (name, tags, agents, event types, tools, models, providers, `span.name`, `tool.operation`, ... and the string leaves of the run's `metadata`); with `payload.read` also the captured commands, paths and other content; quoted = adjacent words; `*` on the last word is a prefix |
+
+Not fields: `finding:` and `verdict:` are reserved (Phases 10, 11) and refused like any unknown field. A `name:` prefix that is not a catalogue field is `422` (quote values such as `"http://x"`).
+Limits: 512 characters, 16 terms, 8 text terms, a value of 256 characters, 16 words in a text term, 8 wildcards in a glob, relative times up to 3,660 days; control characters are refused.
+
+**Response.** Whenever `q` is sent the page gains `query` (`terms[]` with `kind`, `field`, `op`, `value`, `lexemes`, `phrase`, `prefix`, `negated` and `span` = `[start, end)` character offsets; `fields`,
+the catalogue this caller may search; `content_allowed`; `unindexed`, `unindexed_capped`). When `q` has at least one term the page also has `facets` (`status`, `agents`, `tools`, `models`,
+`event_types`: the top ten values with counts over the newest 1,000 matching runs; `null` with `facets_skipped: "budget"` when the time budget ran short) and each run that matched on indexed
+fields has `matched` (the tools, models, event types, agents and tags the query named, and `metadata_truncated`; `content_truncated` only with `payload.read`). Results are newest first; there is
+no total count and no relevance ranking (by design: they would be oracles, ADR-101). An empty `q` executes exactly the statements of the request without `q` (plus the catalogue echo).
+
+**Indexing and the inner join.** Search reads a derived per-run document written by the summarizer (ADR-100). A query that uses an *index term* (tools, models, agents, event types, tags,
+errors, severity, security, file, command or free text) inner-joins it: a run with no document yet (queued, or summarised before `SUMMARY_VERSION` 4) matches neither a positive nor a
+negated index term. A query with only run-row terms (`status`, `cost`, `retries`, `duration`, `started`, `name`, `root_agent`) sees every run. `query.unindexed` counts the runs of the
+request's scope with no document (capped at 1,000, `unindexed_capped`); `python -m abb_api.cli search-rebuild` adds them (`docs/runbooks/search.md`). A null column never matches, negated or not
+(`-duration:>60s` does not return running runs).
+
+**Permissions (ADR-101).** An actor may search a field only if they receive that field's values: `file:` and `command:` need `payload.read`. For anyone else the request is `403 PERMISSION_DENIED`
+with `details.field` (the catalogue's name, never the typed spelling and independent of any data), logged and audited like every denial, and no run statement is executed. Free text then
+searches the metadata document only, so content words give the same items, facets and cursor as a nonsense word. A BILLING person is refused at `run.read` before the query is parsed.
+
+**Errors.** `422 QUERY_INVALID` (`details.position`, `details.reason`; positions depend only on the text), `403 PERMISSION_DENIED` (above), `503 SEARCH_BUSY` (retryable, `Retry-After: 1`: all of this process's
+search permits are in use) and `503 SEARCH_TIMEOUT` (retryable: the statement exceeded the time budget). The web proxy refuses an encoded query string over 2,048 characters with `414 QUERY_TOO_LONG`
+(a legal 512-character `q` of non-ASCII text can exceed it); the UI shows it like a 422 without a caret. Search is per request bounded: at most two statements, a read-only transaction, the budget
+`ABB_SEARCH_TIMEOUT_SECONDS` (5) and `ABB_SEARCH_MAX_CONCURRENT` (4) permits per process.
 
 ## Cost and analytics
 

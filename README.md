@@ -76,6 +76,9 @@ shows how to point it at your own stack and open the run (diff, shell and cost p
 `examples/multi-agent` records a planner, a researcher, a coder, a tester in a separate process and a reviewer in one run (`--skew-ms` skews the
 tester's clock); open the run and switch to Waterfall. `scripts/multiagent-e2e.sh` runs it against the real API and web.
 
+Search runs with `status:failed tool:github retries:>=2 started:>=-7d "npm test"` (runs page search box, or `GET /v1/runs?q=`); a VIEWER searches
+metadata only, never the text of commands or file paths (`docs/architecture/api-v1.md`, "Search").
+
 API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operations: `docs/OPERATIONS.md`.
 
 ## Phase Status

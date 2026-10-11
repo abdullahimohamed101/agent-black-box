@@ -37,7 +37,7 @@ def names(ids: dict[str, str], response: object) -> set[str]:
 async def test_a_search_page_has_no_total_count_and_no_relevance_field(
     api: Api, ids: dict[str, str]
 ) -> None:
-    """ADR-101 (4): no count of matches and no ranking, in any shape of response (they are oracles)."""
+    """ADR-101 (4): no count of matches and no ranking in any response (both are oracles)."""
     for q in ("tool:github", "status:failed", "github", "-tool:nothing"):
         body = (await api.get("/v1/runs", token=READER, q=q)).json()
         assert set(body) <= {"items", "next_cursor", "query", "facets", "facets_skipped"}

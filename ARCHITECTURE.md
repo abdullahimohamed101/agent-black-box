@@ -43,6 +43,9 @@ routers so a slow query never sits on the SDK path. Repositories take a tenant c
 run/event/span queries, provisioning CLI, OpenAPI contract (`apps/api/openapi.json`); artifacts (Phase 6) and analytics (Phase 7) are implemented.
 Phase 15 adds people: OIDC login, database-backed sessions, workspace membership with six roles, invitations, API-key management, pricing
 overrides, an append-only audit log and re-authentication of open streams (ADR-060..062). Keys and people share one `Principal` and one enforcement path.
+Phase 16 adds `search` (a hand-written parser for the §152 grammar into a typed AST, a field catalogue as data, a compiler that takes the `Principal` and never emits a content
+column for an actor without `payload.read`, the derived `run_search` document built by the summarizer, bounded reads with a per-process concurrency cap and a time budget);
+the runs router carries it as `GET /v1/runs?q=` (ADR-100, ADR-101). `abb_api/content.py` holds the content classification both `runs` and `search` use.
 
 ### Workers (`abb_api.worker`, same image as the API)
 PostgreSQL outbox, `FOR UPDATE SKIP LOCKED` leases, retries with backoff, dead letters, one writer per run via a
