@@ -173,7 +173,7 @@ class TestsPassed:
     def evaluate(self, snapshot: RunSnapshot, config: Any, budget: Budget) -> EvaluationResult:
         last: Event | None = None
         for event in _scan(snapshot.events, budget):
-            # A failing suite exits non-zero: the recorder ends it as `shell.command.failed`. Both count.
+            # A failing suite ends as `shell.command.failed` (non-zero exit); both count.
             if event.event_type in TEST_RUN_EVENTS and isinstance(
                 event.attributes.get("test.framework"), str
             ):
