@@ -102,6 +102,21 @@ def test_a_realistic_run_validates_against_models_and_json_schema() -> None:
     assert {"tool.call.failed", "llm.request.failed", "span.failed"} <= set(types_of(evs))
 
 
+def test_agent_spans_validate_against_models_and_json_schema() -> None:
+    bb = offline(payload_mode="full", agent_id="planner")
+    with bb.run("job") as run:
+        with run.span("delegate", kind="tool"), run.agent("coder", input={"q": 1}) as coder:
+            with run.llm_call("openai", "gpt-4.1"):
+                pass
+            coder.set_result({"ok": True})
+        with run.agent("planner"):  # the root's own name: becomes planner-child-1
+            pass
+    evs = events_of(bb)
+    assert {"agent.spawned", "agent.started", "agent.completed"} <= set(types_of(evs))
+    for e in evs:
+        assert_contract(e)
+
+
 @pytest.mark.parametrize("status", ["success", "error", "timeout", "blocked", "cancelled"])
 def test_every_run_ending_validates(status: str) -> None:
     bb = offline()
@@ -153,3 +168,26 @@ def test_id_generation_carries_into_the_timestamp_when_randomness_is_exhausted(
     monkeypatch.setattr(ids, "_last_random", (1 << 80) - 1)
     ulid = ids.new_ulid()
     assert parse_id(f"run_{ulid}").timestamp_ms == future + 1
+
+
+def test_nul_characters_in_payload_strings_and_keys_are_removed_not_rejected() -> None:
+    bb = offline(payload_mode="full")
+    with bb.run("r") as run:
+        run.event("custom.nul", payload={"k\x00ey": ["a\x00b", {"n": "\x00"}]})
+    (event,) = [e for e in events_of(bb) if e["event_type"] == "custom.nul"]
+    assert event["payload"] == {"key": ["ab", {"n": ""}]}
+    assert_contract(event)
+
+
+def test_an_event_without_a_sequence_validates() -> None:
+    event = events.build_event(
+        event_type="custom.remote",
+        run_id="run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+        trace_id="trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+        agent_id="child",
+        agent_version=None,
+        sequence=None,
+        sdk_version="0.3.0",
+    )
+    assert "sequence" not in event
+    assert_contract(event)

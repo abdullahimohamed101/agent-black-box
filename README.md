@@ -4,7 +4,7 @@ A flight recorder, observability, debugging, evaluation and (eventually) control
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell
 command, retry and failure, with cost and latency, live.
 
-> Status: Phases 0-8 merged (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters). The MVP gate is open; see `docs/IMPLEMENTATION_PLAN.md`.
+> Status: Phases 0-8 merged (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters). Phase 10 (reliability findings: loops, retry storms, cost spikes, failure chains, explained health) is implemented on its branch, pending review. The MVP gate is open; see `docs/IMPLEMENTATION_PLAN.md`.
 > You can run the stack, trace an agent with the Python SDK or a framework adapter, and watch the run in the web UI, live.
 > See `docs/PROJECT_STATE.md`.
 
@@ -37,7 +37,7 @@ contract, not any single datastore. Details: `ARCHITECTURE.md`.
 
 ```text
 apps/{api,web}  packages/{event-schema,sdk-python}  integrations/{langgraph,openai,anthropic,mcp,conformance}
-examples/coding-agent  infrastructure/  scripts/  docs/
+examples/{coding-agent,multi-agent}  infrastructure/  scripts/  docs/
 ```
 New directories appear when their phase begins (for example `processors/`).
 
@@ -73,12 +73,14 @@ See a real run in about two minutes (needs the Quick Start above, `make seed`, a
 the flagship demo is a small coding agent that fixes a broken OAuth service, hits a failing test, retries and passes.
 `scripts/coding-e2e.sh` runs it end to end on a throwaway database and drives a browser; `examples/coding-agent/README.md`
 shows how to point it at your own stack and open the run (diff, shell and cost panels).
+`examples/multi-agent` records a planner, a researcher, a coder, a tester in a separate process and a reviewer in one run (`--skew-ms` skews the
+tester's clock); open the run and switch to Waterfall. `scripts/multiagent-e2e.sh` runs it against the real API and web.
 
 API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operations: `docs/OPERATIONS.md`.
 
 ## Phase Status
 
-See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-8 and 15 merged, MVP gate open). Summary: Phases 0-7 build the MVP
+See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-9 and 15 merged, MVP gate open). Summary: Phases 0-7 build the MVP
 (foundation, event contract, ingestion, SDK, web, live streaming, coding-agent demo,
 analytics) followed by a human review gate; Phases 8-20 add integrations, multi-agent
 tracing, reliability intelligence, evaluations, replay, security, policy/approvals, RBAC,

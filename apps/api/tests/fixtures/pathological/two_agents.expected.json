@@ -1,0 +1,10 @@
+{
+  "scenario": "agent-a repeats search/read 6 times (closers 5 .. 39) while agent-b does six different things between them. Merged, the stream shows no repetition; per emitter, only agent-a loops. The run succeeds, so the probable loop is info (ADR-081).",
+  "findings": [
+    {
+      "detector": "repeated-sequence", "finding_type": "possible_loop", "kind": "probable",
+      "severity": "info", "confidence": 0.8, "start_seq": 5, "end_seq": 39,
+      "evidence": {"agent_id": "agent-a", "pattern": ["tool:search", "tool:read"], "repetitions": 6}
+    }
+  ]
+}

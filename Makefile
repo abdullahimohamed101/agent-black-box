@@ -1,9 +1,11 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e multiagent-e2e findings-e2e
 
 API := apps/api
 SCHEMA := packages/event-schema
 SDK := packages/sdk-python
+# The web's copy of the event-type registry (span roles and kinds for lib/spans.ts, Phase 9 D5).
+WEB_GENERATED := apps/web/src/lib/generated
 ENV_FILE := .env
 
 help:
@@ -70,12 +72,15 @@ seed:
 schema:
 	cd $(SCHEMA) && uv run python -m abb_event_schema.export
 	pnpm --filter @abb/event-schema generate
+	mkdir -p $(WEB_GENERATED)
+	cp $(SCHEMA)/schemas/1.0/event-types.json $(WEB_GENERATED)/event-types.json
 
 # Fails if the committed schema/types differ from what the models generate.
 schema-check:
 	cd $(SCHEMA) && uv run python -m abb_event_schema.export --check
 	pnpm --filter @abb/event-schema generate
 	git diff --exit-code -- $(SCHEMA)/ts $(SCHEMA)/schemas
+	cmp $(SCHEMA)/schemas/1.0/event-types.json $(WEB_GENERATED)/event-types.json
 
 # The committed API contract (apps/api/openapi.json), generated from the FastAPI app.
 openapi:
@@ -134,6 +139,14 @@ e2e-real:
 # Sign-in, workspaces, roles and the stream re-check in a real browser against the dev-only fake OIDC provider (Phase 15).
 auth-e2e:
 	pnpm --filter @abb/web build && scripts/auth-e2e.sh
+
+# Multi-agent example (threads, asyncio, subprocess with a skewed clock) through the real API and web, as owner and viewer.
+multiagent-e2e:
+	pnpm --filter @abb/web build && scripts/multiagent-e2e.sh
+
+# Reliability findings: pathological runs through ingestion, the worker and a real browser (Phase 10).
+findings-e2e:
+	pnpm --filter @abb/web build && scripts/findings-e2e.sh
 
 # Analytics: browser E2E over known runs, and the Stage A benchmark (docs/benchmarks/phase-7-analytics.md).
 analytics-e2e:

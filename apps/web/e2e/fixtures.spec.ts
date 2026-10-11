@@ -4,6 +4,7 @@ import { expect, test, type Page } from "@playwright/test";
 const BASE = "/w/demo/projects/all";
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 const SHOTS = "../../docs/screenshots/phase-4";
+const SHOTS10 = "../../docs/screenshots/phase-10";
 
 async function axe(page: Page) {
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
@@ -28,15 +29,21 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await page.goto(`${BASE}/runs`);
   await expect(page.getByRole("table")).toBeVisible();
   const all = await page.locator("tbody tr").count();
-  expect(all).toBe(6);
+  expect(all).toBe(10);
   await page.getByLabel("Failed").check();
   await expect(page).toHaveURL(/status=FAILED/);
-  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr")).toHaveCount(2);
   await expect(page.locator("tbody tr").first()).toContainText("Failed");
   await page.getByLabel("Agent").fill("nobody");
   await expect(page.getByText("No runs match these filters")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(6);
+  await expect(page.locator("tbody tr")).toHaveCount(10);
+  // the findings column reads as text: count and worst severity, or a dash with plain words
+  const looping = page.locator("tbody tr", { hasText: "Resolve flaky docs search" });
+  await expect(looping.getByTestId("findings-cell")).toContainText("1 · info");
+  await expect(
+    page.locator("tbody tr", { hasText: "Fix login session expiry" }).getByTestId("findings-cell"),
+  ).toContainText("No findings");
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/runs-list.png`, fullPage: true });
 });
@@ -97,6 +104,51 @@ test("successful and in-progress runs read at a glance", async ({ page }) => {
   await expect(page.getByTestId("headline")).toContainText("Waiting for approval");
 });
 
+test("looping run shows a probable loop finding whose evidence jump selects the event", async ({
+  page,
+}) => {
+  await page.goto(`${BASE}/runs/${RUN(8)}`);
+  const panel = page.getByTestId("findings");
+  await expect(panel.getByRole("heading", { name: "Findings" })).toBeVisible();
+  await expect(panel.getByTestId("findings-state")).toContainText("Analysis is current");
+  const loop = panel.getByTestId("finding");
+  await expect(loop).toHaveCount(1);
+  await expect(loop.getByRole("heading", { level: 3 })).toHaveText(
+    "Probable: the agent may be looping",
+  );
+  await expect(loop).toContainText("Probable");
+  await expect(loop.getByLabel("Pattern")).toContainText("tool:search_docs");
+  await expect(panel.getByTestId("health")).toContainText("Loops");
+  await expect(page.getByTestId("progress")).toContainText("events shown");
+  await loop.getByRole("button", { name: "Show evidence" }).click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toContainText("tool.call.completed");
+  await expect(page.getByRole("option", { selected: true })).toContainText("tool.call.completed");
+  await axe(page);
+  await page.screenshot({ path: `${SHOTS10}/run-findings-loop.png`, fullPage: true });
+});
+
+test("failed run: the failure chain lists linked events and each one opens", async ({ page }) => {
+  await page.goto(`${BASE}/runs/${RUN(10)}`);
+  const chain = page.getByTestId("finding").filter({ hasText: "the run failed" });
+  await expect(chain).toContainText("Observed");
+  await expect(chain.getByRole("listitem")).toHaveCount(4);
+  await expect(page.getByTestId("finding").filter({ hasText: "Probable:" })).toHaveCount(1);
+  await expect(page.getByTestId("progress")).toContainText("events shown");
+  await chain.getByRole("button", { name: "mutation · file.modified" }).click();
+  await expect(page.getByRole("dialog")).toContainText("file.modified");
+  await page.screenshot({ path: `${SHOTS10}/run-findings-chain.png`, fullPage: true });
+});
+
+test("analysis states are stated: processing and not analysed", async ({ page }) => {
+  await page.goto(`${BASE}/runs/${RUN(4)}`);
+  await expect(page.getByTestId("findings-state")).toContainText("Analysing");
+  await page.goto(`${BASE}/runs/${RUN(5)}`);
+  await expect(page.getByTestId("findings-state")).toContainText("Not analysed yet");
+  await expect(page.getByTestId("health")).toContainText("No data");
+});
+
 test("unknown run shows a not-found state", async ({ page }) => {
   await page.goto(`${BASE}/runs/run_00000000000000000000000999`);
   await expect(page.locator('[data-state="error"]')).toContainText("Not found");
@@ -119,7 +171,13 @@ test("10,000-event run renders a bounded number of rows", async ({ page }) => {
 
 test("mobile layout has no horizontal page scroll", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  for (const path of [BASE, `${BASE}/runs`, `${BASE}/runs/${RUN(2)}`]) {
+  for (const path of [
+    BASE,
+    `${BASE}/runs`,
+    `${BASE}/runs/${RUN(2)}`,
+    `${BASE}/runs/${RUN(10)}`,
+    `${BASE}/runs/${RUN(7)}?view=waterfall`,
+  ]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     const overflow = await page.evaluate(
@@ -145,4 +203,133 @@ test("security headers are set and the CSP breaks nothing", async ({ page }) => 
   expect(api.headers()["cache-control"]).toContain("no-store");
   expect(api.headers()["x-content-type-options"]).toBe("nosniff");
   expect(problems).toEqual([]);
+});
+
+// ---- Phase 9: multi-agent waterfall ----------------------------------------------------------------------------------
+const WSHOTS = "../../docs/screenshots/phase-9";
+
+test("multi-agent waterfall: lanes, nesting under skew, critical path, synchronized selection, keyboard", async ({
+  page,
+}) => {
+  await page.goto(`${BASE}/runs/${RUN(7)}`);
+  await expect(page.getByTestId("agent-tree")).toContainText("Agents (5)");
+  await page.getByRole("radio", { name: "Waterfall" }).check();
+  await expect(page).toHaveURL(/view=waterfall/);
+  const grid = page.getByRole("treegrid");
+  await expect(grid).toBeVisible();
+  await expect(page.getByTestId("progress")).toContainText("events in");
+
+  // the tester ran in another process with a clock behind its parent: nested under the coder, flagged
+  const rowOf = (agent: string) =>
+    grid
+      .getByRole("row")
+      .filter({ has: page.locator(".wf-chip", { hasText: new RegExp(`^${agent}$`) }) });
+  const coder = rowOf("coder").filter({ hasText: "coder" }).first();
+  const tester = rowOf("tester").first();
+  const level = async (row: typeof coder) => Number(await row.getAttribute("aria-level"));
+  expect(await level(tester)).toBe((await level(coder)) + 1);
+  await expect(tester.locator('[data-flag="skewed"]')).toHaveText("clock skew");
+  await expect(coder.locator('[data-flag="skewed"]')).toHaveCount(0);
+  await expect(page.getByText(/Critical path/).first()).toBeVisible();
+  expect(await grid.locator('[role="row"][data-critical]').count()).toBeGreaterThan(0);
+
+  // lanes: one per agent
+  await page.getByRole("button", { name: "Lanes" }).click();
+  await expect(grid.locator(".wf-lane")).toHaveCount(5);
+  await axe(page);
+  await page.getByRole("button", { name: "Tree" }).click();
+  await page.screenshot({ path: `${WSHOTS}/waterfall-multi-agent.png`, fullPage: true });
+
+  // keyboard only: move, open the drawer, close it, focus returns to the grid
+  await grid.focus();
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await page.keyboard.press("Enter");
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(grid).toBeFocused();
+
+  // selection is shared: the selected span's opener is the selected row of the timeline
+  const selectedSpanText = await grid
+    .locator('[role="row"][aria-selected="true"] .wf-name')
+    .innerText();
+  await page.getByRole("radio", { name: "Timeline" }).check();
+  await expect(page.getByRole("option", { selected: true })).toBeVisible();
+  await expect(page).not.toHaveURL(/view=waterfall/);
+  expect(selectedSpanText.length).toBeGreaterThan(0);
+  await axe(page);
+
+  // the first-error jump lands in whichever view is active
+  await page.getByRole("radio", { name: "Waterfall" }).check();
+  await page.getByRole("button", { name: "Show it" }).click();
+  await expect(page.getByRole("dialog")).toContainText("HttpError");
+  await expect(grid.locator('[role="row"][aria-selected="true"]')).toContainText("search_docs");
+  await axe(page);
+});
+
+test("agent filter narrows the timeline and dims the waterfall", async ({ page }) => {
+  await page.goto(`${BASE}/runs/${RUN(7)}`);
+  await page
+    .getByTestId("agent-tree")
+    .getByRole("button", { name: /^reviewer/ })
+    .click();
+  await expect(page.getByTestId("progress")).toContainText(/^\d+ of \d+ events shown/);
+  expect(await page.locator(".tl-agent").allInnerTexts()).toEqual(
+    expect.arrayContaining(["reviewer"]),
+  );
+  expect(new Set(await page.locator(".tl-agent").allInnerTexts())).toEqual(new Set(["reviewer"]));
+  await page.getByRole("radio", { name: "Waterfall" }).check();
+  expect(await page.locator('[role="row"][data-dim]').count()).toBeGreaterThan(0);
+});
+
+test("a deep link to the waterfall works and the failure run's root span is finished", async ({
+  page,
+}) => {
+  await page.goto(`${BASE}/runs/${RUN(2)}?view=waterfall`);
+  await expect(page.getByRole("treegrid")).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Waterfall" })).toBeChecked();
+  await expect(page.getByRole("treegrid")).not.toContainText("no end recorded");
+  await expect(page.getByRole("treegrid")).toContainText("error");
+});
+
+test("10,000-event run in the waterfall: bounded rows, auto-collapse, zoom stays cheap", async ({
+  page,
+}, testInfo) => {
+  await page.goto(`${BASE}/runs/${RUN(6)}?view=waterfall`);
+  await expect(page.getByTestId("progress")).toContainText(/10,000 events in/, {
+    timeout: 45_000,
+  });
+  const grid = page.getByRole("treegrid");
+  await expect(grid).toBeVisible();
+  expect(await page.locator('[role="row"]').count()).toBeLessThanOrEqual(80);
+  const spanCount = Number(
+    (await page.locator(".wf-count").innerText()).replace(/[^0-9]/g, "").slice(0, 6),
+  );
+  expect(spanCount).toBeGreaterThan(2000);
+  await expect(page.locator(".wf-count")).toContainText("deeper levels start collapsed");
+
+  const times = await page.evaluate(async () => {
+    const el = document.querySelector<HTMLElement>('[role="treegrid"]')!;
+    el.focus();
+    const out: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const t = performance.now();
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: i % 2 ? "-" : "+", bubbles: true }));
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      out.push(performance.now() - t);
+    }
+    return out;
+  });
+  const median = [...times].sort((a, b) => a - b)[2]!;
+  testInfo.annotations.push({
+    type: "zoom-step-ms",
+    description: `median ${median.toFixed(1)} of ${times.map((x) => x.toFixed(1)).join(", ")}`,
+  });
+  console.log(
+    `waterfall zoom step (10,000-event run): median ${median.toFixed(1)} ms; ${times.map((x) => x.toFixed(1)).join(", ")}`,
+  );
+  expect(median).toBeLessThan(100);
+  expect(await page.locator('[role="row"]').count()).toBeLessThanOrEqual(80);
 });

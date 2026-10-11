@@ -1,0 +1,15 @@
+{
+  "scenario": "25 runs of agent spiky (20 at $0.02, 5 at $0.03) and a 26th run that costs $0.90 (400,000 input and 10,000 output tokens at $2 / $10 per million). Median $0.02, nearest-rank p95 = the 24th of 25 = $0.03; 0.90 > 5 x 0.03.",
+  "target_run": "last",
+  "baseline_runs": 25,
+  "findings": [
+    {
+      "detector": "cost-spike", "finding_type": "cost_spike", "kind": "probable",
+      "severity": "critical", "confidence": 0.8, "start_seq": null, "end_seq": null,
+      "evidence": {
+        "cost_usd": "0.9", "baseline.n": 25, "baseline.median_usd": "0.02",
+        "baseline.p95_usd": "0.03", "baseline.agent_slug": "spiky", "baseline.window_days": 30
+      }
+    }
+  ]
+}

@@ -41,6 +41,7 @@ UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://abb:x@127.0.0.1:1/abb_test"
 
 def make_settings(database_url: str, **overrides: object) -> Settings:
     overrides.setdefault("summary_debounce_seconds", 0.0)  # tests summarize immediately
+    overrides.setdefault("findings_delay_seconds", 0.0)  # and analyse immediately
     return Settings(
         environment="test",
         log_level="WARNING",

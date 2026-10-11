@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Analytics } from "@/components/Analytics";
 import { BarList, DayColumns } from "@/components/charts";
 import { Dashboard } from "@/components/Dashboard";
+import { fixtureAnalytics } from "@/fixtures/analytics";
 import { windowFrom } from "@/lib/queries";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
 
@@ -49,6 +50,26 @@ describe("Analytics page", () => {
     expect(await screen.findByRole("heading", { name: "Retry-heavy runs" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Slow operations" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Where the cost figures come from" })).toBeVisible();
+  });
+
+  it("explains runs summarised by an older version (summary version bump, Phase 9)", async () => {
+    const cost = fixtureAnalytics("cost", new URLSearchParams()) as {
+      headline: { unrebuilt_runs: number };
+    };
+    cost.headline.unrebuilt_runs = 3;
+    stubApi({ "/analytics/cost": () => Response.json(cost) });
+    renderWithQuery(<Analytics base={BASE} />);
+    const note = await screen.findByRole("note");
+    expect(note).toHaveTextContent("3 runs were summarised by an older version");
+    expect(note).toHaveTextContent("per-agent figures");
+    expect(note).not.toHaveTextContent("predate cost calculation");
+  });
+
+  it("shows no note when every run is current", async () => {
+    stubApi();
+    renderWithQuery(<Analytics base={BASE} />);
+    await screen.findByText(/of cost came from retries/);
+    expect(screen.queryByText(/summarised by an older version/)).toBeNull();
   });
 
   it("switches the window and requests it from the server", async () => {

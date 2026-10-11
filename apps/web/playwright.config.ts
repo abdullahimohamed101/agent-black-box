@@ -8,6 +8,8 @@ const stream = !!process.env.E2E_STREAM_API_URL;
 const coding = !!process.env.E2E_CODING_API_URL;
 const analytics = !!process.env.E2E_ANALYTICS_API_URL;
 const auth = !!process.env.E2E_AUTH_API_URL;
+const findings = !!process.env.E2E_FINDINGS_API_URL;
+const multiagent = !!process.env.E2E_MULTIAGENT_API_URL;
 const common = { reuseExistingServer: false, timeout: 60_000 } as const;
 
 export default defineConfig({
@@ -84,6 +86,32 @@ export default defineConfig({
             env: {
               ABB_WEB_ORIGIN: "http://localhost:3160",
               ABB_API_INTERNAL_URL: process.env.E2E_AUTH_API_URL!,
+            },
+          },
+        ]
+      : []),
+    ...(findings
+      ? [
+          {
+            ...common,
+            command: "pnpm exec next start --port 3105",
+            url: "http://localhost:3105",
+            env: {
+              ABB_WEB_ORIGIN: "http://localhost:3105",
+              ABB_API_INTERNAL_URL: process.env.E2E_FINDINGS_API_URL!,
+            },
+          },
+        ]
+      : []),
+    ...(multiagent
+      ? [
+          {
+            ...common,
+            command: "pnpm exec next start --port 3104",
+            url: "http://localhost:3104",
+            env: {
+              ABB_WEB_ORIGIN: "http://localhost:3104",
+              ABB_API_INTERNAL_URL: process.env.E2E_MULTIAGENT_API_URL!,
             },
           },
         ]

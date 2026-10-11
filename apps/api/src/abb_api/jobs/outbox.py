@@ -22,6 +22,7 @@ from abb_api.tenancy import TenantContext
 
 SUMMARIZE_RUN = "summarize_run"
 REFRESH_ANALYTICS_DAY = "refresh_analytics_day"
+DETECT_FINDINGS = "detect_findings"
 MAX_ERROR_LENGTH = 2000
 
 
@@ -109,6 +110,20 @@ class OutboxRepository:
                 job_type=SUMMARIZE_RUN,
                 dedupe_key=summarize_key(self._tenant.workspace_id, run_id),
                 payload={"run_id": str(run_id)},
+            )
+        return created
+
+    async def enqueue_detect(
+        self, run_ids: Sequence[uuid.UUID], delay: timedelta | None = None
+    ) -> int:
+        """Ask for these runs' findings to be re-derived (rule changes); returns jobs created."""
+        created = 0
+        for run_id in sorted(run_ids, key=lambda r: r.bytes):
+            created += await self.enqueue(
+                job_type=DETECT_FINDINGS,
+                dedupe_key=summarize_key(self._tenant.workspace_id, run_id),  # job types differ
+                payload={"run_id": str(run_id)},
+                delay=delay,
             )
         return created
 

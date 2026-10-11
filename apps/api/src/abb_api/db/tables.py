@@ -76,6 +76,8 @@ ORDERING_MODES = ("sequence", "time")
 JOB_STATUSES = ("pending", "running", "done", "dead_letter")
 POLICY_ACTIONS = ("allow", "deny", "require_approval")
 COST_SOURCES = ("provider_reported", "estimated", "client_estimate", "unpriced")
+FINDING_KINDS = ("deterministic", "probable")
+FINDING_SEVERITIES = ("info", "warning", "critical")
 
 # ---------------------------------------------------------------- tenancy and identity
 
@@ -649,4 +651,80 @@ policies = Table(
     PrimaryKeyConstraint("workspace_id", "id"),
     ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
     CheckConstraint(_in("action", POLICY_ACTIONS), name="ck_policies_action"),
+)
+
+# ---------------------------------------------------------------- findings (Phase 10, ADR-080)
+
+# Derived from a run's events by the `detect_findings` job (INV-2): rewritten wholesale per run,
+# upserted by fingerprint. The id is derived from the fingerprint (UUIDv5), so it survives every
+# rewrite. Evidence is metadata only; the CHECKs are a backstop for the model's own bounds.
+findings = Table(
+    "findings",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    # Copied from the run so a later project-level listing or rollup needs no join (ADR-043).
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("agent_slug", Text),
+    _ts("run_started_at", nullable=False),
+    Column("detector", Text, nullable=False),
+    Column("detector_version", Text, nullable=False),
+    Column("finding_type", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("severity", Text, nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("start_event_id", UUID(as_uuid=True)),
+    Column("end_event_id", UUID(as_uuid=True)),
+    # Every event id the finding cites (<= 50), validated against the run's events.
+    Column("evidence_event_ids", ARRAY(UUID(as_uuid=True)), nullable=False),
+    Column("fingerprint", Text, nullable=False),
+    Column("evidence", JSONB, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("updated_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
+    ),
+    UniqueConstraint("workspace_id", "run_id", "fingerprint", name="uq_findings_run_fingerprint"),
+    CheckConstraint(_in("kind", FINDING_KINDS), name="ck_findings_kind"),
+    CheckConstraint(_in("severity", FINDING_SEVERITIES), name="ck_findings_severity"),
+    CheckConstraint("confidence BETWEEN 0 AND 1", name="ck_findings_confidence"),
+    CheckConstraint("jsonb_typeof(evidence) = 'object'", name="ck_findings_evidence_object"),
+    CheckConstraint("pg_column_size(evidence) < 16384", name="ck_findings_evidence_size"),
+    CheckConstraint("cardinality(evidence_event_ids) <= 50", name="ck_findings_evidence_ids"),
+    CheckConstraint(
+        "char_length(detector) <= 64 AND char_length(detector_version) <= 32 "
+        "AND char_length(finding_type) <= 64 AND char_length(fingerprint) = 64",
+        name="ck_findings_text_sizes",
+    ),
+    Index("ix_findings_run", "workspace_id", "run_id"),
+    Index("ix_findings_project_started", "workspace_id", "project_id", "run_started_at"),
+)
+
+# One row per analysed run: what the analysis looked at, so findings can be marked outdated or
+# truncated and a mismatch between the run row and the events is visible.
+run_findings = Table(
+    "run_findings",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("detectors_version", Integer, nullable=False),
+    Column("summary_version_seen", Integer, nullable=False),
+    Column("ordering_mode_seen", Text, nullable=False),
+    _ts("computed_at", nullable=False),
+    Column("event_count_seen", Integer, nullable=False),
+    Column("truncated", Boolean, nullable=False),
+    Column("finding_count", Integer, nullable=False),
+    Column("max_severity", Text),
+    PrimaryKeyConstraint("workspace_id", "run_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
+    ),
+    CheckConstraint(_in("ordering_mode_seen", ORDERING_MODES), name="ck_run_findings_ordering"),
+    CheckConstraint(
+        "max_severity IS NULL OR " + _in("max_severity", FINDING_SEVERITIES),
+        name="ck_run_findings_severity",
+    ),
 )

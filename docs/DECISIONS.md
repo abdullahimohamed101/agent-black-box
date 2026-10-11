@@ -36,3 +36,7 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-060 | Dashboard identity via OIDC with API-owned, database-backed sessions (supersedes ADR-021) | 15 | Accepted ([file](decisions/ADR-060-dashboard-identity-oidc-sessions.md)) |
 | ADR-061 | One authorization helper; keys and people share the enforcement path; the matrix is data | 15 | Accepted ([file](decisions/ADR-061-authorization-helper-and-role-matrix.md)) |
 | ADR-062 | Append-only, bounded workspace audit log | 15 | Accepted ([file](decisions/ADR-062-append-only-audit-log.md)) |
+| ADR-070 | Multi-agent trace semantics: one run, agent spans with their own id, explicit trace-context propagation, remote emitters omit `sequence` | 9 | Accepted ([file](decisions/ADR-070-multi-agent-trace-semantics-and-propagation.md)) |
+| ADR-071 | The waterfall is derived in the browser from the loaded events; critical path by last-finishing child | 9 | Accepted ([file](decisions/ADR-071-browser-derived-waterfall.md)) |
+| ADR-080 | Findings are derived, versioned, metadata-only records from a bounded detector job over the outbox | 10 | Accepted ([file](decisions/ADR-080-findings-derived-versioned-metadata-only.md)) |
+| ADR-081 | Health is a set of explained dimensions with recorded thresholds, not a score | 10 | Accepted ([file](decisions/ADR-081-health-explained-dimensions.md)) |

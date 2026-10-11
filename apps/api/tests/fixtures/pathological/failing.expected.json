@@ -1,0 +1,18 @@
+{
+  "scenario": "read ok (6), file.modified (7), tests fail with exit 1 and 3 failing (11), retry (12), the command fails with exit 2 (14), run.failed (15). Root is the exit-2 failure; the chain holds the change, the retry, the root and the end.",
+  "findings": [
+    {
+      "detector": "failure-chain", "finding_type": "failure_chain", "kind": "deterministic",
+      "severity": "critical", "confidence": 1.0, "start_seq": 14, "end_seq": 15,
+      "evidence": {
+        "category": "command_failure", "retries_caused": 1, "retries_unattributed": 0, "mutations": 1,
+        "chain.0.role": "mutation", "chain.1.role": "retry", "chain.2.role": "root", "chain.3.role": "terminal"
+      }
+    },
+    {
+      "detector": "failure-chain", "finding_type": "probable_cause", "kind": "probable",
+      "severity": "warning", "confidence": 0.5, "start_seq": 7, "end_seq": 11,
+      "evidence": {"cause": "code_change_before_test_failure"}
+    }
+  ]
+}

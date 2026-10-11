@@ -5,8 +5,12 @@ clock is immune to wall-clock skew); otherwise fall back to `occurred_at` so eve
 sequence are never exiled to the end of the timeline. Ties break on `received_at` then
 `event_id` so the result is a total, reproducible order.
 
-Known limit: `sequence` is only comparable within one emitter. Multi-process agents arrive in
-Phase 9 and will revisit this with an ADR (see the Phase 1 plan, R1).
+Multiple emitters (Phase 9, ADR-070): `sequence` is only comparable within one emitter, so a
+process that did not create the run (a continued run, or a forked child that inherited it) sends
+no `sequence`. One such event puts the whole run in time order, with `sequence` as the tiebreak
+inside one emitter. Across emitters the order therefore follows their clocks; a skewed clock
+interleaves them wrongly in the chronological list, which is why span nesting uses
+`parent_span_id` and never time (spec §65.3).
 """
 
 from collections.abc import Iterable, Sequence
