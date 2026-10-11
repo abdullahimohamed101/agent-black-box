@@ -131,3 +131,40 @@ async def test_actors_with_payload_read_see_the_command_and_the_path_unchanged(
     assert not any(s["name_withheld"] for s in spans)
     frames = await world.read_stream(run, actor)
     assert COMMAND_CANARY in frames and PATH_CANARY in frames
+
+
+def _without_echo(text: str) -> str:
+    """A search response minus the echo of the caller's own query text (`query.terms`)."""
+    body = json.loads(text)
+    if isinstance(body.get("query"), dict):
+        body["query"].pop("terms", None)
+    return json.dumps(body)
+
+
+@pytest.mark.parametrize("actor", WITHHELD_FROM)
+async def test_search_never_returns_content_or_finds_it_for_an_actor_without_payload_read(
+    world: World, actor: str
+) -> None:
+    """`GET /v1/runs?q=` is a route like any other: the canaries in every syntactic form find
+    nothing, and nothing in the response (items, facets, matched, flags) carries them."""
+    forms = ("{w}", "{w}*", "-{w}", '"{w}"', "tool:acme-agent-tool {w}", "command:{w}", "file:{w}")
+    for canary in CONTENT_CANARIES:
+        for pattern in forms:
+            response = await world.get("/v1/runs", actor, q=pattern.format(w=canary), limit=100)
+            if pattern.startswith(("command:", "file:")):
+                assert response.status_code == 403, pattern
+            else:
+                assert response.status_code == 200, pattern
+                assert response.json()["items"] == [] or pattern.startswith("-"), pattern
+            text = _without_echo(response.text)
+            assert canary.lower() not in text.lower(), (canary, pattern)
+    listing = await world.get("/v1/runs", actor, q="tool:acme-agent-tool", limit=100)
+    assert len(listing.json()["items"]) == 3
+    for canary in CONTENT_CANARIES:
+        assert canary not in _without_echo(listing.text)
+
+
+@pytest.mark.parametrize("actor", SEES_CONTENT[:-2])
+async def test_search_finds_content_for_actors_that_may_read_it(world: World, actor: str) -> None:
+    found = await world.get("/v1/runs", actor, q=f'"{PATH_CANARY}"')
+    assert [i["id"] for i in found.json()["items"]] == [world.acme.run_id]

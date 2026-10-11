@@ -17,13 +17,13 @@ from tests.ingest_helpers import T0, make_run_ids, wire_event
 Spec = list[tuple[str, dict[str, Any], dict[str, Any]]]
 
 
-def stamp(days_ago: int, n: int) -> str:
-    moment = T0 - timedelta(days=days_ago) + timedelta(seconds=n)
+def stamp(days_ago: int, n: int, minutes: int = 0) -> str:
+    moment = T0 - timedelta(days=days_ago) + timedelta(seconds=n, minutes=minutes)
     return moment.isoformat().replace("+00:00", "Z")
 
 
 async def ingest_spec(
-    api: Api, spec: Spec, days_ago: int = 0, *, token: str = "writer"
+    api: Api, spec: Spec, days_ago: int = 0, *, token: str = "writer", minutes: int = 0
 ) -> dict[str, str]:
     """One run from `spec` through the public ingestion API (so documents are production's)."""
     run = make_run_ids()
