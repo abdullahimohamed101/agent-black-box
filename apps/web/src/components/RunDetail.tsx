@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isActive, type RunOut } from "@/lib/api/types";
 import {
@@ -15,6 +16,9 @@ import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
 import { useRun, useRunEvents } from "@/lib/queries";
 import { codingKind } from "@/lib/coding";
+import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
+import { useSpans } from "@/lib/useSpans";
+import { runBounds } from "@/lib/waterfall";
 import { runsPath, type Base } from "@/lib/routes";
 import {
   CLASS_LABELS,
@@ -28,11 +32,14 @@ import {
   type EventClass,
   type Filters,
 } from "@/lib/timeline";
+import { AgentTree } from "./AgentTree";
 import { CodingSummary } from "./CodingSummary";
 import { EventDrawer } from "./EventDrawer";
 import { StatusBadge } from "./StatusBadge";
 import { ErrorState, Loading } from "./States";
 import { Timeline } from "./Timeline";
+import { ViewSwitch, type RunView } from "./ViewSwitch";
+import { Waterfall } from "./Waterfall";
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -171,6 +178,22 @@ export function RunDetail({
     seen.current = marker;
   }, [marker, active, streaming, refetchEvents, run.data?.status]);
 
+  // Timeline or waterfall, kept in the URL (`?view=waterfall`) so a link to the waterfall is shareable.
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const paramView: RunView = params?.get("view") === "waterfall" ? "waterfall" : "timeline";
+  const [chosen, setChosen] = useState({ view: paramView, param: paramView });
+  if (chosen.param !== paramView) setChosen({ view: paramView, param: paramView }); // the URL changed under us
+  const view = chosen.view;
+  const changeView = (next: RunView) => {
+    setChosen((c) => ({ ...c, view: next }));
+    const q = new URLSearchParams(params?.toString() ?? "");
+    if (next === "waterfall") q.set("view", "waterfall");
+    else q.delete("view");
+    const qs = q.toString();
+    window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
+  };
+
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
@@ -185,12 +208,31 @@ export function RunDetail({
     [events],
   );
   const err = useMemo(() => firstError(events), [events]);
+  const bounds = useMemo(
+    () => runBounds(run.data ?? { started_at: "", completed_at: null, summary: {} }, t0),
+    [run.data, t0],
+  );
+  const agents = useMemo(() => {
+    const listed = run.data ? summaryAgents(run.data.summary) : null;
+    return agentTreeRows(listed ?? agentsFromEvents(events));
+  }, [run.data, events]);
+  const multiAgent = agents.length > 1;
+  const { spans, spanIdOf } = useSpans(events, view === "waterfall");
+  const toggleAgent = (agentId: string) =>
+    setFilters((f) => {
+      const cur = new Set(f.agents ?? []);
+      if (cur.has(agentId)) cur.delete(agentId);
+      else cur.add(agentId);
+      return { ...f, agents: cur.size === 0 ? null : cur };
+    });
   // A filter or collapse can remove the selected row; never leave aria-activedescendant pointing at nothing.
   const selectedKey = selected && rows.some((r) => r.key === selected) ? selected : null;
   const drawerEvent = drawerEventId ? events.find((e) => e.event_id === drawerEventId) : undefined;
 
   const focusTimeline = () =>
-    timelineWrap.current?.querySelector<HTMLElement>('[role="listbox"]')?.focus();
+    timelineWrap.current
+      ?.querySelector<HTMLElement>('[role="listbox"], [role="treegrid"]')
+      ?.focus();
   const closeDrawer = useCallback(() => {
     setDrawerEventId(null);
     // Return focus to where the reader was.
@@ -302,42 +344,56 @@ export function RunDetail({
         }}
       />
 
+      {multiAgent && (
+        <AgentTree
+          rows={agents}
+          active={filters.agents ?? null}
+          onToggle={toggleAgent}
+          onClear={() => setFilters((f) => ({ ...f, agents: null }))}
+        />
+      )}
+
       <section aria-labelledby="tl-h" className="timeline-section">
-        <h2 id="tl-h">Timeline</h2>
-        <div className="toolbar" role="group" aria-label="Timeline filters">
-          <fieldset>
-            <legend>Event classes</legend>
-            {CLASS_ORDER.map((c) => (
-              <label key={c} className="chip">
-                <input
-                  type="checkbox"
-                  checked={filters.classes ? filters.classes.has(c) : true}
-                  onChange={() => toggleClass(c)}
-                />
-                {CLASS_LABELS[c]}
-              </label>
-            ))}
-          </fieldset>
-          <label className="chip">
-            <input
-              type="checkbox"
-              checked={filters.errorsOnly}
-              onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
-            />
-            Errors only
-          </label>
-          <button
-            type="button"
-            disabled={allGroups.length === 0}
-            onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allGroups))}
-          >
-            {collapsed.size ? "Expand groups" : "Collapse groups"}
-          </button>
-        </div>
+        <h2 id="tl-h">{view === "waterfall" ? "Waterfall" : "Timeline"}</h2>
+        <ViewSwitch view={view} onChange={changeView} />
+        {view === "timeline" && (
+          <div className="toolbar" role="group" aria-label="Timeline filters">
+            <fieldset>
+              <legend>Event classes</legend>
+              {CLASS_ORDER.map((c) => (
+                <label key={c} className="chip">
+                  <input
+                    type="checkbox"
+                    checked={filters.classes ? filters.classes.has(c) : true}
+                    onChange={() => toggleClass(c)}
+                  />
+                  {CLASS_LABELS[c]}
+                </label>
+              ))}
+            </fieldset>
+            <label className="chip">
+              <input
+                type="checkbox"
+                checked={filters.errorsOnly}
+                onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
+              />
+              Errors only
+            </label>
+            <button
+              type="button"
+              disabled={allGroups.length === 0}
+              onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allGroups))}
+            >
+              {collapsed.size ? "Expand groups" : "Collapse groups"}
+            </button>
+          </div>
+        )}
         <p className="muted" role="status" aria-live="polite" data-testid="progress">
           {loadingMore
             ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
-            : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown`}
+            : view === "waterfall"
+              ? `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
+              : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown`}
           {ev.isError && " (some events failed to load)"}
         </p>
         {ev.isError && events.length === 0 ? (
@@ -346,7 +402,7 @@ export function RunDetail({
           <p className="state">This run has no events yet.</p>
         ) : events.length === 0 ? (
           <Loading label="Loading events" />
-        ) : rows.length === 0 ? (
+        ) : view === "timeline" && rows.length === 0 ? (
           <div className="state" data-state="empty">
             <p className="state-title">No events match these filters</p>
             <button type="button" onClick={() => setFilters(NO_FILTERS)}>
@@ -360,16 +416,32 @@ export function RunDetail({
             data-drawer={drawerEvent ? "open" : "closed"}
             data-wide={(drawerEvent && codingKind(drawerEvent) !== null) || undefined}
           >
-            <Timeline
-              rows={rows}
-              t0={t0}
-              selectedKey={selectedKey}
-              firstErrorId={err?.event_id ?? null}
-              onSelect={setSelected}
-              onActivate={activate}
-              onEscape={closeDrawer}
-              onJumpToError={jumpToError}
-            />
+            {view === "timeline" ? (
+              <Timeline
+                rows={rows}
+                t0={t0}
+                selectedKey={selectedKey}
+                firstErrorId={err?.event_id ?? null}
+                showAgent={multiAgent}
+                onSelect={setSelected}
+                onActivate={activate}
+                onEscape={closeDrawer}
+                onJumpToError={jumpToError}
+              />
+            ) : (
+              <Waterfall
+                spans={spans}
+                bounds={bounds}
+                spanIdOf={spanIdOf}
+                selectedEventId={selected}
+                firstErrorId={err?.event_id ?? null}
+                agentFilter={filters.agents ?? null}
+                onSelect={setSelected}
+                onActivate={setDrawerEventId}
+                onEscape={closeDrawer}
+                onJumpToError={jumpToError}
+              />
+            )}
             {drawerEvent && <EventDrawer runId={runId} event={drawerEvent} onClose={closeDrawer} />}
           </div>
         )}

@@ -22,6 +22,10 @@ bb.shutdown()          # optional: an atexit hook flushes too
 | `BlackBox(api_key, project, endpoint, **options)` | cheap; the exporter thread starts with the first event. Env: `BLACKBOX_API_KEY`, `BLACKBOX_ENDPOINT`, `BLACKBOX_MODE`, `BLACKBOX_LOCAL_PATH`. `project` is informational: the key determines the project. |
 | `bb.run(name, metadata=, agent_id=, tags=)` | records `run.started`; as a context manager ends with `run.completed` / `run.failed` (exception) / `run.cancelled` (`KeyboardInterrupt`, `CancelledError`, non-zero `SystemExit`). `run.end(status)` ends it explicitly (`success`, `error`, `timeout`, `blocked`, `cancelled`). Works with `async with`. |
 | `run.span(name, kind=, attributes=, parent=)` | `kind="tool"` -> `tool.call.*`, `"agent"` -> `agent.*`, anything else `span.*` with `span.kind`. `set_attribute(s)`, `set_payload`, `event`. Nested spans parent automatically through context. |
+| `run.agent(name, agent_id=, agent_version=, input=, attributes=, parent=)` | a child agent (Phase 9): records `agent.spawned` (delegator's identity, `agent.child_id`; `input` is a payload) then `agent.started`/`agent.completed` with the child's own `agent_id`; everything inside inherits it. `set_result(value)` is the payload of `agent.completed`. A name with no slug characters, or equal to the delegator's agent id, becomes `<delegator>-child-<n>`. |
+| `run.spawn_context(agent_id=, parent=, input=)` / `run.trace_context()` | delegate to another process: `spawn_context` records `agent.spawned` and returns the context string (`abb1;run=...;trace=...;span=...;agent=...`, <= 256 characters); `trace_context` returns the current position without an event. |
+| `bb.continue_run(context, agent_id=, agent_version=)` | join a run another process started: no `run.started`/`run.completed` (`end()` is a counted no-op, `ended` stays False), root spans parent to the context's span, `sequence` omitted. As a context manager it wraps the block in an agent span when an agent id is known. An invalid context returns an inert run. |
+| `blackbox.trace_context_from_env()` | the context in `BLACKBOX_TRACE_CONTEXT` or `None`. HTTP header name constant `TRACE_CONTEXT_HEADER` (`X-Blackbox-Trace-Context`); the SDK does no HTTP for you. |
 | `run.llm_call(provider, model, temperature=, max_tokens=)` | `llm.request.*`; `record_usage(input, output, cached_input_tokens=, cost_usd=)`. Cost: pass token counts and the server prices them (ADR-040); `cost_usd` is your own estimate and `provider_cost_usd` a provider-reported figure. |
 | `run.event(type, attributes, payload=, status=)` / `bb.event(...)` | point event (`custom.<name>` if no dot). |
 | `@bb.observe(kind=, name=)` | sync or async functions; untraced outside a run; arguments/results are never captured. |
@@ -29,6 +33,25 @@ bb.shutdown()          # optional: an atexit hook flushes too
 | `blackbox.bind(fn)` | threads do not inherit context: wrap callables you hand to a thread/pool. asyncio tasks inherit it. |
 
 User exceptions inside `with` blocks always propagate unchanged.
+
+## Multi-agent and other processes
+
+ADR-070. One run and one trace per job; a child agent is an `agent.*` span with its own `agent_id` (`Span.agent_id`/`agent_version` are
+inherited: explicit, else the parent span's, else the run's). Contextvars carry the current run and span in-process; threads need `bind()`.
+Across processes the explicit `TraceContext` travels in `BLACKBOX_TRACE_CONTEXT` (or the `X-Blackbox-Trace-Context` header). Parsing is strict
+and bounded (256 characters, fixed key set, every id checked against the contract's patterns); anything else yields `None` and a warning that
+does not contain the value.
+
+- `sequence` is only comparable within one emitter (§65.1). A continued run, and a forked child that keeps using its parent's `Run`
+  (`os.getpid()` differs from the run's), omit it, so the run is ordered by `occurred_at` (`ordering_mode: time`). Clock skew between
+  processes therefore shows in the chronological list; span nesting never depends on time.
+- Hazards: the variable is inherited by grandchildren and tools that do not overwrite or remove it (a grandchild calling
+  `trace_context_from_env()` would parent to the grandparent's span); `env={**os.environ, ...}` also passes `BLACKBOX_API_KEY` to the
+  child, so tools get a filtered environment; `multiprocessing` with the `spawn` start method (macOS default) neither forks nor inherits the
+  `Run`, so such children must use the environment context.
+- A context lets its holder write into that run with a key of the same project (the server rejects other projects' runs); treat it like a
+  request id. `agent.spawned` payloads follow `PayloadMode` and the redactor like every other payload; NUL characters in payload strings and
+  keys are removed (the contract rejects them).
 
 ## Modes
 

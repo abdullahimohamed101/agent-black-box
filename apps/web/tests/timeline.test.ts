@@ -75,6 +75,23 @@ describe("filterEvents", () => {
   it("an empty class set shows nothing", () => {
     expect(filterEvents(events, { classes: new Set(), errorsOnly: false })).toEqual([]);
   });
+  it("filters by agent, composes with the other filters, and null means every agent", () => {
+    const mixed = events.map((e, i) => ({ ...e, agent_id: i % 2 ? "child" : e.agent_id }));
+    const only = filterEvents(mixed, {
+      classes: null,
+      errorsOnly: false,
+      agents: new Set(["child"]),
+    });
+    expect(only.length).toBeGreaterThan(0);
+    expect(only.every((e) => e.agent_id === "child")).toBe(true);
+    expect(filterEvents(mixed, { classes: null, errorsOnly: false, agents: null })).toEqual(mixed);
+    const both = filterEvents(mixed, {
+      classes: null,
+      errorsOnly: true,
+      agents: new Set(["child"]),
+    });
+    expect(both.every((e) => e.agent_id === "child" && e.status === "error")).toBe(true);
+  });
 });
 
 describe("buildRows grouping", () => {

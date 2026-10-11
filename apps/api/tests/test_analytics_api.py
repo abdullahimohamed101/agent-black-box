@@ -7,6 +7,7 @@ test), including the tenant and project isolation rules.
 from typing import Any
 
 import pytest
+from abb_event_schema.ids import IdKind, new_id
 from sqlalchemy import text
 
 from abb_api.analytics.postgres import PostgresAnalyticsStore, analytics_timeout
@@ -16,6 +17,7 @@ from abb_api.core.errors import AppError
 from abb_api.tenancy import TenantContext
 from tests.analytics_fixtures import D6, D7, RUNS, Seeder, X  # noqa: F401
 from tests.api_fixtures import Api
+from tests.ingest_helpers import make_run_ids, wire_event
 
 
 def near(value: float | None, expected: float, tolerance: float = 0.07) -> bool:
@@ -267,3 +269,39 @@ async def test_extreme_windows_are_a_422_not_a_500(seeded: Api, params: dict[str
         response = await seeded.get(f"/v1/analytics/{kind}", **params)
         assert response.status_code == 422, (kind, params, response.text[:200])
         assert response.json()["error"]["code"] in ("INVALID_WINDOW", "REQUEST_INVALID")
+
+
+async def test_a_child_agents_cost_is_its_own_while_run_metrics_stay_with_the_root(
+    api: Api,
+) -> None:
+    """Cost lines carry the event's agent (ADR-040); runs and active agents key on the root."""
+    ids = make_run_ids()
+    stamp = D7.isoformat().replace("+00:00", "Z")
+    child_span = new_id(IdKind.SPAN)
+
+    def event(n: int, agent: str, kind: str, **kw: Any) -> dict[str, Any]:
+        return wire_event(ids, n, agent_id=agent, event_type=kind, occurred_at=stamp, **kw)
+
+    llm = {"llm.provider": "p", "llm.model": "m"}
+    events = [
+        event(1, "planner", "run.started", span_id=..., attributes={}),
+        event(2, "planner", "llm.request.completed", status="success",
+              attributes={**llm, "cost.provider_usd": 0.5}),
+        event(3, "researcher", "agent.started", span_id=child_span, attributes={}),
+        event(4, "researcher", "llm.request.completed", status="success",
+              parent_span_id=child_span, attributes={**llm, "cost.provider_usd": 1.25}),
+        event(5, "researcher", "llm.request.completed", status="success",
+              parent_span_id=child_span, attributes={**llm, "cost.provider_usd": 0.25}),
+    ]  # fmt: skip
+    assert (await api.post_batch(events)).status_code == 202
+    await api.drain()
+
+    cost = await get(api, "cost")
+    agents = {a["agent"]: a for a in cost["by_agent"]}
+    assert set(agents) == {"planner", "researcher"}
+    assert approx(agents["planner"]["cost_usd"], 0.5) and agents["planner"]["calls"] == 1
+    assert approx(agents["researcher"]["cost_usd"], 1.5) and agents["researcher"]["calls"] == 2
+    assert [r["agent"] for r in cost["expensive_runs"]] == ["planner"]  # the run's root agent
+    summary = await get(api, "summary")
+    assert summary["active_agents"] == ["planner"]  # the run is in progress, under its root agent
+    assert summary["runs"]["total"] == 1 and summary["runs"]["active"] == 1

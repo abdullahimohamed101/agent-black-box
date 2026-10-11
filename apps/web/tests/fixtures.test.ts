@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fixtureReply } from "@/fixtures/api";
 import { fixtureRuns } from "@/fixtures";
+import { orderingMode, sortEvents } from "@/lib/ordering";
 import { stressRun, successRun } from "@/fixtures/runs";
 import type { EventPage, RunPage } from "@/lib/api/types";
 
@@ -25,11 +26,39 @@ describe("fixtures", () => {
     expect(runs.some((r) => Number(r.summary.retry_count) > 0 && r.status === "FAILED")).toBe(true);
   });
 
+  it("the multi-agent run has five agents, a remote emitter without sequence, and is time-ordered", () => {
+    const f = fixtureRuns().find((x) => x.run.name === "Ship feature: multi-agent")!;
+    expect(new Set(f.events.map((e) => e.agent_id))).toEqual(
+      new Set(["planner", "researcher", "coder", "tester", "reviewer"]),
+    );
+    expect(f.run.ordering_mode).toBe("time");
+    expect(f.run.agent_id).toBe("planner");
+    const remote = f.events.filter((e) => e.agent_id === "tester");
+    expect(remote.length).toBeGreaterThan(0);
+    expect(remote.every((e) => e.sequence == null)).toBe(true);
+    expect(f.events.filter((e) => e.agent_id !== "tester").every((e) => e.sequence != null)).toBe(
+      true,
+    );
+    expect(f.run.summary.agent_count).toBe(5);
+    expect(f.events.filter((e) => e.event_type === "tool.call.failed")).toHaveLength(1);
+  });
+
+  it("the failure run closes its root span with a registered closer carrying the error", () => {
+    const f = fixtureRuns().find((x) => x.run.status === "FAILED")!;
+    expect(f.events.some((e) => e.event_type === "agent.failed")).toBe(false);
+    const closer = f.events.find((e) => e.event_type === "agent.completed");
+    expect(closer?.status).toBe("error");
+  });
+
   it("emit unique, ordered, pattern-valid ids", () => {
     for (const f of fixtureRuns()) {
       const ids = new Set(f.events.map((e) => e.event_id));
       expect(ids.size).toBe(f.events.length);
-      expect(f.events.every((e, i) => e.sequence === i + 1)).toBe(true);
+      // canonical order, and the mode the run reports is the mode that order implies
+      expect(f.events).toEqual(sortEvents(f.events));
+      expect(f.run.ordering_mode).toBe(orderingMode(f.events));
+      if (f.run.ordering_mode === "sequence")
+        expect(f.events.every((e, i) => e.sequence === i + 1)).toBe(true);
       expect(f.run.id).toMatch(/^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
     }
   });

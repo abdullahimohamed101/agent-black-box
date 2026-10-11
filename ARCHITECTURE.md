@@ -56,12 +56,12 @@ Never raises into the host agent. Status: implemented (Phase 3; `blackbox.coding
 
 ### Web (`apps/web`)
 Next.js App Router. Server-fetched page data; client-side trace viewers (timeline, waterfall,
-diff, replay) with virtualization. Status: implemented (Phases 4-7, 15): dashboard, runs list, run detail with story, timeline, diff and shell panels, live updates, analytics page, sign-in, workspace switcher, settings (members, API keys, pricing, audit log).
+diff, replay) with virtualization. Status: implemented (Phases 4-7, 15): dashboard, runs list, run detail with story, timeline, waterfall (Phase 9: agent lanes, zoom and pan, critical path, derived in the browser, ADR-071), diff and shell panels, live updates, analytics page, sign-in, workspace switcher, settings (members, API keys, pricing, audit log).
 The browser holds only a session cookie; the web server is a same-origin relay with a header allowlist (`apps/web/src/server/`), forwarding the cookie to the API, which decides every request.
 
 ### Integrations (`integrations/*`), Processors, Examples
 Adapters translate framework callbacks to SDK calls only; processors are pluggable derived-
-data producers; examples include the flagship coding-agent demo. Status: adapters and the coding-agent demo implemented (Phases 6, 8); processors planned (Phases 9-10).
+data producers; examples include the flagship coding-agent demo. Status: adapters, the coding-agent demo and the multi-agent example (threads, an asyncio task and a subprocess joined through a trace context, Phase 9, ADR-070) implemented (Phases 6, 8, 9); processors planned (Phase 10).
 
 ## Dependency Direction
 

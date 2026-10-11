@@ -46,6 +46,14 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
   Server-side streaming is tested over a real socket (`apps/api/tests/test_stream_api.py`), because an in-process ASGI transport buffers
   whole responses.
 
+- **Multi-agent E2E** (`make multiagent-e2e`, `scripts/multiagent-e2e.sh`, CI job `multiagent-e2e`, Phase 9): dedicated `abb_p9` database, API (:8130)
+  and worker, the built web server (:3104). `examples/multi-agent` (threads, an asyncio task, a real subprocess joined through `BLACKBOX_TRACE_CONTEXT`
+  whose clock is 1.5 s behind, one failing tool, full payloads) writes a real run; the script then asserts the stored run (five agents, root agent
+  `planner`, `ordering_mode: time`, the tester's span parented to the coder's, summary version 3) and runs `apps/web/e2e/multiagent.spec.ts` as an OWNER
+  and as a VIEWER (two throwaway development sessions): waterfall nesting under skew, the skew badge, the critical path, lanes, the agent tree, the
+  failed-tool jump, and that a VIEWER sees the same structure but never the tester's command (rows, tooltip, lanes, timeline, drawer). Example tests:
+  `uv run --project packages/sdk-python pytest examples/multi-agent/tests`.
+
 ### Auth, workspaces and RBAC (Phase 15)
 - **Authorization generator** (`apps/api/tests/authz/`): `registry.py` lists every route the application serves with the expected outcome for each of
   27 actors (13 key kinds, six roles, and people who are not members, were removed, were demoted, hold an expired or revoked session, send a session as a

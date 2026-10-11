@@ -478,3 +478,66 @@ async def test_the_default_delay_applies_through_the_http_ingest_path(
                 )
             ).one()
         assert 30 < due < 46
+
+
+# ------------------------------------------------------------------ multiple emitters (Phase 9)
+
+
+async def test_a_multi_emitter_run_is_time_ordered_and_nests_by_parent_not_by_clock(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """The child process has no sequence and a clock 10 s behind the parent's (D4)."""
+    from datetime import timedelta
+
+    from tests.ingest_helpers import T0
+
+    tenant, run = await make_tenant(engine, "multi"), make_run_ids()
+    deleg, child = new_id(IdKind.SPAN), new_id(IdKind.SPAN)
+    forged_trace = new_id(IdKind.TRACE)
+
+    def at(seconds: float) -> str:
+        return (T0 + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+
+    events = [
+        build_event(
+            tenant, run, n=1, event_type="run.started", agent_id="planner", span_id=...,
+            occurred_at=at(100), attributes={"run.name": "multi"},
+        ),
+        build_event(
+            tenant, run, n=2, event_type="tool.call.started", agent_id="planner", span_id=deleg,
+            occurred_at=at(101), attributes={"tool.name": "delegate"},
+        ),
+        build_event(
+            tenant, run, n=3, event_type="agent.started", agent_id="tester", span_id=child,
+            parent_span_id=deleg, sequence=..., occurred_at=at(90), trace_id=forged_trace,
+            attributes={"span.name": "tester", "span.kind": "agent"},
+        ),
+        build_event(
+            tenant, run, n=4, event_type="agent.completed", agent_id="tester", span_id=child,
+            parent_span_id=deleg, sequence=..., occurred_at=at(95), status="success",
+            trace_id=forged_trace,
+        ),
+        build_event(
+            tenant, run, n=5, event_type="tool.call.completed", agent_id="planner", span_id=deleg,
+            occurred_at=at(110), status="success", attributes={"tool.name": "delegate"},
+        ),
+        build_event(
+            tenant, run, n=6, event_type="run.completed", agent_id="planner", span_id=...,
+            occurred_at=at(111),
+        ),
+    ]  # fmt: skip
+    # the child's batch arrives first: the run row is seeded from the earliest event it sees
+    await ingest(engine, tenant, events[2:4])
+    await ingest(engine, tenant, [*events[:2], *events[4:]])
+    await drain(worker_for(engine, database_url))
+
+    row = await run_row(engine, run["run_id"])
+    assert row.ordering_mode == "time"
+    assert row.agent_slug == "planner" and row.trace_id == to_uuid(run["trace_id"])
+    assert row.summary_version == SUMMARY_VERSION == 3
+    assert {a["agent_id"] for a in row.summary["agents"]} == {"planner", "tester"}
+    assert row.summary["agent_count"] == 2
+    spans = await span_rows(engine, run["run_id"])
+    child_row, deleg_row = spans[to_uuid(child)], spans[to_uuid(deleg)]
+    assert child_row.parent_span_id == to_uuid(deleg) and child_row.agent_slug == "tester"
+    assert child_row.started_at < deleg_row.started_at  # nested although its clock is behind

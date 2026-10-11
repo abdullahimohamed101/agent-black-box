@@ -6,3 +6,4 @@ tsconfig.json
 src/lib/api/schema.d.ts
 test-results
 playwright-report
+src/lib/generated

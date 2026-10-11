@@ -112,7 +112,8 @@ export function failureRetryRun(): FixtureRun {
     2000,
   );
   llm(b, 5, "model-x", 2600, 120, 0.0167, 1500);
-  b.add("agent.failed", { "error.summary": "migration could not connect" }, 200, {
+  // `agent.failed` is not a registered type (it would leave the span open); the registered closer carries the error.
+  b.add("agent.completed", { "error.summary": "migration could not connect" }, 200, {
     span_id: b.span(1),
     status: "error",
   });
@@ -186,5 +187,114 @@ export function stressRun(): FixtureRun {
   while (b.events.length < 9_998) b.add("file.read", { "file.path": "data/tail.json" }, 20);
   b.add("agent.completed", {}, 100, { span_id: b.span(1), status: "success" });
   b.add("run.completed", {}, 100, { status: "success" });
+  return b.build();
+}
+
+/**
+ * Five agents in one run (§84, §135): a planner delegates to a researcher and a coder that work in parallel, the coder
+ * runs a tester in another process (its clock 1.5 s behind, no `sequence`, so the run is time-ordered), and a reviewer
+ * follows. One tool call fails in the researcher. Cost lands on the agent that made each model call.
+ */
+export function multiAgentRun(): FixtureRun {
+  const b = new RunBuilder(7, "Ship feature: multi-agent", "planner", FIXTURE_EPOCH + 110 * MIN);
+  const root = b.span(1);
+  const agent = (id: string, k: number, parent: number, gap = 200, extra = {}) => {
+    b.add("agent.spawned", { "agent.child_id": id }, gap, {
+      span_id: b.span(parent),
+      agent_id: parentAgent.get(parent) ?? "planner", // the delegator emits this, in its own process
+    });
+    b.add("agent.started", { "span.name": id }, 100, {
+      span_id: b.span(k),
+      parent_span_id: b.span(parent),
+      agent_id: id,
+      ...extra,
+    });
+    parentAgent.set(k, id);
+  };
+  const parentAgent = new Map<number, string>([[1, "planner"]]);
+  const model = (who: string, k: number, parent: number, usd: number, extra = {}) => {
+    b.add("llm.request.started", { "llm.provider": "demo", "llm.model": "model-x" }, 300, {
+      span_id: b.span(k),
+      parent_span_id: b.span(parent),
+      agent_id: who,
+      ...extra,
+    });
+    b.add(
+      "llm.request.completed",
+      {
+        "llm.provider": "demo",
+        "llm.model": "model-x",
+        "llm.input_tokens": 1200,
+        "llm.output_tokens": 150,
+        "cost.estimated_usd": usd,
+      },
+      1200,
+      {
+        span_id: b.span(k),
+        parent_span_id: b.span(parent),
+        agent_id: who,
+        status: "success",
+        duration_ms: 1200,
+        ...extra,
+      },
+    );
+  };
+  const close = (who: string, k: number, parent: number | null, status: string, extra = {}) =>
+    b.add("agent.completed", {}, 150, {
+      span_id: b.span(k),
+      parent_span_id: parent ? b.span(parent) : undefined,
+      agent_id: who,
+      status,
+      ...extra,
+    });
+
+  b.add("run.started", { "run.name": "Ship feature: multi-agent" }, 0, { agent_id: "planner" });
+  b.add("agent.started", { "span.name": "planner" }, 100, { span_id: root, agent_id: "planner" });
+  model("planner", 2, 1, 0.012);
+
+  // researcher and coder start together and interleave
+  agent("researcher", 10, 1);
+  agent("coder", 20, 1, 100);
+  // the coder hands the tests to a tester in another process: its clock is 1.5 s behind and it sends no sequence
+  const remote = { sequence: null, atMs: -1500 } as const;
+  agent("tester", 30, 20, 100, remote);
+  b.add("shell.command.started", { "shell.command": "pytest -q" }, 200, {
+    span_id: b.span(31),
+    parent_span_id: b.span(30),
+    agent_id: "tester",
+    ...remote,
+  });
+  model("researcher", 11, 10, 0.009);
+  b.add("tool.call.started", { "tool.name": "search_docs" }, 200, {
+    span_id: b.span(12),
+    parent_span_id: b.span(10),
+    agent_id: "researcher",
+  });
+  b.add("tool.call.failed", { "tool.name": "search_docs", "tool.error_type": "HttpError" }, 400, {
+    span_id: b.span(12),
+    parent_span_id: b.span(10),
+    agent_id: "researcher",
+    status: "error",
+    duration_ms: 600,
+  });
+  b.add("shell.command.completed", { "shell.command": "pytest -q", "shell.exit_code": 0 }, 600, {
+    span_id: b.span(31),
+    parent_span_id: b.span(30),
+    agent_id: "tester",
+    status: "success",
+    duration_ms: 1200,
+    ...remote,
+  });
+  close("tester", 30, 20, "success", remote);
+  model("coder", 21, 20, 0.021);
+  model("researcher", 13, 10, 0.007);
+  close("researcher", 10, 1, "success");
+  close("coder", 20, 1, "success");
+
+  agent("reviewer", 40, 1, 300);
+  model("reviewer", 41, 40, 0.011);
+  close("reviewer", 40, 1, "success");
+  close("planner", 1, null, "success");
+  b.add("run.completed", {}, 100, { status: "success", agent_id: "planner" });
   return b.build();
 }
