@@ -237,11 +237,17 @@ routes, fake charts, debug logging, or secrets).
 
 ## Planned additions (decided 2026-10-11)
 
-Added at the user's request ("go with your recommendation"); neither has a plan yet.
+Added at the user's request ("go with your recommendation"). The design pass has a plan (Phase 21, below); hosting has none yet.
 
-- **UI design pass.** After the feature phases and before Phase 20's release polish. The UI today is functional and unbranded (dark theme, system fonts, dense tables,
-  no logo or design system). The pass would give it one visual system, branding, a light theme and polish on the busiest screens (run page, waterfall, dashboard).
-  Show two or three visual directions as mockups before building anything.
+- **UI design pass: Phase 21, "UI application shell and design pass".** Plan: `docs/plans/active/phase-21-ui-shell-and-design-pass.md`; direction, palette, type and
+  motion spec: `docs/design/ui-direction.md`; concept renders: `docs/design/concepts/`; demo video storyboard: `docs/design/video-storyboard.md`. The UI today is a centred
+  document under a top bar (`.shell main { max-width: 80rem }`): functional, accessible and unbranded. The pass turns it into an application: a persistent rail, a search
+  slot, a sticky instrument-style run header, tabs, full-width content and a right inspector in place of the overlay drawer. Aesthetic: "flight-deck instrument panel".
+  **Decided 2026-10-11 (the user accepted the recommendations):** (1) it lands after Phases 10, 16 and 11 have merged, because they all edit RunDetail.tsx, RunsTable.tsx and the
+  stylesheets; (2) the three IBM Plex fonts are self-hosted, so an observability tool makes no third-party request; (3) light and dark follow the system setting this phase, no
+  toggle; (4) the page title stays "Dashboard" with the rail label "Overview" until a later pass; (5) Evidence is its own run tab, which also gives Phase 12 (replay) a home;
+  (6) the demo video is recorded as WebM; an MP4 needs `brew install ffmpeg`, which needs the user's approval first. Open: the brand mark is a placeholder glyph
+  ([NEEDS INPUT]: a designed mark); the video's closing caption "open source, self-hosted" must be checked against the README and the hosting guide before use.
 - **Private hosting.** After Phase 19 (production hardening). A hosting guide and recipe for one small server: the compose stack behind a reverse proxy with automatic
   HTTPS, a domain, a persistent volume for artifacts (object storage stays deferred, Phase 18), Postgres backups, a real OIDC provider (KI-067) and
   `ABB_TRUST_PROXY` behind the proxy (KI-073). Pull a minimal slice earlier only if the user asks. Assumed audience: the user and a small team (not confirmed).
