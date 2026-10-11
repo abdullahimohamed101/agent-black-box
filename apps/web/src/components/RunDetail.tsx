@@ -35,6 +35,7 @@ import {
 import { AgentTree } from "./AgentTree";
 import { CodingSummary } from "./CodingSummary";
 import { EventDrawer } from "./EventDrawer";
+import { Evaluations } from "./Evaluations";
 import { Findings } from "./Findings";
 import { StatusBadge } from "./StatusBadge";
 import { ErrorState, Loading } from "./States";
@@ -353,6 +354,8 @@ export function RunDetail({
         summaryProcessing={r.summary_state === "processing"}
         onShowEvent={jumpTo}
       />
+
+      <Evaluations runId={runId} onShowEvent={jumpTo} />
 
       <CodingSummary
         events={events}

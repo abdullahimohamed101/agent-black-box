@@ -50,6 +50,16 @@ describe("fixture data: the states and the projections", () => {
     expect(states).toEqual(new Set(["pending", "running", "completed", "failed"]));
   });
 
+  it("the passing test run is the evidence of the baseline's tests-pass result", () => {
+    const f = runOf(BASE_ID);
+    const row = fixtureRunEvaluations(f, { content: true }).items.find(
+      (e) => e.evaluator_name === "tests-pass",
+    )!;
+    const cited = f.events.find((e) => e.event_id === row.evidence_event_ids[0])!;
+    expect(cited.event_type).toBe("shell.command.completed");
+    expect(cited.attributes["test.failed"]).toBe(0);
+  });
+
   it("a viewer keeps scores and labels and loses free text, rubric, globs and raw metadata", () => {
     const owner = fixtureRunEvaluations(runOf(BASE_ID), { content: true }).items;
     const viewer = fixtureRunEvaluations(runOf(BASE_ID), { content: false }).items;

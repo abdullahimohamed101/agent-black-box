@@ -158,13 +158,15 @@ const JUDGE_META = {
 /** Newest first, like the API. */
 function evaluationRows(f: FixtureRun): EvaluationOut[] {
   const run_id = f.run.id;
-  const event = (i: number) => f.events[i]?.event_id;
+  const lastTestRun = [...f.events]
+    .reverse()
+    .find((e) => "test.framework" in e.attributes && e.event_type !== "shell.command.started");
   if (run_id === baselineId) {
     return [
       evaluation({ id: fid("eval", 11), run_id, evaluator_id: EVR.human, kind: "human", state: "completed", score: 1, label: "pass", explanation: HOSTILE }),
       evaluation({ id: fid("eval", 12), run_id, evaluator_id: EVR.judge, kind: "llm_judge", state: "completed", score: 0.8, label: "good", explanation: "The patch refreshes early and keeps the refresh token.", metadata: JUDGE_META }),
       evaluation({ id: fid("eval", 13), run_id, evaluator_id: EVR.cost, kind: "metric", state: "completed", score: 1, label: "pass", explanation: "Cost $0.09 is under the $1.00 limit.", metrics: { cost_usd: 0.09 } }),
-      evaluation({ id: fid("eval", 14), run_id, evaluator_id: EVR.tests, kind: "deterministic", state: "completed", score: 1, label: "pass", explanation: "The last test run passed (6 of 6).", evidence_event_ids: [event(30)!].filter(Boolean), metrics: { test_runs: 2 } }),
+      evaluation({ id: fid("eval", 14), run_id, evaluator_id: EVR.tests, kind: "deterministic", state: "completed", score: 1, label: "pass", explanation: "The last test run passed (6 of 6).", evidence_event_ids: lastTestRun ? [lastTestRun.event_id] : [], metrics: { test_runs: 2 } }),
     ]; // prettier-ignore
   }
   if (run_id === wrongId) {

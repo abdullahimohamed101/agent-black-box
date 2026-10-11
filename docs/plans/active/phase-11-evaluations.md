@@ -798,3 +798,23 @@ are compared partially, which the response and UI state (KI-105).
   shell recorder (`git.diff` etc. come with `shell.command.*` events). No divergence, outcome or metadata expectation changed; the real pair reproduces the corrected shapes
   from the step 8 note. The raw fixture is 74 (baseline) and 50 (wrong-fix) events, previously 66 and 52, and has inline `payload.response` texts (PayloadMode.FULL).
 - Verified: example tests 16 passed; `scripts/coding-e2e.sh` PASSED (6 Playwright tests); `test_comparison_align.py` and `test_comparison_api.py` 52 passed.
+
+## Implementation notes (steps 11-12)
+
+- Proxy (`server/upstream.ts`): the GET alternation gained `evaluations|compare` under `runs/{id}` and `evaluators|experiments` (+ `experiments/{id}`); new POST routes
+  `runs/{id}/(evaluations|verdicts)`, `evaluators`, `experiments`, `experiments/{id}/(variants|runs|evaluate)`, and DELETE `(evaluators|experiments)/{id}`,
+  `experiments/{id}/runs/{id}`. No method-allowlist, Origin, body-cap or `redirect: "manual"` change was needed: the existing write path covers them (`tests/evaluations-proxy.test.ts`
+  re-proves Origin, 64 KiB, 415, 401, no redirect for every new write). Like every route family, a path that matches some other method answers 405 (`GET /v1/evaluators/{id}` is a 405
+  because DELETE exists; there is no single-evaluator read).
+- Fixture runs 11 (baseline, SUCCESS) and 12 (wrong fix, FAILED) mirror the example, both started before every earlier fixture run; they are in `fixtureRuns()` so the runs list,
+  run page and compare selection work in fixtures mode. Existing counts were derived from the data (`tests/runs-list.test.tsx`, `tests/search.test.tsx`: rows = runs + 1, failed = count
+  of FAILED, success rate from finished runs) and `e2e/fixtures.spec.ts` (10 -> 12 rows, 2 -> 3 failed). `fixtureReply(segments, q, viewer)` takes the reader's projection; in fixtures
+  mode the proxy derives it from `X-ABB-Workspace` (the `viewer-only` fixture workspace is the VIEWER). Fixture permissions list the six new actions for the owner (all) and the
+  two reads for the viewer, copied from the API's matrix as data.
+- Deviation: the compare route path is `.../runs/compare?left=<run>&right=<run>` (the page is step 13; until it lands the link resolves to the run page's not-found state because
+  `compare` matches `[runId]`). `comparePath` is in `lib/routes.ts`; the selection rule (two picks, third refused, left = first pick) is `lib/compare.ts`.
+- Deviation: choices are radio groups, not `<select>`: native `<option>` elements have the ARIA role `option`, which the timeline specs (`getByRole("option")`) count.
+- UI behaviour VERIFIED in the in-app browser through the DOM (the pane could not composite screenshots: "not displayed"): the wrong-fix run page lists the running judge, pending cost
+  evaluator, failed `only-app-files` (TIMEOUT), completed `tests-pass` (score 0.0 fail) and "Earlier results (1)", with both forms; the viewer workspace shows the same scores/labels with
+  "Explanation withheld for your role." (2) and no forms; the baseline's hostile explanation renders as text (no `img`); Show evidence opens the cited test run in the drawer; the runs list picks two
+  runs, disables the other ten boxes, builds the compare link and has no horizontal overflow. The Playwright fixtures spec (19 tests) exercises the same with axe.
