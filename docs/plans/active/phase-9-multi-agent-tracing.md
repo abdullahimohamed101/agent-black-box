@@ -166,9 +166,12 @@ needs Kafka, ClickHouse, Redis or Kubernetes.
   invented; a per-emitter sequence space would need a schema field, a new ordering function and a new cursor mode for a total order that still
   cannot compare clocks. Consequence (documented, KI-085): under clock skew the chronological list interleaves emitters by their own clocks and the
   earliest `occurred_at` sets `started_at`/`t0`; the waterfall nests by parentage regardless (§65.3). The run's **root agent and `trace_id`** are
-  taken from the first `run.started` in canonical order (a replayed or duplicated `run.started` cannot change them), falling back to the first
+  taken from the first `run.started` that carries a `sequence` (SDK roots always send one; remote and forked emitters send none, so a sequence-less
+  `run.started` cannot displace the root; security review F2), else the earliest `run.started`, falling back to the first
   event in canonical order for runs created by `POST /v1/runs` whose events never include `run.started`; so a skewed child never becomes the run's
-  agent and a forged `trace_id` in a continued run never becomes the run's trace (`summary.py` fix, tested together).
+  agent and a forged `trace_id` in a continued run never becomes the run's trace (`summary.py` fix, tested together). Not guaranteed: a write key
+  of the same project can write a `run.started` with a `sequence` into the project's runs (it could always write any event); D4 is
+  consistency, not authentication.
 - **D5 (ADR-071) The waterfall is derived in the browser from the events the page already holds.** `lib/spans.ts` is a port of
   `abb_event_schema.spans.derive_spans` pinned by a generated golden file (like ordering). The port reads the registry from the generated
   `schemas/1.0/event-types.json` (copied to `apps/web/src/lib/generated/event-types.json` by `make schema`, verified by `make schema-check`;
@@ -487,7 +490,8 @@ again; lift the 50-agent bound; parent by time instead of `parent_span_id` in `s
   in `test_migrations.py:REVISIONS` and re-running `scripts/quality.sh full` (upgrade head / downgrade base / upgrade head), as Phase 6 did when it
   renumbered behind Phases 7 and 8. Phase 9's reserved ids 0050-0059 stay free.
 - **Why 9 merges before 10**: Phase 10's cost-spike detector keys its baseline on `runs.agent_slug` (its plan D5); D4's root-agent rule is what keeps
-  that key stable under skew, and D12 notes that a rebuild may move a run between agents.
+  that key stable under skew and against forged child events, but not against a same-project key writing a `run.started` with a `sequence` (a key
+  that could always write any event in its project; Phase 10 must not treat `agent_slug` as authenticated), and D12 notes that a rebuild may move a run between agents.
 - **ADR and KI ids** do not collide: ADR 070/071 (9), 080/081 (10), 090-092 (11), 100/101 (16); KI-080..083 (16), KI-084..086 (9).
 
 ## Ordered steps (one commit each; main stays green after every step)
@@ -566,8 +570,9 @@ gate plus a recorded number). No P1 rebutted: each was re-checked against the co
 Status: Proposed (Phase 9). Context: spec §84 asks for delegating parent, child identity, input, result and timing overlap; §67.2 for explicit
 propagation across threads, processes and sub-agents; §65.1 allows `sequence` to be per emitter; Phase 1 left multi-emitter ordering open (R1).
 Decision: (1) one run and one trace per job; a child agent is an `agent.*` span with its own `agent_id` (and optional `agent_version`) whose
-nested events carry that identity; the run's agent and `trace_id` are those of the first `run.started` in canonical order (fallback: the first
-event), so a skewed or forged child event cannot change them. (2) Delegation is recorded by both sides: `agent.spawned` by the delegator
+nested events carry that identity; the run's agent and `trace_id` are those of the first `run.started` carrying a `sequence` (else the earliest
+`run.started`, else the first event), so a skewed clock or a forged child agent event or `trace_id` cannot change them (a same-project key can
+still write any event into its project's runs). (2) Delegation is recorded by both sides: `agent.spawned` by the delegator
 (`agent.child_id`, optional input payload; in the delegating span when there is one), `agent.started`/`agent.completed` by the child
 (`parent_span_id` = the delegating span, optional result payload); payloads obey `PayloadMode` and the redactor. A child slug that would equal the
 default or the parent's slug becomes `<parent>-child-<n>`. (3) Propagation: contextvars in-process (threads via `bind`), and an explicit serialized

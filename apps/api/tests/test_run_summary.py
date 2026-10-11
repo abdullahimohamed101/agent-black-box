@@ -531,3 +531,31 @@ def sort_first(events: list[Event]) -> Event:
     from abb_event_schema.ordering import sort_events
 
     return sort_events(events)[0]
+
+
+def test_a_sequenceless_earlier_run_started_cannot_displace_the_root() -> None:
+    """A remote emitter omits `sequence`; the SDK root always carries one (review F2)."""
+    events = multi_emitter()
+    run = {"run_id": events[0].run_id, "trace_id": events[0].trace_id}
+    forged = ev(
+        run,
+        9,
+        "run.started",
+        agent_id="evil",
+        span_id=...,
+        sequence=...,
+        occurred_at=at(50),
+        trace_id=new_id(IdKind.TRACE),
+    )
+    assert sort_first([*events, forged]).agent_id == "evil"  # it does sort first
+    derived = derive_run([*events, forged])
+    assert derived.agent_slug == "planner" and derived.trace_id == events[0].trace_id
+
+
+def test_run_started_without_any_sequence_falls_back_to_the_earliest() -> None:
+    run = make_run_ids()
+    events = [
+        ev(run, 1, "run.started", agent_id="late", span_id=..., sequence=..., occurred_at=at(20)),
+        ev(run, 2, "run.started", agent_id="early", span_id=..., sequence=..., occurred_at=at(10)),
+    ]
+    assert derive_run(events).agent_slug == "early"

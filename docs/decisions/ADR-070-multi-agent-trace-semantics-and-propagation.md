@@ -13,8 +13,11 @@ open (its risk R1). The envelope already carries `agent_id` per event and the re
 ## Decision
 - **One run, one trace, many agents.** A child agent is an `agent.*` span with its own `agent_id` (and optional `agent_version`) inside the
   parent's run; events inside it carry that identity. The run's `agent_id` stays the root agent's. The run's root agent and `trace_id` are those of
-  the first `run.started` in canonical order (fallback: the first event, for runs created by `POST /v1/runs`), so a skewed or forged child
-  event cannot change them (`runs/summary.py`).
+  the first `run.started` that carries a `sequence` (SDK roots always send one; remote and forked emitters omit it), else the earliest
+  `run.started`, else the first event (runs created by `POST /v1/runs`). So a skewed clock, a forged child agent event, a forged child
+  `trace_id` or a replayed or sequence-less `run.started` cannot change them (`runs/summary.py`). This is a consistency rule, not
+  authentication: a write key of the run's project can already write any event into that project's runs, including a `run.started` with a
+  `sequence`; the run-to-project check (`RUN_PROJECT_MISMATCH`) is the only boundary, and it is per project.
 - **Delegation is recorded by both sides.** The delegator emits `agent.spawned` (`agent.child_id`, optional payload `{"input": ...}`; in the
   delegating span when there is one); the child emits `agent.started` (`parent_span_id` = the delegating span) and `agent.completed` (status,
   optional payload `{"result": ...}`). Payloads obey the payload mode and the redactor (INV-5). A child slug that would be empty or equal to the

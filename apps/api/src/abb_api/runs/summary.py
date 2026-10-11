@@ -230,10 +230,15 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
     duration_ms = (
         (completed_at - started_at).total_seconds() * 1000 if completed_at is not None else None
     )
-    # The run's agent and trace are the first `run.started`'s (the root emitter's): a skewed or
-    # forged child event can sort first or carry another trace id, and must not become the run's.
-    # Runs created through POST /v1/runs have no run.started: the first event stands in.
-    root = next((e for e in ordered if e.event_type == "run.started"), ordered[0])
+    # The run's agent and trace come from the root emitter's `run.started`: the first one that
+    # carries a `sequence` (SDK roots always send one; remote and forked emitters omit it, so a
+    # sequence-less `run.started` cannot displace the root), else the earliest `run.started`. A
+    # skewed or forged child event can sort first or carry another trace id, and must not become
+    # the run's. This is a consistency rule, not authentication: a same-project write key can
+    # already write any event into that project's runs. Runs created through POST /v1/runs have
+    # no run.started: the first event stands in.
+    starts = [e for e in ordered if e.event_type == "run.started"]
+    root = next((e for e in starts if e.sequence is not None), starts[0] if starts else ordered[0])
     run_name = next(
         (
             e.attributes["run.name"]
