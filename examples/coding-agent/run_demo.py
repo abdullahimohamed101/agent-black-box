@@ -22,14 +22,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from blackbox import BlackBox, PayloadMode
 from blackbox.coding import CodingRecorder
 
-from coding_agent.agent import run_agent
+from coding_agent.agent import AgentResult, run_agent
 from coding_agent.models import ScriptedModel
 from coding_agent.workspace import prepare_workspace
+
+
+class AgentFailed(Exception):
+    """Raised inside the run so the SDK records the run (and its agent span) as failed."""
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", choices=["scripted", "anthropic"], default="scripted")
+    parser.add_argument(
+        "--variant",
+        choices=["baseline", "wrong-fix"],
+        default="baseline",
+        help="scripted model only: `wrong-fix` never applies the real second patch, the tests keep "
+        "failing and the run ends in error (the comparison and experiment demos use both)",
+    )
     parser.add_argument(
         "--workdir", type=Path, help="where to build the working copy (default: a temp dir)"
     )
@@ -42,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
         help="REQUIRED for --model anthropic: a real model runs arbitrary shell commands as you, unsandboxed",
     )
     args = parser.parse_args(argv)
+    if args.model == "anthropic" and args.variant != "baseline":
+        parser.error("--variant only applies to the scripted model")
     if args.model == "anthropic" and not args.i_understand_this_runs_commands:
         parser.error(
             "real-model mode lets a language model run arbitrary shell commands as your user, with no "
@@ -56,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
 
         model = AnthropicModel()
     else:
-        model = ScriptedModel()
+        model = ScriptedModel.for_variant(args.variant)
 
     with tempfile.TemporaryDirectory(prefix="abb-coding-demo-") as scratch:
         workdir = args.workdir or Path(scratch)
@@ -67,10 +80,18 @@ def main(argv: list[str] | None = None) -> int:
             mode="offline" if args.offline else "http",
             payload_mode=PayloadMode.FULL,
         )
-        with bb.run("Fix OAuth session expiry", metadata={"model": model.name}) as run:
-            rec = CodingRecorder(bb, run, root)
-            result = run_agent(bb, run, rec, model)
-            run_id = run.run_id
+        result: AgentResult | None = None
+        try:
+            with bb.run("Fix OAuth session expiry", metadata={"model": model.name}) as run:
+                run_id = run.run_id
+                rec = CodingRecorder(bb, run, root)
+                result = run_agent(bb, run, rec, model)
+                if not result.tests_passed:
+                    # The run did not do its job: it ends in error (run.failed), not as a success.
+                    raise AgentFailed("the tests still fail")
+        except AgentFailed:
+            pass
+        assert result is not None
         flushed = bb.shutdown(15)
         print(
             json.dumps(

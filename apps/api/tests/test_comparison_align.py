@@ -406,7 +406,8 @@ def test_content_projection_diverges_at_the_second_fix_and_its_outcome_at_the_se
     assert (outcome.left.status, outcome.right.status) == ("success", "error")
     assert result.first_outcome_difference > result.divergence
     tail = [r for r in result.rows if r.relation == "left_only"]
-    assert tail and all(r.left and r.left.family in ("git", "tool", "llm") for r in tail)
+    # The real recorder runs git through the shell recorder: the tail has shell rows too.
+    assert tail and all(r.left and r.left.family in ("git", "tool", "llm", "shell") for r in tail)
     assert any(
         r.left and r.left.event_type == "git.push" for r in tail
     )  # the wrong fix never pushed

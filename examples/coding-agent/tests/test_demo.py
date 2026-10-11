@@ -25,13 +25,15 @@ def python_on_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ABB_DEMO_ENV_SECRET", "unknown-shape-secret-ZZ9")
 
 
-def play(tmp_path: Path) -> tuple[list[dict[str, Any]], Any, Path]:
+def play(tmp_path: Path, variant: str = "baseline") -> tuple[list[dict[str, Any]], Any, Path]:
     root = prepare_workspace(tmp_path)
     bb = BlackBox(
         api_key="abb_live_k.secret", mode="offline", project="demo", payload_mode=PayloadMode.FULL
     )
     with bb.run("Fix OAuth session expiry") as run:
-        result = run_agent(bb, run, CodingRecorder(bb, run, root), ScriptedModel())
+        result = run_agent(
+            bb, run, CodingRecorder(bb, run, root), ScriptedModel.for_variant(variant)
+        )
     events = sorted(bb.buffered_events(), key=lambda e: e["sequence"])
     return events, result, root
 
@@ -231,3 +233,50 @@ def test_tool_error_text_shown_to_the_model_is_masked(tmp_path: Path) -> None:
         "error:"
     )  # the failure reached the next prompt
     assert planted not in tool_texts[0]
+
+
+def test_the_baseline_script_is_unchanged_by_the_variant_option() -> None:
+    assert ScriptedModel().turns == ScriptedModel.for_variant("baseline").turns
+    assert len(ScriptedModel().turns) == 9
+    with pytest.raises(ValueError):
+        ScriptedModel.for_variant("nope")
+
+
+def test_wrong_fix_never_applies_the_real_patch_and_the_tests_keep_failing(tmp_path: Path) -> None:
+    events, result, root = play(tmp_path, "wrong-fix")
+    assert not result.tests_passed and result.retries == 1 and result.test_runs == 2
+    closes = [
+        e
+        for e in events
+        if e["event_type"].startswith("shell.command.") and "test.framework" in e["attributes"]
+    ]
+    assert [c["event_type"] for c in closes] == ["shell.command.failed"] * 2
+    assert all(
+        "refresh_keeps_the_refresh_token" in c["attributes"]["test.failing"][0] for c in closes
+    )
+    modified = [e["attributes"]["file.path"] for e in events if e["event_type"] == "file.modified"]
+    assert modified == ["app/session.py", "app/oauth.py"]  # the second patch goes to the wrong file
+    types = {e["event_type"] for e in events}
+    assert not types & {"git.commit", "git.push", "git.branch_created"}
+    assert "refresh_token or session.refresh_token" not in (root / "app" / "session.py").read_text()
+
+
+def test_run_demo_wrong_fix_ends_the_run_in_error_and_exits_nonzero(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import json
+
+    import run_demo
+
+    assert run_demo.main(["--variant", "wrong-fix", "--offline"]) == 1
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out["tests_passed"] is False and out["retries"] == 1 and out["turns"] == 8
+    assert run_demo.main(["--variant", "baseline", "--offline"]) == 0
+
+
+def test_a_variant_needs_the_scripted_model() -> None:
+    import run_demo
+
+    with pytest.raises(SystemExit) as exc:
+        run_demo.main(["--model", "anthropic", "--variant", "wrong-fix", "--offline"])
+    assert exc.value.code == 2

@@ -782,3 +782,19 @@ are compared partially, which the response and UI state (KI-105).
   membership check, `str(exc)` in `error`, the baseline unique index, the edit budget, no project check on attach, no project scope on experiments, the dropped judge delimiter.
   Six of them survived at first and got tests: the run lock, the claim lock, the `start` predicate, the tenant predicate of the reads, evidence membership, and the advisory
   locks (taken by the test itself, since scheduling cannot prove a lock exists).
+
+## Implementation notes (step 10)
+
+- `run_demo.py --variant baseline|wrong-fix` (scripted model only; `--variant` with `--model anthropic` is an argparse error). The baseline script and every existing demo
+  test are unchanged (`coding-e2e.sh` passed unchanged). `wrong-fix` repeats the first five turns and then edits a docstring of `app/oauth.py` (the second patch to
+  `app/session.py` is never applied), runs the tests (still one failure), and stops without a git commit or push. The run ends in error because `run_demo.py` raises a
+  private `AgentFailed` inside the `bb.run` block when the tests did not pass, so the SDK records `run.failed` (not `run.completed` with an error status as the step 8 hand-made
+  generator did). This applies to any model whose final tests fail, which is the correct recording.
+- `scripts/gen_compare_fixture.py` now runs the real example offline (standard library only: the SDK and the example are put on `sys.path`, so the API's `test_the_fixture_is_current`
+  keeps working with its own interpreter) and then only normalises: ids are re-derived from a fixed seed, `occurred_at` is a synthetic 0.4 s clock (the wrong-fix run starts 2 h 17 min
+  later), `*_ms` attributes and `duration_ms` are 250, git hashes are fixed, the `sdk` stamp is dropped. The `same_file_edit` mutation swaps the wrong-fix edit for a docstring edit of
+  `app/session.py`. Named events are found by shape.
+- Test expectation changes (the only one): the unmatched `left_only` tail of the content comparison now includes `shell` rows, because the real recorder runs the git tools through the
+  shell recorder (`git.diff` etc. come with `shell.command.*` events). No divergence, outcome or metadata expectation changed; the real pair reproduces the corrected shapes
+  from the step 8 note. The raw fixture is 74 (baseline) and 50 (wrong-fix) events, previously 66 and 52, and has inline `payload.response` texts (PayloadMode.FULL).
+- Verified: example tests 16 passed; `scripts/coding-e2e.sh` PASSED (6 Playwright tests); `test_comparison_align.py` and `test_comparison_api.py` 52 passed.

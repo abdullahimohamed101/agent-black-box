@@ -1,14 +1,16 @@
 """The offline event fixture of the two demo runs the comparison tests align (Phase 11, AC-6).
 
-`baseline` fixes the bug (the second edit is `app/session.py`, the tests pass, the run commits and
-pushes); `wrong-fix` makes the same first moves, then edits `app/oauth.py` instead, the tests still
-fail and the run ends in error. The events have the shapes the coding recorder emits (a tool span
-around file reads and writes and shell commands, `retry.attempted` before a second edit, git
-events), fixed ids, and different timestamps and scratch directories per run.
+The events are produced by the REAL coding-agent example (`examples/coding-agent`, scripted model, offline
+recorder): `baseline` fixes the bug (the second edit is `app/session.py`, the tests pass, the run commits
+and pushes); `wrong-fix` makes the same first moves, then edits `app/oauth.py` instead, the tests still fail
+and the run ends in error (`run.failed`). The raw run is made deterministic here: ids are derived from a
+fixed seed, the clock is synthetic (the wrong-fix run starts later), durations and git hashes are fixed and
+the SDK stamp is dropped. Nothing else is rewritten, so the shapes are the recorder's own.
 
-    uv run python ../scripts/gen_compare_fixture.py --out tests/fixtures/compare_pair
-    uv run python ../scripts/gen_compare_fixture.py --check tests/fixtures/compare_pair
+    python3 scripts/gen_compare_fixture.py --out apps/api/tests/fixtures/compare_pair
+    python3 scripts/gen_compare_fixture.py --check apps/api/tests/fixtures/compare_pair
 
+Standard library only (the SDK and the example are put on `sys.path`); runs git and python as the demo does.
 `manifest.json` names the events the tests assert on, by id; it is written here, never by hand.
 `same_file_edit=True` (the mutation of AC-6) makes the wrong-fix edit the same file as the baseline.
 """
@@ -16,160 +18,120 @@ events), fixed ids, and different timestamps and scratch directories per run.
 import argparse
 import hashlib
 import json
+import os
 import sys
+import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from abb_event_schema.ids import IdGenerator, IdKind
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "packages" / "sdk-python" / "src"))
+sys.path.insert(0, str(REPO / "examples" / "coding-agent"))
 
 FIXED_MS = int(datetime(2026, 10, 12, 9, 0, 0, tzinfo=UTC).timestamp() * 1000)
-MODEL = {"llm.provider": "scripted", "llm.model": "scripted-agent-1"}
-TEST_COMMAND = "python -m unittest discover -s tests -t ."
+STEP_SECONDS = 0.4
+FIXED_DURATION_MS = 250.0
+_ALPHABET = (
+    "0123456789ABCDEFGHJKMNPQRSTVWXYZ"  # Crockford base32 (the event contract's ULID alphabet)
+)
 Event = dict[str, Any]
 
 
-class Recorder:
-    """Emits the wire events of one run, advancing a clock only through `dt`."""
+def _ulid(seed: str) -> str:
+    value = (FIXED_MS << 80) | int.from_bytes(hashlib.sha256(seed.encode()).digest()[:10], "big")
+    return "".join(_ALPHABET[(value >> (5 * i)) & 0x1F] for i in reversed(range(26)))
 
-    def __init__(self, name: str, start: datetime, workdir: str) -> None:
-        digest = hashlib.sha256(name.encode()).digest()
-        self._ids = IdGenerator(clock_ms=lambda: FIXED_MS, entropy=lambda n: digest[:n])
-        self.run_id = self._ids.new_id(IdKind.RUN)
-        self.trace_id = self._ids.new_id(IdKind.TRACE)
-        self.now, self.seq, self.workdir = start, 0, workdir
-        self.events: list[Event] = []
-        self.root = self._ids.new_id(IdKind.SPAN)
-        self.names: dict[str, str] = {}
 
-    def emit(self, event_type: str, *, span: str | None = None, status: str | None = None,
-             attrs: dict[str, Any] | None = None, dt: float = 0.4,
-             duration_ms: float | None = None, name: str | None = None) -> Event:  # fmt: skip
-        self.now += timedelta(seconds=dt)
-        self.seq += 1
-        event: Event = {
-            "schema_version": "1.0",
-            "event_id": self._ids.new_id(IdKind.EVENT),
-            "run_id": self.run_id,
-            "trace_id": self.trace_id,
-            "span_id": span,
-            "parent_span_id": self.root if span and span != self.root else None,
-            "agent_id": "coding-agent",
-            "event_type": event_type,
-            "occurred_at": self.now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-            "sequence": self.seq,
-            "status": status,
-            "duration_ms": duration_ms,
-            "attributes": attrs or {},
-        }
-        event = {k: v for k, v in event.items() if v is not None}
-        self.events.append(event)
-        if name:
-            self.names[name] = event["event_id"]
-        return event
+def _run_example(variant: str, same_file_edit: bool) -> list[Event]:
+    """The raw events of one scripted run of the example, in sequence order."""
+    from blackbox import BlackBox, PayloadMode
+    from blackbox.coding import CodingRecorder
+    from coding_agent.agent import run_agent
+    from coding_agent.models import ScriptedModel
+    from coding_agent.workspace import prepare_workspace
 
-    def span(self) -> str:
-        return self._ids.new_id(IdKind.SPAN)
+    model = ScriptedModel.for_variant(variant)
+    if same_file_edit:  # a wrong fix that edits the same file as the real one (a docstring)
+        call = model.turns[5].tool_calls[0]
+        args = {"path": "app/session.py", "old": '"""Session expiry and refresh."""',
+                "new": '"""Session expiry and refresh (reviewed)."""'}  # fmt: skip
+        model.turns[5] = type(model.turns[5])(
+            model.turns[5].text, (type(call)(call.id, call.name, args),),
+            model.turns[5].input_tokens, model.turns[5].output_tokens, model.turns[5].cost_usd,
+        )  # fmt: skip
+    previous_path = os.environ["PATH"]
+    os.environ["PATH"] = str(Path(sys.executable).parent) + os.pathsep + previous_path
+    try:
+        with tempfile.TemporaryDirectory(prefix="abb-compare-fixture-") as scratch:
+            root = prepare_workspace(Path(scratch))
+            bb = BlackBox(project="coding-agent-demo", agent_id="coding-agent", mode="offline",
+                          payload_mode=PayloadMode.FULL)  # fmt: skip
+            try:
+                with bb.run("Fix OAuth session expiry", metadata={"model": model.name}) as run:
+                    result = run_agent(bb, run, CodingRecorder(bb, run, root), model)
+                    if not result.tests_passed:
+                        raise RuntimeError("the tests still fail")  # as run_demo.py does
+            except RuntimeError:
+                pass
+            return sorted(bb.buffered_events(), key=lambda e: e["sequence"])
+    finally:
+        os.environ["PATH"] = previous_path
 
-    def llm(self) -> None:
-        span = self.span()
-        self.emit("llm.request.started", span=span, attrs=dict(MODEL))
-        self.emit("llm.request.completed", span=span, status="success", duration_ms=900,
-                  attrs={**MODEL, "llm.input_tokens": 1200, "llm.output_tokens": 90}, dt=0.9)  # fmt: skip
 
-    def tool(self, name: str, inner: Any = None) -> None:
-        span = self.span()
-        self.emit("tool.call.started", span=span, attrs={"tool.name": name})
-        if inner is not None:
-            inner(span)
-        self.emit("tool.call.completed", span=span, status="success", duration_ms=300,
-                  attrs={"tool.name": name}, dt=0.3)  # fmt: skip
+def _normalise(variant: str, raw: list[Event]) -> list[Event]:
+    ids: dict[str, str] = {}
 
-    def read(self, path: str, *, name: str | None = None) -> Any:
-        def inner(span: str) -> None:
-            self.emit("file.read", span=span, name=name, attrs={
-                "file.path": path, "file.operation": "read", "file.language": "python"})  # fmt: skip
+    def new(old: str | None) -> str | None:
+        if old is None:
+            return None
+        if old not in ids:
+            ids[old] = f"{old.split('_', 1)[0]}_{_ulid(f'{variant}:{len(ids)}')}"
+        return ids[old]
 
-        return inner
+    start = datetime(2026, 10, 12, 9, 0, 0, tzinfo=UTC)
+    if variant != "baseline":
+        start += timedelta(hours=2, minutes=17)  # a different clock for the second run
+    events: list[Event] = []
+    for event in raw:
+        out = {k: v for k, v in event.items() if k != "sdk"}
+        for key in ("event_id", "run_id", "trace_id", "span_id", "parent_span_id"):
+            if key in out:
+                out[key] = new(out[key])
+        when = start + timedelta(seconds=STEP_SECONDS * event["sequence"])
+        out["occurred_at"] = when.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        if "duration_ms" in out:
+            out["duration_ms"] = FIXED_DURATION_MS
+        attrs = dict(out["attributes"])
+        for key, value in attrs.items():
+            if key.endswith("_ms") and isinstance(value, (int, float)):
+                attrs[key] = FIXED_DURATION_MS
+            elif key in ("git.commit_hash", "git.head_commit", "git.base_commit"):
+                attrs[key] = hashlib.sha1(f"{variant}:{key}".encode()).hexdigest()  # noqa: S324
+        out["attributes"] = attrs
+        events.append(out)
+    return events
 
-    def edit(self, path: str, *, read_name: str | None, modified_name: str | None) -> Any:
-        def inner(span: str) -> None:
-            self.emit("file.read", span=span, name=read_name, attrs={
-                "file.path": path, "file.operation": "read", "file.language": "python"})  # fmt: skip
-            self.emit("file.modified", span=span, name=modified_name, attrs={
-                "file.path": path, "file.operation": "modified", "file.language": "python",
-                "file.lines_added": 1, "file.lines_removed": 1})  # fmt: skip
 
-        return inner
-
-    def shell(self, command: str, *, ok: bool = True, tests: bool = False,
-              name: str | None = None) -> Any:  # fmt: skip
-        def inner(span: str) -> None:
-            sh = self.span()
-            attrs: dict[str, Any] = {"shell.command": command, "shell.cwd": self.workdir}
-            self.emit("shell.command.started", span=sh, attrs=attrs)
-            done = {**attrs, "shell.exit_code": 0 if ok else 1}
-            if tests:
-                done.update({"test.framework": "unittest", "test.total": 6,
-                             "test.failed": 0 if ok else 1, "test.passed": 6 if ok else 5})  # fmt: skip
-            self.emit("shell.command.completed", span=sh, status="success" if ok else "error",
-                      attrs=done, duration_ms=1800, dt=1.8, name=name)  # fmt: skip
-
-        return inner
-
-    def git(self, event_type: str, attrs: dict[str, Any]) -> Any:
-        def inner(span: str) -> None:
-            self.emit(event_type, span=span, attrs=attrs)
-
-        return inner
-
-    def retry(self, attempt: int) -> None:
-        self.emit(
-            "retry.attempted", attrs={"retry.attempt": attempt, "retry.reason": "tests failed"}
-        )
+def _names(events: list[Event]) -> dict[str, str]:
+    """The ids the tests assert on, found by shape (not by position): the test runs and the second edit."""
+    tests = [e for e in events if e["event_type"].startswith("shell.command.")
+             and e["event_type"] != "shell.command.started" and "test.framework" in e["attributes"]]  # fmt: skip
+    modified = [i for i, e in enumerate(events) if e["event_type"] == "file.modified"]
+    second = modified[1]
+    assert events[second - 1]["event_type"] == "file.read", "the recorder reads before it writes"
+    return {
+        "first_test_run": tests[0]["event_id"],
+        "second_test_run": tests[1]["event_id"],
+        "second_edit_read": events[second - 1]["event_id"],
+        "second_edit_modified": events[second]["event_id"],
+    }
 
 
 def build(variant: str, *, same_file_edit: bool = False) -> tuple[list[Event], dict[str, str]]:
     """The wire events and the named event ids of one run: variant `baseline` or `wrong-fix`."""
-    fixed = variant == "baseline"
-    start = datetime(2026, 10, 12, 9, 0, 0, tzinfo=UTC)
-    if not fixed:
-        start += timedelta(hours=2, minutes=17)  # a different clock and a different scratch dir
-    workdir = "/tmp/abb-" + ("a1b2c3d4" if fixed else "9f8e7d6c") + "/repo"
-    r = Recorder(variant, start, workdir)
-    r.emit("run.started", attrs={"run.name": "fix-session-expiry"}, dt=0)
-    r.emit("agent.started", span=r.root)
-    r.llm()
-    r.tool("read_file", r.read("app/session.py"))
-    r.tool("read_file", r.read("tests/test_session.py"))
-    r.llm()
-    r.tool("search")
-    r.llm()
-    r.tool("edit_file", r.edit("app/session.py", read_name=None, modified_name=None))
-    r.llm()
-    r.tool("run_tests", r.shell(TEST_COMMAND, ok=False, tests=True, name="first_test_run"))
-    r.llm()
-    r.tool("run_command", r.shell("tail -n 3300 logs/auth-server.log"))
-    r.tool("read_file", r.read("app/oauth.py"))
-    r.llm()
-    r.retry(1)
-    second = "app/session.py" if fixed or same_file_edit else "app/oauth.py"
-    r.tool("edit_file", r.edit(second, read_name="second_edit_read",
-                               modified_name="second_edit_modified"))  # fmt: skip
-    r.llm()
-    r.tool("run_tests", r.shell(TEST_COMMAND, ok=fixed, tests=True, name="second_test_run"))
-    r.llm()
-    if fixed:
-        r.tool("git_diff", r.git("git.diff", {"git.files_changed": 1}))
-        r.tool(
-            "git_branch", r.git("git.branch_created", {"git.branch": "fix/oauth-session-expiry"})
-        )
-        r.tool("git_commit", r.git("git.commit", {"git.branch": "fix/oauth-session-expiry"}))
-        r.tool("git_push", r.git("git.push", {"git.branch": "fix/oauth-session-expiry"}))
-        r.llm()
-    r.emit("agent.completed", span=r.root, status="success" if fixed else "error")
-    r.emit("run.completed", status="success" if fixed else "error")
-    return r.events, r.names
+    events = _normalise(variant, _run_example(variant, same_file_edit and variant != "baseline"))
+    return events, _names(events)
 
 
 def render() -> dict[str, str]:
