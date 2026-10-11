@@ -144,3 +144,48 @@ def test_full_mode_captures_payloads_but_redacts_the_planted_secret(tmp_path: Pa
     assert {e["event_type"] for e in with_payload} >= {"agent.spawned", "agent.completed"}
     assert any(e["agent_id"] == "tester" for e in with_payload)
     assert PLANTED_SECRET not in json.dumps(parent + child)
+
+
+def test_the_tester_subprocess_gets_a_filtered_environment_not_the_parents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The README's claim: tools never inherit every secret the parent holds."""
+    import subprocess
+
+    from multi_agent import workers
+
+    monkeypatch.setenv("SOME_SECRET_TOKEN", "planted-not-for-children")
+    monkeypatch.setenv("BLACKBOX_API_KEY", "abb_live_k.secret")
+    seen: list[dict[str, str]] = []
+    real_run = subprocess.run
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(dict(kwargs["env"]))
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(workers.subprocess, "run", spy)
+    play(tmp_path)
+    (env,) = seen
+    assert "SOME_SECRET_TOKEN" not in env
+    assert set(env) <= {
+        "PATH",
+        "BLACKBOX_API_KEY",
+        "BLACKBOX_ENDPOINT",
+        "BLACKBOX_MODE",
+        "BLACKBOX_LOCAL_PATH",
+        "BLACKBOX_TRACE_CONTEXT",
+    }
+    assert env["BLACKBOX_TRACE_CONTEXT"]
+
+
+def test_child_environment_is_the_allowlist_plus_a_fresh_trace_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from multi_agent.workers import child_environment
+
+    monkeypatch.setenv("SOME_SECRET_TOKEN", "planted")
+    monkeypatch.setenv("BLACKBOX_TRACE_CONTEXT", "garbage-from-the-parent")
+    env = child_environment("fresh-context", {"BLACKBOX_MODE": "local"})
+    assert "SOME_SECRET_TOKEN" not in env
+    assert env["BLACKBOX_TRACE_CONTEXT"] == "fresh-context"
+    assert env["BLACKBOX_MODE"] == "local"
