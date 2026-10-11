@@ -3,12 +3,22 @@
 import {
   keepPreviousData,
   useInfiniteQuery,
+  useMutation,
   useQuery,
   useQueryClient,
+  type QueryKey,
 } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api, ApiRequestError, unwrap } from "./api/client";
-import { isActive, type RunStatus } from "./api/types";
+import {
+  LIVE_EVALUATION_STATES,
+  isActive,
+  type EvaluatorIn,
+  type ExperimentIn,
+  type RunStatus,
+  type VariantIn,
+  type VerdictIn,
+} from "./api/types";
 
 export type RunFilters = {
   project?: string | null;
@@ -257,3 +267,193 @@ export function usePerformanceReport(project: string | null | undefined, days: W
     placeholderData: keepPreviousData,
   });
 }
+
+// ------------------------------------------------------------------------- Phase 11: evaluations, compare, experiments
+
+/** The workspace's evaluators (archived ones are not listed). Config of path-like or rubric fields is withheld by the API. */
+export function useEvaluators(enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: ["evaluators"],
+    queryFn: async ({ signal }) => unwrap(await api.GET("/v1/evaluators", { signal })).items,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * A run's evaluations, newest first. They are derived records computed by a job, so the query polls while any
+ * returned row is `pending` or `running` and stops as soon as none is (a terminal row never changes, INV-1).
+ */
+export function useRunEvaluations(runId: string, enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: ["run-evaluations", runId],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/runs/{run_id}/evaluations", {
+          signal,
+          params: { path: { run_id: runId } },
+        }),
+      ),
+    refetchInterval: (q) =>
+      q.state.data?.items.some((e) => LIVE_EVALUATION_STATES.includes(e.state)) ? POLL_MS : false,
+  });
+}
+
+/** `left` is the path's run, `right` the `with_run_id` run. Computed on read; held fresh for half a minute. */
+export function useComparison(leftRunId: string | null, rightRunId: string | null) {
+  return useQuery({
+    enabled: leftRunId != null && rightRunId != null,
+    queryKey: ["compare", leftRunId, rightRunId],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/runs/{run_id}/compare", {
+          signal,
+          params: { path: { run_id: leftRunId! }, query: { with_run_id: rightRunId! } },
+        }),
+      ),
+    staleTime: 30_000,
+  });
+}
+
+export function useExperiments(enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: ["experiments"],
+    queryFn: async ({ signal }) => unwrap(await api.GET("/v1/experiments", { signal })).items,
+  });
+}
+
+export function useExperiment(experimentId: string) {
+  return useQuery({
+    queryKey: ["experiment", experimentId],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/experiments/{experiment_id}", {
+          signal,
+          params: { path: { experiment_id: experimentId } },
+        }),
+      ),
+  });
+}
+
+/** A write that refreshes the given queries afterwards. Errors reach the caller as `ApiRequestError`. */
+function useWrite<A, R>(run: (arg: A) => Promise<R>, invalidate: (arg: A) => QueryKey[]) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: run,
+    onSuccess: async (_data, arg) => {
+      await Promise.all(invalidate(arg).map((k) => client.invalidateQueries({ queryKey: k })));
+    },
+  });
+}
+
+/** Failure of a body-less write (204) as a typed error. */
+function checkEmpty(r: { error?: unknown; response: Response }) {
+  if (!r.response.ok) unwrap({ error: r.error, response: r.response });
+}
+
+export const useTriggerEvaluation = (runId: string) =>
+  useWrite(
+    async (evaluatorId: string) =>
+      unwrap(
+        await api.POST("/v1/runs/{run_id}/evaluations", {
+          params: { path: { run_id: runId } },
+          body: { evaluator_id: evaluatorId },
+        }),
+      ),
+    () => [["run-evaluations", runId]],
+  );
+
+export const useRecordVerdict = (runId: string) =>
+  useWrite(
+    async (body: VerdictIn) =>
+      unwrap(
+        await api.POST("/v1/runs/{run_id}/verdicts", {
+          params: { path: { run_id: runId } },
+          body,
+        }),
+      ),
+    () => [["run-evaluations", runId], ["compare"]],
+  );
+
+export const useCreateEvaluator = () =>
+  useWrite(
+    async (body: EvaluatorIn) => unwrap(await api.POST("/v1/evaluators", { body })),
+    () => [["evaluators"]],
+  );
+
+export const useArchiveEvaluator = () =>
+  useWrite(
+    async (evaluatorId: string) =>
+      checkEmpty(
+        await api.DELETE("/v1/evaluators/{evaluator_id}", {
+          params: { path: { evaluator_id: evaluatorId } },
+        }),
+      ),
+    () => [["evaluators"]],
+  );
+
+export const useCreateExperiment = () =>
+  useWrite(
+    async (body: ExperimentIn) => unwrap(await api.POST("/v1/experiments", { body })),
+    () => [["experiments"]],
+  );
+
+export const useArchiveExperiment = () =>
+  useWrite(
+    async (experimentId: string) =>
+      checkEmpty(
+        await api.DELETE("/v1/experiments/{experiment_id}", {
+          params: { path: { experiment_id: experimentId } },
+        }),
+      ),
+    () => [["experiments"]],
+  );
+
+export const useAddVariant = (experimentId: string) =>
+  useWrite(
+    async (body: VariantIn) =>
+      unwrap(
+        await api.POST("/v1/experiments/{experiment_id}/variants", {
+          params: { path: { experiment_id: experimentId } },
+          body,
+        }),
+      ),
+    () => [["experiment", experimentId], ["experiments"]],
+  );
+
+export const useAttachRun = (experimentId: string) =>
+  useWrite(
+    async (body: { run_id: string; variant_id: string }) =>
+      unwrap(
+        await api.POST("/v1/experiments/{experiment_id}/runs", {
+          params: { path: { experiment_id: experimentId } },
+          body,
+        }),
+      ),
+    () => [["experiment", experimentId], ["experiments"]],
+  );
+
+export const useDetachRun = (experimentId: string) =>
+  useWrite(
+    async (runId: string) =>
+      checkEmpty(
+        await api.DELETE("/v1/experiments/{experiment_id}/runs/{run_id}", {
+          params: { path: { experiment_id: experimentId, run_id: runId } },
+        }),
+      ),
+    () => [["experiment", experimentId], ["experiments"]],
+  );
+
+/** Starts every evaluator of the experiment on its attached runs (500 pairs per call; `remaining` says whether to call again). */
+export const useEvaluateExperiment = (experimentId: string) =>
+  useWrite(
+    async () =>
+      unwrap(
+        await api.POST("/v1/experiments/{experiment_id}/evaluate", {
+          params: { path: { experiment_id: experimentId } },
+        }),
+      ),
+    () => [["experiment", experimentId], ["run-evaluations"]],
+  );

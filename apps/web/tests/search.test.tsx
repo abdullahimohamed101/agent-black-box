@@ -527,11 +527,15 @@ describe("fixture search", () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<Harness />);
-    // Ten fixture runs and a header row; two of them (the billing migration and the failure
-    // chain) failed.
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(11));
+    // Every fixture run and a header row; the failed ones are counted from the data.
+    const runs = fixtureRuns().map((f) => f.run);
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(runs.length + 1));
     await user.type(screen.getByRole("searchbox", { name: "Search" }), "status:failed{Enter}");
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
+    await waitFor(() =>
+      expect(screen.getAllByRole("row")).toHaveLength(
+        runs.filter((r) => r.status === "FAILED").length + 1,
+      ),
+    );
     await user.clear(screen.getByRole("searchbox", { name: "Search" }));
     await user.type(screen.getByRole("searchbox", { name: "Search" }), "command:curl{Enter}");
     expect(await screen.findByRole("alert")).toHaveTextContent("fixture mode");

@@ -1,4 +1,5 @@
 import { fixtureReply } from "@/fixtures/api";
+import { isFixtureViewerWorkspace } from "@/fixtures/auth";
 import {
   MAX_BODY_BYTES,
   UPSTREAM_TIMEOUT_MS,
@@ -29,15 +30,20 @@ const route = (method: string, pattern: string): Route => ({
 const ROUTES: readonly Route[] = [
   route(
     "GET",
-    `(runs(/${ID}(/(spans|stream|findings|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance))`,
+    `(runs(/${ID}(/(spans|stream|findings|evaluations|compare|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance))`,
   ),
-  route("GET", "(me|projects|members|invitations|api-keys|pricing|audit)"),
+  route("GET", "(me|projects|members|invitations|api-keys|pricing|audit|evaluators|experiments)"),
+  route("GET", `experiments/${ID}`),
   route(
     "POST",
-    "(projects|invitations|invitations/accept|api-keys|pricing/overrides|cost/rebuild)",
+    "(projects|invitations|invitations/accept|api-keys|pricing/overrides|cost/rebuild|evaluators|experiments)",
   ),
+  // Phase 11 writes: start an evaluator, record a human verdict, shape and evaluate an experiment.
+  route("POST", `runs/${ID}/(evaluations|verdicts)`),
+  route("POST", `experiments/${ID}/(variants|runs|evaluate)`),
   route("PATCH", `members/${ID}`),
-  route("DELETE", `(members|invitations|api-keys)/${ID}`),
+  route("DELETE", `(members|invitations|api-keys|evaluators|experiments)/${ID}`),
+  route("DELETE", `experiments/${ID}/runs/${ID}`),
 ];
 const STREAM = new RegExp(`^v1/runs/${ID}/stream$`);
 const MAX_QUERY_CHARS = 2048;
@@ -185,7 +191,9 @@ export async function readThrough(
       return envelope(405, "FIXTURE_READ_ONLY", "Fixture data is read-only.");
     if (search.toString().length > MAX_QUERY_CHARS)
       return envelope(414, "QUERY_TOO_LONG", "Query string too long.");
-    const r = fixtureReply(segments, search);
+    const r = fixtureReply(segments, search, {
+      content: !isFixtureViewerWorkspace(options.headers?.get("x-abb-workspace")),
+    });
     return Response.json(r.body, {
       status: r.status,
       headers: { ...SAFE, "x-request-id": "req_fixture" },

@@ -4,7 +4,15 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "@/components/Dashboard";
 import { DEFAULT_FILTERS, RunsList, type ListFilters } from "@/components/RunsList";
+import { fixtureRuns } from "@/fixtures";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
+
+// Counts come from the fixture data (Phase 11 added two runs): rows are the runs plus the header row.
+const RUNS = fixtureRuns().map((f) => f.run);
+const N = RUNS.length;
+const FAILED = RUNS.filter((r) => r.status === "FAILED").length;
+const FINISHED = RUNS.filter((r) => !["RUNNING", "WAITING_FOR_APPROVAL"].includes(r.status));
+const SUCCESS_RATE = `${Math.round((FINISHED.filter((r) => r.status === "SUCCESS").length / FINISHED.length) * 100)}%`;
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -27,14 +35,14 @@ describe("RunsList", () => {
     const user = userEvent.setup();
     renderWithQuery(<Harness />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading runs");
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(11));
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(N + 1));
     await user.click(screen.getByLabelText("Failed"));
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(FAILED + 1));
     expect(calls.some((c) => c.includes("status=FAILED"))).toBe(true);
     await user.type(screen.getByLabelText("Agent"), "nobody");
     expect(await screen.findByText("No runs match these filters")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(11));
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(N + 1));
   });
 
   it("does not send an invalid half-typed agent slug to the API", async () => {
@@ -50,16 +58,17 @@ describe("RunsList", () => {
   it("paginates with a cursor without repeating or dropping runs", async () => {
     stubApi();
     const user = userEvent.setup();
-    renderWithQuery(<Harness pageSize={5} />);
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(6));
-    expect(screen.getByText(/5 runs loaded/)).toBeInTheDocument();
+    const page = N / 2; // two pages
+    renderWithQuery(<Harness pageSize={page} />);
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(page + 1));
+    expect(screen.getByText(new RegExp(`${page} runs loaded`))).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Load more" }));
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(11));
-    expect(screen.getByText(/10 runs loaded \(end of list\)/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(N + 1));
+    expect(screen.getByText(new RegExp(`${N} runs loaded \\(end of list\\)`))).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
     const hrefs = screen.getAllByRole("link").map((l) => l.getAttribute("href"));
-    expect(hrefs).toHaveLength(10);
-    expect(new Set(hrefs).size).toBe(10);
+    expect(hrefs).toHaveLength(N);
+    expect(new Set(hrefs).size).toBe(N);
   });
 
   it("shows the empty state for a project with no runs", async () => {
@@ -106,10 +115,12 @@ describe("Dashboard", () => {
     stubApi();
     renderWithQuery(<Dashboard base={BASE} />);
     expect(await screen.findByText("Success rate")).toBeInTheDocument();
-    expect(screen.getByText("75%")).toBeInTheDocument();
+    expect(screen.getByText(SUCCESS_RATE)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Recent failures" })).toBeInTheDocument();
     expect(screen.getByText(/deploy-agent, triage-agent/)).toBeInTheDocument();
-    expect(screen.getByText(/10 runs started in the last 7 days/)).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(`${N} runs started in the last 7 days`)),
+    ).toBeInTheDocument();
   });
 
   it("empty and error states", async () => {

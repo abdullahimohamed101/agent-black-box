@@ -82,3 +82,25 @@ export const KEY_SCOPES = [
   "artifacts:write",
   "policy:check",
 ] as const satisfies readonly KeyScope[];
+
+// Phase 11: evaluations, run comparison, experiments.
+export type EvaluatorOut = components["schemas"]["EvaluatorOut"];
+export type EvaluatorIn = components["schemas"]["EvaluatorIn"];
+export type EvaluationOut = components["schemas"]["EvaluationOut"];
+export type EvaluationPage = components["schemas"]["EvaluationPage"];
+export type EvaluationState = EvaluationOut["state"];
+export type EvaluatorKind = EvaluatorOut["kind"];
+export type VerdictIn = components["schemas"]["VerdictIn"];
+export type ComparisonOut = components["schemas"]["ComparisonOut"];
+export type StepOut = components["schemas"]["StepOut"];
+export type RowOut = components["schemas"]["RowOut"];
+export type ExperimentOut = components["schemas"]["ExperimentOut"];
+export type ExperimentSummaryOut = components["schemas"]["ExperimentSummaryOut"];
+export type ExperimentIn = components["schemas"]["ExperimentIn"];
+export type VariantOut = components["schemas"]["VariantOut"];
+export type VariantIn = components["schemas"]["VariantIn"];
+export type VariantMetricsOut = components["schemas"]["VariantMetricsOut"];
+export type EvaluateOut = components["schemas"]["EvaluateOut"];
+
+/** Evaluation states that can still change: the run page polls while any of them is the newest word. */
+export const LIVE_EVALUATION_STATES: readonly EvaluationState[] = ["pending", "running"];

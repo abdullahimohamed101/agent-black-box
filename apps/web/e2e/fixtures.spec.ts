@@ -29,15 +29,15 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await page.goto(`${BASE}/runs`);
   await expect(page.getByRole("table")).toBeVisible();
   const all = await page.locator("tbody tr").count();
-  expect(all).toBe(10);
+  expect(all).toBe(12); // ten earlier fixture runs and the two coding-agent runs (Phase 11)
   await page.getByLabel("Failed").check();
   await expect(page).toHaveURL(/status=FAILED/);
-  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(page.locator("tbody tr")).toHaveCount(3); // billing migration, failure chain, wrong fix
   await expect(page.locator("tbody tr").first()).toContainText("Failed");
   await page.getByLabel("Agent").fill("nobody");
   await expect(page.getByText("No runs match these filters")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(10);
+  await expect(page.locator("tbody tr")).toHaveCount(12);
   // the findings column reads as text: count and worst severity, or a dash with plain words
   const looping = page.locator("tbody tr", { hasText: "Resolve flaky docs search" });
   await expect(looping.getByTestId("findings-cell")).toContainText("1 · info");
@@ -79,8 +79,8 @@ test("search: chips from the server parse, matched column, facets, refusal and k
   await page.screenshot({ path: `${SHOTS16}/fixtures-search-error.png`, fullPage: true });
   await box.fill("status:failed");
   await box.press("Enter");
-  // two fixture runs failed: the billing migration and the failure chain (Phase 10)
-  await expect(page.locator("tbody tr")).toHaveCount(2);
+  // three fixture runs failed: the billing migration, the failure chain (Phase 10) and the wrong fix (Phase 11)
+  await expect(page.locator("tbody tr")).toHaveCount(3);
   // mobile: no horizontal scroll
   await page.setViewportSize({ width: 375, height: 812 });
   const overflow = await page.evaluate(
