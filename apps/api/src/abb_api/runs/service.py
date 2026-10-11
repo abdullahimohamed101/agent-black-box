@@ -13,6 +13,8 @@ from abb_api.authz.principal import Principal
 from abb_api.authz.service import holds
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
+from abb_api.findings.detectors import DETECTORS_VERSION
+from abb_api.findings.repository import Badge, FindingsRepository
 from abb_api.ids import parse_public_id
 from abb_api.projects.access import authorise_project
 from abb_api.runs import cursors
@@ -24,6 +26,7 @@ from abb_api.runs.schemas import (
     CreateRunRequest,
     EventOut,
     EventPage,
+    RunFindingsBadge,
     RunOut,
     RunPage,
     SpanOut,
@@ -67,7 +70,17 @@ def event_out(
     )
 
 
-def _run_out(record: RunRecord, state: str) -> RunOut:
+def _badge(badge: Badge | None) -> RunFindingsBadge:
+    if badge is None:
+        return RunFindingsBadge(count=0, max_severity=None, state="none")
+    return RunFindingsBadge(
+        count=badge.count,
+        max_severity=badge.max_severity,  # type: ignore[arg-type]
+        state="outdated" if badge.detectors_version < DETECTORS_VERSION else "current",
+    )
+
+
+def _run_out(record: RunRecord, state: str, badge: RunFindingsBadge | None = None) -> RunOut:
     return RunOut(
         id=from_uuid(IdKind.RUN, record.id),
         project_id=from_uuid(IdKind.PROJECT, record.project_id),
@@ -85,6 +98,7 @@ def _run_out(record: RunRecord, state: str) -> RunOut:
         metadata=record.metadata,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        findings=badge,
     )
 
 
@@ -195,6 +209,7 @@ class RunService:
             )
             page = records[:limit]
             states = await queries.summary_states([r.id for r in page])
+            badges = await FindingsRepository(conn, principal.tenant).badges([r.id for r in page])
         next_cursor = None
         if len(records) > limit:
             last = page[-1]
@@ -202,7 +217,7 @@ class RunService:
                 cursors.Cursor("runs", [last.started_at.isoformat(), str(last.id)])
             )
         return RunPage(
-            items=[_run_out(r, states[r.id]) for r in page],
+            items=[_run_out(r, states[r.id], _badge(badges.get(r.id))) for r in page],
             next_cursor=next_cursor,
         )
 
@@ -212,7 +227,8 @@ class RunService:
             states = await RunQueries(conn, principal.tenant, principal.project_id).summary_states(
                 [record.id]
             )
-        return _run_out(record, states[record.id])
+            badges = await FindingsRepository(conn, principal.tenant).badges([record.id])
+        return _run_out(record, states[record.id], _badge(badges.get(record.id)))
 
     async def list_events(
         self,

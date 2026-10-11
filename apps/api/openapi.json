@@ -1161,6 +1161,50 @@
         "title": "CreatedKey",
         "type": "object"
       },
+      "DimensionOut": {
+        "properties": {
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "title": "Inputs",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rule": {
+            "description": "The one sentence that decided the status.",
+            "title": "Rule",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "warn",
+              "bad",
+              "no_data"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "inputs",
+          "rule",
+          "finding_ids"
+        ],
+        "title": "DimensionOut",
+        "type": "object"
+      },
       "ErrorBody": {
         "properties": {
           "category": {
@@ -1684,6 +1728,235 @@
           "timeout_rate"
         ],
         "title": "FailureDay",
+        "type": "object"
+      },
+      "FindingOut": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detector": {
+            "title": "Detector",
+            "type": "string"
+          },
+          "detector_version": {
+            "description": "`name@x.y.z`.",
+            "title": "Detector Version",
+            "type": "string"
+          },
+          "end_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Event Id"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "description": "Typed per `finding_type`; metadata only (ids, counts, names, thresholds).",
+            "title": "Evidence",
+            "type": "object"
+          },
+          "evidence_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Event Ids",
+            "type": "array"
+          },
+          "finding_type": {
+            "title": "Finding Type",
+            "type": "string"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "deterministic",
+              "probable"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "start_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Event Id"
+          },
+          "title": {
+            "description": "Starts with \"Probable:\" iff `kind` is `probable`.",
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "detector",
+          "detector_version",
+          "finding_type",
+          "kind",
+          "severity",
+          "confidence",
+          "title",
+          "message",
+          "start_event_id",
+          "end_event_id",
+          "evidence_event_ids",
+          "fingerprint",
+          "evidence",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FindingOut",
+        "type": "object"
+      },
+      "FindingsState": {
+        "properties": {
+          "computed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed At"
+          },
+          "detectors_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detectors Version"
+          },
+          "event_count_seen": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Count Seen"
+          },
+          "status": {
+            "description": "`none`: not analysed yet; `processing`: an analysis is queued or running; `current`: up to date; `outdated`: the detector rules changed since this analysis (re-run `rebuild-findings`); `failed`: the newest analysis was dead-lettered and the items, if any, are from the last successful one.",
+            "enum": [
+              "none",
+              "processing",
+              "current",
+              "outdated",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary_version_seen": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Version Seen"
+          },
+          "truncated": {
+            "description": "True when only the first events of a huge run were read.",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "detectors_version",
+          "summary_version_seen",
+          "computed_at",
+          "event_count_seen",
+          "truncated"
+        ],
+        "title": "FindingsState",
+        "type": "object"
+      },
+      "HealthOut": {
+        "properties": {
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionOut"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "overall": {
+            "description": "The worst dimension; `no_data` never masks `warn`.",
+            "enum": [
+              "ok",
+              "warn",
+              "bad",
+              "no_data"
+            ],
+            "title": "Overall",
+            "type": "string"
+          }
+        },
+        "required": [
+          "overall",
+          "dimensions"
+        ],
+        "title": "HealthOut",
         "type": "object"
       },
       "HealthResponse": {
@@ -2611,6 +2884,77 @@
         "title": "RunCounts",
         "type": "object"
       },
+      "RunFindingsBadge": {
+        "description": "What the runs list shows of a run's findings (the full list is `GET .../findings`).",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "max_severity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "info",
+                  "warning",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Severity"
+          },
+          "state": {
+            "description": "`none`: not analysed yet; `outdated`: detector rules changed since.",
+            "enum": [
+              "none",
+              "current",
+              "outdated"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "max_severity",
+          "state"
+        ],
+        "title": "RunFindingsBadge",
+        "type": "object"
+      },
+      "RunFindingsOut": {
+        "properties": {
+          "health": {
+            "$ref": "#/components/schemas/HealthOut"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FindingOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/FindingsState"
+          }
+        },
+        "required": [
+          "run_id",
+          "state",
+          "health",
+          "items"
+        ],
+        "title": "RunFindingsOut",
+        "type": "object"
+      },
       "RunOut": {
         "properties": {
           "agent_id": {
@@ -2652,6 +2996,17 @@
               }
             ],
             "title": "Duration Ms"
+          },
+          "findings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunFindingsBadge"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Derived findings summary; null when the response does not carry it."
           },
           "id": {
             "title": "Id",
@@ -7397,6 +7752,106 @@
         "summary": "Get one event, including its inline payload",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/findings": {
+      "get": {
+        "description": "Derived by the `detect_findings` job; every finding cites events and records its detector version. Evidence is metadata only, so the body is the same for every caller who may read the run. `state` says whether the analysis is current.",
+        "operationId": "get_findings_v1_runs__run_id__findings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunFindingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks `run.read` / the key lacks `runs:read`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List a run's findings and health",
+        "tags": [
+          "findings"
         ]
       }
     },
