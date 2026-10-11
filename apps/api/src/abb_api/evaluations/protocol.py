@@ -112,7 +112,7 @@ def _clean_metric(value: Any) -> Any:
         if isinstance(value, float) and not math.isfinite(value):
             raise InvalidResult("metric is not finite")
         return value
-    if isinstance(value, str) and len(value) <= MAX_METRIC_STRING:
+    if isinstance(value, str) and len(value) <= MAX_METRIC_STRING and "\x00" not in value:
         return value
     raise InvalidResult("metric value has an unsupported type or size")
 
@@ -137,13 +137,16 @@ def clean_result(
         score = float(score)
     if not isinstance(result.label, str) or not 0 < len(result.label) <= MAX_LABEL_CHARS:
         raise InvalidResult("label is missing or too long")
+    if "\x00" in result.label:  # PostgreSQL text cannot hold NUL: it would fail the write
+        raise InvalidResult("label contains a NUL character")
     explanation = result.explanation
     if (
         not isinstance(explanation, str)
         or len(explanation) > MAX_EXPLANATION_CHARS
         or len(explanation.encode("utf-8")) > MAX_EXPLANATION_BYTES
+        or "\x00" in explanation
     ):
-        raise InvalidResult("explanation is not text or too long")
+        raise InvalidResult("explanation is not text, too long or contains NUL")
     if not isinstance(result.metrics, Mapping) or len(result.metrics) > MAX_METRICS:
         raise InvalidResult("metrics are not an object or too many")
     metrics: dict[str, Any] = {}
@@ -164,6 +167,8 @@ def clean_result(
         raise InvalidResult("metadata is not JSON") from None
     if too_big:
         raise InvalidResult("metadata is too large")
+    if "\\u0000" in json.dumps(metadata, default=str):
+        raise InvalidResult("metadata contains a NUL character")
     return EvaluationResult(
         score=score,
         label=result.label,

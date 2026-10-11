@@ -129,3 +129,133 @@ class EvaluatorRepository:
             .values(archived_at=func.now())
         )
         return True
+
+
+@dataclass(frozen=True)
+class PendingEvaluation:
+    id: uuid.UUID
+    evaluator_id: uuid.UUID | None
+    evaluator_name: str
+    evaluator_version: str
+    kind: str
+    implementation: str | None
+    config_snapshot: dict[str, Any]
+
+
+class EvaluationRepository:
+    """Evaluation rows. Transitions carry a state predicate: pending -> running -> terminal."""
+
+    def __init__(self, conn: AsyncConnection, tenant: TenantContext) -> None:
+        self._conn = conn
+        self._tenant = tenant
+
+    def savepoint(self) -> Any:
+        """A nested transaction around one write, so a refused value rolls back only that write."""
+        return self._conn.begin_nested()
+
+    def _mine(self, evaluation_id: uuid.UUID) -> tuple[Any, ...]:
+        c = t.evaluations.c
+        return (c.workspace_id == self._tenant.workspace_id, c.id == evaluation_id)
+
+    async def insert_pending(
+        self,
+        evaluation_id: uuid.UUID,
+        *,
+        run_id: uuid.UUID,
+        evaluator: EvaluatorRecord,
+        requested_by: uuid.UUID | None,
+    ) -> None:
+        """A new `pending` row holding a snapshot of the evaluator (name, version, config)."""
+        await self._conn.execute(
+            t.evaluations.insert().values(
+                workspace_id=self._tenant.workspace_id,
+                id=evaluation_id,
+                run_id=run_id,
+                evaluator_id=evaluator.id,
+                evaluator_name=evaluator.name,
+                evaluator_version=str(evaluator.version),
+                kind=evaluator.kind,
+                implementation=evaluator.implementation,
+                config_snapshot=evaluator.config,
+                state="pending",
+                requested_by=requested_by,
+            )
+        )
+
+    async def claim_pending(self, run_id: uuid.UUID, limit: int) -> list[PendingEvaluation]:
+        """The run's pending rows, oldest first, locked so a concurrent handler skips them."""
+        c = t.evaluations.c
+        rows = await self._conn.execute(
+            select(
+                c.id, c.evaluator_id, c.evaluator_name, c.evaluator_version, c.kind,
+                c.implementation, c.config_snapshot,
+            )
+            .where(
+                c.workspace_id == self._tenant.workspace_id,
+                c.run_id == run_id,
+                c.state == "pending",
+            )
+            .order_by(c.created_at, c.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )  # fmt: skip
+        return [PendingEvaluation(**r._mapping) for r in rows]
+
+    async def count_pending(self, run_id: uuid.UUID) -> int:
+        c = t.evaluations.c
+        return int(
+            (
+                await self._conn.execute(
+                    select(func.count()).where(
+                        c.workspace_id == self._tenant.workspace_id,
+                        c.run_id == run_id,
+                        c.state == "pending",
+                    )
+                )
+            ).scalar_one()
+        )
+
+    async def start(self, evaluation_id: uuid.UUID) -> bool:
+        """pending -> running. False when the row is not pending (already handled)."""
+        c = t.evaluations.c
+        result = await self._conn.execute(
+            update(t.evaluations)
+            .where(*self._mine(evaluation_id), c.state == "pending")
+            .values(state="running", started_at=func.now())
+        )
+        return bool(result.rowcount == 1)
+
+    async def complete(
+        self,
+        evaluation_id: uuid.UUID,
+        *,
+        score: float | None,
+        label: str,
+        explanation: str,
+        metrics: dict[str, Any],
+        evidence_event_ids: list[str],
+        metadata: dict[str, Any],
+    ) -> bool:
+        c = t.evaluations.c
+        result = await self._conn.execute(
+            update(t.evaluations)
+            .where(*self._mine(evaluation_id), c.state == "running")
+            .values(
+                state="completed", score=score, label=label, explanation=explanation,
+                metrics=metrics, evidence_event_ids=evidence_event_ids, metadata=metadata,
+                completed_at=func.now(),
+            )
+        )  # fmt: skip
+        return bool(result.rowcount == 1)
+
+    async def fail(self, evaluation_id: uuid.UUID, *, code: str, error: str) -> bool:
+        """pending|running -> failed: a fixed code and a templated message (never `str(exc)`)."""
+        c = t.evaluations.c
+        result = await self._conn.execute(
+            update(t.evaluations)
+            .where(*self._mine(evaluation_id), c.state.in_(("pending", "running")))
+            .values(
+                state="failed", error_code=code, error=error[:500], completed_at=func.now(),
+            )
+        )  # fmt: skip
+        return bool(result.rowcount == 1)

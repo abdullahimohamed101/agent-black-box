@@ -39,6 +39,10 @@ Phase 10 (reliability intelligence, PR #79, plan `docs/plans/active/phase-10-rel
 `phase-10-security-review.md`) and verified; it awaits its merge, then `complete-phase` (move the plan and reviews to `completed/`, file KI-090..099 as GitHub issues and replace
 the "to file" placeholders). Phase 10 (review fixes), Phase 16 (build) and then Phase 11, each in its own worktree under `../abb-worktrees/`; nothing is pushed from them until a phase is fully ready.
 
+Phase 11 (evaluations, experiments, comparison; plan `docs/plans/active/phase-11-evaluations.md`, branch `feature/phase-11-evaluations`, worktree `../abb-worktrees/phase-11`)
+is at plan steps 1-5 of 15 (all Python: settings, reserved then granted actions, migrations 0070-0071, IdKinds, evaluator protocol, built-ins, `/v1/evaluators`,
+the `evaluate_run` handler and its isolation tests). Next: step 6 (trigger, verdict and listing routes). Deviations are in the plan's "Implementation notes".
+
 ## Blocked work
 None.
 

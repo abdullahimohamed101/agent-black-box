@@ -730,3 +730,19 @@ are compared partially, which the response and UI state (KI-105).
   before it stopped on `test_a_slow_job_keeps_its_lease_and_runs_exactly_once`, which the first draft of the timeout validator broke (fixed below).
 - Deviation (D13): `eval_timeout_seconds` defaults to 25 (not 30): 30 is not `< lease / 2` for the default 60 s lease. When it is **not set** it is clamped to
   `0.4 * worker_lease_seconds` so existing tests with a 1 s lease still start; an explicitly set value is validated as written (`< lease / 2`).
+- Deviation (D14): `evaluators.config` and `evaluations.config_snapshot` are bounded at 16,384 bytes, not 8,192: 32 patterns of 256 ASCII characters (the
+  documented glob maximum) is about 8.4 KB as jsonb text. The service measures the jsonb text size (`jsonb_size`) and answers `422 EVALUATOR_INVALID`
+  before the database; multi-byte patterns hit that limit first.
+- Addition (INV-1): migration 0070 installs a `BEFORE UPDATE` trigger that refuses any update of a `completed` or `failed` evaluation (even for the
+  table owner); the handler's `UPDATE ... WHERE state = 'pending'` is therefore a database fact, tested for both roles.
+- Deviation (D3): the `evaluate_run` payload is `{run_id}` only. Coalescing (`ON CONFLICT DO NOTHING` while pending) would drop the ids of a second trigger,
+  so the handler selects the run's `pending` rows itself (`FOR UPDATE SKIP LOCKED`, oldest first, at most 20 per job; a coalesced follow-up job takes the
+  rest). The skip-locked claim plus `UPDATE ... WHERE state = 'pending'` replaces a per-run advisory lock in the handler, which would have blocked the
+  request path's own count-then-insert lock (D10, step 6). `RunSnapshot` carries no cost lines: no built-in reads them.
+- Additions to the error vocabulary (step 4): `EVALUATOR_INVALID` (422: unknown implementation, invalid or oversized configuration; the body names fields and
+  rule types, never values), `EVALUATOR_NAME_TAKEN` (409). `human` is a registry entry (kind `human`) so its configuration is validated like the others;
+  a trigger of it is refused in step 6 (`EVALUATOR_KIND_MISMATCH`). The registry has no `judge` yet: `kind: llm_judge` answers `409 JUDGE_NOT_CONFIGURED`.
+- Infrastructure failures of the job leave as `EvaluationJobError("evaluate_run failed")` (`from None`), mirroring `DetectorError`; the result write runs in a
+  savepoint so a value the database refuses (a backstop CHECK) becomes `failed/INVALID_RESULT`, not a retry loop.
+- Residual (ADR-090, observed): a thread that ignores its budget keeps its executor thread; `asyncio.run` joins the default executor at worker shutdown, so
+  a stuck evaluator can delay a graceful stop. The isolation test ends its busy-loop thread itself for that reason.

@@ -400,11 +400,11 @@ class Human:
         raise EvaluatorError("human evaluators take verdicts, not runs") from None
 
 
-def _registry(*evaluators: Any) -> Mapping[str, Any]:
+def _registry(*evaluators: Any) -> dict[str, Any]:
     return {e.name: e for e in evaluators}
 
 
-REGISTRY: Mapping[str, Any] = _registry(
+REGISTRY: dict[str, Any] = _registry(
     RunSucceeded(),
     TestsPassed(),
     FilesTouchedOnly(),

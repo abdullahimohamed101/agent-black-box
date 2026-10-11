@@ -11,11 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from abb_api.analytics.rollup import refresh_day
 from abb_api.cost.engine import CostEngine
 from abb_api.cost.repository import CostRepository
+from abb_api.evaluations.job import evaluate_run as run_evaluations
 from abb_api.findings.job import detect_delay, detect_run
 from abb_api.ingestion.store import PgEventStore
 from abb_api.jobs.context import job_settings
 from abb_api.jobs.outbox import (
     DETECT_FINDINGS,
+    EVALUATE_RUN,
     REFRESH_ANALYTICS_DAY,
     SUMMARIZE_RUN,
     Job,
@@ -112,8 +114,24 @@ async def detect_findings(job: Job, conn: AsyncConnection) -> None:
         )
 
 
+async def evaluate_run(job: Job, conn: AsyncConnection) -> None:
+    """Run a run's pending evaluations (ADR-090). Never touches the run, its spans or its cost."""
+    settings = job_settings()
+    tenant = TenantContext(job.workspace_id)
+    run_id = uuid.UUID(job.payload["run_id"])
+    if await run_evaluations(conn, tenant, run_id, settings):
+        # More than one job's worth was pending: continue in a follow-up (coalesced per run).
+        await OutboxRepository(conn, tenant).enqueue(
+            job_type=EVALUATE_RUN,
+            dedupe_key=job.dedupe_key,
+            payload=job.payload,
+            delay=timedelta(seconds=max(settings.eval_batch_delay_seconds, 1.0)),
+        )
+
+
 HANDLERS: dict[str, Callable[[Job, AsyncConnection], Awaitable[None]]] = {
     SUMMARIZE_RUN: summarize_run,
     REFRESH_ANALYTICS_DAY: refresh_analytics_day,
     DETECT_FINDINGS: detect_findings,
+    EVALUATE_RUN: evaluate_run,
 }
