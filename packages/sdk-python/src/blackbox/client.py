@@ -103,6 +103,9 @@ class Span:
     ) -> None:
         self.run = run
         self.name = name_attr(name)
+        if isinstance(parent, Span) and parent.run is not run:
+            log.debug("ignoring a parent span that belongs to another run")
+            parent = None
         parent = parent if isinstance(parent, Span) else None
         self.kind = span_kind(kind)
         self.span_id = ids.new_id(ids.SPAN)
@@ -481,6 +484,8 @@ class Run:
         Hand the string to the child (environment variable `BLACKBOX_TRACE_CONTEXT`, see
         `trace_context_from_env`); the child calls `bb.continue_run(...)`. Never raises.
         """
+        if self._inert:  # a context for a run that does not exist would create a phantom run
+            return ""
         try:
             span = self._delegating_span(parent)
             delegator = span.agent_id if span else self.agent_id
@@ -504,12 +509,14 @@ class Run:
 
     def trace_context(self) -> str:
         """The context string for the current position, with no event (not a delegation)."""
+        if self._inert:
+            return ""
         span = self._delegating_span(None)
         span_id = span.span_id if span else self._root_parent
         return TraceContext(self.run_id, self.trace_id, span_id, None).serialize()
 
     def _delegating_span(self, parent: Span | None) -> "Span | None":
-        if isinstance(parent, Span):
+        if isinstance(parent, Span) and parent.run is self:
             return parent
         current = _current_span.get()
         return current if current is not None and current.run is self else None

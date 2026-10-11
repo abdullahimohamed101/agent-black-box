@@ -382,3 +382,28 @@ def test_a_real_subprocess_started_with_the_context_produces_nested_events(tmp_p
     assert spawned["attributes"]["agent.child_id"] == "tester"
     for e in [*parent, *child]:
         parse_event_in(e)
+
+
+def test_an_inert_continued_run_hands_out_no_context(caplog: pytest.LogCaptureFixture) -> None:
+    """A context for a random nonexistent run would let a child write a phantom run (review F5)."""
+    bb = offline()
+    inert = bb.continue_run("nonsense")
+    assert inert.spawn_context("z") == "" and inert.trace_context() == ""
+    assert bb.continue_run(inert.spawn_context("z")).spawn_context("w") == ""  # inert all the way
+    assert taken(bb) == []
+
+
+def test_a_parent_span_of_another_run_is_ignored_not_adopted() -> None:
+    """The SDK coerces arguments and never raises into the host (review F6)."""
+    bb = offline()
+    with bb.run("a") as run_a, bb.run("b") as run_b:
+        foreign = run_a.span("foreign")
+        foreign.start()
+        context = TraceContext.parse(run_b.spawn_context("w", parent=foreign))
+        assert context is not None and context.parent_span_id != foreign.span_id
+        assert context.run_id == run_b.run_id
+        child = run_b.agent("w2", parent=foreign)
+        assert child._parent is None
+        span = run_b.span("s", parent=foreign)
+        assert span._parent is None and span.agent_id == run_b.agent_id
+        foreign.end()
