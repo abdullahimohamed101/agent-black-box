@@ -31,6 +31,8 @@ from abb_api.core.middleware import RequestContextMiddleware
 from abb_api.cost.router import rebuild_router
 from abb_api.cost.router import router as pricing_router
 from abb_api.db import create_engine
+from abb_api.evaluations.router import router as evaluators_router
+from abb_api.evaluations.service import EvaluatorService
 from abb_api.findings.router import router as findings_router
 from abb_api.findings.service import FindingsService
 from abb_api.health.router import router as health_router
@@ -177,6 +179,7 @@ def create_app(
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)
+        app.state.evaluators = EvaluatorService(engine)
         app.state.login = LoginService(engine, oidc, settings, clock) if oidc else None
         app.state.artifacts = ArtifactService(
             engine,
@@ -237,6 +240,7 @@ def create_app(
     app.include_router(members_router)
     app.include_router(api_keys_router)
     app.include_router(audit_router)
+    app.include_router(evaluators_router)
     _install_openapi(app, settings)
     return app
 

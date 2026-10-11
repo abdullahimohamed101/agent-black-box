@@ -20,6 +20,7 @@ from abb_api.auth import scopes
 from abb_api.auth.repository import ApiKeyRepository, UserRepository
 from abb_api.cost.repository import CostRepository
 from abb_api.db import tables as t
+from abb_api.evaluations.repository import EvaluatorRepository
 from abb_api.ids import new_uuid, parse_public_id, public_id
 from abb_api.workspaces.repository import InvitationRepository
 from tests.api_fixtures import NOW, Api
@@ -76,6 +77,17 @@ class World:
                     created_by=creator.id if creator else None,
                 )
             return created.stored.key_id
+        if kind == "evaluator":
+            async with self.api.engine.begin() as conn:
+                created_evaluator = await EvaluatorRepository(
+                    conn, self.api.tenant.context
+                ).create(
+                    new_uuid(IdKind.EVALUATOR), project_id=None,
+                    name=f"fresh-{uuid.uuid4().hex[:10]}", kind="deterministic",
+                    implementation="run_succeeded", version=1, config={}, description=None,
+                    created_by=None,
+                )  # fmt: skip
+            return public_id(IdKind.EVALUATOR, created_evaluator.id)
         if kind == "member":
             user = await add_member(
                 self.api.engine, workspace, f"target-{uuid.uuid4().hex[:10]}@acme.test", "DEVELOPER"

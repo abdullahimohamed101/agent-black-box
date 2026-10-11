@@ -646,7 +646,7 @@ evaluators = Table(
     UniqueConstraint("workspace_id", "name", name="uq_evaluators_name"),
     CheckConstraint(_in("kind", EVALUATOR_KINDS), name="ck_evaluators_kind"),
     CheckConstraint("jsonb_typeof(config) = 'object'", name="ck_evaluators_config_object"),
-    CheckConstraint("octet_length(config::text) <= 8192", name="ck_evaluators_config_size"),
+    CheckConstraint("octet_length(config::text) <= 16384", name="ck_evaluators_config_size"),
     CheckConstraint(
         "char_length(name) <= 64 AND char_length(implementation) <= 64 "
         "AND char_length(description) <= 500",
@@ -699,7 +699,7 @@ evaluations = Table(
     CheckConstraint("octet_length(metrics::text) <= 16384", name="ck_evaluations_metrics_size"),
     CheckConstraint("octet_length(metadata::text) <= 16384", name="ck_evaluations_metadata_size"),
     CheckConstraint(
-        "octet_length(config_snapshot::text) <= 8192", name="ck_evaluations_config_size"
+        "octet_length(config_snapshot::text) <= 16384", name="ck_evaluations_config_size"
     ),
     CheckConstraint(
         "jsonb_typeof(evidence_event_ids) = 'array' "

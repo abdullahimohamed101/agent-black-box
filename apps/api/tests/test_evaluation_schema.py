@@ -110,7 +110,7 @@ async def test_the_runtime_role_cannot_rewrite_a_terminal_evaluation_either(
         {"explanation": "x" * 16385},
         {"explanation": "é" * 8193},  # 16,386 bytes in 8,193 characters
         {"metrics": {"k": "x" * 17000}},
-        {"config_snapshot": {"k": "x" * 8200}},
+        {"config_snapshot": {"k": "x" * 16400}},
         {"evidence_event_ids": {"not": "a list"}},
         {"label": "x" * 65},
         {"error": "x" * 513},
@@ -178,7 +178,7 @@ async def test_evaluator_names_are_unique_per_workspace_and_config_is_bounded(
     with pytest.raises(IntegrityError):
         async with engine.begin() as conn:
             await conn.execute(
-                insert(t.evaluators).values(id=uid(), name="big", config={"k": "x" * 8200}, **base)
+                insert(t.evaluators).values(id=uid(), name="big", config={"k": "x" * 16400}, **base)
             )
     with pytest.raises(IntegrityError):
         async with engine.begin() as conn:

@@ -76,8 +76,9 @@ class RequestSpec:
     params: dict[str, str] = field(default_factory=dict)
     content: bytes | None = None
     headers: dict[str, str] = field(default_factory=dict)
-    # "member" | "invitation" | "api_key": the world creates a fresh target in acme and puts its
-    # id where the path says FRESH, so a mutating request is valid for every actor that may send it.
+    # "member" | "invitation" | "api_key" | "evaluator": the world creates a fresh target in acme
+    # and puts its id where the path says FRESH, so a mutating request is valid for every actor
+    # that may send it.
     fresh: str | None = None
 
 
@@ -210,6 +211,12 @@ def _post_rebuild(side: Side, overrides: dict[str, str]) -> RequestSpec:
     return RequestSpec("POST", "/v1/cost/rebuild", content=b"{}", headers=JSON)
 
 
+def _post_evaluator(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    body = {"name": f"probe-{uuid.uuid4().hex[:10]}", "kind": "deterministic",
+            "implementation": "run_succeeded"}  # fmt: skip
+    return RequestSpec("POST", "/v1/evaluators", content=json.dumps(body).encode(), headers=JSON)
+
+
 _ANALYTICS = ("summary", "cost", "reliability", "performance")
 
 CASES: dict[tuple[str, str], RouteCase] = {
@@ -281,6 +288,15 @@ CASES: dict[tuple[str, str], RouteCase] = {
             ("key_id",), probe_actors=ADMINS,
         ),
         RouteCase("GET", "/v1/audit", actions.AUDIT_READ, _get("/v1/audit"), 200),
+        RouteCase(
+            "GET", "/v1/evaluators", actions.EVALUATION_READ, _get("/v1/evaluators"), 200
+        ),
+        RouteCase("POST", "/v1/evaluators", actions.EVALUATOR_WRITE, _post_evaluator, 201),
+        RouteCase(
+            "DELETE", "/v1/evaluators/{evaluator_id}", actions.EVALUATOR_WRITE,
+            _target("DELETE", "/v1/evaluators", "evaluator_id", "evaluator", None), 204,
+            ("evaluator_id",), probe_actors=ADMINS,
+        ),
         RouteCase("POST", "/v1/pricing/overrides", actions.PRICING_WRITE, _post_override, 201),
         RouteCase("POST", "/v1/cost/rebuild", actions.PRICING_WRITE, _post_rebuild, 202),
         RouteCase("PUT", "/v1/artifacts/{artifact_id}", actions.ARTIFACT_WRITE, _put_artifact, 201),

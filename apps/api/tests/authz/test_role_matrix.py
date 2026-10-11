@@ -45,10 +45,15 @@ U_KEYS_REVOKE = U_KEYS_READ
 U_PRICES = "allow allow deny      deny   deny     allow   | 404 404 deny  401 401 401 401 400"
 # audit.read: owner, admin and the security role.
 U_AUDIT = "allow allow deny      deny   allow    deny    | 404 404 deny  401 401 401 401 400"
+# evaluator.write (and the other Phase 11 write actions): owner, admin and developer.
+U_BUILD = U_KEYS_CREATE
 U_ADMIN_ONLY = U_PROJECT_ADMIN  # member.write, invite.read, invite.write: owner and admin
 
 EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/v1/audit"): (NO_KEY, U_AUDIT),
+    ("GET", "/v1/evaluators"): (LIST, U_RUNS),
+    ("POST", "/v1/evaluators"): (NO_KEY, U_BUILD),
+    ("DELETE", "/v1/evaluators/{evaluator_id}"): (NO_KEY, U_BUILD),
     ("POST", "/v1/pricing/overrides"): (NO_KEY, U_PRICES),
     ("POST", "/v1/cost/rebuild"): (NO_KEY, U_PRICES),
     ("GET", "/v1/api-keys"): (NO_KEY, U_KEYS_READ),

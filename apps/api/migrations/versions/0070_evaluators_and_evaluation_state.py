@@ -56,7 +56,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("workspace_id", "name", name="uq_evaluators_name"),
         sa.CheckConstraint(f"kind IN ({KINDS})", name="ck_evaluators_kind"),
         sa.CheckConstraint("jsonb_typeof(config) = 'object'", name="ck_evaluators_config_object"),
-        sa.CheckConstraint("octet_length(config::text) <= 8192", name="ck_evaluators_config_size"),
+        sa.CheckConstraint("octet_length(config::text) <= 16384", name="ck_evaluators_config_size"),
         sa.CheckConstraint(
             "char_length(name) <= 64 AND char_length(implementation) <= 64 "
             "AND char_length(description) <= 500",
@@ -125,7 +125,7 @@ def upgrade() -> None:
         "ck_evaluations_metadata_size", "evaluations", "octet_length(metadata::text) <= 16384"
     )
     op.create_check_constraint(
-        "ck_evaluations_config_size", "evaluations", "octet_length(config_snapshot::text) <= 8192"
+        "ck_evaluations_config_size", "evaluations", "octet_length(config_snapshot::text) <= 16384"
     )
     op.create_check_constraint(
         "ck_evaluations_evidence",
