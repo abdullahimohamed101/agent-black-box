@@ -97,6 +97,19 @@ ingestion edge | control plane | database/object storage | human approvers.
 - Local/demo credentials are generated, documented as dev-only, never real. `owner@local.test` and the E2E people (`*@auth.test`) are fake
   addresses that only the fake provider can authenticate.
 
+Evaluations, comparison and experiments (Phase 11, ADR-090..092): what a reader without `payload.read` (VIEWER, BILLING-like keys) receives. Scores, labels, states, error codes, evaluator
+names, kinds, versions, allowlisted built-in `metrics` and the template explanations of built-ins (numbers only, identical for two runs that differ only in captured content) are visible
+to every reader of the run. Withheld, as `null` plus a marker: the free text of a `human` verdict or a model judge's reply (`explanation_withheld`), `metadata.raw` (`metadata_withheld`),
+and an evaluator's path-bearing config (`allowed_globs`, `forbidden_globs`, `required_paths`) and `rubric` (`config_withheld`). The judge prompt is never stored or returned. A comparison for such a reader is
+computed on a metadata projection (kinds, tool names, model names): commands, paths and content span names never enter an alignment key or label, two runs that differ only in them compare as all `equal`, and `files`
+carries per-side counts only (an intersection would be a set-membership oracle); the response says `alignment: metadata` and the page says divergence is computed on metadata only. Variant configs of an experiment are
+labels visible to every reader (documented: no secrets, prompts or paths; values at most 256 characters). All free text (evaluator, experiment and variant names, explanations, labels, error text, config values) is
+rendered as text in the web app. Writes need the web app's `Origin` (people) and the actions `evaluation.run`, `evaluation.label`, `evaluator.write`, `experiment.write` (OWNER, ADMIN, DEVELOPER; keys hold none of them,
+KI-101). The judge treats the run as untrusted data (a delimited, escaped block; clamped score, allowlisted label; `include_content` is opt-in and sends commands and paths only, INV-5); a reply above `max_cost_usd` fails the row and
+pauses the evaluator for `ABB_JUDGE_COOLDOWN_SECONDS`. The fake judge refuses to start outside development or test unless `ABB_JUDGE_ALLOW_FAKE=1`. An evaluator can never change a run: the handler writes only to `evaluations`,
+runs under a cooperative time budget, and stores only a built-in's own error text or a fixed code (never `str(exc)` of anything else); the `evaluations` table refuses updates of terminal rows with a database trigger.
+Open: KI-100 (injection through client-controlled labels cannot be excluded by construction; no real provider), KI-106.
+
 Reliability findings (Phase 10, ADR-080): evidence is metadata only by construction (an allowlist of keys per finding type; no command, path, payload, payload digest, run name or
 error text; the `fingerprint` and the `id` derived from it are functions of public metadata only, never of payload bytes, so they cannot be used to test a guessed payload; a reader learns only that the events cited by an `identical_request` finding carried equal payloads), so `GET /v1/runs/{id}/findings` needs only `run.read` and returns the same body to every reader; a detector failure surfaces as a fixed-text job error that cannot quote an
 attribute value; the cost baseline is scoped to the caller's workspace, project and agent.

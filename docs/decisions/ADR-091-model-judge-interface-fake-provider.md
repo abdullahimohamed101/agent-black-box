@@ -1,8 +1,9 @@
 # ADR-091: Model judges behind a one-method provider interface; a deterministic fake is the only shipped provider; judges are never ground truth; the run is untrusted data
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-11
 Phase: 11
+Accepted: 2026-10-11 (Phase 11 implementation complete; pending security review). Final design as built: `include_content` sends command text and paths only (no payload excerpts); a reply above `max_cost_usd` is `failed/JUDGE_BUDGET` and the evaluator is refused for `ABB_JUDGE_COOLDOWN_SECONDS`; the fake provider needs `ABB_ENVIRONMENT` development or test, or `ABB_JUDGE_ALLOW_FAKE=1`.
 
 ## Context
 Spec §85.4: capture judge model, prompt template version, cost and raw score metadata; judges are not ground truth. No vendor

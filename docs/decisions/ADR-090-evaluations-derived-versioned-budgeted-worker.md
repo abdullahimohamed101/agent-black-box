@@ -1,8 +1,9 @@
 # ADR-090: Evaluations are derived, versioned records with independent state, computed by the outbox worker in a budgeted thread
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-11
 Phase: 11
+Accepted: 2026-10-11 (Phase 11 implementation complete; pending security review). Final design as built: the `evaluate_run` payload is `{run_id}` only and the handler claims the run's pending rows with `FOR UPDATE SKIP LOCKED` (at most 20 per job); migration 0070 refuses any update of a terminal evaluation with a trigger; a verdict is `POST /v1/runs/{run_id}/verdicts`; evaluate-all starts a pair that has no non-terminal and no completed row (a failed pair is retried).
 
 ## Context
 Spec §85 asks for evaluators with their own states whose failures never change a run; INV-1/INV-2 forbid editing events and require

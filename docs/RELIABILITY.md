@@ -29,6 +29,13 @@ run detail p95 <500 ms; dashboard p95 <1.5 s. Measured results are recorded in `
 Live streams (per API process, settings): 50 total, 10 per key, 15 min lifetime, 15 s keepalive, 2 s fallback poll, 30 s resume overlap,
 10 s write timeout. Measured accept-to-display p95 is about 9 ms on one machine (`docs/benchmarks/phase-5-streaming.md`).
 
+Evaluations (ADR-090): the `evaluate_run` job is the only writer of terminal evaluation states and never touches `runs`. The evaluator runs in a worker thread under a cooperative budget (`ABB_EVAL_TIMEOUT_SECONDS`, 25 s,
+validated below half the worker lease, checked every 1,000 events and per glob) while the lease heartbeat keeps running; a run above `ABB_EVAL_MAX_EVENTS` (50,000) fails the row (`RUN_TOO_LARGE`). Any exception, garbage result or timeout
+becomes one `failed` row with a fixed code; a database outage inside the handler retries the job. A pending row whose job was dead-lettered, or that is older than `ABB_EVAL_STALE_SECONDS` (1 h), reads as `failed/JOB_FAILED` without a write.
+Bounds: 20 results per (run, evaluator), 20 pending rows claimed per job, 500 new rows per evaluate-all call, 500 runs and 20 evaluators per experiment. Residual: a thread that ignores its budget keeps its executor thread until it
+returns, which can delay a graceful worker stop (ADR-090). Comparison (ADR-092) is computed on read in a thread: at most `ABB_COMPARE_MAX_EVENTS` (20,000) events and `ABB_COMPARE_MAX_STEPS` (2,000) steps per side, a Myers diff bounded by
+`ABB_COMPARE_MAX_EDITS` (600) and a fixed work cap; beyond it the answer is `partial` in tens of milliseconds, not a stall (`docs/benchmarks/phase-11-compare.md`, KI-105).
+
 Findings (ADR-080): the `detect_findings` job is the only writer of `findings` and `run_findings`, one writer per run (an advisory lock; the loser re-enqueues), derived
 and rebuildable from events. Bounds: at most `ABB_FINDINGS_MAX_EVENTS` (50,000) events read per run in canonical order (`truncated` is reported); 50 findings per detector and 200
 per run; 50 event ids and 20 pattern tokens per finding; client strings truncated to 128 characters; evidence under 15 KiB; delay `ABB_FINDINGS_DELAY_SECONDS` (5 s) growing with run size

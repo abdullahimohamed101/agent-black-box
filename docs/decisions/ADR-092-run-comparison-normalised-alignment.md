@@ -1,8 +1,9 @@
 # ADR-092: Run comparison by normalised step alignment, computed on read, bounded by a work budget, role-aware
 
-Status: Proposed
+Status: Accepted
 Date: 2026-10-11
 Phase: 11
+Accepted: 2026-10-11 (Phase 11 implementation complete; pending security review). Final design as built: the query parameter is `with_run_id`; `divergence` is `{index, relation}` and the row is `steps[index]`; the content-projection divergence on the demo pair is the `file.read` that opens the second edit (immediately followed by the changed `file.modified`), and the metadata divergence is the second test run; a fixed work cap of 4,000,000 comparisons bounds the Myers diff next to `ABB_COMPARE_MAX_EDITS`.
 
 ## Context
 Spec §98: comparison must identify divergence, align semantically equivalent actions and normalise generated ids and timestamps;
@@ -10,7 +11,7 @@ Spec §98: comparison must identify divergence, align semantically equivalent ac
 equality oracle on them); low-cardinality step sequences (an agent alternating a few tools) are the worst case of LCS-style matchers.
 
 ## Decision
-`GET /v1/runs/{id}/compare?with=` derives a step list per run from at most `ABB_COMPARE_MAX_EVENTS` events in canonical order
+`GET /v1/runs/{id}/compare?with_run_id=` derives a step list per run from at most `ABB_COMPARE_MAX_EVENTS` events in canonical order
 (closing lifecycle events and point events of the file, git, reliability, security and approval families), gives each step a key and a label built
 from **the projection the caller may see**: with `payload.read`, `(family, normalised name)` where the table-driven normaliser replaces word-bounded
 ULIDs/UUIDs, long hex, timestamps, durations and digit runs with `#`, strips temp and workdir prefixes, collapses whitespace and lower-cases; without
