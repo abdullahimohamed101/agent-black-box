@@ -138,6 +138,9 @@ with a new command and the same tool/event vocabulary; a new `file.path`; a cont
 `test_an_unchanged_resummarisation_writes_nothing_and_a_change_does` where the new event is `shell.command.completed` only, asserting `commands` and
 `document_hash` changed. Five lines of test.
 
+
+**Resolution.** Fixed in 594c2da: `test_a_content_only_change_changes_the_hash` (command, path, content text and the truncation flag alone) and `test_a_content_only_change_rewrites_the_index_row` (a new command and path rewrite `commands`, `file_paths`, `content_doc`; an unchanged re-summarisation does not). Mutation "hash excludes the four content fields": both fail (2 failed); restored.
+
 ### F2 (P2) `agent:` and `root_agent:` reject agent ids the API accepts (`.` and `_`), so facets and converted bookmarks can produce 422
 
 Location: `search/parser.py:35` (`_SLUG = [a-z0-9][a-z0-9-]{0,62}`) and `:185-189`; `runs/router.py:108` (`agent_id` pattern
@@ -154,6 +157,9 @@ Suggested fix. Make `_SLUG` the API's pattern (`[a-z0-9][a-z0-9._-]{0,63}`) and 
 like `*`), or drop it from the `agents` array at document time. Add `agent:my_agent` and `?agent=my_agent` to `test_parser.py` and
 `tests/search.test.tsx` (legacy conversion). Not a security issue: nothing leaks, the term is simply refused.
 
+
+**Resolution.** Fixed in 87f3253: `_SLUG` is now the event schema's `AgentSlug` / the API's `agent_id` rule (`[a-z0-9][a-z0-9._-]{0,63}`); parser examples and error positions, the prefix case and an HTTP test (`agent:my_agent`, `agent:v1.2-bot`, `root_agent:my_agent`, `agent:v1.*`) cover it; the web `facetClickable` leaves `(other)` and `*` values as plain labels, with vitest for the legacy `agent=my_agent` conversion and the facet clicks. Mutation (old grammar): 5 API tests fail; (old Facets): the facet vitest fails.
+
 ### F3 (P3) The `span.name` attribute is indexed for every span kind, although the spans route withholds derived names of shell/file/git spans
 
 Location: `search/document.py:43` (`_TEXT_ATTRIBUTES` includes `span.name`), `abb_api/content.py:21, 28-29` (`_CONTENT_SPAN_KINDS`),
@@ -169,6 +175,9 @@ cheaper to exploit (one query over all runs instead of paging events per run).
 Suggested fix. Either skip `span.name` when the event's `span.kind` is a content kind (one condition in `build_document`), or record the
 case explicitly in KI-078/ADR-101 (7). Add a document test for a `span.started` with `span.kind: shell`.
 
+
+**Resolution.** Filed as KI-115 (target: Phase 13 with KI-078); not changed in this pass.
+
 ### F4 (P3) Two ADR-101 "As built" claims are not pinned: the gate runs before the cursor is decoded, and the search transaction is read-only
 
 Location: `runs/service.py:214-219`, `search/reads.py:58-60`; ADR-101 "As built" first bullet, `reads.py` docstring.
@@ -181,6 +190,9 @@ explain as a paging problem rather than a permission one.
 Suggested fix. In the oracle refusal test add a junk and a well-formed foreign cursor (`403` either way); in `test_search_budget.py` assert
 `SET TRANSACTION READ ONLY` is among the captured statements of a search (the listener already exists) or that a monkeypatched page statement
 that writes fails with `read-only transaction`.
+
+
+**Resolution.** Fixed in e34bd50: `test_the_refusal_comes_before_the_cursor_is_decoded` (garbage cursors plus a content field are the `403`; the same cursor on an allowed query is the `400`) and `test_a_search_runs_in_a_read_only_transaction` (unit and request path). Mutations M7 (cursor decoded first) and M16 (no `SET TRANSACTION READ ONLY`): 3 failed; restored.
 
 ### F5 (P3) The rebase notes understate the Phase 10 merge: a dry merge conflicts in 12 files
 
@@ -196,6 +208,9 @@ files so the merge is not treated as a "block insert". Likewise the branch is be
 `completed/`, KI-084..086 filed): a merge conflicts in `docs/KNOWN_ISSUES.md` and `docs/PROJECT_STATE.md` and relocates the Phase 16 plan
 files (VERIFIED with `merge-tree`); the branch did not regress these, it just needs the merge.
 
+
+**Resolution.** Left as written (the Phase 10 rebase is not attempted while PR #79 is open). `origin/main` is merged in (the Phase 16 plan files stay in `docs/plans/active/`, KI-084..086 and the Phase 9 completion kept).
+
 ### F6 (P3) The unindexed count is an anti-join over the whole scope once nothing is unindexed
 
 Location: `runs/queries.py:257-278`.
@@ -208,6 +223,9 @@ plan shape (no EXPLAIN run). Suggested: compute the count only when the run-row 
 `POST /v1/runs` that never receives events is counted as "not yet indexed" forever (`summary_version = 0`, no row) and `search-rebuild` cannot
 index it or a run whose summarisation dead-lettered (`repository.py:124` requires `summary_version > 0`): the runbook should say so.
 
+
+**Resolution.** Filed as KI-110 (the anti-join) and KI-111 (queued and dead-lettered runs are unindexed forever); both documented in `docs/runbooks/search.md` (5ddc897).
+
 ### F7 (P3) The range control turns every polled runs page into a search with facets
 
 Location: `apps/web/src/lib/search.ts:98-107` (`effectiveQuery`), `components/RunsList.tsx` (`q: effective`), `lib/queries.ts:50`
@@ -218,6 +236,9 @@ selected is a search (permit, budget, facets CTE over the newest 1,000 runs with
 (bookmarks stay relative) and bounded, but it re-creates the load F6 removed for the most common view. Suggested: when `q` has only the range
 term, send `started_after` (the legacy parameter) instead, and keep `q` for typed terms.
 
+
+**Resolution.** Filed as KI-112: sending `started_after` instead needs a stable query key or a relative API parameter, so it is not a few lines (5ddc897).
+
 ### F8 (P3) `search_max_concurrent` permits are held while waiting for a pooled connection, outside the budget
 
 Location: `runs/service.py:242`, `db/engine.py` (`pool_timeout=5`), `search/reads.py:36`.
@@ -225,6 +246,9 @@ Location: `runs/service.py:242`, `db/engine.py` (`pool_timeout=5`), `search/read
 The budget's clock starts when the permit is granted; `engine.connect()` may then wait up to `pool_timeout` (5 s) if ingestion holds the pool,
 and `authorise_project` runs before the first `statement_timeout`. A search can therefore hold a permit for budget + 5 s and return
 `503 DEPENDENCY_UNAVAILABLE` rather than `SEARCH_TIMEOUT`. Harmless for ingestion (the point of the cap); worth a sentence in KI-082.
+
+
+**Resolution.** Documented, not bounded: KI-082 gained the sentence, ADR-101 "As built" and the runbook's 503 section say a permit can be held for budget + `pool_timeout` (5ddc897).
 
 ### F9 (P3) `convertLegacy` keeps a `status` list beside `q`, so the two filter systems coexist in one URL
 
@@ -236,6 +260,9 @@ Documented as a deviation and ANDed correctly by the API, but a user can now hol
 get an empty page with no explanation. Suggested: show the legacy parameters as chips too (removable), or fold single-status checkboxes into `q`
 as the plan originally said.
 
+
+**Resolution.** Filed as KI-113 (5ddc897).
+
 ### F10 (P3) Fixture-mode search re-implements a grammar subset in TypeScript
 
 Location: `apps/web/src/fixtures/search.ts` (a 200-line scanner), `fixtures/api.ts`.
@@ -244,6 +271,9 @@ The plan's D1 says the UI never parses `q`; the fixtures do, for demo mode. It a
 mislead the Playwright fixture spec about content search, and `search.spec.ts` runs against the real API. Risk is drift (the fixture accepts
 `agent:my_agent`, the API does not: F2). Suggested: keep the fixture table-driven over canned `(q -> response)` pairs instead of a scanner, or
 mark the module "demo only; not the grammar" in the file header (it already says so) and add F2's case to its tests.
+
+
+**Resolution.** A vitest (`fixture mode reads the API parser's canonical examples the same way ...`) checks the fixture scanner against the parser's own examples, including `agent:my_agent`, and that unsupported fields are refused (5ddc897).
 
 ### F11 (P3) Benchmark caveats to carry into the PR
 
@@ -255,6 +285,9 @@ bimodal; the 4-client +18% traced to one 215 ms run). Two numbers sit close to t
 tripped" is defensible under the plan's own rule (band **and** threshold), but the VM re-measurement should be a listed follow-up with a date,
 and `scripts/bench_search.py` seeds `to_tsvector` corpora (its own header says so), so the recorded GIN sizes are not the production
 builder's. Nothing to change in the code.
+
+
+**Resolution.** Caveats added to `docs/benchmarks/phase-16-regression-check.md` ("Caveats to carry") and filed as KI-114 for the VM re-measurement (5ddc897).
 
 ## Attack list disposition (brief items 1-9)
 

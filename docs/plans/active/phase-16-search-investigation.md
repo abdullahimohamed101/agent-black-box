@@ -743,3 +743,13 @@ base <-> head; `uv build --wheel`.
 
 Phase 10 had **not** merged when this was run (`origin/main` at `84491c6` has no migration 0060), so none of the rebase notes were applied: `0080.down_revision` is still `"0047"`, the `run_search` upsert has
 no `_enqueue_detect` neighbour, and RunOut/RunPage field order is the Phase 9 one. They apply exactly as written under "Merge notes" when Phase 10 lands first.
+
+### Security review fixes (2026-10-11; commits 594c2da F1, 87f3253 F2, e34bd50 F4, 5ddc897 docs/KI-110..115; see `phase-16-security-review.md` "Resolution")
+| Row touched | Command | Observed | Verdict |
+| --- | --- | --- | --- |
+| AC-8 (hash, rebuild) | `uv run pytest tests/search` | 359 passed (2:08); two new tests fail when content fields are removed from `SearchDocument.hash` | PASS |
+| AC-1 / AC-3 (grammar: agent ids) | `tests/search/test_parser.py`, `test_search_api.py` | `agent:my_agent`, `agent:v1.2-bot`, `root_agent:my_agent`, `agent:v1.*` parse and match; `_bad`, `.bad`, `"(other)"`, 65 characters are `422` | PASS |
+| AC-4 / AC-7 (ADR-101 claims) | `test_search_oracle.py`, `test_search_budget.py` | refusal before cursor decode and read-only transaction are pinned (each fails when its guard is removed) | PASS |
+| AC-5 | `uv run pytest tests/authz` | 119 passed (2:48) | PASS |
+| AC-10 web | `pnpm exec vitest run` / eslint / prettier / tsc / `next build` / `gen:api:check` | 541 passed (31 files); the rest clean; fixtures Playwright 14 passed; `scripts/auth-e2e.sh` 13 passed | PASS |
+| AC-14 quality gate | `uv run pytest --ignore=tests/authz --ignore=tests/search`; ruff, mypy (192 files), `openapi --check` | 745 passed (3:39); clean | PASS |

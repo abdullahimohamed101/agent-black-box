@@ -6,7 +6,7 @@ Last updated: 2026-10-11
 Phases 0-9 and 15 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73). The MVP gate (spec §49, §138) is reached but **not accepted**: the user decides
 after reviewing the items under "Next actions". Phases 10, 16 and 11 are being built on their own branches (worktrees), merge order 10, 16, 11; Phase 10 is built and
 reviewed and its review findings are being fixed. **Phase 16 (search and investigation) is implemented on `feature/phase-16-search-investigation`; its independent security review
-found no P0/P1 and its P2/P3 findings are being fixed** (plan status "Implemented; pending security review"; closing evidence for AC-1..14 is in the plan). Phase 11 starts after 16.
+found no P0/P1; its P2/P3 findings are fixed or filed** (plan status "Implemented; pending security review"; closing evidence for AC-1..14 is in the plan). Phase 11 starts after 16.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -39,7 +39,7 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, 
   (`docs/benchmarks/phase-16-regression-check.md`).
 
 ## In-progress work
-Phase 16: the security review's findings (`docs/plans/active/phase-16-security-review.md`) are fixed or filed (KI-110..); then `complete-phase`.
+Phase 16: the security review's findings (`docs/plans/active/phase-16-security-review.md`) are fixed (F1, F2, F4) or filed (KI-110..115, with "Resolution" lines); next `complete-phase` (and the Phase 10 rebase per the plan's "Merge notes" when PR #79 merges).
 When Phase 10 merges first, apply the plan's "Merge notes" (0080 -> parent 0060, upsert before `_enqueue_detect`, field order, regenerate openapi/schema).
 Phase 10 (review fixes) and then Phase 11, each in its own worktree under `../abb-worktrees/`; nothing is pushed from them until a phase is fully ready.
 
