@@ -34,6 +34,27 @@ def names(ids: dict[str, str], response: object) -> set[str]:
     return {by_id[i] for i in item_ids(response)}  # type: ignore[arg-type]
 
 
+async def test_a_search_page_has_no_total_count_and_no_relevance_field(
+    api: Api, ids: dict[str, str]
+) -> None:
+    """ADR-101 (4): no count of matches and no ranking, in any shape of response (they are oracles)."""
+    for q in ("tool:github", "status:failed", "github", "-tool:nothing"):
+        body = (await api.get("/v1/runs", token=READER, q=q)).json()
+        assert set(body) <= {"items", "next_cursor", "query", "facets", "facets_skipped"}
+        assert set(body["query"]) == {
+            "terms",
+            "fields",
+            "content_allowed",
+            "unindexed",
+            "unindexed_capped",
+        }
+        for item in body["items"]:
+            assert not {"rank", "score", "relevance", "total", "count"} & set(item)
+    # newest first, whatever the terms (no ranking): the order is the plain listing's
+    plain = [i["started_at"] for i in (await api.get("/v1/runs", token=READER)).json()["items"]]
+    assert plain == sorted(plain, reverse=True)
+
+
 async def test_a_search_returns_the_runs_the_query_names_with_why_and_facets(
     api: Api, ids: dict[str, str]
 ) -> None:
