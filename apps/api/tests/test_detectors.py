@@ -739,3 +739,23 @@ def test_the_identical_request_identity_is_independent_of_payload_content() -> N
     assert finding.fingerprint == fingerprint(
         "identical-request", "identical_request", finding.start_event_id, public
     )
+
+
+def test_validate_evidence_refuses_evidence_that_breaks_the_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Security review P2-3: under `LIST_LIMITS` the bounds hold by construction, so the checks
+    are only reachable with a limit that no longer adds up. They must raise, never pass through."""
+    from abb_api.findings import model
+
+    ids = [new_id(IdKind.EVENT) for _ in range(60)]
+    monkeypatch.setitem(model.LIST_LIMITS, "event_ids", 60)
+    with pytest.raises(EvidenceError, match="too many events"):
+        validate_evidence("possible_loop", {"event_ids": ids})
+    monkeypatch.setitem(model.LIST_LIMITS, "event_ids", 46)
+    clean, cited = validate_evidence("possible_loop", {"event_ids": ids}, ids[0], ids[1])
+    assert len(clean["event_ids"]) == 46 and len(cited) == 46
+
+    monkeypatch.setitem(model.LIST_LIMITS, "pattern", 200)
+    with pytest.raises(EvidenceError, match="too large"):
+        validate_evidence("possible_loop", {"pattern": ["x" * 4096] * 200})

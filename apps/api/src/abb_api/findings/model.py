@@ -344,8 +344,8 @@ def validate_evidence(
 
     Keys outside the finding type's allowlist are rejected (never silently dropped: that would
     hide a detector that copies content). Strings are truncated to 128 characters, lists to their
-    bounds; if the serialised evidence still exceeds 15 KiB the longest list is halved until it
-    fits, so a hostile run can never reach the database CHECK.
+    bounds; evidence that still cites more than 50 events or exceeds 15 KiB raises (it cannot under
+    the current limits, which is what keeps a hostile run away from the database CHECK).
     """
     allowed = EVIDENCE_KEYS.get(finding_type)
     if allowed is None:
@@ -363,15 +363,14 @@ def validate_evidence(
                 seen.setdefault(item, None)
         return tuple(seen)
 
-    while True:
-        cited = ids()
-        if len(cited) <= MAX_IDS and _size(clean) <= MAX_EVIDENCE_BYTES:
-            break
-        trimmable = [(len(v), k) for k, v in clean.items() if isinstance(v, list) and len(v) > 1]
-        if not trimmable:
-            raise EvidenceError("evidence cannot be made to fit")
-        _, longest = max(trimmable)
-        clean[longest] = clean[longest][: max(1, (len(clean[longest]) * 3) // 4)]
+    # The bounds hold by construction (`LIST_LIMITS`, `MAX_LABEL`, the key allowlist); these checks
+    # are the net under a future limit that stops adding up. Trimming here would silently cut the
+    # evidence a finding is cited by, so a breach fails the job loudly (as a `DetectorError`).
+    cited = ids()
+    if len(cited) > MAX_IDS:
+        raise EvidenceError("evidence cites too many events")
+    if _size(clean) > MAX_EVIDENCE_BYTES:
+        raise EvidenceError("evidence is too large")
     if known_event_ids is not None and any(i not in known_event_ids for i in cited):
         raise EvidenceError("evidence cites an event that is not in the run")
     return clean, cited
