@@ -391,3 +391,24 @@ async def test_keys_and_roles_without_the_actions_are_refused(web: Api) -> None:
     )
     assert posted.status_code == 403
     assert await evaluation_rows(web.engine, run) == []
+
+
+async def test_the_evaluation_reads_never_cross_the_tenant_even_with_a_foreign_run_id(
+    web: Api,
+) -> None:
+    """INV-3 below the HTTP layer: every read carries the workspace, whatever run id it is given."""
+    from abb_api.evaluations.repository import EvaluationReads
+
+    foreign_run = await seeded_run(web.engine, web.other, web.worker)
+    foreign = await add_evaluator(web.engine, web.other, "run_succeeded", name="theirs")
+    await trigger(web.engine, web.other, foreign_run, foreign)
+    await web.drain()
+    assert len(await evaluation_rows(web.engine, foreign_run)) == 1
+    async with web.engine.connect() as conn:
+        mine = EvaluationReads(conn, web.tenant.context)
+        assert await mine.latest_per_evaluator([foreign_run]) == []
+        assert await mine.list_for_run(foreign_run, 10) == []
+        assert await mine.open_rows(foreign_run, foreign.id) == []
+        assert await mine.count_for_evaluator(foreign_run, foreign.id) == 0
+        theirs = EvaluationReads(conn, web.other.context)
+        assert len(await theirs.latest_per_evaluator([foreign_run])) == 1

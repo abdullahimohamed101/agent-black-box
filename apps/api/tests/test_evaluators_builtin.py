@@ -307,9 +307,10 @@ def test_clean_result_drops_foreign_evidence_and_caps_the_list(
 ) -> None:
     ids = [f"evt_{n:026d}" for n in range(150)]
     result = clean_result(
-        good(evidence_event_ids=(*ids, "evt_FOREIGN", ids[0])), frozenset(), frozenset(ids)
+        good(evidence_event_ids=("evt_FOREIGN", *ids, ids[0])), frozenset(), frozenset(ids)
     )
-    assert result.evidence_event_ids == tuple(ids[:100])
+    assert result.evidence_event_ids == tuple(ids[:100])  # the foreign id came first: dropped
+    assert "evt_FOREIGN" not in result.evidence_event_ids
     assert "FOREIGN" not in caplog.text
 
 

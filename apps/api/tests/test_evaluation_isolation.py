@@ -188,3 +188,82 @@ async def test_a_database_outage_inside_the_handler_retries_the_job_with_a_fixed
         None,
     ) or job.status == "done"
     assert CANARY not in caplog.text
+
+
+class Waiter(Raises):
+    """Holds the evaluation open until the test releases it."""
+
+    name = "waiter"
+    started = threading.Event()
+    release = threading.Event()
+
+    def evaluate(self, snapshot: Any, config: Any, budget: Any) -> EvaluationResult:
+        self.started.set()
+        self.release.wait(10)
+        return EvaluationResult(1.0, "pass", "released")
+
+
+@pytest.fixture
+def waiter(monkeypatch: pytest.MonkeyPatch) -> Any:
+    Waiter.started.clear()
+    Waiter.release.clear()
+    monkeypatch.setitem(builtin.REGISTRY, Waiter.name, Waiter())
+    yield Waiter
+    Waiter.release.set()
+
+
+async def run_handler(engine: AsyncEngine, tenant: Any, run_id: Any, database_url: str) -> bool:
+    from abb_api.evaluations.job import evaluate_run
+
+    settings = make_settings(database_url, eval_timeout_seconds=8, worker_lease_seconds=30)
+    async with engine.begin() as conn:
+        return await evaluate_run(conn, tenant.context, run_id, settings)
+
+
+async def test_a_running_evaluation_holds_no_lock_on_the_run(
+    engine: AsyncEngine, database_url: str, waiter: Any
+) -> None:
+    """The summarizer's row lock is never taken by an evaluation: a slow evaluator must not stall
+    ingestion's derivation of the same run (ADR-090)."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    from abb_api.runs.repository import RunRepository
+
+    tenant = await make_tenant(engine, "acme")
+    run_id = await seeded_run(engine, tenant, worker_for(engine, database_url))
+    await trigger(engine, tenant, run_id, await add_evaluator(engine, tenant, "waiter", name="w"))
+    task = asyncio.create_task(run_handler(engine, tenant, run_id, database_url))
+    try:
+        assert await asyncio.to_thread(waiter.started.wait, 8), "the evaluator never started"
+        async with engine.begin() as other:  # what a summarize job does to the same run
+            await other.execute(text("SET LOCAL lock_timeout = '400ms'"))
+            assert await RunRepository(other, tenant.context).lock(run_id)
+    finally:
+        waiter.release.set()
+        await task
+    assert [r.state for r in await evaluation_rows(engine, run_id)] == ["completed"]
+
+
+async def test_a_second_handler_skips_rows_another_one_is_running(
+    engine: AsyncEngine, database_url: str, waiter: Any
+) -> None:
+    """The claim locks the pending rows (`FOR UPDATE SKIP LOCKED`): a concurrent or redelivered
+    job returns at once instead of waiting for the first one's transaction."""
+    import asyncio
+
+    tenant = await make_tenant(engine, "acme")
+    run_id = await seeded_run(engine, tenant, worker_for(engine, database_url))
+    await trigger(engine, tenant, run_id, await add_evaluator(engine, tenant, "waiter", name="w"))
+    first = asyncio.create_task(run_handler(engine, tenant, run_id, database_url))
+    try:
+        assert await asyncio.to_thread(waiter.started.wait, 8)
+        started = time.monotonic()
+        more = await asyncio.wait_for(run_handler(engine, tenant, run_id, database_url), 2.5)
+        assert more is False and time.monotonic() - started < 2.0
+    finally:
+        waiter.release.set()
+        await first
+    rows = await evaluation_rows(engine, run_id)
+    assert [(r.state, r.label) for r in rows] == [("completed", "pass")]

@@ -235,3 +235,44 @@ async def test_more_than_one_jobs_worth_continues_in_a_follow_up_job(
         )
     await drain(worker)
     assert {r.state for r in await evaluation_rows(engine, run_id)} == {"completed"}
+
+
+async def test_start_only_moves_a_pending_row_and_never_touches_a_terminal_one(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """`UPDATE ... WHERE state = 'pending'` is the only way out of pending: a row that became
+    terminal (or is already running) between the claim and the start is skipped, not rewritten
+    and not an error."""
+    from abb_api.evaluations.repository import EvaluationRepository
+
+    tenant = await make_tenant(engine, "acme")
+    worker = worker_for(engine, database_url)
+    run_id = await seeded_run(engine, tenant, worker)
+    evaluator = await add_evaluator(engine, tenant, "run_succeeded", name="ok")
+    (pending,) = await trigger(engine, tenant, run_id, evaluator)
+    async with engine.begin() as conn:
+        repo = EvaluationRepository(conn, tenant.context)
+        assert await repo.start(pending) is True
+        assert await repo.start(pending) is False  # already running
+    await drain(worker)  # the handler finds no pending row; the running one stays as it is
+    (still,) = await evaluation_rows(engine, run_id)
+    assert still.state == "running"
+    async with engine.begin() as conn:
+        repo = EvaluationRepository(conn, tenant.context)
+        assert await repo.complete(
+            pending,
+            score=1.0,
+            label="pass",
+            explanation="x",
+            metrics={},
+            evidence_event_ids=[],
+            metadata={},
+        )
+    async with engine.begin() as conn:
+        assert await EvaluationRepository(conn, tenant.context).start(pending) is False
+        assert (
+            await EvaluationRepository(conn, tenant.context).fail(pending, code="X", error="y")
+            is False
+        )
+    (done,) = await evaluation_rows(engine, run_id)
+    assert (done.state, done.label) == ("completed", "pass")
