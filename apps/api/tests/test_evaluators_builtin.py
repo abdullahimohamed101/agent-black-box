@@ -91,6 +91,16 @@ def test_tests_passed_uses_the_last_test_run_and_is_unknown_without_one() -> Non
     assert run("tests_passed", snapshot(other)).label == "unknown"
 
 
+def test_tests_passed_counts_a_suite_the_recorder_ended_as_failed() -> None:
+    # a failing suite exits non-zero: the SDK ends its span in error (`shell.command.failed`)
+    _, attrs = suite(2)
+    snap = snapshot(suite(0), ("shell.command.failed", attrs))
+    result = run("tests_passed", snap)
+    assert (result.score, result.label) == (0.0, "fail")
+    assert result.evidence_event_ids == (snap.events[1].event_id,)
+    assert result.metrics["tests_failed"] == 2
+
+
 def test_files_touched_only_with_allowed_and_forbidden_globs() -> None:
     ok = snapshot(edit("app/a.py"), edit("./app/sub/b.py", "file.created"))
     assert run("files_touched_only", ok, allowed_globs=["app/*"]).label == "pass"

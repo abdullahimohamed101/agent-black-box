@@ -453,6 +453,8 @@ export const useEvaluateExperiment = (experimentId: string) =>
       unwrap(
         await api.POST("/v1/experiments/{experiment_id}/evaluate", {
           params: { path: { experiment_id: experimentId } },
+          // The proxy requires a JSON body on every write (CSRF and content-type rule); the route takes none.
+          body: {} as never,
         }),
       ),
     () => [["experiment", experimentId], ["run-evaluations"]],

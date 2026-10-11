@@ -34,6 +34,7 @@ PATHS_PER_CHECK = 256
 DEFAULT_LABELS = ("pass", "fail", "unsure")
 FILE_EVENTS = frozenset({"file.created", "file.modified", "file.deleted"})
 WRITE_EVENTS = frozenset({"file.created", "file.modified"})
+TEST_RUN_EVENTS = frozenset({"shell.command.completed", "shell.command.failed"})
 
 # Configuration fields that name paths or hold a rubric: Class 2 content, withheld from actors
 # without `payload.read` (decision 6).
@@ -172,7 +173,8 @@ class TestsPassed:
     def evaluate(self, snapshot: RunSnapshot, config: Any, budget: Budget) -> EvaluationResult:
         last: Event | None = None
         for event in _scan(snapshot.events, budget):
-            if event.event_type == "shell.command.completed" and isinstance(
+            # A failing suite exits non-zero: the recorder ends it as `shell.command.failed`. Both count.
+            if event.event_type in TEST_RUN_EVENTS and isinstance(
                 event.attributes.get("test.framework"), str
             ):
                 last = event

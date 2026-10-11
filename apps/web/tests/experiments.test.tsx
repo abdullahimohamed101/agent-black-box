@@ -221,6 +221,7 @@ describe("Experiment detail", () => {
     await user.click(screen.getByRole("button", { name: "Evaluate all" }));
     const result = await screen.findByTestId("evaluate-result");
     expect(posts[0]!.url).toBe(`POST /api/abb/v1/experiments/${CONTROLLED}/evaluate`);
+    expect(posts[0]!.body).toEqual({}); // the proxy refuses a write without a JSON body
     expect(result).toHaveTextContent("Started 500 evaluation(s) on 40 run(s).");
     expect(result).toHaveTextContent("120 remain: click again");
     expect(result).toHaveTextContent("skipped: archived");
