@@ -105,7 +105,7 @@ async def _evaluate_one(
             return await _record_failure(
                 repo,
                 row,
-                "JUDGE_BUDGET",
+                "JUDGE_COOLDOWN",  # not JUDGE_BUDGET: a refusal must not restart the window
                 "The evaluator is cooling down after exceeding its bound.",
             )
     try:

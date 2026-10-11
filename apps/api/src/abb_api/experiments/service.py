@@ -460,12 +460,23 @@ class ExperimentService:
         self, conn: AsyncConnection, principal: Principal, record: ExperimentRecord
     ) -> tuple[list[EvaluatorRecord], list[SkippedEvaluatorOut]]:
         evaluators = EvaluatorRepository(conn, principal.tenant, principal.project_id)
+        evaluations = EvaluationRepository(conn, principal.tenant)
         usable: list[EvaluatorRecord] = []
         skipped: list[SkippedEvaluatorOut] = []
         for ref in record.evaluator_ids:
             parsed = parse_public_id(IdKind.EVALUATOR, ref)
             found = await evaluators.get(parsed) if parsed else None
             reason = self._skip_reason(found, record)
+            if (
+                reason is None
+                and found is not None
+                and found.kind == "llm_judge"
+                # A refusal row burns one of the pair's 20 rows for nothing: wait the window out.
+                and await evaluations.judge_cooling_down(
+                    found.id, self._settings.judge_cooldown_seconds
+                )
+            ):
+                reason = "cooling_down"
             if reason is not None or found is None:
                 skipped.append(SkippedEvaluatorOut(evaluator_id=ref, reason=reason or "missing"))
             else:

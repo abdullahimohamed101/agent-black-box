@@ -618,6 +618,43 @@ async def test_evaluate_retries_failed_pairs_and_skips_pairs_at_the_per_evaluato
     assert (out["enqueued"], out["at_limit"], out["jobs"]) == (1, 1, 1)  # retry one, skip the full
 
 
+async def test_evaluate_all_skips_a_judge_that_is_cooling_down_instead_of_burning_rows(
+    database_url: str, engine: AsyncEngine
+) -> None:
+    settings = make_settings(
+        database_url,
+        web_origin=WEB_ORIGIN,
+        eval_batch_delay_seconds=0,
+        judge_provider="fake",
+        judge_cooldown_seconds=300,
+    )
+    async for web in build_api(database_url, engine, settings=settings):
+        owner = await person(web, "o@acme.test", "OWNER")
+        (run,) = await bulk_runs(web, 1)
+        judge = await add_evaluator(
+            web.engine, web.tenant, "judge", {"rubric": "r"}, kind="llm_judge", name="j"
+        )
+        ref = from_uuid(IdKind.EVALUATOR, judge.id)
+        experiment = (await make(web, owner, evaluator_ids=[ref])).json()["id"]
+        base = (await variant(web, owner, experiment, "b", "baseline", m="1")).json()["id"]
+        await link(web, experiment, base, [run])
+        async with web.engine.begin() as conn:  # an expensive reply, just now
+            await conn.execute(
+                insert(t.evaluations).values(
+                    workspace_id=web.tenant.context.workspace_id,
+                    id=new_uuid(IdKind.EVALUATION), run_id=run, evaluator_id=judge.id,
+                    evaluator_name="j", evaluator_version="1", kind="llm_judge",
+                    state="failed", error_code="JUDGE_BUDGET", completed_at=text("now()"),
+                )
+            )  # fmt: skip
+        url = f"/v1/experiments/{experiment}/evaluate"
+        for _ in range(2):
+            out = (await web.client.post(url, headers=owner)).json()
+            assert out["enqueued"] == 0
+            assert out["skipped_evaluators"] == [{"evaluator_id": ref, "reason": "cooling_down"}]
+        assert len(await evaluation_rows(web.engine, run)) == 1
+
+
 async def test_evaluate_all_and_triggers_race_without_overshooting_the_row_bound(web: Api) -> None:
     owner = await person(web, "o@acme.test", "OWNER")
     run = await seeded_run(web.engine, web.tenant, web.worker, project="alpha")

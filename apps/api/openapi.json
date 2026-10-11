@@ -4816,7 +4816,8 @@
               "archived",
               "project_mismatch",
               "human",
-              "judge_not_configured"
+              "judge_not_configured",
+              "cooling_down"
             ],
             "title": "Reason",
             "type": "string"

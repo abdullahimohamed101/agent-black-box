@@ -8,7 +8,7 @@ anything else. The application role keeps full DML on both tables (default privi
 The CHECKs are backstops for byte limits the pydantic models enforce first.
 
 Revision ID: 0070
-Revises: 0060
+Revises: 0080
 Create Date: 2026-10-11
 """
 

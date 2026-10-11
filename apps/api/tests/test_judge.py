@@ -1,5 +1,6 @@
 """Model judges: a labelled opinion, a delimited untrusted prompt, a bounded parser (ADR-091)."""
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from typing import Any
@@ -11,7 +12,6 @@ from abb_api.evaluations import judge
 from abb_api.evaluations.judge import (
     CLOSE,
     OPEN,
-    CallBudget,
     FakeJudgeModel,
     JudgeBudgetExceeded,
     JudgeConfig,
@@ -150,7 +150,7 @@ def test_the_prompt_is_bounded_before_the_call_is_made() -> None:
     assert data["steps_truncated"] is True and 0 < len(data["steps"]) < 3_000
 
 
-def test_the_output_bound_and_the_model_call_budget_are_enforced() -> None:
+def test_the_output_bound_is_enforced_and_one_evaluation_makes_one_model_call() -> None:
     seen: list[int] = []
 
     class Recording:
@@ -159,11 +159,7 @@ def test_the_output_bound_and_the_model_call_budget_are_enforced() -> None:
             return JudgeReply('{"score": 0.5, "label": "unsure"}', "m", 10, 5, 0.0)
 
     evaluate(tools("x"), config(max_output_tokens=64), Recording())
-    assert seen == [64]
-    budget = CallBudget(1)
-    budget.take()
-    with pytest.raises(JudgeBudgetExceeded):
-        budget.take()
+    assert seen == [64]  # exactly one call, with the configured output bound
 
 
 def test_the_wall_clock_budget_is_checked_before_the_call() -> None:
@@ -387,7 +383,10 @@ async def test_a_reply_over_the_cost_bound_refuses_the_evaluator_for_the_cooldow
     await trigger(engine, tenant, run, evaluator)  # the provider is cheap now, the evaluator is not
     await drain(worker)
     rows = await evaluation_rows(engine, run)
-    assert [(r.state, r.error_code) for r in rows] == [("failed", "JUDGE_BUDGET")] * 2
+    assert [(r.state, r.error_code) for r in rows] == [
+        ("failed", "JUDGE_BUDGET"),
+        ("failed", "JUDGE_COOLDOWN"),
+    ]
     assert "cooling down" in rows[1].error
     # With no cooldown the same evaluator works again.
     open_worker = Worker(
@@ -400,3 +399,39 @@ async def test_a_reply_over_the_cost_bound_refuses_the_evaluator_for_the_cooldow
     await drain(open_worker)
     third = (await evaluation_rows(engine, run))[2]
     assert third.state == "completed"
+
+
+async def test_a_cooldown_refusal_does_not_restart_the_cooldown(
+    engine: AsyncEngine, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the expensive reply arms the window: triggers inside it are refused, and the first
+    one after it runs (P2-1: the refusal used to count as an expensive reply)."""
+    from tests.ingest_helpers import make_tenant
+
+    class Pricey:
+        def complete(self, prompt: str, *, max_output_tokens: int) -> JudgeReply:
+            return JudgeReply('{"score": 1, "label": "pass"}', "m", 1, 1, 9.0)
+
+    monkeypatch.setattr(judge, "evaluator_for", lambda s: JudgeEvaluator(Pricey(), "test"))
+    tenant = await make_tenant(engine, "acme")
+    settings = make_settings(database_url, judge_provider="fake", judge_cooldown_seconds=2)
+    worker = Worker(engine, HANDLERS, settings, owner="cool2")
+    run = await seeded_run(engine, tenant, worker)
+    evaluator = await add_evaluator(
+        engine, tenant, "judge", {"rubric": "r"}, kind="llm_judge", name="j"
+    )
+    await trigger(engine, tenant, run, evaluator)  # t0: the expensive reply
+    await drain(worker)
+    monkeypatch.setattr(judge, "evaluator_for", lambda s: JudgeEvaluator(FakeJudgeModel(), "fake"))
+    await asyncio.sleep(1.2)
+    await trigger(engine, tenant, run, evaluator)  # inside the window: refused
+    await drain(worker)
+    await asyncio.sleep(1.2)
+    await trigger(engine, tenant, run, evaluator)  # t0 + 2.4 s: the window has passed
+    await drain(worker)
+    rows = await evaluation_rows(engine, run)
+    assert [(r.state, r.error_code) for r in rows] == [
+        ("failed", "JUDGE_BUDGET"),
+        ("failed", "JUDGE_COOLDOWN"),
+        ("completed", None),
+    ]

@@ -21,7 +21,7 @@ There is no real model provider yet (KI-100). Judge evaluator config: `rubric` (
 ## Reading the rows
 
 - `pending`: waiting for the worker. If the worker is down, rows stay pending until `ABB_EVAL_STALE_SECONDS`, then read as `failed/JOB_FAILED` (no write); starting the evaluator again adds a new row.
-- `failed`: the `error_code` says why. `TIMEOUT` (budget), `RUN_TOO_LARGE`, `EVALUATOR_ERROR` (the built-in's own message, e.g. a glob list too large), `INVALID_RESULT`, `JUDGE_BUDGET`, `JUDGE_UNAVAILABLE`, `JOB_FAILED`.
+- `failed`: the `error_code` says why. `TIMEOUT` (budget), `RUN_TOO_LARGE`, `EVALUATOR_ERROR` (the built-in's own message, e.g. a glob list too large), `INVALID_RESULT`, `JUDGE_BUDGET`, `JUDGE_COOLDOWN` (a refusal inside the window; it never restarts it), `JUDGE_INPUT`, `JUDGE_UNAVAILABLE`, `JOB_FAILED`.
   Operators read rows with `GET /v1/runs/{id}/evaluations` (there is no CLI command for it, KI-108). A failed row is history; a new trigger makes a new row (at most 20 per run and evaluator; the 21st is `409 LIMIT_REACHED`).
 - Dead-lettered `evaluate_run` jobs: see `dead-letters.md`; the rows read `failed/JOB_FAILED`. Requeueing a job whose rows are terminal changes nothing.
 - A model judge's row is an opinion: `ground_truth: false`, `metadata.judge_model`. The UI labels it "model judge, not ground truth" everywhere it shows or aggregates it.
