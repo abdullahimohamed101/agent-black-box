@@ -9,7 +9,24 @@ import {
   num,
 } from "@/lib/format";
 import { runPath, type Base } from "@/lib/routes";
+import { findingsCell } from "@/lib/findings";
 import { StatusBadge } from "./StatusBadge";
+
+function FindingsCell({ badge }: { badge: RunOut["findings"] }) {
+  const c = findingsCell(badge);
+  return (
+    <td data-testid="findings-cell" data-state={c.state} title={c.title}>
+      {c.visible ? (
+        <span className="badge" data-tone={c.tone}>
+          <span aria-hidden="true">{c.glyph}</span> {c.visible}
+        </span>
+      ) : (
+        <span aria-hidden="true">—</span>
+      )}
+      <span className="sr-only">{c.title}</span>
+    </td>
+  );
+}
 
 export function RunsTable({
   runs,
@@ -44,6 +61,7 @@ export function RunsTable({
             <th scope="col" className="num">
               Errors
             </th>
+            <th scope="col">Findings</th>
           </tr>
         </thead>
         <tbody>
@@ -70,6 +88,7 @@ export function RunsTable({
                 <td className="num">{formatCost(num(r.summary["estimated_cost_usd"]))}</td>
                 <td className="num">{formatInt(num(r.summary["event_count"]))}</td>
                 <td className="num">{errors ? <strong>{errors}</strong> : 0}</td>
+                <FindingsCell badge={r.findings} />
               </tr>
             );
           })}

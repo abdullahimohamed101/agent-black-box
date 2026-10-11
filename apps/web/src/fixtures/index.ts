@@ -1,8 +1,12 @@
 import type { FixtureRun } from "./builder";
+import { withFindings } from "./findings";
 import {
   approvalRun,
+  cascadeRun,
   expensiveRun,
+  failingChainRun,
   failureRetryRun,
+  loopingRun,
   runningRun,
   stressRun,
   successRun,
@@ -20,6 +24,11 @@ export function fixtureRuns(): FixtureRun[] {
     runningRun(),
     approvalRun(),
     stressRun(),
-  ].sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));
+    loopingRun(),
+    cascadeRun(),
+    failingChainRun(),
+  ]
+    .map(withFindings)
+    .sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));
   return cache;
 }
