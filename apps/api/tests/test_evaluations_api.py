@@ -314,6 +314,13 @@ async def test_a_pending_row_whose_job_was_dead_lettered_reads_as_failed_without
     # A new trigger is not blocked by the dead row: it inserts a fresh pending one.
     fresh = await start(web, owner, run, evaluator)
     assert fresh.status_code == 202 and fresh.json()["id"] != from_uuid(IdKind.EVALUATION, stuck)
+    # The dead row is now failed for real; the new job runs only the fresh row.
+    await web.drain()
+    first, second = await evaluation_rows(web.engine, run)
+    assert (first.id, first.state, first.error_code) == (stuck, "failed", "JOB_FAILED")
+    assert second.state == "completed"
+    states = [(i["state"], i["error_code"]) for i in await listing(web, owner, run)]
+    assert sorted(states, key=str) == [("completed", None), ("failed", "JOB_FAILED")]
 
 
 async def test_a_pending_row_with_no_job_is_failed_only_after_the_stale_limit(web: Api) -> None:

@@ -285,7 +285,7 @@ handler runs the evaluator in a worker thread under a cooperative budget (`ABB_E
 its `pending` rows with `FOR UPDATE SKIP LOCKED` and writes only to `evaluations`; it never locks or updates `runs` and enqueues no summary. Failures
 become `failed` rows with a fixed-text `error_code` (`TIMEOUT`, `RUN_TOO_LARGE` above `ABB_EVAL_MAX_EVENTS`, `INVALID_RESULT`, `JUDGE_BUDGET`, `JUDGE_COOLDOWN`, `JUDGE_INPUT`, `JUDGE_UNAVAILABLE`,
 `EVALUATOR_ERROR`, and `JOB_FAILED` for a pending row whose job was dead-lettered or that is older than `ABB_EVAL_STALE_SECONDS`); `error` carries only a built-in's own
-`EvaluatorError` text, never a value from the run. Terminal rows are immutable (a database trigger refuses updates). Such a stale `pending` row reads as `failed/JOB_FAILED` without a write. A model judge's row has `ground_truth: false` and `metadata.judge_model`; the prompt is never stored or returned.
+`EvaluatorError` text, never a value from the run. Terminal rows are immutable (a database trigger refuses updates). Such a stale `pending` row reads as `failed/JOB_FAILED`; a read writes nothing, and the next trigger of that evaluator makes the state real (`pending -> failed`) before it adds a fresh row, so a row once reported failed never completes. A model judge's row has `ground_truth: false` and `metadata.judge_model`; the prompt is never stored or returned.
 
 ### Comparison
 

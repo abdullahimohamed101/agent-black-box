@@ -110,7 +110,8 @@ class EvaluationOut(BaseModel):
     state: EvaluationState = Field(
         description=(
             "`pending` rows whose job was dead-lettered, or that waited past the stale limit "
-            "with no job, read as `failed` with `error_code` `JOB_FAILED` (no write)."
+            "with no job, read as `failed` with `error_code` `JOB_FAILED` (a read writes nothing; "
+            "the next trigger of the evaluator writes it)."
         )
     )
     latest: bool = Field(description="The newest row of its evaluator on this run.")

@@ -62,17 +62,22 @@ def _unprocessable(code: str, message: str, **details: Any) -> AppError:
     return _fail(code, message, 422, ErrorCategory.VALIDATION, **details)
 
 
+DEAD_ROW_CODE = "JOB_FAILED"
+DEAD_ROW_ERROR = "The evaluation job did not run."
+
+
 def _derived(record: EvaluationRecord, job_state: str) -> EvaluationRecord:
     """A `pending` row whose job was dead-lettered, or that outlived the stale limit with no job,
-    reads as failed. Nothing is written: the handler still owns the row (ADR-090)."""
+    reads as failed. Reads write nothing; a trigger that finds such a row makes the state real
+    (`DEAD_ROW_*`) before it adds a fresh one, so a row once shown as failed never completes."""
     if record.state == "pending" and (
         job_state == "failed" or (job_state == "current" and record.stale)
     ):
         return replace(
             record,
             state="failed",
-            error_code="JOB_FAILED",
-            error="The evaluation job did not run.",
+            error_code=DEAD_ROW_CODE,
+            error=DEAD_ROW_ERROR,
         )
     return record
 
@@ -184,10 +189,14 @@ class RunEvaluationService:
                     [run.id], EVALUATE_RUN
                 )
             )[run.id]
+            evaluations = EvaluationRepository(conn, principal.tenant)
             for row in await reads.open_rows(run.id, evaluator.id):
                 live = _derived(row, job_state)
                 if live.state != "failed":
                     return evaluation_out(live, principal), False
+                # pending -> failed is the one write the immutability trigger allows. Without it
+                # the new job would claim this row too and a failed result would turn completed.
+                await evaluations.fail(row.id, code=DEAD_ROW_CODE, error=DEAD_ROW_ERROR)
             if (
                 await reads.count_for_evaluator(run.id, evaluator.id)
                 >= MAX_EVALUATIONS_PER_EVALUATOR
@@ -198,7 +207,7 @@ class RunEvaluationService:
                     limit="evaluations_per_evaluator",
                 )
             evaluation_id = new_uuid(IdKind.EVALUATION)
-            await EvaluationRepository(conn, principal.tenant).insert_pending(
+            await evaluations.insert_pending(
                 evaluation_id, run_id=run.id, evaluator=evaluator, requested_by=principal.user_id
             )
             await OutboxRepository(conn, principal.tenant).enqueue(
