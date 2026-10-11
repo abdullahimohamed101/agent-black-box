@@ -190,6 +190,8 @@ fields plus the known payload and asserts inequality, and correct ADR-080 (3) an
 nothing: `DETECTORS_VERSION` need not move for a fingerprint change before merge, but stored rows in the E2E database
 would differ (none exist on `main`).
 
+**Resolution** (e88285a): the digest is out of the fingerprint key; regression test `test_the_identical_request_identity_is_independent_of_payload_content` (fails with the digest back in the key). Every other detector's key was checked and is public metadata; plan scenario 2, ADR-080 (3), SECURITY.md and the runbook corrected.
+
 ### P2-1. The event load and the row reads of the detect job are outside the fixed-message wrapper
 
 Location: `findings/job.py:80-92` (`findings_inputs` twice, `PgEventStore.load_run`) versus the `try` at `:95-119`;
@@ -215,6 +217,8 @@ Fix. Move the two `findings_inputs` calls and `load_run` inside the `try` (or wr
 lock) so any `Exception` becomes `DetectorError("analysis", n) from None`; keep the `DetectorError` re-raise. Add a
 regression test modelled on probe 3. Consider `hide_parameters=True` on the engine (a separate, repo-wide decision).
 
+**Resolution** (d59cf4e): `detect_run` wraps the whole job body; any other exception becomes `DetectorError("job", 0)` `from None`, only the class is logged; test `test_a_failure_while_loading_events_dead_letters_with_fixed_text` (fails without the wrapper). `hide_parameters` left as a repo-wide decision.
+
 ### P2-2. A long loop on a successful run is `critical`; ADR-081 says it is `info`
 
 Location: `findings/detectors/sequence.py:100-106` (`reps >= 10 -> CRITICAL` before the success check);
@@ -232,6 +236,8 @@ Fix. Decide one way and make the ADR, plan table, code and fixture agree. Recomm
 cap the sequence finding at `warning` (never `critical`), keep `info` below 6 repetitions; keep `critical` for active and
 failed runs. If the table's reading is kept instead, correct ADR-081 and D7 and say in the runbook that a successful run
 can read `bad` on loops.
+
+**Resolution** (0b48adb): the ADR was right; the code, the plan table and the runbook now make a probable loop on a successful run `info` at any length (`warning`/`critical` only when the run did not succeed). `looping.expected.json` and `two_agents.expected.json` changed (both scenarios are successful runs), web fixture and tests mirrored; parametrized test covers successful and failed/blocked looping runs.
 
 ### P2-3. The shrink loop in `validate_evidence` is dead code and no test exercises it (surviving mutation M5)
 
@@ -252,28 +258,30 @@ when they do not, which `run_all` turns into a `DetectorError`), or keep it and 
 `span_lineage` of 20 and a 64-character `event_type` per entry does not reach it; the test would need a temporary
 relaxation of `LIST_LIMITS` via monkeypatch). The first option is simpler and honest.
 
+**Resolution** (78eb4bb): the shrink loop was deleted; `validate_evidence` raises `EvidenceError` past 50 ids or 15 KiB; `test_validate_evidence_refuses_evidence_that_breaks_the_bounds` relaxes `LIST_LIMITS` to reach both checks and fails if either check is disabled.
+
 ### P3 (optional)
 
-- **P3-1. Health reads `no_data` for `loops`/`context` for the whole life of an active run.** Every batch re-summarises and
+- **P3-1 (filed KI-097). Health reads `no_data` for `loops`/`context` for the whole life of an active run.** Every batch re-summarises and
   re-enqueues `detect_findings`, so `job_states` reports `processing` almost continuously while events arrive and
   `_status` ranks `processing` first (`service.py:80-81`); the findings list shows the previous analysis but the two
   finding-based dimensions say "Analysis in progress." until the run ends. By design (ADR-081: `no_data` unless current),
   but the UI could read the previous analysis when `computed_at` is set, labelled as such.
-- **P3-2. `reported_loop` without `loop.repetitions` renders "repeated None times".** `loop.detected` has no required
+- **P3-2 (resolved a391df1). `reported_loop` without `loop.repetitions` renders "repeated None times".** `loop.detected` has no required
   attributes (`registry.py:232`); `reported.py:43` stores `None`; `describe.py:44` formats it. Say "an unknown number of
   times" when the value is missing.
-- **P3-3. The E2E verifies findings only after a settle `rebuild-findings`.** `findings-e2e.sh` waits for `current`, rebuilds
+- **P3-3 (filed KI-098). The E2E verifies findings only after a settle `rebuild-findings`.** `findings-e2e.sh` waits for `current`, rebuilds
   once (to settle the cost-spike baseline), then asserts and compares a second rebuild with a snapshot. A detector that is
   non-deterministic in arrival order would be hidden if its first-pass output differed; the unit test covers this for the
   fixtures, but the E2E could also snapshot before the settle rebuild and compare everything except `cost_spike`.
-- **P3-4. `badges`, `for_run` and the stale delete cannot be shown wrong by a mutation.** Run ids are globally unique UUIDs
+- **P3-4 (not done; the project-bound probe is now a test, a391df1). `badges`, `for_run` and the stale delete cannot be shown wrong by a mutation.** Run ids are globally unique UUIDs
   and the page's ids are already scoped, so dropping `workspace_id` from `badges` (`repository.py:247`) or from the stale
   delete (`:162-163`) would change nothing today. INV-3 is satisfied and documented as a rule, not a test; a cross-tenant
   test that reuses one run id in two workspaces (the FK allows it) would pin it.
-- **P3-5. Truncated runs fold their status from the prefix.** A finished 60,000-event run reads `RUNNING` to the detectors
+- **P3-5 (filed KI-099, runbook note a391df1). Truncated runs fold their status from the prefix.** A finished 60,000-event run reads `RUNNING` to the detectors
   (`build.py:31-37` over the first 50,000), so `cost_spike` never runs on it, the chain only fires if `run.failed` is in the
   prefix, and a loop is `warning` rather than `info`. The state says `truncated`; the runbook could say what that implies.
-- **P3-6. `last_error` for a `replace_run` failure quotes bind parameters.** SQLAlchemy appends `[parameters: ...]`
+- **P3-6 (covered by the P2-1 wrapper, d59cf4e). `last_error` for a `replace_run` failure quotes bind parameters.** SQLAlchemy appends `[parameters: ...]`
   (metadata only: evidence JSON, slugs, ids), truncated to 2,000 characters. Not a leak; `hide_parameters=True` on the
   engine would make this class of message content-free for every job.
 
