@@ -746,3 +746,39 @@ are compared partially, which the response and UI state (KI-105).
   savepoint so a value the database refuses (a backstop CHECK) becomes `failed/INVALID_RESULT`, not a retry loop.
 - Residual (ADR-090, observed): a thread that ignores its budget keeps its executor thread; `asyncio.run` joins the default executor at worker shutdown, so
   a stuck evaluator can delay a graceful stop. The isolation test ends its busy-loop thread itself for that reason.
+
+## Implementation notes (steps 6-9)
+
+- Wire names: the comparison's second run is `?with_run_id=` (not `?with=`); the verdict route is `POST /v1/runs/{run_id}/verdicts`; the trigger answers `202` for a
+  new row and `200` for the existing live one. A trigger inserts under `pg_advisory_xact_lock(hashtextextended('eval:<ws>:<run>', 0))` and a pending row whose job
+  was dead-lettered, or which outlived `ABB_EVAL_STALE_SECONDS` with no job, reads as `failed/JOB_FAILED` (no write) and does not block a new trigger.
+- Listing: all rows of a run newest first (at most 200, `truncated`), `latest` computed in SQL per evaluator. Withheld without `payload.read`: the explanation of
+  `human` and `llm_judge` rows (`explanation_withheld`), `metadata` keys outside {`judge_model`, `prompt_template_version`, `input_tokens`, `output_tokens`,
+  `cost_usd`, `provider`} (`metadata_withheld` lists them) and the `error` text (the `error_code` stays).
+- Judge (step 7): config `rubric`, `allowed_labels`, `include_content` (default false), `max_input_chars` (5,000-200,000), `max_output_tokens`, `max_cost_usd`; one model call per
+  evaluation (`CallBudget`); the prompt is the instructions, the rubric and the allowed labels, then ONE line of ASCII JSON between the markers with every `<` and `>`
+  escaped, so no label can end the block or start a line. `include_content` adds command text and paths only (no payload excerpts: deviation from D4's "inline payload
+  excerpts", which no built-in projection needs). A reply costing more than `max_cost_usd` is `failed/JUDGE_BUDGET` and the evaluator is refused for
+  `ABB_JUDGE_COOLDOWN_SECONDS` (checked in the handler from the last `JUDGE_BUDGET` row: no new table). A label outside the allowlist becomes `unrated`. The fake
+  answers from the data block's status and error count only. `EVALUATOR_PROJECT_MISMATCH` already landed in step 6 (trigger and verdict).
+- Comparison (step 8): the alignment key is `(family, name)` for lifecycle steps and `(event_type, name)` for point events; a replacement run (deletions and insertions
+  between equal steps) is zipped into `changed` rows, which is how two different edited files align as one `changed` row. The alignment is solved in a canonical
+  orientation and mirrored, so `(a, b)` is exactly the mirror of `(b, a)`. A fixed `WORK_CAP` of 4,000,000 comparisons bounds the Myers diff next to `ABB_COMPARE_MAX_EDITS`.
+  `divergence` is `{index, relation}` (the row is `steps[index]`); `first_outcome_difference` is an index. **The D6 expected demo divergence was corrected against the
+  recorder's real event shapes**: `edit_file` emits `file.read` before `file.modified`, so the content-projection divergence is the `file.read` that opens the second edit
+  (`app/session.py` vs `app/oauth.py`), immediately followed by the `changed` `file.modified`; the first outcome difference and the metadata divergence are the second
+  test run, as planned. `scripts/gen_compare_fixture.py` builds both demo runs from the recorder's event shapes (not from the example package, whose `wrong-fix` variant is
+  step 10); when step 10 lands, point the generator at the real example and regenerate. Fixture: `apps/api/tests/fixtures/compare_pair/` plus `manifest.json` (event ids).
+- Experiments (step 9): evaluate-all starts a pair when it has no non-terminal and no completed row and fewer than 20 rows (a failed pair is retried; this follows AC-8,
+  not the looser sentence in D5); `at_limit` counts the full pairs; run locks are taken in sorted order under the experiment lock. Metrics are over FINISHED runs
+  (SUCCESS, FAILED, CANCELLED, TIMED_OUT, BLOCKED; `runs` counts all attached) and the latest TERMINAL result per (run, evaluator); the statement runs under the analytics
+  statement timeout. A candidate may only be added after the baseline (`409 BASELINE_REQUIRED`); the variant config is also bounded to 8,192 bytes in total (the column
+  CHECK) with a `422` before the database. The Python attribute of a variant's role is `variant_role` (JSON and column stay `role`) because
+  `test_no_scattered_checks` forbids `.role` outside `authz/`.
+- Mutations (each failed at least one test; details in the run report): the handler taking `RunRepository.lock`, the handler writing `runs`, `claim_pending` without the
+  state predicate, `start` without it, the claim without `SKIP LOCKED`, `evaluation.run` granted to VIEWER in `matrix.py`, no `payload.read` check on evaluator config or
+  explanation, `metadata.raw` visible, comparison without the projection check, `shell.command` in the metadata key, `files.both` for a viewer, no workspace predicate in the
+  evaluation reads, no 20-row bound, no advisory lock (trigger, verdict, evaluator, experiment, variants, evaluate-all), evaluate-all ignoring pending rows, no evidence
+  membership check, `str(exc)` in `error`, the baseline unique index, the edit budget, no project check on attach, no project scope on experiments, the dropped judge delimiter.
+  Six of them survived at first and got tests: the run lock, the claim lock, the `start` predicate, the tenant predicate of the reads, evidence membership, and the advisory
+  locks (taken by the test itself, since scheduling cannot prove a lock exists).

@@ -45,8 +45,9 @@ Phase 16 is implemented, independently reviewed and its findings fixed (`docs/pl
 Phase 11 is built in its own worktree (`../abb-worktrees/phase-11`). Nothing is pushed from a worktree until its phase is fully ready (built, independently reviewed, fixed, verified).
 
 Phase 11 (evaluations, experiments, comparison; plan `docs/plans/active/phase-11-evaluations.md`, branch `feature/phase-11-evaluations`, worktree `../abb-worktrees/phase-11`)
-is at plan steps 1-5 of 15 (all Python: settings, reserved then granted actions, migrations 0070-0071, IdKinds, evaluator protocol, built-ins, `/v1/evaluators`,
-the `evaluate_run` handler and its isolation tests). Next: step 6 (trigger, verdict and listing routes). Deviations are in the plan's "Implementation notes".
+is at plan steps 1-9 of 15 (all Python is done: settings, actions, migrations 0070-0071, IdKinds, evaluators, the `evaluate_run` handler, the trigger/verdict/listing routes, the
+judge interface with its deterministic fake, `GET /v1/runs/{id}/compare` with its benchmarks, and the 8 experiment routes; all 15 operations are in `openapi.json` and `schema.d.ts`).
+Next: step 10 (the `wrong-fix` demo variant), then the web steps 11-13, E2E 14, docs 15. Deviations are in the plan's "Implementation notes".
 
 ## Blocked work
 None.
