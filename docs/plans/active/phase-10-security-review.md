@@ -217,7 +217,7 @@ Fix. Move the two `findings_inputs` calls and `load_run` inside the `try` (or wr
 lock) so any `Exception` becomes `DetectorError("analysis", n) from None`; keep the `DetectorError` re-raise. Add a
 regression test modelled on probe 3. Consider `hide_parameters=True` on the engine (a separate, repo-wide decision).
 
-**Resolution** (d59cf4e): `detect_run` wraps the whole job body; any other exception becomes `DetectorError("job", 0)` `from None`, only the class is logged; test `test_a_failure_while_loading_events_dead_letters_with_fixed_text` (fails without the wrapper). `hide_parameters` left as a repo-wide decision.
+**Resolution** (c48cd57): `detect_run` wraps the whole job body; any other exception becomes `DetectorError("job", 0)` `from None`, only the class is logged; test `test_a_failure_while_loading_events_dead_letters_with_fixed_text` (fails without the wrapper). `hide_parameters` left as a repo-wide decision.
 
 ### P2-2. A long loop on a successful run is `critical`; ADR-081 says it is `info`
 
@@ -281,7 +281,7 @@ relaxation of `LIST_LIMITS` via monkeypatch). The first option is simpler and ho
 - **P3-5 (filed KI-099, runbook note a391df1). Truncated runs fold their status from the prefix.** A finished 60,000-event run reads `RUNNING` to the detectors
   (`build.py:31-37` over the first 50,000), so `cost_spike` never runs on it, the chain only fires if `run.failed` is in the
   prefix, and a loop is `warning` rather than `info`. The state says `truncated`; the runbook could say what that implies.
-- **P3-6 (covered by the P2-1 wrapper, d59cf4e). `last_error` for a `replace_run` failure quotes bind parameters.** SQLAlchemy appends `[parameters: ...]`
+- **P3-6 (covered by the P2-1 wrapper, c48cd57). `last_error` for a `replace_run` failure quotes bind parameters.** SQLAlchemy appends `[parameters: ...]`
   (metadata only: evidence JSON, slugs, ids), truncated to 2,000 characters. Not a leak; `hide_parameters=True` on the
   engine would make this class of message content-free for every job.
 
