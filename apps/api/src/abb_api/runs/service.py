@@ -80,7 +80,18 @@ def _badge(badge: Badge | None) -> RunFindingsBadge:
     )
 
 
-def _run_out(record: RunRecord, state: str, badge: RunFindingsBadge | None = None) -> RunOut:
+def _run_out(
+    record: RunRecord,
+    state: str,
+    badge: RunFindingsBadge | None = None,
+    *,
+    with_agents: bool = True,
+) -> RunOut:
+    summary = record.summary
+    if not with_agents and "agents" in summary:
+        # The per-agent breakdown is for the detail page; lists (and the dashboard that polls
+        # them) carry `agent_count` only (Phase 9, D8).
+        summary = {k: v for k, v in summary.items() if k != "agents"}
     return RunOut(
         id=from_uuid(IdKind.RUN, record.id),
         project_id=from_uuid(IdKind.PROJECT, record.project_id),
@@ -92,7 +103,7 @@ def _run_out(record: RunRecord, state: str, badge: RunFindingsBadge | None = Non
         completed_at=record.completed_at,
         duration_ms=record.duration_ms,
         ordering_mode=record.ordering_mode,  # type: ignore[arg-type]
-        summary=record.summary,
+        summary=summary,
         summary_version=record.summary_version,
         summary_state=state,  # type: ignore[arg-type]
         metadata=record.metadata,
@@ -217,7 +228,9 @@ class RunService:
                 cursors.Cursor("runs", [last.started_at.isoformat(), str(last.id)])
             )
         return RunPage(
-            items=[_run_out(r, states[r.id], _badge(badges.get(r.id))) for r in page],
+            items=[
+                _run_out(r, states[r.id], _badge(badges.get(r.id)), with_agents=False) for r in page
+            ],
             next_cursor=next_cursor,
         )
 

@@ -3,6 +3,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useRef } from "react";
 import { formatOffset, formatDuration } from "@/lib/format";
+import { agentChip } from "@/lib/waterfall";
 import { CLASS_LABELS, describe, eventClass, isError, isRetry, type Row } from "@/lib/timeline";
 
 const ROW_HEIGHT = 36;
@@ -12,6 +13,8 @@ type Props = {
   t0: number;
   selectedKey: string | null;
   firstErrorId: string | null;
+  /** Show which agent emitted each event (runs with more than one agent). */
+  showAgent?: boolean;
   onSelect: (key: string) => void;
   /** Enter / click: open the drawer for an event, toggle a group. */
   onActivate: (key: string) => void;
@@ -30,6 +33,7 @@ export function Timeline({
   t0,
   selectedKey,
   firstErrorId,
+  showAgent = false,
   onSelect,
   onActivate,
   onEscape,
@@ -184,6 +188,7 @@ export function Timeline({
               <span className="tl-sum">
                 {e.event_id === firstErrorId && <span className="tag tag-bad">First error </span>}
                 {isRetry(e) && <span className="tag tag-warn">Retry </span>}
+                {showAgent && <span className="tl-agent">{agentChip(e.agent_id)}</span>}
                 <span className="tl-type">{e.event_type}</span>{" "}
                 <span className="tl-desc">{describe(e)}</span>
               </span>

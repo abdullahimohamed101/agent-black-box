@@ -1,0 +1,400 @@
+{
+  "$comment": "Registry of known event types. Unknown well-formed types are also accepted.",
+  "event_types": [
+    {
+      "class": "run",
+      "event_type": "run.started",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "run",
+      "event_type": "run.completed",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "run",
+      "event_type": "run.failed",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "run",
+      "event_type": "run.cancelled",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "agent",
+      "event_type": "agent.started",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": "agent",
+      "span_role": "open"
+    },
+    {
+      "class": "agent",
+      "event_type": "agent.completed",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": "agent",
+      "span_role": "close"
+    },
+    {
+      "class": "agent",
+      "event_type": "agent.state_changed",
+      "priority": "P2",
+      "required_attributes": [
+        "agent.state"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "agent",
+      "event_type": "agent.spawned",
+      "priority": "P0",
+      "required_attributes": [
+        "agent.child_id"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "llm",
+      "event_type": "llm.request.started",
+      "priority": "P1",
+      "required_attributes": [
+        "llm.model",
+        "llm.provider"
+      ],
+      "span_kind": "llm",
+      "span_role": "open"
+    },
+    {
+      "class": "llm",
+      "event_type": "llm.request.completed",
+      "priority": "P1",
+      "required_attributes": [
+        "llm.model",
+        "llm.provider"
+      ],
+      "span_kind": "llm",
+      "span_role": "close"
+    },
+    {
+      "class": "llm",
+      "event_type": "llm.request.failed",
+      "priority": "P0",
+      "required_attributes": [
+        "llm.model",
+        "llm.provider"
+      ],
+      "span_kind": "llm",
+      "span_role": "close"
+    },
+    {
+      "class": "tool",
+      "event_type": "tool.call.started",
+      "priority": "P1",
+      "required_attributes": [
+        "tool.name"
+      ],
+      "span_kind": "tool",
+      "span_role": "open"
+    },
+    {
+      "class": "tool",
+      "event_type": "tool.call.completed",
+      "priority": "P1",
+      "required_attributes": [
+        "tool.name"
+      ],
+      "span_kind": "tool",
+      "span_role": "close"
+    },
+    {
+      "class": "tool",
+      "event_type": "tool.call.failed",
+      "priority": "P0",
+      "required_attributes": [
+        "tool.name"
+      ],
+      "span_kind": "tool",
+      "span_role": "close"
+    },
+    {
+      "class": "file",
+      "event_type": "file.read",
+      "priority": "P1",
+      "required_attributes": [
+        "file.path"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "file",
+      "event_type": "file.created",
+      "priority": "P1",
+      "required_attributes": [
+        "file.path"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "file",
+      "event_type": "file.modified",
+      "priority": "P1",
+      "required_attributes": [
+        "file.path"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "file",
+      "event_type": "file.deleted",
+      "priority": "P1",
+      "required_attributes": [
+        "file.path"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "git",
+      "event_type": "git.diff",
+      "priority": "P1",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "git",
+      "event_type": "git.commit",
+      "priority": "P1",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "git",
+      "event_type": "git.branch_created",
+      "priority": "P1",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "git",
+      "event_type": "git.push",
+      "priority": "P1",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "shell",
+      "event_type": "shell.command.started",
+      "priority": "P1",
+      "required_attributes": [
+        "shell.command"
+      ],
+      "span_kind": "shell",
+      "span_role": "open"
+    },
+    {
+      "class": "shell",
+      "event_type": "shell.command.completed",
+      "priority": "P1",
+      "required_attributes": [
+        "shell.command"
+      ],
+      "span_kind": "shell",
+      "span_role": "close"
+    },
+    {
+      "class": "shell",
+      "event_type": "shell.command.failed",
+      "priority": "P0",
+      "required_attributes": [
+        "shell.command"
+      ],
+      "span_kind": "shell",
+      "span_role": "close"
+    },
+    {
+      "class": "database",
+      "event_type": "db.query.started",
+      "priority": "P1",
+      "required_attributes": [],
+      "span_kind": "db",
+      "span_role": "open"
+    },
+    {
+      "class": "database",
+      "event_type": "db.query.completed",
+      "priority": "P1",
+      "required_attributes": [],
+      "span_kind": "db",
+      "span_role": "close"
+    },
+    {
+      "class": "database",
+      "event_type": "db.query.failed",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": "db",
+      "span_role": "close"
+    },
+    {
+      "class": "network",
+      "event_type": "http.request",
+      "priority": "P2",
+      "required_attributes": [
+        "http.method"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "network",
+      "event_type": "http.response",
+      "priority": "P2",
+      "required_attributes": [
+        "http.status_code"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "reliability",
+      "event_type": "retry.attempted",
+      "priority": "P0",
+      "required_attributes": [
+        "retry.attempt"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "reliability",
+      "event_type": "timeout.occurred",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "reliability",
+      "event_type": "loop.detected",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "reliability",
+      "event_type": "rate_limit.hit",
+      "priority": "P1",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "security",
+      "event_type": "policy.warning",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "security",
+      "event_type": "policy.action.blocked",
+      "priority": "P0",
+      "required_attributes": [
+        "policy.id"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "security",
+      "event_type": "secret.detected",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "approval",
+      "event_type": "approval.requested",
+      "priority": "P0",
+      "required_attributes": [
+        "approval.id"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "approval",
+      "event_type": "approval.granted",
+      "priority": "P0",
+      "required_attributes": [
+        "approval.id"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "approval",
+      "event_type": "approval.denied",
+      "priority": "P0",
+      "required_attributes": [
+        "approval.id"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "span",
+      "event_type": "span.started",
+      "priority": "P1",
+      "required_attributes": [
+        "span.kind",
+        "span.name"
+      ],
+      "span_kind": "custom",
+      "span_role": "open"
+    },
+    {
+      "class": "span",
+      "event_type": "span.completed",
+      "priority": "P1",
+      "required_attributes": [],
+      "span_kind": "custom",
+      "span_role": "close"
+    },
+    {
+      "class": "span",
+      "event_type": "span.failed",
+      "priority": "P0",
+      "required_attributes": [],
+      "span_kind": "custom",
+      "span_role": "close"
+    }
+  ],
+  "schema_version": "1.0"
+}

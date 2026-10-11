@@ -163,14 +163,27 @@ Events are put in canonical order, then folded:
 | --- | --- |
 | `status` | starts `RUNNING`; `run.started` RUNNING; `run.completed` by event status (none/success SUCCESS, error FAILED, timeout TIMED_OUT, blocked BLOCKED, cancelled CANCELLED); `run.failed` FAILED; `run.cancelled` CANCELLED; `approval.requested` WAITING_FOR_APPROVAL; `approval.granted/denied` RUNNING. Transitions the state machine forbids are ignored, so a terminal status is final. A run created by `POST /v1/runs` is `QUEUED` until events arrive. |
 | `started_at` / `completed_at` / `duration_ms` | earliest event time; time of the event that made the run terminal; their difference (null while running) |
-| `name`, `agent_id`, `trace_id` | `run.name` of the earliest `run.started` (an explicit name from `POST /v1/runs` is kept unless events name the run); agent and trace of the earliest event |
-| `ordering_mode` | `sequence` if every event has a `sequence`, else `time` |
+| `name`, `agent_id`, `trace_id` | `run.name` of the earliest `run.started` (an explicit name from `POST /v1/runs` is kept unless events name the run); agent and trace of the **first `run.started` that carries a `sequence`** (the root emitter's; remote and forked emitters send none), else the earliest `run.started` (a skewed clock, a forged child agent event or `trace_id`, or a sequence-less `run.started` cannot become the run's agent or trace; a write key of the same project can still write any event into that project's runs, so this is consistency, not authentication); runs with no `run.started` (created by `POST /v1/runs`) use the earliest event |
+| `ordering_mode` | `sequence` if every event has a `sequence`, else `time`. A multi-process run (Phase 9, ADR-070) is `time`: continued runs and forked children send no `sequence`. |
 
-`summary` (version 2): `event_count`, `duration_ms`, `llm_calls` (`llm.request.completed|failed`), `tool_calls`
+`summary` (version 3; **the next bump is 4**): `event_count`, `duration_ms`, `llm_calls` (`llm.request.completed|failed`), `tool_calls`
 (`tool.call.completed|failed`), `input_tokens` and `output_tokens` (sums over `llm.request.completed`),
 `estimated_cost_usd` (the effective cost: sum over model calls of the cost line, ADR-040; name kept for compatibility), `retry_cost_usd`, `initial_cost_usd`, `cost_by_source_usd`, `unpriced_calls`, `tool_spans_ok/finished`, `llm_spans_ok/finished`, `retry_count`, `retries_unattributed`
 (`retry.attempted`), `error_count` (events with status `error`/`timeout` or a `*.failed` type, each counted
-once), `files_modified` (distinct `file.path` of created/modified/deleted), `models`, `first_event_at`, `last_event_at`.
+once), `files_modified` (distinct `file.path` of created/modified/deleted), `models`, `first_event_at`, `last_event_at`, `agent_count` (exact number of distinct agents, counting agents only named by an
+`agent.spawned`) and `agents` (**run detail only**; `GET /v1/runs` items carry `agent_count` but omit `agents`).
+`agents` has at most 50 entries in order of first appearance, then one `(other)` row (state `mixed`) folding the rest; each entry:
+`agent_id`, `parent_agent_id` (the agent owning the span the child's `agent.started` nests under, else the agent that emitted the
+`agent.spawned` naming it; null for the root), `state` (`spawned` = named by a spawn and never started, `started`, `completed`,
+`failed`), `event_count`, `llm_calls`, `tool_calls`, `error_count`, `estimated_cost_usd` (cost lines carry the event's agent,
+ADR-040), `first_event_at`, `last_event_at` (null for a spawned-only agent).
+
+**Multi-agent runs and clock skew (ADR-070, KI-085).** A child agent is a span with its own `agent_id` inside the parent's run.
+Processes other than the one that created the run send no `sequence`, so the run is ordered by time and a skewed clock interleaves
+emitters in the chronological list; `started_at`, `duration_ms`, the runs-list position and the analytics day bucket follow the
+earliest `occurred_at`. Span nesting uses `parent_span_id` only and is unaffected. Re-deriving a run (`rebuild-costs`) applies the
+root rule above, so a run whose first event was a skewed child may move to its true root agent (and between agents in the run
+rollups).
 
 ### Findings and health
 
@@ -213,6 +226,7 @@ divided. Money is USD rounded to 9 places. Every cost line states its source: `p
 `cost.provider_usd`), `estimated` (tokens x a versioned price, `pricing_version` stored per line), `client_estimate`
 (`cost.estimated_usd`) or `unpriced` (counted as $0 and reported). `input_tokens` includes cached tokens. A model
 call is retry cost when it follows a `retry.attempted` event of its span or an ancestor span (ADR-042).
+Attribution (Phase 9): `cost.by_agent` groups cost lines by the **event's** agent (a child's model calls appear under the child); run counts, success rates, expensive/retry-heavy runs and `active_agents` use the **run's** root agent. Per-agent run metrics are KI-084. The cost headline's `unrebuilt_runs` counts runs summarised by an older `summary_version` (including runs that predate cost lines).
 The failure trend uses the same definitions per day (`failure_rate` and `timeout_rate`). "Running agents" on the summary
 is read from the live `runs` table (current state, not a rollup; ADR-041 allows this one status-indexed lookup). Retry cost is
 an estimate (ADR-042). Adapters (Phase 8) must report `llm.input_tokens` including cached tokens, or costs will be

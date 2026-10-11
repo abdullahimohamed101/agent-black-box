@@ -35,8 +35,10 @@ from blackbox.events import (
     name_attr,
     priority_of,
     span_kind,
+    without_nul,
 )
 from blackbox.exporter import Exporter, HttpSink, LocalSink, Sink
+from blackbox.propagation import TraceContext
 from blackbox.redaction import PayloadMode, Redactor
 from blackbox.stats import Stats
 from blackbox.version import __version__
@@ -61,6 +63,10 @@ _RUN_END = {  # requested status -> (event type, event status)
     "blocked": ("run.completed", "blocked"),
     "cancelled": ("run.cancelled", "cancelled"),
 }
+
+
+def _is_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value)
 
 
 def _outcome(exc: BaseException | None) -> str:
@@ -91,13 +97,24 @@ class Span:
         kind: str = "custom",
         attributes: dict[str, Any] | None = None,
         parent: "Span | None" = None,
+        *,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
     ) -> None:
         self.run = run
         self.name = name_attr(name)
+        if isinstance(parent, Span) and parent.run is not run:
+            log.debug("ignoring a parent span that belongs to another run")
+            parent = None
         parent = parent if isinstance(parent, Span) else None
         self.kind = span_kind(kind)
         self.span_id = ids.new_id(ids.SPAN)
         self._parent = parent
+        # Identity (multi-agent traces): explicit, else the parent span's, else the run's. A span
+        # whose parent is only known at start() (the current span) re-resolves there.
+        self._own_agent_id = agent_slug(agent_id, "") or None if isinstance(agent_id, str) else None
+        self._own_agent_version = name_attr(agent_version, 128) if _is_text(agent_version) else None
+        self.agent_id, self.agent_version = self._resolve_identity()
         self._types = _TYPED_SPANS.get(self.kind, _GENERIC_SPAN)  # kind is always a str here
         self._base = self._base_attributes()
         self._attrs: dict[str, Any] = as_mapping(attributes)
@@ -107,6 +124,14 @@ class Span:
         self._ended = False
         self._lock = threading.Lock()
         self._token: contextvars.Token[Span | None] | None = None
+
+    def _resolve_identity(self) -> tuple[str, str | None]:
+        parent = self._parent
+        agent_id = self._own_agent_id or (parent.agent_id if parent else self.run.agent_id)
+        version = self._own_agent_version or (
+            parent.agent_version if parent else self.run.agent_version
+        )
+        return agent_id, version
 
     def _base_attributes(self) -> dict[str, Any]:
         if self.kind == "tool":
@@ -137,7 +162,15 @@ class Span:
         status: str | None = None,
     ) -> None:
         """A point event inside this span."""
-        self.run._event(event_type, attributes, payload, status, span_id=self.span_id)
+        self.run._event(
+            event_type,
+            attributes,
+            payload,
+            status,
+            span_id=self.span_id,
+            agent_id=self.agent_id,
+            agent_version=self.agent_version,
+        )
 
     # -- lifecycle ---------------------------------------------------------------------------------
 
@@ -150,14 +183,25 @@ class Span:
         if self._parent is None:
             current = _current_span.get()
             self._parent = current if current is not None and current.run is self.run else None
+        self.agent_id, self.agent_version = self._resolve_identity()
+        self._before_open()
         self.run._emit(
             self._types[0],
             span_id=self.span_id,
-            parent_span_id=self._parent.span_id if self._parent else None,
+            parent_span_id=self._parent_span_id(),
             attributes={**self._attrs, **self._base},
+            agent_id=self.agent_id,
+            agent_version=self.agent_version,
         )
         self._attrs = {}  # attributes given at start are on the started event only
         return self
+
+    def _parent_span_id(self) -> str | None:
+        """The parent span, else the span a continued run was handed (None in an ordinary run)."""
+        return self._parent.span_id if self._parent else self.run._root_parent
+
+    def _before_open(self) -> None:
+        """Hook for spans that record something before their opening event (AgentSpan)."""
 
     def end(self, status: str = _SUCCESS, exc: BaseException | None = None) -> None:
         status = status if isinstance(status, str) else _SUCCESS
@@ -175,11 +219,13 @@ class Span:
         self.run._emit(
             self._types[2] if failed else self._types[1],
             span_id=self.span_id,
-            parent_span_id=self._parent.span_id if self._parent else None,
+            parent_span_id=self._parent_span_id(),
             status=status,
             duration_ms=duration,
             attributes=attributes,
             payload=self._payload,
+            agent_id=self.agent_id,
+            agent_version=self.agent_version,
         )
 
     def __enter__(self: _S) -> _S:
@@ -274,6 +320,61 @@ class LlmCall(Span):
         super().end(status, exc)
 
 
+class AgentSpan(Span):
+    """A child agent inside the run: its own `agent_id`, recorded as `agent.started`/`completed`.
+
+    Entering it first records `agent.spawned` as the delegating side (the parent's identity, in
+    the delegating span when there is one), then opens the span with the child's identity, so
+    every event inside carries the child's `agent_id` (spec §84). `input` and `set_result` are
+    payloads: they follow `PayloadMode` and the redactor like every other payload.
+    """
+
+    def __init__(
+        self,
+        run: "Run",
+        name: str,
+        *,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        input: Any = None,
+        attributes: dict[str, Any] | None = None,
+        parent: Span | None = None,
+    ) -> None:
+        # The slug may need the delegator's identity (known at start), so keep the candidate only.
+        candidate = agent_slug(agent_id, "") if isinstance(agent_id, str) else ""
+        super().__init__(
+            run,
+            name,
+            "agent",
+            attributes,
+            parent,
+            agent_id=candidate
+            or agent_slug(name if isinstance(name, str) else name_attr(name), ""),
+            agent_version=agent_version,
+        )
+        self._input = input
+
+    def set_result(self, result: Any) -> None:
+        """The agent's result, sent as the payload of `agent.completed` (FULL mode only)."""
+        self._payload = {"result": result}
+
+    def _before_open(self) -> None:
+        delegator = self._parent.agent_id if self._parent else self.run.agent_id
+        delegator_version = self._parent.agent_version if self._parent else self.run.agent_version
+        if not self._own_agent_id or self._own_agent_id == delegator:
+            # No usable name, or the root's own: never silently share the delegator's identity.
+            self._own_agent_id = self.run._child_slug(delegator)
+            self.agent_id = self._own_agent_id
+        self.run._emit(
+            "agent.spawned",
+            span_id=self._parent_span_id(),
+            attributes={"agent.child_id": self.agent_id},
+            payload=None if self._input is None else {"input": self._input},
+            agent_id=delegator,
+            agent_version=delegator_version,
+        )
+
+
 class Run:
     """One execution of an agent. Created by `BlackBox.run`; use as a context manager."""
 
@@ -284,17 +385,33 @@ class Run:
         metadata: dict[str, Any] | None,
         agent_id: str | None,
         tags: tuple[str, ...],
+        *,
+        remote: TraceContext | None = None,
+        agent_version: str | None = None,
     ) -> None:
         self._bb = bb
         self.name = name if isinstance(name, str) else None
-        self.run_id = ids.new_id(ids.RUN)
-        self.trace_id = ids.new_id(ids.TRACE)
-        self.agent_id = (
-            agent_slug(agent_id, bb.config.agent_id)
-            if isinstance(agent_id, str) and agent_id
-            else bb.config.agent_id
+        self.remote = remote is not None  # a continued run (D13): it never starts or ends the run
+        self._pid = os.getpid()  # a forked child that keeps using this Run is a remote emitter too
+        self._inert = False
+        self._root_parent: str | None = None
+        self._agent_span: Span | None = None
+        explicit = agent_slug(agent_id, "") if isinstance(agent_id, str) and agent_id else ""
+        if remote is not None:
+            self.run_id, self.trace_id = remote.run_id, remote.trace_id
+            self._root_parent = remote.parent_span_id
+            self._agent_known = bool(explicit or remote.agent_id)
+            explicit = explicit or remote.agent_id or ""
+        else:
+            self.run_id = ids.new_id(ids.RUN)
+            self.trace_id = ids.new_id(ids.TRACE)
+            self._agent_known = False
+        self.agent_id = explicit or bb.config.agent_id
+        self.agent_version = (
+            name_attr(agent_version, 128) if _is_text(agent_version) else bb.config.agent_version
         )
         self._tags = clean_tags(tuple(bb.config.tags) + as_strings(tags))
+        self._children = itertools.count(1)
         self._seq = itertools.count(1)  # next() on a C counter is atomic: no lock on the hot path
         self._t0 = time.monotonic()
         self._ended = False
@@ -306,11 +423,15 @@ class Run:
             attributes["run.name"] = name_attr(self.name)
         for key, value in as_mapping(metadata).items():
             attributes[f"metadata.{name_attr(key, 100).lower()}"] = value
-        self._emit("run.started", attributes=attributes)
+        if remote is None:
+            self._emit("run.started", attributes=attributes)
 
     @property
     def ended(self) -> bool:
-        """True once the run's end event was recorded (adapters drop span events after it)."""
+        """True once the run's end event was recorded (adapters drop span events after it).
+
+        Always False for a continued run: the root run owns the end, and late events are legal.
+        """
         return self._ended
 
     # -- instrumentation ---------------------------------------------------------------------------
@@ -324,6 +445,81 @@ class Run:
         parent: Span | None = None,
     ) -> Span:
         return Span(self, name, kind, attributes, parent)  # arguments are coerced, never raised on
+
+    def agent(
+        self,
+        name: str,
+        *,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+        input: Any = None,
+        attributes: dict[str, Any] | None = None,
+        parent: Span | None = None,
+    ) -> AgentSpan:
+        """A child agent in this run (D1): `with run.agent("researcher") as researcher: ...`."""
+        return AgentSpan(
+            self,
+            name,
+            agent_id=agent_id,
+            agent_version=agent_version,
+            input=input,
+            attributes=attributes,
+            parent=parent,
+        )
+
+    def _child_slug(self, parent_agent: str) -> str:
+        """`<parent>-child-<n>`, within the 64-character slug limit."""
+        suffix = f"-child-{next(self._children)}"
+        return agent_slug(parent_agent[: 64 - len(suffix)] + suffix, "agent")
+
+    def spawn_context(
+        self,
+        agent_id: str | None = None,
+        *,
+        parent: Span | None = None,
+        input: Any = None,
+    ) -> str:
+        """Delegate to an agent in another process: record `agent.spawned`, return its context.
+
+        Hand the string to the child (environment variable `BLACKBOX_TRACE_CONTEXT`, see
+        `trace_context_from_env`); the child calls `bb.continue_run(...)`. Never raises.
+        """
+        if self._inert:  # a context for a run that does not exist would create a phantom run
+            return ""
+        try:
+            span = self._delegating_span(parent)
+            delegator = span.agent_id if span else self.agent_id
+            version = span.agent_version if span else self.agent_version
+            child = agent_slug(agent_id, "") if isinstance(agent_id, str) else ""
+            if not child or child == delegator:
+                child = self._child_slug(delegator)
+            span_id = span.span_id if span else self._root_parent
+            self._emit(
+                "agent.spawned",
+                span_id=span_id,
+                attributes={"agent.child_id": child},
+                payload=None if input is None else {"input": input},
+                agent_id=delegator,
+                agent_version=version,
+            )
+            return TraceContext(self.run_id, self.trace_id, span_id, child).serialize()
+        except Exception:
+            self._bb.stats_.add("internal_errors")
+            return self.trace_context()
+
+    def trace_context(self) -> str:
+        """The context string for the current position, with no event (not a delegation)."""
+        if self._inert:
+            return ""
+        span = self._delegating_span(None)
+        span_id = span.span_id if span else self._root_parent
+        return TraceContext(self.run_id, self.trace_id, span_id, None).serialize()
+
+    def _delegating_span(self, parent: Span | None) -> "Span | None":
+        if isinstance(parent, Span) and parent.run is self:
+            return parent
+        current = _current_span.get()
+        return current if current is not None and current.run is self else None
 
     def llm_call(
         self,
@@ -355,8 +551,18 @@ class Run:
     ) -> None:
         """Record a point event (inside the current span of this run, if any)."""
         span = _current_span.get()
-        span_id = span.span_id if span is not None and span.run is self else None
-        self._event(event_type, attributes, payload, status, span_id=span_id)
+        if span is None or span.run is not self:
+            self._event(event_type, attributes, payload, status, span_id=None)
+            return
+        self._event(
+            event_type,
+            attributes,
+            payload,
+            status,
+            span_id=span.span_id,
+            agent_id=span.agent_id,
+            agent_version=span.agent_version,
+        )
 
     def _event(
         self,
@@ -366,6 +572,8 @@ class Run:
         status: str | None,
         *,
         span_id: str | None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
     ) -> None:
         if not isinstance(event_type, str):
             event_type = ""
@@ -377,11 +585,23 @@ class Run:
             self._bb.stats_.add("dropped_invalid")
             return
         self._emit(
-            event_type, span_id=span_id, attributes=attributes, payload=payload, status=status
+            event_type,
+            span_id=span_id,
+            attributes=attributes,
+            payload=payload,
+            status=status,
+            agent_id=agent_id,
+            agent_version=agent_version,
         )
 
     def end(self, status: str = _SUCCESS, exc: BaseException | None = None) -> None:
-        """Finish the run. Idempotent; `status` is success, error, timeout, blocked or cancelled."""
+        """Finish the run. Idempotent; `status` is success, error, timeout, blocked or cancelled.
+
+        A continued run (`bb.continue_run`) never ends the run: this is a counted no-op.
+        """
+        if self.remote:
+            self._bb.stats_.add("remote_run_end_ignored")
+            return
         with self._lock:
             if self._ended:
                 return
@@ -408,22 +628,35 @@ class Run:
         duration_ms: float | None = None,
         attributes: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
     ) -> None:
+        if self._inert:
+            return
+        # `sequence` is only comparable within one emitter (§65.1): a continued run, or a forked
+        # child that inherited this Run, sends none and the run is ordered by time (ADR-070).
+        sequence = None if self.remote or os.getpid() != self._pid else next(self._seq)
         self._bb._emit(
             self,
             event_type,
-            next(self._seq),
+            sequence,
             span_id,
             parent_span_id,
             status,
             duration_ms,
             attributes,
             payload,
+            agent_id,
+            agent_version,
         )
 
     def __enter__(self) -> "Run":
         self._token = _current_run.set(self)
         self._span_token = _current_span.set(None)
+        if self.remote and self._agent_known:
+            # The continued run is the child agent: its own agent span, parented to the context's.
+            agent_span = Span(self, self.agent_id, "agent", agent_id=self.agent_id)
+            self._agent_span = agent_span.__enter__()
         return self
 
     def __exit__(
@@ -432,6 +665,9 @@ class Run:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        agent_span, self._agent_span = self._agent_span, None
+        if agent_span is not None:
+            agent_span.__exit__(exc_type, exc, tb)
         span_token, run_token = self._span_token, self._token
         self._token = self._span_token = None
         if span_token is not None:
@@ -531,6 +767,27 @@ class BlackBox:
         return Run(self, name, metadata, agent_id, tags)
 
     start_run = run
+
+    def continue_run(
+        self,
+        context: "TraceContext | str | None",
+        *,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
+    ) -> Run:
+        """Join a run that another process started (D13); see `trace_context_from_env`.
+
+        The returned `Run` records no `run.started`/`run.completed` (the root owns the run), parents
+        its spans to the context's span and, as a context manager, wraps the block in an agent span
+        when an agent id is known. An invalid or missing context gives an inert run and a warning.
+        """
+        parsed = context if isinstance(context, TraceContext) else TraceContext.parse(context)
+        inert = parsed is None
+        if parsed is None:
+            parsed = TraceContext(ids.new_id(ids.RUN), ids.new_id(ids.TRACE))
+        joined = Run(self, None, None, agent_id, (), remote=parsed, agent_version=agent_version)
+        joined._inert = inert
+        return joined
 
     def event(
         self,
@@ -644,7 +901,10 @@ class BlackBox:
         """A short printable label: redacted first, then cut (never a secret's prefix)."""
         if not isinstance(name, str) or not name:
             return None
-        return _CONTROL.sub(" ", self._redactor.redact_text(name))[:120] or None
+        # NUL becomes a space before redaction: the label keeps its shape, no secret is reassembled
+        return (
+            _CONTROL.sub(" ", self._redactor.redact_text(name.replace("\x00", " ")))[:120] or None
+        )
 
     def flush(self, timeout: float | None = None) -> bool:
         """Wait (bounded) until queued events were handed to the sink. Never raises."""
@@ -720,13 +980,15 @@ class BlackBox:
         self,
         run: Run,
         event_type: str,
-        sequence: int,
+        sequence: int | None,
         span_id: str | None,
         parent_span_id: str | None,
         status: str | None,
         duration_ms: float | None,
         attributes: dict[str, Any] | None,
         payload: dict[str, Any] | None,
+        agent_id: str | None = None,
+        agent_version: str | None = None,
     ) -> None:
         if not self._enabled or self._closed:
             return
@@ -737,8 +999,8 @@ class BlackBox:
                 event_type=event_type,
                 run_id=run.run_id,
                 trace_id=run.trace_id,
-                agent_id=run.agent_id,
-                agent_version=self.config.agent_version,
+                agent_id=agent_id or run.agent_id,
+                agent_version=agent_version or self.config.agent_version,
                 sequence=sequence,
                 span_id=span_id,
                 parent_span_id=parent_span_id,
@@ -749,14 +1011,16 @@ class BlackBox:
                 tags=run._tags if event_type == "run.started" else None,
                 sdk_version=__version__,
             )
+            event = without_nul(event)  # before redaction, so rules see the final strings
             redacted = self._redactor.apply(event, p0=priority == 0)
             if redacted is None:
                 return
-            if (
-                redacted.get("payload") is not None
-                and check_payload(redacted["payload"], self.stats_) is None
-            ):
-                del redacted["payload"]
+            if redacted.get("payload") is not None:
+                checked = check_payload(redacted["payload"], self.stats_)
+                if checked is None:
+                    del redacted["payload"]
+                else:
+                    redacted["payload"] = checked
             self.stats_.add("events_created")
             if self._buffer.put(redacted, priority):
                 self._exporter.notify()

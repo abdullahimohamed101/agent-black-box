@@ -142,7 +142,22 @@ def check_payload(payload: dict[str, Any], stats: Stats) -> dict[str, Any] | Non
     if size > MAX_INLINE_PAYLOAD_BYTES:
         stats.add("payloads_dropped")
         return None
-    return payload
+    cleaned = without_nul(payload)  # defence in depth: the strip belongs BEFORE redaction
+    return cleaned if isinstance(cleaned, dict) else None
+
+
+def without_nul(value: Any) -> Any:
+    """NUL is invalid in the contract's strings and keys; one would get the whole event rejected.
+
+    Must run before the redactor: a secret or denied key split by NUL would otherwise match
+    no rule and be reassembled by the strip (INV-5)."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {without_nul(k): without_nul(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [without_nul(v) for v in value]
+    return value
 
 
 def build_event(
@@ -152,7 +167,7 @@ def build_event(
     trace_id: str,
     agent_id: str,
     agent_version: str | None,
-    sequence: int,
+    sequence: int | None,
     span_id: str | None = None,
     parent_span_id: str | None = None,
     status: str | None = None,
@@ -170,10 +185,11 @@ def build_event(
         "agent_id": agent_id,
         "event_type": event_type,
         "occurred_at": now_rfc3339(),
-        "sequence": sequence,
         "attributes": attributes or {},
         "sdk": {"name": "agent-black-box-python", "version": sdk_version},
     }
+    if sequence is not None:  # remote emitters send none: the run is then ordered by time
+        event["sequence"] = sequence
     if span_id:
         event["span_id"] = span_id
     if parent_span_id:
