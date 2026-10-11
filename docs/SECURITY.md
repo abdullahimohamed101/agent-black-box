@@ -91,7 +91,7 @@ ingestion edge | control plane | database/object storage | human approvers.
   addresses that only the fake provider can authenticate.
 
 Reliability findings (Phase 10, ADR-080): evidence is metadata only by construction (an allowlist of keys per finding type; no command, path, payload, payload digest, run name or
-error text), so `GET /v1/runs/{id}/findings` needs only `run.read` and returns the same body to every reader; a detector failure surfaces as a fixed-text job error that cannot quote an
+error text; the `fingerprint` and the `id` derived from it are functions of public metadata only, never of payload bytes, so they cannot be used to test a guessed payload; a reader learns only that the events cited by an `identical_request` finding carried equal payloads), so `GET /v1/runs/{id}/findings` needs only `run.read` and returns the same body to every reader; a detector failure surfaces as a fixed-text job error that cannot quote an
 attribute value; the cost baseline is scoped to the caller's workspace, project and agent.
 
 ## Known gaps (tracked in KNOWN_ISSUES.md)

@@ -31,8 +31,10 @@ per-run pass over events a cost to bound.
    readable, marked `failed` with its time. A late-arriving earlier event can extend a stretch backwards and change a fingerprint, so a future dismissal
    design must not assume stability under late arrival (KI-091).
 3. **Evidence is metadata by construction.** An allowlist of keys per finding type (ids, agent slugs, event types, counts, tool and model names, exit
-   and status codes, thresholds); never a content attribute, span name, payload or payload digest (the identical-request digest groups events and is
-   never stored or shown: a stored prefix would be an equality oracle on withheld payloads), `test.suite`, run name, tag, metadata, free-text reason or
+   and status codes, thresholds); never a content attribute, span name, payload or payload digest (the identical-request digest groups events in memory and is
+   never stored, shown or part of the fingerprint key: every other fingerprint input is public in the same response, so a digest in the key, or a
+   stored prefix of it, would be an offline equality oracle on withheld payloads; the fingerprint and the `id` derived from it are functions of public metadata
+   only, and what a reader can learn is limited to "these events carried equal payloads"), `test.suite`, run name, tag, metadata, free-text reason or
    exception text. Titles and messages are generated at read time from the typed evidence. Consequently the route needs no per-actor projection: a VIEWER
    sees what an OWNER sees, and `run.read` governs the route (no new action).
 4. **The cost-spike detector is the one that reads beyond the run**: a bounded baseline of the same workspace, project and agent's recent summarised

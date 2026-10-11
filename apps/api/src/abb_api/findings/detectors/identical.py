@@ -1,7 +1,10 @@
 """identical-request: the same request payload sent again and again (deterministic).
 
 Only events with an inline payload take part (capture is opt-in, INV-5: no payload is not a
-finding). The SHA-256 of the canonical payload groups events and is never stored, shown or logged.
+finding). The SHA-256 of the canonical payload groups events in memory and goes nowhere else: it
+is not in the evidence and not in the fingerprint key, because every other fingerprint input is
+public in the same response and a digest in the key would let a reader test a guessed payload
+offline (security review P1-1). A group is identified by its first event, which is unique per group.
 """
 
 import hashlib
@@ -41,7 +44,7 @@ class IdenticalRequest(Detector):
         ]
         qualifying.sort(key=lambda item: (-len(item[1]), ctx.position[item[1][0]]))
         found: list[Finding] = []
-        for (agent, event_type, name, digest), ids in qualifying[:MAX_PER_DETECTOR]:
+        for (agent, event_type, name, _digest), ids in qualifying[:MAX_PER_DETECTOR]:
             evidence: dict[str, object] = {
                 "agent_id": agent,
                 "event_type": event_type,
@@ -60,7 +63,7 @@ class IdenticalRequest(Detector):
                     confidence=1.0,
                     start_event_id=ids[0],
                     end_event_id=ids[-1],
-                    key=f"{agent}\x1f{event_type}\x1f{name}\x1f{digest.hex()}",
+                    key=f"{agent}\x1f{event_type}\x1f{name}",
                     evidence=evidence,
                 )
             )

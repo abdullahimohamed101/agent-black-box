@@ -32,6 +32,7 @@ from abb_api.findings.model import (
     Finding,
     Kind,
     Severity,
+    fingerprint,
     validate_evidence,
 )
 from abb_api.runs.summary import derive_run
@@ -686,4 +687,31 @@ def test_event_helper_types() -> None:
     assert isinstance(to_event(load_runs("healthy")[next(iter(load_runs("healthy")))][0]), Event)
     assert run_cost([to_event(w) for w in list(load_runs("cost_spike").values())[-1]]) == Decimal(
         "0.9"
+    )
+
+
+def test_the_identical_request_identity_is_independent_of_payload_content() -> None:
+    """Security review P1-1: the fingerprint and the id derived from it are public, as is every
+    other input of the hash, so a content-derived input would be an offline guessing oracle on
+    withheld payloads. The same events with different payload bytes must give the same identity."""
+    synth = Synth()
+    for _ in range(4):
+        synth.tool("read_file", payload={"path": "/etc/passwd"})
+    guesses = ({"path": "/etc/passwd"}, {"path": "/etc/shadow"}, {"x": [1, 2, 3]})
+    identities = set()
+    for guess in guesses:
+        events = [
+            e.model_copy(update={"payload": guess}) if e.event_type == "tool.call.started" else e
+            for e in synth.events
+        ]
+        (finding,) = run_all(build_context(events))
+        assert finding.finding_type == "identical_request"
+        identities.add(finding.fingerprint)  # the id is UUIDv5 over this, so it is equal too
+    assert len(identities) == 1
+    # And the fingerprint is exactly the hash of public inputs: a reader holding a guess learns
+    # nothing from it because the guess is not an input.
+    (finding,) = run_all(build_context(synth.events))
+    public = "\x1f".join(("agent", "tool.call.started", "read_file"))
+    assert finding.fingerprint == fingerprint(
+        "identical-request", "identical_request", finding.start_event_id, public
     )
