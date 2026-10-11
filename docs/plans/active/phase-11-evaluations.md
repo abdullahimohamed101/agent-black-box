@@ -856,3 +856,18 @@ Fixtures Playwright 21 passed. E2E: `auth-e2e` 13 passed (its phone-overflow tes
 | AC-9 Web | PASS | vitest 626; `make eval-e2e` equivalent (`scripts/eval-e2e.sh`) 7 browser tests: evaluations, badge text, verdict as OWNER, VIEWER withheld text and no forms, not-controlled banner naming `model` and `variant`, metrics, compare divergence and "Jump to divergence", viewer divergence row; axe clean on every page; screenshots in `docs/screenshots/phase-11/` |
 | AC-10 Compatibility | PARTIAL: PASS for what ran, UNVERIFIED (env) for the rest | `coding-e2e`, `auth-e2e`, `findings-e2e`, `multiagent-e2e` pass unchanged; examples pass for both variants (16); `test_runtime_role.py` in the 742 (four tables writable by `abb_runtime`, `APPEND_ONLY_TABLES` unchanged). `make smoke`, `make sdk-e2e`, `stream-e2e`, `analytics-e2e` need the compose stack or ports reserved for other worktrees: UNVERIFIED (env) (run `make up && make smoke && make sdk-e2e`; `make stream-e2e`; `make analytics-e2e`) |
 | AC-11 Security review | OPEN | the `review-change` pass with the attack list is the next step; see the report's "attack first" list |
+
+## Code review dispositions (`phase-11-code-review.md`, 2026-10-11)
+
+| Finding | Disposition | Where |
+| --- | --- | --- |
+| P2-1 cooldown refusal restarts the cooldown | FIXED: the refusal is `failed/JUDGE_COOLDOWN` (only `JUDGE_BUDGET`, the expensive reply, arms the window); "prompt over `max_input_chars`" has its own code `JUDGE_INPUT`; evaluate-all skips a cooling judge (`cooling_down`) so it no longer burns the 20-row bound. Test `test_a_cooldown_refusal_does_not_restart_the_cooldown` (cooldown 2 s, triggers at 0, 1.2, 2.4 s: the third completes) fails before the fix; `test_evaluate_all_skips_a_judge_that_is_cooling_down_instead_of_burning_rows` | `a67906c` |
+| P2-2 `failed/JOB_FAILED` row later completes | FIXED (option a): a trigger writes the dead pending row `failed/JOB_FAILED` in its own transaction (`pending -> failed`, allowed by the trigger) before inserting the fresh row. The dead-letter test now drains and asserts the first row stays `failed`; fails before the fix | `1e2fe7d` |
+| P3-1 `claim_pending`, `CostRepository.by_model`, `_PAIRS` workspace predicates untested | FIXED: three cross-workspace tests; each fails when its predicate is removed (mutation re-run) | `e1f612b` |
+| P3-2 viewer `error` withholding untested | FIXED: `test_a_viewer_never_sees_the_error_text_of_a_failed_row`; fails when `error=record.error` | `e1f612b` |
+| P3-3 `project_mismatch` unreachable | FIXED: branch and `SkipReason` member removed (an evaluator's project never changes and `create` refuses a foreign one) | `e1f612b` |
+| P3-4 `tests_passed` trusts client test events | DEFERRED, documented: `docs/SECURITY.md` sentence and KI-116 (KI-100..109 were full) | `397b3f1` |
+| P3-5 `CallBudget` no-op | FIXED: class and constant removed; the test asserts exactly one provider call with the configured output bound | `a67906c` |
+| P3-6 migration 0070 docstring | FIXED (`Revises: 0080`) | `a67906c` |
+| P3-6 `with_run_id` malformed is 422, path `run_id` 404 | NOT CHANGED: the 422 comes from the OpenAPI query pattern, is tested as intended and leaks only format; making it a 404 would drop the pattern from the contract | none |
+| P3-6 `metrics` shown to every reader | NOT CHANGED: correct today (mutation M18 proves the allowlist); no behaviour to fix | none |
