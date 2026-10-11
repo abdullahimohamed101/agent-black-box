@@ -32,6 +32,8 @@ from abb_api.cost.router import rebuild_router
 from abb_api.cost.router import router as pricing_router
 from abb_api.db import create_engine
 from abb_api.evaluations.router import router as evaluators_router
+from abb_api.evaluations.run_router import router as run_evaluations_router
+from abb_api.evaluations.runs import RunEvaluationService
 from abb_api.evaluations.service import EvaluatorService
 from abb_api.findings.router import router as findings_router
 from abb_api.findings.service import FindingsService
@@ -180,6 +182,11 @@ def create_app(
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)
         app.state.evaluators = EvaluatorService(engine)
+        app.state.run_evaluations = RunEvaluationService(
+            engine,
+            stale_seconds=settings.eval_stale_seconds,
+            judge_provider=settings.judge_provider,
+        )
         app.state.login = LoginService(engine, oidc, settings, clock) if oidc else None
         app.state.artifacts = ArtifactService(
             engine,
@@ -241,6 +248,7 @@ def create_app(
     app.include_router(api_keys_router)
     app.include_router(audit_router)
     app.include_router(evaluators_router)
+    app.include_router(run_evaluations_router)
     _install_openapi(app, settings)
     return app
 

@@ -38,6 +38,7 @@ RANDOM_IDS: dict[str, Callable[[], str]] = {
     "experiment_id": lambda: new_id(IdKind.EXPERIMENT),
     "variant_id": lambda: new_id(IdKind.VARIANT),
     "with_run_id": lambda: new_id(IdKind.RUN),
+    "human_evaluator_id": lambda: new_id(IdKind.EVALUATOR),
 }
 # Every credential kind of the acme workspace (the globex key is the attacker's mirror image).
 ACME_ACTORS = (

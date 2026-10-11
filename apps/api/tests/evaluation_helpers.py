@@ -27,19 +27,21 @@ async def seeded_run(
     specs: list[tuple[str, dict[str, Any]]] | None = None,
     *,
     terminal: str = "success",
+    project: str = "p",
 ) -> uuid.UUID:
     """A summarised run: started, the given events, then completed with `terminal` status."""
     run = make_run_ids()
     body = specs if specs is not None else [("tool.call.completed", {"tool.name": "github"})]
     events = [
-        build_event(tenant, run, n=n, event_type=kind, attributes=attrs)
+        build_event(tenant, run, n=n, event_type=kind, attributes=attrs, project=project)
         for n, (kind, attrs) in enumerate(
             [("run.started", {}), *body, ("run.completed", {})], start=1
         )
     ]
     events[-1] = build_event(
-        tenant, run, n=len(events), event_type="run.completed", attributes={}, status=terminal
-    )
+        tenant, run, n=len(events), event_type="run.completed", attributes={},
+        status=terminal, project=project,
+    )  # fmt: skip
     await ingest(engine, tenant, events)
     await drain(worker)
     return to_uuid(run["run_id"])

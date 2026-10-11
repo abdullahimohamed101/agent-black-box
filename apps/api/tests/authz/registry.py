@@ -66,6 +66,7 @@ class Side:
     experiment_id: str
     variant_id: str
     with_run_id: str
+    human_evaluator_id: str  # a `human` evaluator (the target of a verdict)
     every_id: frozenset[str]  # every id the tenant owns (for leak scans)
 
 
@@ -113,6 +114,7 @@ def _ids(side: Side, overrides: dict[str, str]) -> dict[str, str]:
         "experiment_id": side.experiment_id,
         "variant_id": side.variant_id,
         "with_run_id": side.with_run_id,
+        "human_evaluator_id": side.human_evaluator_id,
         **overrides,
     }
 
@@ -217,6 +219,24 @@ def _post_evaluator(side: Side, overrides: dict[str, str]) -> RequestSpec:
     return RequestSpec("POST", "/v1/evaluators", content=json.dumps(body).encode(), headers=JSON)
 
 
+def _post_evaluation(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    ids = _ids(side, overrides)
+    body = {"evaluator_id": ids["evaluator_id"]}
+    return RequestSpec(
+        "POST", f"/v1/runs/{ids['run_id']}/evaluations", content=json.dumps(body).encode(),
+        headers=JSON,
+    )  # fmt: skip
+
+
+def _post_verdict(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    ids = _ids(side, overrides)
+    body = {"evaluator_id": ids["human_evaluator_id"], "label": "pass", "explanation": "ok"}
+    return RequestSpec(
+        "POST", f"/v1/runs/{ids['run_id']}/verdicts", content=json.dumps(body).encode(),
+        headers=JSON,
+    )  # fmt: skip
+
+
 _ANALYTICS = ("summary", "cost", "reliability", "performance")
 
 CASES: dict[tuple[str, str], RouteCase] = {
@@ -296,6 +316,18 @@ CASES: dict[tuple[str, str], RouteCase] = {
             "DELETE", "/v1/evaluators/{evaluator_id}", actions.EVALUATOR_WRITE,
             _target("DELETE", "/v1/evaluators", "evaluator_id", "evaluator", None), 204,
             ("evaluator_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/runs/{run_id}/evaluations", actions.EVALUATION_READ,
+            _get("/v1/runs/{run_id}/evaluations"), 200, ("run_id",),
+        ),
+        RouteCase(
+            "POST", "/v1/runs/{run_id}/evaluations", actions.EVALUATION_RUN, _post_evaluation, 202,
+            ("run_id", "evaluator_id"), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/runs/{run_id}/verdicts", actions.EVALUATION_LABEL, _post_verdict, 201,
+            ("run_id", "human_evaluator_id"), probe_actors=ADMINS,
         ),
         RouteCase("POST", "/v1/pricing/overrides", actions.PRICING_WRITE, _post_override, 201),
         RouteCase("POST", "/v1/cost/rebuild", actions.PRICING_WRITE, _post_rebuild, 202),

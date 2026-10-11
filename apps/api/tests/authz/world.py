@@ -225,7 +225,7 @@ async def _upload(api: Api, token: str, run_id: str, name: str, body: str) -> st
 
 async def _seed_evaluations(
     api: Api, tenant: Any, project: str, run_ids: list[str], label: str
-) -> tuple[str, str, str, str, str]:
+) -> tuple[str, str, str, str, str, str]:
     """An evaluator with path-bearing config, a judge evaluator whose completed evaluation has a
     canary explanation, and an experiment with a baseline variant holding a run (no routes needed:
     plain inserts). `label` carries the globex canary into every free-text field."""
@@ -233,6 +233,7 @@ async def _seed_evaluations(
     run = parse_public_id(IdKind.RUN, run_ids[0])
     assert run is not None
     evaluator, judge = new_uuid(IdKind.EVALUATOR), new_uuid(IdKind.EVALUATOR)
+    human = new_uuid(IdKind.EVALUATOR)
     evaluation, experiment = new_uuid(IdKind.EVALUATION), new_uuid(IdKind.EXPERIMENT)
     variant, completed = new_uuid(IdKind.VARIANT), api.clock()
     async with api.engine.begin() as conn:
@@ -251,6 +252,13 @@ async def _seed_evaluations(
                     "name": f"{label.lower()}-judge", "kind": "llm_judge",
                     "implementation": "judge", "version": 1,
                     "config": {"rubric": f"{RUBRIC_CANARY} {label}", "allowed_labels": ["ok"]},
+                    "description": label,
+                },
+                {
+                    "workspace_id": ws, "id": human, "project_id": None,
+                    "name": f"{label.lower()}-human", "kind": "human",
+                    "implementation": "human", "version": 1,
+                    "config": {"allowed_labels": ["pass", "fail", "unsure"]},
                     "description": label,
                 },
             ],
@@ -290,6 +298,7 @@ async def _seed_evaluations(
         public_id(IdKind.EXPERIMENT, experiment),
         public_id(IdKind.VARIANT, variant),
         public_id(IdKind.EVALUATOR, judge),
+        public_id(IdKind.EVALUATOR, human),
     )
 
 
@@ -376,6 +385,7 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             experiment_id=seeded[2],
             variant_id=seeded[3],
             with_run_id=run_ids[1],
+            human_evaluator_id=seeded[5],
             every_id=frozenset(
                 {
                     *seeded,

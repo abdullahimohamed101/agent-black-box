@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
@@ -259,3 +259,163 @@ class EvaluationRepository:
             )
         )  # fmt: skip
         return bool(result.rowcount == 1)
+
+
+@dataclass(frozen=True)
+class EvaluationRecord:
+    id: uuid.UUID
+    run_id: uuid.UUID
+    evaluator_id: uuid.UUID | None
+    evaluator_name: str
+    evaluator_version: str
+    kind: str
+    implementation: str | None
+    state: str
+    score: float | None
+    label: str | None
+    explanation: str | None
+    metrics: dict[str, Any]
+    evidence_event_ids: list[str]
+    metadata: dict[str, Any]
+    error_code: str | None
+    error: str | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    latest: bool
+    stale: bool  # pending for longer than the stale limit (the database clock)
+
+
+_V = t.evaluations.c
+_FIELDS = (
+    _V.id, _V.run_id, _V.evaluator_id, _V.evaluator_name, _V.evaluator_version, _V.kind,
+    _V.implementation, _V.state, _V.score, _V.label, _V.explanation, _V.metrics,
+    _V.evidence_event_ids, _V.metadata, _V.error_code, _V.error, _V.created_at, _V.started_at,
+    _V.completed_at,
+)  # fmt: skip
+
+
+def _evaluation(row: Any) -> EvaluationRecord:
+    data = {c.name: getattr(row, c.name) for c in _FIELDS}
+    return EvaluationRecord(**data, latest=bool(row.latest), stale=bool(row.stale))
+
+
+class EvaluationReads:
+    """Reads and the count-then-insert bounds of the request path (D10).
+
+    The locks are advisory and per run: never `RunRepository.lock`, whose row lock the summarizer
+    holds while it derives."""
+
+    def __init__(
+        self, conn: AsyncConnection, tenant: TenantContext, stale_seconds: float = 3600.0
+    ) -> None:
+        self._conn = conn
+        self._tenant = tenant
+        self._stale_seconds = stale_seconds
+
+    def _scoped(self) -> Select[Any]:
+        newest = func.row_number().over(
+            partition_by=(_V.run_id, _V.evaluator_id),
+            order_by=(_V.created_at.desc(), _V.id.desc()),
+        )
+        stale = func.now() - _V.created_at > func.make_interval(
+            0, 0, 0, 0, 0, 0, self._stale_seconds
+        )
+        return select(*_FIELDS, (newest == 1).label("latest"), stale.label("stale")).where(
+            _V.workspace_id == self._tenant.workspace_id
+        )
+
+    async def lock_run(self, run_id: uuid.UUID) -> None:
+        key = f"eval:{self._tenant.workspace_id}:{run_id}"
+        await self._conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(key, 0))))
+
+    async def open_rows(self, run_id: uuid.UUID, evaluator_id: uuid.UUID) -> list[EvaluationRecord]:
+        """The (run, evaluator) rows that are not terminal, newest first."""
+        sub = self._scoped().where(_V.run_id == run_id, _V.evaluator_id == evaluator_id).subquery()
+        rows = await self._conn.execute(
+            select(sub).where(sub.c.state.in_(("pending", "running")))
+            .order_by(sub.c.created_at.desc(), sub.c.id.desc())
+        )  # fmt: skip
+        return [_evaluation(r) for r in rows]
+
+    async def count_for_evaluator(self, run_id: uuid.UUID, evaluator_id: uuid.UUID) -> int:
+        return int(
+            (
+                await self._conn.execute(
+                    select(func.count()).where(
+                        _V.workspace_id == self._tenant.workspace_id,
+                        _V.run_id == run_id,
+                        _V.evaluator_id == evaluator_id,
+                    )
+                )
+            ).scalar_one()
+        )
+
+    async def count_human(self, run_id: uuid.UUID) -> int:
+        return int(
+            (
+                await self._conn.execute(
+                    select(func.count()).where(
+                        _V.workspace_id == self._tenant.workspace_id,
+                        _V.run_id == run_id,
+                        _V.kind == "human",
+                    )
+                )
+            ).scalar_one()
+        )
+
+    async def insert_verdict(
+        self,
+        evaluation_id: uuid.UUID,
+        *,
+        run_id: uuid.UUID,
+        evaluator: EvaluatorRecord,
+        label: str,
+        score: float | None,
+        explanation: str | None,
+        requested_by: uuid.UUID | None,
+    ) -> None:
+        """A human verdict: terminal at insert (the immutability trigger guards updates only)."""
+        await self._conn.execute(
+            t.evaluations.insert().values(
+                workspace_id=self._tenant.workspace_id,
+                id=evaluation_id,
+                run_id=run_id,
+                evaluator_id=evaluator.id,
+                evaluator_name=evaluator.name,
+                evaluator_version=str(evaluator.version),
+                kind="human",
+                implementation=evaluator.implementation,
+                config_snapshot=evaluator.config,
+                state="completed",
+                score=score,
+                label=label,
+                explanation=explanation or "",
+                requested_by=requested_by,
+                started_at=func.now(),
+                completed_at=func.now(),
+            )
+        )
+
+    async def get_in_run(
+        self, run_id: uuid.UUID, evaluation_id: uuid.UUID
+    ) -> EvaluationRecord | None:
+        sub = self._scoped().where(_V.run_id == run_id).subquery()
+        row = (await self._conn.execute(select(sub).where(sub.c.id == evaluation_id))).first()
+        return _evaluation(row) if row else None
+
+    async def list_for_run(self, run_id: uuid.UUID, limit: int) -> list[EvaluationRecord]:
+        """Newest first. `latest` is computed over all of the run's rows, before the limit."""
+        sub = self._scoped().where(_V.run_id == run_id).subquery()
+        rows = await self._conn.execute(
+            select(sub).order_by(sub.c.created_at.desc(), sub.c.id.desc()).limit(limit)
+        )
+        return [_evaluation(r) for r in rows]
+
+    async def latest_per_evaluator(self, run_ids: list[uuid.UUID]) -> list[EvaluationRecord]:
+        """The newest completed row per (run, evaluator) of these runs (comparison, experiments)."""
+        sub = self._scoped().where(_V.run_id.in_(run_ids), _V.state == "completed").subquery()
+        rows = await self._conn.execute(
+            select(sub).order_by(sub.c.run_id, sub.c.evaluator_name, sub.c.created_at.desc())
+        )
+        return [_evaluation(r) for r in rows if r.latest]

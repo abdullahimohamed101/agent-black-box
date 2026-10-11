@@ -79,6 +79,8 @@ async def test_no_route_returns_command_text_or_paths_to_an_actor_without_payloa
         await world.get(f"/v1/runs/{run}/spans", actor),
         await world.get("/v1/analytics/summary", actor),
         await world.get("/v1/audit", actor),
+        await world.get(f"/v1/runs/{run}/evaluations", actor),
+        await world.get("/v1/evaluators", actor),
     ]
     for event_id in await _seeded_event_ids(world):
         seen.append(await world.get(f"/v1/runs/{run}/events/{event_id}", actor))
@@ -88,6 +90,26 @@ async def test_no_route_returns_command_text_or_paths_to_an_actor_without_payloa
     for text in texts:
         for canary in CONTENT_CANARIES:
             assert canary not in text
+
+
+@pytest.mark.parametrize("actor", WITHHELD_FROM)
+async def test_evaluation_scores_stay_visible_but_judge_text_and_config_do_not(
+    world: World, actor: str
+) -> None:
+    items = (await world.get(f"/v1/runs/{world.acme.run_id}/evaluations", actor)).json()["items"]
+    (judge,) = [i for i in items if i["kind"] == "llm_judge"]
+    assert (judge["score"], judge["label"], judge["ground_truth"]) == (0.5, "ok", False)
+    assert judge["explanation"] is None and judge["explanation_withheld"] is True
+    assert "raw" not in judge["metadata"] and judge["metadata_withheld"] == ["raw"]
+    assert judge["metadata"]["judge_model"] == "fake-judge-1"
+
+
+@pytest.mark.parametrize("actor", SEES_CONTENT)
+async def test_actors_with_payload_read_see_judge_explanations(world: World, actor: str) -> None:
+    items = (await world.get(f"/v1/runs/{world.acme.run_id}/evaluations", actor)).json()["items"]
+    (judge,) = [i for i in items if i["kind"] == "llm_judge"]
+    assert judge["explanation"].startswith("EXPLCANARY") and judge["explanation_withheld"] is False
+    assert judge["metadata"]["raw"].startswith("EXPLCANARY")
 
 
 @pytest.mark.parametrize("actor", WITHHELD_FROM)

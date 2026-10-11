@@ -1282,6 +1282,243 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "EvaluationOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fixed text of a failure; needs `payload.read`.",
+            "title": "Error"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "evaluator_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluator Id"
+          },
+          "evaluator_name": {
+            "title": "Evaluator Name",
+            "type": "string"
+          },
+          "evaluator_version": {
+            "title": "Evaluator Version",
+            "type": "string"
+          },
+          "evidence_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Event Ids",
+            "type": "array"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null (`explanation_withheld`) for human/judge text without `payload.read`.",
+            "title": "Explanation"
+          },
+          "explanation_withheld": {
+            "title": "Explanation Withheld",
+            "type": "boolean"
+          },
+          "ground_truth": {
+            "description": "False for model judges: an opinion, not a fact.",
+            "title": "Ground Truth",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "implementation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implementation"
+          },
+          "kind": {
+            "enum": [
+              "deterministic",
+              "metric",
+              "human",
+              "llm_judge"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "latest": {
+            "description": "The newest row of its evaluator on this run.",
+            "title": "Latest",
+            "type": "boolean"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Judge model, template version, tokens and cost; `raw` needs `payload.read`.",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "metadata_withheld": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Metadata Withheld",
+            "type": "array"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "description": "`pending` rows whose job was dead-lettered, or that waited past the stale limit with no job, read as `failed` with `error_code` `JOB_FAILED` (no write).",
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "evaluator_id",
+          "evaluator_name",
+          "evaluator_version",
+          "kind",
+          "implementation",
+          "ground_truth",
+          "state",
+          "latest",
+          "score",
+          "label",
+          "explanation",
+          "explanation_withheld",
+          "metrics",
+          "evidence_event_ids",
+          "metadata",
+          "metadata_withheld",
+          "error_code",
+          "error",
+          "created_at",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "EvaluationOut",
+        "type": "object"
+      },
+      "EvaluationPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "truncated": {
+            "description": "True when older rows were left out (newest first).",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "truncated"
+        ],
+        "title": "EvaluationPage",
+        "type": "object"
+      },
       "EvaluatorIn": {
         "additionalProperties": false,
         "properties": {
@@ -3964,6 +4201,21 @@
         "title": "ToolReliability",
         "type": "object"
       },
+      "TriggerIn": {
+        "additionalProperties": false,
+        "properties": {
+          "evaluator_id": {
+            "pattern": "^evr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "title": "Evaluator Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluator_id"
+        ],
+        "title": "TriggerIn",
+        "type": "object"
+      },
       "UserOut": {
         "properties": {
           "email": {
@@ -3992,6 +4244,57 @@
           "name"
         ],
         "title": "UserOut",
+        "type": "object"
+      },
+      "VerdictIn": {
+        "additionalProperties": false,
+        "properties": {
+          "evaluator_id": {
+            "description": "A `human` evaluator.",
+            "pattern": "^evr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "title": "Evaluator Id",
+            "type": "string"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "label": {
+            "description": "One of the evaluator's `allowed_labels`.",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Label",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "evaluator_id",
+          "label"
+        ],
+        "title": "VerdictIn",
         "type": "object"
       },
       "Window": {
@@ -8283,6 +8586,244 @@
         ]
       }
     },
+    "/v1/runs/{run_id}/evaluations": {
+      "get": {
+        "description": "Newest first; `latest` marks the newest row of each evaluator. Scores, labels and states are visible to every reader; explanations of human and model-judge rows, `metadata.raw` and failure text need `payload.read`. Model-judge rows carry `ground_truth: false`.",
+        "operationId": "list_evaluations_v1_runs__run_id__evaluations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or the evaluator does not fit the run or the call."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List a run's evaluations",
+        "tags": [
+          "evaluations"
+        ]
+      },
+      "post": {
+        "description": "Inserts a `pending` evaluation and queues one `evaluate_run` job for the run. While a live evaluation of the same evaluator exists it is returned (200) and nothing is created. At most 20 results per evaluator and run (`409 LIMIT_REACHED`). The run is never changed.",
+        "operationId": "trigger_evaluation_v1_runs__run_id__evaluations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationOut"
+                }
+              }
+            },
+            "description": "A pending evaluation of this evaluator already exists; returned as is."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or the evaluator does not fit the run or the call."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Start an evaluator on a run",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
     "/v1/runs/{run_id}/events": {
       "get": {
         "description": "Ordered by sequence when every event of the run has one, otherwise by time (`ordering_mode`). Payloads are omitted; fetch one event for its payload.",
@@ -8962,6 +9503,126 @@
         "summary": "Stream a run's events live (SSE)",
         "tags": [
           "streams"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/verdicts": {
+      "post": {
+        "description": "A person's verdict against a `human` evaluator: terminal at insert, never edited (a correction is a newer row). The label must be one of the evaluator's `allowed_labels`. At most 50 verdicts per run. Audited without the explanation.",
+        "operationId": "record_verdict_v1_runs__run_id__verdicts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerdictIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or the evaluator does not fit the run or the call."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Record a human verdict",
+        "tags": [
+          "evaluations"
         ]
       }
     }
