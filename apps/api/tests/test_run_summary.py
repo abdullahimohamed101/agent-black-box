@@ -196,7 +196,7 @@ def test_any_arrival_order_gives_the_same_derivation(seed: int) -> None:
 def test_deriving_twice_is_stable_and_the_version_is_recorded() -> None:
     events = rich_run()
     assert derive_run(events) == derive_run(events)
-    assert SUMMARY_VERSION == 2
+    assert SUMMARY_VERSION == 3  # 4 after Phase 9 (3) merges first; see runs/summary.py
 
 
 def test_no_events_is_a_programming_error() -> None:

@@ -12,6 +12,7 @@
     python -m abb_api.cli list-pricing --workspace acme
     python -m abb_api.cli rebuild-costs --workspace acme [--project p] [--since 2026-10-01]
     python -m abb_api.cli refresh-analytics --workspace acme [--since 2026-10-01]
+    python -m abb_api.cli search-rebuild --workspace acme [--project p] [--since 2026-10-01]
     python -m abb_api.cli add-member --workspace acme --email you@example.com --role OWNER
     python -m abb_api.cli remove-member --workspace acme --email you@example.com
     python -m abb_api.cli list-members --workspace acme
@@ -61,6 +62,8 @@ from abb_api.ids import public_id
 from abb_api.jobs.outbox import JobQueue, OutboxRepository
 from abb_api.projects.repository import ProjectRepository
 from abb_api.runs.repository import RunRepository
+from abb_api.runs.summary import SUMMARY_VERSION
+from abb_api.search.repository import RunSearchRepository
 from abb_api.tenancy import TenantContext
 from abb_api.workspaces import Workspace, WorkspaceProvisioning
 from abb_api.workspaces.members import MAX_MEMBERS, Email
@@ -72,6 +75,8 @@ SEED_KEY_NAME = "dev-seed"
 SEED_OWNER_EMAIL = "owner@local.test"  # a local-only identity: the fake provider accepts any email
 ROLES = ("OWNER", "ADMIN", "DEVELOPER", "VIEWER", "SECURITY", "BILLING")
 MAX_DEV_SESSION_HOURS = 24.0
+SEARCH_REBUILD_MAX = 10_000
+SEARCH_REBUILD_BATCH = 1_000
 DEFAULT_KEY_FILE = Path(".local/dev-api-key")
 
 
@@ -161,6 +166,16 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild.add_argument("--project", help="project slug")
     rebuild.add_argument("--since", type=_instant, help="only runs started at or after this")
     rebuild.add_argument("--limit", type=int, default=10_000)
+
+    search_rebuild = sub.add_parser(
+        "search-rebuild",
+        help="index runs that have no search document yet (re-derives them, so cost lines are "
+        "rewritten and analytics refreshes queued: a one-off)",
+    )
+    search_rebuild.add_argument("--workspace", required=True, help="workspace slug")
+    search_rebuild.add_argument("--project", help="project slug")
+    search_rebuild.add_argument("--since", type=_instant, help="only runs started at or after this")
+    search_rebuild.add_argument("--limit", type=int, default=10_000)
 
     refresh = sub.add_parser(
         "refresh-analytics",
@@ -548,6 +563,30 @@ async def run(
                     print(
                         f"WARNING: stopped at --limit {args.limit}; older runs were NOT queued. "
                         "Narrow the range with --since / --project or raise --limit and run again.",
+                        file=err,
+                    )
+            elif args.command == "search-rebuild":
+                ws = await _workspace(conn, args.workspace)
+                tenant = TenantContext(ws.id)
+                project_id = await _project_id(conn, ws, args.project) if args.project else None
+                limit = max(1, min(args.limit, SEARCH_REBUILD_MAX))
+                run_ids = await RunSearchRepository(conn, tenant).unindexed_run_ids(
+                    project_id=project_id,
+                    since=args.since,
+                    version=SUMMARY_VERSION,
+                    limit=limit,
+                )
+                queued = 0
+                for start in range(0, len(run_ids), SEARCH_REBUILD_BATCH):
+                    queued += await OutboxRepository(conn, tenant).enqueue_summarize(
+                        run_ids[start : start + SEARCH_REBUILD_BATCH]
+                    )
+                await _audit(conn, ws.id, "search.rebuild", queued=queued, matched=len(run_ids))
+                print(f"queued {queued} of {len(run_ids)} run(s) for indexing", file=err)
+                if len(run_ids) >= limit:
+                    print(
+                        f"WARNING: stopped at --limit {limit}; older runs were NOT queued. "
+                        "Run again after the worker has drained the queue.",
                         file=err,
                     )
             elif args.command == "refresh-analytics":

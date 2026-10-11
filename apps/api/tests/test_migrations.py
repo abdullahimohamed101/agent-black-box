@@ -38,6 +38,18 @@ async def table_names(url: str) -> set[str]:
     return names
 
 
+async def index_names(url: str, table: str) -> set[str]:
+    engine = create_async_engine(url, poolclass=NullPool)
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = :t"),
+            {"t": table},
+        )
+        names = {r[0] for r in rows}
+    await engine.dispose()
+    return names
+
+
 def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
     assert revisions() == [
         "0001",
@@ -57,6 +69,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0045",
         "0046",
         "0047",
+        "0080",
     ]
 
 
@@ -104,3 +117,22 @@ def test_a_database_at_0044_upgrades_to_head_and_back_to_0044() -> None:
         assert {"sessions", "login_states", "invitations", "audit_log"} <= after - before
         alembic(url, "downgrade", "0044")
         assert asyncio.run(table_names(url)) == before
+
+
+def test_0080_creates_the_search_table_and_drops_it_again() -> None:
+    """Phase 16: an empty derived table with its five indexes; the parent keeps working."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0047")
+        assert "run_search" not in asyncio.run(table_names(url))
+        alembic(url, "upgrade", "0080")
+        assert "run_search" in asyncio.run(table_names(url))
+        assert asyncio.run(index_names(url, "run_search")) == {
+            "run_search_pkey",
+            "ix_run_search_project_started",
+            "ix_run_search_meta",
+            "ix_run_search_content",
+            "ix_run_search_event_types",
+            "ix_run_search_tools",
+        }
+        alembic(url, "downgrade", "0047")
+        assert "run_search" not in asyncio.run(table_names(url))

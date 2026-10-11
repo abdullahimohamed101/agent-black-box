@@ -14,7 +14,9 @@ from abb_api.cost.repository import CostRepository
 from abb_api.ingestion.store import PgEventStore
 from abb_api.jobs.outbox import REFRESH_ANALYTICS_DAY, SUMMARIZE_RUN, Job, OutboxRepository
 from abb_api.runs.repository import RunRepository
-from abb_api.runs.summary import derive_run
+from abb_api.runs.summary import SUMMARY_VERSION, derive_run
+from abb_api.search.document import build_document, distinct_agents
+from abb_api.search.repository import RunSearchRepository
 from abb_api.tenancy import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -51,6 +53,25 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
         derived = derive_run(events, engine)
         skipped = await runs.apply_derivation(run_id, derived, project_id)
         await costs.replace_run_lines(run_id, project_id, derived.started_at, derived.cost_lines)
+        # The search document is derived in the same transaction and written only if it changed,
+        # so a debounced re-summarisation of an active run rarely touches the GIN indexes.
+        search = RunSearchRepository(conn, tenant)
+        facts = await search.run_facts(run_id)
+        assert facts is not None  # the run row is locked, so it exists
+        document = build_document(
+            events,
+            run_name=facts.name,
+            run_metadata=facts.metadata,
+            agents=distinct_agents(events),
+            error_count=int(derived.summary["error_count"]),
+        )
+        await search.upsert_if_changed(
+            run_id=run_id,
+            project_id=project_id,
+            started_at=derived.started_at,
+            version=SUMMARY_VERSION,
+            document=document,
+        )
         # Both the day the run was in and the day it is in now need their rollup rewritten.
         outbox = OutboxRepository(conn, tenant)
         for day in {derived.started_at.date(), *([before.date()] if before else [])}:

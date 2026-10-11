@@ -21,9 +21,10 @@ from abb_api.cost.builtin import builtin_price_book
 from abb_api.cost.engine import CostEngine, CostLine, cost_summary
 from abb_api.cost.retries import retry_call_ids
 
-SUMMARY_VERSION = (
-    2  # 2: cost comes from the CostEngine (ADR-040) and carries retry attribution (ADR-042)
-)
+# 2: cost comes from the CostEngine (ADR-040) and carries retry attribution (ADR-042)
+# 3: runs gain a search document (ADR-100). Phase 9 also uses 3: when Phase 9 merges first, this
+#    phase sets 4 on rebase (merged value + 1, never "take the higher").
+SUMMARY_VERSION = 3
 
 _ERROR_STATUSES = {EventStatus.ERROR, EventStatus.TIMEOUT}
 _RUN_COMPLETED_STATUS = {
