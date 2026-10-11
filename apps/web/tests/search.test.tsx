@@ -527,9 +527,11 @@ describe("fixture search", () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<Harness />);
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(8));
+    // Ten fixture runs and a header row; two of them (the billing migration and the failure
+    // chain) failed.
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(11));
     await user.type(screen.getByRole("searchbox", { name: "Search" }), "status:failed{Enter}");
-    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(3));
     await user.clear(screen.getByRole("searchbox", { name: "Search" }));
     await user.type(screen.getByRole("searchbox", { name: "Search" }), "command:curl{Enter}");
     expect(await screen.findByRole("alert")).toHaveTextContent("fixture mode");

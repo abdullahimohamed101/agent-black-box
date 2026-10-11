@@ -79,7 +79,8 @@ test("search: chips from the server parse, matched column, facets, refusal and k
   await page.screenshot({ path: `${SHOTS16}/fixtures-search-error.png`, fullPage: true });
   await box.fill("status:failed");
   await box.press("Enter");
-  await expect(page.locator("tbody tr")).toHaveCount(1);
+  // two fixture runs failed: the billing migration and the failure chain (Phase 10)
+  await expect(page.locator("tbody tr")).toHaveCount(2);
   // mobile: no horizontal scroll
   await page.setViewportSize({ width: 375, height: 812 });
   const overflow = await page.evaluate(
