@@ -85,6 +85,12 @@ test("the runs list shows a findings column as text", async ({ page }) => {
   await expect(row("looping").getByTestId("findings-cell")).toContainText(/critical|warning|info/);
   await expect(row("healthy").getByTestId("findings-cell")).toContainText("No findings");
   await page.screenshot({ path: `${SHOTS}/e2e-runs-list.png`, fullPage: true });
+  // Phase 16 search sits beside the findings column: a search keeps the column on every result row
+  await page.getByRole("searchbox", { name: "Search" }).fill("status:failed");
+  await page.getByRole("searchbox", { name: "Search" }).press("Enter");
+  await expect(page.getByRole("list", { name: "Search terms" })).toContainText("status:failed");
+  await expect(row("failing").getByTestId("findings-cell")).toContainText(/critical|warning|info/);
+  await expect(row("healthy")).toHaveCount(0);
 });
 
 test("a VIEWER sees the same findings as the owner and no withheld content", async ({

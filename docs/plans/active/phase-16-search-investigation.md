@@ -6,7 +6,7 @@ Branch: `feature/phase-16-search-investigation` (from `main` c212058; worktree `
 Depends on: Phase 2 (runs query API, cursors, summarizer), Phase 7 (typed run columns `cost_usd`, `retry_count`, ADR-043), Phase 15 (`authorize()`, `payload.read`, read-time withholding in `runs/content.py`, the route registry and canary tests); on rebase: Phase 9 (`SUMMARY_VERSION` 3, `summary["agents"]`), Phase 10 (migration 0060, `summary_states(job_type=...)`, `RunOut.findings`)
 Spec refs: §77 (query and search architecture), §152 (search grammar), §34 (search and investigation examples), §10.10 (search use cases), §77.1 "fast, explainable, and permission-safe", §93 (data classes: paths, commands, prompts are Class 2), §90.3 (cross-tenant access), §62 INV-2/3/7, §57.2 (deferred stores need a measured trigger)
 ADRs: ADR-002 (structural tenancy), ADR-012 (derived state through the outbox), ADR-041/043 (typed derived columns; aggregates only where measured slow), ADR-061 (one `authorize()` path; command text and file paths are content). New: ADR-100, ADR-101 (drafted in the appendix; written at step 9).
-Migration ids: **0080** only. Chain today `0047 -> 0080`; after Phase 10 merges (before this phase): `0080.down_revision = "0060"` (see "Merge notes"). Reserved for this phase: 0080-0089.
+Migration ids: **0080** only. Chain: `0047 -> 0060 -> 0080` (Phase 10 merged; `0080.down_revision = "0060"`, see "Merge notes"). Reserved for this phase: 0080-0089.
 Known issues: none closed; adds KI-080..083 (Phases 9-11 use KI-084..086, 090..099, 100..109).
 
 ## Decisions needed from the user (each with a recommended default)
@@ -753,3 +753,9 @@ no `_enqueue_detect` neighbour, and RunOut/RunPage field order is the Phase 9 on
 | AC-5 | `uv run pytest tests/authz` | 119 passed (2:48) | PASS |
 | AC-10 web | `pnpm exec vitest run` / eslint / prettier / tsc / `next build` / `gen:api:check` | 541 passed (31 files); the rest clean; fixtures Playwright 14 passed; `scripts/auth-e2e.sh` 13 passed | PASS |
 | AC-14 quality gate | `uv run pytest --ignore=tests/authz --ignore=tests/search`; ruff, mypy (192 files), `openapi --check` | 745 passed (3:39); clean | PASS |
+
+### Merge with Phase 10 (done, 2026-10-11)
+`origin/main` (Phase 10) merged into this branch with `merge.directoryRenames=false`. Applied as written above: 0080 on 0060 (the branch's round-trip test downgrades 0080 to 0060), the `run_search`
+upsert before `_enqueue_detect`, `findings` before `matched` in `RunOut`, `SUMMARY_VERSION` 4, route counts unchanged (37/32). Consequences of Phase 10's three new fixture runs (ten in all, two failed):
+fixture-mode search tests now expect 11 rows (header + 10) and 3 for `status:failed`, the fixtures Playwright search test expects 2 rows, `scripts/multiagent-e2e.sh` pins `summary_version == 4`, and
+`findings.spec.ts` now also searches (`status:failed`) and checks the findings column on the result rows.
