@@ -28,13 +28,7 @@ API_KEY_REVOKE: Final = "api_key.revoke"
 AUDIT_READ: Final = "audit.read"
 BILLING_READ: Final = "billing.read"
 
-# Reserved for later phases (14: policies and approvals, 19: retention). Granted to nobody, so the
-# names exist in one place and a future phase only has to add grants.
-POLICY_WRITE: Final = "policy.write"
-APPROVAL_DECIDE: Final = "approval.decide"
-RETENTION_WRITE: Final = "retention.write"
-
-# Phase 11 (evaluations, experiments): defined first, granted with the routes (ADR-090).
+# Evaluations and experiments (Phase 11, ADR-090).
 EVALUATION_READ: Final = "evaluation.read"
 EVALUATION_RUN: Final = "evaluation.run"
 EVALUATION_LABEL: Final = "evaluation.label"
@@ -42,20 +36,21 @@ EVALUATOR_WRITE: Final = "evaluator.write"
 EXPERIMENT_READ: Final = "experiment.read"
 EXPERIMENT_WRITE: Final = "experiment.write"
 
-RESERVED_ACTIONS: Final = frozenset(
-    {
-        POLICY_WRITE, APPROVAL_DECIDE, RETENTION_WRITE,
-        EVALUATION_READ, EVALUATION_RUN, EVALUATION_LABEL, EVALUATOR_WRITE,
-        EXPERIMENT_READ, EXPERIMENT_WRITE,
-    }
-)  # fmt: skip
+# Reserved for later phases (14: policies and approvals, 19: retention). Granted to nobody, so the
+# names exist in one place and a future phase only has to add grants.
+POLICY_WRITE: Final = "policy.write"
+APPROVAL_DECIDE: Final = "approval.decide"
+RETENTION_WRITE: Final = "retention.write"
+
+RESERVED_ACTIONS: Final = frozenset({POLICY_WRITE, APPROVAL_DECIDE, RETENTION_WRITE})
 
 ALL_ACTIONS: Final = frozenset(
     {
         WORKSPACE_READ, PROJECT_READ, PROJECT_WRITE, MEMBER_READ, MEMBER_WRITE, MEMBER_WRITE_OWNER,
         INVITE_READ, INVITE_WRITE, RUN_READ, RUN_WRITE, EVENT_WRITE, PAYLOAD_READ, ARTIFACT_READ,
         ARTIFACT_WRITE, ANALYTICS_READ, PRICING_READ, PRICING_WRITE, API_KEY_READ, API_KEY_CREATE,
-        API_KEY_REVOKE, AUDIT_READ, BILLING_READ,
+        API_KEY_REVOKE, AUDIT_READ, BILLING_READ, EVALUATION_READ, EVALUATION_RUN,
+        EVALUATION_LABEL, EVALUATOR_WRITE, EXPERIMENT_READ, EXPERIMENT_WRITE,
     }
 ) | RESERVED_ACTIONS  # fmt: skip
 

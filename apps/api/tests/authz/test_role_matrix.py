@@ -107,7 +107,10 @@ def allowed_codes(actor: str, want: str) -> set[str]:
     if want == "404":
         if actor in ("no_membership", "removed_member"):
             return {"WORKSPACE_NOT_FOUND"}
-        return {"RUN_NOT_FOUND", "ARTIFACT_NOT_FOUND"}
+        return {
+            "RUN_NOT_FOUND", "ARTIFACT_NOT_FOUND", "EVALUATOR_NOT_FOUND", "EVALUATION_NOT_FOUND",
+            "EXPERIMENT_NOT_FOUND", "VARIANT_NOT_FOUND",
+        }  # fmt: skip
     return {"WORKSPACE_REQUIRED"}
 
 

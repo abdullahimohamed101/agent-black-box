@@ -13,13 +13,14 @@ from typing import Any
 
 import httpx
 from abb_event_schema.ids import IdKind, new_id
-from sqlalchemy import text
+from sqlalchemy import insert, text
 
 from abb_api.audit.repository import AuditEntry, AuditRepository
 from abb_api.auth import scopes
 from abb_api.auth.repository import ApiKeyRepository, UserRepository
 from abb_api.cost.repository import CostRepository
-from abb_api.ids import new_uuid, public_id
+from abb_api.db import tables as t
+from abb_api.ids import new_uuid, parse_public_id, public_id
 from abb_api.workspaces.repository import InvitationRepository
 from tests.api_fixtures import NOW, Api
 from tests.auth_helpers import add_member, mint_session, remove_member, set_role
@@ -37,7 +38,15 @@ ACME_RUNS, ACME_RUN_COST = 3, 1.5
 COMMAND_CANARY = "CMDCANARY-curl-H-Bearer-s3cr3t"
 PATH_CANARY = "/home/PATHCANARY/.ssh/id_rsa"
 CUSTOM_CANARY = "CUSTOMCANARY-rm-rf"
-CONTENT_CANARIES = (COMMAND_CANARY, PATH_CANARY, CUSTOM_CANARY, "CWDCANARY")
+# Phase 11 (decision 6, D7): a path-bearing evaluator config, a judge rubric and a judge's
+# explanation are content too; no actor without `payload.read` receives them.
+EVAL_PATH_CANARY = "EVALPATHCANARY/secrets/**"
+RUBRIC_CANARY = "RUBRICCANARY-grade-the-secret-plan"
+EXPLANATION_CANARY = "EXPLCANARY-the-agent-read-the-secret"
+CONTENT_CANARIES = (
+    COMMAND_CANARY, PATH_CANARY, CUSTOM_CANARY, "CWDCANARY",
+    EVAL_PATH_CANARY, RUBRIC_CANARY, EXPLANATION_CANARY,
+)  # fmt: skip
 
 
 @dataclass
@@ -202,6 +211,76 @@ async def _upload(api: Api, token: str, run_id: str, name: str, body: str) -> st
     return artifact_id
 
 
+async def _seed_evaluations(
+    api: Api, tenant: Any, project: str, run_ids: list[str], label: str
+) -> tuple[str, str, str, str, str]:
+    """An evaluator with path-bearing config, a judge evaluator whose completed evaluation has a
+    canary explanation, and an experiment with a baseline variant holding a run (no routes needed:
+    plain inserts). `label` carries the globex canary into every free-text field."""
+    ws, project_uuid = tenant.context.workspace_id, tenant.project_uuids[project]
+    run = parse_public_id(IdKind.RUN, run_ids[0])
+    assert run is not None
+    evaluator, judge = new_uuid(IdKind.EVALUATOR), new_uuid(IdKind.EVALUATOR)
+    evaluation, experiment = new_uuid(IdKind.EVALUATION), new_uuid(IdKind.EXPERIMENT)
+    variant, completed = new_uuid(IdKind.VARIANT), api.clock()
+    async with api.engine.begin() as conn:
+        await conn.execute(
+            insert(t.evaluators),
+            [
+                {
+                    "workspace_id": ws, "id": evaluator, "project_id": project_uuid,
+                    "name": f"{label.lower()}-paths", "kind": "deterministic",
+                    "implementation": "files_touched_only", "version": 1,
+                    "config": {"allowed_globs": [EVAL_PATH_CANARY, f"{label}/**"]},
+                    "description": label,
+                },
+                {
+                    "workspace_id": ws, "id": judge, "project_id": None,
+                    "name": f"{label.lower()}-judge", "kind": "llm_judge",
+                    "implementation": "judge", "version": 1,
+                    "config": {"rubric": f"{RUBRIC_CANARY} {label}", "allowed_labels": ["ok"]},
+                    "description": label,
+                },
+            ],
+        )  # fmt: skip
+        await conn.execute(
+            insert(t.evaluations).values(
+                workspace_id=ws, id=evaluation, run_id=run, evaluator_id=judge,
+                evaluator_name=f"{label.lower()}-judge", evaluator_version="1", kind="llm_judge",
+                implementation="judge", state="completed", score=0.5, label="ok",
+                explanation=f"{EXPLANATION_CANARY} {label}",
+                metadata={"raw": f"{EXPLANATION_CANARY} {label}", "judge_model": "fake-judge-1"},
+                config_snapshot={"rubric": f"{RUBRIC_CANARY} {label}"},
+                started_at=completed, completed_at=completed,
+            )
+        )  # fmt: skip
+        await conn.execute(
+            insert(t.experiments).values(
+                workspace_id=ws, id=experiment, project_id=project_uuid,
+                name=f"{label} experiment", description=label, dataset_label=label,
+                evaluator_ids=[public_id(IdKind.EVALUATOR, evaluator)],
+            )
+        )  # fmt: skip
+        await conn.execute(
+            insert(t.experiment_variants).values(
+                workspace_id=ws, id=variant, experiment_id=experiment, name=f"{label}-baseline",
+                role="baseline", config={"model": f"{label}-model"},
+            )
+        )  # fmt: skip
+        await conn.execute(
+            insert(t.experiment_runs).values(
+                workspace_id=ws, experiment_id=experiment, variant_id=variant, run_id=run
+            )
+        )
+    return (
+        public_id(IdKind.EVALUATOR, evaluator),
+        public_id(IdKind.EVALUATION, evaluation),
+        public_id(IdKind.EXPERIMENT, experiment),
+        public_id(IdKind.VARIANT, variant),
+        public_id(IdKind.EVALUATOR, judge),
+    )
+
+
 async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[World]:
     async with api.engine.begin() as conn:
         for name, tenant, kind in (
@@ -267,6 +346,9 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             )
         artifact_id = await _upload(api, art_token, run_ids[0], f"{label}.txt", f"{label} output")
         public_project = tenant.projects["alpha" if name == "acme" else "p"]
+        seeded = await _seed_evaluations(
+            api, tenant, "alpha" if name == "acme" else "p", run_ids, label
+        )
         sides[name] = Side(
             name=name,
             workspace_id=tenant.workspace_id,
@@ -277,8 +359,14 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             user_id=public_id(IdKind.USER, member.id),
             invitation_id=public_id(IdKind.INVITATION, invitation_id),
             key_id=seeded_key.stored.key_id,
+            evaluator_id=seeded[0],
+            evaluation_id=seeded[1],
+            experiment_id=seeded[2],
+            variant_id=seeded[3],
+            with_run_id=run_ids[1],
             every_id=frozenset(
                 {
+                    *seeded,
                     tenant.workspace_id,
                     public_project,
                     artifact_id,

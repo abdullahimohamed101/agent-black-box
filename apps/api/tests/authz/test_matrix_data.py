@@ -19,30 +19,40 @@ KEY_BASE = {"workspace.read", "project.read"}
 EXPECTED_SCOPE_ACTIONS: dict[str, set[str]] = {
     "events:write": KEY_BASE | {"event.write", "run.write"},
     "runs:read": KEY_BASE
-    | {"run.read", "analytics.read", "payload.read", "artifact.read", "pricing.read"},
+    | {
+        "run.read",
+        "analytics.read",
+        "payload.read",
+        "artifact.read",
+        "pricing.read",
+        "evaluation.read",
+        "experiment.read",
+    },
     "artifacts:write": KEY_BASE | {"artifact.write"},
     "policy:check": KEY_BASE,
 }
 
 _EVERYONE = {"workspace.read", "project.read", "member.read", "pricing.read"}
 _CONTENT = {"payload.read", "artifact.read"}
+_EVAL_READ = {"evaluation.read", "experiment.read"}
+_EVAL_WRITE = {"evaluation.run", "evaluation.label", "evaluator.write", "experiment.write"}
 EXPECTED_ROLE_ACTIONS: dict[str, set[str]] = {
-    "OWNER": _EVERYONE | _CONTENT
+    "OWNER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE
     | {
         "run.read", "analytics.read", "project.write", "api_key.read", "api_key.create",
         "api_key.revoke", "member.write", "member.write_owner", "invite.read", "invite.write",
         "pricing.write", "audit.read", "billing.read",
     },
-    "ADMIN": _EVERYONE | _CONTENT
+    "ADMIN": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE
     | {
         "run.read", "analytics.read", "project.write", "api_key.read", "api_key.create",
         "api_key.revoke", "member.write", "invite.read", "invite.write", "pricing.write",
         "audit.read", "billing.read",
     },
-    "DEVELOPER": _EVERYONE | _CONTENT
+    "DEVELOPER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE
     | {"run.read", "analytics.read", "api_key.read", "api_key.create"},
-    "VIEWER": _EVERYONE | {"run.read", "analytics.read"},
-    "SECURITY": _EVERYONE | _CONTENT
+    "VIEWER": _EVERYONE | _EVAL_READ | {"run.read", "analytics.read"},
+    "SECURITY": _EVERYONE | _CONTENT | _EVAL_READ
     | {"run.read", "analytics.read", "api_key.read", "api_key.revoke", "audit.read"},
     "BILLING": _EVERYONE | {"analytics.read", "pricing.write", "billing.read"},
 }  # fmt: skip
@@ -109,6 +119,16 @@ def test_every_case_demands_a_real_action_that_some_actor_holds() -> None:
     for case in CASES.values():
         assert case.action in a.ALL_ACTIONS
         assert case.action in held, f"{case.key}: nobody can ever call this route"
+
+
+def test_evaluating_is_for_people_who_build_and_never_for_keys_or_readers() -> None:
+    """Decision 1: only OWNER, ADMIN and DEVELOPER start evaluators or record verdicts."""
+    for role in ("OWNER", "ADMIN", "DEVELOPER"):
+        assert _EVAL_WRITE <= role_actions(role), role
+    for role in ("VIEWER", "SECURITY", "BILLING"):
+        assert not _EVAL_WRITE & role_actions(role), role
+    assert not any(_EVAL_WRITE & set(v) for v in SCOPE_ACTIONS.values())
+    assert not _EVAL_READ & role_actions("BILLING")
 
 
 def test_payload_read_separates_content_from_metadata() -> None:

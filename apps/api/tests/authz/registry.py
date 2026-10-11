@@ -57,6 +57,15 @@ class Side:
     user_id: str  # another member of the workspace (not a role actor)
     invitation_id: str
     key_id: str  # an API key of the workspace (made by the CLI: no creator)
+    # Phase 11: a path-bearing evaluator, a model-judge evaluator with a completed evaluation
+    # (its explanation carries a canary), an experiment with a baseline variant holding a run, and
+    # a second run of the tenant (the `?with=` of a comparison; a Side field because the id
+    # parameter's name must be an attribute of the Side).
+    evaluator_id: str
+    evaluation_id: str
+    experiment_id: str
+    variant_id: str
+    with_run_id: str
     every_id: frozenset[str]  # every id the tenant owns (for leak scans)
 
 
@@ -98,6 +107,11 @@ def _ids(side: Side, overrides: dict[str, str]) -> dict[str, str]:
         "run_id": side.run_id,
         "event_id": side.event_id,
         "artifact_id": side.artifact_id,
+        "evaluator_id": side.evaluator_id,
+        "evaluation_id": side.evaluation_id,
+        "experiment_id": side.experiment_id,
+        "variant_id": side.variant_id,
+        "with_run_id": side.with_run_id,
         **overrides,
     }
 

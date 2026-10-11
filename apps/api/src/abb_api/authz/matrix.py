@@ -29,23 +29,25 @@ BILLING: Final = "BILLING"
 ALL_ROLES: Final = (OWNER, ADMIN, DEVELOPER, VIEWER, SECURITY, BILLING)
 
 _EVERYONE = frozenset({a.WORKSPACE_READ, a.PROJECT_READ, a.MEMBER_READ, a.PRICING_READ})
-_READ_RUNS = frozenset({a.RUN_READ})
+_READ_RUNS = frozenset({a.RUN_READ, a.EVALUATION_READ, a.EXPERIMENT_READ})
+# People who may start evaluators, record verdicts and shape experiments (Phase 11, decision 1).
+_EVALUATE = frozenset({a.EVALUATION_RUN, a.EVALUATION_LABEL, a.EVALUATOR_WRITE, a.EXPERIMENT_WRITE})
 _CONTENT = frozenset({a.PAYLOAD_READ, a.ARTIFACT_READ})
 
 ROLE_GRANTS: Final[Mapping[str, frozenset[str | Own]]] = {
-    OWNER: _EVERYONE | _READ_RUNS | _CONTENT
+    OWNER: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
     | {
         a.ANALYTICS_READ, a.PROJECT_WRITE, a.API_KEY_READ, a.API_KEY_CREATE, a.API_KEY_REVOKE,
         a.MEMBER_WRITE, a.MEMBER_WRITE_OWNER, a.INVITE_READ, a.INVITE_WRITE, a.PRICING_WRITE,
         a.AUDIT_READ, a.BILLING_READ,
     },
-    ADMIN: _EVERYONE | _READ_RUNS | _CONTENT
+    ADMIN: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
     | {
         a.ANALYTICS_READ, a.PROJECT_WRITE, a.API_KEY_READ, a.API_KEY_CREATE, a.API_KEY_REVOKE,
         a.MEMBER_WRITE, a.INVITE_READ, a.INVITE_WRITE, a.PRICING_WRITE, a.AUDIT_READ,
         a.BILLING_READ,
     },
-    DEVELOPER: _EVERYONE | _READ_RUNS | _CONTENT
+    DEVELOPER: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
     | {a.ANALYTICS_READ, a.API_KEY_READ, a.API_KEY_CREATE, Own(a.API_KEY_REVOKE)},
     # Metadata only: captured content needs payload.read (decision 3).
     VIEWER: _EVERYONE | _READ_RUNS | {a.ANALYTICS_READ},
@@ -62,7 +64,15 @@ _KEY_BASE = frozenset({a.WORKSPACE_READ, a.PROJECT_READ})
 SCOPE_ACTIONS: Final[Mapping[str, frozenset[str]]] = {
     scopes.EVENTS_WRITE: _KEY_BASE | {a.EVENT_WRITE, a.RUN_WRITE},
     scopes.RUNS_READ: _KEY_BASE
-    | {a.RUN_READ, a.ANALYTICS_READ, a.PAYLOAD_READ, a.ARTIFACT_READ, a.PRICING_READ},
+    | {
+        a.RUN_READ,
+        a.ANALYTICS_READ,
+        a.PAYLOAD_READ,
+        a.ARTIFACT_READ,
+        a.PRICING_READ,
+        a.EVALUATION_READ,
+        a.EXPERIMENT_READ,
+    },
     scopes.ARTIFACTS_WRITE: _KEY_BASE | {a.ARTIFACT_WRITE},
     scopes.POLICY_CHECK: _KEY_BASE,
 }
