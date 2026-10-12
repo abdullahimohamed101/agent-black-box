@@ -104,7 +104,7 @@ Evidence vocabulary: VERIFIED (run in this environment, output observed), UNVERI
 | 12 | existing tests pass; modified ones listed | VERIFIED: the table above; web vitest 994/994, fixtures Playwright 197 passed / 60 skipped (`git checkout -- docs/screenshots/phase-{4,9,10,11,15,16}` afterwards) |
 | 13 | `scripts/quality.sh full` green in CI; no open P0/P1 | Review: no P0; P1-1..P1-3 fixed (above). VERIFIED locally: web `tsc`, `eslint`, `prettier --check`, `vitest`, `pnpm build`, `pnpm gen:api:check`; API `ruff check`, `ruff format --check`, `mypy` (263 files), `openapi --check`. `scripts/quality.sh full` itself and the CI run: UNVERIFIED (env) here, left to the PR |
 
-UNVERIFIED (env) after the review fixes (KI-130): the full API suite (a re-run reached 66 % with no failure, then the Docker VM disk filled and PostgreSQL could not write); the `findings`, `multiagent`, `coding`, `eval`, `stream`, `analytics` and `integrations` E2E scripts (each failed at once on the full disk, not on a test). `auth-e2e` ran before the disk filled and passed. Before the review fixes the lead verified the full API suite (1,839 passed in 925 s) and the fixtures suite.
+VERIFIED after the review fixes (lead, 2026-10-12, Docker disk had recovered): the full API suite 1,847 passed in 854 s on the fixed branch; `auth`, `findings`, `multiagent`, `eval`, `stream`, `analytics` and `integrations` E2E scripts exit 0; `coding-e2e` failed twice on a stale header wording regex and on the KI-127 wait (the progress line disappears after the last chunk) and passed (6) after the spec fix in this commit. Not run: `scripts/quality.sh full` as one command (its parts were run separately), `e2e-web-real` and `sdk-e2e` after the fixes.
 
 ## Modified existing tests
 

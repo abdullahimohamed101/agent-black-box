@@ -52,7 +52,7 @@ test("the run reads as a story: read, model, edit, failing tests, retry, edit, p
   expect(flat.slice(pass).join(" ")).toMatch(/Commit.*Push origin fix\/oauth-session-expiry/);
   // recovered: the first error (the failing test command) is named in the detail line, with its step
   await expect(page.getByTestId("headline-detail")).toContainText(
-    /Recovered from shell\.command\.failed, error at step \d+/,
+    /Recovered from shell command failed, error at step \d+/,
   );
   await noSecrets(page);
   await page.screenshot({ path: `${SHOTS}/story.png`, fullPage: true });
@@ -125,7 +125,10 @@ test("a ~220 KB log loads in chunks, with the planted secrets redacted", async (
     await panel.getByRole("button", { name: "Load more" }).click();
     await expect.poll(() => requests.length).toBeGreaterThan(before);
     // wait for the rendered state to move on (KI-127), not a fixed pause: the next chunk has landed in the panel
-    await expect(progress).not.toHaveText(shown);
+    // (after the last chunk the progress line is gone: that counts as moved on)
+    await expect
+      .poll(async () => (await progress.count()) === 0 || (await progress.textContent()) !== shown)
+      .toBe(true);
   }
   const text = (await page.getByLabel("stdout").textContent()) ?? "";
   expect(text.length).toBeGreaterThan(200_000);
