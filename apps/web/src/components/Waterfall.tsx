@@ -52,6 +52,9 @@ type Props = {
   onActivate: (eventId: string) => void;
   onEscape: () => void;
   onJumpToError: () => void;
+  /** Events that just arrived on the live stream (tint) and the one a jump landed on (ring). Decoration only. */
+  newIds?: ReadonlySet<string>;
+  landedId?: string | null;
 };
 
 /** The event a click on this row selects: the span's opener, or its only event. */
@@ -73,6 +76,8 @@ export function Waterfall({
   bounds,
   spanIdOf,
   selectedEventId,
+  newIds,
+  landedId,
   firstErrorId,
   agentFilter,
   onSelect,
@@ -345,7 +350,11 @@ export function Waterfall({
         aria-activedescendant={
           selectedRow && selectedRow.kind !== "lane" ? rowDomId(selectedRow.key) : undefined
         }
-        onKeyDown={onKeyDown}
+        onKeyDown={(e) => {
+          scrollRef.current?.setAttribute("data-nav", "keyboard");
+          onKeyDown(e);
+        }}
+        onPointerDown={() => scrollRef.current?.removeAttribute("data-nav")}
       >
         <div style={{ height: virt.getTotalSize(), position: "relative" }}>
           {virt.getVirtualItems().map((v) => {
@@ -446,6 +455,8 @@ export function Waterfall({
                 data-aggregate={isAgg || undefined}
                 data-root={n.id === ROOT_ID || undefined}
                 data-dim={agentFilter && agent && !agentFilter.has(agent) ? "" : undefined}
+                data-arrived={(span && newIds?.has(span.head.event_id)) || undefined}
+                data-landed={(span && span.head.event_id === landedId) || undefined}
                 data-skewed={n.flags.skewed || undefined}
                 data-unfinished={n.flags.unfinished || undefined}
                 style={style}

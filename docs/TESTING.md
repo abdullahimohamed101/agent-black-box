@@ -64,6 +64,17 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
   against fixtures (compare, experiments, the viewer's views, mobile overflow). The compare fixture pair is generated from the real example by `scripts/gen_compare_fixture.py` (never hand-edited);
   `scripts/bench_compare.py` records the alignment benchmarks (`docs/benchmarks/phase-11-compare.md`).
 
+### UI shell and design pass (Phase 21)
+- **Design contract** (`apps/web/e2e/design.spec.ts`, fixtures build, port 3100): frame geometry at 1440x900 (rail 224 px, top bar 44 px, `main` to the viewport edge), axe (WCAG A/AA, no serious or critical) on 11 routes in both colour
+  schemes, 375 px with no horizontal scroll, the status grammar (one red and one amber element in a failed run's header, radius and shadow scans), the run work area (no document scroll, header at most 190 px, pane at least 480 px beside the
+  inspector, 10,000-event DOM bound), the inspector (flush right, overlay on a phone), the Evidence view (including the viewer: no command text, no `[withheld]`), the runs list, fonts and no third-party request, and the motion layer:
+  with `reducedMotion: "reduce"` `document.getAnimations().length === 0` after load, after opening the inspector and after a view switch; with motion on, nothing animates on first paint on any route, the inspector transition is 180 ms,
+  a hovered row 120 ms and `0s` while the keyboard drives the list. The Phase 21 polish checks (one-row class toolbar at 1440 and 1280, one story marker, the folded context strip, clamped agents, tab counts) live here too.
+- **Screenshots** (`apps/web/e2e/shots.spec.ts`): skipped unless `SHOTS_DIR=before|after` is set, so `test:e2e` never rewrites committed files. `SHOTS_DIR=after pnpm exec playwright test e2e/shots.spec.ts` regenerates the 21 pictures in
+  `docs/screenshots/phase-21/after/` (1x scale, to match the committed `before/` set).
+- **Web unit** additions: `tokens.test.ts` (every text role at least 4.5:1 on every background, both schemes), `app-shell.test.tsx`, `run-header.test.tsx`, `run-layout.test.tsx`, `runs-header.test.tsx`, `evidence.test.ts(x)`.
+- Under heavy machine load (load average above 10) a few timing-sensitive tests flake without a code change: `waterfall-perf`, `coding.spec` "~220 KB log" (a `waitForTimeout(100)` race), `stream.spec` p95 latency (30 s test timeout), `findings.spec`. Re-run once; a flake that repeats is a bug.
+
 ### Auth, workspaces and RBAC (Phase 15)
 - **Authorization generator** (`apps/api/tests/authz/`): `registry.py` lists every route the application serves with the expected outcome for each of
   27 actors (13 key kinds, six roles, and people who are not members, were removed, were demoted, hold an expired or revoked session, send a session as a

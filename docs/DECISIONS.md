@@ -46,3 +46,4 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-090 | Evaluations are derived, versioned records with independent state, computed by the outbox worker in a budgeted thread | 11 | Accepted ([file](decisions/ADR-090-evaluations-derived-versioned-budgeted-worker.md)) |
 | ADR-091 | Model judges behind a one-method provider interface; a deterministic fake is the only shipped provider | 11 | Accepted ([file](decisions/ADR-091-model-judge-interface-fake-provider.md)) |
 | ADR-092 | Run comparison by normalised step alignment, computed on read, bounded by a work budget, role-aware | 11 | Accepted ([file](decisions/ADR-092-run-comparison-normalised-alignment.md)) |
+| ADR-110 | Self-hosted IBM Plex (Latin-1 woff2, OFL 1.1) through `next/font/local`; no runtime font request | 21 | Accepted ([file](decisions/ADR-110-self-hosted-plex-fonts.md)) |

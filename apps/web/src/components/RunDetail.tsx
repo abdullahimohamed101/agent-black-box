@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isActive, type RunOut } from "@/lib/api/types";
 import {
   formatCost,
@@ -14,12 +13,13 @@ import {
 } from "@/lib/format";
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
-import { useEventDetail, useRun, useRunEvents } from "@/lib/queries";
-import { codingKind } from "@/lib/coding";
+import { useEventDetail, useRun, useRunEvents, useRunFindings } from "@/lib/queries";
+import { useTimers } from "@/lib/useTimers";
+import { evidenceRows } from "@/lib/evidence";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
 import { runBounds } from "@/lib/waterfall";
-import { runsPath, type Base } from "@/lib/routes";
+import type { Base } from "@/lib/routes";
 import {
   CLASS_LABELS,
   CLASS_ORDER,
@@ -34,7 +34,9 @@ import {
 } from "@/lib/timeline";
 import { AgentTree } from "./AgentTree";
 import { CodingSummary } from "./CodingSummary";
+import { EvidenceList } from "./EvidenceList";
 import { EventDrawer } from "./EventDrawer";
+import { InspectorResizer } from "./InspectorResizer";
 import { Evaluations } from "./Evaluations";
 import { Findings } from "./Findings";
 import { StatusBadge } from "./StatusBadge";
@@ -43,9 +45,9 @@ import { Timeline } from "./Timeline";
 import { ViewSwitch, type RunView } from "./ViewSwitch";
 import { Waterfall } from "./Waterfall";
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, tone }: { label: string; value: string; tone?: "warn" | "bad" }) {
   return (
-    <div className="stat">
+    <div className="stat" data-tone={tone}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -80,6 +82,23 @@ export function headline(
   }
 }
 
+/**
+ * The headline cut into the parts the header lays out: the lead sentence, the "It recovered from an error." clause (a
+ * successful run that hit an error) and the first-error sentence that carries the inline "Show it" control. The text is
+ * `headline`'s own, so the two can never disagree.
+ */
+export function headlineParts(
+  run: RunOut,
+  errorText: string | null,
+  errorOffsetMs: number | null,
+): { lead: string; recovered: string; error: string | null } {
+  const lead = headline(run, null, null);
+  if (!errorText) return { lead, recovered: "", error: null };
+  const tail = headline(run, errorText, errorOffsetMs).slice(lead.length);
+  const at = tail.indexOf("First error at");
+  return { lead, recovered: at > 0 ? tail.slice(0, at) : " ", error: tail.slice(Math.max(at, 0)) };
+}
+
 /** Live-connection badge. State is spelled out in words and a glyph, never colour alone. */
 function LiveBar({
   state,
@@ -109,7 +128,10 @@ function LiveBar({
       data-tone={status?.tone ?? "work"}
     >
       <span className="live-conn">
-        <span aria-hidden="true">{connection.glyph}</span> {connection.text}
+        <span className="live-glyph" aria-hidden="true">
+          {connection.glyph}
+        </span>{" "}
+        {connection.text}
       </span>
       {status && <span className="live-now">{status.label}</span>}
       {partial && (
@@ -121,9 +143,67 @@ function LiveBar({
   );
 }
 
+/** `matchMedia` as external state; false on the server and where the API is missing (jsdom). */
+/** rem: rail 14 + context column 18 + the pane's minimum 30 (AC8: 480px). The inspector's width is added to it. */
+const FOLD_BASE_REM = 62;
+const DEFAULT_INSPECTOR_REM = 26; // --insp-w in globals.css
+
+function useMedia(query: string): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      if (typeof window.matchMedia !== "function") return () => undefined;
+      const m = window.matchMedia(query);
+      m.addEventListener("change", notify);
+      return () => m.removeEventListener("change", notify);
+    },
+    () => typeof window.matchMedia === "function" && window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
+/**
+ * What the folded context column shows: an icon, a vertical label and the counts a reader looks for first. The counts
+ * are decoration for sighted users (the button keeps its fixed accessible name; the title spells them out).
+ */
+function ContextStripBody({
+  runId,
+  poll,
+  agents,
+}: {
+  runId: string;
+  poll: boolean;
+  agents: number;
+}) {
+  const findings = useRunFindings(runId, poll).data?.items.length ?? 0;
+  return (
+    <span
+      className="strip-body"
+      title={`Run context: ${findings} finding${findings === 1 ? "" : "s"}${agents ? `, ${agents} agents` : ""}`}
+    >
+      <svg className="strip-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" />
+        <path d="M6 2.5v11" stroke="currentColor" />
+      </svg>
+      <span className="strip-label">Context</span>
+      {findings > 0 && (
+        <span className="strip-count" data-tone="warn" aria-hidden="true">
+          {findings}
+        </span>
+      )}
+      {agents > 0 && (
+        <span className="strip-count" aria-hidden="true">
+          {agents}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const NO_IDS: ReadonlySet<string> = new Set();
+const MAX_NEW_IDS = 200;
+
 export function RunDetail({
   runId,
-  base,
   live = true,
 }: {
   runId: string;
@@ -183,14 +263,15 @@ export function RunDetail({
   // Timeline or waterfall, kept in the URL (`?view=waterfall`) so a link to the waterfall is shareable.
   const pathname = usePathname();
   const params = useSearchParams();
-  const paramView: RunView = params?.get("view") === "waterfall" ? "waterfall" : "timeline";
+  const wanted = params?.get("view");
+  const paramView: RunView = wanted === "waterfall" || wanted === "evidence" ? wanted : "timeline";
   const [chosen, setChosen] = useState({ view: paramView, param: paramView });
   if (chosen.param !== paramView) setChosen({ view: paramView, param: paramView }); // the URL changed under us
   const view = chosen.view;
   const changeView = (next: RunView) => {
     setChosen((c) => ({ ...c, view: next }));
     const q = new URLSearchParams(params?.toString() ?? "");
-    if (next === "waterfall") q.set("view", "waterfall");
+    if (next !== "timeline") q.set("view", next);
     else q.delete("view");
     const qs = q.toString();
     window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
@@ -201,6 +282,15 @@ export function RunDetail({
   const [selected, setSelected] = useState<string | null>(null);
   const [drawerEventId, setDrawerEventId] = useState<string | null>(null);
   const timelineWrap = useRef<HTMLDivElement>(null);
+  // The context column (story, agents, findings, evaluations) yields to the inspector only when the pane would
+  // otherwise drop under its minimum width: rail + column + inspector + pane minimum (88rem with the default
+  // inspector). Clicking "Show it", a finding or a story step must not fold the column that was just clicked while
+  // there is room. The strip button and the header toggle override this and the choice sticks until the next toggle.
+  const [contextPref, setContextPref] = useState<"auto" | "open" | "closed">("auto");
+  const [inspectorPx, setInspectorPx] = useState<number | null>(null);
+  const narrow = useMedia(
+    `(max-width: ${inspectorPx ? `${inspectorPx + FOLD_BASE_REM * 16}px` : `${FOLD_BASE_REM + DEFAULT_INSPECTOR_REM}rem`})`,
+  );
 
   const filtered = useMemo(() => filterEvents(events, filters), [events, filters]);
   const rows = useMemo(() => buildRows(filtered, collapsed), [filtered, collapsed]);
@@ -239,10 +329,57 @@ export function RunDetail({
     drawerEventId && !loadedDrawerEvent ? drawerEventId : null,
   );
   const drawerEvent = loadedDrawerEvent ?? remoteDrawer.data;
+  const contextClosed =
+    contextPref === "closed" || (contextPref === "auto" && !!drawerEvent && narrow);
 
+  // Expanding the strip hides the very button that was focused; move focus to the column it opened (it is a tab stop)
+  // rather than let it fall to <body>.
+  const contextRef = useRef<HTMLElement>(null);
+  const focusContext = useRef(false);
+  useEffect(() => {
+    if (!contextClosed && focusContext.current) {
+      focusContext.current = false;
+      contextRef.current?.focus();
+    }
+  }, [contextClosed]);
+
+  const evidence = useMemo(() => evidenceRows(events), [events]);
+
+  // Motion cues (decoration only; all of them are zero-length under prefers-reduced-motion). Events that arrive after
+  // the run has loaded get a short tint; the target of a jump gets a ring. Both are bounded and pruned by timers.
+  const [newIds, setNewIds] = useState<ReadonlySet<string>>(NO_IDS);
+  const [landedId, setLandedId] = useState<string | null>(null);
+  const knownIds = useRef<Set<string> | null>(null);
+  const { later } = useTimers();
+  useEffect(() => {
+    if (!restComplete) return;
+    if (knownIds.current === null) {
+      knownIds.current = new Set(events.map((e) => e.event_id));
+      return;
+    }
+    const known = knownIds.current;
+    const fresh: string[] = [];
+    for (const e of events) {
+      if (!known.has(e.event_id)) {
+        known.add(e.event_id);
+        fresh.push(e.event_id);
+      }
+    }
+    if (fresh.length === 0) return;
+    // From a timer, not the effect body: the tint is a cue after the commit, not state the render depends on.
+    const batch = new Set(fresh.slice(-MAX_NEW_IDS));
+    later(() => {
+      setNewIds(batch);
+      later(() => setNewIds(NO_IDS), 500);
+    }, 0);
+  }, [events, restComplete, later]);
+  const flashLanded = (id: string) => {
+    setLandedId(id);
+    later(() => setLandedId(null), 600);
+  };
   const focusTimeline = () =>
     timelineWrap.current
-      ?.querySelector<HTMLElement>('[role="listbox"], [role="treegrid"]')
+      ?.querySelector<HTMLElement>('[role="listbox"], [role="treegrid"], [role="region"]')
       ?.focus();
   const closeDrawer = useCallback(() => {
     setDrawerEventId(null);
@@ -264,6 +401,7 @@ export function RunDetail({
   };
 
   const jumpTo = (eventId: string) => {
+    flashLanded(eventId);
     // If a filter hides a loaded event, clear filters so the jump always lands.
     const loaded = events.some((e) => e.event_id === eventId);
     if (loaded && !filtered.some((e) => e.event_id === eventId)) setFilters(NO_FILTERS);
@@ -293,195 +431,284 @@ export function RunDetail({
   const allGroups = groupKeys(buildRows(filtered, new Set()));
   const errText = err ? describe(err) || err.event_type : null;
 
+  const retries = num(s["retry_count"]) ?? 0;
+  const errors = num(s["error_count"]) ?? 0;
+  const models = Array.isArray(s["models"]) ? (s["models"] as string[]) : [];
+  const parts = headlineParts(r, errText, err ? Date.parse(err.occurred_at) - t0 : null);
+
   return (
-    <div className="run-detail">
-      <p className="crumbs">
-        <Link href={runsPath(base)}>← Runs</Link>
-      </p>
+    <div className="run-detail app-page">
       <header className="run-head">
-        <h1>{r.name ?? r.id}</h1>
-        <StatusBadge status={r.status} />
-      </header>
-      <p className="headline" data-testid="headline">
-        {headline(r, errText, err ? Date.parse(err.occurred_at) - t0 : null)}
-      </p>
-      {stream.state !== "off" && stream.state !== "ended" && (
-        <LiveBar state={stream.state} status={nowDoing} />
-      )}
-      {r.summary_state !== "current" && (
-        <p role="status" className="notice">
-          {r.summary_state === "processing"
-            ? "Summary is updating; figures below may lag the timeline."
-            : "Summary failed to update and needs an operator; the timeline is still accurate."}
-        </p>
-      )}
-      <dl className="stats" aria-label="Run summary">
-        <Metric label="Duration" value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))} />
-        <Metric label="Cost" value={formatCost(num(s["estimated_cost_usd"]))} />
-        <Metric
-          label="Tokens"
-          value={`${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`}
-        />
-        <Metric label="Model calls" value={formatInt(num(s["llm_calls"]))} />
-        <Metric label="Tool calls" value={formatInt(num(s["tool_calls"]))} />
-        <Metric label="Retries" value={formatInt(num(s["retry_count"]))} />
-        <Metric label="Errors" value={formatInt(num(s["error_count"]))} />
-        <Metric label="Files changed" value={formatInt(num(s["files_modified"]))} />
-      </dl>
-      <p className="muted meta">
-        Agent {r.agent_id ?? "—"} · ordered by {ev.data?.pages[0]?.ordering_mode ?? r.ordering_mode}{" "}
-        · started {formatTimestamp(r.started_at)} · run {r.id}
-        {Array.isArray(s["models"]) && s["models"].length > 0 && (
-          <> · {(s["models"] as string[]).join(", ")}</>
-        )}
-      </p>
-
-      {err && (
-        <div className="banner banner-bad" data-testid="first-error">
-          <span>
-            <strong>✕ First error</strong> at {formatOffset(Date.parse(err.occurred_at) - t0)}:{" "}
-            {errText}
+        <div className="run-title">
+          <h1>{r.name ?? r.id}</h1>
+          <StatusBadge status={r.status} />
+          {retries > 0 && (
+            <span className="tag">
+              {retries} retr{retries === 1 ? "y" : "ies"}
+            </span>
+          )}
+          <span className="id muted" title={r.id}>
+            {r.id.slice(0, 4)}…{r.id.slice(-6)} · {r.agent_id ?? "—"}
+            {models.length > 0 && <> · {models.join(", ")}</>} · ordered by{" "}
+            {ev.data?.pages[0]?.ordering_mode ?? r.ordering_mode} · started{" "}
+            {formatTimestamp(r.started_at)}
           </span>
-          <button type="button" onClick={jumpToError}>
-            Show it
-          </button>
         </div>
-      )}
-
-      <Findings
-        runId={runId}
-        runActive={active}
-        summaryProcessing={r.summary_state === "processing"}
-        onShowEvent={jumpTo}
-      />
-
-      <Evaluations runId={runId} onShowEvent={jumpTo} />
-
-      <CodingSummary
-        events={events}
-        onOpen={(id) => {
-          setFilters(NO_FILTERS);
-          setSelected(id);
-          setDrawerEventId(id);
-        }}
-      />
-
-      {multiAgent && (
-        <AgentTree
-          rows={agents}
-          active={filters.agents ?? null}
-          onToggle={toggleAgent}
-          onClear={() => setFilters((f) => ({ ...f, agents: null }))}
-        />
-      )}
-
-      <section aria-labelledby="tl-h" className="timeline-section">
-        <h2 id="tl-h">{view === "waterfall" ? "Waterfall" : "Timeline"}</h2>
-        <ViewSwitch view={view} onChange={changeView} />
-        {view === "timeline" && (
-          <div className="toolbar" role="group" aria-label="Timeline filters">
-            <fieldset>
-              <legend>Event classes</legend>
-              {CLASS_ORDER.map((c) => (
-                <label key={c} className="chip">
-                  <input
-                    type="checkbox"
-                    checked={filters.classes ? filters.classes.has(c) : true}
-                    onChange={() => toggleClass(c)}
-                  />
-                  {CLASS_LABELS[c]}
-                </label>
-              ))}
-            </fieldset>
-            <label className="chip">
-              <input
-                type="checkbox"
-                checked={filters.errorsOnly}
-                onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
-              />
-              Errors only
-            </label>
-            <button
-              type="button"
-              disabled={allGroups.length === 0}
-              onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allGroups))}
-            >
-              {collapsed.size ? "Expand groups" : "Collapse groups"}
-            </button>
-          </div>
+        <p className="headline" data-testid="headline">
+          {parts.lead}
+          {parts.error && (
+            <>
+              {parts.recovered}
+              <span data-testid="first-error">
+                {parts.error}{" "}
+                <button type="button" className="linkish" onClick={jumpToError}>
+                  Show it <kbd aria-hidden="true">e</kbd>
+                </button>
+              </span>
+            </>
+          )}
+        </p>
+        {stream.state !== "off" && stream.state !== "ended" && (
+          <LiveBar state={stream.state} status={nowDoing} />
         )}
-        {drawerEventId && !loadedDrawerEvent && (
-          <p
-            role={remoteDrawer.isError ? "alert" : "status"}
-            className="notice"
-            data-testid="event-notice"
-          >
-            {remoteDrawer.isError
-              ? "That event could not be loaded; it may not exist in this run."
-              : "Loading the event…"}{" "}
-            <button type="button" onClick={() => setDrawerEventId(null)}>
-              Dismiss
-            </button>
+        {r.summary_state !== "current" && (
+          <p role="status" className="notice">
+            {r.summary_state === "processing"
+              ? "Summary is updating; figures below may lag the timeline."
+              : "Summary failed to update and needs an operator; the timeline is still accurate."}
           </p>
         )}
-        <p className="muted" role="status" aria-live="polite" data-testid="progress">
-          {loadingMore
-            ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
-            : view === "waterfall"
-              ? `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
-              : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown`}
-          {ev.isError && " (some events failed to load)"}
-        </p>
-        {ev.isError && events.length === 0 ? (
-          <ErrorState error={ev.error} onRetry={() => void ev.refetch()} />
-        ) : events.length === 0 && !ev.isPending ? (
-          <p className="state">This run has no events yet.</p>
-        ) : events.length === 0 ? (
-          <Loading label="Loading events" />
-        ) : view === "timeline" && rows.length === 0 ? (
-          <div className="state" data-state="empty">
-            <p className="state-title">No events match these filters</p>
-            <button type="button" onClick={() => setFilters(NO_FILTERS)}>
-              Clear filters
-            </button>
-          </div>
-        ) : (
-          <div
-            className="split"
-            ref={timelineWrap}
-            data-drawer={drawerEvent ? "open" : "closed"}
-            data-wide={(drawerEvent && codingKind(drawerEvent) !== null) || undefined}
+        <dl className="stats" aria-label="Run summary">
+          <Metric label="Duration" value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))} />
+          <Metric label="Cost" value={formatCost(num(s["estimated_cost_usd"]))} />
+          <Metric
+            label="Tokens"
+            value={`${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`}
+          />
+          <Metric label="Model calls" value={formatInt(num(s["llm_calls"]))} />
+          <Metric label="Tool calls" value={formatInt(num(s["tool_calls"]))} />
+          <Metric
+            label="Retries"
+            value={formatInt(retries)}
+            tone={retries > 0 ? "warn" : undefined}
+          />
+          <Metric label="Errors" value={formatInt(errors)} tone={errors > 0 ? "bad" : undefined} />
+          {multiAgent && <Metric label="Agents" value={formatInt(agents.length)} />}
+          <Metric label="Files changed" value={formatInt(num(s["files_modified"]))} />
+        </dl>
+      </header>
+
+      <div className="pane-head">
+        <ViewSwitch
+          view={view}
+          onChange={changeView}
+          counts={{
+            timeline: events.length ? formatInt(events.length) : undefined,
+            evidence: evidence.length ? formatInt(evidence.length) : undefined,
+          }}
+        />
+        <button
+          type="button"
+          className="context-toggle"
+          aria-pressed={!contextClosed}
+          aria-controls="run-context"
+          onClick={() => setContextPref(contextClosed ? "open" : "closed")}
+        >
+          Context
+        </button>
+      </div>
+
+      <div
+        className="work"
+        data-inspector={drawerEvent ? "open" : "closed"}
+        data-context={contextClosed ? "closed" : "open"}
+        style={
+          inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
+        }
+      >
+        {/* Scrolls on its own, so it takes a tab stop: a scrollable region with nothing focusable in it is unreachable by keyboard. */}
+        <aside
+          id="run-context"
+          className="context"
+          aria-label="Run context"
+          tabIndex={contextClosed ? undefined : 0}
+          ref={contextRef}
+        >
+          <button
+            type="button"
+            className="context-strip"
+            onClick={() => {
+              focusContext.current = true;
+              setContextPref("open");
+            }}
+            aria-label="Show run context"
+            aria-expanded="false"
+            aria-controls="run-context"
+            tabIndex={contextClosed ? 0 : -1}
           >
-            {view === "timeline" ? (
-              <Timeline
-                rows={rows}
-                t0={t0}
-                selectedKey={selectedKey}
-                firstErrorId={err?.event_id ?? null}
-                showAgent={multiAgent}
-                onSelect={setSelected}
-                onActivate={activate}
-                onEscape={closeDrawer}
-                onJumpToError={jumpToError}
-              />
-            ) : (
-              <Waterfall
-                spans={spans}
-                bounds={bounds}
-                spanIdOf={spanIdOf}
-                selectedEventId={selected}
-                firstErrorId={err?.event_id ?? null}
-                agentFilter={filters.agents ?? null}
-                onSelect={setSelected}
-                onActivate={setDrawerEventId}
-                onEscape={closeDrawer}
-                onJumpToError={jumpToError}
+            <ContextStripBody
+              runId={runId}
+              poll={active || r.summary_state === "processing"}
+              agents={multiAgent ? agents.length : 0}
+            />
+          </button>
+          <div className="context-body" inert={contextClosed || undefined}>
+            <CodingSummary
+              events={events}
+              onOpen={(id) => {
+                setFilters(NO_FILTERS);
+                setSelected(id);
+                setDrawerEventId(id);
+              }}
+            />
+
+            {multiAgent && (
+              <AgentTree
+                rows={agents}
+                active={filters.agents ?? null}
+                onToggle={toggleAgent}
+                onClear={() => setFilters((f) => ({ ...f, agents: null }))}
               />
             )}
-            {drawerEvent && <EventDrawer runId={runId} event={drawerEvent} onClose={closeDrawer} />}
+
+            <Findings
+              runId={runId}
+              runActive={active}
+              summaryProcessing={r.summary_state === "processing"}
+              onShowEvent={jumpTo}
+            />
+
+            <Evaluations runId={runId} onShowEvent={jumpTo} />
           </div>
-        )}
-      </section>
+        </aside>
+
+        <section aria-labelledby="tl-h" className="pane">
+          <h2 id="tl-h" className="sr-only">
+            {view === "waterfall" ? "Waterfall" : view === "evidence" ? "Evidence" : "Timeline"}
+          </h2>
+          {view === "timeline" && (
+            <div className="toolbar" role="group" aria-label="Timeline filters">
+              <fieldset>
+                <legend>Event classes</legend>
+                {CLASS_ORDER.map((c) => (
+                  <label key={c} className="chip">
+                    <input
+                      type="checkbox"
+                      checked={filters.classes ? filters.classes.has(c) : true}
+                      onChange={() => toggleClass(c)}
+                    />
+                    {CLASS_LABELS[c]}
+                  </label>
+                ))}
+              </fieldset>
+              <label className="chip">
+                <input
+                  type="checkbox"
+                  checked={filters.errorsOnly}
+                  onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
+                />
+                Errors only
+              </label>
+              <button
+                type="button"
+                disabled={allGroups.length === 0}
+                onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allGroups))}
+              >
+                {collapsed.size ? "Expand groups" : "Collapse groups"}
+              </button>
+            </div>
+          )}
+          {drawerEventId && !loadedDrawerEvent && (
+            <p
+              role={remoteDrawer.isError ? "alert" : "status"}
+              className="notice"
+              data-testid="event-notice"
+            >
+              {remoteDrawer.isError
+                ? "That event could not be loaded; it may not exist in this run."
+                : "Loading the event…"}{" "}
+              <button type="button" onClick={() => setDrawerEventId(null)}>
+                Dismiss
+              </button>
+            </p>
+          )}
+          {ev.isError && events.length === 0 ? (
+            <ErrorState error={ev.error} onRetry={() => void ev.refetch()} />
+          ) : events.length === 0 && !ev.isPending ? (
+            <p className="state">This run has no events yet.</p>
+          ) : events.length === 0 ? (
+            <Loading label="Loading events" />
+          ) : view === "timeline" && rows.length === 0 ? (
+            <div className="state" data-state="empty">
+              <p className="state-title">No events match these filters</p>
+              <button type="button" onClick={() => setFilters(NO_FILTERS)}>
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div
+              className="pane-body"
+              key={view}
+
+              ref={timelineWrap}
+            >
+              {view === "evidence" ? (
+                <EvidenceList rows={evidence} t0={t0} selectedEventId={selected} onOpen={jumpTo} />
+              ) : view === "timeline" ? (
+                <Timeline
+                  rows={rows}
+                  t0={t0}
+                  selectedKey={selectedKey}
+                  firstErrorId={err?.event_id ?? null}
+                  showAgent={multiAgent}
+                  onSelect={setSelected}
+                  onActivate={activate}
+                  onEscape={closeDrawer}
+                  onJumpToError={jumpToError}
+                  newIds={newIds}
+                  landedId={landedId}
+                />
+              ) : (
+                <Waterfall
+                  spans={spans}
+                  bounds={bounds}
+                  spanIdOf={spanIdOf}
+                  selectedEventId={selected}
+                  firstErrorId={err?.event_id ?? null}
+                  agentFilter={filters.agents ?? null}
+                  onSelect={setSelected}
+                  onActivate={setDrawerEventId}
+                  onEscape={closeDrawer}
+                  onJumpToError={jumpToError}
+                  newIds={newIds}
+                  landedId={landedId}
+                />
+              )}
+            </div>
+          )}
+          <div className="pane-foot">
+            <p className="muted" role="status" aria-live="polite" data-testid="progress">
+              {loadingMore
+                ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
+                : view === "evidence"
+                  ? `${formatInt(evidence.length)} artifact${evidence.length === 1 ? "" : "s"} in ${formatInt(events.length)} events`
+                  : view === "waterfall"
+                    ? `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
+                    : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown`}
+              {ev.isError && " (some events failed to load)"}
+            </p>
+            {view !== "evidence" && (
+              <p className="keys muted" aria-hidden="true">
+                <kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> open · <kbd>e</kbd> first error ·{" "}
+                <kbd>esc</kbd> close
+              </p>
+            )}
+          </div>
+        </section>
+
+        {drawerEvent && <InspectorResizer width={inspectorPx} onChange={setInspectorPx} />}
+        {drawerEvent && <EventDrawer runId={runId} event={drawerEvent} onClose={closeDrawer} />}
+      </div>
     </div>
   );
 }

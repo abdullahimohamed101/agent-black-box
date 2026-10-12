@@ -33,24 +33,21 @@ export function AgentTree({
       <ul>
         {rows.map((a) => {
           const on = active?.has(a.agentId) ?? false;
+          const detail = `${STATE_TEXT[a.state] ?? a.state} · ${formatInt(a.eventCount)} events · ${formatInt(a.llmCalls)} model calls · ${formatInt(a.toolCalls)} tool calls · ${
+            a.errorCount > 0 ? `${a.errorCount} error${a.errorCount === 1 ? "" : "s"} · ` : ""
+          }${formatCost(a.costUsd)} · ${formatDuration(a.durationMs)}`;
           return (
             <li key={a.agentId} style={{ paddingLeft: `${Math.min(a.depth, 8) * 1.1}rem` }}>
               <button
                 type="button"
                 aria-pressed={on}
                 className="agent-item"
+                title={`${agentChip(a.agentId)}: ${detail}`}
                 data-error={a.errorCount > 0 || a.state === "failed" || undefined}
                 onClick={() => onToggle(a.agentId)}
               >
                 <span className="agent-name">{agentChip(a.agentId)}</span>{" "}
-                <span className="muted">
-                  {STATE_TEXT[a.state] ?? a.state} · {formatInt(a.eventCount)} events ·{" "}
-                  {formatInt(a.llmCalls)} model calls · {formatInt(a.toolCalls)} tool calls ·{" "}
-                  {a.errorCount > 0
-                    ? `${a.errorCount} error${a.errorCount === 1 ? "" : "s"} · `
-                    : ""}
-                  {formatCost(a.costUsd)} · {formatDuration(a.durationMs)}
-                </span>
+                <span className="muted agent-detail">{detail}</span>
               </button>
             </li>
           );

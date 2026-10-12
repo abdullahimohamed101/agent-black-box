@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { Brand } from "@/components/shell/Brand";
 import { WorkspaceProvider } from "@/components/WorkspaceProvider";
 import { safeReturnTo } from "@/server/config";
 import { loadWorkspace } from "@/server/session";
@@ -21,7 +22,8 @@ export default async function WorkspaceLayout({
   if (loaded.status === "not_found") notFound(); // not a member looks like a workspace that does not exist
   if (loaded.status === "unavailable") {
     return (
-      <main>
+      <main className="auth">
+        <Brand />
         <h1>Workspace unavailable</h1>
         <p role="alert" className="notice">
           {loaded.message} Reload to try again.

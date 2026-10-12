@@ -13,11 +13,13 @@ export function PricingOverrides() {
   const rebuild = useRebuildCosts();
   return (
     <>
-      <h1>Pricing</h1>
-      <p className="muted">
-        Prices per million tokens used to cost LLM calls. An override replaces the built-in price
-        for matching models from its start time; past runs change only after a rebuild.
-      </p>
+      <div className="page-head">
+        <h1>Pricing</h1>
+        <p className="muted">
+          Prices per million tokens used to cost LLM calls. An override replaces the built-in price
+          for matching models from its start time; past runs change only after a rebuild.
+        </p>
+      </div>
       {canWrite && <OverrideForm />}
       {prices.isPending ? (
         <Loading label="Loading prices" />

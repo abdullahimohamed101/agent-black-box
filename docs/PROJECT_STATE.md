@@ -1,10 +1,10 @@
 # Project State
 
-Last updated: 2026-10-12 (Phase 11 merged)
+Last updated: 2026-10-12 (Phase 21 reviewed, review findings fixed, awaiting the push approval)
 
 ## Current phase
 Phases 0-11, 15 and 16 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79, Phase 16 is PR #92, Phase 11 is PR #104; KI-050 prices are PR #105). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
-decides after reviewing the items under "Next actions". Phase 21 (UI application shell and design pass) is planned and is next.
+decides after reviewing the items under "Next actions". Phase 21 (UI application shell and design pass) is implemented, adversarially reviewed and the review findings are fixed on `feature/phase-21-ui-shell` (not pushed); it waits for the push/PR approval; nothing else is in progress.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -42,7 +42,13 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, 
 ## In-progress work
 Phase 11 is merged (PR #104): 15 operations, migrations 0070-0071 (head), the `evaluate_run` job, comparison, experiments, the run-page Evaluations section, the compare and experiments pages, `scripts/eval-e2e.sh`
 (CI job `eval-e2e`), `docs/runbooks/evaluations.md`; the independent review found no P0/P1 and two P2 defects, fixed (`docs/plans/completed/phase-11-code-review.md`). KI-100..109 and KI-116 are GitHub issues #106-#116.
-A second KI-050 batch (more models, batch/flex/fast/regional multipliers, cache writes) is being built on `feature/ki-050-batch2`; Phase 21 starts after it.
+A second KI-050 batch (more models, batch/flex/fast/regional multipliers, cache writes) is being built on `feature/ki-050-batch2`.
+
+Phase 21 (web only; no API, schema or SDK change): rail, top bar, full-width pages, instrument-style run header, a viewport-filling run work area (context column, timeline / waterfall / evidence pane, draggable inspector), the Evidence view, the
+runs list and every document page restyled on shared tokens (IBM Plex self-hosted, ADR-110), one status grammar, a motion layer that is zero under reduced motion. Status, evidence per acceptance criterion and the deviations are in
+`docs/plans/active/phase-21-ui-shell-and-design-pass.md`; screenshots in `docs/screenshots/phase-21/` (before/after, with a critique); what landed in `docs/design/ui-direction.md`. No existing spec or vitest file was edited (additions only).
+Code review (`docs/plans/active/phase-21-code-review.md`): 0 P0, 1 P1 (React #418 hydration mismatch from the breadcrumb), 6 P2, 7 P3; all fixed except what is listed as deferred in the plan's "Code review dispositions" (KI-123..126). Web gates after the fixes: eslint, prettier, tsc, vitest 755, `next build`, fixtures Playwright 136 passed / 56 skipped, the eight API-backed E2E scripts (several needed a re-run under load; see the plan). `scripts/quality.sh quick` (Python steps) was not completed
+here (KI-122). The reviewer did the keyboard walk, 200% zoom and 1024x640; screen-reader announcement of the radio-tab view switch and the folded strip is still judged from the accessibility tree only.
 
 ## Blocked work
 None.

@@ -12,13 +12,13 @@ export function WorkspaceSwitcher() {
   if (!ws || ws.memberships.length === 0) return null;
   if (ws.memberships.length === 1) {
     return (
-      <span className="crumb muted" title="Workspace">
+      <span className="switcher-static" data-label="Workspace" title="Workspace">
         {ws.workspace.name}
       </span>
     );
   }
   return (
-    <details className="switcher crumb">
+    <details className="switcher" data-label="Workspace">
       <summary aria-label={`Workspace: ${ws.workspace.name}. Switch workspace`}>
         {ws.workspace.name}
       </summary>

@@ -9,8 +9,10 @@ export function AuditLog() {
   const rows = audit.data?.pages.flatMap((p) => p.items) ?? [];
   return (
     <>
-      <h1>Audit log</h1>
-      <p className="muted">Administrative actions and refused attempts, newest first.</p>
+      <div className="page-head">
+        <h1>Audit log</h1>
+        <p className="muted">Administrative actions and refused attempts, newest first.</p>
+      </div>
       {audit.isPending ? (
         <Loading label="Loading audit log" />
       ) : audit.error ? (

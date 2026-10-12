@@ -243,7 +243,7 @@ routes, fake charts, debug logging, or secrets).
 
 Added at the user's request ("go with your recommendation"). The design pass has a plan (Phase 21, below); hosting has none yet.
 
-- **UI design pass: Phase 21, "UI application shell and design pass".** Plan: `docs/plans/active/phase-21-ui-shell-and-design-pass.md`; direction, palette, type and
+- **UI design pass: Phase 21, "UI application shell and design pass". Status: Implemented; pending review (branch `feature/phase-21-ui-shell`, 2026-10-12; evidence in the plan).** Plan: `docs/plans/active/phase-21-ui-shell-and-design-pass.md`; direction, palette, type and
   motion spec: `docs/design/ui-direction.md`; concept renders: `docs/design/concepts/`; demo video storyboard: `docs/design/video-storyboard.md`. The UI today is a centred
   document under a top bar (`.shell main { max-width: 80rem }`): functional, accessible and unbranded. The pass turns it into an application: a persistent rail, a search
   slot, a sticky instrument-style run header, tabs, full-width content and a right inspector in place of the overlay drawer. Aesthetic: "flight-deck instrument panel".
