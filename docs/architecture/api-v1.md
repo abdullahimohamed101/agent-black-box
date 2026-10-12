@@ -153,7 +153,9 @@ requests never cause repeats or gaps.
 `GET /v1/runs/{id}` returns the run: `status`, `name`, `agent_id`, `trace_id`, `started_at`, `completed_at`,
 `duration_ms`, `ordering_mode`, `summary`, `summary_version`, `summary_state`, `metadata`, and `first_error`
 (`{event_id, sequence, retries_after, seconds_after, cost_after_usd, cost_after_unpriced_calls}`, a typed projection of the summary's
-first-error facts; null when the run has no error or was summarised before version 5, ADR-112).
+first-error facts, ADR-112). It is null when the run has no first error or was summarised below the current version 6; read `summary_version`: at the
+current version null is final ("no error event recorded"), below it the facts are "not rebuilt yet". A BLOCKED run with no error event takes its
+blocking event (the first `policy.action.blocked`, else the blocking `run.completed`) as its first error; `error_count` is unchanged.
 
 `summary_state`: `current`; `processing` while events wait to be folded in (new events debounce for about
 1 s, then the worker recomputes); `failed` if summarization was dead-lettered and needs an operator
@@ -341,7 +343,7 @@ divided. Money is USD rounded to 9 places. Every cost line states its source: `p
 `cost.provider_usd`), `estimated` (tokens x a versioned price, `pricing_version` stored per line), `client_estimate`
 (`cost.estimated_usd`) or `unpriced` (counted as $0 and reported). `input_tokens` includes cached tokens. A model
 call is retry cost when it follows a `retry.attempted` event of its span or an ancestor span (ADR-042).
-Attribution (Phase 9): `cost.by_agent` groups cost lines by the **event's** agent (a child's model calls appear under the child); run counts, success rates, expensive/retry-heavy runs and `active_agents` use the **run's** root agent. Per-agent run metrics are KI-084. The cost headline's `unrebuilt_runs` counts runs summarised by an older `summary_version` (including runs that predate cost lines).
+Attribution (Phase 9): `cost.by_agent` groups cost lines by the **event's** agent (a child's model calls appear under the child); run counts, success rates, expensive/retry-heavy runs and `active_agents` use the **run's** root agent. Per-agent run metrics are KI-084. The cost headline's and the waste report's `unrebuilt_runs` count runs summarised below the current `summary_version` (including runs that predate cost lines; first-error facts are missing too).
 The failure trend uses the same definitions per day (`failure_rate` and `timeout_rate`). "Running agents" on the summary
 is read from the live `runs` table (current state, not a rollup; ADR-041 allows this one status-indexed lookup). Retry cost is
 an estimate (ADR-042). Adapters (Phase 8) must report `llm.input_tokens` including cached tokens, or costs will be

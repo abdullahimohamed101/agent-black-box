@@ -26,8 +26,9 @@ from abb_api.cost.retries import retry_call_ids
 #    `run.started` instead of the first event (Phase 9, ADR-070).
 # 4: runs gain a search document (ADR-100); its `agents` array reads `summary["agents"]`.
 # 5: first-error facts (`first_error_*`, `retries_after`, `seconds_after`, `cost_after_*`, ADR-112).
-#    The next bump is 6.
-SUMMARY_VERSION = 5
+# 6: a BLOCKED run with no error event takes its blocking event as the first error (ADR-112).
+#    The next bump is 7.
+SUMMARY_VERSION = 6
 
 MAX_AGENTS = 50  # entries in `summary.agents`; more agents fold into one "(other)" row (KI-018)
 OTHER_AGENTS = "(other)"
@@ -211,10 +212,38 @@ def is_error_event(event: Event) -> bool:
     return event.status in _ERROR_STATUSES or event.event_type.endswith(".failed")
 
 
+def first_error_index(ordered: list[Event], status: RunStatus) -> int | None:
+    """Index of the run's first error in canonical order, or None.
+
+    The first error event wins. A BLOCKED run with none takes its blocking event instead: the
+    first `policy.action.blocked`, else the `run.completed` event that ended it as blocked, so
+    the page can say where the policy stopped it. This does not make those events errors
+    (`is_error_event` and `error_count` are unchanged). Mirrors `firstErrorFor` in web
+    `timeline.ts` (parity-tested on shared cases).
+    """
+    first = next((i for i, e in enumerate(ordered) if is_error_event(e)), None)
+    if first is not None or status is not RunStatus.BLOCKED:
+        return first
+    policy = next(
+        (i for i, e in enumerate(ordered) if e.event_type == "policy.action.blocked"), None
+    )
+    if policy is not None:
+        return policy
+    return next(
+        (
+            i
+            for i in range(len(ordered) - 1, -1, -1)
+            if ordered[i].event_type == "run.completed" and ordered[i].status is EventStatus.BLOCKED
+        ),
+        None,
+    )
+
+
 def first_error_facts(
     ordered: list[Event],
     cost_lines: tuple[CostLine, ...],
     *,
+    status: RunStatus,
     completed_at: datetime | None,
     last_event_at: datetime,
 ) -> dict[str, Any]:
@@ -225,7 +254,7 @@ def first_error_facts(
     `llm.request.completed` event, so it counts as "after" when that event is. Unpriced calls
     contribute nothing to `cost_after_usd` and are counted, exactly as in the run total.
     """
-    first = next((i for i, e in enumerate(ordered) if is_error_event(e)), None)
+    first = first_error_index(ordered, status)
     if first is None:
         return {
             "first_error_event_id": None,
@@ -364,7 +393,11 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
         "first_event_at": started_at.isoformat(),
         "last_event_at": last_event_at.isoformat(),
         **first_error_facts(
-            ordered, cost_lines, completed_at=completed_at, last_event_at=last_event_at
+            ordered,
+            cost_lines,
+            status=status,
+            completed_at=completed_at,
+            last_event_at=last_event_at,
         ),
     }
     return RunDerivation(

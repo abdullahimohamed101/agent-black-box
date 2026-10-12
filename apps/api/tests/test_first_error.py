@@ -59,7 +59,7 @@ def facts(summary: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
 def test_the_server_picks_the_same_first_error_as_the_web_client(case: dict[str, Any]) -> None:
-    """`timeline.ts` firstError() is `events.find(isError)` over the API order; same cases there."""
+    """`timeline.ts` firstErrorFor() over the API order; the same cases are read there."""
     run = make_run_ids()
     events = [
         ev(run, n, e["event_type"], **({"status": e["status"]} if e["status"] else {}))
@@ -70,11 +70,39 @@ def test_the_server_picks_the_same_first_error_as_the_web_client(case: dict[str,
     labels = {e.event_id: spec["event_id"] for e, spec in zip(events, case["events"], strict=True)}
     if not events:
         return
-    found = derive_run(events).summary["first_error_event_id"]
+    derived = derive_run(events)
+    if "run_status" in case:  # the case is only meaningful for a run that ends this way
+        assert derived.status.value == case["run_status"]
+    found = derived.summary["first_error_event_id"]
     assert (labels[found] if found else None) == expected
-    assert [labels[e.event_id] for e in events if is_error_event(e)][:1] == (
-        [expected] if expected else []
-    )
+    if case.get("run_status") != "BLOCKED":  # a blocked run's first error is not an error event
+        assert [labels[e.event_id] for e in events if is_error_event(e)][:1] == (
+            [expected] if expected else []
+        )
+
+
+def test_a_blocked_run_counts_the_blocking_event_as_its_first_error_but_not_as_an_error() -> None:
+    run = make_run_ids()
+    events = [
+        ev(run, 1, "run.started", occurred_at=when(0)),
+        ev(run, 2, "policy.action.blocked", status="blocked", occurred_at=when(4)),
+        ev(run, 3, "retry.attempted", occurred_at=when(5)),
+        ev(run, 4, "llm.request.completed", attributes=PRICED, occurred_at=when(6)),
+        ev(run, 5, "run.completed", status="blocked", occurred_at=when(10)),
+    ]
+    derived = derive_run(events)
+    s = derived.summary
+    assert s["error_count"] == 0  # error_count semantics are unchanged (ADR-112)
+    assert s["first_error_event_id"] == events[1].event_id and s["first_error_sequence"] == 2
+    assert s["retries_after"] == 1 and s["cost_after_usd"] == pytest.approx(0.5)
+    assert s["seconds_after"] == pytest.approx(6.0)
+
+
+def test_a_blocked_run_with_only_a_blocked_completion_uses_that_event() -> None:
+    run = make_run_ids()
+    events = [ev(run, 1, "run.started"), ev(run, 2, "run.completed", status="blocked")]
+    s = derive_run(events).summary
+    assert s["first_error_event_id"] == events[1].event_id and s["error_count"] == 0
 
 
 def test_a_run_with_no_error_has_no_first_error_facts() -> None:

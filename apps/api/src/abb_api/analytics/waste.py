@@ -28,9 +28,9 @@ from abb_api.db import tables as t
 from abb_api.runs.summary import SUMMARY_VERSION
 
 FAILED_STATUSES = ("FAILED", "TIMED_OUT", "BLOCKED")
-FIRST_ERROR_VERSION = (
-    5  # `runs/summary.py` SUMMARY_VERSION that introduced `cost_after_usd` (ADR-112)
-)
+# First summary version whose first-error facts are complete for every failed status: 5 introduced
+# them but left a BLOCKED run without a first error, 6 fixed that (ADR-112).
+FIRST_ERROR_VERSION = 6
 R = t.runs.c
 # A literal, not a bind parameter: the same expression sits in SELECT and GROUP BY (rollup.py).
 EMPTY: ColumnElement[str] = literal_column("''")

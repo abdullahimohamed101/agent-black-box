@@ -228,7 +228,13 @@ class WasteOther(BaseModel):
 
 class WasteByAgent(BaseModel):
     agent: str
-    failed_runs: int
+    failed_runs: int = Field(
+        description=(
+            "Failed, timed-out and blocked runs of agents that wasted money; agents whose failed "
+            "runs cost nothing (all unpriced) are not listed, so this can sum to less than "
+            "`failed.runs`."
+        )
+    )
     failed_usd: float = Field(
         description="Spend of this agent's failed, timed-out and blocked runs."
     )
@@ -286,5 +292,9 @@ class WasteReport(BaseModel):
     by_model: list[WasteByModel]
     by_model_other: WasteOther | None
     unrebuilt_runs: int = Field(
-        description="Runs summarised before cost lines existed; `rebuild-costs` fills them in."
+        description=(
+            "Runs summarised below the current summary version (their first-error facts, and for "
+            "the oldest their cost lines, are missing); `search-rebuild` and `rebuild-costs` "
+            "re-summarise them."
+        )
     )

@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared by the API (apps/api/tests/test_first_error.py) and the web client (firstError() in apps/web/src/lib/timeline.ts, ADR-112). Events are listed in canonical order; `expected` is the event_id of the first error, or null. An error is status error|timeout or an event_type ending in .failed.",
+  "_comment": "Shared by the API (apps/api/tests/test_first_error.py) and the web client (firstError() in apps/web/src/lib/timeline.ts, ADR-112). Events are listed in canonical order; `expected` is the event_id of the first error, or null. An error is status error|timeout or an event_type ending in .failed. A case with run_status BLOCKED (ADR-112, summary version 6) has no earlier error event, so the first error is the blocking event: the first policy.action.blocked event, else the run.completed event whose status is blocked; an earlier error event still wins.",
   "cases": [
     {"name": "empty run", "events": [], "expected": null},
     {"name": "clean run", "events": [
@@ -25,6 +25,24 @@
       {"event_id": "b", "event_type": "run.cancelled", "status": "cancelled"}], "expected": null},
     {"name": "retry is not an error", "events": [
       {"event_id": "a", "event_type": "retry.attempted", "status": null},
-      {"event_id": "b", "event_type": "retry.attempted", "status": "success"}], "expected": null}
+      {"event_id": "b", "event_type": "retry.attempted", "status": "success"}], "expected": null},
+    {"name": "blocked run: the policy event is the first error", "run_status": "BLOCKED", "events": [
+      {"event_id": "a", "event_type": "run.started", "status": null},
+      {"event_id": "b", "event_type": "tool.call.completed", "status": "success"},
+      {"event_id": "c", "event_type": "policy.action.blocked", "status": "blocked"},
+      {"event_id": "d", "event_type": "run.completed", "status": "blocked"}], "expected": "c"},
+    {"name": "blocked run: only run.completed says so", "run_status": "BLOCKED", "events": [
+      {"event_id": "a", "event_type": "run.started", "status": null},
+      {"event_id": "b", "event_type": "tool.call.completed", "status": "success"},
+      {"event_id": "c", "event_type": "run.completed", "status": "blocked"}], "expected": "c"},
+    {"name": "blocked run: an earlier error wins", "run_status": "BLOCKED", "events": [
+      {"event_id": "a", "event_type": "run.started", "status": null},
+      {"event_id": "b", "event_type": "tool.call.completed", "status": "error"},
+      {"event_id": "c", "event_type": "policy.action.blocked", "status": "blocked"},
+      {"event_id": "d", "event_type": "run.completed", "status": "blocked"}], "expected": "b"},
+    {"name": "a policy block in a run that went on to succeed is not an error", "run_status": "SUCCESS", "events": [
+      {"event_id": "a", "event_type": "run.started", "status": null},
+      {"event_id": "b", "event_type": "policy.action.blocked", "status": "blocked"},
+      {"event_id": "c", "event_type": "run.completed", "status": "success"}], "expected": null}
   ]
 }

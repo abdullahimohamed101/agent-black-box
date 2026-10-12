@@ -36,6 +36,9 @@ to `runs`, inside the store's existing read-only, time-limited transaction. Noth
 
 ## Consequences
 
-- The query scans cost lines of failed runs and retried calls in the window (indexed by `ix_cost_project_started`), bounded by the
-  92-day window limit and the statement timeout (`ANALYTICS_TIMEOUT`, 503, retry). If a workspace outgrows this, move the status and
+- The by-model query joins cost lines to their runs and filters on the run's `started_at` and `project_id` after the join, so it is
+  bounded by the 92-day window limit and the statement timeout (`ANALYTICS_TIMEOUT`, 503, retry). If a workspace outgrows this, move the status and
   `is_retry` split into the cost rollup then.
+
+Breakdown note: `by_agent` lists only agents whose failed runs or retries cost something (`HAVING wasted > 0`), so the sum of its `failed_runs` can be
+below `failed.runs` when failed runs were all unpriced. `unrebuilt_runs` counts every run summarised below the current summary version.

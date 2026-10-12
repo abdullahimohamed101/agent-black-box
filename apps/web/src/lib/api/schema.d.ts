@@ -2734,7 +2734,7 @@ export interface components {
             duration_ms: number | null;
             /** @description Derived findings summary; null when the response does not carry it. */
             findings?: components["schemas"]["RunFindingsBadge"] | null;
-            /** @description Null when the run has no error or its summary predates `summary_version` 5. */
+            /** @description Null when the run has no first error or its summary predates `summary_version` 6. */
             first_error?: components["schemas"]["FirstErrorOut"] | null;
             /** Id */
             id: string;
@@ -3077,7 +3077,10 @@ export interface components {
         WasteByAgent: {
             /** Agent */
             agent: string;
-            /** Failed Runs */
+            /**
+             * Failed Runs
+             * @description Failed, timed-out and blocked runs of agents that wasted money; agents whose failed runs cost nothing (all unpriced) are not listed, so this can sum to less than `failed.runs`.
+             */
             failed_runs: number;
             /**
              * Failed Usd
@@ -3152,7 +3155,7 @@ export interface components {
             total_usd: number;
             /**
              * Unrebuilt Runs
-             * @description Runs summarised before cost lines existed; `rebuild-costs` fills them in.
+             * @description Runs summarised below the current summary version (their first-error facts, and for the oldest their cost lines, are missing); `search-rebuild` and `rebuild-costs` re-summarise them.
              */
             unrebuilt_runs: number;
             /**

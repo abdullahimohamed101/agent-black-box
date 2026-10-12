@@ -14,7 +14,7 @@ and they must be rebuildable from events (INV-2).
 
 ## Decision
 
-`runs/summary.py` derives six more `summary` keys from the canonically ordered events (`SUMMARY_VERSION` 4 to 5). No column and no
+`runs/summary.py` derives six more `summary` keys from the canonically ordered events (`SUMMARY_VERSION` 4 to 5; 5 to 6 for the blocked-run rule below). No column and no
 migration: `runs.summary` is JSONB and these figures are not filtered, sorted or aggregated in SQL (the figures analytics aggregate stay
 typed columns, ADR-043). If a list ever needs to sort by them, a typed column joins them then.
 
@@ -31,13 +31,23 @@ typed columns, ADR-043). If a list ever needs to sort by them, a typed column jo
 (`packages/event-schema/tests/data/first-error-cases.json`): an event whose status is `error` or `timeout`, or whose type ends in
 `.failed`; first in canonical order (the API's event order). It is the same predicate as `error_count`.
 
+Blocked runs (version 6, Phase 22 review P1-3). A run ends BLOCKED through `run.completed` with status `blocked`, and a policy block is a
+`policy.action.blocked` point event; neither is an error event, so under the rule above a blocked run had no first error and the page could not
+say where the policy stopped it. Product decision: for a run whose status is BLOCKED and that has no error event, the first error is the
+blocking event, the first `policy.action.blocked` event, else the `run.completed` event whose status is `blocked`. An error event earlier in
+the run still wins. This changes the first-error derivation only: `is_error_event` and `error_count` are unchanged (a blocked run still has
+`error_count` 0), and the retry/seconds/cost "after" figures count from the blocking event. The web mirrors it with `firstErrorFor(status,
+events)` in `timeline.ts`, and the shared cases carry a `run_status` for the blocked ones. A blocked event in a run that went on to succeed
+is not an error.
+
 "After" is canonical order, not clock order or `sequence`: `sequence` can be absent (multi-emitter runs are in time order, ADR-070) and
 clocks skew, while canonical order is what the UI shows. A model call is priced on its completed event, so a call that began before the
 error and finished after it counts as after; this is stated rather than guessed from `duration_ms`.
 
 `RunOut` also carries a typed projection, `first_error: {event_id, sequence, retries_after, seconds_after, cost_after_usd,
 cost_after_unpriced_calls} | null`, built from the stored summary so the OpenAPI contract and `schema.d.ts` describe it. It is null when
-the run has no error or its `summary_version` is below 5; clients that must tell those apart read `summary_version`. List and detail
+the run has no error or its `summary_version` is below 6; clients tell those apart by `summary_version`: at the current version a null
+`first_error` means "no error event recorded" (final), below it means "first-error facts not rebuilt yet" (the web client says exactly that). List and detail
 carry it identically.
 
 Visibility: these are metadata. They hold an event id, counts, seconds and USD derived from event types, statuses, timestamps and cost
@@ -47,7 +57,7 @@ classifies attribute keys.
 
 ## Rebuild
 
-Stored summaries are replaced whenever a run is re-summarised. For runs summarised at version 4, `python -m abb_api.cli search-rebuild`
+Stored summaries are replaced whenever a run is re-summarised. For runs summarised below the current version, `python -m abb_api.cli search-rebuild`
 selects every run below the current `SUMMARY_VERSION` and queues them (a one-off; `rebuild-costs` does the same by date range). Until
 then those runs return `first_error: null`, and analytics' `unrebuilt_runs` counts them. Accepted events are never edited (INV-1).
 
@@ -60,5 +70,5 @@ then those runs return `first_error: null`, and analytics' `unrebuilt_runs` coun
 
 ## Consequences
 
-Summary version 5 makes `search-rebuild` and the analytics `unrebuilt_runs` counter treat every v4 run as stale until rebuilt. The next
-bump is 6. The web client may keep using `firstError()` over loaded events for row highlighting; the two agree by test.
+Summary version 6 makes `search-rebuild` and the analytics `unrebuilt_runs` counter treat every run below 6 as stale until rebuilt (the
+waste report treats a failed run below 6 as `after_first_error_unknown_runs`: a v5 blocked run has no first error). The next bump is 7. The web client may keep using `firstErrorFor()` over loaded events for row highlighting; the two agree by test.

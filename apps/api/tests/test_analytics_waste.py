@@ -118,6 +118,25 @@ async def test_runs_summarised_before_first_error_facts_are_counted_as_unknown(
     assert body["unrebuilt_runs"] >= 1
 
 
+async def test_a_version_5_failed_run_has_no_trustworthy_first_error_facts(seeded: Api) -> None:
+    """Version 5 left a blocked run without a first error (ADR-112), so v5 is below the bar."""
+    async with seeded.engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE runs SET summary_version = 5 WHERE id = :id"),
+            {"id": to_uuid(RUNS["r2"])},
+        )
+    body = await get(seeded)
+    assert body["failed"]["after_first_error_unknown_runs"] == 1
+    assert body["unrebuilt_runs"] == 1  # every run below the current summary version
+
+
+async def test_unrebuilt_runs_is_documented_as_what_it_counts(seeded: Api) -> None:
+    schema = (await seeded.get("/openapi.json")).json()["components"]["schemas"]["WasteReport"]
+    text_ = schema["properties"]["unrebuilt_runs"]["description"]
+    assert "below the current summary version" in text_
+    assert "first-error" in text_  # not only about cost lines, which arrived at version 2
+
+
 async def test_top_limits_each_breakdown_and_folds_the_rest(seeded: Api) -> None:
     body = await get(seeded, top=1)
     assert [a["agent"] for a in body["by_agent"]] == ["a1"]

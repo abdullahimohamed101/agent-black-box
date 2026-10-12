@@ -78,7 +78,7 @@ import json, os
 run = json.load(open(os.environ["RUN_JSON"]))
 events = json.load(open(os.environ["EVENTS_JSON"]))["items"]
 spans = json.load(open(os.environ["SPANS_JSON"]))["items"]
-assert run["summary_state"] == "current" and run["summary_version"] == 5, run["summary_version"]
+assert run["summary_state"] == "current" and run["summary_version"] == 6, run["summary_version"]
 assert run["agent_id"] == "planner", run["agent_id"]                 # the root agent comes from run.started
 assert run["ordering_mode"] == "time", run["ordering_mode"]          # the tester sends no sequence
 assert run["status"] == "SUCCESS", run["status"]
