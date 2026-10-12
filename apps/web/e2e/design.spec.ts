@@ -230,3 +230,113 @@ test.describe("run header", () => {
     await expect(page.getByRole("dialog")).toContainText("ConnectionTimeout");
   });
 });
+
+test.describe("run work area", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("the run page fills the viewport: no document scroll, the list gets the room", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
+    const m = await page.evaluate(() => ({
+      scroll: document.scrollingElement!.scrollHeight,
+      inner: window.innerHeight,
+    }));
+    expect(m.scroll).toBe(m.inner);
+    const list = (await page.locator(".timeline").boundingBox())!;
+    expect(list.height).toBeGreaterThan(300);
+    // the context column is visible on load, beside the pane
+    await expect(page.getByRole("complementary", { name: "Run context" })).toBeVisible();
+    await expect(page.getByTestId("findings")).toBeVisible();
+  });
+
+  test("opening the inspector keeps the pane usable: the context folds to a strip, one click restores it", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await page.getByRole("button", { name: "Show it" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(480);
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
+    await expect(page.getByTestId("findings")).toBeHidden();
+    await page.getByRole("button", { name: "Show run context" }).click();
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
+    await expect(page.getByTestId("findings")).toBeVisible();
+    // the header toggle folds it again
+    await page.getByRole("button", { name: "Context", exact: true }).click();
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
+  });
+
+  test("a wide window keeps the context open beside the inspector", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await page.getByRole("button", { name: "Show it" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
+    await expect(page.getByTestId("findings")).toBeVisible();
+  });
+
+  test("the view tabs are radios: keyboard and click both switch, the pane keeps its height", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/runs/${RUN(7)}`);
+    await page.getByRole("radio", { name: "Waterfall" }).check();
+    await expect(page.getByTestId("waterfall")).toBeVisible();
+    const h = (await page.locator(".wf-scroll").boundingBox())!.height;
+    expect(h).toBeGreaterThan(250);
+    await expect(page.getByRole("radio", { name: "Waterfall" })).toBeChecked();
+  });
+
+  test("the 10,000-event run: bounded rows in both views, the page still does not scroll", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/runs/${RUN(6)}`);
+    const list = page.getByRole("listbox", { name: /Run timeline/ });
+    await expect(list).toBeVisible();
+    await list.focus();
+    await page.keyboard.press("End");
+    expect(await page.getByRole("option").count()).toBeLessThan(80);
+    await page.getByRole("radio", { name: "Waterfall" }).check();
+    await expect(page.getByTestId("waterfall")).toBeVisible();
+    expect(await page.locator('.wf-scroll [role="row"]').count()).toBeLessThanOrEqual(80);
+    const m = await page.evaluate(() => [
+      document.scrollingElement!.scrollHeight,
+      window.innerHeight,
+    ]);
+    expect(m[0]).toBe(m[1]);
+  });
+
+  test("Escape in the inspector returns focus to the list", async ({ page }) => {
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    const list = page.getByRole("listbox", { name: /Run timeline/ });
+    await list.focus();
+    await page.keyboard.press("e");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(list).toBeFocused();
+  });
+});
+
+test.describe("run work area on a phone", () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+  for (const [name, url] of [
+    ["failed run", `${BASE}/runs/${RUN(2)}`],
+    ["multi-agent waterfall", `${BASE}/runs/${RUN(7)}?view=waterfall`],
+  ] as const)
+    test(`stacked: the document scrolls and the list keeps a definite height: ${name}`, async ({
+      page,
+    }) => {
+      await page.goto(url);
+      await expect(page.locator(".timeline, .wf-scroll").first()).toBeVisible();
+      const m = await page.evaluate(() => ({
+        scroll: document.scrollingElement!.scrollHeight,
+        inner: window.innerHeight,
+        list: (document.querySelector(".timeline, .wf-scroll") as HTMLElement).clientHeight,
+      }));
+      expect(m.scroll).toBeGreaterThan(m.inner);
+      expect(m.list).toBeGreaterThan(250);
+      expect(await overflow(page)).toBeLessThanOrEqual(0);
+    });
+});

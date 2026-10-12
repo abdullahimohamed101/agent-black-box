@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isActive, type RunOut } from "@/lib/api/types";
 import {
   formatCost,
@@ -14,7 +14,6 @@ import {
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
 import { useEventDetail, useRun, useRunEvents } from "@/lib/queries";
-import { codingKind } from "@/lib/coding";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
 import { runBounds } from "@/lib/waterfall";
@@ -137,6 +136,20 @@ function LiveBar({
   );
 }
 
+/** `matchMedia` as external state; false on the server and where the API is missing (jsdom). */
+function useMedia(query: string): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      if (typeof window.matchMedia !== "function") return () => undefined;
+      const m = window.matchMedia(query);
+      m.addEventListener("change", notify);
+      return () => m.removeEventListener("change", notify);
+    },
+    () => typeof window.matchMedia === "function" && window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
 export function RunDetail({
   runId,
   live = true,
@@ -216,6 +229,10 @@ export function RunDetail({
   const [selected, setSelected] = useState<string | null>(null);
   const [drawerEventId, setDrawerEventId] = useState<string | null>(null);
   const timelineWrap = useRef<HTMLDivElement>(null);
+  // The context column (story, agents, findings, evaluations) yields to the inspector on a window narrower than 100rem;
+  // the strip button and the header toggle override that and the choice sticks until the next toggle.
+  const [contextPref, setContextPref] = useState<"auto" | "open" | "closed">("auto");
+  const narrow = useMedia("(max-width: 100rem)");
 
   const filtered = useMemo(() => filterEvents(events, filters), [events, filters]);
   const rows = useMemo(() => buildRows(filtered, collapsed), [filtered, collapsed]);
@@ -254,6 +271,8 @@ export function RunDetail({
     drawerEventId && !loadedDrawerEvent ? drawerEventId : null,
   );
   const drawerEvent = loadedDrawerEvent ?? remoteDrawer.data;
+  const contextClosed =
+    contextPref === "closed" || (contextPref === "auto" && !!drawerEvent && narrow);
 
   const focusTimeline = () =>
     timelineWrap.current
@@ -314,7 +333,7 @@ export function RunDetail({
   const parts = headlineParts(r, errText, err ? Date.parse(err.occurred_at) - t0 : null);
 
   return (
-    <div className="run-detail">
+    <div className="run-detail app-page">
       <header className="run-head">
         <div className="run-title">
           <h1>{r.name ?? r.id}</h1>
@@ -375,140 +394,175 @@ export function RunDetail({
         </dl>
       </header>
 
-      <Findings
-        runId={runId}
-        runActive={active}
-        summaryProcessing={r.summary_state === "processing"}
-        onShowEvent={jumpTo}
-      />
-
-      <Evaluations runId={runId} onShowEvent={jumpTo} />
-
-      <CodingSummary
-        events={events}
-        onOpen={(id) => {
-          setFilters(NO_FILTERS);
-          setSelected(id);
-          setDrawerEventId(id);
-        }}
-      />
-
-      {multiAgent && (
-        <AgentTree
-          rows={agents}
-          active={filters.agents ?? null}
-          onToggle={toggleAgent}
-          onClear={() => setFilters((f) => ({ ...f, agents: null }))}
-        />
-      )}
-
-      <section aria-labelledby="tl-h" className="timeline-section">
-        <h2 id="tl-h">{view === "waterfall" ? "Waterfall" : "Timeline"}</h2>
+      <div className="pane-head">
         <ViewSwitch view={view} onChange={changeView} />
-        {view === "timeline" && (
-          <div className="toolbar" role="group" aria-label="Timeline filters">
-            <fieldset>
-              <legend>Event classes</legend>
-              {CLASS_ORDER.map((c) => (
-                <label key={c} className="chip">
-                  <input
-                    type="checkbox"
-                    checked={filters.classes ? filters.classes.has(c) : true}
-                    onChange={() => toggleClass(c)}
-                  />
-                  {CLASS_LABELS[c]}
-                </label>
-              ))}
-            </fieldset>
-            <label className="chip">
-              <input
-                type="checkbox"
-                checked={filters.errorsOnly}
-                onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
-              />
-              Errors only
-            </label>
-            <button
-              type="button"
-              disabled={allGroups.length === 0}
-              onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allGroups))}
-            >
-              {collapsed.size ? "Expand groups" : "Collapse groups"}
-            </button>
-          </div>
-        )}
-        {drawerEventId && !loadedDrawerEvent && (
-          <p
-            role={remoteDrawer.isError ? "alert" : "status"}
-            className="notice"
-            data-testid="event-notice"
+        <button
+          type="button"
+          className="context-toggle"
+          aria-pressed={!contextClosed}
+          aria-controls="run-context"
+          onClick={() => setContextPref(contextClosed ? "open" : "closed")}
+        >
+          Context
+        </button>
+      </div>
+
+      <div
+        className="work"
+        data-inspector={drawerEvent ? "open" : "closed"}
+        data-context={contextClosed ? "closed" : "open"}
+      >
+        <aside id="run-context" className="context" aria-label="Run context">
+          <button
+            type="button"
+            className="context-strip"
+            onClick={() => setContextPref("open")}
+            aria-label="Show run context"
+            tabIndex={contextClosed ? 0 : -1}
           >
-            {remoteDrawer.isError
-              ? "That event could not be loaded; it may not exist in this run."
-              : "Loading the event…"}{" "}
-            <button type="button" onClick={() => setDrawerEventId(null)}>
-              Dismiss
-            </button>
-          </p>
-        )}
-        <p className="muted" role="status" aria-live="polite" data-testid="progress">
-          {loadingMore
-            ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
-            : view === "waterfall"
-              ? `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
-              : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown`}
-          {ev.isError && " (some events failed to load)"}
-        </p>
-        {ev.isError && events.length === 0 ? (
-          <ErrorState error={ev.error} onRetry={() => void ev.refetch()} />
-        ) : events.length === 0 && !ev.isPending ? (
-          <p className="state">This run has no events yet.</p>
-        ) : events.length === 0 ? (
-          <Loading label="Loading events" />
-        ) : view === "timeline" && rows.length === 0 ? (
-          <div className="state" data-state="empty">
-            <p className="state-title">No events match these filters</p>
-            <button type="button" onClick={() => setFilters(NO_FILTERS)}>
-              Clear filters
-            </button>
-          </div>
-        ) : (
-          <div
-            className="split"
-            ref={timelineWrap}
-            data-drawer={drawerEvent ? "open" : "closed"}
-            data-wide={(drawerEvent && codingKind(drawerEvent) !== null) || undefined}
-          >
-            {view === "timeline" ? (
-              <Timeline
-                rows={rows}
-                t0={t0}
-                selectedKey={selectedKey}
-                firstErrorId={err?.event_id ?? null}
-                showAgent={multiAgent}
-                onSelect={setSelected}
-                onActivate={activate}
-                onEscape={closeDrawer}
-                onJumpToError={jumpToError}
-              />
-            ) : (
-              <Waterfall
-                spans={spans}
-                bounds={bounds}
-                spanIdOf={spanIdOf}
-                selectedEventId={selected}
-                firstErrorId={err?.event_id ?? null}
-                agentFilter={filters.agents ?? null}
-                onSelect={setSelected}
-                onActivate={setDrawerEventId}
-                onEscape={closeDrawer}
-                onJumpToError={jumpToError}
+            Context
+          </button>
+          <div className="context-body" inert={contextClosed || undefined}>
+            <CodingSummary
+              events={events}
+              onOpen={(id) => {
+                setFilters(NO_FILTERS);
+                setSelected(id);
+                setDrawerEventId(id);
+              }}
+            />
+
+            {multiAgent && (
+              <AgentTree
+                rows={agents}
+                active={filters.agents ?? null}
+                onToggle={toggleAgent}
+                onClear={() => setFilters((f) => ({ ...f, agents: null }))}
               />
             )}
-            {drawerEvent && <EventDrawer runId={runId} event={drawerEvent} onClose={closeDrawer} />}
+
+            <Findings
+              runId={runId}
+              runActive={active}
+              summaryProcessing={r.summary_state === "processing"}
+              onShowEvent={jumpTo}
+            />
+
+            <Evaluations runId={runId} onShowEvent={jumpTo} />
           </div>
-        )}
-      </section>
+        </aside>
+
+        <section aria-labelledby="tl-h" className="pane">
+          <h2 id="tl-h" className="sr-only">
+            {view === "waterfall" ? "Waterfall" : "Timeline"}
+          </h2>
+          {view === "timeline" && (
+            <div className="toolbar" role="group" aria-label="Timeline filters">
+              <fieldset>
+                <legend>Event classes</legend>
+                {CLASS_ORDER.map((c) => (
+                  <label key={c} className="chip">
+                    <input
+                      type="checkbox"
+                      checked={filters.classes ? filters.classes.has(c) : true}
+                      onChange={() => toggleClass(c)}
+                    />
+                    {CLASS_LABELS[c]}
+                  </label>
+                ))}
+              </fieldset>
+              <label className="chip">
+                <input
+                  type="checkbox"
+                  checked={filters.errorsOnly}
+                  onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
+                />
+                Errors only
+              </label>
+              <button
+                type="button"
+                disabled={allGroups.length === 0}
+                onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allGroups))}
+              >
+                {collapsed.size ? "Expand groups" : "Collapse groups"}
+              </button>
+            </div>
+          )}
+          {drawerEventId && !loadedDrawerEvent && (
+            <p
+              role={remoteDrawer.isError ? "alert" : "status"}
+              className="notice"
+              data-testid="event-notice"
+            >
+              {remoteDrawer.isError
+                ? "That event could not be loaded; it may not exist in this run."
+                : "Loading the event…"}{" "}
+              <button type="button" onClick={() => setDrawerEventId(null)}>
+                Dismiss
+              </button>
+            </p>
+          )}
+          {ev.isError && events.length === 0 ? (
+            <ErrorState error={ev.error} onRetry={() => void ev.refetch()} />
+          ) : events.length === 0 && !ev.isPending ? (
+            <p className="state">This run has no events yet.</p>
+          ) : events.length === 0 ? (
+            <Loading label="Loading events" />
+          ) : view === "timeline" && rows.length === 0 ? (
+            <div className="state" data-state="empty">
+              <p className="state-title">No events match these filters</p>
+              <button type="button" onClick={() => setFilters(NO_FILTERS)}>
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div className="pane-body" ref={timelineWrap}>
+              {view === "timeline" ? (
+                <Timeline
+                  rows={rows}
+                  t0={t0}
+                  selectedKey={selectedKey}
+                  firstErrorId={err?.event_id ?? null}
+                  showAgent={multiAgent}
+                  onSelect={setSelected}
+                  onActivate={activate}
+                  onEscape={closeDrawer}
+                  onJumpToError={jumpToError}
+                />
+              ) : (
+                <Waterfall
+                  spans={spans}
+                  bounds={bounds}
+                  spanIdOf={spanIdOf}
+                  selectedEventId={selected}
+                  firstErrorId={err?.event_id ?? null}
+                  agentFilter={filters.agents ?? null}
+                  onSelect={setSelected}
+                  onActivate={setDrawerEventId}
+                  onEscape={closeDrawer}
+                  onJumpToError={jumpToError}
+                />
+              )}
+            </div>
+          )}
+          <div className="pane-foot">
+            <p className="muted" role="status" aria-live="polite" data-testid="progress">
+              {loadingMore
+                ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
+                : view === "waterfall"
+                  ? `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
+                  : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown`}
+              {ev.isError && " (some events failed to load)"}
+            </p>
+            <p className="keys muted" aria-hidden="true">
+              <kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> open · <kbd>e</kbd> first error ·{" "}
+              <kbd>esc</kbd> close
+            </p>
+          </div>
+        </section>
+
+        {drawerEvent && <EventDrawer runId={runId} event={drawerEvent} onClose={closeDrawer} />}
+      </div>
     </div>
   );
 }
