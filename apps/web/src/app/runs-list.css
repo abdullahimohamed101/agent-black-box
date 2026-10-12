@@ -1,0 +1,190 @@
+/* Runs list (Phase 22 step 7, plan D8): failure lines, the facet column, compare mode. Colour only ever means a problem. */
+
+.page-head .page-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+button.toggle {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.7rem;
+}
+button.toggle[aria-pressed="true"] {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Facet column to the left, results to the right; one column on a phone. */
+.runs-body {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  gap: 0 1.25rem;
+  align-items: start;
+}
+.runs-main {
+  min-width: 0;
+}
+.runs-body > .facets {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  position: sticky;
+  top: calc(var(--top-h) + 0.5rem);
+  max-height: calc(100dvh - var(--top-h) - 1rem);
+  overflow-y: auto;
+  font-size: 0.8rem;
+}
+.facets-box > summary {
+  display: none; /* wide screens: the column is simply there */
+  cursor: pointer;
+  color: var(--accent);
+  padding: 0.25rem 0;
+}
+.runs-body .facet {
+  display: block;
+  margin: 0 0 0.75rem;
+}
+.runs-body .facet h3 {
+  margin: 0 0 0.2rem;
+  font: 600 0.75rem/1.4 var(--cond);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+.runs-body .facet ul {
+  display: block;
+}
+.runs-body .facet li {
+  margin: 0;
+}
+.runs-body .facet-button {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  border: 0;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  text-align: left;
+}
+.runs-body .facet-button:hover {
+  background: var(--surface);
+}
+.runs-body .facet-button[aria-pressed="true"] {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.runs-body .facet-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.runs-body .facet li > span {
+  display: block;
+  padding: 0.1rem 0.4rem;
+  color: var(--muted);
+}
+.facets-more > summary {
+  cursor: pointer;
+  color: var(--accent);
+  margin-bottom: 0.4rem;
+}
+
+/* The run cell: name on the first line, the failure sentence on the second. Clean runs stay one line. */
+.runs-table td.name {
+  min-width: 14rem;
+}
+.run-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.run-line a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.row-more {
+  margin-left: auto;
+  padding: 0 0.3rem;
+  border: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.runs-table tbody tr:not(:hover) .row-more:not(:focus-visible) {
+  opacity: 0.55;
+}
+.run-fail {
+  margin: 0.05rem 0 0.15rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.run-fail-sentence {
+  color: var(--fail);
+  font-weight: 600;
+}
+.run-fail-detail {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+}
+.runs-table tr[data-attention="true"] td {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+  vertical-align: top;
+}
+.row-detail td {
+  height: auto;
+  padding: 0.1rem 0.6rem 0.5rem;
+  background: var(--surface-2);
+}
+.row-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  margin: 0;
+  font-size: 0.78rem;
+}
+.row-facts div {
+  display: flex;
+  gap: 0.4rem;
+}
+.row-facts dt {
+  color: var(--muted);
+}
+.row-facts dd {
+  margin: 0;
+  font-family: var(--mono);
+}
+
+@media (max-width: 52rem) {
+  .runs-body {
+    display: block;
+  }
+  .runs-body > .facets {
+    position: static;
+    max-height: none;
+    margin: 0 0 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .facets-box > summary {
+    display: block;
+  }
+  .runs-body .facet ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+  }
+  .runs-body .facet-button {
+    width: auto;
+    border: 1px solid var(--border);
+  }
+  .page-head .page-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+}

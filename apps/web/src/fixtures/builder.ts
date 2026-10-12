@@ -128,6 +128,29 @@ export class RunBuilder {
         .filter((e) => ["file.created", "file.modified", "file.deleted"].includes(e.event_type))
         .map((e) => String(e.attributes["file.path"])),
     );
+    // The stored first-error facts (ADR-112), computed the way the worker does: "after" is canonical event order.
+    const errAt = ev.findIndex(isErr);
+    const firstErr = errAt >= 0 ? ev[errAt]! : null;
+    const later = firstErr ? ev.slice(errAt + 1) : [];
+    const calls = later.filter((e) => e.event_type === "llm.request.completed");
+    const firstErrorOut: RunOut["first_error"] = firstErr
+      ? {
+          event_id: firstErr.event_id,
+          sequence: firstErr.sequence ?? null,
+          retries_after: later.filter((e) => e.event_type === "retry.attempted").length,
+          seconds_after: Math.max(
+            0,
+            (Date.parse(last.occurred_at) - Date.parse(firstErr.occurred_at)) / 1000,
+          ),
+          cost_after_usd: Number(
+            calls
+              .reduce((s, e) => s + Number(e.attributes["cost.estimated_usd"] ?? 0), 0)
+              .toFixed(6),
+          ),
+          cost_after_unpriced_calls: calls.filter((e) => e.attributes["cost.estimated_usd"] == null)
+            .length,
+        }
+      : null;
     const run: RunOut = {
       id: this.runId,
       project_id: FIXTURE_PROJECT,
@@ -157,6 +180,7 @@ export class RunBuilder {
         last_event_at: last.occurred_at,
         ...agentSummary(ev),
       },
+      first_error: firstErrorOut,
       summary_version: 1,
       summary_state: "current",
       metadata: {},

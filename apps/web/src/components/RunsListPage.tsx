@@ -26,6 +26,20 @@ export function RunsListPage({ base }: { base: Base }) {
   // Local state is the source of truth while the page is open (instant, controlled inputs); the URL mirrors it.
   const [filters, setFilters] = useState<ListFilters>(() => parseFilters(sp));
 
+  // The top-bar search navigates here with `?q=` while this page is open. `mine` is the query string this page last
+  // wrote itself (the URL catches up with it a render later, so only a change of the URL is looked at): a URL that
+  // changed to something else came from elsewhere and replaces the filters.
+  const urlText = sp.toString();
+  const [seen, setSeen] = useState(urlText);
+  const [mine, setMine] = useState(urlText);
+  if (seen !== urlText) {
+    setSeen(urlText);
+    if (urlText !== mine) {
+      setMine(urlText);
+      setFilters(parseFilters(sp));
+    }
+  }
+
   const onFilters = useCallback(
     (f: ListFilters) => {
       setFilters(f);
@@ -35,6 +49,7 @@ export function RunsListPage({ base }: { base: Base }) {
       if (f.agent) p.set("agent", f.agent);
       if (f.range !== DEFAULT_FILTERS.range) p.set("range", f.range);
       const qs = p.toString();
+      setMine(qs);
       window.history.replaceState(null, "", qs ? `${path}?${qs}` : path);
     },
     [path],

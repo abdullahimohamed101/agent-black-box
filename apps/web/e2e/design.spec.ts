@@ -69,8 +69,9 @@ test.describe("1440x900 frame", () => {
         .map((e) => (e.closest("aside.rail") ? "rail" : e.closest("header") ? "top" : "main"))
         .filter((v, i, a) => i === 0 || a[i - 1] !== v),
     );
-    // the skip link sits outside the rail and the top bar (the top bar has no focusable control on a list page)
-    expect(order.slice(0, 3)).toEqual(["main", "rail", "main"]);
+    // the skip link sits outside the rail and the top bar; the top bar now holds the global search (Phase 22 step 7),
+    // so the order is skip link, rail, search, page
+    expect(order.slice(0, 4)).toEqual(["main", "rail", "top", "main"]);
   });
 
   test("fonts are self-hosted and applied; no request leaves the origin", async ({ page }) => {
@@ -465,11 +466,17 @@ test.describe("runs list", () => {
   }) => {
     await page.goto(`${BASE}/runs`);
     await expect(page.getByRole("table")).toBeVisible();
+    // a clean run is one line of at most 34 px; a run that needs attention has a second line (Phase 22 D8)
     const rows = await page
-      .locator("tbody tr")
+      .locator("tbody tr:not([data-attention])")
       .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
     expect(rows.length).toBeGreaterThan(5);
     expect(Math.max(...rows)).toBeLessThanOrEqual(34);
+    const attention = await page
+      .locator("tbody tr[data-attention]")
+      .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+    expect(attention.length).toBeGreaterThan(0);
+    expect(Math.max(...attention)).toBeLessThanOrEqual(70);
     const filters = (await page.getByRole("search", { name: "Filter runs" }).boundingBox())!;
     expect(filters.height).toBeLessThanOrEqual(48);
     const wrap = await page.locator(".table-wrap").evaluate((e) => [e.scrollWidth, e.clientWidth]);
@@ -564,7 +571,7 @@ test.describe("motion", () => {
   });
 });
 
-test.describe("polish: the class chips take one row, or two when the pane is narrow, never a cut-off chip", () => {
+test.describe("polish: the toolbar takes one row, or two when the pane is narrow", () => {
   for (const width of [1440, 1280]) {
     test(`toolbar is at most two rows with the inspector open at ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });

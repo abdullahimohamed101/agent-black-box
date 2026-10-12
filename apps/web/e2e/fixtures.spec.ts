@@ -428,6 +428,9 @@ test("evaluations: every state, the judge badge, hostile text as text, and the v
 test("runs list: pick two runs to compare (fixtures)", async ({ page }) => {
   await page.goto(`${BASE}/runs`);
   const picks = page.getByRole("checkbox", { name: /^Compare / });
+  // Phase 22 D8: the tick boxes exist only once the person starts comparing
+  await expect(picks).toHaveCount(0);
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
   await expect(picks).toHaveCount(12);
   await expect(page.getByTestId("compare-link")).toHaveCount(0);
   await picks.nth(0).check();

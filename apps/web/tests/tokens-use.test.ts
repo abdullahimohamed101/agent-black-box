@@ -4,7 +4,15 @@ import { describe, expect, it } from "vitest";
 
 // ADR-111: red means failure and nothing else. Any rule that reads --fail, --bad or their -bg tints must be on this allowlist
 // of failure selectors; a new use needs a new entry here, which is the review point.
-const FILES = ["globals.css", "compare.css", "waterfall.css", "search.css", "run-header.css"];
+const FILES = [
+  "globals.css",
+  "compare.css",
+  "waterfall.css",
+  "search.css",
+  "run-header.css",
+  "runs-list.css",
+  "topbar-search.css",
+];
 const ALLOWED: RegExp[] = [
   /^\.stat\[data-tone="bad"\]/,
   /^\.badge\[data-tone="bad"\]/,
@@ -24,6 +32,7 @@ const ALLOWED: RegExp[] = [
   /^\.findings-state\[data-tone="bad"\]/,
   /^\.finding\[data-severity="critical"\]/,
   /^\.runs td\.num strong$/,
+  /^\.run-fail-sentence$/, // the runs list's failure line (Phase 22 step 7)
   /^\.evaluation-error$/,
   /^\.compare-table \.delta\[data-tone="bad"\]/,
   /^\.agent-item\[data-error\]/,

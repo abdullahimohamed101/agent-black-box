@@ -9,7 +9,7 @@ import {
 } from "./evaluations";
 import { fixtureRuns } from "./index";
 import { withholdEvent, withholdSpan } from "./withhold";
-import { FixtureQueryError, fixtureSearch } from "./search";
+import { FixtureForbiddenError, FixtureQueryError, fixtureSearch } from "./search";
 
 export type Reply = { status: number; body: unknown };
 
@@ -80,8 +80,22 @@ export function fixtureReply(
     const qText = q.get("q");
     if (qText !== null && qText.trim() !== "") {
       try {
-        searched = fixtureSearch(all, qText);
+        searched = fixtureSearch(all, qText, viewer);
       } catch (e) {
+        if (e instanceof FixtureForbiddenError)
+          return {
+            status: 403,
+            body: {
+              error: {
+                code: "PERMISSION_DENIED",
+                message: "You do not have permission to search that field.",
+                category: "AUTHORIZATION",
+                retryable: false,
+                request_id: "req_fixture",
+                details: { field: e.field },
+              },
+            },
+          };
         if (!(e instanceof FixtureQueryError)) throw e;
         return {
           status: 422,

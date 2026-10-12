@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_FILTERS, RunsList, type ListFilters } from "@/components/RunsList";
@@ -31,10 +32,14 @@ describe("runs list header", () => {
 
   it("keeps the search, filter and compare landmarks and the run link cell class", async () => {
     stubApi();
+    const user = userEvent.setup();
     const { container } = renderWithQuery(<Harness />);
     await screen.findByRole("table", { name: "Runs" });
     expect(screen.getByRole("search", { name: "Search runs" })).toBeInTheDocument();
     expect(screen.getByRole("search", { name: "Filter runs" })).toBeInTheDocument();
+    // Phase 22 D8: the compare bar is behind the "Compare" button now, not always on.
+    expect(screen.queryByTestId("compare-bar")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Compare" }));
     expect(screen.getByTestId("compare-bar")).toBeInTheDocument();
     expect(screen.getByLabelText("Failed")).toBeInTheDocument();
     expect(container.querySelectorAll("td.name a").length).toBeGreaterThan(5);
