@@ -147,7 +147,7 @@ def test_llm_call_records_billing_modifiers_and_drops_bad_ones() -> None:
                 1,
                 1,
                 cache_write_tokens=-1,
-                cache_write_1h_tokens=True,  # type: ignore[arg-type]
+                cache_write_1h_tokens=True,  # a bool is not a count
                 service_tier="not a word; drop table",
                 data_residency=7,  # type: ignore[arg-type]
             )
