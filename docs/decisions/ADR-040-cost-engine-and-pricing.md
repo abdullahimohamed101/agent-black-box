@@ -41,3 +41,24 @@ Migration 0040 adds `cost_calculations` and `pricing_overrides`. Existing runs k
 
 ## Revisit conditions
 Invoice reconciliation (§79.3) or budgets (§79.4) need a billed-cost table and a streaming cost counter; revisit then. Multi-currency needs a currency column on lines.
+
+## Amendment 2026-10-12: prompt-size tiers
+Status: Accepted
+
+Several vendors price the whole request higher when the prompt is large: OpenAI above 272K input tokens (2x input and cache rates, 1.5x output for the
+full request), Claude Haiku 5.5 above 100,000, Gemini 3.1 Pro and 2.5 Pro above 200k. The engine could not express this, so those models were left unpriced (KI-050).
+
+- `PriceEntry.min_prompt_tokens` (optional, default none). An entry with a threshold applies only when the call's prompt tokens, `llm.input_tokens`
+  (cached tokens included, as the vendors count them), are **strictly greater** than it. The whole request is then priced at that entry's rates, not
+  only the tokens above the line. Entries without a threshold behave exactly as before.
+- Selection: among otherwise equal candidates the largest satisfied threshold wins; the threshold ranks right before `valid_from`, so a tier beats its
+  base row whatever their start dates. Override, project scope, provider and pattern specificity still rank above it, so a workspace override (which has no
+  tier) beats a built-in tier for every prompt size. `PriceBook.find` takes `prompt_tokens`; the engine passes it.
+- No migration: tiers exist only in the built-in table. Override rows (`pricing_overrides`) cannot express a tier yet; add `min_prompt_tokens` to
+  them if a workspace needs one.
+- Reproducibility is unchanged: selection still depends only on the entry set, model, provider, event time and token counts. A pinned `pricing_version` reproduces old
+  results, and a new batch of prices is a new version (`2026-10-12`, `valid_from` 2026-10-12) with its source and fetch date on every row.
+- Not modelled and documented: batch/flex (50%), fast mode (2x), regional processing (+10%), cache writes, modality prices.
+
+Evidence for each price is in `docs/research/openai-and-tiered-prices-2026-10-12.md`.
+

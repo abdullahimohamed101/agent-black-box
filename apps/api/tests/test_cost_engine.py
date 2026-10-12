@@ -1,5 +1,6 @@
 """Pricing selection and the cost engine: versions, overrides, sources, reproducibility."""
 
+import re
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -8,7 +9,13 @@ from typing import Any
 import pytest
 from abb_event_schema.event import Event
 
-from abb_api.cost.builtin import BUILTIN_ENTRIES, BUILTIN_VERSION, builtin_price_book
+from abb_api.cost.builtin import (
+    BUILTIN_ENTRIES,
+    BUILTIN_VERSION,
+    TIERED_ENTRIES,
+    TIERED_VERSION,
+    builtin_price_book,
+)
 from abb_api.cost.engine import CostEngine, cost_summary
 from abb_api.cost.pricing import PriceBook, PriceEntry
 from abb_api.tenancy import TenantContext
@@ -370,6 +377,107 @@ def test_builtin_google_prices_follow_the_dated_and_exact_rows() -> None:
     assert book.find("google", "gemini-3.8-flash-tts", at(10)) is None
     assert book.find("google", "gemini-3.1-pro-preview", at(10)) is None
     assert book.find("anthropic", "gemini-3.5-flash", at(10)) is None
+
+
+def test_every_vendor_entry_records_its_source_and_fetch_date() -> None:
+    vendor = [e for e in BUILTIN_ENTRIES if e.provider != "example-provider"]
+    assert len(vendor) > 40
+    for e in vendor:
+        assert e.source.startswith("https://"), e.model_pattern
+        assert re.search(r"read (twice )?20\d\d-\d\d-\d\d", e.source), e.model_pattern
+    for e in TIERED_ENTRIES:
+        assert e.pricing_version == TIERED_VERSION and e.valid_from == datetime(
+            2026, 10, 12, tzinfo=UTC
+        )
+        assert e.currency == "USD" and e.origin == "builtin"
+    promo = book_entry("openai", "gpt-5.6-sol", 12)
+    assert "2026-11-21" in promo.source
+
+
+def book_entry(provider: str, model: str, day: int, prompt: int = 0) -> PriceEntry:
+    found = builtin_price_book().find(provider, model, at(day), prompt_tokens=prompt)
+    assert found is not None, model
+    return found
+
+
+def test_builtin_openai_tiers_use_the_272k_rule_for_the_whole_request() -> None:
+    short = book_entry("openai", "gpt-6-astra", 12, 272_000)
+    long_ = book_entry("openai", "gpt-6-astra", 12, 272_001)
+    assert (short.input_per_million, short.cached_input_per_million, short.output_per_million) == (
+        D(10),
+        D(1),
+        D(50),
+    )
+    assert (long_.input_per_million, long_.cached_input_per_million, long_.output_per_million) == (
+        D(20),
+        D(2),
+        D(75),
+    )
+    assert long_.min_prompt_tokens == 272_000
+    event = llm(
+        {
+            "llm.provider": "openai",
+            "llm.model": "gpt-6-astra",
+            "llm.input_tokens": 300_000,
+            "llm.cached_input_tokens": 100_000,
+            "llm.output_tokens": 10_000,
+        },
+        day=13,
+    )
+    line = CostEngine(builtin_price_book()).calculate(event)
+    # 200k plain at 20 + 100k cached at 2 + 10k out at 75, all at the long-context rates.
+    assert (line.input_cost, line.cached_cost, line.output_cost) == (D(4), D("0.2"), D("0.75"))
+    assert line.pricing_version == TIERED_VERSION
+
+
+def test_builtin_models_without_a_long_tier_stay_flat_and_old_dates_stay_unpriced() -> None:
+    codex = book_entry("openai", "gpt-5.3-codex", 12, 900_000)
+    assert codex.min_prompt_tokens is None and codex.input_per_million == D("1.75")
+    pro = book_entry("openai", "gpt-5.2-pro", 12, 900_000)
+    assert pro.cached_input_per_million is None and pro.input_per_million == D(21)
+    book = builtin_price_book()
+    assert book.find("openai", "gpt-6-astra", at(11), prompt_tokens=10) is None  # before valid_from
+    # Left out on purpose: restricted, moving alias, and a model page that states no long tier.
+    for model in ("chat-latest", "gpt-5.6-cyber", "gpt-rosalind-research", "gpt-5.5-pro"):
+        assert book.find("openai", model, at(13), prompt_tokens=10) is None
+    assert book.find("openai", "gpt-4o-2024-08-06", at(13)) is None  # exact IDs only
+
+
+def test_builtin_haiku_and_gemini_pro_tiers() -> None:
+    low = book_entry("anthropic", "claude-haiku-5-5", 12, 100_000)
+    high = book_entry("anthropic", "claude-haiku-5-5-20261001", 12, 100_001)
+    assert (low.input_per_million, low.cached_input_per_million, low.output_per_million) == (
+        D("0.10"),
+        D("0.01"),
+        D("0.50"),
+    )
+    assert (high.input_per_million, high.cached_input_per_million, high.output_per_million) == (
+        D("0.50"),
+        D("0.05"),
+        D("2.50"),
+    )
+    pro = book_entry("google", "gemini-3.1-pro-preview", 12, 200_001)
+    assert (pro.input_per_million, pro.cached_input_per_million, pro.output_per_million) == (
+        D(4),
+        D("0.40"),
+        D(18),
+    )
+    assert book_entry("google", "gemini-2.5-pro", 12, 200_000).input_per_million == D("1.25")
+    assert builtin_price_book().find("google", "gemini-2.5-flash", at(13)) is None
+
+
+def test_a_workspace_override_beats_a_builtin_tier_end_to_end() -> None:
+    override = entry(
+        "override:x",
+        "gpt-6-astra",
+        provider="openai",
+        origin="override",
+        valid_from=at(1),
+        input_per_million=D(1),
+        output_per_million=D(1),
+    )
+    book = PriceBook([*BUILTIN_ENTRIES, override])
+    assert book.find("openai", "gpt-6-astra", at(13), prompt_tokens=500_000) is override
 
 
 def test_summary_totals_are_exact_and_split_by_source() -> None:
