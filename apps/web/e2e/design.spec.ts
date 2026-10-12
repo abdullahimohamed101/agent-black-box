@@ -557,20 +557,17 @@ test.describe("motion", () => {
   });
 });
 
-test.describe("polish: one row of class chips, one story marker", () => {
+test.describe("polish: the class chips take one row, or two when the pane is narrow, never a cut-off chip", () => {
   for (const width of [1440, 1280]) {
-    test(`toolbar is a single row with the inspector open at ${width}`, async ({ page }) => {
+    test(`toolbar is at most two rows with the inspector open at ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
       await page.goto(`${BASE}/runs/${RUN(7)}`);
       await page.getByRole("button", { name: "Show it" }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
       const bar = page.getByRole("group", { name: "Timeline filters" });
-      expect((await bar.boundingBox())!.height).toBeLessThan(48);
-      // the class group scrolls sideways instead of wrapping
-      const [sw, cw] = await bar
-        .locator("fieldset")
-        .evaluate((el) => [el.scrollWidth, el.clientWidth]);
-      expect(sw).toBeGreaterThanOrEqual(cw);
+      const pane = (await page.locator(".pane").boundingBox())!.width;
+      // one row from 40rem of pane; below that the chips wrap onto a second row (see review-fixes.spec.ts for the clipping check)
+      expect((await bar.boundingBox())!.height).toBeLessThan(pane >= 640 ? 48 : 100);
     });
   }
 

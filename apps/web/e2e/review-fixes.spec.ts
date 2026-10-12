@@ -73,3 +73,52 @@ test.describe("R7 the context column survives a click on it", () => {
     }
   });
 });
+
+test.describe("R8 the class chips are never cut in half", () => {
+  for (const [w, h, inspector] of [
+    [1024, 640, true],
+    [1280, 720, true],
+    [1440, 900, false],
+  ] as const) {
+    test(`${w}x${h}${inspector ? " with the inspector" : ""}: every chip is fully inside its row`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: w, height: h });
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
+      if (inspector) {
+        await page.getByRole("button", { name: "Show it" }).click();
+        await expect(page.getByRole("dialog")).toBeVisible();
+      }
+      const clipped = await page.evaluate(() => {
+        const toolbar = document.querySelector(".pane .toolbar")!.getBoundingClientRect();
+        return [
+          ...document.querySelectorAll(
+            ".pane .toolbar fieldset .chip, .pane .toolbar fieldset label",
+          ),
+        ]
+          .filter((c) => {
+            const r = c.getBoundingClientRect();
+            return r.right > toolbar.right + 0.5 || r.left < toolbar.left - 0.5;
+          })
+          .map((c) => c.textContent);
+      });
+      expect(clipped).toEqual([]);
+    });
+  }
+});
+
+test.describe("R9 experiment detail on a phone", () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+  for (const n of [1, 2]) {
+    test(`experiment ${n}: no horizontal scroll`, async ({ page }) => {
+      await page.goto(`${BASE}/experiments/exp_${String(n).padStart(26, "0")}`);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      const over = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      expect(over).toBeLessThanOrEqual(0);
+    });
+  }
+});

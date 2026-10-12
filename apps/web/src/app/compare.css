@@ -232,8 +232,13 @@ tr[data-picked="true"] {
 .experiment-form {
   margin: 1rem 0;
   display: grid;
+  /* One shrinkable column: an option with a long run id must not widen the form past a phone. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.6rem;
   max-width: 36rem;
+}
+.experiment-form select {
+  max-width: 100%;
 }
 @media (max-width: 40rem) {
   .aligned-head,

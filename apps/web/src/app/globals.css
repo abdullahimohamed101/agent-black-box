@@ -1775,6 +1775,16 @@ td a {
   mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
 }
 @container (max-width: 40rem) {
+  /* Too narrow for one row: the chips wrap onto their own row instead of scrolling under a fade with a half chip. */
+  .pane .toolbar {
+    flex-wrap: wrap;
+  }
+  .pane .toolbar fieldset {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    overflow: visible;
+    mask-image: none;
+  }
   /* Keeps the group's accessible name while giving the chips the room. */
   .pane .toolbar legend {
     position: absolute;
