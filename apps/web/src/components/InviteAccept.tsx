@@ -62,7 +62,12 @@ export function InviteAccept() {
     }
   }
 
-  if (phase.kind === "reading") return <p role="status">Checking your invitation…</p>;
+  if (phase.kind === "reading")
+    return (
+      <p role="status" className="auth-context">
+        Checking your invitation…
+      </p>
+    );
   if (phase.kind === "unavailable")
     return (
       <p role="alert" className="notice">
@@ -78,6 +83,7 @@ export function InviteAccept() {
   if (phase.kind === "signed-out")
     return (
       <>
+        <p className="auth-context">An invitation to a workspace is waiting for you.</p>
         <p>Sign in with the email address the invitation was sent to, then accept it.</p>
         {/* A plain link, not next/link: prefetching it would start a sign-in. */}
         <a className="button" href={`/api/auth/login?return_to=${encodeURIComponent("/invite")}`}>
@@ -87,6 +93,7 @@ export function InviteAccept() {
     );
   return (
     <>
+      <p className="auth-context">An invitation to a workspace is waiting for you.</p>
       <p>
         You are signed in as <strong>{phase.email}</strong>. The invitation only works for the email
         address it was sent to.

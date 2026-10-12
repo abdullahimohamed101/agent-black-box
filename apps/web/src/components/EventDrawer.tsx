@@ -59,10 +59,13 @@ export function EventDrawer({
   runId,
   event,
   onClose,
+  closing = false,
 }: {
   runId: string;
   event: EventOut;
   onClose: () => void;
+  /** The 100 ms exit (run-motion.css): the last event is still drawn, but nothing in it can be reached. */
+  closing?: boolean;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const detail = useEventDetail(runId, event.event_id);
@@ -83,6 +86,8 @@ export function EventDrawer({
       aria-labelledby="drawer-title"
       data-kind={kind}
       data-error={err || undefined}
+      data-closing={closing || undefined}
+      inert={closing || undefined}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();

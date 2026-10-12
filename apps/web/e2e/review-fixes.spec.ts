@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openContext } from "./motion";
 
 // Regressions found by the Phase 21 code review (docs/plans/completed/phase-21-code-review.md). Fixtures build.
 const BASE = "/w/demo/projects/all";
@@ -10,7 +11,7 @@ test.describe("R4 focus after expanding the folded context", () => {
   test("Enter on the strip lands focus in the context column, not <body>", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
     await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
-    await page.getByRole("button", { name: "Context" }).click(); // fold
+    // closed by default (Phase 22 D3): the strip is already there
     const strip = page.getByRole("button", { name: "Show run context" });
     await strip.focus();
     await page.keyboard.press("Enter");
@@ -55,32 +56,34 @@ test.describe("R5 readouts at the smallest app window", () => {
 });
 
 test.describe("R7 the context column survives a click on it", () => {
-  test("1440: Show it opens the inspector and the column stays open; 1280: it folds", async ({
+  test("1440 and 1280: once open, Show it opens the inspector and the column stays open (KI-126); under 1280 it folds", async ({
     page,
   }) => {
     for (const [w, state] of [
       [1440, "open"],
-      [1280, "closed"],
+      [1280, "open"],
+      [1100, "closed"],
     ] as const) {
       await page.setViewportSize({ width: w, height: 900 });
       await page.goto(`${BASE}/runs/${RUN(2)}`);
       await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
+      await openContext(page);
       await page.getByRole("button", { name: "Show it" }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
       await expect(page.locator(".work")).toHaveAttribute("data-context", state);
       const pane = await page.locator(".pane").boundingBox();
-      expect(pane!.width, `${w}`).toBeGreaterThanOrEqual(w === 1440 ? 480 : 300);
+      expect(pane!.width, `${w}`).toBeGreaterThanOrEqual(w === 1440 ? 480 : w === 1280 ? 440 : 300);
     }
   });
 });
 
-test.describe("R8 the class chips are never cut in half", () => {
+test.describe("R8 the toolbar controls and the Filter popover are never cut in half", () => {
   for (const [w, h, inspector] of [
     [1024, 640, true],
     [1280, 720, true],
     [1440, 900, false],
   ] as const) {
-    test(`${w}x${h}${inspector ? " with the inspector" : ""}: every chip is fully inside its row`, async ({
+    test(`${w}x${h}${inspector ? " with the inspector" : ""}: every toolbar control is fully inside its row`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: w, height: h });
@@ -92,11 +95,7 @@ test.describe("R8 the class chips are never cut in half", () => {
       }
       const clipped = await page.evaluate(() => {
         const toolbar = document.querySelector(".pane .toolbar")!.getBoundingClientRect();
-        return [
-          ...document.querySelectorAll(
-            ".pane .toolbar fieldset .chip, .pane .toolbar fieldset label",
-          ),
-        ]
+        return [...document.querySelectorAll(".pane .toolbar > *")]
           .filter((c) => {
             const r = c.getBoundingClientRect();
             return r.right > toolbar.right + 0.5 || r.left < toolbar.left - 0.5;
@@ -104,6 +103,16 @@ test.describe("R8 the class chips are never cut in half", () => {
           .map((c) => c.textContent);
       });
       expect(clipped).toEqual([]);
+      // the Filter popover holds every class and stays inside the window
+      await page.getByRole("button", { name: /^Filter/ }).click();
+      const panel = page.getByRole("group", { name: "Event classes" });
+      await expect(panel.getByRole("checkbox")).toHaveCount(8);
+      const box = (await panel.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(w);
+      expect(box.y + box.height).toBeLessThanOrEqual(h);
+      await page.keyboard.press("Escape");
+      await expect(panel).toBeHidden();
     });
   }
 });
@@ -130,6 +139,7 @@ test.describe("R12 empty states are statements, not cards", () => {
   ] as const) {
     test(`${name}: no bordered box`, async ({ page }) => {
       await page.goto(url);
+      if (name === "run evaluations") await openContext(page); // the context column starts closed (Phase 22 D3)
       const empty = page.locator('[data-state="empty"]').first();
       await expect(empty).toBeVisible();
       const css = await empty.evaluate((el) => {

@@ -4,7 +4,15 @@ import Link from "next/link";
 import { useId } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ComparisonOut, EvaluatorKind, RunStatus } from "@/lib/api/types";
-import { deltaText, directionGlyph, metricRows, scoreText } from "@/lib/comparison";
+import {
+  deltaLine,
+  deltaText,
+  directionGlyph,
+  divergenceLine,
+  metricRows,
+  scoreText,
+  type Part,
+} from "@/lib/comparison";
 import { KIND_LABEL, JUDGE_BADGE } from "@/lib/evaluations";
 import { formatCost, formatInt } from "@/lib/format";
 import { runPath, type Base } from "@/lib/routes";
@@ -211,9 +219,58 @@ function RunLink({
 }) {
   return (
     <p data-testid={`${side}-run`}>
-      <span className="muted">{side === "left" ? "Left" : "Right"} run </span>
+      <span className="muted">{side === "left" ? "A, left run" : "B, right run"} </span>
       <Link href={runPath(base, id)}>{id}</Link> <StatusBadge status={status as RunStatus} />
     </p>
+  );
+}
+
+function Parts({ parts }: { parts: Part[] }) {
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.code ? (
+          <code key={i} className="divergence-name">
+            {p.text}
+          </code>
+        ) : (
+          <span key={i}>{p.text}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+/** The page's headline (plan D12): where the runs diverged and what each did there, then one mono line of deltas. */
+function Divergence({ c }: { c: ComparisonOut }) {
+  const d = divergenceLine(c);
+  const outcome = c.first_outcome_difference;
+  return (
+    <div className="compare-lead">
+      {d === null ? (
+        <p className="compare-divergence" data-testid="no-divergence">
+          The runs took the same steps{c.alignment === "metadata" ? " (compared on metadata)" : ""}.
+        </p>
+      ) : (
+        <p className="compare-divergence" data-testid="divergence-summary">
+          The runs diverged at step {d.step}: A <Parts parts={d.a} />, B <Parts parts={d.b} />.
+        </p>
+      )}
+      {d !== null && outcome !== null && (
+        <p className="muted" data-testid="outcome-summary">
+          {outcome === c.divergence!.index
+            ? "The outcome first differs at the same step."
+            : `The first difference in outcome is at step ${outcome + 1}.`}
+        </p>
+      )}
+      <p className="compare-deltas" data-testid="compare-deltas" aria-label="Right minus left">
+        {deltaLine(c.summary).map((i) => (
+          <span key={i.key} data-delta={i.key} data-direction={i.direction}>
+            <span className="compare-delta-label">{i.label}</span> {i.text}
+          </span>
+        ))}
+      </p>
+    </div>
   );
 }
 
@@ -221,32 +278,12 @@ function Loaded({ c, base }: { c: ComparisonOut; base: Base }) {
   const ids = [useId(), useId(), useId(), useId(), useId()] as const;
   return (
     <>
+      <Divergence c={c} />
       <div className="compare-runs">
         <RunLink base={base} id={c.left.run_id} status={c.left.status} side="left" />
         <RunLink base={base} id={c.right.run_id} status={c.right.status} side="right" />
       </div>
       <Notices c={c} />
-      {c.divergence === null ? (
-        <p data-testid="no-divergence">
-          The runs took the same steps{c.alignment === "metadata" ? " (compared on metadata)" : ""}.
-        </p>
-      ) : (
-        <p data-testid="divergence-summary">
-          The runs first diverge at step {c.divergence.index + 1}
-          {c.first_outcome_difference !== null &&
-            c.first_outcome_difference !== c.divergence.index && (
-              <>; the first difference in outcome is at step {c.first_outcome_difference + 1}</>
-            )}
-          {c.first_outcome_difference === c.divergence.index && (
-            <> (which is also where the outcome first differs)</>
-          )}
-          .
-        </p>
-      )}
-      <section aria-labelledby={ids[0]}>
-        <h2 id={ids[0]}>Summary</h2>
-        <Summary c={c} />
-      </section>
       <section aria-labelledby={ids[1]}>
         <h2 id={ids[1]}>Steps</h2>
         <AlignedSteps
@@ -254,6 +291,13 @@ function Loaded({ c, base }: { c: ComparisonOut; base: Base }) {
           divergence={c.divergence?.index ?? null}
           outcome={c.first_outcome_difference}
         />
+      </section>
+      <section aria-labelledby={ids[0]}>
+        <h2 id={ids[0]}>Summary</h2>
+        <details className="compare-measures">
+          <summary>All measures</summary>
+          <Summary c={c} />
+        </details>
       </section>
       <section aria-labelledby={ids[2]}>
         <h2 id={ids[2]}>Evaluations</h2>

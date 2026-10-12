@@ -15,6 +15,7 @@ import { runPath, type Base } from "@/lib/routes";
 import { useProjectId } from "@/components/WorkspaceProvider";
 import { BarList, DayColumns } from "./charts";
 import { StatusBadge } from "./StatusBadge";
+import { WastePanel } from "./WastePanel";
 import { Empty, ErrorState, Loading } from "./States";
 
 const pct = (r: number | null | undefined) => (r == null ? "—" : `${Math.round(r * 100)}%`);
@@ -136,6 +137,8 @@ export function Analytics({ base }: { base: Base }) {
         (about 10%). Cost is in USD; each figure says whether it was reported by the provider,
         computed from tokens and a versioned price, or estimated by the caller.
       </p>
+
+      <WastePanel project={project} days={days} />
 
       <Section id="cost-h" title="Cost" query={cost}>
         {c && c.headline.total_usd === 0 && c.by_model.length === 0 ? (

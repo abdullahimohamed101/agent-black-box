@@ -58,7 +58,7 @@ describe("RunsList", () => {
   it("paginates with a cursor without repeating or dropping runs", async () => {
     stubApi();
     const user = userEvent.setup();
-    const page = N / 2; // two pages
+    const page = Math.ceil(N / 2); // two pages (the fixture count may be odd)
     renderWithQuery(<Harness pageSize={page} />);
     await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(page + 1));
     expect(screen.getByText(new RegExp(`${page} runs loaded`))).toBeInTheDocument();
@@ -105,7 +105,7 @@ describe("RunsList", () => {
     expect(
       rows
         .slice(1)
-        .every((r) => /Success|Failed|Running|Awaiting approval/.test(r.textContent ?? "")),
+        .every((r) => /Success|Failed|Running|Awaiting approval|Blocked/.test(r.textContent ?? "")),
     ).toBe(true);
   });
 });

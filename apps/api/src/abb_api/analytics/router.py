@@ -6,7 +6,13 @@ from typing import Annotated, Any
 from abb_event_schema.ids import IdKind, id_pattern
 from fastapi import APIRouter, Depends, Query, Request
 
-from abb_api.analytics.schemas import CostReport, PerformanceReport, ReliabilityReport, Summary
+from abb_api.analytics.schemas import (
+    CostReport,
+    PerformanceReport,
+    ReliabilityReport,
+    Summary,
+    WasteReport,
+)
 from abb_api.analytics.service import AnalyticsService
 from abb_api.analytics.store import DEFAULT_TOP, MAX_TOP, AnalyticsScope
 from abb_api.authz import actions
@@ -134,3 +140,29 @@ async def performance(
 ) -> PerformanceReport:
     scope = await _scope(request, principal, project_id, start, end)
     return await _service(request).performance(scope, top)
+
+
+@router.get(
+    "/waste",
+    response_model=WasteReport,
+    responses=_ERRORS,
+    summary="Where the money was wasted",
+    description=(
+        "Spend on runs that failed, timed out or were blocked, plus retry spend in the other runs, "
+        "with the share of spend after each run's first error, broken down by agent and by model. "
+        "Figures are the cost engine's own (the `runs` and `cost_calculations` rows the cost "
+        "report also derives from), read live rather than from the daily rollups, so they never "
+        "lag. "
+        "Metadata only. " + _WINDOW
+    ),
+)
+async def waste(
+    request: Request,
+    principal: Reader,
+    project_id: ProjectParam = None,
+    start: FromParam = None,
+    end: ToParam = None,
+    top: TopParam = DEFAULT_TOP,
+) -> WasteReport:
+    scope = await _scope(request, principal, project_id, start, end)
+    return await _service(request).waste(scope, top)

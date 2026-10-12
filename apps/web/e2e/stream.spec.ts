@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
 
 // Runs only through scripts/stream-e2e.sh: a real API + worker, the built web server on :3103, and a driver process
@@ -90,14 +91,14 @@ test("the SDK example agent's trace fills in live, with no refresh, and ends cle
     page.on("load", () => loads++);
     await page.goto(runUrl(driver.runId));
     await expect(page.getByTestId("live-status")).toContainText("Live");
-    await expect(page.getByTestId("headline")).toContainText("In progress");
+    await expect(page.getByTestId("headline")).toContainText("Running");
     const before = await shown(page);
     driver.go();
     await expect(page.getByTestId("live-status")).toContainText("Running tool search_code");
     await expect(page.getByTestId("live-status")).toContainText("Calling model model-x");
     await page.screenshot({ path: `${SHOTS}/live-running.png`, fullPage: true });
     await expect.poll(() => shown(page)).toBeGreaterThan(before);
-    await expect(page.getByTestId("headline")).toContainText("Succeeded", { timeout: 20_000 });
+    await expect(page.getByTestId("headline")).toContainText("Completed in", { timeout: 20_000 });
     await expect(page.getByTestId("live-status")).toHaveCount(0); // run_end: the bar is gone
     await expect(page.getByTestId("progress")).toContainText("events shown");
     expect(loads).toBe(1); // the page was never reloaded
@@ -131,6 +132,7 @@ test("a live run page has no serious accessibility violations and no console err
     await expect(page.getByTestId("live-status")).toContainText("Live");
     driver.go();
     await expect.poll(() => shown(page)).toBeGreaterThan(3);
+    await settleAnimations(page);
     const bad = (
       await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()
     ).violations.filter((v) => v.impact === "serious" || v.impact === "critical");

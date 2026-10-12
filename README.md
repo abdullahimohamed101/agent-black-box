@@ -4,7 +4,7 @@ A flight recorder, observability, debugging, evaluation and (eventually) control
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell
 command, retry and failure, with cost and latency, live.
 
-> Status: Phases 0-11, 15, 16 and 21 merged (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters, sign-in and roles, multi-agent tracing with a waterfall, reliability findings with explained health, search with filter chips). Evaluations, experiments and run comparison are merged (Phase 11). The MVP gate is accepted (2026-10-12); see `docs/IMPLEMENTATION_PLAN.md`. Phase 21 (application shell and design pass for the web UI) is merged; a run-page redesign (Phase 22) is being planned.
+> Status: Phases 0-11, 15, 16 and 21 merged (Phase 22 implemented, PR open) (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters, sign-in and roles, multi-agent tracing with a waterfall, reliability findings with explained health, search with filter chips). Evaluations, experiments and run comparison are merged (Phase 11). The MVP gate is accepted (2026-10-12); see `docs/IMPLEMENTATION_PLAN.md`. Phase 21 (application shell and design pass for the web UI) is merged; the run-page redesign (Phase 22, "Flight recorder trace": failure line, fault line, runs-list failure lines, top-bar search, wasted-spend report) is implemented and waiting for its PR to merge; Phase 12 (visual replay) is next.
 > You can run the stack, trace an agent with the Python SDK or a framework adapter, and watch the run in the web UI, live.
 > See `docs/PROJECT_STATE.md`.
 

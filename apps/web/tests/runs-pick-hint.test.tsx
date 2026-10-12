@@ -19,6 +19,11 @@ describe("the compare bar's hint", () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<Harness />);
+    // Phase 22 D8: the tick boxes and the bar appear only once the person starts comparing.
+    await screen.findByRole("table", { name: "Runs" });
+    expect(screen.queryByTestId("compare-bar")).toBeNull();
+    expect(screen.queryAllByRole("checkbox", { name: /^Compare / })).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Compare" }));
     const bar = await screen.findByTestId("compare-bar");
     expect(bar).toHaveTextContent("Tick 2 runs to compare them.");
     expect(bar).not.toHaveTextContent("Pick one more run.");

@@ -34,7 +34,7 @@ an overlay.
 ```text
 header.run-head   h1, status badge, retries tag, id line (mono) / headline sentence with the inline "Show it" control / readout strip
 div.pane-head     view tabs (native radios drawn as tabs: Timeline n | Waterfall | Evidence n)  ·  Context toggle
-div.work          context column (Story, Agents, Findings, Evaluations; 18rem; folds to a 2.25rem strip when the inspector opens and the pane would drop under 30rem, i.e. below 88rem) | pane (timeline, waterfall or evidence) | inspector (26rem, draggable)
+div.work          context column (Story, Agents, Findings, Evaluations; 18rem; CLOSED by default, a 2.25rem strip; the Context button reads "Context · 2 findings"; once opened it stays open beside the inspector, which narrows to 20rem under 88rem, and folds only below 1280 px) | pane (timeline, waterfall or evidence) | inspector (26rem, draggable)
 ```
 
 - The class-chip toolbar is one row; the chip group scrolls sideways (a fade marks the edge) while "Errors only" and "Collapse groups" stay pinned. Below `40rem` of pane width the "Event classes" legend is visually hidden but keeps naming the group.
@@ -54,21 +54,27 @@ number, id, offset and event type. Every table in the app shares one dense style
 
 ## Motion
 
-Only `transform`, `opacity`, `background-color` and `box-shadow`; durations are tokens (`--t-fast` 120 ms, `--t-base` 180 ms, `--t-slow` 400 ms, `--t-land` 600 ms)
-that are `0ms` under `prefers-reduced-motion: reduce`, and the keyframe rules are switched off there too.
+Phase 22 step 6 replaced the Phase 21 layer. Every animation lives in `apps/web/src/app/run-motion.css`, inside `@media (prefers-reduced-motion: no-preference)`,
+so a person who asks for reduced motion gets the final states and nothing else. Language: 100-280 ms, ease-out `cubic-bezier(0.2, 0, 0, 1)`, `transform` and
+`opacity` only, no springs, no bounce, no loops. `tests/motion-contract.test.ts` fails when any keyframe, animation, transition or `scroll-behavior` in `src/app` is
+neither gated, nor switched off under `reduce`, nor timed only by the `--t-*` tokens (zero under `reduce`).
 
-- Inspector: slides in 12 px from the right over 180 ms (`@starting-style`, transform only).
-- Rows: hover fades the background in 120 ms (the transition belongs to the hover state, so leaving and selecting are instant). While the keyboard drives the list (`data-nav="keyboard"`) there is no row transition at all.
-- Live events: a row that arrives on the stream after the run loaded gets a 400 ms tint (`data-arrived`, at most 200 ids, pruned after 500 ms); the target of "Show it" / "Show evidence" gets a 600 ms inset ring (`data-landed`).
-- The "Live" dot in the run header's live bar pulses (2 s) while, and only while, the event stream is connected.
-- Nothing animates on first paint: `document.getAnimations().length === 0` after load on every route (`e2e/design.spec.ts`).
+- Fault line: draws itself once (280 ms, `scaleX` from the left on the timeline, `scaleY` from the top on the waterfall) when the first error is first on screen;
+  `RunDetail` marks `data-fault-intro` for 340 ms, once per page, so a filter or view change never replays it.
+- Headline: a change of state (running to failed) fades the new one in over 120 ms; the first headline on screen, and skeleton to ready, do not.
+- Jump (`Go`, `e`, "Show evidence"): scrolls, then a 600 ms outline fades once (red for the first error, the accent for other evidence). Reduced motion draws the same outline statically for the 600 ms.
+- Inspector: opens with a 160 ms slide of 8 px and fade; closes in 100 ms over 4 px (the last event stays mounted, `inert`, until then).
+- Live rows: the cells of a row that arrives on the stream fade in over 180 ms with a 4 px rise, all at once. The timeline follows the live edge only while the reader is on it; scrolled away, it does not move and a "N new events" control appears.
+- Row hover is an instant background change; no row has a transition. The live-connection glyph is a steady dot.
+- The loading spinner (`States.tsx`) is the one remaining loop; it has a reduced-motion override.
+- Nothing animates on first paint apart from a failed run's fault line: `e2e/design.spec.ts` asserts no animation is left running and none loops, on every route.
 
 ## Left out of this phase (deliberately)
 
 - Top-bar search slot and command palette (D6); the runs-list search box stays on its page.
 - Inspector tabs (D8, would be `role=tab` without panels), a collapsible icon rail, a light/dark toggle, a designed brand mark (the glyph is a placeholder).
 - "Planned" rail items (Policies, Alerts) and the Compare tab: they would be dead links.
-- A fade between views and an opacity fade on the inspector: axe (run right after the click in several locked specs) measures half-transparent text and fails contrast, so both were dropped for transform-only motion.
+- A fade between views (the inspector fade came back in Phase 22; specs that run axe right after a click wait for animations to settle, `e2e/motion.ts`).
 - Sticky table headers (cannot work inside the horizontally scrolling `.table-wrap`), a wide inspector mode.
 - Settings pages are restyled by the same rules but are session-only; their screenshots come from `auth-e2e` into `docs/screenshots/phase-15/`.
 

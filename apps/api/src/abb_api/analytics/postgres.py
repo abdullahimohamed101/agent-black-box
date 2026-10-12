@@ -42,9 +42,11 @@ from abb_api.analytics.schemas import (
     SpanRate,
     Summary,
     ToolReliability,
+    WasteReport,
     Window,
 )
 from abb_api.analytics.store import AnalyticsScope
+from abb_api.analytics.waste import waste_report
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.db import tables as t
 
@@ -694,4 +696,11 @@ class PostgresAnalyticsStore:
             )
 
         result: PerformanceReport = await self._read(scope, work)
+        return result
+
+    async def waste(self, scope: AnalyticsScope, *, top: int) -> WasteReport:
+        async def work(conn: AsyncConnection) -> WasteReport:
+            return await waste_report(conn, scope, top, self._window(scope))
+
+        result: WasteReport = await self._read(scope, work)
         return result

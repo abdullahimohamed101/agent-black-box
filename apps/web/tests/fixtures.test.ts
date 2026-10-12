@@ -15,11 +15,15 @@ describe("fixtures", () => {
     );
   });
 
-  it("cover success, failure+retry, expensive, running, waiting and the 10,000-event stress run", () => {
+  it("cover success, failure+retry, blocked, expensive, running, waiting and the 10,000-event stress run", () => {
     const runs = fixtureRuns().map((f) => f.run);
     expect(new Set(runs.map((r) => r.status))).toEqual(
-      new Set(["SUCCESS", "FAILED", "RUNNING", "WAITING_FOR_APPROVAL"]),
+      new Set(["SUCCESS", "FAILED", "RUNNING", "WAITING_FOR_APPROVAL", "BLOCKED"]),
     );
+    const blocked = runs.find((r) => r.status === "BLOCKED")!;
+    expect(blocked.summary["error_count"]).toBe(0);
+    expect(blocked.first_error?.event_id).toBeTruthy();
+    expect(runs.every((r) => r.summary_version >= 6)).toBe(true);
     const stress = fixtureRuns().find((f) => f.run.summary.event_count === 10_000);
     expect(stress?.events).toHaveLength(10_000);
     expect(runs.some((r) => Number(r.summary.estimated_cost_usd) > 10)).toBe(true);

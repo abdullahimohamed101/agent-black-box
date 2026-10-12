@@ -65,6 +65,43 @@ export const isRetry = (e: EventOut): boolean => e.event_type === "retry.attempt
 export const firstError = (events: readonly EventOut[]): EventOut | undefined =>
   events.find(isError);
 
+/**
+ * The first error of a run with this status (ADR-112, summary version 6). The first error event wins; a BLOCKED run
+ * that has none takes its blocking event instead: the first `policy.action.blocked`, else the `run.completed` whose
+ * status is `blocked`. Those events are not errors (`isError` is unchanged), but they are where the run stopped, which
+ * is what the fault line, the headline and the runs list point at. Mirrors `first_error_index` in the API's
+ * `runs/summary.py`; both read `packages/event-schema/tests/data/first-error-cases.json`.
+ */
+export function firstErrorFor(status: string, events: readonly EventOut[]): EventOut | undefined {
+  const err = firstError(events);
+  if (err || status !== "BLOCKED") return err;
+  const policy = events.find((e) => e.event_type === "policy.action.blocked");
+  if (policy) return policy;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]!;
+    if (e.event_type === "run.completed" && e.status === "blocked") return e;
+  }
+  return undefined;
+}
+
+/** The summary version that carries first-error facts for every failed status (ADR-112). */
+export const CURRENT_SUMMARY_VERSION = 6;
+
+/**
+ * Why a failed run has no stored first error, in words (review P1-3). At the current version nothing is pending: the
+ * run simply has no error event. Below it the facts exist only after a rebuild; while the summary is catching up,
+ * neither can be said.
+ */
+export function missingFirstErrorText(run: {
+  summary_state: string;
+  summary_version: number;
+}): string {
+  if (run.summary_state !== "current") return "summary still updating";
+  return run.summary_version >= CURRENT_SUMMARY_VERSION
+    ? "no error event recorded"
+    : "first-error facts not rebuilt yet";
+}
+
 const attr = (e: EventOut, k: string): string | null => {
   const v = e.attributes[k];
   return typeof v === "string" && v ? v : null;
@@ -154,6 +191,10 @@ export type GroupRow = {
   status: string | null;
   durationMs: number | null;
   hasError: boolean;
+  /** The group's own first error event, so the fault line can anchor on the group that holds the run's first error. */
+  errorEventId: string | null;
+  /** Every event in the group, so a collapsed group can stand for a first error that is not an error event. */
+  eventIds: readonly string[];
   collapsed: boolean;
   first: EventOut;
 };
@@ -192,6 +233,8 @@ export function buildRows(events: readonly EventOut[], collapsed: ReadonlySet<st
         status: members.some(isError) ? "error" : (last.status ?? null),
         durationMs: members.map((m) => m.duration_ms).find((d) => d != null) ?? null,
         hasError: members.some(isError),
+        errorEventId: members.find(isError)?.event_id ?? null,
+        eventIds: members.map((m) => m.event_id),
         collapsed: isCollapsed,
         first,
       });
@@ -209,3 +252,17 @@ export const groupKeys = (rows: readonly Row[]): string[] =>
   rows.filter((r): r is GroupRow => r.kind === "group").map((r) => r.key);
 
 export const describeDuration = (e: EventOut): string => formatDuration(e.duration_ms);
+
+/**
+ * The row the fault line sits on: the first-error event's own row, or, when it is hidden inside a collapsed group, that
+ * group's row. An expanded group's header precedes its members, so anchoring there would tint the member that happened
+ * before the error as "after" it (review P2-3). -1 when the event is not shown.
+ */
+export const faultRowIndex = (rows: readonly Row[], firstErrorId: string | null): number =>
+  firstErrorId == null
+    ? -1
+    : rows.findIndex((r) =>
+        r.kind === "group"
+          ? r.collapsed && r.eventIds.includes(firstErrorId)
+          : r.event.event_id === firstErrorId,
+      );

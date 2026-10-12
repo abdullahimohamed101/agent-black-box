@@ -151,7 +151,11 @@ representation are `422`), `limit` (1-200, default 50) and
 requests never cause repeats or gaps.
 
 `GET /v1/runs/{id}` returns the run: `status`, `name`, `agent_id`, `trace_id`, `started_at`, `completed_at`,
-`duration_ms`, `ordering_mode`, `summary`, `summary_version`, `summary_state`, `metadata`.
+`duration_ms`, `ordering_mode`, `summary`, `summary_version`, `summary_state`, `metadata`, and `first_error`
+(`{event_id, sequence, retries_after, seconds_after, cost_after_usd, cost_after_unpriced_calls}`, a typed projection of the summary's
+first-error facts, ADR-112). It is null when the run has no first error or was summarised below the current version 6; read `summary_version`: at the
+current version null is final ("no error event recorded"), below it the facts are "not rebuilt yet". A BLOCKED run with no error event takes its
+blocking event (the first `policy.action.blocked`, else the blocking `run.completed`) as its first error; `error_count` is unchanged.
 
 `summary_state`: `current`; `processing` while events wait to be folded in (new events debounce for about
 1 s, then the worker recomputes); `failed` if summarization was dead-lettered and needs an operator
@@ -169,12 +173,12 @@ Events are put in canonical order, then folded:
 | `name`, `agent_id`, `trace_id` | `run.name` of the earliest `run.started` (an explicit name from `POST /v1/runs` is kept unless events name the run); agent and trace of the **first `run.started` that carries a `sequence`** (the root emitter's; remote and forked emitters send none), else the earliest `run.started` (a skewed clock, a forged child agent event or `trace_id`, or a sequence-less `run.started` cannot become the run's agent or trace; a write key of the same project can still write any event into that project's runs, so this is consistency, not authentication); runs with no `run.started` (created by `POST /v1/runs`) use the earliest event |
 | `ordering_mode` | `sequence` if every event has a `sequence`, else `time`. A multi-process run (Phase 9, ADR-070) is `time`: continued runs and forked children send no `sequence`. |
 
-`summary` (version 3; **the next bump is 4**): `event_count`, `duration_ms`, `llm_calls` (`llm.request.completed|failed`), `tool_calls`
+`summary` (version 5; **the next bump is 6**; first-error facts since 5, ADR-112): `event_count`, `duration_ms`, `llm_calls` (`llm.request.completed|failed`), `tool_calls`
 (`tool.call.completed|failed`), `input_tokens` and `output_tokens` (sums over `llm.request.completed`),
 `estimated_cost_usd` (the effective cost: sum over model calls of the cost line, ADR-040; name kept for compatibility), `retry_cost_usd`, `initial_cost_usd`, `cost_by_source_usd`, `unpriced_calls`, `tool_spans_ok/finished`, `llm_spans_ok/finished`, `retry_count`, `retries_unattributed`
 (`retry.attempted`), `error_count` (events with status `error`/`timeout` or a `*.failed` type, each counted
 once), `files_modified` (distinct `file.path` of created/modified/deleted), `models`, `first_event_at`, `last_event_at`, `agent_count` (exact number of distinct agents, counting agents only named by an
-`agent.spawned`) and `agents` (**run detail only**; `GET /v1/runs` items carry `agent_count` but omit `agents`).
+`agent.spawned`) and `agents` (**run detail only**; `GET /v1/runs` items carry `agent_count` but omit `agents`), then the first-error facts: `first_error_event_id`, `first_error_sequence`, `retries_after`, `seconds_after`, `cost_after_usd`, `cost_after_unpriced_calls` (all null/0 for a run with no error; "after" means later in canonical order; same rule as the web client's `firstError()`; metadata, identical for every role).
 `agents` has at most 50 entries in order of first appearance, then one `(other)` row (state `mixed`) folding the rest; each entry:
 `agent_id`, `parent_agent_id` (the agent owning the span the child's `agent.started` nests under, else the agent that emitted the
 `agent.spawned` naming it; null for the root), `state` (`spawned` = named by a spawn and never started, `started`, `completed`,
@@ -329,6 +333,7 @@ A query is cut off after `ABB_ANALYTICS_TIMEOUT_SECONDS` (default 10) with `503 
 | `GET /v1/analytics/cost` | headline, retry breakdown (initial vs retry cost, spec §24), cost by day, agent, model, source and project, most expensive runs |
 | `GET /v1/analytics/reliability` | rates, failure trend by day, tool success and p95, retry-heavy runs |
 | `GET /v1/analytics/performance` | p50/p95 for runs, model calls and tools; slowest operations (tool and model spans by name, other kinds by kind) |
+| `GET /v1/analytics/waste` | where the money was wasted: spend on failed, timed-out and blocked runs plus retries in the other runs, spend after the first error, by agent and by model; read live (ADR-113) |
 | `GET /v1/pricing` | the price entries the engine uses (built-in, illustrative, plus the caller's overrides) |
 
 Definitions: finished = success, failed, timed out or blocked (cancelled runs are counted separately and excluded
@@ -338,7 +343,7 @@ divided. Money is USD rounded to 9 places. Every cost line states its source: `p
 `cost.provider_usd`), `estimated` (tokens x a versioned price, `pricing_version` stored per line), `client_estimate`
 (`cost.estimated_usd`) or `unpriced` (counted as $0 and reported). `input_tokens` includes cached tokens. A model
 call is retry cost when it follows a `retry.attempted` event of its span or an ancestor span (ADR-042).
-Attribution (Phase 9): `cost.by_agent` groups cost lines by the **event's** agent (a child's model calls appear under the child); run counts, success rates, expensive/retry-heavy runs and `active_agents` use the **run's** root agent. Per-agent run metrics are KI-084. The cost headline's `unrebuilt_runs` counts runs summarised by an older `summary_version` (including runs that predate cost lines).
+Attribution (Phase 9): `cost.by_agent` groups cost lines by the **event's** agent (a child's model calls appear under the child); run counts, success rates, expensive/retry-heavy runs and `active_agents` use the **run's** root agent. Per-agent run metrics are KI-084. The cost headline's and the waste report's `unrebuilt_runs` count runs summarised below the current `summary_version` (including runs that predate cost lines; first-error facts are missing too).
 The failure trend uses the same definitions per day (`failure_rate` and `timeout_rate`). "Running agents" on the summary
 is read from the live `runs` table (current state, not a rollup; ADR-041 allows this one status-indexed lookup). Retry cost is
 an estimate (ADR-042). Adapters (Phase 8) must report `llm.input_tokens` including cached tokens, or costs will be

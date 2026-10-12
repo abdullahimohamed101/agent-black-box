@@ -1,8 +1,9 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunDetail } from "@/components/RunDetail";
-import { failureRetryRun, multiAgentRun } from "@/fixtures/runs";
+import { withFindings } from "@/fixtures/findings";
+import { failureRetryRun, loopingRun, multiAgentRun } from "@/fixtures/runs";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
 
 vi.mock("next/navigation", () => ({
@@ -34,7 +35,8 @@ describe("run work area", () => {
     expect(container.querySelector(".run-detail.app-page")).not.toBeNull();
     const work = container.querySelector(".work")!;
     expect(work).toHaveAttribute("data-inspector", "closed");
-    expect(work).toHaveAttribute("data-context", "open");
+    // Phase 22 D3: the context column starts closed; its content stays mounted behind the strip
+    expect(work).toHaveAttribute("data-context", "closed");
     // the four sections live in the context column, in this order, the timeline in the pane
     const ctx = screen.getByRole("complementary", { name: "Run context" });
     const headings = within(ctx)
@@ -65,14 +67,33 @@ describe("run work area", () => {
     expect(within(group).getAllByRole("radio")).toHaveLength(3);
   });
 
-  it("on a narrow window the inspector folds the context to a strip; the strip and the toggle bring it back", async () => {
+  it("the Context button says what is in the column, and opens and closes it", async () => {
+    stubApi();
+    const user = userEvent.setup();
+    const { run } = withFindings(loopingRun());
+    const { container } = renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    const toggle = screen.getByRole("button", { name: /^Context/ });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    const work = container.querySelector(".work")!;
+    expect(work).toHaveAttribute("data-context", "closed");
+    await waitFor(() => expect(toggle).toHaveTextContent(/Context · \d+ findings?/));
+    await user.click(toggle);
+    expect(work).toHaveAttribute("data-context", "open");
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await user.click(toggle);
+    expect(work).toHaveAttribute("data-context", "closed");
+  });
+
+  it("in a window under 1280px an open context folds when the inspector opens; the strip and the toggle bring it back", async () => {
     stubApi();
     stubNarrow(true);
     const user = userEvent.setup();
     const { run } = failureRetryRun();
     const { container } = renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
-    const toggle = screen.getByRole("button", { name: "Context" });
+    const toggle = screen.getByRole("button", { name: /^Context/ });
+    await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     await user.click(await screen.findByRole("button", { name: "Show it" }));
     await screen.findByRole("dialog");
@@ -88,13 +109,14 @@ describe("run work area", () => {
     expect(work).toHaveAttribute("data-context", "open");
   });
 
-  it("on a wide window the context stays open beside the inspector", async () => {
+  it("on a wide window an open context stays open beside the inspector", async () => {
     stubApi();
     stubNarrow(false);
     const user = userEvent.setup();
     const { run } = failureRetryRun();
     const { container } = renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
+    await user.click(screen.getByRole("button", { name: /^Context/ }));
     await user.click(await screen.findByRole("button", { name: "Show it" }));
     await screen.findByRole("dialog");
     expect(container.querySelector(".work")).toHaveAttribute("data-context", "open");
@@ -131,6 +153,8 @@ describe("run work area", () => {
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
     const ctx = screen.getByRole("complementary", { name: "Run context" });
+    expect(ctx).not.toHaveAttribute("tabindex"); // closed by default
+    await user.click(screen.getByRole("button", { name: /^Context/ }));
     expect(ctx).toHaveAttribute("tabindex", "0");
     await user.click(await screen.findByRole("button", { name: "Show it" }));
     await screen.findByRole("dialog");

@@ -274,7 +274,7 @@ def _attach_body(ids: dict[str, str]) -> dict[str, object]:
     return {"run_id": ids["with_run_id"], "variant_id": ids["variant_id"]}
 
 
-_ANALYTICS = ("summary", "cost", "reliability", "performance")
+_ANALYTICS = ("summary", "cost", "reliability", "performance", "waste")
 
 CASES: dict[tuple[str, str], RouteCase] = {
     c.key: c

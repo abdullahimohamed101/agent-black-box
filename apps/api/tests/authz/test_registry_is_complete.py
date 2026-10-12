@@ -10,8 +10,9 @@ from tests.authz.routes import enumerate_routes
 
 # Counted by hand when the registry was written; a mismatch means the walker or the registry moved.
 # Operations with an action; sign-in routes are listed apart. Formula: main's 32 plus the
-# operations of Phase 11 (3 evaluator, 3 run-evaluation, 1 compare, 8 experiment: 15 in all).
-EXPECTED_V1_OPERATIONS = 32 + 15
+# operations of Phase 11 (3 evaluator, 3 run-evaluation, 1 compare, 8 experiment: 15 in all) and
+# Phase 22's `GET /v1/analytics/waste`.
+EXPECTED_V1_OPERATIONS = 32 + 15 + 1
 
 
 def _app() -> FastAPI:

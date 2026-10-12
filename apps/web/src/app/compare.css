@@ -121,12 +121,10 @@ tr[data-picked="true"] {
   min-width: 0;
 }
 .compare-runs [data-testid="right-run"] {
-  border-left-color: var(--warn);
+  border-left-color: var(--border-strong);
 }
 .compare-runs .muted {
-  font: 600 0.66rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 500 var(--fs-small) / 1.3 var(--cond);
 }
 .compare-runs a {
   font: 400 0.8rem/1.3 var(--mono);
@@ -197,11 +195,63 @@ tr[data-picked="true"] {
 }
 /* Equal rows are muted by having no highlight, not by opacity: opacity would break the text contrast. */
 .aligned-row[data-relation="changed"] {
-  background: var(--warn-bg);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
+/* The fault-line cut (Phase 22 D12): one ink rule across the top of the row where the runs part, and a faint tint on every
+   row after it. Ink, not red: a divergence is a fork, not necessarily a failure. */
 .aligned-row[data-divergence="true"] {
-  outline: 2px solid var(--warn);
-  outline-offset: -2px;
+  position: relative;
+}
+.aligned-row[data-divergence="true"]::before {
+  content: "";
+  position: absolute;
+  inset: -1px 0 auto 0;
+  height: 2px;
+  background: var(--fg);
+}
+.aligned-row[data-after-divergence="true"]:not([data-relation="changed"]) {
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.compare-lead {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  max-width: 60rem;
+}
+.compare-lead p {
+  margin: 0;
+}
+/* The headline sentence: the one serif place on this page, like the run's failure line. */
+.page .compare-lead .compare-divergence {
+  font: 500 var(--fs-headline) / 1.3 var(--serif);
+  overflow-wrap: anywhere;
+}
+.compare-divergence .divergence-name {
+  font: 500 0.82em / 1.3 var(--mono);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 0.3em;
+}
+.compare-deltas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1.25rem;
+  font: 400 0.8rem / 1.5 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.compare-delta-label {
+  color: var(--muted);
+}
+.compare-measures > summary {
+  cursor: pointer;
+  color: var(--accent);
+  width: fit-content;
+  padding: 0.2rem 0;
+}
+.compare-measures > summary:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
 }
 .aligned-row:focus-visible {
   outline: 2px solid var(--info);
@@ -248,4 +298,9 @@ tr[data-picked="true"] {
   .aligned-head {
     display: none;
   }
+}
+
+/* The leading rows that are the same in both runs fold into one button, so the cut is near the top of the steps. */
+.aligned-earlier {
+  margin: 0.4rem 0 0.25rem;
 }

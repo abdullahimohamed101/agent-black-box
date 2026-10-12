@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RunDetail, headline } from "@/components/RunDetail";
+import { RunDetail } from "@/components/RunDetail";
+import { headlineModel } from "@/lib/runHeadline";
 import { EventDrawer, drawerKind } from "@/components/EventDrawer";
 import {
   expensiveRun,
@@ -28,7 +29,7 @@ describe("RunDetail", () => {
       await screen.findByRole("heading", { level: 1, name: "Fix login session expiry" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Success")).toBeInTheDocument();
-    expect(screen.getByTestId("headline")).toHaveTextContent("Succeeded in 11 s");
+    expect(screen.getByTestId("headline")).toHaveTextContent("Completed in 11 s");
     await waitFor(() =>
       expect(screen.getByTestId("progress")).toHaveTextContent(
         `${events.length} of ${events.length} events shown`,
@@ -48,7 +49,8 @@ describe("RunDetail", () => {
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     const banner = await screen.findByTestId("first-error");
     expect(banner).toHaveTextContent("run_migration");
-    expect(screen.getByTestId("headline")).toHaveTextContent("Failed after 2 retries");
+    expect(screen.getByTestId("headline")).toHaveTextContent(/Failed at step \d+/);
+    expect(screen.getByTestId("headline-detail")).toHaveTextContent(/^2 retries · /);
     await waitFor(() => expect(document.querySelectorAll("[data-first-error]")).toHaveLength(1));
     expect(document.querySelectorAll("[data-retry]")).toHaveLength(2);
     // Non-colour cues: the text "First error" and "Retry" tags exist.
@@ -67,9 +69,16 @@ describe("RunDetail", () => {
     expect(screen.getByTestId("progress")).toHaveTextContent("4 of 15");
     expect(rowsText().every((t) => /error|failed/.test(t))).toBe(true);
     await user.click(screen.getByLabelText("Errors only"));
+    // the class filters live in the Filter popover (Phase 22 step 4); the button counts the classes hidden
+    await user.click(screen.getByRole("button", { name: /^Filter/ }));
     await user.click(screen.getByLabelText("Model calls"));
     expect(rowsText().some((t) => t.includes("llm.request"))).toBe(false);
+    expect(screen.getByRole("button", { name: "Filter 1" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     await user.click(screen.getByLabelText("Model calls"));
+    expect(screen.getByRole("button", { name: "Filter" })).toBeInTheDocument();
     const before = screen.getAllByRole("option").length;
     await user.click(screen.getByRole("button", { name: "Collapse groups" }));
     expect(screen.getAllByRole("option").length).toBeLessThan(before);
@@ -124,9 +133,9 @@ describe("RunDetail", () => {
   });
 
   it.each([
-    ["running", runningRun, /In progress/],
-    ["waiting", approvalRun, /Waiting for approval/],
-    ["expensive", expensiveRun, /Succeeded/],
+    ["running", runningRun, /Running · step \d+/],
+    ["waiting", approvalRun, /Awaiting approval/],
+    ["expensive", expensiveRun, /Succeeded|Completed in/],
   ])("renders a %s run", async (_n, build, text) => {
     stubApi();
     renderWithQuery(<RunDetail runId={build().run.id} base={BASE} />);
@@ -174,13 +183,26 @@ describe("RunDetail", () => {
 
 describe("headline", () => {
   it("covers every terminal and active state", () => {
-    const run = successRun().run;
-    expect(headline({ ...run, status: "CANCELLED" }, null, null)).toMatch(/^Cancelled/);
-    expect(headline({ ...run, status: "TIMED_OUT" }, "x", 1000)).toMatch(
-      /^Timed out.*First error at \+1\.0s: x/,
-    );
-    expect(headline({ ...run, status: "BLOCKED" }, null, null)).toMatch(/^Blocked/);
-    expect(headline({ ...run, status: "QUEUED" }, null, null)).toMatch(/^In progress/);
+    const f = successRun();
+    const lead = (status: (typeof f.run)["status"], events = f.events) =>
+      headlineModel({
+        run: { ...f.run, status },
+        events,
+        t0: Date.parse(f.run.started_at),
+        eventsComplete: true,
+      }).lead;
+    expect(lead("CANCELLED")).toMatch(/^Cancelled/);
+    const failing = failureRetryRun();
+    expect(
+      headlineModel({
+        run: { ...failing.run, status: "TIMED_OUT" },
+        events: failing.events,
+        t0: Date.parse(failing.run.started_at),
+        eventsComplete: true,
+      }).lead,
+    ).toMatch(/^Timed out at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout/);
+    expect(lead("BLOCKED")).toMatch(/^Blocked/);
+    expect(lead("QUEUED")).toMatch(/^Queued/);
   });
 });
 

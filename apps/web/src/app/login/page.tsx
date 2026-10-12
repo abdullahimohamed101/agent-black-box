@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { safeReturnTo, fixturesMode } from "@/server/config";
 import { loadMe } from "@/server/session";
 import { Brand } from "@/components/shell/Brand";
+import "../login.css";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +29,9 @@ export default async function LoginPage({
   const message = params.error ? (MESSAGES[params.error] ?? MESSAGES.login_failed) : null;
   const href = `/api/auth/login${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ""}`;
   return (
-    <main className="auth">
+    <main id="main" className="auth auth-page">
       <Brand />
-      <h1>Sign in to Agent Black Box</h1>
+      <h1>Sign in to see what your agents did</h1>
       {message && (
         <p role="alert" className="notice">
           {message}
@@ -42,13 +43,11 @@ export default async function LoginPage({
         </p>
       ) : (
         <>
-          <p className="muted">You sign in with your organization&apos;s identity provider.</p>
           {/* A plain link, not next/link: prefetching it would start a sign-in. */}
-          <p>
-            <a className="button" href={href}>
-              Sign in
-            </a>
-          </p>
+          <a className="button" href={href}>
+            Sign in
+          </a>
+          <p className="auth-aside">You sign in with your organization&apos;s identity provider.</p>
         </>
       )}
     </main>

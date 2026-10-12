@@ -5,6 +5,7 @@ import { fixtureRuns } from "./index";
 
 type S = components["schemas"];
 const FINISHED = new Set(["SUCCESS", "FAILED", "TIMED_OUT", "BLOCKED"]);
+const FAILED = new Set(["FAILED", "TIMED_OUT", "BLOCKED"]);
 const rate = (a: number, b: number) => (b ? a / b : null);
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const s = (r: RunOut, k: string) => num(r.summary[k]) ?? 0;
@@ -195,6 +196,94 @@ export function fixtureAnalytics(kind: string, q: URLSearchParams): unknown {
         tool: { count: 0, p50_ms: null, p95_ms: null },
         slow_operations: [],
       } satisfies S["PerformanceReport"];
+    case "waste": {
+      // Failed, timed-out and blocked runs are all waste; retry cost counts only in the other runs (no dollar twice).
+      const failed = runs.filter((r) => FAILED.has(r.status));
+      const other = runs.filter((r) => !FAILED.has(r.status));
+      const failedUsd = sum(failed.map((r) => s(r, "estimated_cost_usd")));
+      const retryOther = sum(other.map((r) => retryUsd(r)));
+      const wasted = failedUsd + retryOther;
+      const agents = new Map<string, { failed: number; runs: number; retry: number }>();
+      for (const r of runs) {
+        const a = r.agent_id ?? "(unknown)";
+        const e = agents.get(a) ?? { failed: 0, runs: 0, retry: 0 };
+        if (FAILED.has(r.status)) {
+          e.failed += s(r, "estimated_cost_usd");
+          e.runs += 1;
+        } else e.retry += retryUsd(r);
+        agents.set(a, e);
+      }
+      const byAgent = [...agents.entries()]
+        .map(([agent, e]) => ({
+          agent,
+          failed_runs: e.runs,
+          failed_usd: e.failed,
+          retry_usd: e.retry,
+          wasted_usd: e.failed + e.retry,
+        }))
+        .filter((a) => a.wasted_usd > 0)
+        .sort((a, b) => b.wasted_usd - a.wasted_usd);
+      const models = new Map<string, { failed: number; retry: number; calls: number }>();
+      for (const r of runs) {
+        const names = Array.isArray(r.summary["models"]) ? (r.summary["models"] as string[]) : [];
+        const isFailed = FAILED.has(r.status);
+        const cost = isFailed ? s(r, "estimated_cost_usd") : retryUsd(r);
+        if (cost <= 0 || names.length === 0) continue;
+        for (const m of names) {
+          const e = models.get(m) ?? { failed: 0, retry: 0, calls: 0 };
+          if (isFailed) e.failed += cost / names.length;
+          else e.retry += cost / names.length;
+          e.calls += 1;
+          models.set(m, e);
+        }
+      }
+      const byModel = [...models.entries()]
+        .map(([model, e]) => ({
+          provider: null,
+          model,
+          failed_usd: e.failed,
+          retry_usd: e.retry,
+          wasted_usd: e.failed + e.retry,
+          calls: e.calls,
+          unpriced_calls: 0,
+        }))
+        .sort((a, b) => b.wasted_usd - a.wasted_usd);
+      return {
+        window,
+        wasted_usd: wasted,
+        total_usd: total,
+        wasted_share: rate(wasted, total),
+        failed: {
+          runs: failed.length,
+          spend_usd: failedUsd,
+          after_first_error_usd: sum(failed.map((r) => r.first_error?.cost_after_usd ?? 0)),
+          after_first_error_unknown_runs: failed.filter((r) => !r.first_error).length,
+          unpriced_calls: 0,
+        },
+        retries: {
+          total_usd: retry,
+          in_failed_runs_usd: sum(failed.map((r) => retryUsd(r))),
+          in_other_runs_usd: retryOther,
+        },
+        by_agent: byAgent.slice(0, top),
+        by_agent_other:
+          byAgent.length > top
+            ? {
+                groups: byAgent.length - top,
+                wasted_usd: sum(byAgent.slice(top).map((a) => a.wasted_usd)),
+              }
+            : null,
+        by_model: byModel.slice(0, top),
+        by_model_other:
+          byModel.length > top
+            ? {
+                groups: byModel.length - top,
+                wasted_usd: sum(byModel.slice(top).map((a) => a.wasted_usd)),
+              }
+            : null,
+        unrebuilt_runs: 0,
+      } satisfies S["WasteReport"];
+    }
     default:
       return null;
   }

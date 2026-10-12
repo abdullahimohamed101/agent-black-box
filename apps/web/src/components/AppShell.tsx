@@ -10,6 +10,7 @@ import { Brand } from "./shell/Brand";
 import { Crumbs } from "./shell/Crumbs";
 import { LiveIndicator } from "./shell/LiveIndicator";
 import { ProjectSwitcher } from "./shell/ProjectSwitcher";
+import { TopbarSearch } from "./shell/TopbarSearch";
 
 /**
  * The application frame: a left rail (brand, scope, primary navigation, who), a slim top bar (where you are, whether
@@ -70,6 +71,7 @@ export function AppShell({ base, children }: { base: Base; children: React.React
       </aside>
       <header className="topbar">
         <Crumbs base={base} />
+        <TopbarSearch base={base} />
         <LiveIndicator base={base} />
       </header>
       <main id="main" tabIndex={-1} className="page">

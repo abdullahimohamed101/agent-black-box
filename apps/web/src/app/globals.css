@@ -1,5 +1,6 @@
-/* Design tokens (docs/design/ui-direction.md). Names the other stylesheets read stay: --bg --fg --muted --border --accent
-   --surface --sel --ok --bad --warn --info --bad-bg --warn-bg. Light is the default; dark follows the system. */
+/* Design tokens (docs/design/ui-direction.md, ADR-111). Semantic names first; the old names other stylesheets read stay as
+   aliases: --bg --fg --muted --border --accent --surface --sel --ok --bad --warn --info --bad-bg --warn-bg.
+   Light is the default; dark follows the system. Red (--fail) means failure and nothing else (tests/tokens-use.test.ts). */
 :root {
   color-scheme: light dark;
   --bg: #eef1f4;
@@ -7,18 +8,26 @@
   --surface-2: #f5f7f9;
   --border: #d3d9e0;
   --border-strong: #b9c2cc;
-  --fg: #171b21;
+  --ink: #171b21;
+  --fg: var(--ink);
   --fg-2: #2f3845;
   --muted: #566272;
-  --accent: #0b6f8f;
-  --accent-bg: #dff1f7;
-  --sel: #dceef5;
+  /* interaction accent: links, focus, selection, controls. Never a status. */
+  --accent: #2a5f8f;
+  --accent-bg: #e1ebf5;
+  --sel: #e6eef6;
+  /* failure: the only red in the product */
+  --fail: #b3261e;
+  --fail-bg: #fbe7e5;
+  /* retry and waiting: amber */
+  --wait: #8a5a00;
+  --wait-bg: #fff1d1;
   --ok: #1b7a3a;
   --ok-bg: #e2f5e8;
-  --warn: #8a5a00;
-  --warn-bg: #fff1d1;
-  --bad: #b3261e;
-  --bad-bg: #fbe7e5;
+  --bad: var(--fail);
+  --bad-bg: var(--fail-bg);
+  --warn: var(--wait);
+  --warn-bg: var(--wait-bg);
   --info: var(--accent);
   --mark: #d9650f;
   --rail-w: 14rem;
@@ -30,6 +39,11 @@
   --t-slow: 400ms;
   --t-land: 600ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  /* type scale: headline is the failure line (Plex Serif); the rest is Sans/Mono at 13px body */
+  --fs-headline: 1.5rem;
+  --fs-title: 1.125rem;
+  --fs-body: 0.8125rem;
+  --fs-small: 0.75rem;
 }
 /* One switch for all motion: every duration below comes from these tokens. */
 @media (prefers-reduced-motion: reduce) {
@@ -42,23 +56,23 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14181d;
-    --surface: #1b2027;
+    --bg: #12161b;
+    --surface: #1a2027;
     --surface-2: #222932;
     --border: #2e3641;
     --border-strong: #3c4654;
-    --fg: #e6ebf0;
+    --ink: #e8ecf1;
     --fg-2: #c5cdd6;
-    --muted: #9aa6b4;
-    --accent: #62c6e8;
-    --accent-bg: #17313d;
-    --sel: #1f3340;
+    --muted: #a3adb9;
+    --accent: #7db3e6;
+    --accent-bg: #1b2b3b;
+    --sel: #1f3040;
+    --fail: #ff8a80;
+    --fail-bg: #3b1d1b;
+    --wait: #ffcb6b;
+    --wait-bg: #3a2c0f;
     --ok: #5fcf84;
     --ok-bg: #16301f;
-    --warn: #f2b33d;
-    --warn-bg: #3a2c0f;
-    --bad: #ff6f66;
-    --bad-bg: #3b1d1b;
     --mark: #ff7a1a;
   }
 }
@@ -68,6 +82,7 @@ body {
     var(--font-plex-sans), "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     sans-serif;
   --cond: var(--font-plex-cond), "IBM Plex Sans Condensed", var(--sans);
+  --serif: var(--font-plex-serif), "IBM Plex Serif", ui-serif, Georgia, serif;
   --mono:
     var(--font-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   margin: 0;
@@ -205,30 +220,11 @@ a {
   text-decoration: none;
   border-bottom: 1px solid var(--border);
 }
-.mark {
-  position: relative;
-  display: inline-block;
+.brand-mark {
   flex: none;
-  width: 1.4rem;
-  height: 1.05rem;
-  border-radius: 3px;
-  background: var(--mark);
-}
-.mark::before,
-.mark::after {
-  content: "";
-  position: absolute;
-  left: 0.3rem;
-  right: 0.3rem;
-  height: 2px;
-  background: var(--bg);
-}
-.mark::before {
-  top: 0.33rem;
-}
-.mark::after {
-  top: 0.62rem;
-  right: 0.55rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--fg);
 }
 .scope {
   flex: none;
@@ -510,9 +506,8 @@ h2 {
   border-right: 0;
 }
 .stat dt {
-  font: 600 0.66rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 500 0.75rem/1.3 var(--cond);
+  letter-spacing: 0.01em;
   color: var(--muted);
 }
 .stat dd {
@@ -648,9 +643,8 @@ tbody tr:hover {
 caption {
   text-align: left;
   padding: 0 0 0.35rem;
-  font: 600 0.72rem/1.3 var(--cond);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font: 500 0.75rem/1.3 var(--cond);
+  letter-spacing: 0.01em;
   color: var(--muted);
 }
 td:nth-child(2),
@@ -661,56 +655,54 @@ td.name {
 .num {
   text-align: right;
 }
-/* One status grammar: red warning, amber caution, green normal, cyan advisory, grey neutral. Glyph and word, never colour alone. */
+/* One status grammar (ADR-111): a glyph and a word, no outline. Only failure is a filled treatment; amber is retry and waiting;
+   green is quiet; the accent marks something live; grey is neutral. Glyph and word, never colour alone. */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.1rem 0.5rem 0.1rem 0.45rem;
-  border: 1px solid currentColor;
-  border-radius: 4px;
-  font: 600 0.6875rem/1.3 var(--cond);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  gap: 0.3rem;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  font: 500 0.75rem/1.3 var(--sans);
   white-space: nowrap;
+  color: var(--fg-2);
 }
 .badge[data-tone="ok"] {
   color: var(--ok);
-  background: var(--ok-bg);
 }
 .badge[data-tone="bad"] {
-  color: var(--bad);
-  background: var(--bad-bg);
+  color: var(--fail);
+  font-weight: 600;
+}
+/* The one filled treatment: a run that failed, timed out or was blocked. Findings and flags stay plain red text. */
+.badge[data-status="FAILED"],
+.badge[data-status="TIMED_OUT"],
+.badge[data-status="BLOCKED"] {
+  padding: 0.05rem 0.4rem;
+  color: var(--surface);
+  background: var(--fail);
 }
 .badge[data-tone="warn"] {
-  color: var(--warn);
-  background: var(--warn-bg);
+  color: var(--wait);
 }
 .badge[data-tone="info"] {
   color: var(--accent);
-  background: var(--accent-bg);
 }
 .badge[data-tone="neutral"] {
   color: var(--muted);
 }
 .tag {
   display: inline-block;
-  font: 600 0.6875rem/1.4 var(--cond);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 0 0.4rem;
-  border-radius: 4px;
-  border: 1px solid var(--border-strong);
+  font: 500 0.75rem/1.4 var(--sans);
   color: var(--fg-2);
   white-space: nowrap;
 }
 .tag-bad {
   color: var(--bad);
-  border-color: var(--bad);
 }
 .tag-warn {
   color: var(--warn);
-  border-color: var(--warn);
 }
 .state {
   padding: 1rem 1.25rem;
@@ -1007,9 +999,8 @@ select {
 }
 .context-body h2 {
   margin: 0 0 0.45rem;
-  font: 600 0.68rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 500 0.75rem/1.3 var(--cond);
+  letter-spacing: 0.01em;
   color: var(--muted);
 }
 .context-body h3 {
@@ -1165,9 +1156,8 @@ select {
   margin: 1.1rem 0 0.35rem;
   padding-top: 0.7rem;
   border-top: 1px solid var(--border);
-  font: 600 0.68rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font: 500 0.75rem/1.3 var(--cond);
+  letter-spacing: 0.01em;
   color: var(--muted);
 }
 .drawer > section:first-of-type h3 {
@@ -1413,7 +1403,7 @@ pre {
   background: color-mix(in srgb, var(--ok) 16%, transparent);
 }
 .diff-del {
-  background: color-mix(in srgb, var(--bad) 16%, transparent);
+  background: color-mix(in srgb, var(--wait) 16%, transparent);
 }
 .diff-meta {
   color: var(--muted);
@@ -1423,7 +1413,7 @@ pre {
   color: var(--ok);
 }
 .diff-del-n {
-  color: var(--bad);
+  color: var(--wait);
 }
 .tok-kw {
   color: #5b21b6;
@@ -1569,8 +1559,8 @@ button[disabled] {
   cursor: not-allowed;
 }
 button.danger {
-  border-color: var(--bad);
-  color: var(--bad);
+  border-color: var(--wait);
+  color: var(--wait);
 }
 .field input,
 .field select,
@@ -2137,67 +2127,15 @@ td .tag {
   margin-left: 0.5rem;
 }
 
-/* ---- Motion (Phase 21): only transform, opacity, background-color and box-shadow; nothing runs on first paint ---- */
-@keyframes arrive {
-  from {
-    background-color: var(--accent-bg);
-  }
-}
-@keyframes landed {
-  from {
-    box-shadow: inset 0 0 0 2px var(--accent);
-  }
-  to {
-    box-shadow: inset 0 0 0 2px transparent;
-  }
-}
-@keyframes pulse {
-  50% {
-    opacity: 0.3;
-  }
-}
-/* The inspector slides in 12 px from the right when an event opens. Transform only: an opacity fade would hand axe
-   (which runs right after the click in several specs) half-transparent text to measure. */
-.drawer {
-  transition: transform var(--t-base) var(--ease-out);
-}
-@starting-style {
-  .drawer {
-    transform: translateX(12px);
-  }
-}
-/* Hover fades in; leaving is instant (the transition belongs to the hover state), and selection never animates, so a
-   contrast check taken right after a click never sees a half-blended row. */
+/* ---- Motion: the page's own rules are static. Everything that moves lives in run-motion.css, inside a
+   `prefers-reduced-motion: no-preference` gate (Phase 22 step 6; tests/motion-contract.test.ts enforces it). ---- */
+/* Row hover is an instant background change (no transition, so nothing blends while the list scrolls). */
 .tl-row:not([data-selected], [data-error]):hover,
 .wf-row:not([data-selected], [data-error]):hover {
   background-color: var(--surface);
-  transition: background-color var(--t-fast) var(--ease-out);
 }
-/* Held keys move the selection many rows a second: no row transition until the pointer is used again. */
-.timeline[data-nav="keyboard"] .tl-row:hover,
-.wf-scroll[data-nav="keyboard"] .wf-row:hover {
-  transition-duration: 0ms;
-}
-.tl-row[data-arrived],
-.wf-row[data-arrived] {
-  animation: arrive var(--t-slow) var(--ease-out);
-}
-.tl-row[data-landed],
-.wf-row[data-landed] {
-  animation: landed var(--t-land) var(--ease-out);
-}
-/* The live dot breathes only while the event stream is actually connected. */
+/* The live glyph is a static green dot while the event stream is connected: a steady dot, not a loop. */
 .live-bar[data-stream="live"] .live-glyph {
   display: inline-block;
   color: var(--ok);
-  animation: pulse 2s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .tl-row[data-arrived],
-  .wf-row[data-arrived],
-  .tl-row[data-landed],
-  .wf-row[data-landed],
-  .live-bar[data-stream="live"] .live-glyph {
-    animation: none;
-  }
 }

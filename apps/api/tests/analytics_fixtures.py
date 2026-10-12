@@ -31,6 +31,7 @@ class Seeder:
         llm: list[dict[str, Any]] | None = None,
         tools: list[tuple[str, str, float]] | None = None,
         retry_scope: bool = False,
+        tools_first: bool = False,
     ) -> str:
         ids = make_run_ids()
         n = 0
@@ -54,6 +55,11 @@ class Seeder:
         scope = new_id(IdKind.SPAN)
         if retry_scope:
             add("tool.call.started", start, span_id=scope, attributes={"tool.name": "fix"})
+        if tools_first:  # tool events before the model calls (a failing tool, then spend after it)
+            for name, status, ms in tools or []:
+                kind = "tool.call.completed" if status == "success" else "tool.call.failed"
+                add(kind, start, span_id=new_id(IdKind.SPAN), status=status, duration_ms=ms,
+                    attributes={"tool.name": name})  # fmt: skip
         for i, attrs in enumerate(llm or []):
             if retry_scope and i == 1:  # the second call comes after a retry of the scope
                 add("retry.attempted", start, span_id=scope, attributes={"retry.attempt": 1})
@@ -65,7 +71,7 @@ class Seeder:
         if retry_scope:
             add("tool.call.completed", start, span_id=scope, status="success", duration_ms=50,
                 attributes={"tool.name": "fix"})  # fmt: skip
-        for name, status, ms in tools or []:
+        for name, status, ms in [] if tools_first else tools or []:
             kind = "tool.call.completed" if status == "success" else "tool.call.failed"
             add(kind, start, span_id=new_id(IdKind.SPAN), status=status, duration_ms=ms,
                 attributes={"tool.name": name})  # fmt: skip

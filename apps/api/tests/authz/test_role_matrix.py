@@ -94,6 +94,7 @@ EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/v1/analytics/cost"): (LIST, U_MONEY),
     ("GET", "/v1/analytics/reliability"): (LIST, U_MONEY),
     ("GET", "/v1/analytics/performance"): (LIST, U_MONEY),
+    ("GET", "/v1/analytics/waste"): (LIST, U_MONEY),
     ("PUT", "/v1/artifacts/{artifact_id}"): (UPLOAD, U_NEVER),
     ("GET", "/v1/artifacts/{artifact_id}"): (READ_ID, U_RUNS),
     ("GET", "/v1/artifacts/{artifact_id}/content"): (READ_ID, U_CONTENT),

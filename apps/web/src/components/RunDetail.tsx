@@ -1,49 +1,45 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { isActive, type RunOut } from "@/lib/api/types";
-import {
-  formatCost,
-  formatDuration,
-  formatInt,
-  formatOffset,
-  formatTimestamp,
-  num,
-} from "@/lib/format";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { isActive, type EventOut } from "@/lib/api/types";
+import { formatCost, formatDuration, formatInt, formatTimestamp, num } from "@/lib/format";
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
 import { useEventDetail, useRun, useRunEvents, useRunFindings } from "@/lib/queries";
 import { useTimers } from "@/lib/useTimers";
+import { headlineKind, headlineModel } from "@/lib/runHeadline";
 import { evidenceRows } from "@/lib/evidence";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
 import { runBounds } from "@/lib/waterfall";
 import type { Base } from "@/lib/routes";
 import {
-  CLASS_LABELS,
   CLASS_ORDER,
   NO_FILTERS,
   buildRows,
-  describe,
   filterEvents,
-  firstError,
+  firstErrorFor,
   groupKeys,
   type EventClass,
   type Filters,
 } from "@/lib/timeline";
 import { AgentTree } from "./AgentTree";
 import { CodingSummary } from "./CodingSummary";
+import { FilterMenu } from "./FilterMenu";
 import { EvidenceList } from "./EvidenceList";
 import { EventDrawer } from "./EventDrawer";
 import { InspectorResizer } from "./InspectorResizer";
 import { Evaluations } from "./Evaluations";
 import { Findings } from "./Findings";
+import { RunHeadline } from "./RunHeadline";
 import { StatusBadge } from "./StatusBadge";
 import { ErrorState, Loading } from "./States";
 import { Timeline } from "./Timeline";
 import { ViewSwitch, type RunView } from "./ViewSwitch";
 import { Waterfall } from "./Waterfall";
+import "../app/run-context.css";
+import "../app/run-motion.css";
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: "warn" | "bad" }) {
   return (
@@ -52,51 +48,6 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: "
       <dd>{value}</dd>
     </div>
   );
-}
-
-/** One sentence that answers "what happened?" before the reader looks at a single event. */
-export function headline(
-  run: RunOut,
-  errorText: string | null,
-  errorOffsetMs: number | null,
-): string {
-  const retries = num(run.summary["retry_count"]) ?? 0;
-  const r = retries ? ` after ${retries} retr${retries === 1 ? "y" : "ies"}` : "";
-  const first = errorText
-    ? ` First error at ${formatOffset(errorOffsetMs ?? 0)}: ${errorText}.`
-    : "";
-  switch (run.status) {
-    case "SUCCESS":
-      return `Succeeded in ${formatDuration(run.duration_ms)}${retries ? ` with ${retries} retr${retries === 1 ? "y" : "ies"}` : ""}.${first ? ` It recovered from an error. ${first.trim()}` : ""}`;
-    case "FAILED":
-    case "TIMED_OUT":
-    case "BLOCKED":
-      return `${run.status === "FAILED" ? "Failed" : run.status === "TIMED_OUT" ? "Timed out" : "Blocked"}${r} in ${formatDuration(run.duration_ms)}.${first}`;
-    case "CANCELLED":
-      return `Cancelled after ${formatDuration(run.duration_ms)}.${first}`;
-    case "WAITING_FOR_APPROVAL":
-    case "WAITING":
-      return `Waiting${run.status === "WAITING_FOR_APPROVAL" ? " for approval" : ""}. The agent is paused.${first}`;
-    default:
-      return `In progress.${first}`;
-  }
-}
-
-/**
- * The headline cut into the parts the header lays out: the lead sentence, the "It recovered from an error." clause (a
- * successful run that hit an error) and the first-error sentence that carries the inline "Show it" control. The text is
- * `headline`'s own, so the two can never disagree.
- */
-export function headlineParts(
-  run: RunOut,
-  errorText: string | null,
-  errorOffsetMs: number | null,
-): { lead: string; recovered: string; error: string | null } {
-  const lead = headline(run, null, null);
-  if (!errorText) return { lead, recovered: "", error: null };
-  const tail = headline(run, errorText, errorOffsetMs).slice(lead.length);
-  const at = tail.indexOf("First error at");
-  return { lead, recovered: at > 0 ? tail.slice(0, at) : " ", error: tail.slice(Math.max(at, 0)) };
 }
 
 /** Live-connection badge. State is spelled out in words and a glyph, never colour alone. */
@@ -143,11 +94,16 @@ function LiveBar({
   );
 }
 
-/** `matchMedia` as external state; false on the server and where the API is missing (jsdom). */
-/** rem: rail 14 + context column 18 + the pane's minimum 30 (AC8: 480px). The inspector's width is added to it. */
-const FOLD_BASE_REM = 62;
-const DEFAULT_INSPECTOR_REM = 26; // --insp-w in globals.css
+/** Below this the rail, an open context column and the inspector leave the pane under ~350 px (KI-126). */
+const SQUEEZED = "(min-width: 833px) and (max-width: 1279px)";
+/** Below 88 rem the inspector is narrowed to 20 rem while the context column is open, so the column never has to fold. */
+const COMPACT = "(max-width: 1407px)";
+/** Motion is decoration: only when the person has not asked for less (and jsdom, which has no matchMedia, gets none). */
+const MOTION = "(prefers-reduced-motion: no-preference)";
+const EXIT_MS = 110; // the inspector's exit animation (run-motion.css) is 100 ms
+const INTRO_MS = 340; // the fault line's entrance (run-motion.css) is 280 ms
 
+/** `matchMedia` as external state; false on the server and where the API is missing (jsdom). */
 function useMedia(query: string): boolean {
   return useSyncExternalStore(
     (notify) => {
@@ -195,6 +151,18 @@ function ContextStripBody({
           {agents}
         </span>
       )}
+    </span>
+  );
+}
+
+/** "Context · 2 findings": the closed column still says there is something in it. */
+function ContextSummary({ runId, poll }: { runId: string; poll: boolean }) {
+  const n = useRunFindings(runId, poll).data?.items.length ?? 0;
+  if (n === 0) return null;
+  return (
+    <span className="context-summary" data-testid="context-summary">
+      {" · "}
+      {n} finding{n === 1 ? "" : "s"}
     </span>
   );
 }
@@ -282,15 +250,24 @@ export function RunDetail({
   const [selected, setSelected] = useState<string | null>(null);
   const [drawerEventId, setDrawerEventId] = useState<string | null>(null);
   const timelineWrap = useRef<HTMLDivElement>(null);
-  // The context column (story, agents, findings, evaluations) yields to the inspector only when the pane would
-  // otherwise drop under its minimum width: rail + column + inspector + pane minimum (88rem with the default
-  // inspector). Clicking "Show it", a finding or a story step must not fold the column that was just clicked while
-  // there is room. The strip button and the header toggle override this and the choice sticks until the next toggle.
-  const [contextPref, setContextPref] = useState<"auto" | "open" | "closed">("auto");
+  // Phase 22 D3: the context column (story, agents, findings, evaluations) starts closed; the Context button says what
+  // is in it. Once the person opens it, it stays open beside the inspector (the inspector narrows instead, KI-126);
+  // only in a window too small for rail + column + inspector + pane (below 1280 px) does it fold while the inspector
+  // is open. A click on the strip or the button while it is squeezed "pins" it open until the next toggle.
+  const [contextPref, setContextPref] = useState<"closed" | "open" | "pinned">("closed");
   const [inspectorPx, setInspectorPx] = useState<number | null>(null);
-  const narrow = useMedia(
-    `(max-width: ${inspectorPx ? `${inspectorPx + FOLD_BASE_REM * 16}px` : `${FOLD_BASE_REM + DEFAULT_INSPECTOR_REM}rem`})`,
-  );
+  const squeezedWindow = useMedia(SQUEEZED);
+  const compactWindow = useMedia(COMPACT);
+
+  // "last event 3 s ago" ticks while the run is live; a finished run's headline has no clock in it.
+  const [now, setNow] = useState(() => Date.now());
+  // Every active status ticks: a run awaiting approval or queued shows how long it has waited (review P1-2).
+  const ticking = !!run.data && isActive(run.data.status);
+  useEffect(() => {
+    if (!ticking) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [ticking]);
 
   const filtered = useMemo(() => filterEvents(events, filters), [events, filters]);
   const rows = useMemo(() => buildRows(filtered, collapsed), [filtered, collapsed]);
@@ -299,7 +276,19 @@ export function RunDetail({
     () => events.reduce((m, e) => Math.min(m, Date.parse(e.occurred_at)), Infinity),
     [events],
   );
-  const err = useMemo(() => firstError(events), [events]);
+  // The server's stored first error when the summary is current (it is known before its page has loaded), else the
+  // first error among the loaded events; the headline derives it the same way (`deriveFailure`). `err` is the loaded
+  // event, which the waterfall needs for its time.
+  const runStatus = run.data?.status ?? "RUNNING";
+  const stored = run.data?.summary_state === "current" ? run.data.first_error?.event_id : null;
+  const firstErrorId = useMemo(
+    () => stored ?? firstErrorFor(runStatus, events)?.event_id ?? null,
+    [stored, runStatus, events],
+  );
+  const err = useMemo(
+    () => (firstErrorId ? events.find((e) => e.event_id === firstErrorId) : undefined),
+    [firstErrorId, events],
+  );
   const bounds = useMemo(
     () => runBounds(run.data ?? { started_at: "", completed_at: null, summary: {} }, t0),
     [run.data, t0],
@@ -329,8 +318,13 @@ export function RunDetail({
     drawerEventId && !loadedDrawerEvent ? drawerEventId : null,
   );
   const drawerEvent = loadedDrawerEvent ?? remoteDrawer.data;
+  // The inspector eases out for 100 ms after it is closed: keep rendering the last event until then.
+  const [leaving, setLeaving] = useState<EventOut | null>(null);
+  const inspected = drawerEvent ?? leaving;
   const contextClosed =
-    contextPref === "closed" || (contextPref === "auto" && !!drawerEvent && narrow);
+    contextPref === "closed" || (contextPref === "open" && !!inspected && squeezedWindow);
+  const toggleContext = () =>
+    setContextPref(contextClosed ? (squeezedWindow && inspected ? "pinned" : "open") : "closed");
 
   // Expanding the strip hides the very button that was focused; move focus to the column it opened (it is a tab stop)
   // rather than let it fall to <body>.
@@ -345,11 +339,19 @@ export function RunDetail({
 
   const evidence = useMemo(() => evidenceRows(events), [events]);
 
-  // Motion cues (decoration only; all of them are zero-length under prefers-reduced-motion). Events that arrive after
-  // the run has loaded get a short tint; the target of a jump gets a ring. Both are bounded and pruned by timers.
+  // Motion cues (decoration only; run-motion.css plays them under `prefers-reduced-motion: no-preference` and nowhere
+  // else). Events that arrive after the run has loaded fade in; the target of a jump gets an outline that fades; a
+  // failed run draws its fault line once. All three are bounded and pruned by timers.
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(NO_IDS);
-  const [landedId, setLandedId] = useState<string | null>(null);
+  const [arrived, setArrived] = useState(0);
+  const [landed, setLanded] = useState<{ id: string; tone: "error" | "evidence" } | null>(null);
+  const [faultIntro, setFaultIntro] = useState(false);
   const knownIds = useRef<Set<string> | null>(null);
+  const filtersRef = useRef(filters);
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+  const introPlayed = useRef(false);
   const { later } = useTimers();
   useEffect(() => {
     if (!restComplete) return;
@@ -359,33 +361,52 @@ export function RunDetail({
     }
     const known = knownIds.current;
     const fresh: string[] = [];
+    const freshEvents: EventOut[] = [];
     for (const e of events) {
       if (!known.has(e.event_id)) {
         known.add(e.event_id);
         fresh.push(e.event_id);
+        freshEvents.push(e);
       }
     }
     if (fresh.length === 0) return;
-    // From a timer, not the effect body: the tint is a cue after the commit, not state the render depends on.
+    // From a timer, not the effect body: the fade is a cue after the commit, not state the render depends on.
     const batch = new Set(fresh.slice(-MAX_NEW_IDS));
     later(() => {
       setNewIds(batch);
-      later(() => setNewIds(NO_IDS), 500);
+      // "N new events" counts what the reader can see: a filter hides the rest (review P3-3).
+      setArrived((n) => n + filterEvents(freshEvents, filtersRef.current).length);
+      later(() => setNewIds(NO_IDS), 400);
     }, 0);
   }, [events, restComplete, later]);
-  const flashLanded = (id: string) => {
-    setLandedId(id);
-    later(() => setLandedId(null), 600);
+  // The fault line draws itself once, the first time rows and the first error are both on screen; a filter, a view
+  // switch or a re-render later never replays it.
+  const hasFault = !!firstErrorId && restComplete;
+  useEffect(() => {
+    if (!hasFault || introPlayed.current) return;
+    introPlayed.current = true;
+    later(() => {
+      setFaultIntro(true);
+      later(() => setFaultIntro(false), INTRO_MS);
+    }, 0);
+  }, [hasFault, later]);
+  const flashLanded = (id: string, tone: "error" | "evidence") => {
+    setLanded({ id, tone });
+    later(() => setLanded(null), 600);
   };
   const focusTimeline = () =>
     timelineWrap.current
       ?.querySelector<HTMLElement>('[role="listbox"], [role="treegrid"], [role="region"]')
       ?.focus();
-  const closeDrawer = useCallback(() => {
+  const closeDrawer = () => {
+    if (drawerEvent && window.matchMedia?.(MOTION).matches) {
+      setLeaving(drawerEvent);
+      later(() => setLeaving(null), EXIT_MS);
+    }
     setDrawerEventId(null);
     // Return focus to where the reader was.
     requestAnimationFrame(focusTimeline);
-  }, []);
+  };
 
   const activate = (key: string) => {
     const row = rows.find((r) => r.key === key);
@@ -400,8 +421,8 @@ export function RunDetail({
     } else setDrawerEventId(row.event.event_id);
   };
 
-  const jumpTo = (eventId: string) => {
-    flashLanded(eventId);
+  const jumpTo = (eventId: string, tone: "error" | "evidence" = "evidence") => {
+    flashLanded(eventId, tone);
     // If a filter hides a loaded event, clear filters so the jump always lands.
     const loaded = events.some((e) => e.event_id === eventId);
     if (loaded && !filtered.some((e) => e.event_id === eventId)) setFilters(NO_FILTERS);
@@ -410,7 +431,8 @@ export function RunDetail({
     setDrawerEventId(eventId);
   };
   const jumpToError = () => {
-    if (err) jumpTo(err.event_id);
+    // An event on a page that has not loaded yet is fetched by the inspector, so the control never waits for paging.
+    if (firstErrorId) jumpTo(firstErrorId, "error");
   };
 
   const toggleClass = (c: EventClass) =>
@@ -421,7 +443,14 @@ export function RunDetail({
       return { ...f, classes: cur.size === CLASS_ORDER.length ? null : cur };
     });
 
-  if (run.isPending) return <Loading label="Loading run" />;
+  if (run.isPending)
+    return (
+      <div className="run-detail app-page">
+        <header className="run-head" aria-busy="true">
+          <RunHeadline kind="failed" variant="skeleton" label="Loading run" />
+        </header>
+      </div>
+    );
   if (run.isError) return <ErrorState error={run.error} onRetry={() => void run.refetch()} />;
   const r = run.data;
   const s = r.summary;
@@ -429,12 +458,18 @@ export function RunDetail({
   const nowDoing = active || stream.state !== "off" ? liveStatus(events) : null;
   const loadingMore = ev.isPending || hasNextPage || isFetchingNextPage;
   const allGroups = groupKeys(buildRows(filtered, new Set()));
-  const errText = err ? describe(err) || err.event_type : null;
 
   const retries = num(s["retry_count"]) ?? 0;
   const errors = num(s["error_count"]) ?? 0;
   const models = Array.isArray(s["models"]) ? (s["models"] as string[]) : [];
-  const parts = headlineParts(r, errText, err ? Date.parse(err.occurred_at) - t0 : null);
+  const model = headlineModel({ run: r, events, t0, eventsComplete: restComplete, now });
+  const kind = model.kind;
+  // The error variant: the run says it failed but its first error cannot be located because the events did not load.
+  const headlineFailed =
+    ev.isError && (model.pending || (!model.failure && headlineKind(r, false) === "failed"));
+  // A failed run whose first error is not known yet (older run, events paging in): hold the frame, say nothing wrong.
+  const headlineLoading =
+    !ev.isError && !restComplete && !model.failure && headlineKind(r, false) === "failed";
 
   return (
     <div className="run-detail app-page">
@@ -442,11 +477,6 @@ export function RunDetail({
         <div className="run-title">
           <h1>{r.name ?? r.id}</h1>
           <StatusBadge status={r.status} />
-          {retries > 0 && (
-            <span className="tag">
-              {retries} retr{retries === 1 ? "y" : "ies"}
-            </span>
-          )}
           <span className="id muted" title={r.id}>
             {r.id.slice(0, 4)}…{r.id.slice(-6)} · {r.agent_id ?? "—"}
             {models.length > 0 && <> · {models.join(", ")}</>} · ordered by{" "}
@@ -454,20 +484,13 @@ export function RunDetail({
             {formatTimestamp(r.started_at)}
           </span>
         </div>
-        <p className="headline" data-testid="headline">
-          {parts.lead}
-          {parts.error && (
-            <>
-              {parts.recovered}
-              <span data-testid="first-error">
-                {parts.error}{" "}
-                <button type="button" className="linkish" onClick={jumpToError}>
-                  Show it <kbd aria-hidden="true">e</kbd>
-                </button>
-              </span>
-            </>
-          )}
-        </p>
+        {headlineFailed ? (
+          <RunHeadline kind={kind} variant="error" onRetry={() => void refetchEvents()} />
+        ) : headlineLoading ? (
+          <RunHeadline kind={kind} variant="skeleton" />
+        ) : (
+          <RunHeadline kind={kind} variant="ready" model={model} onGo={jumpToError} />
+        )}
         {stream.state !== "off" && stream.state !== "ended" && (
           <LiveBar state={stream.state} status={nowDoing} />
         )}
@@ -478,7 +501,7 @@ export function RunDetail({
               : "Summary failed to update and needs an operator; the timeline is still accurate."}
           </p>
         )}
-        <dl className="stats" aria-label="Run summary">
+        <dl className="stats figures" aria-label="Run summary">
           <Metric label="Duration" value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))} />
           <Metric label="Cost" value={formatCost(num(s["estimated_cost_usd"]))} />
           <Metric
@@ -512,16 +535,19 @@ export function RunDetail({
           className="context-toggle"
           aria-pressed={!contextClosed}
           aria-controls="run-context"
-          onClick={() => setContextPref(contextClosed ? "open" : "closed")}
+          onClick={toggleContext}
         >
           Context
+          <ContextSummary runId={runId} poll={active || r.summary_state === "processing"} />
         </button>
       </div>
 
       <div
         className="work"
-        data-inspector={drawerEvent ? "open" : "closed"}
+        data-inspector={inspected ? "open" : "closed"}
         data-context={contextClosed ? "closed" : "open"}
+        data-compact={(!contextClosed && !!inspected && compactWindow && !inspectorPx) || undefined}
+        data-fault-intro={faultIntro || undefined}
         style={
           inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
         }
@@ -539,7 +565,7 @@ export function RunDetail({
             className="context-strip"
             onClick={() => {
               focusContext.current = true;
-              setContextPref("open");
+              setContextPref(squeezedWindow && inspected ? "pinned" : "open");
             }}
             aria-label="Show run context"
             aria-expanded="false"
@@ -553,6 +579,14 @@ export function RunDetail({
             />
           </button>
           <div className="context-body" inert={contextClosed || undefined}>
+            {/* Findings first: they are why the column is opened (D3). */}
+            <Findings
+              runId={runId}
+              runActive={active}
+              summaryProcessing={r.summary_state === "processing"}
+              onShowEvent={jumpTo}
+            />
+
             <CodingSummary
               events={events}
               onOpen={(id) => {
@@ -571,13 +605,6 @@ export function RunDetail({
               />
             )}
 
-            <Findings
-              runId={runId}
-              runActive={active}
-              summaryProcessing={r.summary_state === "processing"}
-              onShowEvent={jumpTo}
-            />
-
             <Evaluations runId={runId} onShowEvent={jumpTo} />
           </div>
         </aside>
@@ -587,20 +614,12 @@ export function RunDetail({
             {view === "waterfall" ? "Waterfall" : view === "evidence" ? "Evidence" : "Timeline"}
           </h2>
           {view === "timeline" && (
-            <div className="toolbar" role="group" aria-label="Timeline filters">
-              <fieldset>
-                <legend>Event classes</legend>
-                {CLASS_ORDER.map((c) => (
-                  <label key={c} className="chip">
-                    <input
-                      type="checkbox"
-                      checked={filters.classes ? filters.classes.has(c) : true}
-                      onChange={() => toggleClass(c)}
-                    />
-                    {CLASS_LABELS[c]}
-                  </label>
-                ))}
-              </fieldset>
+            <div className="toolbar tl-toolbar" role="group" aria-label="Timeline filters">
+              <FilterMenu
+                classes={filters.classes}
+                onToggle={toggleClass}
+                onReset={() => setFilters((f) => ({ ...f, classes: null }))}
+              />
               <label className="chip">
                 <input
                   type="checkbox"
@@ -659,14 +678,17 @@ export function RunDetail({
                   rows={rows}
                   t0={t0}
                   selectedKey={selectedKey}
-                  firstErrorId={err?.event_id ?? null}
+                  firstErrorId={firstErrorId}
+                  faultStep={model.failure?.step ?? null}
                   showAgent={multiAgent}
                   onSelect={setSelected}
                   onActivate={activate}
                   onEscape={closeDrawer}
                   onJumpToError={jumpToError}
                   newIds={newIds}
-                  landedId={landedId}
+                  arrived={arrived}
+                  landedId={landed?.id ?? null}
+                  landedTone={landed?.tone}
                 />
               ) : (
                 <Waterfall
@@ -674,14 +696,17 @@ export function RunDetail({
                   bounds={bounds}
                   spanIdOf={spanIdOf}
                   selectedEventId={selected}
-                  firstErrorId={err?.event_id ?? null}
+                  firstErrorId={firstErrorId}
+                  faultAtMs={err ? Date.parse(err.occurred_at) : null}
+                  faultStep={model.failure?.step ?? null}
                   agentFilter={filters.agents ?? null}
                   onSelect={setSelected}
                   onActivate={setDrawerEventId}
                   onEscape={closeDrawer}
                   onJumpToError={jumpToError}
                   newIds={newIds}
-                  landedId={landedId}
+                  landedId={landed?.id ?? null}
+                  landedTone={landed?.tone}
                 />
               )}
             </div>
@@ -707,7 +732,14 @@ export function RunDetail({
         </section>
 
         {drawerEvent && <InspectorResizer width={inspectorPx} onChange={setInspectorPx} />}
-        {drawerEvent && <EventDrawer runId={runId} event={drawerEvent} onClose={closeDrawer} />}
+        {inspected && (
+          <EventDrawer
+            runId={runId}
+            event={inspected}
+            onClose={closeDrawer}
+            closing={!drawerEvent}
+          />
+        )}
       </div>
     </div>
   );

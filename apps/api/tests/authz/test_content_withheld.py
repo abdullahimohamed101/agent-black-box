@@ -20,6 +20,7 @@ from tests.authz.world import (
     World,
     body_text,
 )
+from tests.ingest_helpers import make_run_ids, wire_event
 
 WITHHELD_FROM = ("viewer", "downgraded")  # a VIEWER, and an OWNER demoted to VIEWER
 SEES_CONTENT = ("owner", "admin", "developer", "security", "reader", "wide_reader")
@@ -56,6 +57,62 @@ def test_every_text_attribute_is_classified_as_content_or_reviewed_metadata() ->
     assert not CONTENT_ATTRIBUTES & REVIEWED_METADATA
     assert CONTENT_ATTRIBUTES <= set(KNOWN_ATTRIBUTES)
     assert REVIEWED_METADATA <= set(KNOWN_ATTRIBUTES)
+
+
+# The run summary's first-error facts (ADR-112) are not event attributes, so they are not in
+# REVIEWED_METADATA (which classifies attribute keys). They are metadata by construction: an event
+# id, a sequence number, two counts, seconds and a USD figure, derived from event types, statuses,
+# timestamps and cost lines, never from an attribute value, a payload or a name.
+FIRST_ERROR_KEYS = (
+    "first_error_event_id", "first_error_sequence", "retries_after", "seconds_after",
+    "cost_after_usd", "cost_after_unpriced_calls",
+)  # fmt: skip
+
+
+@pytest.mark.parametrize("actor", ["viewer", "downgraded", *SEES_CONTENT])
+async def test_first_error_facts_are_metadata_and_identical_for_every_role(
+    world: World, actor: str
+) -> None:
+    ids = make_run_ids()
+    token = "writer"  # acme's project write key
+    llm = {"llm.provider": "example-provider", "llm.model": "m", "cost.estimated_usd": 0.25}
+    events = [
+        wire_event(ids, 1, event_type="run.started", agent_id="ab", span_id=..., attributes={}),
+        wire_event(
+            ids, 2, event_type="tool.call.failed", agent_id="ab", status="error",
+            attributes={"tool.name": "t", "tool.error_type": "Boom"},
+        ),
+        wire_event(ids, 3, event_type="retry.attempted", agent_id="ab",
+                   attributes={"retry.attempt": 1}),
+        wire_event(ids, 4, event_type="llm.request.completed", agent_id="ab", status="success",
+                   attributes=llm),
+        wire_event(ids, 5, event_type="run.failed", agent_id="ab", span_id=..., attributes={}),
+    ]  # fmt: skip
+    assert (await world.api.post_batch(events, token=token)).status_code == 202
+    await world.api.drain()
+    run_id = ids["run_id"]
+
+    detail = (await world.get(f"/v1/runs/{run_id}", actor)).json()
+    reference = (await world.get(f"/v1/runs/{run_id}", "owner")).json()
+    for body in (detail, reference):
+        assert body["first_error"] == {
+            "event_id": events[1]["event_id"],
+            "sequence": 2,
+            "retries_after": 1,
+            "seconds_after": pytest.approx(3.0),
+            "cost_after_usd": 0.25,
+            "cost_after_unpriced_calls": 0,
+        }
+        assert {k: body["summary"][k] for k in FIRST_ERROR_KEYS}["retries_after"] == 1
+    assert {k: detail["summary"][k] for k in FIRST_ERROR_KEYS} == {
+        k: reference["summary"][k] for k in FIRST_ERROR_KEYS
+    }
+    listed = (await world.get("/v1/runs", actor, limit=100)).json()["items"]
+    row = next(r for r in listed if r["id"] == run_id)
+    assert row["first_error"] == detail["first_error"]
+    assert {k: row["summary"][k] for k in FIRST_ERROR_KEYS} == {
+        k: detail["summary"][k] for k in FIRST_ERROR_KEYS
+    }
 
 
 async def _seeded_event_ids(world: World) -> list[str]:

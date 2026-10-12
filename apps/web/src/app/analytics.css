@@ -1,0 +1,29 @@
+/* Phase 22 D12: the "Where the money was wasted" panel at the top of the analytics page. Mono figures, no colour:
+   a dollar figure is information, and red is reserved for failure (ADR-111). */
+.waste {
+  margin: 0 0 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.page .waste h2 {
+  margin-top: 0;
+}
+.waste-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 1.25rem;
+  margin: 0.25rem 0;
+  font: 400 0.85rem / 1.6 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.waste-total {
+  font: 500 var(--fs-headline) / 1.2 var(--mono);
+}
+.waste-line .muted {
+  font-size: var(--fs-small);
+}
+.waste-note {
+  margin: 0 0 0.75rem;
+  max-width: 48rem;
+}

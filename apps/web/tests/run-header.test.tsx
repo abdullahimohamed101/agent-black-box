@@ -1,11 +1,21 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RunDetail, headline, headlineParts } from "@/components/RunDetail";
-import { failureRetryRun, multiAgentRun, runningRun, successRun } from "@/fixtures/runs";
+import { RunDetail } from "@/components/RunDetail";
+import { headlineModel } from "@/lib/runHeadline";
+import {
+  approvalRun,
+  failureRetryRun,
+  multiAgentRun,
+  runningRun,
+  successRun,
+} from "@/fixtures/runs";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("run header", () => {
   it("states the first error once, inside the headline, with the control beside it", async () => {
@@ -13,10 +23,12 @@ describe("run header", () => {
     renderWithQuery(<RunDetail runId={failureRetryRun().run.id} base={BASE} />);
     const err = await screen.findByTestId("first-error");
     expect(screen.getByTestId("headline")).toContainElement(err);
-    expect(err).toHaveTextContent(/^First error at \+6\.2s: run_migration/);
+    expect(err).toHaveTextContent(
+      /^Failed at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout/,
+    );
     expect(within(err).getByRole("button", { name: "Show it" })).toBeInTheDocument();
     // no separate banner repeats it
-    expect(screen.getAllByText(/First error at/)).toHaveLength(1);
+    expect(screen.getAllByText(/Failed at step/)).toHaveLength(1);
     expect(document.querySelector(".banner")).toBeNull();
   });
 
@@ -26,6 +38,40 @@ describe("run header", () => {
     renderWithQuery(<RunDetail runId={failureRetryRun().run.id} base={BASE} />);
     await screen.findByTestId("first-error");
     await user.click(screen.getByRole("button", { name: "Show it" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("ConnectionTimeout");
+  });
+
+  it("an approval wait keeps counting while the tab stays open (review P1-2)", async () => {
+    const f = approvalRun();
+    const ask = f.events.find((e) => e.event_type === "approval.requested")!;
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(Date.parse(ask.occurred_at) + 4 * 60_000);
+    stubApi();
+    renderWithQuery(<RunDetail runId={f.run.id} base={BASE} />);
+    const detail = await screen.findByTestId("headline-detail");
+    expect(detail).toHaveTextContent(/waiting 4m 0\ds/);
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(screen.getByTestId("headline-detail")).toHaveTextContent(/waiting 4m (2|3)\ds/);
+  });
+
+  it("Show it works before the page holding the first error has loaded (review P3-2)", async () => {
+    const f = failureRetryRun();
+    const errId = f.run.first_error!.event_id;
+    const cut = f.events.findIndex((e) => e.event_id === errId);
+    const user = userEvent.setup();
+    stubApi({
+      "/events": () =>
+        Response.json({
+          items: f.events.slice(0, cut),
+          next_cursor: null,
+          ordering_mode: "sequence",
+        }),
+    });
+    renderWithQuery(<RunDetail runId={f.run.id} base={BASE} />);
+    const go = await screen.findByRole("button", { name: "Show it" });
+    await user.click(go);
     expect(await screen.findByRole("dialog")).toHaveTextContent("ConnectionTimeout");
   });
 
@@ -82,32 +128,26 @@ describe("run header", () => {
   });
 });
 
-describe("headlineParts", () => {
-  const run = successRun().run;
-  it("is the headline cut in three, never different text", () => {
-    for (const status of [
-      "SUCCESS",
-      "FAILED",
-      "TIMED_OUT",
-      "CANCELLED",
-      "WAITING",
-      "RUNNING",
-    ] as const) {
-      const r = { ...run, status };
-      const p = headlineParts(r, "tool_x · Boom", 4600);
-      expect(p.lead + p.recovered + (p.error ?? "")).toBe(headline(r, "tool_x · Boom", 4600));
-      expect(p.error).toMatch(/^First error at \+4\.6s: tool_x · Boom\.$/);
-    }
-  });
-  it("a recovered success keeps the 'It recovered from an error.' clause before the error", () => {
-    const p = headlineParts({ ...run, status: "SUCCESS" }, "x", 1000);
-    expect(p.recovered).toContain("It recovered from an error.");
-  });
-  it("has no error part without an error", () => {
-    expect(headlineParts(run, null, null)).toEqual({
-      lead: headline(run, null, null),
-      recovered: "",
-      error: null,
+describe("headline text per status", () => {
+  const f = successRun();
+  const model = (status: (typeof f.run)["status"]) =>
+    headlineModel({
+      run: { ...f.run, status },
+      events: f.events,
+      t0: Date.parse(f.run.started_at),
+      eventsComplete: true,
     });
+  it("one lead sentence per status, never different text from the model", () => {
+    expect(model("SUCCESS").lead).toMatch(/^Completed in/);
+    expect(model("FAILED").lead).toMatch(/^Failed after/);
+    expect(model("TIMED_OUT").lead).toMatch(/^Timed out after/);
+    expect(model("BLOCKED").lead).toMatch(/^Blocked after/);
+    expect(model("CANCELLED").lead).toMatch(/^Cancelled at step/);
+    expect(model("WAITING").lead).toMatch(/^Waiting/);
+    expect(model("RUNNING").lead).toMatch(/^Running/);
+    expect(model("QUEUED").lead).toMatch(/^Queued/);
+  });
+  it("has no failure, so no jump, without an error", () => {
+    expect(model("SUCCESS").failure).toBeNull();
   });
 });

@@ -127,3 +127,111 @@ export function deltaText(d: number | null): string {
   if (d === 0) return "no change";
   return `${d > 0 ? "+" : "−"}${Number(Math.abs(d).toFixed(3))}`;
 }
+
+// Phase 22 D12: the divergence line. Built only from what the comparison projection exposes (`StepOut.label` is already
+// the role-aware name, with `label_withheld` set when the reader may not see it), so a viewer's sentence never carries content.
+
+export type Part = { text: string; code?: boolean };
+const LABEL_MAX = 60;
+const clip = (s: string): string => (s.length > LABEL_MAX ? `${s.slice(0, LABEL_MAX - 1)}…` : s);
+
+/** What one side did at a step, as short parts: plain words and, for a name from the run, a `code` part. */
+export function describeStep(step: StepOut | null): Part[] {
+  if (!step) return [{ text: "had no step here" }];
+  const [family = "", ...rest] = step.event_type.split(".");
+  const action = rest.join(".");
+  const failed = step.event_type.endsWith(".failed");
+  const named = (verb: string, fallback: string): Part[] =>
+    step.label_withheld
+      ? [{ text: `${verb} ${fallback} (details withheld for your role)` }]
+      : step.label
+        ? [{ text: `${verb} ` }, { text: clip(step.label), code: true }]
+        : [{ text: `${verb} ${fallback}` }];
+  let parts: Part[];
+  switch (family) {
+    case "tool":
+      parts = named("called", "a tool");
+      break;
+    case "llm":
+      parts = named("called model", "a model");
+      break;
+    case "shell":
+      parts = named("ran", "a shell command");
+      break;
+    case "file":
+      parts = named(
+        action.startsWith("created")
+          ? "created"
+          : action.startsWith("deleted")
+            ? "deleted"
+            : action.startsWith("read")
+              ? "read"
+              : "edited",
+        "a file",
+      );
+      break;
+    case "span":
+      parts = named("ran", "a span");
+      break;
+    case "agent":
+      parts = named("ran agent", "an agent");
+      break;
+    case "git":
+      parts = named("ran git on", "a branch");
+      break;
+    default:
+      parts = [{ text: `recorded ${step.event_type}` }];
+  }
+  return failed ? [...parts, { text: " (failed)" }] : parts;
+}
+
+export type Divergence = { step: number; a: Part[]; b: Part[] };
+
+/** The divergence line's content, or null when the runs took the same steps. */
+export function divergenceLine(c: ComparisonOut): Divergence | null {
+  if (c.divergence === null) return null;
+  const row = c.steps[c.divergence.index];
+  return {
+    step: c.divergence.index + 1,
+    a: describeStep(row?.left ?? null),
+    b: describeStep(row?.right ?? null),
+  };
+}
+
+/** One mono line of deltas (right minus left): duration, cost, calls, retries, files. */
+export type DeltaItem = { key: string; label: string; text: string; direction: Direction };
+export function deltaLine(summary: ComparisonOut["summary"]): DeltaItem[] {
+  const by = new Map(summary.map((m) => [m.metric, m]));
+  const one = (key: string, label: string, metric: string): DeltaItem => {
+    const m = by.get(metric);
+    const meta = METRICS[metric]!;
+    const d = m?.delta;
+    if (d == null) return { key, label, text: DASH, direction: "unknown" };
+    if (d === 0) return { key, label, text: "0", direction: "same" };
+    return {
+      key,
+      label,
+      text: `${d > 0 ? "+" : "−"}${meta.format(Math.abs(d))}`,
+      direction: d > 0 ? "up" : "down",
+    };
+  };
+  const calls = (): DeltaItem => {
+    const parts = ["llm_calls", "tool_calls"].map((k) => by.get(k)?.delta);
+    if (parts.some((d) => d == null))
+      return { key: "calls", label: "Calls", text: DASH, direction: "unknown" };
+    const d = (parts as number[]).reduce((a, b) => a + b, 0);
+    return {
+      key: "calls",
+      label: "Calls",
+      text: d === 0 ? "0" : `${d > 0 ? "+" : "−"}${formatInt(Math.abs(d))}`,
+      direction: d === 0 ? "same" : d > 0 ? "up" : "down",
+    };
+  };
+  return [
+    one("duration", "Duration", "duration_ms"),
+    one("cost", "Cost", "estimated_cost_usd"),
+    calls(),
+    one("retries", "Retries", "retry_count"),
+    one("files", "Files", "files_modified"),
+  ];
+}

@@ -1,5 +1,6 @@
 import type { RunOut } from "@/lib/api/types";
 import type { FixtureRun } from "./builder";
+import { isContentAttribute } from "./withhold";
 
 /**
  * A stand-in for `GET /v1/runs?q=` in fixture mode, for the field subset the fixtures can answer (status, agent,
@@ -28,6 +29,19 @@ const FIELDS = [
   ["name", "text", "run name contains"],
   ["started", "time", "date or -24h"],
 ] as const;
+
+/**
+ * The fields that search captured content. The fixtures cannot answer them, but a viewer asking for one is refused
+ * exactly as the API refuses it (ADR-101): the same `403` whatever the value, never an empty page or a `422`.
+ */
+const CONTENT_FIELDS = new Set(["file", "command"]);
+
+/** A person without the content permission asked for a content field (ADR-101); `field` is the first one asked for. */
+export class FixtureForbiddenError extends Error {
+  constructor(readonly field: string) {
+    super(`searching ${field} needs the content permission`);
+  }
+}
 
 export class FixtureQueryError extends Error {
   constructor(
@@ -110,9 +124,12 @@ function startedMs(value: string): number | null {
 }
 
 const facts = (f: FixtureRun) => {
+  // Only metadata attributes are ever indexed: never one that carries captured content (ADR-101 d7).
   const attrs = (k: string) => [
     ...new Set(
-      f.events.map((e) => e.attributes[k]).filter((v): v is string => typeof v === "string"),
+      f.events
+        .map((e) => (isContentAttribute(k) ? undefined : e.attributes[k]))
+        .filter((v): v is string => typeof v === "string"),
     ),
   ];
   return {
@@ -125,9 +142,14 @@ const facts = (f: FixtureRun) => {
 
 const INDEXED = new Set(["agent", "tool", "model", "event"]);
 
-export function fixtureSearch(all: FixtureRun[], q: string) {
+export function fixtureSearch(
+  all: FixtureRun[],
+  q: string,
+  viewer: { content: boolean } = { content: true },
+) {
   const terms = scan(q);
   for (const t of terms) {
+    if (t.kind === "field" && CONTENT_FIELDS.has(t.field!)) continue; // judged below, after the parse
     if (t.kind === "field" && !FIELDS.some(([n]) => n === t.field))
       throw new FixtureQueryError(
         t.span[0],
@@ -135,6 +157,15 @@ export function fixtureSearch(all: FixtureRun[], q: string) {
       );
     if (t.kind === "field" && t.field === "started" && startedMs(t.value ?? "") === null)
       throw new FixtureQueryError(t.span[0], "not a date or a relative time");
+  }
+  // The gate runs after the parse and before anything is read, like the API's: a refusal depends on the field only.
+  const content = terms.find((t) => t.kind === "field" && CONTENT_FIELDS.has(t.field!));
+  if (content) {
+    if (!viewer.content) throw new FixtureForbiddenError(content.field!);
+    throw new FixtureQueryError(
+      content.span[0],
+      "fixture mode answers only the fields listed in the search help",
+    );
   }
   const usesIndex = terms.some(
     (t) => (t.kind === "field" && INDEXED.has(t.field!)) || t.kind === "text",

@@ -103,7 +103,7 @@ describe("Findings panel", () => {
   it("says No findings for an analysed run without any, and keeps healthy dimensions", async () => {
     const ok = withFindings(successRun());
     renderPanel(ok.findings!);
-    expect(await screen.findByTestId("findings-empty")).toHaveTextContent("No findings.");
+    expect(await screen.findByTestId("findings-empty")).toHaveTextContent("Nothing wrong found.");
     expect(screen.getByTestId("findings-state")).toHaveTextContent("Analysis is current.");
     expect(screen.queryByTestId("finding")).toBeNull();
   });

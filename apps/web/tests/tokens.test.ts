@@ -6,9 +6,20 @@ import { describe, expect, it } from "vitest";
 // and asserts every text role on the backgrounds it is drawn on is at least 4.5:1 (WCAG AA for body text).
 const css = readFileSync(path.join(__dirname, "../src/app/globals.css"), "utf8");
 
+// Values are a hex colour or an alias `var(--other)` (the old names point at the Phase 22 semantic tokens).
 function vars(block: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const m of block.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)) out[m[1]!] = m[2]!;
+  for (const m of block.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6}|var\(--[a-z0-9-]+\))\s*;/g))
+    out[m[1]!] = m[2]!;
+  return out;
+}
+function resolve(raw: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of Object.keys(raw)) {
+    let v = raw[k]!;
+    for (let i = 0; i < 5 && v.startsWith("var("); i++) v = raw[v.slice(6, -1)] ?? v;
+    out[k] = v;
+  }
   return out;
 }
 function rootBlock(src: string): string {
@@ -20,8 +31,8 @@ const dark = css.indexOf("@media (prefers-color-scheme: dark)");
 const light = vars(rootBlock(css));
 const darkOnly = vars(rootBlock(css.slice(dark)));
 const schemes: Record<string, Record<string, string>> = {
-  light,
-  dark: { ...light, ...darkOnly },
+  light: resolve(light),
+  dark: resolve({ ...light, ...darkOnly }),
 };
 
 function lum(hex: string): number {

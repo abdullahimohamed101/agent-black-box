@@ -202,7 +202,7 @@ export function Evaluations({
             </p>
           )}
           {items.length === 0 ? (
-            <Empty title="No evaluations yet">
+            <Empty title="No evaluations yet" motif="tape">
               {canRun
                 ? "Start an evaluator below to score this run."
                 : "Nobody has evaluated this run."}

@@ -1,4 +1,10 @@
-import { ALL_STATUSES, type MatchedOut, type RunOut, type RunStatus } from "./api/types";
+import {
+  ALL_STATUSES,
+  type MatchedOut,
+  type QueryTermOut,
+  type RunOut,
+  type RunStatus,
+} from "./api/types";
 import { ApiRequestError } from "./api/client";
 
 /**
@@ -33,6 +39,17 @@ export function appendTerm(q: string, term: string): string {
   const base = q.trim();
   return base ? `${base} ${term}` : term;
 }
+
+/** `q` without its (non-negated) `status:` terms. The "Needs attention" button and a Status facet are two ways to say
+ *  the same thing and they AND together, so choosing one clears the other (review P2-6). */
+export function dropStatusTerms(q: string): string {
+  return q
+    .replace(/(^|\s)status:(?:"[^"]*"|\S*)/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export const isStatusTerm = (term: string): boolean => /^status:/i.test(term.trim());
 
 export function fieldTerm(field: string, value: string): string {
   return `${field}:${quoteValue(value)}`;
@@ -159,4 +176,32 @@ export function matchedLabels(m: MatchedOut): string[] {
     ...(m.event_types ?? []).map((v) => `event:${v}`),
     ...(m.tags ?? []).map((v) => `tag:${v}`),
   ];
+}
+
+/**
+ * The echoed term a facet stands for, if the query already holds it. A facet is "on" when its exact text is a term of `q`
+ * (compared case-insensitively) or, for a plain field value, when a non-negated `field:value` term says the same thing.
+ * Toggling a facet twice therefore removes the term it added: the query text stays the only state (plan D7).
+ */
+export function findTerm(
+  q: string,
+  terms: readonly QueryTermOut[],
+  text: string,
+  match?: { field: string; value: string },
+): QueryTermOut | null {
+  const want = text.toLowerCase();
+  return (
+    terms.find((t) => {
+      if (t.negated) return false;
+      if (termText(q, t.span).toLowerCase() === want) return true;
+      return (
+        !!match &&
+        t.kind === "field" &&
+        t.field === match.field &&
+        (t.op === "=" || t.op === null) &&
+        !t.prefix &&
+        (t.value ?? "").toLowerCase() === match.value.toLowerCase()
+      );
+    }) ?? null
+  );
 }

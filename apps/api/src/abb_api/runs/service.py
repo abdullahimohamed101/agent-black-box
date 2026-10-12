@@ -28,6 +28,7 @@ from abb_api.runs.schemas import (
     CreateRunRequest,
     EventOut,
     EventPage,
+    FirstErrorOut,
     RunFindingsBadge,
     RunOut,
     RunPage,
@@ -87,6 +88,20 @@ def _badge(badge: Badge | None) -> RunFindingsBadge:
     )
 
 
+def _first_error(summary: dict[str, Any]) -> FirstErrorOut | None:
+    event_id = summary.get("first_error_event_id")
+    if not isinstance(event_id, str):
+        return None
+    return FirstErrorOut(
+        event_id=event_id,
+        sequence=summary.get("first_error_sequence"),
+        retries_after=summary.get("retries_after") or 0,
+        seconds_after=summary.get("seconds_after") or 0.0,
+        cost_after_usd=summary.get("cost_after_usd") or 0.0,
+        cost_after_unpriced_calls=summary.get("cost_after_unpriced_calls") or 0,
+    )
+
+
 def _run_out(
     record: RunRecord,
     state: str,
@@ -118,6 +133,7 @@ def _run_out(
         created_at=record.created_at,
         updated_at=record.updated_at,
         findings=badge,
+        first_error=_first_error(summary),
         matched=matched_out(search, record.search) if search is not None else None,
     )
 

@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { openContext, settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
 
 // Runs only through scripts/findings-e2e.sh: the ten pathological runs went in through the real ingestion path, the
@@ -14,10 +15,12 @@ const SHOTS = "../../docs/screenshots/phase-10";
 
 const open = async (page: Page, name: string) => {
   await page.goto(`/w/${workspace()}/projects/all/runs/${runs[name]}`);
+  await openContext(page); // findings live in the context panel, closed by default (Phase 22 D3)
   await expect(page.getByTestId("findings")).toBeVisible();
   await expect(page.getByTestId("findings-state")).toContainText("Analysis is current");
 };
 const axe = async (page: Page) => {
+  await settleAnimations(page);
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual(
@@ -34,8 +37,10 @@ test("a looping run lists its probable loops, and Show evidence selects the cite
     .getByTestId("finding")
     .filter({ hasText: "Probable: the agent may be looping" });
   await expect(loops.first()).toContainText("Probable");
+  await loops.first().getByText("Details", { exact: true }).click(); // the explanation sits behind Details
   await expect(loops.first().getByLabel("Pattern")).toContainText("tool:search");
   await expect(panel.getByTestId("finding").filter({ hasText: "Observed" }).first()).toBeVisible();
+  await panel.getByText(/^Health:/).click(); // the dimensions sit behind a disclosure
   await expect(panel.getByTestId("health")).toContainText("Loops");
   await loops.first().getByRole("button", { name: "Show evidence" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -62,6 +67,7 @@ test("a failed run shows the failure chain as linked events and a probable cause
   await open(page, "failing");
   const chain = page.getByTestId("finding").filter({ hasText: "the run failed" });
   await expect(chain).toHaveAttribute("data-type", "failure_chain");
+  await chain.getByText("Details", { exact: true }).click();
   await expect(chain).toContainText("Observed");
   expect(await chain.getByRole("listitem").count()).toBeGreaterThanOrEqual(3);
   await expect(page.locator('[data-type="probable_cause"]')).toContainText("Probable:");
@@ -72,7 +78,7 @@ test("a failed run shows the failure chain as linked events and a probable cause
 
 test("the healthy run has no findings and says the analysis is current", async ({ page }) => {
   await open(page, "healthy");
-  await expect(page.getByTestId("findings-empty")).toContainText("No findings");
+  await expect(page.getByTestId("findings-empty")).toContainText("Nothing wrong found");
   await expect(page.getByTestId("finding")).toHaveCount(0);
 });
 

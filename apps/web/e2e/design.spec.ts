@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { withArtifacts } from "./artifacts";
+import { openContext, settleAnimations } from "./motion";
 
 // Phase 21 design contract (fixtures build): the application frame, fonts, no third-party requests, axe in both colour
 // schemes and no horizontal scroll on a phone, on every kind of page. Objective checks only; the paired screenshots
@@ -22,6 +23,7 @@ const ROUTES: [string, string][] = [
 ];
 
 async function axe(page: Page) {
+  await settleAnimations(page);
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual(
@@ -69,8 +71,9 @@ test.describe("1440x900 frame", () => {
         .map((e) => (e.closest("aside.rail") ? "rail" : e.closest("header") ? "top" : "main"))
         .filter((v, i, a) => i === 0 || a[i - 1] !== v),
     );
-    // the skip link sits outside the rail and the top bar (the top bar has no focusable control on a list page)
-    expect(order.slice(0, 3)).toEqual(["main", "rail", "main"]);
+    // the skip link sits outside the rail and the top bar; the top bar now holds the global search (Phase 22 step 7),
+    // so the order is skip link, rail, search, page
+    expect(order.slice(0, 4)).toEqual(["main", "rail", "top", "main"]);
   });
 
   test("fonts are self-hosted and applied; no request leaves the origin", async ({ page }) => {
@@ -192,7 +195,7 @@ test.describe("run header", () => {
       await expect(page.getByTestId("headline")).toBeVisible();
     });
 
-  test("annunciator grammar: one red readout and one amber readout on the failed run", async ({
+  test("annunciator grammar: the failure line and the error count are red, the retry count amber, on the failed run", async ({
     page,
   }) => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
@@ -209,7 +212,9 @@ test.describe("run header", () => {
       const bad = probe("--bad");
       const warn = probe("--warn");
       // the status badge is the state itself and is red on a failed run by design; everything else in the header counts
-      const els = [...document.querySelectorAll(".run-head *")].filter((e) => !e.closest(".badge"));
+      const els = [...document.querySelectorAll(".run-head *")].filter(
+        (e) => !e.closest(".badge") && !e.matches(".hl-nowrap"),
+      );
       const direct = (c: string) =>
         els.filter(
           (e) =>
@@ -221,7 +226,12 @@ test.describe("run header", () => {
         amber: direct(warn).map((e) => e.textContent),
       };
     });
-    expect(colours.red).toEqual(["4"]);
+    // Phase 22: the headline is the failure line (red, the one place red means "this run failed"); the Errors readout stays red
+    expect(colours.red).toHaveLength(2);
+    expect(colours.red[0]).toMatch(
+      /^Failed at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout/,
+    );
+    expect(colours.red[1]).toBe("4");
     expect(colours.amber).toEqual(["2"]);
   });
 
@@ -247,33 +257,51 @@ test.describe("run work area", () => {
     expect(m.scroll).toBe(m.inner);
     const list = (await page.locator(".timeline").boundingBox())!;
     expect(list.height).toBeGreaterThan(300);
-    // the context column is visible on load, beside the pane
-    await expect(page.getByRole("complementary", { name: "Run context" })).toBeVisible();
-    await expect(page.getByTestId("findings")).toBeVisible();
-  });
-
-  test("opening the inspector keeps the pane usable: where it would lack width the context folds to a strip, one click restores it", async ({
-    page,
-  }) => {
-    // 1440 has room for all three columns (see review-fixes.spec.ts); 1280 does not.
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await page.getByRole("button", { name: "Show it" }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(480);
+    // Phase 22 D3: the context column starts closed (a strip beside the pane); findings are not in the main view
     await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
     await expect(page.getByTestId("findings")).toBeHidden();
+    await expect(page.getByRole("button", { name: /^Context/ })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  test("an open context column stays open beside the inspector at 1280 (KI-126): the inspector narrows, the pane stays usable", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await openContext(page);
+    await expect(page.getByTestId("findings")).toBeVisible();
+    await page.getByRole("button", { name: "Show it" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
+    await expect(page.getByTestId("findings")).toBeVisible();
+    expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(440);
+    // the header toggle folds it
+    await page.getByRole("button", { name: /^Context/ }).click();
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
+  });
+
+  test("below 1280 an open context folds to the strip when the inspector opens, and one click restores it", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await openContext(page);
+    await page.getByRole("button", { name: "Show it" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(300);
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
     await page.getByRole("button", { name: "Show run context" }).click();
     await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
     await expect(page.getByTestId("findings")).toBeVisible();
-    // the header toggle folds it again
-    await page.getByRole("button", { name: "Context", exact: true }).click();
-    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
   });
 
-  test("a wide window keeps the context open beside the inspector", async ({ page }) => {
+  test("a wide window keeps an open context beside the inspector", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1000 });
     await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await openContext(page);
     await page.getByRole("button", { name: "Show it" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
@@ -458,11 +486,17 @@ test.describe("runs list", () => {
   }) => {
     await page.goto(`${BASE}/runs`);
     await expect(page.getByRole("table")).toBeVisible();
+    // a clean run is one line of at most 34 px; a run that needs attention has a second line (Phase 22 D8)
     const rows = await page
-      .locator("tbody tr")
+      .locator("tbody tr:not([data-attention])")
       .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
     expect(rows.length).toBeGreaterThan(5);
     expect(Math.max(...rows)).toBeLessThanOrEqual(34);
+    const attention = await page
+      .locator("tbody tr[data-attention]")
+      .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+    expect(attention.length).toBeGreaterThan(0);
+    expect(Math.max(...attention)).toBeLessThanOrEqual(70);
     const filters = (await page.getByRole("search", { name: "Filter runs" }).boundingBox())!;
     expect(filters.height).toBeLessThanOrEqual(48);
     const wrap = await page.locator(".table-wrap").evaluate((e) => [e.scrollWidth, e.clientWidth]);
@@ -504,6 +538,15 @@ test.describe("motion", () => {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
   };
+  /** Every animation that starts, by keyframe name (the DOM event fires for CSS animations only). */
+  const recordAnimations = (page: Page) =>
+    page.addInitScript(() => {
+      const w = window as unknown as { __anims: string[] };
+      w.__anims = [];
+      document.addEventListener("animationstart", (e) => w.__anims.push(e.animationName), true);
+    });
+  const started = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __anims: string[] }).__anims);
 
   test.describe("reduced motion", () => {
     test.use({ reducedMotion: "reduce" });
@@ -525,39 +568,173 @@ test.describe("motion", () => {
       await page.waitForTimeout(100);
       expect(await animations(page)).toBe(0);
     });
+
+    test("phase 22: the fault line, the jump outline and the inspector are static and complete", async ({
+      page,
+    }) => {
+      await recordAnimations(page);
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await expect(page.locator(".tl-fault")).toBeVisible();
+      await settled(page);
+      // drawn at full size at once: no transform, no animation
+      const line = await page.locator(".tl-fault").evaluate((el) =>
+        ((c: CSSStyleDeclaration) => ({
+          animationName: c.animationName,
+          opacity: c.opacity,
+          transform: c.transform,
+          outlineStyle: c.outlineStyle,
+          transitionDuration: c.transitionDuration,
+        }))(getComputedStyle(el, "::before")),
+      );
+      expect(line.animationName).toBe("none");
+      expect(line.transform).toBe("none");
+      await page.getByRole("button", { name: "Show it" }).click();
+      const drawer = page.getByRole("dialog");
+      await expect(drawer).toBeVisible();
+      expect(
+        await drawer.evaluate((el) =>
+          ((c: CSSStyleDeclaration) => ({
+            animationName: c.animationName,
+            opacity: c.opacity,
+            transform: c.transform,
+            outlineStyle: c.outlineStyle,
+            transitionDuration: c.transitionDuration,
+          }))(getComputedStyle(el)),
+        ),
+      ).toMatchObject({
+        animationName: "none",
+        opacity: "1",
+        transform: "none",
+      });
+      // the landing outline is a static outline in the failure colour, not a fade
+      const ring = await page.locator('.tl-row[data-landed="error"]').evaluate((el) =>
+        ((c: CSSStyleDeclaration) => ({
+          animationName: c.animationName,
+          opacity: c.opacity,
+          transform: c.transform,
+          outlineStyle: c.outlineStyle,
+          transitionDuration: c.transitionDuration,
+        }))(getComputedStyle(el, "::after")),
+      );
+      expect(ring).toMatchObject({ animationName: "none", opacity: "1", outlineStyle: "solid" });
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0); // gone at once: no exit to wait for
+      expect(await started(page)).toEqual([]);
+      expect(await animations(page)).toBe(0);
+    });
   });
+
+  // The routes that open a run with a first error draw its fault line once, and nothing else on any route animates.
+  const FAULT_DRAWN: Record<string, string[]> = {
+    "failed run": ["fault-draw-x"],
+    "findings run": ["fault-draw-x"],
+    "coding run": ["fault-draw-x"],
+    "viewer run": ["fault-draw-x"],
+    "multi-agent waterfall": ["fault-draw-y"],
+  };
 
   test.describe("motion on", () => {
     test.use({ reducedMotion: "no-preference" });
 
-    test("no route animates on first paint", async ({ page }) => {
-      for (const [, url] of ROUTES) {
+    test("no route animates on first paint, except a failed run's fault line", async ({ page }) => {
+      await recordAnimations(page);
+      for (const [name, url] of ROUTES) {
         await page.goto(url);
         await settled(page);
+        // The only animation that may start is the failed run's fault line, drawn once (review P1-1).
+        // The loading spinner (`spin`) is a loading indicator the contract allows; it is gone once the page settles.
+        const names = (await started(page)).filter((n) => n !== "spin");
+        expect(names, `${name}: ${url}`).toEqual(FAULT_DRAWN[name] ?? []);
+        await page.waitForFunction(() => document.getAnimations().length === 0, undefined, {
+          timeout: 2000,
+        });
         expect(await animations(page), url).toBe(0);
       }
     });
 
-    test("the inspector slides in 180 ms; hovered rows fade their background in 120 ms", async ({
+    test("the fault line draws itself once when a failed run opens, never on a filter or a view change", async ({
       page,
     }) => {
+      await recordAnimations(page);
       await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await expect(page.locator(".tl-fault")).toBeVisible();
+      await page.waitForFunction(() => document.getAnimations().length === 0);
+      expect(await started(page)).toEqual(["fault-draw-x"]);
+      await page.getByLabel("Errors only").check();
+      await page.getByLabel("Errors only").uncheck();
+      await page.getByRole("radio", { name: "Waterfall" }).check();
+      await expect(page.getByTestId("waterfall")).toBeVisible();
+      await page.getByRole("radio", { name: "Timeline", exact: false }).first().check();
+      await page.waitForTimeout(400);
+      expect(await started(page)).toEqual(["fault-draw-x"]);
+    });
+
+    test("a run that opened clean and shows no fault line plays nothing", async ({ page }) => {
+      await recordAnimations(page);
+      await page.goto(`${BASE}/runs/${RUN(1)}`);
+      await expect(page.getByTestId("headline")).toContainText("Completed in");
+      await settled(page);
+      expect(await started(page)).toEqual([]);
+    });
+
+    test("Go scrolls to the first error and fades one 600 ms red outline; the inspector slides in over 160 ms and out over 100 ms", async ({
+      page,
+    }) => {
+      await recordAnimations(page);
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await page.waitForFunction(() => document.getAnimations().length === 0);
       await page.getByRole("button", { name: "Show it" }).click();
       const drawer = page.getByRole("dialog");
       await expect(drawer).toBeVisible();
-      expect(await drawer.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0.18s");
-      // the hover state carries the transition; keyboard navigation switches it off until the pointer is used again
+      const timing = await page.evaluate(() =>
+        document.getAnimations().map((a) => {
+          const t = a.effect!.getComputedTiming();
+          return {
+            name: (a as CSSAnimation).animationName,
+            duration: t.duration,
+            easing: (a.effect as KeyframeEffect).getKeyframes()[0]?.easing,
+            iterations: t.iterations,
+          };
+        }),
+      );
+      const by = Object.fromEntries(timing.map((t) => [t.name, t]));
+      expect(by["inspector-in"]).toMatchObject({ duration: 160, iterations: 1 });
+      expect(by["land-fade"]).toMatchObject({ duration: 600, iterations: 1 });
+      expect(by["land-fade"]!.easing).toBe("cubic-bezier(0.2, 0, 0, 1)");
+      expect(
+        await page
+          .locator('.tl-row[data-landed="error"]')
+          .evaluate((el) => getComputedStyle(el, "::after").outlineColor),
+      ).not.toBe("rgba(0, 0, 0, 0)");
+      await page.waitForFunction(() => document.getAnimations().length === 0);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      expect(await started(page)).toContain("inspector-out");
+    });
+
+    test("row hover is an instant background change: no transition on rows", async ({ page }) => {
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
       const row = page.getByRole("option").first();
       await row.hover();
-      expect(await row.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0.12s");
-      await page.getByRole("listbox").focus();
-      await page.keyboard.press("j");
       expect(await row.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
+      expect(await row.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe("all");
+      await page.getByRole("button", { name: "Show it" }).click();
+      expect(
+        await page.getByRole("dialog").evaluate((el) => getComputedStyle(el).transitionDuration),
+      ).toBe("0s");
+    });
+
+    test("the Live indicator is a steady dot, not a pulse", async ({ page }) => {
+      await page.goto(`${BASE}/runs/${RUN(4)}`);
+      await settled(page);
+      const glyph = page.locator(".live-glyph").first();
+      if (await glyph.count())
+        expect(await glyph.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
     });
   });
 });
 
-test.describe("polish: the class chips take one row, or two when the pane is narrow, never a cut-off chip", () => {
+test.describe("polish: toolbar, story, agents, context strip and view tabs", () => {
   for (const width of [1440, 1280]) {
     test(`toolbar is at most two rows with the inspector open at ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
@@ -573,6 +750,7 @@ test.describe("polish: the class chips take one row, or two when the pane is nar
 
   test("a story step has one marker: the list number, no glyph", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(11)}`);
+    await openContext(page);
     // the label and its detail stay separate words in the button's accessible name
     await expect(
       page
@@ -599,7 +777,7 @@ test.describe("polish: the class chips take one row, or two when the pane is nar
     await expect(strip.locator("svg")).toBeVisible();
     expect((await strip.boundingBox())!.width).toBeGreaterThanOrEqual(34);
     await strip.click();
-    await expect(page.getByRole("button", { name: "Context" })).toHaveAttribute(
+    await expect(page.getByRole("button", { name: /^Context/ })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -607,6 +785,7 @@ test.describe("polish: the class chips take one row, or two when the pane is nar
 
   test("agents are clamped to two lines but keep their full text", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(7)}`);
+    await openContext(page);
     const item = page.getByTestId("agent-tree").getByRole("button").first();
     await expect(item).toHaveAttribute("title", /events/);
     expect((await item.boundingBox())!.height).toBeLessThan(64);

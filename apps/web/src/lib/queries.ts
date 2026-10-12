@@ -253,6 +253,22 @@ export function useReliabilityReport(project: string | null | undefined, days: W
   });
 }
 
+/** "Where the money was wasted" (Phase 22 D12): failed-run and retry spend, by agent and model. */
+export function useWasteReport(project: string | null | undefined, days: WindowDays) {
+  return useQuery({
+    queryKey: ["analytics", "waste", project ?? null, days],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/analytics/waste", {
+          signal,
+          params: { query: analyticsQuery(project, days) },
+        }),
+      ),
+    staleTime: ANALYTICS_STALE_MS,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function usePerformanceReport(project: string | null | undefined, days: WindowDays) {
   return useQuery({
     queryKey: ["analytics", "performance", project ?? null, days],

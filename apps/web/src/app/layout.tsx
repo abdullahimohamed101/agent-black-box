@@ -34,6 +34,16 @@ const IBMPlexMono = localFont({
   display: "swap",
 });
 
+// Serif Regular and Medium: used only for the failure line and empty-state headlines (ADR-111).
+const IBMPlexSerif = localFont({
+  src: [
+    { path: "../fonts/IBMPlexSerif-Regular-Latin1.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/IBMPlexSerif-Medium-Latin1.woff2", weight: "500", style: "normal" },
+  ],
+  variable: "--font-plex-serif",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Agent Black Box",
   description: "Flight recorder and observability for AI agents",
@@ -43,7 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body
-        className={`${IBMPlexSans.variable} ${IBMPlexSansCondensed.variable} ${IBMPlexMono.variable}`}
+        className={`${IBMPlexSans.variable} ${IBMPlexSansCondensed.variable} ${IBMPlexMono.variable} ${IBMPlexSerif.variable}`}
       >
         <Providers>{children}</Providers>
       </body>
