@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import "../../app/topbar-search.css";
+import { FaultCut } from "../illustrations";
 import { api, unwrap } from "@/lib/api/client";
 import { MAX_Q_CHARS, searchProblem } from "@/lib/search";
 import { runPath, runsPath, type Base } from "@/lib/routes";
@@ -273,7 +274,8 @@ export function TopbarSearch({ base }: { base: Base }) {
           </p>
         )}
         {showPopup && state === "empty" && (
-          <p className="topbar-note muted" role="status">
+          <p className="topbar-note topbar-note-empty muted" role="status">
+            <FaultCut className="illus-sm" />
             No runs match this search.
           </p>
         )}

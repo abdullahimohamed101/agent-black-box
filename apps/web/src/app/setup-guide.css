@@ -1,0 +1,105 @@
+/* Phase 22 D9: the first-run setup guide. Plex Serif only for the headline. */
+.setup {
+  max-width: 40rem;
+  padding: 1.5rem 0 2rem;
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+}
+.page .setup h2.setup-headline {
+  /* outranks the document pages' h2 rule (globals.css) */
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: var(--fs-headline);
+  line-height: 1.25;
+  margin: 0.25rem 0 0;
+}
+.setup-lede {
+  margin: 0;
+  color: var(--muted);
+}
+.setup-steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 1.1rem;
+  width: 100%;
+}
+.setup-steps > li {
+  counter-increment: step;
+  display: grid;
+  gap: 0.4rem;
+  padding-left: 2rem;
+  position: relative;
+  min-width: 0;
+}
+.setup-steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: var(--fs-small);
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+}
+.setup-steps h3 {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.setup-steps p {
+  margin: 0;
+}
+.setup-code {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5rem 0.6rem;
+  min-width: 0;
+}
+.setup-code pre {
+  background: none;
+  border: 0;
+  padding: 0;
+  flex: 1;
+  margin: 0;
+  white-space: pre-wrap; /* wraps instead of scrolling: a scroll region would need its own tab stop */
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+.setup-code button {
+  flex: none;
+}
+.setup-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.5rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  width: 100%;
+  color: var(--muted);
+}
+.setup-status[data-tone="ok"] {
+  color: var(--fg);
+}
+.setup-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+}

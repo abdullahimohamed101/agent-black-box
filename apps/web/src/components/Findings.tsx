@@ -1,5 +1,6 @@
 "use client";
 
+import { RecorderTape } from "./illustrations";
 import { useId } from "react";
 import type { DimensionOut, FindingOut } from "@/lib/api/types";
 import {
@@ -199,6 +200,7 @@ function FindingsBody({
       <Health dimensions={data.health.dimensions} overall={data.health.overall} />
       {shown.length === 0 ? (
         <p className="findings-empty" data-testid="findings-empty">
+          <RecorderTape className="illus-sm" />
           No findings
           {data.state.status === "current" ? "." : " yet."}
         </p>

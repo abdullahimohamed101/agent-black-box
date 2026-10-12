@@ -6,7 +6,8 @@ import { analyticsPath, runsPath, type Base } from "@/lib/routes";
 import { useProjectId } from "@/components/WorkspaceProvider";
 import { useAnalyticsSummary, useRuns } from "@/lib/queries";
 import { RunsTable } from "./RunsTable";
-import { Empty, ErrorState, Loading } from "./States";
+import { ErrorState, Loading } from "./States";
+import { SetupGuide } from "./SetupGuide";
 
 const DAYS = 7;
 
@@ -50,12 +51,7 @@ export function Dashboard({ base }: { base: Base }) {
   const d = stats.data!;
   const recentRuns = recent.data?.pages[0]?.items ?? [];
   if (d.runs.total === 0 && recentRuns.length === 0) {
-    return (
-      <Empty title="No runs yet">
-        Instrument an agent with the SDK or send events to the API; runs appear here within a few
-        seconds.
-      </Empty>
-    );
+    return <SetupGuide base={base} />;
   }
   const failures = failed.data?.pages[0]?.items ?? [];
   const stale = stats.isPlaceholderData;

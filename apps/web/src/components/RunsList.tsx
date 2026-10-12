@@ -16,6 +16,7 @@ import { Facets } from "./Facets";
 import { QueryChips } from "./QueryChips";
 import { SearchBox, SearchProblemNotice } from "./SearchBox";
 import { UnindexedNotice } from "./UnindexedNotice";
+import { SetupGuide } from "./SetupGuide";
 
 export type RangeKey = "1h" | "24h" | "7d" | "all";
 export type ListFilters = { q: string; statuses: RunStatus[]; agent: string; range: RangeKey };
@@ -100,6 +101,24 @@ export function RunsList({
         ? filters.statuses.filter((x) => x !== s)
         : [...filters.statuses, s],
     });
+
+  // The first-run guide (plan D9) stays on screen once shown, so when the list's own poll brings the first run it can
+  // say so and offer the run, instead of the page changing under the person.
+  const [guideShown, setGuideShown] = useState(false);
+  const [guideDismissed, setGuideDismissed] = useState(false);
+  // A placeholder is the previous filter's answer, not this project's: never conclude "no runs yet" from it.
+  const firstRunGuide =
+    !q.isPending &&
+    !q.isPlaceholderData &&
+    !problem &&
+    !q.isError &&
+    runs.length === 0 &&
+    !filtered;
+  if (firstRunGuide && !guideShown) setGuideShown(true);
+  const guideArrived =
+    guideShown && !guideDismissed && !q.isPlaceholderData && !filtered && runs.length > 0;
+
+  const guideMode = firstRunGuide || guideArrived;
 
   const showTable = !q.isPending && !problem && !q.isError && runs.length > 0;
 
@@ -196,6 +215,12 @@ export function RunsList({
         <SearchProblemNotice problem={problem} q={effective} onRetry={() => void q.refetch()} />
       ) : q.isError ? (
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
+      ) : guideMode ? (
+        <SetupGuide
+          base={base}
+          arrivedRunId={guideArrived ? runs[0]!.id : null}
+          onDismiss={() => setGuideDismissed(true)}
+        />
       ) : (
         <div className="runs-body">
           <Facets
@@ -208,10 +233,8 @@ export function RunsList({
           <div className="runs-main">
             {echo && <UnindexedNotice count={echo.unindexed} capped={echo.unindexed_capped} />}
             {runs.length === 0 ? (
-              <Empty title={filtered ? "No runs match these filters" : "No runs yet"}>
-                {filtered
-                  ? "Try clearing a filter."
-                  : "Runs appear here once an agent sends events."}
+              <Empty title="No runs match these filters" motif="cut">
+                Try clearing a filter.
               </Empty>
             ) : (
               <>
