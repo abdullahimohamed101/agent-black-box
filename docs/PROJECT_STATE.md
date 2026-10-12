@@ -58,8 +58,8 @@ None.
 ## Next actions (exact)
 1. User: the one manual sign-in with a real OIDC provider (AC-14, KI-067; needs your own client id and secret, see `docs/runbooks/auth-and-access.md`), and a compose
    runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
-2. User: decide MVP gate acceptance. Remaining gate item: KI-050 (OpenAI prices and tiered models are not in the built-in table; the engine has no price tiers).
-3. Review and merge Phase 11 (PR open); then Phase 21 (UI shell), then 12, 13 and 14, 17, 19, 20.
+2. User: decide MVP gate acceptance. KI-050 is now mostly closed (merged, PR #105): the engine has prompt-size tiers (`min_prompt_tokens`) and the built-in table has OpenAI, Haiku 5.5 and Gemini Pro prices (version `2026-10-12`); multipliers and a few models remain listed in the issue (now S3).
+3. Review and merge Phase 11 (PR #104); then Phase 21 (UI shell), then 12, 13 and 14, 17, 19, 20.
 4. After deploying Phase 16, run `search-rebuild` for existing workspaces so older runs become searchable (KI-081, issue #94).
 
 ## Open decisions

@@ -1,5 +1,6 @@
 """Pricing selection and the cost engine: versions, overrides, sources, reproducibility."""
 
+import re
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -8,7 +9,13 @@ from typing import Any
 import pytest
 from abb_event_schema.event import Event
 
-from abb_api.cost.builtin import BUILTIN_ENTRIES, BUILTIN_VERSION, builtin_price_book
+from abb_api.cost.builtin import (
+    BUILTIN_ENTRIES,
+    BUILTIN_VERSION,
+    TIERED_ENTRIES,
+    TIERED_VERSION,
+    builtin_price_book,
+)
 from abb_api.cost.engine import CostEngine, cost_summary
 from abb_api.cost.pricing import PriceBook, PriceEntry
 from abb_api.tenancy import TenantContext
@@ -220,6 +227,108 @@ def test_historical_calculations_reproduce_after_prices_change() -> None:
     assert pinned.total == stored.total  # same tokens, same pinned prices, same cost
 
 
+# ------------------------------------------------------------------ prompt-size tiers
+
+
+def tiered(version: str = "v1", **kw: Any) -> list[PriceEntry]:
+    """A base row (2 / 10, cached 0.2) and a tier over 272,000 tokens (4 / 15, cached 0.4)."""
+    base = entry(version, input_per_million=D(2), output_per_million=D(10))
+    base = PriceEntry(**{**base.__dict__, "cached_input_per_million": D("0.2"), **kw})
+    tier = PriceEntry(
+        **{
+            **base.__dict__,
+            "input_per_million": D(4),
+            "output_per_million": D(15),
+            "cached_input_per_million": D("0.4"),
+            "min_prompt_tokens": 272_000,
+        }
+    )
+    return [base, tier]
+
+
+def test_a_tier_applies_only_strictly_above_its_threshold() -> None:
+    eng = engine(*tiered())
+    at_edge = eng.calculate(llm({"llm.input_tokens": 272_000, "llm.output_tokens": 1_000_000}))
+    over = eng.calculate(llm({"llm.input_tokens": 272_001, "llm.output_tokens": 1_000_000}))
+    assert at_edge.input_cost == D("0.544") and at_edge.output_cost == D(10)
+    # The whole request moves to the tier's rates, not only the tokens above the line.
+    assert over.input_cost == D("1.088004") and over.output_cost == D(15)
+
+
+def test_cached_tokens_are_priced_at_the_tier_cache_rate_and_count_toward_the_prompt() -> None:
+    eng = engine(*tiered())
+    line = eng.calculate(
+        llm(
+            {
+                "llm.input_tokens": 300_000,
+                "llm.cached_input_tokens": 250_000,
+                "llm.output_tokens": 0,
+            }
+        )
+    )
+    # 50k plain at 4 + 250k cached at 0.4; the prompt (300k, cached included) is over the line.
+    assert line.input_cost == D("0.2") and line.cached_cost == D("0.1")
+    small = eng.calculate(
+        llm(
+            {
+                "llm.input_tokens": 200_000,
+                "llm.cached_input_tokens": 190_000,
+                "llm.output_tokens": 0,
+            }
+        )
+    )
+    assert small.cached_cost == D("0.038") and small.input_cost == D("0.02")
+
+
+def test_a_tier_wins_over_a_newer_base_row_and_a_model_without_tiers_stays_flat() -> None:
+    base, tier = tiered()
+    newer_base = PriceEntry(**{**base.__dict__, "valid_from": at(5)})
+    book = PriceBook([base, tier, newer_base])
+    assert book.find(None, "model-x", at(7), prompt_tokens=300_000) is tier
+    assert book.find(None, "model-x", at(7), prompt_tokens=10) is newer_base
+    flat = engine(entry("v1")).calculate(llm({"llm.input_tokens": 5_000_000}))
+    assert flat.input_cost == D(15)  # no threshold: any prompt size, same rate
+
+
+def test_the_largest_satisfied_tier_wins() -> None:
+    base, tier = tiered()
+    huge = PriceEntry(**{**tier.__dict__, "min_prompt_tokens": 1_000_000})
+    book = PriceBook([base, tier, huge])
+    assert book.find(None, "model-x", at(7), prompt_tokens=500_000) is tier
+    assert book.find(None, "model-x", at(7), prompt_tokens=1_000_001) is huge
+
+
+def test_an_override_without_tiers_beats_a_built_in_tier() -> None:
+    override = entry("override:a", origin="override", input_per_million=D(7))
+    eng = engine(*tiered(), override)
+    line = eng.calculate(llm({"llm.input_tokens": 400_000}))
+    assert (line.pricing_origin, line.input_cost) == ("override", D("2.8"))
+
+
+def test_pinned_old_version_and_history_reproduce_with_tiers() -> None:
+    old = tiered("v1")
+    new_rows = [
+        PriceEntry(
+            **{
+                **e.__dict__,
+                "pricing_version": "v2",
+                "valid_from": at(9),
+                "input_per_million": e.input_per_million * 2,
+            }
+        )
+        for e in old
+    ]
+    event = llm({"llm.input_tokens": 300_000, "llm.output_tokens": 1000}, day=7)
+    before = engine(*old).calculate(event)
+    after_book = engine(*old, *new_rows)
+    assert after_book.calculate(event) == before  # event time selects v1 for history
+    late = event.model_copy(update={"occurred_at": at(10)})
+    assert after_book.calculate(late).pricing_version == "v2"
+    assert after_book.calculate(late, pricing_version="v1").total == before.total
+    # Recomputation is deterministic whatever the order of the entries.
+    assert engine(*reversed([*old, *new_rows])).calculate(late) == after_book.calculate(late)
+
+
 def test_builtin_table_has_no_invented_vendor_prices() -> None:
     book = builtin_price_book()
     assert book.find("example-provider", "model-x", at(7)) is not None
@@ -268,6 +377,107 @@ def test_builtin_google_prices_follow_the_dated_and_exact_rows() -> None:
     assert book.find("google", "gemini-3.8-flash-tts", at(10)) is None
     assert book.find("google", "gemini-3.1-pro-preview", at(10)) is None
     assert book.find("anthropic", "gemini-3.5-flash", at(10)) is None
+
+
+def test_every_vendor_entry_records_its_source_and_fetch_date() -> None:
+    vendor = [e for e in BUILTIN_ENTRIES if e.provider != "example-provider"]
+    assert len(vendor) > 40
+    for e in vendor:
+        assert e.source.startswith("https://"), e.model_pattern
+        assert re.search(r"read (twice )?20\d\d-\d\d-\d\d", e.source), e.model_pattern
+    for e in TIERED_ENTRIES:
+        assert e.pricing_version == TIERED_VERSION and e.valid_from == datetime(
+            2026, 10, 12, tzinfo=UTC
+        )
+        assert e.currency == "USD" and e.origin == "builtin"
+    promo = book_entry("openai", "gpt-5.6-sol", 12)
+    assert "2026-11-21" in promo.source
+
+
+def book_entry(provider: str, model: str, day: int, prompt: int = 0) -> PriceEntry:
+    found = builtin_price_book().find(provider, model, at(day), prompt_tokens=prompt)
+    assert found is not None, model
+    return found
+
+
+def test_builtin_openai_tiers_use_the_272k_rule_for_the_whole_request() -> None:
+    short = book_entry("openai", "gpt-6-astra", 12, 272_000)
+    long_ = book_entry("openai", "gpt-6-astra", 12, 272_001)
+    assert (short.input_per_million, short.cached_input_per_million, short.output_per_million) == (
+        D(10),
+        D(1),
+        D(50),
+    )
+    assert (long_.input_per_million, long_.cached_input_per_million, long_.output_per_million) == (
+        D(20),
+        D(2),
+        D(75),
+    )
+    assert long_.min_prompt_tokens == 272_000
+    event = llm(
+        {
+            "llm.provider": "openai",
+            "llm.model": "gpt-6-astra",
+            "llm.input_tokens": 300_000,
+            "llm.cached_input_tokens": 100_000,
+            "llm.output_tokens": 10_000,
+        },
+        day=13,
+    )
+    line = CostEngine(builtin_price_book()).calculate(event)
+    # 200k plain at 20 + 100k cached at 2 + 10k out at 75, all at the long-context rates.
+    assert (line.input_cost, line.cached_cost, line.output_cost) == (D(4), D("0.2"), D("0.75"))
+    assert line.pricing_version == TIERED_VERSION
+
+
+def test_builtin_models_without_a_long_tier_stay_flat_and_old_dates_stay_unpriced() -> None:
+    codex = book_entry("openai", "gpt-5.3-codex", 12, 900_000)
+    assert codex.min_prompt_tokens is None and codex.input_per_million == D("1.75")
+    pro = book_entry("openai", "gpt-5.2-pro", 12, 900_000)
+    assert pro.cached_input_per_million is None and pro.input_per_million == D(21)
+    book = builtin_price_book()
+    assert book.find("openai", "gpt-6-astra", at(11), prompt_tokens=10) is None  # before valid_from
+    # Left out on purpose: restricted, moving alias, and a model page that states no long tier.
+    for model in ("chat-latest", "gpt-5.6-cyber", "gpt-rosalind-research", "gpt-5.5-pro"):
+        assert book.find("openai", model, at(13), prompt_tokens=10) is None
+    assert book.find("openai", "gpt-4o-2024-08-06", at(13)) is None  # exact IDs only
+
+
+def test_builtin_haiku_and_gemini_pro_tiers() -> None:
+    low = book_entry("anthropic", "claude-haiku-5-5", 12, 100_000)
+    high = book_entry("anthropic", "claude-haiku-5-5-20261001", 12, 100_001)
+    assert (low.input_per_million, low.cached_input_per_million, low.output_per_million) == (
+        D("0.10"),
+        D("0.01"),
+        D("0.50"),
+    )
+    assert (high.input_per_million, high.cached_input_per_million, high.output_per_million) == (
+        D("0.50"),
+        D("0.05"),
+        D("2.50"),
+    )
+    pro = book_entry("google", "gemini-3.1-pro-preview", 12, 200_001)
+    assert (pro.input_per_million, pro.cached_input_per_million, pro.output_per_million) == (
+        D(4),
+        D("0.40"),
+        D(18),
+    )
+    assert book_entry("google", "gemini-2.5-pro", 12, 200_000).input_per_million == D("1.25")
+    assert builtin_price_book().find("google", "gemini-2.5-flash", at(13)) is None
+
+
+def test_a_workspace_override_beats_a_builtin_tier_end_to_end() -> None:
+    override = entry(
+        "override:x",
+        "gpt-6-astra",
+        provider="openai",
+        origin="override",
+        valid_from=at(1),
+        input_per_million=D(1),
+        output_per_million=D(1),
+    )
+    book = PriceBook([*BUILTIN_ENTRIES, override])
+    assert book.find("openai", "gpt-6-astra", at(13), prompt_tokens=500_000) is override
 
 
 def test_summary_totals_are_exact_and_split_by_source() -> None:
