@@ -99,4 +99,27 @@ describe("run work area", () => {
     await screen.findByRole("dialog");
     expect(container.querySelector(".work")).toHaveAttribute("data-context", "open");
   });
+
+  it("the inspector's edge is a keyboard-operable separator that sets the pane width", async () => {
+    stubApi();
+    stubNarrow(false);
+    const user = userEvent.setup();
+    const { run } = failureRetryRun();
+    const { container } = renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    expect(screen.queryByRole("separator")).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "Show it" }));
+    await screen.findByRole("dialog");
+    const sep = screen.getByRole("separator", { name: "Resize the inspector" });
+    sep.focus();
+    await user.keyboard("{ArrowLeft}");
+    const w = (container.querySelector(".work") as HTMLElement).style.getPropertyValue("--insp-w");
+    expect(w).toMatch(/^\d+px$/);
+    await user.keyboard("{ArrowRight}");
+    expect(
+      (container.querySelector(".work") as HTMLElement).style.getPropertyValue("--insp-w"),
+    ).not.toBe(w);
+    // Escape in the dialog still closes it and the separator goes with it
+    await user.keyboard("{Escape}");
+  });
 });

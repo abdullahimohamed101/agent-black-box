@@ -340,3 +340,62 @@ test.describe("run work area on a phone", () => {
       expect(await overflow(page)).toBeLessThanOrEqual(0);
     });
 });
+
+test.describe("inspector", () => {
+  test("a pane flush with the right edge of the window, from the top of the work area to the bottom", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await page.getByRole("button", { name: "Show it" }).click();
+    const dlg = (await page.getByRole("dialog").boundingBox())!;
+    expect(dlg.x + dlg.width).toBe(1440);
+    expect(dlg.y + dlg.height).toBe(900);
+    const work = (await page.locator(".work").boundingBox())!;
+    expect(dlg.y).toBe(work.y);
+    await expect(page.getByRole("button", { name: "Close details" })).toBeFocused();
+  });
+
+  test("dragging the separator widens the inspector and the pane gives way", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await page.getByRole("button", { name: "Show it" }).click();
+    const before = (await page.getByRole("dialog").boundingBox())!.width;
+    const sep = (await page.getByRole("separator").boundingBox())!;
+    await page.mouse.move(sep.x + 3, sep.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(sep.x - 117, sep.y + 200, { steps: 4 });
+    await page.mouse.up();
+    const after = (await page.getByRole("dialog").boundingBox())!.width;
+    expect(after).toBeGreaterThan(before + 80);
+    expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(400);
+  });
+
+  test("the head stays put while a long inspector scrolls", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 500 });
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await page.getByRole("button", { name: "Show it" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.evaluate((e) => e.scrollTo(0, 300));
+    await expect(page.getByRole("button", { name: "Close details" })).toBeInViewport();
+  });
+
+  test("on a phone it is an overlay under the top bar", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await page.getByRole("button", { name: "Show it" }).click();
+    const dlg = (await page.getByRole("dialog").boundingBox())!;
+    expect(dlg).toMatchObject({ x: 0, y: 44, width: 375, height: 812 - 44 });
+    await expect(page.getByRole("separator")).toBeHidden();
+  });
+
+  test("a viewer sees the withheld wording in the inspector, never the placeholder", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/w/viewer-only/projects/all/runs/${RUN(7)}`);
+    await page.getByRole("button", { name: "Show it" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(await page.locator("body").innerText()).not.toContain("[withheld]");
+  });
+});

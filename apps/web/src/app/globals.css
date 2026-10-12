@@ -1032,10 +1032,13 @@ select {
 .tl-desc {
   color: var(--muted);
 }
+/* The inspector is the work area's right-hand pane: flush against the edge, a hairline on its left, its own scroll. */
 .drawer {
+  grid-column: 3;
+  grid-row: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0.75rem 1rem;
+  padding: 0 1rem 1rem;
   background: var(--surface);
   border-left: 1px solid var(--border);
 }
@@ -1043,24 +1046,77 @@ select {
   border-left-color: var(--bad);
 }
 .drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
-  align-items: start;
+  align-items: center;
+  margin: 0 -1rem;
+  padding: 0.6rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 .drawer h2 {
   margin: 0;
-  font-size: 1rem;
+  font: 600 1rem/1.3 var(--mono);
   overflow-wrap: anywhere;
 }
+.drawer > p.muted {
+  margin: 0.5rem 0 0;
+  font: 400 0.75rem/1.4 var(--mono);
+}
 .drawer h3 {
-  font-size: 0.9rem;
-  margin: 1rem 0 0.35rem;
+  margin: 1.1rem 0 0.35rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+  font: 600 0.68rem/1.3 var(--cond);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.drawer > section:first-of-type h3 {
+  margin-top: 0.9rem;
 }
 .drawer-error {
+  --tone: var(--bad);
+  margin-top: 0.75rem;
+  padding: 0.1rem 0.75rem 0.5rem;
   background: var(--bad-bg);
-  border-radius: 6px;
-  padding: 0 0.7rem 0.4rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--tone);
+  border-radius: 4px;
+}
+.drawer .drawer-error h3 {
+  margin: 0.5rem 0 0.25rem;
+  padding: 0;
+  border: 0;
+  font: 600 0.8rem/1.3 var(--cond);
+  letter-spacing: 0.06em;
+  color: var(--bad);
+}
+.drawer-error p {
+  margin: 0 0 0.4rem;
+}
+.insp-resize {
+  display: none;
+}
+.work[data-inspector="open"] .insp-resize {
+  display: block;
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: start;
+  width: 7px;
+  margin-left: -3px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+.insp-resize:hover,
+.insp-resize:focus-visible {
+  background: var(--accent);
+  opacity: 0.55;
 }
 .fields {
   margin: 0;
@@ -1134,10 +1190,15 @@ pre {
     display: none;
   }
   .drawer {
+    grid-column: auto;
+    grid-row: auto;
     position: fixed;
     inset: var(--top-h) 0 0 0;
     z-index: 3;
     border-left: 0;
+  }
+  .work[data-inspector="open"] .insp-resize {
+    display: none;
   }
   .pane-head {
     padding: 0 0.75rem;
@@ -1589,8 +1650,8 @@ td a {
   text-transform: uppercase;
 }
 .pane .toolbar .chip {
-  padding: 0.05rem 0.45rem;
-  font-size: 0.75rem;
+  padding: 0.02rem 0.4rem;
+  font-size: 0.72rem;
 }
 .tl-sum .tag {
   margin-right: 0.4rem;

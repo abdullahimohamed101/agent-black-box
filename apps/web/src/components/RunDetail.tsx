@@ -33,6 +33,7 @@ import {
 import { AgentTree } from "./AgentTree";
 import { CodingSummary } from "./CodingSummary";
 import { EventDrawer } from "./EventDrawer";
+import { InspectorResizer } from "./InspectorResizer";
 import { Evaluations } from "./Evaluations";
 import { Findings } from "./Findings";
 import { StatusBadge } from "./StatusBadge";
@@ -233,6 +234,7 @@ export function RunDetail({
   // the strip button and the header toggle override that and the choice sticks until the next toggle.
   const [contextPref, setContextPref] = useState<"auto" | "open" | "closed">("auto");
   const narrow = useMedia("(max-width: 100rem)");
+  const [inspectorPx, setInspectorPx] = useState<number | null>(null);
 
   const filtered = useMemo(() => filterEvents(events, filters), [events, filters]);
   const rows = useMemo(() => buildRows(filtered, collapsed), [filtered, collapsed]);
@@ -411,6 +413,9 @@ export function RunDetail({
         className="work"
         data-inspector={drawerEvent ? "open" : "closed"}
         data-context={contextClosed ? "closed" : "open"}
+        style={
+          inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
+        }
       >
         <aside id="run-context" className="context" aria-label="Run context">
           <button
@@ -561,6 +566,7 @@ export function RunDetail({
           </div>
         </section>
 
+        {drawerEvent && <InspectorResizer width={inspectorPx} onChange={setInspectorPx} />}
         {drawerEvent && <EventDrawer runId={runId} event={drawerEvent} onClose={closeDrawer} />}
       </div>
     </div>
