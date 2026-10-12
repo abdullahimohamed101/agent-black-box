@@ -122,4 +122,18 @@ describe("run work area", () => {
     // Escape in the dialog still closes it and the separator goes with it
     await user.keyboard("{Escape}");
   });
+
+  it("the scrolling context column is a tab stop while open, and not while folded to a strip", async () => {
+    stubApi();
+    stubNarrow(true);
+    const user = userEvent.setup();
+    const { run } = failureRetryRun();
+    renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    const ctx = screen.getByRole("complementary", { name: "Run context" });
+    expect(ctx).toHaveAttribute("tabindex", "0");
+    await user.click(await screen.findByRole("button", { name: "Show it" }));
+    await screen.findByRole("dialog");
+    expect(ctx).not.toHaveAttribute("tabindex");
+  });
 });

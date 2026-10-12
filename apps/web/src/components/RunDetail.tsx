@@ -421,7 +421,13 @@ export function RunDetail({
           inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
         }
       >
-        <aside id="run-context" className="context" aria-label="Run context">
+        {/* Scrolls on its own, so it takes a tab stop: a scrollable region with nothing focusable in it is unreachable by keyboard. */}
+        <aside
+          id="run-context"
+          className="context"
+          aria-label="Run context"
+          tabIndex={contextClosed ? undefined : 0}
+        >
           <button
             type="button"
             className="context-strip"

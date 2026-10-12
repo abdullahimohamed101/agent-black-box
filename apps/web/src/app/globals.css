@@ -877,6 +877,9 @@ select {
   background: var(--surface);
   border-right: 1px solid var(--border);
 }
+.context:focus-visible {
+  outline-offset: -2px;
+}
 .context-body {
   padding: 0 1rem 1rem;
 }
