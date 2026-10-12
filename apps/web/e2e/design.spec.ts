@@ -132,3 +132,39 @@ test.describe("375 px", () => {
     ).toBeInViewport();
   });
 });
+
+test.describe("status grammar", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  for (const [name, url] of ROUTES.filter(([n]) => n !== "login")) {
+    test(`radius and shadow scan: ${name}`, async ({ page }) => {
+      await page.goto(url);
+      await page.evaluate(() => document.fonts.ready);
+      const bad = await page.evaluate(() => {
+        const out: string[] = [];
+        for (const el of document.querySelectorAll("body *")) {
+          if (el.matches(".spinner, .spinner *")) continue;
+          const cs = getComputedStyle(el);
+          const radii = [
+            cs.borderTopLeftRadius,
+            cs.borderTopRightRadius,
+            cs.borderBottomLeftRadius,
+            cs.borderBottomRightRadius,
+          ];
+          // a circle is a radius of half the box (the live dot), not a pill
+          if (radii.some((r) => r.endsWith("px") && parseFloat(r) > 6))
+            out.push(`${el.tagName}.${el.className} radius ${radii.join(" ")}`);
+          if (cs.boxShadow !== "none" && !el.matches(".wf-tip")) {
+            // computed shadows read "rgb(...) 0px 4px 14px 0px"; only inset hairline bars (blur 0) are allowed
+            const blur = [...cs.boxShadow.matchAll(/\) (-?[\d.]+)px (-?[\d.]+)px ([\d.]+)px/g)].map(
+              (m) => parseFloat(m[3]!),
+            );
+            if (blur.some((b) => b > 1))
+              out.push(`${el.tagName}.${el.className} shadow ${cs.boxShadow}`);
+          }
+        }
+        return out;
+      });
+      expect(bad).toEqual([]);
+    });
+  }
+});
