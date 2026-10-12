@@ -12,6 +12,9 @@ import {
   visibleCount,
 } from "@/lib/comparison";
 
+/** Same-in-both rows kept above the divergence when the earlier ones fold away. */
+const CONTEXT_ROWS = 3;
+
 function Cell({ step, side }: { step: StepOut | null; side: "left" | "right" }) {
   if (!step)
     return (
@@ -47,6 +50,11 @@ export function AlignedSteps({
 }) {
   const heading = useId();
   const [shown, setShown] = useState(ROW_PAGE);
+  // The steps before the divergence are the same in both runs; the page opens a few of them above the cut, not at step 1
+  // (plan D12). `from` is the first rendered row; any jump to an earlier row, or the button, lowers it.
+  const [from, setFrom] = useState(() =>
+    divergence !== null && divergence > CONTEXT_ROWS + 1 ? divergence - CONTEXT_ROWS : 0,
+  );
   const [active, setActive] = useState(divergence ?? 0);
   const [want, setWant] = useState<number | null>(null);
   const [announce, setAnnounce] = useState("");
@@ -67,6 +75,7 @@ export function AlignedSteps({
   const go = (index: number | null, message?: string) => {
     if (index === null) return;
     setShown((s) => Math.max(s, index + 21));
+    setFrom((f) => Math.min(f, index));
     setActive(index);
     setWant(index);
     if (message) setAnnounce(message);
@@ -159,44 +168,60 @@ export function AlignedSteps({
       </p>
       <div className="aligned-head" aria-hidden="true">
         <span>Step</span>
-        <span>Left run</span>
-        <span>Right run</span>
+        <span>A, left run</span>
+        <span>B, right run</span>
       </div>
+      {from > 0 && (
+        <button
+          type="button"
+          className="aligned-earlier"
+          data-testid="show-earlier-steps"
+          onClick={() => setFrom(0)}
+        >
+          Show the {from} earlier steps (the same in both runs)
+        </button>
+      )}
       <ol className="aligned-list" aria-label="Aligned steps" onKeyDown={onKeyDown}>
-        {rows.slice(0, count).map((r, i) => (
-          <li
-            key={i}
-            ref={(el) => {
-              if (el) refs.current.set(i, el);
-              else refs.current.delete(i);
-            }}
-            tabIndex={i === active ? 0 : -1}
-            className="aligned-row"
-            data-testid="aligned-row"
-            data-index={i}
-            data-relation={r.relation}
-            data-divergence={i === divergence ? "true" : undefined}
-            data-outcome={i === outcome ? "true" : undefined}
-            onFocus={() => setActive(i)}
-          >
-            <div className="aligned-flags">
-              <span className="muted">{i + 1}</span>
-              {r.relation !== "equal" && <span className="tag">{RELATION_LABEL[r.relation]}</span>}
-              {i === divergence && (
-                <span className="badge" data-tone="warn" data-testid="divergence-flag">
-                  Divergence
-                </span>
-              )}
-              {i === outcome && (
-                <span className="badge" data-tone="bad" data-testid="outcome-flag">
-                  First outcome difference
-                </span>
-              )}
-            </div>
-            <Cell step={r.left} side="left" />
-            <Cell step={r.right} side="right" />
-          </li>
-        ))}
+        {rows.slice(from, count).map((r, k) => {
+          const i = from + k;
+          return (
+            <li
+              key={i}
+              ref={(el) => {
+                if (el) refs.current.set(i, el);
+                else refs.current.delete(i);
+              }}
+              tabIndex={i === active ? 0 : -1}
+              className="aligned-row"
+              data-testid="aligned-row"
+              data-index={i}
+              data-relation={r.relation}
+              data-divergence={i === divergence ? "true" : undefined}
+              data-after-divergence={divergence !== null && i > divergence ? "true" : undefined}
+              data-outcome={i === outcome ? "true" : undefined}
+              onFocus={() => setActive(i)}
+            >
+              <div className="aligned-flags">
+                <span className="muted">{i + 1}</span>
+                {r.relation !== "equal" && (
+                  <span className="tag">{RELATION_LABEL[r.relation]}</span>
+                )}
+                {i === divergence && (
+                  <span className="badge" data-testid="divergence-flag">
+                    Divergence
+                  </span>
+                )}
+                {i === outcome && (
+                  <span className="badge" data-tone="bad" data-testid="outcome-flag">
+                    First outcome difference
+                  </span>
+                )}
+              </div>
+              <Cell step={r.left} side="left" />
+              <Cell step={r.right} side="right" />
+            </li>
+          );
+        })}
       </ol>
       {count < rows.length && (
         <button

@@ -331,6 +331,7 @@ A query is cut off after `ABB_ANALYTICS_TIMEOUT_SECONDS` (default 10) with `503 
 | `GET /v1/analytics/cost` | headline, retry breakdown (initial vs retry cost, spec §24), cost by day, agent, model, source and project, most expensive runs |
 | `GET /v1/analytics/reliability` | rates, failure trend by day, tool success and p95, retry-heavy runs |
 | `GET /v1/analytics/performance` | p50/p95 for runs, model calls and tools; slowest operations (tool and model spans by name, other kinds by kind) |
+| `GET /v1/analytics/waste` | where the money was wasted: spend on failed, timed-out and blocked runs plus retries in the other runs, spend after the first error, by agent and by model; read live (ADR-113) |
 | `GET /v1/pricing` | the price entries the engine uses (built-in, illustrative, plus the caller's overrides) |
 
 Definitions: finished = success, failed, timed out or blocked (cancelled runs are counted separately and excluded

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useWorkspace } from "./WorkspaceProvider";
+import "../app/settings.css";
 
 /** Tabs shown by the permission each page needs; the API still decides what a request may do. */
 const TABS = [

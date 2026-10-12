@@ -4,7 +4,13 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from abb_api.analytics.schemas import CostReport, PerformanceReport, ReliabilityReport, Summary
+from abb_api.analytics.schemas import (
+    CostReport,
+    PerformanceReport,
+    ReliabilityReport,
+    Summary,
+    WasteReport,
+)
 from abb_api.analytics.store import (
     DEFAULT_WINDOW_DAYS,
     MAX_WINDOW_DAYS,
@@ -79,3 +85,6 @@ class AnalyticsService:
 
     async def performance(self, scope: AnalyticsScope, top: int) -> PerformanceReport:
         return await self._store.performance(scope, top=top)
+
+    async def waste(self, scope: AnalyticsScope, top: int) -> WasteReport:
+        return await self._store.waste(scope, top=top)

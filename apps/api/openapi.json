@@ -2856,6 +2856,42 @@
         "title": "FacetsOut",
         "type": "object"
       },
+      "FailedRunSpend": {
+        "properties": {
+          "after_first_error_unknown_runs": {
+            "description": "Failed runs summarised before first-error facts existed (ADR-112): their share of `after_first_error_usd` is not known.",
+            "title": "After First Error Unknown Runs",
+            "type": "integer"
+          },
+          "after_first_error_usd": {
+            "description": "Of that, spend after each run's first error (`first_error.cost_after_usd`).",
+            "title": "After First Error Usd",
+            "type": "number"
+          },
+          "runs": {
+            "description": "Failed, timed-out and blocked runs started in the window.",
+            "title": "Runs",
+            "type": "integer"
+          },
+          "spend_usd": {
+            "title": "Spend Usd",
+            "type": "number"
+          },
+          "unpriced_calls": {
+            "title": "Unpriced Calls",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "spend_usd",
+          "after_first_error_usd",
+          "after_first_error_unknown_runs",
+          "unpriced_calls"
+        ],
+        "title": "FailedRunSpend",
+        "type": "object"
+      },
       "FailureDay": {
         "properties": {
           "blocked": {
@@ -4488,6 +4524,32 @@
         "title": "RetryHeavyRun",
         "type": "object"
       },
+      "RetrySpend": {
+        "properties": {
+          "in_failed_runs_usd": {
+            "description": "Already inside the failed-run spend.",
+            "title": "In Failed Runs Usd",
+            "type": "number"
+          },
+          "in_other_runs_usd": {
+            "description": "Added to the failed-run spend to get the waste.",
+            "title": "In Other Runs Usd",
+            "type": "number"
+          },
+          "total_usd": {
+            "description": "All retry spend in the window, as in the cost report.",
+            "title": "Total Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "total_usd",
+          "in_failed_runs_usd",
+          "in_other_runs_usd"
+        ],
+        "title": "RetrySpend",
+        "type": "object"
+      },
       "RowOut": {
         "properties": {
           "left": {
@@ -5739,6 +5801,209 @@
         "title": "WarningOut",
         "type": "object"
       },
+      "WasteByAgent": {
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "failed_runs": {
+            "title": "Failed Runs",
+            "type": "integer"
+          },
+          "failed_usd": {
+            "description": "Spend of this agent's failed, timed-out and blocked runs.",
+            "title": "Failed Usd",
+            "type": "number"
+          },
+          "retry_usd": {
+            "description": "Retry spend in this agent's other runs.",
+            "title": "Retry Usd",
+            "type": "number"
+          },
+          "wasted_usd": {
+            "description": "failed_usd + retry_usd; never counts a dollar twice.",
+            "title": "Wasted Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "agent",
+          "failed_runs",
+          "failed_usd",
+          "retry_usd",
+          "wasted_usd"
+        ],
+        "title": "WasteByAgent",
+        "type": "object"
+      },
+      "WasteByModel": {
+        "properties": {
+          "calls": {
+            "description": "Model calls in failed runs plus retried calls in other runs.",
+            "title": "Calls",
+            "type": "integer"
+          },
+          "failed_usd": {
+            "title": "Failed Usd",
+            "type": "number"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "retry_usd": {
+            "title": "Retry Usd",
+            "type": "number"
+          },
+          "unpriced_calls": {
+            "description": "Of those calls, how many had no price (counted as $0).",
+            "title": "Unpriced Calls",
+            "type": "integer"
+          },
+          "wasted_usd": {
+            "title": "Wasted Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "failed_usd",
+          "retry_usd",
+          "wasted_usd",
+          "calls",
+          "unpriced_calls"
+        ],
+        "title": "WasteByModel",
+        "type": "object"
+      },
+      "WasteOther": {
+        "description": "Groups beyond the top N, so the response size does not depend on how many names exist.",
+        "properties": {
+          "groups": {
+            "title": "Groups",
+            "type": "integer"
+          },
+          "wasted_usd": {
+            "title": "Wasted Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "groups",
+          "wasted_usd"
+        ],
+        "title": "WasteOther",
+        "type": "object"
+      },
+      "WasteReport": {
+        "description": "Where the money was wasted (Phase 22 D12).\n\nSpend on runs that failed, plus retries in runs that did not.\n\nMetadata only (USD, counts, agent and model names), so every role that reads analytics sees it.",
+        "properties": {
+          "by_agent": {
+            "items": {
+              "$ref": "#/components/schemas/WasteByAgent"
+            },
+            "title": "By Agent",
+            "type": "array"
+          },
+          "by_agent_other": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WasteOther"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "by_model": {
+            "items": {
+              "$ref": "#/components/schemas/WasteByModel"
+            },
+            "title": "By Model",
+            "type": "array"
+          },
+          "by_model_other": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WasteOther"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failed": {
+            "$ref": "#/components/schemas/FailedRunSpend"
+          },
+          "retries": {
+            "$ref": "#/components/schemas/RetrySpend"
+          },
+          "total_usd": {
+            "description": "All spend of runs started in the window.",
+            "title": "Total Usd",
+            "type": "number"
+          },
+          "unrebuilt_runs": {
+            "description": "Runs summarised before cost lines existed; `rebuild-costs` fills them in.",
+            "title": "Unrebuilt Runs",
+            "type": "integer"
+          },
+          "wasted_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "wasted_usd / total_usd",
+            "title": "Wasted Share"
+          },
+          "wasted_usd": {
+            "title": "Wasted Usd",
+            "type": "number"
+          },
+          "window": {
+            "$ref": "#/components/schemas/Window"
+          }
+        },
+        "required": [
+          "window",
+          "wasted_usd",
+          "total_usd",
+          "wasted_share",
+          "failed",
+          "retries",
+          "by_agent",
+          "by_agent_other",
+          "by_model",
+          "by_model_other",
+          "unrebuilt_runs"
+        ],
+        "title": "WasteReport",
+        "type": "object"
+      },
       "Window": {
         "properties": {
           "end": {
@@ -6463,6 +6728,162 @@
           }
         ],
         "summary": "Headline figures for a window",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/v1/analytics/waste": {
+      "get": {
+        "description": "Spend on runs that failed, timed out or were blocked, plus retry spend in the other runs, with the share of spend after each run's first error, broken down by agent and by model. Figures are the cost engine's own (the `runs` and `cost_calculations` rows the cost report also derives from), read live rather than from the daily rollups, so they never lag. Metadata only. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.",
+        "operationId": "waste_v1_analytics_waste_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "description": "Groups listed before `other`.",
+            "in": "query",
+            "name": "top",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Groups listed before `other`.",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Top",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WasteReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired API key."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The key lacks `runs:read`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Project not found or not visible to this key."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid (for example a window over 92 days)."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The query timed out or a dependency is unavailable; retry."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Where the money was wasted",
         "tags": [
           "analytics"
         ]

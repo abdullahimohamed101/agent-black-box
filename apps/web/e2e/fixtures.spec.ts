@@ -474,6 +474,9 @@ test("compare: divergence, keyboard, notices and the viewer's metadata-only view
 
   // a viewer's comparison is metadata only and says so; the file paths are withheld
   await page.goto(url("/w/viewer-only/projects/all"));
+  // Phase 22 D12: the measures table is behind a disclosure; the one-line deltas lead the page.
+  await expect(page.getByTestId("compare-deltas")).toBeVisible();
+  await page.getByText("All measures").click();
   await expect(page.getByTestId("metadata-notice")).toContainText("metadata only");
   await expect(page.getByTestId("compare-files")).toHaveAttribute("data-withheld", "true");
   await expect(page.getByText("Only in the left run")).toHaveCount(0);

@@ -132,6 +132,9 @@ test.describe("other empty states", () => {
     await page.screenshot({ path: `${SHOTS}/search-no-results-1440-light.png` });
 
     await page.goto(`${BASE}/runs/${RUN(2)}`);
+    // The context column (findings, evaluations) may start closed; open it as a person would.
+    const toggle = page.getByRole("button", { name: /^Context/ });
+    if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
     const ev = page.locator('[data-state="empty"]').first();
     await expect(ev).toBeVisible();
     await expect(ev.locator("svg.illus")).toHaveCount(1);

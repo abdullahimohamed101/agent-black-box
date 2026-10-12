@@ -118,6 +118,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/analytics/waste": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the money was wasted
+         * @description Spend on runs that failed, timed out or were blocked, plus retry spend in the other runs, with the share of spend after each run's first error, broken down by agent and by model. Figures are the cost engine's own (the `runs` and `cost_calculations` rows the cost report also derives from), read live rather than from the daily rollups, so they never lag. Metadata only. Runs are placed in the window by `started_at`. Windows are whole UTC days: `from` rounds down and `to` rounds up. Default: the last 7 days; at most 92. Figures come from daily rollups that lag changes by up to about a minute. Percentiles are approximate (about 10%). A project-bound key is confined to its project.
+         */
+        get: operations["waste_v1_analytics_waste_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/api-keys": {
         parameters: {
             query?: never;
@@ -1949,6 +1969,28 @@ export interface components {
             /** Tools */
             tools: components["schemas"]["FacetValueOut"][];
         };
+        /** FailedRunSpend */
+        FailedRunSpend: {
+            /**
+             * After First Error Unknown Runs
+             * @description Failed runs summarised before first-error facts existed (ADR-112): their share of `after_first_error_usd` is not known.
+             */
+            after_first_error_unknown_runs: number;
+            /**
+             * After First Error Usd
+             * @description Of that, spend after each run's first error (`first_error.cost_after_usd`).
+             */
+            after_first_error_usd: number;
+            /**
+             * Runs
+             * @description Failed, timed-out and blocked runs started in the window.
+             */
+            runs: number;
+            /** Spend Usd */
+            spend_usd: number;
+            /** Unpriced Calls */
+            unpriced_calls: number;
+        };
         /** FailureDay */
         FailureDay: {
             /** Blocked */
@@ -2596,6 +2638,24 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** RetrySpend */
+        RetrySpend: {
+            /**
+             * In Failed Runs Usd
+             * @description Already inside the failed-run spend.
+             */
+            in_failed_runs_usd: number;
+            /**
+             * In Other Runs Usd
+             * @description Added to the failed-run spend to get the waste.
+             */
+            in_other_runs_usd: number;
+            /**
+             * Total Usd
+             * @description All retry spend in the window, as in the cost report.
+             */
+            total_usd: number;
+        };
         /** RowOut */
         RowOut: {
             left: components["schemas"]["StepOut"] | null;
@@ -3013,6 +3073,97 @@ export interface components {
             /** Variant Id */
             variant_id: string | null;
         };
+        /** WasteByAgent */
+        WasteByAgent: {
+            /** Agent */
+            agent: string;
+            /** Failed Runs */
+            failed_runs: number;
+            /**
+             * Failed Usd
+             * @description Spend of this agent's failed, timed-out and blocked runs.
+             */
+            failed_usd: number;
+            /**
+             * Retry Usd
+             * @description Retry spend in this agent's other runs.
+             */
+            retry_usd: number;
+            /**
+             * Wasted Usd
+             * @description failed_usd + retry_usd; never counts a dollar twice.
+             */
+            wasted_usd: number;
+        };
+        /** WasteByModel */
+        WasteByModel: {
+            /**
+             * Calls
+             * @description Model calls in failed runs plus retried calls in other runs.
+             */
+            calls: number;
+            /** Failed Usd */
+            failed_usd: number;
+            /** Model */
+            model: string | null;
+            /** Provider */
+            provider: string | null;
+            /** Retry Usd */
+            retry_usd: number;
+            /**
+             * Unpriced Calls
+             * @description Of those calls, how many had no price (counted as $0).
+             */
+            unpriced_calls: number;
+            /** Wasted Usd */
+            wasted_usd: number;
+        };
+        /**
+         * WasteOther
+         * @description Groups beyond the top N, so the response size does not depend on how many names exist.
+         */
+        WasteOther: {
+            /** Groups */
+            groups: number;
+            /** Wasted Usd */
+            wasted_usd: number;
+        };
+        /**
+         * WasteReport
+         * @description Where the money was wasted (Phase 22 D12).
+         *
+         *     Spend on runs that failed, plus retries in runs that did not.
+         *
+         *     Metadata only (USD, counts, agent and model names), so every role that reads analytics sees it.
+         */
+        WasteReport: {
+            /** By Agent */
+            by_agent: components["schemas"]["WasteByAgent"][];
+            by_agent_other: components["schemas"]["WasteOther"] | null;
+            /** By Model */
+            by_model: components["schemas"]["WasteByModel"][];
+            by_model_other: components["schemas"]["WasteOther"] | null;
+            failed: components["schemas"]["FailedRunSpend"];
+            retries: components["schemas"]["RetrySpend"];
+            /**
+             * Total Usd
+             * @description All spend of runs started in the window.
+             */
+            total_usd: number;
+            /**
+             * Unrebuilt Runs
+             * @description Runs summarised before cost lines existed; `rebuild-costs` fills them in.
+             */
+            unrebuilt_runs: number;
+            /**
+             * Wasted Share
+             * @description wasted_usd / total_usd
+             */
+            wasted_share: number | null;
+            /** Wasted Usd */
+            wasted_usd: number;
+            window: components["schemas"]["Window"];
+        };
         /** Window */
         Window: {
             /**
@@ -3340,6 +3491,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Summary"];
+                };
+            };
+            /** @description Missing, malformed, unknown, revoked or expired API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The key lacks `runs:read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Project not found or not visible to this key. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter is invalid (for example a window over 92 days). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The query timed out or a dependency is unavailable; retry. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    waste_v1_analytics_waste_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+                from?: string | null;
+                to?: string | null;
+                /** @description Groups listed before `other`. */
+                top?: number;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WasteReport"];
                 };
             };
             /** @description Missing, malformed, unknown, revoked or expired API key. */

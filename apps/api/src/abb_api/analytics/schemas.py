@@ -217,3 +217,74 @@ class PerformanceReport(BaseModel):
     llm: Percentiles
     tool: Percentiles
     slow_operations: list[SlowOperation]
+
+
+class WasteOther(BaseModel):
+    """Groups beyond the top N, so the response size does not depend on how many names exist."""
+
+    groups: int
+    wasted_usd: float
+
+
+class WasteByAgent(BaseModel):
+    agent: str
+    failed_runs: int
+    failed_usd: float = Field(
+        description="Spend of this agent's failed, timed-out and blocked runs."
+    )
+    retry_usd: float = Field(description="Retry spend in this agent's other runs.")
+    wasted_usd: float = Field(description="failed_usd + retry_usd; never counts a dollar twice.")
+
+
+class WasteByModel(BaseModel):
+    provider: str | None
+    model: str | None
+    failed_usd: float
+    retry_usd: float
+    wasted_usd: float
+    calls: int = Field(description="Model calls in failed runs plus retried calls in other runs.")
+    unpriced_calls: int = Field(
+        description="Of those calls, how many had no price (counted as $0)."
+    )
+
+
+class FailedRunSpend(BaseModel):
+    runs: int = Field(description="Failed, timed-out and blocked runs started in the window.")
+    spend_usd: float
+    after_first_error_usd: float = Field(
+        description="Of that, spend after each run's first error (`first_error.cost_after_usd`)."
+    )
+    after_first_error_unknown_runs: int = Field(
+        description="Failed runs summarised before first-error facts existed (ADR-112): "
+        "their share of `after_first_error_usd` is not known."
+    )
+    unpriced_calls: int
+
+
+class RetrySpend(BaseModel):
+    total_usd: float = Field(description="All retry spend in the window, as in the cost report.")
+    in_failed_runs_usd: float = Field(description="Already inside the failed-run spend.")
+    in_other_runs_usd: float = Field(description="Added to the failed-run spend to get the waste.")
+
+
+class WasteReport(BaseModel):
+    """Where the money was wasted (Phase 22 D12).
+
+    Spend on runs that failed, plus retries in runs that did not.
+
+    Metadata only (USD, counts, agent and model names), so every role that reads analytics sees it.
+    """
+
+    window: Window
+    wasted_usd: float
+    total_usd: float = Field(description="All spend of runs started in the window.")
+    wasted_share: float | None = Field(description="wasted_usd / total_usd")
+    failed: FailedRunSpend
+    retries: RetrySpend
+    by_agent: list[WasteByAgent]
+    by_agent_other: WasteOther | None
+    by_model: list[WasteByModel]
+    by_model_other: WasteOther | None
+    unrebuilt_runs: int = Field(
+        description="Runs summarised before cost lines existed; `rebuild-costs` fills them in."
+    )

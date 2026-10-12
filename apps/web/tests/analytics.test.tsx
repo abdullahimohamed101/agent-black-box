@@ -169,3 +169,77 @@ describe("charts render telemetry as text", () => {
     expect(screen.getByText("No data in this window.")).toBeVisible();
   });
 });
+
+describe("Where the money was wasted (Phase 22 D12)", () => {
+  type Waste = ReturnType<typeof fixtureAnalytics> & {
+    wasted_usd: number;
+    failed: { spend_usd: number; runs: number; unpriced_calls: number };
+    retries: { in_other_runs_usd: number };
+    by_agent: { agent: string; wasted_usd: number }[];
+    by_model: { model: string; wasted_usd: number }[];
+  };
+  const fixture = () => fixtureAnalytics("waste", new URLSearchParams()) as Waste;
+
+  it("opens the page, above the existing cost section", async () => {
+    stubApi();
+    renderWithQuery(<Analytics base={BASE} />);
+    const panel = await screen.findByTestId("waste-panel");
+    const cost = await screen.findByRole("heading", { name: "Cost" });
+    expect(
+      within(panel).getByRole("heading", { name: "Where the money was wasted" }),
+    ).toBeVisible();
+    expect(panel.compareDocumentPosition(cost) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the figures the server returned, by agent and by model", async () => {
+    const w = fixture();
+    expect(w.wasted_usd).toBeGreaterThan(0);
+    stubApi();
+    renderWithQuery(<Analytics base={BASE} />);
+    const line = await screen.findByTestId("waste-line");
+    expect(line).toHaveTextContent(/failed runs \$/);
+    expect(line).toHaveTextContent(/retries \$/);
+    expect(line).toHaveTextContent(/after the first error \$/);
+    expect(line).toHaveTextContent(`(${w.failed.runs})`);
+    const agents = screen.getByRole("list", { name: "Wasted spend by agent" });
+    expect(within(agents).getAllByRole("listitem")).toHaveLength(w.by_agent.length);
+    expect(screen.getByRole("list", { name: "Wasted spend by model" })).toBeVisible();
+  });
+
+  it("the figures reconcile: wasted is failed spend plus retries in the other runs, no dollar twice", () => {
+    const w = fixture();
+    expect(w.wasted_usd).toBeCloseTo(w.failed.spend_usd + w.retries.in_other_runs_usd, 9);
+    expect(w.by_agent.reduce((a, b) => a + b.wasted_usd, 0)).toBeCloseTo(w.wasted_usd, 9);
+  });
+
+  it("says plainly when calls were unpriced or after-error spend is unknown", async () => {
+    const w = fixture() as Record<string, unknown> & { failed: Record<string, number> };
+    w.failed = { ...w.failed, unpriced_calls: 4, after_first_error_unknown_runs: 2 };
+    stubApi({ "/analytics/waste": () => Response.json(w) });
+    renderWithQuery(<Analytics base={BASE} />);
+    expect(await screen.findByTestId("waste-unpriced")).toHaveTextContent("4 model calls");
+    expect(screen.getByTestId("waste-unknown")).toHaveTextContent("2 failed runs");
+  });
+
+  it("an empty window is a statement with the tape motif, and an error offers a retry", async () => {
+    const w = { ...fixture(), wasted_usd: 0 };
+    stubApi({ "/analytics/waste": () => Response.json(w) });
+    const { unmount } = renderWithQuery(<Analytics base={BASE} />);
+    const panel = await screen.findByTestId("waste-panel");
+    await within(panel).findByText("Nothing was wasted in this window");
+    expect(panel.querySelector("svg.illus")).not.toBeNull();
+    unmount();
+    vi.unstubAllGlobals();
+    stubApi({
+      "/analytics/waste": () =>
+        Response.json(
+          { error: { code: "ANALYTICS_TIMEOUT", message: "Too slow." } },
+          { status: 503 },
+        ),
+    });
+    renderWithQuery(<Analytics base={BASE} />);
+    const again = await screen.findByTestId("waste-panel");
+    expect(await within(again).findByRole("alert")).toHaveTextContent("Too slow.");
+    expect(within(again).getByRole("button", { name: "Try again" })).toBeVisible();
+  });
+});

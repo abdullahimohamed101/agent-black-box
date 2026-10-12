@@ -12,6 +12,8 @@ import {
   differenceIndexes,
   metricRows,
   nextDifference,
+  deltaLine,
+  describeStep,
   scoreText,
   visibleCount,
 } from "@/lib/comparison";
@@ -83,7 +85,10 @@ describe("CompareView", () => {
     const duration = table.querySelector("[data-metric=duration_ms]")!;
     expect(duration.querySelector(".delta")).toHaveAttribute("data-direction");
     expect(within(table as HTMLElement).getByText("Status")).toBeInTheDocument();
-    expect(screen.getByTestId("divergence-summary")).toHaveTextContent("first diverge at step");
+    // Phase 22 D12: the headline names the step and what each side did there (was "first diverge at step").
+    expect(screen.getByTestId("divergence-summary")).toHaveTextContent(
+      /diverged at step \d+: A .+, B .+\./,
+    );
     expect(screen.getAllByTestId("divergence-flag")).toHaveLength(1);
     expect(screen.getAllByTestId("outcome-flag")).toHaveLength(1);
     // the divergence row is the API's `steps[index]`
@@ -94,6 +99,140 @@ describe("CompareView", () => {
       expect.stringContaining(LEFT),
     );
     expect(screen.queryByTestId("metadata-notice")).toBeNull();
+  });
+
+  it("opens with the divergence line, one mono line of deltas, and the steps before the measures", async () => {
+    stub();
+    show();
+    const line = await screen.findByTestId("divergence-summary");
+    const compare = screen.getByTestId("compare");
+    const deltas = screen.getByTestId("compare-deltas");
+    // Order: headline, deltas, then the aligned steps, then the measures table.
+    const order = [
+      line,
+      deltas,
+      screen.getByTestId("aligned-steps"),
+      screen.getByTestId("compare-summary"),
+    ];
+    for (let i = 1; i < order.length; i++)
+      expect(
+        order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    expect(compare.querySelectorAll("[data-delta]")).toHaveLength(5);
+    expect(
+      [...compare.querySelectorAll("[data-delta]")].map((e) => e.getAttribute("data-delta")),
+    ).toEqual(["duration", "cost", "calls", "retries", "files"]);
+    // The full table is still there, behind a disclosure.
+    expect(screen.getByText("All measures").closest("details")).not.toHaveAttribute("open");
+  });
+
+  it("names what each side did at the divergence, with names as text", async () => {
+    const hostile = "<b>x</b>";
+    stub({
+      edit: (c) => {
+        const i = c.divergence!.index;
+        return {
+          ...c,
+          steps: c.steps.map((r, k) =>
+            k === i
+              ? {
+                  relation: "changed" as const,
+                  left: {
+                    ...r.left!,
+                    event_type: "tool.completed",
+                    label: "run_tests",
+                    label_withheld: false,
+                  },
+                  right: {
+                    ...r.right!,
+                    event_type: "file.modified",
+                    label: hostile,
+                    label_withheld: false,
+                  },
+                }
+              : r,
+          ),
+        };
+      },
+    });
+    const { container } = show();
+    const line = await screen.findByTestId("divergence-summary");
+    expect(line).toHaveTextContent("diverged at step");
+    expect(line.textContent).toMatch(/A called run_tests, B edited <b>x<\/b>\.$/);
+    expect(line.querySelector("b")).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("a viewer's line never carries withheld content", async () => {
+    stub({
+      content: false,
+      edit: (c) => {
+        const i = c.divergence!.index;
+        return {
+          ...c,
+          steps: c.steps.map((r, k) =>
+            k === i
+              ? {
+                  relation: "changed" as const,
+                  left: {
+                    ...r.left!,
+                    event_type: "shell.command.completed",
+                    label: null,
+                    label_withheld: true,
+                  },
+                  right: {
+                    ...r.right!,
+                    event_type: "file.modified",
+                    label: null,
+                    label_withheld: true,
+                  },
+                }
+              : r,
+          ),
+        };
+      },
+    });
+    show();
+    const line = await screen.findByTestId("divergence-summary");
+    expect(line.textContent).toContain("details withheld for your role");
+    expect(line.textContent).toMatch(
+      /A ran a shell command \(details withheld for your role\), B edited a file/,
+    );
+  });
+
+  it("a side with no step at the divergence says so", async () => {
+    stub({
+      edit: (c) => {
+        const i = c.divergence!.index;
+        return {
+          ...c,
+          divergence: { ...c.divergence!, relation: "left_only" as const },
+          steps: c.steps.map((r, k) =>
+            k === i ? { relation: "left_only" as const, left: r.left, right: null } : r,
+          ),
+        };
+      },
+    });
+    show();
+    expect((await screen.findByTestId("divergence-summary")).textContent).toMatch(
+      /B had no step here\./,
+    );
+  });
+
+  it("folds the identical steps before the divergence and unfolds them on request or on a jump", async () => {
+    const user = userEvent.setup();
+    stub();
+    show();
+    await screen.findByTestId("aligned-steps");
+    const index = Number(
+      (document.querySelector("[data-divergence=true]") as HTMLElement).getAttribute("data-index"),
+    );
+    expect(index).toBeGreaterThan(4); // the fixture pair parts well into the run
+    const rows = () => screen.getAllByTestId("aligned-row");
+    expect(rows()[0]).toHaveAttribute("data-index", String(index - 3));
+    await user.click(screen.getByTestId("show-earlier-steps"));
+    expect(rows()[0]).toHaveAttribute("data-index", "0");
+    expect(screen.queryByTestId("show-earlier-steps")).toBeNull();
   });
 
   it("a content reader sees labels and the file sets", async () => {
@@ -242,6 +381,41 @@ describe("comparison helpers", () => {
     expect(visibleCount(400, 5000, null)).toBe(400);
     expect(visibleCount(400, 5000, 1200)).toBe(1221);
     expect(visibleCount(400, 100, 50)).toBe(100);
+  });
+
+  it("builds the one-line deltas: calls sum model and tool calls, unknown stays a dash", () => {
+    const line = deltaLine([
+      { metric: "duration_ms", left: 1000, right: 3500, delta: 2500 },
+      { metric: "estimated_cost_usd", left: 0.2, right: 0.1, delta: -0.1 },
+      { metric: "llm_calls", left: 2, right: 3, delta: 1 },
+      { metric: "tool_calls", left: 5, right: 7, delta: 2 },
+      { metric: "retry_count", left: null, right: 1, delta: null },
+      { metric: "files_modified", left: 2, right: 2, delta: 0 },
+    ]);
+    expect(line.map((i) => [i.key, i.text, i.direction])).toEqual([
+      ["duration", "+2.5 s", "up"],
+      ["cost", expect.stringMatching(/^−\$/), "down"],
+      ["calls", "+3", "up"],
+      ["retries", "—", "unknown"],
+      ["files", "0", "same"],
+    ]);
+  });
+
+  it("describes a failed step and clips a long command", () => {
+    const step = {
+      event_id: "e",
+      event_type: "shell.command.failed",
+      family: "shell",
+      label: "x".repeat(200),
+      label_withheld: false,
+      status: "ERROR",
+      duration_ms: null,
+      offset_ms: null,
+      span_id: null,
+    };
+    const parts = describeStep(step);
+    expect(parts.at(-1)).toEqual({ text: " (failed)" });
+    expect(parts.find((p) => p.code)!.text.length).toBeLessThanOrEqual(60);
   });
 
   it("writes scores and score changes", () => {

@@ -13,6 +13,7 @@ from abb_api.analytics.schemas import (
     PerformanceReport,
     ReliabilityReport,
     Summary,
+    WasteReport,
 )
 from abb_api.tenancy import TenantContext
 
@@ -43,3 +44,5 @@ class AnalyticsStore(Protocol):
     async def reliability(self, scope: AnalyticsScope, *, top: int) -> ReliabilityReport: ...
 
     async def performance(self, scope: AnalyticsScope, *, top: int) -> PerformanceReport: ...
+
+    async def waste(self, scope: AnalyticsScope, *, top: int) -> WasteReport: ...
