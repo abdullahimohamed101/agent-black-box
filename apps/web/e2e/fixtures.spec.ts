@@ -474,6 +474,8 @@ test("compare: divergence, keyboard, notices and the viewer's metadata-only view
   const url = (b: string) => `${b}/runs/compare?left=${RUN(11)}&right=${RUN(12)}`;
   await page.goto(url(BASE));
   await expect(page.getByRole("heading", { name: "Compare runs", level: 1 })).toBeVisible();
+  await expect(page.getByTestId("compare-deltas")).toBeVisible();
+  await page.getByText("All measures").click(); // the summary table sits behind a disclosure now
   await expect(page.getByTestId("compare-summary")).toBeVisible();
   await expect(page.getByTestId("aligned-steps")).toBeVisible();
   await expect(page.getByTestId("divergence-flag")).toHaveCount(1);
