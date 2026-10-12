@@ -95,6 +95,14 @@ export function Timeline({
     if (atEdge.current) setLeftAt(null);
   };
   useEffect(measureEdge, []);
+  // A window or inspector resize changes the viewport height without a scroll event, which would leave `atEdge` stale.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measureEdge);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const rowCount = rows.length;
   useEffect(() => {
     const added = arrived - seenArrived.current;

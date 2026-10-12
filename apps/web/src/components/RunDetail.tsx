@@ -347,6 +347,10 @@ export function RunDetail({
   const [landed, setLanded] = useState<{ id: string; tone: "error" | "evidence" } | null>(null);
   const [faultIntro, setFaultIntro] = useState(false);
   const knownIds = useRef<Set<string> | null>(null);
+  const filtersRef = useRef(filters);
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
   const introPlayed = useRef(false);
   const { later } = useTimers();
   useEffect(() => {
@@ -357,10 +361,12 @@ export function RunDetail({
     }
     const known = knownIds.current;
     const fresh: string[] = [];
+    const freshEvents: EventOut[] = [];
     for (const e of events) {
       if (!known.has(e.event_id)) {
         known.add(e.event_id);
         fresh.push(e.event_id);
+        freshEvents.push(e);
       }
     }
     if (fresh.length === 0) return;
@@ -368,7 +374,8 @@ export function RunDetail({
     const batch = new Set(fresh.slice(-MAX_NEW_IDS));
     later(() => {
       setNewIds(batch);
-      setArrived((n) => n + fresh.length);
+      // "N new events" counts what the reader can see: a filter hides the rest (review P3-3).
+      setArrived((n) => n + filterEvents(freshEvents, filtersRef.current).length);
       later(() => setNewIds(NO_IDS), 400);
     }, 0);
   }, [events, restComplete, later]);

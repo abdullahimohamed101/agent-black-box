@@ -1,21 +1,14 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // ADR-111: red means failure and nothing else. Any rule that reads --fail, --bad or their -bg tints must be on this allowlist
 // of failure selectors; a new use needs a new entry here, which is the review point.
-const FILES = [
-  "globals.css",
-  "compare.css",
-  "waterfall.css",
-  "search.css",
-  "run-header.css",
-  "run-timeline.css",
-  "run-motion.css",
-  "run-context.css",
-  "runs-list.css",
-  "topbar-search.css",
-];
+// Every stylesheet in src/app, not a hand-picked list: a new file is covered the day it is added (review P2-2).
+const DIR = path.join(__dirname, "../src/app");
+const FILES = readdirSync(DIR)
+  .filter((f) => f.endsWith(".css"))
+  .sort();
 const ALLOWED: RegExp[] = [
   /^\.stat\[data-tone="bad"\]/,
   /^\.badge\[data-tone="bad"\]/,
@@ -61,11 +54,21 @@ function rules(src: string): { selector: string; body: string }[] {
 describe("red is for failure only", () => {
   const uses: string[] = [];
   for (const f of FILES) {
-    const src = readFileSync(path.join(__dirname, "../src/app", f), "utf8");
+    const src = readFileSync(path.join(DIR, f), "utf8");
     for (const r of rules(src))
       if (/var\(--(fail|bad)(-bg)?\b|color-mix\([^)]*--(fail|bad)\b/.test(r.body))
         uses.push(`${f}: ${r.selector}`);
   }
+  it("reads every stylesheet, the Phase 22 ones included", () => {
+    for (const f of [
+      "login.css",
+      "analytics.css",
+      "settings.css",
+      "setup-guide.css",
+      "illustrations.css",
+    ])
+      expect(FILES).toContain(f);
+  });
   it("finds the failure rules at all", () => {
     expect(uses.length).toBeGreaterThan(10);
   });

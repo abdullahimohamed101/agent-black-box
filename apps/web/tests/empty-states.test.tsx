@@ -78,6 +78,15 @@ describe("Empty and ErrorState carry a motif", () => {
     expect(reset).toHaveBeenCalledOnce();
   });
 
+  it("the error boundary's alert is the sentence, not the whole page with its links (review P3-12)", () => {
+    render(<ErrorPage error={Object.assign(new Error("x"), { digest: "d1" })} reset={() => {}} />);
+    const alert = screen.getByRole("alert");
+    expect(alert.tagName).toBe("P");
+    expect(alert).toHaveTextContent(/Nothing you recorded was lost/);
+    expect(alert.querySelector("a, button")).toBeNull();
+    expect(document.querySelector("main")).not.toHaveAttribute("role");
+  });
+
   it("the 404 page has one h1, a way home and a motif", () => {
     render(<NotFound />);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
@@ -165,6 +174,32 @@ describe("the runs list uses the guide", () => {
     );
     // Dismissing shows the ordinary table.
     await userEvent.setup().click(within(arrived).getByRole("button", { name: "Show all runs" }));
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
+    expect(screen.queryByTestId("setup-guide")).toBeNull();
+  });
+
+  it("once the first run has arrived, filtering and clearing the filter does not bring the guide back (review P3-4)", async () => {
+    let runs: unknown[] = [];
+    const first = fixtureRuns()[0]!.run;
+    stubApi({ "/v1/runs": () => Response.json({ items: runs, next_cursor: null }) });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <Harness />
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId("setup-guide");
+    runs = [first];
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["runs"] });
+    });
+    await screen.findByTestId("setup-arrived");
+    const user = userEvent.setup();
+    const box = screen.getByRole("searchbox", { name: "Search" });
+    await user.type(box, "x{Enter}");
+    await waitFor(() => expect(screen.queryByTestId("setup-guide")).toBeNull());
+    await user.clear(box);
+    await user.type(box, "{Enter}");
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
     expect(screen.queryByTestId("setup-guide")).toBeNull();
   });

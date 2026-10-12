@@ -69,7 +69,7 @@ const decls = parsed.flatMap((p) => p.decls);
 const keyframes = parsed.flatMap((p) => p.keyframes);
 
 const MOTION_PROPS =
-  /^(animation|animation-name|animation-duration|transition|transition-property|transition-duration|scroll-behavior)$/;
+  /^(animation|animation-name|animation-duration|animation-iteration-count|transition|transition-property|transition-duration|scroll-behavior)$/;
 const isOff = (v: string) => /^(none|0s|0ms|auto|initial)$/.test(v.trim());
 const isGated = (d: Decl) => d.chain.some((p) => /prefers-reduced-motion:\s*no-preference/.test(p));
 const inReduce = (d: Decl) => d.chain.some((p) => /prefers-reduced-motion:\s*reduce/.test(p));

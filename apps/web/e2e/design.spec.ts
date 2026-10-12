@@ -627,22 +627,17 @@ test.describe("motion", () => {
   test.describe("motion on", () => {
     test.use({ reducedMotion: "no-preference" });
 
-    test("no route loops or stays animated after first paint", async ({ page }) => {
+    test("no route animates on first paint, except a failed run's fault line", async ({ page }) => {
       await recordAnimations(page);
       for (const [, url] of ROUTES) {
         await page.goto(url);
         await settled(page);
-        // a failed run draws its fault line once on opening (Phase 22); everything else is already still
+        // The only animation that may start is the failed run's fault line, drawn once (review P1-1).
+        expect(await started(page), url).toEqual(url.includes(RUN(2)) ? ["fault-draw-x"] : []);
         await page.waitForFunction(() => document.getAnimations().length === 0, undefined, {
           timeout: 2000,
         });
-        const infinite = await page.evaluate(
-          () =>
-            document
-              .getAnimations()
-              .filter((a) => a.effect?.getComputedTiming().iterations === Infinity).length,
-        );
-        expect(infinite, url).toBe(0);
+        expect(await animations(page), url).toBe(0);
       }
     });
 

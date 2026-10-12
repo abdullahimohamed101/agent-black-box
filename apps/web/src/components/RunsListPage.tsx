@@ -28,7 +28,10 @@ export function RunsListPage({ base }: { base: Base }) {
 
   // The top-bar search navigates here with `?q=` while this page is open. `mine` is the query string this page last
   // wrote itself (the URL catches up with it a render later, so only a change of the URL is looked at): a URL that
-  // changed to something else came from elsewhere and replaces the filters.
+  // changed to something else came from elsewhere and replaces the filters. The string comparison is load-bearing: `mine`
+  // is built with `URLSearchParams.toString()` below and `urlText` comes from the same serialiser, so the two encode `,`
+  // and spaces identically; encoding either side differently (say `encodeURIComponent`) would make this page treat its
+  // own write as a foreign URL and break back/forward adoption.
   const urlText = sp.toString();
   const [seen, setSeen] = useState(urlText);
   const [mine, setMine] = useState(urlText);

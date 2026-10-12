@@ -65,6 +65,8 @@ button.toggle[aria-pressed="true"] {
   width: 100%;
   justify-content: space-between;
   gap: 0.5rem;
+  min-height: 24px;
+  align-items: center;
   padding: 0.1rem 0.4rem;
   border: 0;
   border-radius: 3px;
@@ -108,6 +110,8 @@ button.toggle[aria-pressed="true"] {
   overflow-wrap: anywhere;
 }
 .row-more {
+  min-width: 24px; /* WCAG 2.2 AA target size (2.5.8) */
+  min-height: 24px;
   margin-left: auto;
   padding: 0 0.3rem;
   border: 0;

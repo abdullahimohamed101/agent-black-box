@@ -37,7 +37,7 @@ idea: colour only ever means a problem. This ADR records the visual language tha
   same source as ADR-110, vendored in `apps/web/src/fonts/` and loaded with `next/font/local` as `--font-plex-serif`, exposed to CSS as
   `--serif`. The licence is the same SIL OFL 1.1 as the other Plex files and is already shipped beside them (`OFL.txt`, "Copyright
   IBM Corp." with Reserved Font Name "Plex"). Used only for the failure line and empty-state headlines, nowhere else.
-- **Brand mark.** Three options are drawn (`apps/web/public/brand/option-{a,b,c}.svg`, rationale in
+- **Brand mark.** Three options are drawn (`apps/web/public/brand/option-a.svg` and `docs/design/brand-mark-options/option-{b,c}.svg`, rationale in
   `docs/design/brand-mark-options.md`). Option A (a trace line with one cut) is wired into `Brand` and `src/app/icon.svg`
   provisionally, pending the owner's choice.
 - **Motion language** (applied in step 6): 120 to 200 ms, `cubic-bezier(0.2, 0, 0, 1)` (already `--ease-out`), `transform` and `opacity`

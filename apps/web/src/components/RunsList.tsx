@@ -4,7 +4,15 @@ import Link from "next/link";
 import { useState } from "react";
 import { ALL_STATUSES, type QueryTermOut, type RunStatus } from "@/lib/api/types";
 import { useRuns, useSearchCatalogue } from "@/lib/queries";
-import { AGENT_SLUG, appendTerm, effectiveQuery, removeSpan, searchProblem } from "@/lib/search";
+import {
+  AGENT_SLUG,
+  appendTerm,
+  dropStatusTerms,
+  effectiveQuery,
+  isStatusTerm,
+  removeSpan,
+  searchProblem,
+} from "@/lib/search";
 import { COMPARE_PICKS, compareHref, toggleRun } from "@/lib/compare";
 import { ATTENTION_STATUSES } from "@/lib/runsListRow";
 import type { Base } from "@/lib/routes";
@@ -84,15 +92,26 @@ export function RunsList({
       ? onFilters({ ...filters, range: "all" })
       : onFilters({ ...filters, q: removeSpan(typed, t.span) });
   // A facet adds its term to the query, or takes it out again when it is already there.
+  // Turning a Status facet on also turns "Needs attention" off: they AND, and an empty list with no hint is worse.
   const toggleTerm = (term: string, existing: QueryTermOut | null) =>
-    existing ? removeTerm(existing) : onFilters({ ...filters, q: appendTerm(typed, term) });
+    existing
+      ? removeTerm(existing)
+      : onFilters({
+          ...filters,
+          q: appendTerm(typed, term),
+          statuses: isStatusTerm(term) ? [] : filters.statuses,
+        });
   const terms = effective === "" ? [] : (echo?.terms ?? null);
   // "Needs attention" is the legacy status parameter because the grammar cannot say "failed or blocked" (it ANDs).
   const attentionOn =
     filters.statuses.length === ATTENTION_STATUSES.length &&
     ATTENTION_STATUSES.every((s) => filters.statuses.includes(s));
   const toggleAttention = () =>
-    onFilters({ ...filters, statuses: attentionOn ? [] : [...ATTENTION_STATUSES] });
+    onFilters(
+      attentionOn
+        ? { ...filters, statuses: [] }
+        : { ...filters, q: dropStatusTerms(typed), statuses: [...ATTENTION_STATUSES] },
+    );
 
   const toggle = (s: RunStatus) =>
     onFilters({
@@ -115,6 +134,8 @@ export function RunsList({
     runs.length === 0 &&
     !filtered;
   if (firstRunGuide && !guideShown) setGuideShown(true);
+  // Once the person filters, they have moved past the guide: clearing the filter must not bring it back (review P3-4).
+  if (guideShown && filtered && !q.isPlaceholderData) setGuideShown(false);
   const guideArrived =
     guideShown && !guideDismissed && !q.isPlaceholderData && !filtered && runs.length > 0;
 

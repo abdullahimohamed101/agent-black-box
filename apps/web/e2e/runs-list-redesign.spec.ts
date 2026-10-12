@@ -25,6 +25,23 @@ async function pressSlash(page: Page) {
 }
 const NEEDS = '[data-status="FAILED"], [data-status="TIMED_OUT"], [data-status="BLOCKED"]';
 
+test.describe("target size", () => {
+  test("the row menu and the facet buttons are at least 24 x 24 px (WCAG 2.2 AA, review P3-7)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await page.goto(`${BASE}/runs`);
+    await expect(rows(page).first()).toBeVisible();
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll(".row-more, .facet-button")]
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.width > 0 && (r.width < 24 || r.height < 24))
+        .map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`),
+    );
+    expect(small).toEqual([]);
+  });
+});
+
 test.describe("failure lines", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 

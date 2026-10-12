@@ -55,8 +55,17 @@
       opacity: 0;
     }
   }
-  .hl[data-fade] {
+  @keyframes headline-in-b {
+    from {
+      opacity: 0;
+    }
+  }
+  /* Two names for the same fade, so a second change restarts it without remounting the headline. */
+  .hl[data-fade="a"] {
     animation: headline-in var(--t-fast) var(--ease-out) backwards;
+  }
+  .hl[data-fade="b"] {
+    animation: headline-in-b var(--t-fast) var(--ease-out) backwards;
   }
 
   /* (3) Jumping to an event: the outline fades once over 600 ms (red for the first error, the accent otherwise). */

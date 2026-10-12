@@ -169,6 +169,31 @@ describe("Needs attention", () => {
     expect(button).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("turning it on takes a status: term out of the query, so the two never AND to nothing (review P2-6)", async () => {
+    const user = userEvent.setup();
+    stubApi();
+    renderWithQuery(<Harness initial={{ q: "agent:coding-agent status:success" }} />);
+    await screen.findByRole("table", { name: "Runs" });
+    await user.click(screen.getByRole("button", { name: "Needs attention" }));
+    const box = screen.getByRole("searchbox", { name: "Search" });
+    await waitFor(() => expect(box).toHaveValue("agent:coding-agent"));
+    await waitFor(() => expect(screen.getAllByRole("row").length).toBeGreaterThan(1));
+  });
+
+  it("turning a Status facet on turns Needs attention off", async () => {
+    const user = userEvent.setup();
+    stubApi();
+    renderWithQuery(<Harness />);
+    await screen.findByRole("table", { name: "Runs" });
+    const attention = screen.getByRole("button", { name: "Needs attention" });
+    await user.click(attention);
+    await waitFor(() => expect(attention).toHaveAttribute("aria-pressed", "true"));
+    const region = screen.getByRole("region", { name: "Narrow the results" });
+    await user.click(within(region).getByRole("button", { name: /^Success/ }));
+    await waitFor(() => expect(attention).toHaveAttribute("aria-pressed", "false"));
+    expect(screen.getByRole("searchbox", { name: "Search" })).toHaveValue("status:success");
+  });
+
   it("keeps asking the server, so a failure is never beyond the first page", async () => {
     const calls = stubApi();
     const user = userEvent.setup();

@@ -14,11 +14,11 @@ export default function ErrorPage({
   reset: () => void;
 }) {
   return (
-    <main id="main" className="state-page" data-state="error" role="alert">
+    <main id="main" className="state-page" data-state="error">
       <Brand />
       <FaultCut className="illus-lg" />
       <h1>Something broke on this page</h1>
-      <p className="muted">
+      <p className="muted" role="alert">
         Nothing you recorded was lost. Try again, and if it keeps happening tell whoever runs this
         workspace
         {error.digest ? ` (reference ${error.digest})` : ""}.

@@ -40,6 +40,17 @@ export function appendTerm(q: string, term: string): string {
   return base ? `${base} ${term}` : term;
 }
 
+/** `q` without its (non-negated) `status:` terms. The "Needs attention" button and a Status facet are two ways to say
+ *  the same thing and they AND together, so choosing one clears the other (review P2-6). */
+export function dropStatusTerms(q: string): string {
+  return q
+    .replace(/(^|\s)status:(?:"[^"]*"|\S*)/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export const isStatusTerm = (term: string): boolean => /^status:/i.test(term.trim());
+
 export function fieldTerm(field: string, value: string): string {
   return `${field}:${quoteValue(value)}`;
 }

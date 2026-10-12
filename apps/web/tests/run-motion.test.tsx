@@ -62,6 +62,34 @@ describe("headline crossfade (spec 2)", () => {
     expect(container.querySelector(".hl")).toHaveAttribute("data-fade");
   });
 
+  it("a focused Go button keeps focus through a change of state, and the fade still replays (review P3-9)", () => {
+    const f = failureRetryRun();
+    const failed = readyModel(f);
+    const recovered = readyModel(f, "SUCCESS");
+    const { container, rerender } = render(
+      <RunHeadline kind={failed.kind} variant="ready" model={failed} onGo={() => undefined} />,
+    );
+    const go = screen.getByRole("button", { name: "Show it" });
+    go.focus();
+    rerender(
+      <RunHeadline
+        kind={recovered.kind}
+        variant="ready"
+        model={recovered}
+        onGo={() => undefined}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Show it" })).toBe(go);
+    expect(go).toHaveFocus();
+    const first = container.querySelector(".hl")!.getAttribute("data-fade");
+    rerender(
+      <RunHeadline kind={failed.kind} variant="ready" model={failed} onGo={() => undefined} />,
+    );
+    // a second change flips the marker, which restarts the CSS animation without remounting
+    expect(container.querySelector(".hl")!.getAttribute("data-fade")).not.toBe(first);
+    expect(go).toHaveFocus();
+  });
+
   it("a skeleton turning into the headline is a load, not a change of state", () => {
     const f = failureRetryRun();
     const m = readyModel(f);
@@ -198,6 +226,32 @@ describe("live rows keep their place (spec 5)", () => {
       await user.click(screen.getByTestId("new-events"));
     });
     expect(screen.queryByTestId("new-events")).toBeNull();
+  });
+
+  it("a resize that moves the reader off the live edge is noticed without a scroll (review P3-3)", async () => {
+    metrics(4500);
+    let notify: () => void = () => undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: () => void) {
+          notify = cb;
+        }
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+    const { rerender } = render(<Timeline {...props} arrived={0} />);
+    // the pane shrinks: 4500 + 500 was the edge, 4500 + 200 is not
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get: () => 200,
+    });
+    act(() => notify());
+    rerender(<Timeline {...props} arrived={2} />);
+    expect(await screen.findByTestId("new-events")).toHaveTextContent("2 new events");
+    vi.unstubAllGlobals();
   });
 
   it("a reader at the live edge gets no control (the list follows)", async () => {

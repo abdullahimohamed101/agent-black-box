@@ -1,8 +1,8 @@
 # Brand mark options (Phase 22)
 
 Three marks drawn for the owner to choose from. All are 24 x 24 SVG on a 2 px stroke with round caps, drawn as paths (not a font glyph),
-and use `currentColor` so they follow the ink colour in both themes. Files: `apps/web/public/brand/option-a.svg`, `option-b.svg`,
-`option-c.svg`. Each was checked at 24 px and 16 px (the stroke stays 1.3 px or more at 16 px).
+and use `currentColor` so they follow the ink colour in both themes. Files: `apps/web/public/brand/option-a.svg` (the chosen mark, shipped), and the unused options
+`docs/design/brand-mark-options/option-b.svg`, `option-c.svg` (kept out of the public assets). Each was checked at 24 px and 16 px (the stroke stays 1.3 px or more at 16 px).
 
 ## Option A: trace with a cut (wired)
 

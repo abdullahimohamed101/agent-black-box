@@ -56,8 +56,7 @@ function GoControl({ onGo }: { onGo: () => void }) {
 
 /**
  * Counts the state changes of a ready headline (running to failed). The first one on screen is not a change, so a page
- * that opens already failed does not fade; a later change remounts the block with `data-fade`, which run-motion.css
- * fades in over 120 ms.
+ * that opens already failed does not fade; a later change sets `data-fade`, which run-motion.css fades in over 120 ms.
  */
 function useStateChange(kind: HeadlineKind, ready: boolean): number {
   const [seen, setSeen] = useState<{ kind: HeadlineKind | null; changes: number }>({
@@ -105,11 +104,12 @@ export function RunHeadline(props: HeadlineProps) {
   const m = props.model;
   return (
     <div
-      key={changes}
       className="hl"
       data-kind={m.kind}
       data-variant="ready"
-      data-fade={changes > 0 || undefined}
+      // Alternates "a"/"b" so each change swaps the animation name and replays the fade without a remount, which
+      // would drop the focus of a Go button the reader is on (review P3-9).
+      data-fade={changes === 0 ? undefined : changes % 2 ? "a" : "b"}
     >
       <p className="hl-lead" data-testid="headline">
         {m.live && <span className="hl-dot" aria-hidden="true" />}
