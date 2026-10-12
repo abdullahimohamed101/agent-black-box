@@ -136,3 +136,14 @@ Both reads agreed on every row above. The Gemini rows under-estimate a call whos
 - Gemini batch (half price), Gemini audio input and context-cache storage fees: no event field for modality; batch needs a Gemini integration.
 - Anthropic `priority` service tier (a capacity commitment, no per-token figure on the pricing page) and OpenAI `scale`/`auto`: unpriced with a reason.
 - OpenAI cached prices shown rounded by the vendor (0.13, 0.138) are kept as shown.
+
+## Review follow-up (read 2026-10-12)
+
+- **Shutdowns.** `developers.openai.com/api/docs/deprecations`, read twice (fetch and the page text): `davinci-002`, `babbage-002`, `gpt-3.5-turbo-1106` and
+  `gpt-3.5-turbo-instruct` were shut down on 2026-09-28; they are not entered in `2026-10-12b` (the first two of the earlier batch's rows cannot be edited and remain).
+  `gpt-3.5-turbo`, `gpt-3.5-turbo-0125`, `gpt-4o-2024-05-13`, `gpt-4-turbo-2024-04-09`, `gpt-4-0613`, `o1`, `o1-pro`, `o3-mini` and `o4-mini` shut down on 2026-10-23;
+  their `2026-10-12b` rows have `valid_to` 2026-10-23 and say so in `source`. Dated snapshots on the page (for example `o3-2025-04-16`, 2026-12-11) are not our IDs.
+- **Gemini.** Read twice (fetch and the page's own tables): `gemini-3.5-flash-lite` caches at $0.03 for every modality, so `2026-10-12b` carries a corrected row from 2026-10-09
+  (the published `2026-10-09` row left the cache price unset). A plain `gemini-3.5-flash` no longer appears on the page (both reads); its published row stays, nothing can end-date it.
+- **Row counts.** 206 batch-2 rows and 259 built-in rows (before the review: 212 and 265); `apps/api/tests/golden/batch2_entries.txt` pins every batch-2 row.
+

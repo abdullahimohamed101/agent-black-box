@@ -37,8 +37,7 @@ The SDK helper is `LlmCall.record_usage(..., cache_write_tokens=, cache_write_1h
 lowercase word or a non-negative integer are dropped, never guessed. The LangGraph and MCP adapters do not report them (their frameworks do not expose them).
 
 **Price entries.** `PriceEntry` gains `service_tier` (default `standard`; `None` for overrides, which price every tier), `cache_write_per_million`,
-`cache_write_1h_per_million`, `regional_multiplier` and `max_prompt_tokens`. Selection adds the tier as a filter, and ranks an exact-tier row above an
-any-tier one; among otherwise equal rows the later `pricing_version` wins, so a batch that re-publishes a price supersedes the earlier one without editing it.
+`cache_write_1h_per_million`, `regional_multiplier` and `max_prompt_tokens`. Selection adds the tier as a filter (no rank: an any-tier row exists only as an override); among otherwise equal rows the later `pricing_version` wins, so a batch that re-publishes a price supersedes the earlier one without editing it.
 
 **Engine rules** (`CostEngine.calculate`):
 - A tier that is not one of the five is **unpriced** with reason `unknown_service_tier`; a known tier the model has no row for (or a prompt above a
@@ -47,7 +46,8 @@ any-tier one; among otherwise equal rows the later `pricing_version` wins, so a 
   the in-memory `CostLine.unpriced_reason` and is not stored (no migration; the line's `source` is `unpriced`).
 - Cache-write tokens are bounded by the prompt (`min(writes, input - cached)`), billed at the entry's write price (the 1-hour price falls back to the
   5-minute one, which falls back to the input price), and their cost is reported inside `input_cost`.
-- `regional_multiplier` scales input, cached, write and output cost, not the per-request price; overrides are never scaled.
+- `regional_multiplier` scales input, cached, write and output cost, not the per-request price; overrides are never scaled. `regional_regions` lists the residency words a vendor prices (Anthropic: only `us`, so `eu` is `no_regional_price`); a residency value that is not a string is also unpriced. A tier value that is not a string is `unknown_service_tier`.
+- One-hour write tokens are written tokens by definition: `writes = max(cache_write_tokens, cache_write_1h_tokens)`, so a client that sends only the 1-hour count is not billed the input price for them.
 - Stacking is as the page states it and nothing more. Anthropic: Batch (x0.5), Fast mode (x2, three Opus models, not with Batch), cache multipliers
   (reads per model, writes 1.25x / 2x the input price) and US-only inference (x1.1, Claude 4.6 and later) all stack. OpenAI: every tier has its own
   stated row (Batch and Flex are not always half, Fast is 2x on the newest models but 2.5x on gpt-5.5 and 1.75x on gpt-4.1); the regional uplift is
@@ -65,5 +65,5 @@ modality (text price only). Evidence and the entries left out are in `docs/resea
 
 ## Consequences
 Events that name a tier, a region or cache writes are priced from the vendor's stated figure or flagged; history is unchanged. The price list API and
-the settings page show the tier and prompt-size bounds, because one model now has several rows. Remaining gaps are in KI-050: Gemini batch and
-caching-storage fees, OpenAI Priority-like tiers outside the five, regional combinations no page prices, audio and other modality prices.
+the settings page show the tier and prompt-size bounds, because one model now has several rows. Remaining gaps are in KI-050: Gemini Batch, Flex and Priority (1.8x) prices and
+caching-storage fees (stated by the page, not entered), OpenAI's generic regional rule for models whose page does not repeat it, OpenAI Priority-like tiers outside the five, regional combinations no page prices, audio and other modality prices.
