@@ -1885,8 +1885,13 @@ td a {
 }
 .evidence td {
   padding: 0.3rem 0.75rem;
-  height: 2.25rem;
+  height: 36px; /* ROW_HEIGHT in EvidenceList.tsx: the virtualizer's fixed row size */
+  box-sizing: border-box;
   white-space: nowrap;
+}
+.evidence tr.evidence-pad td {
+  padding: 0;
+  border: 0;
 }
 .evidence td.evidence-what {
   min-width: 0;
