@@ -3,7 +3,7 @@
 The web UI is an application, not a centred page: a left rail, a slim top bar, full-width content, and a run page whose header is an
 instrument panel over a work area that fills the viewport. This file records what shipped and the rules the stylesheets follow. The
 original three-part working document (slop inventory, polish plan, motion audit) was cut down to this once the phase landed; the
-decisions it produced are D1-D16 in `docs/plans/active/phase-21-ui-shell-and-design-pass.md` and the screenshots are in
+decisions it produced are D1-D16 in `docs/plans/completed/phase-21-ui-shell-and-design-pass.md` and the screenshots are in
 `docs/screenshots/phase-21/{before,after}/`.
 
 Concept renders (the target look; the shipped UI follows them except where "Left out" says so): `docs/design/concepts/app-run-story-1600x1000.png`,
