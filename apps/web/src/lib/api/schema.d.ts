@@ -1632,6 +1632,11 @@ export interface components {
              * @description Factor for calls on a regional endpoint; null means no stated price.
              */
             regional_multiplier: string | null;
+            /**
+             * Regional Regions
+             * @description The residency values the factor is stated for; null means any region.
+             */
+            regional_regions: string[] | null;
             /** Request Price */
             request_price: string;
             /**

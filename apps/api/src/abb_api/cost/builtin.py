@@ -578,6 +578,9 @@ def _anthropic_v2() -> tuple[PriceEntry, ...]:
                     cache_write_per_million=write5 * scale,
                     cache_write_1h_per_million=write1h * scale,
                     regional_multiplier=_REGIONAL_UPLIFT if regional else None,
+                    regional_regions=("us",)
+                    if regional
+                    else None,  # the only value the page offers
                 )
             )
 

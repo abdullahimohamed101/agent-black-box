@@ -73,6 +73,9 @@ class PriceOut(BaseModel):
     regional_multiplier: Decimal | None = Field(
         description="Factor for calls on a regional endpoint; null means no stated price."
     )
+    regional_regions: list[str] | None = Field(
+        description="The residency values the factor is stated for; null means any region."
+    )
 
 
 class PricingOut(BaseModel):
@@ -100,6 +103,7 @@ def _out(entry: PriceEntry) -> PriceOut:
         cache_write_per_million=entry.cache_write_per_million,
         cache_write_1h_per_million=entry.cache_write_1h_per_million,
         regional_multiplier=entry.regional_multiplier,
+        regional_regions=list(entry.regional_regions) if entry.regional_regions else None,
     )
 
 

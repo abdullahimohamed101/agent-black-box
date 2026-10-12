@@ -2549,6 +2549,21 @@
             "description": "Factor for calls on a regional endpoint; null means no stated price.",
             "title": "Regional Multiplier"
           },
+          "regional_regions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The residency values the factor is stated for; null means any region.",
+            "title": "Regional Regions"
+          },
           "request_price": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Request Price",
@@ -2607,7 +2622,8 @@
           "max_prompt_tokens",
           "cache_write_per_million",
           "cache_write_1h_per_million",
-          "regional_multiplier"
+          "regional_multiplier",
+          "regional_regions"
         ],
         "title": "PriceOut",
         "type": "object"

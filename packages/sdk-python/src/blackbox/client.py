@@ -315,7 +315,8 @@ class LlmCall(Span):
         """`cost_usd` is your estimate; `provider_cost_usd` the provider's own (ADR-040).
 
         Billing modifiers (ADR-044), all optional: `cache_write_tokens` (part of `input_tokens`;
-        `cache_write_1h_tokens` is the part of those with the 1-hour lifetime), `service_tier`
+        `cache_write_1h_tokens` is the part of those with the 1-hour lifetime and counts as written
+        even if you omit the total), `service_tier`
         (`standard`, `batch`, `flex`, `fast`, `ultrafast`) and `data_residency` (`global`, `us`,
         `eu` ...). Omit what you do not know: the server then prices the call as standard."""
         for key, value in (

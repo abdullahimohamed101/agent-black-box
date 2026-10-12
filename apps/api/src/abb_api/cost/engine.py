@@ -77,10 +77,18 @@ def _tokens(attrs: dict[str, Any], key: str) -> int | None:
     return min(value, MAX_TOKENS)
 
 
+_UNREADABLE = "\0"  # a modifier that is present but not a string: matches no vendor word
+
+
 def _word(attrs: dict[str, Any], key: str) -> str | None:
+    """The attribute as a lowercase word; None when absent or blank. A value of any other type
+    (it can only arrive past validation) is `_UNREADABLE`, never quietly "absent"."""
     value = attrs.get(key)
-    word = value.strip().lower() if isinstance(value, str) else ""
-    return word or None
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return _UNREADABLE
+    return value.strip().lower() or None
 
 
 def _usd(attrs: dict[str, Any], key: str) -> tuple[Decimal | None, bool]:
@@ -122,8 +130,10 @@ class CostEngine:
         reported, reported_clamped = _usd(attrs, "cost.provider_usd")
         client, client_clamped = _usd(attrs, "cost.estimated_usd")
 
-        writes_attr = _tokens(attrs, "llm.cache_write_tokens") or 0
         writes_1h_attr = _tokens(attrs, "llm.cache_write_1h_tokens") or 0
+        # One-hour tokens are written tokens by definition, so they count even when a client sent
+        # that count without the total (Anthropic always sends both).
+        writes_attr = max(_tokens(attrs, "llm.cache_write_tokens") or 0, writes_1h_attr)
         tier = _word(attrs, "llm.service_tier") or STANDARD
         residency = _word(attrs, "llm.data_residency")
         regional = residency is not None and residency != "global"
@@ -155,7 +165,12 @@ class CostEngine:
                     )
                     reason = NO_PRICE_FOR_TIER if priced_elsewhere is not None else NO_PRICE
                 elif regional and entry.origin != "override":
-                    if entry.regional_multiplier is None:
+                    regions = entry.regional_regions
+                    if (
+                        entry.regional_multiplier is None
+                        or residency == _UNREADABLE
+                        or (regions is not None and residency not in regions)
+                    ):
                         entry, reason = None, NO_REGIONAL_PRICE
                     else:
                         factor = entry.regional_multiplier

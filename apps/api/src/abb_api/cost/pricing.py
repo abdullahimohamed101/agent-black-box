@@ -51,6 +51,9 @@ class PriceEntry:
     # only where the vendor's page states it for this model and tier; None: no stated price, so
     # such a call is unpriced. Overrides are never scaled.
     regional_multiplier: Decimal | None = None
+    # The residency words the vendor prices (Anthropic offers only "us"); None: any region, for a
+    # vendor whose page states one rule for all its regional endpoints. Another word is unpriced.
+    regional_regions: tuple[str, ...] | None = None
 
     def applies(
         self,
@@ -76,19 +79,19 @@ class PriceEntry:
             return False
         return fnmatchcase(model.lower(), self.model_pattern.lower())
 
-    def specificity(self) -> tuple[int, int, int, int, int, int, datetime, datetime, str]:
-        """Bigger wins: override, project scope, provider-specific, longer literal, a row for this
-        very tier over an any-tier one, higher satisfied prompt tier (before the start date, so a
-        tier beats its base row whatever their dates), newer start, newer row (so a correction with
-        the same pattern and start replaces the earlier one), later pricing version (so a batch
-        that re-publishes a price with the same start supersedes the earlier batch)."""
+    def specificity(self) -> tuple[int, int, int, int, int, datetime, datetime, str]:
+        """Bigger wins: override, project scope, provider-specific, longer literal, higher satisfied
+        prompt tier (before the start date, so a tier beats its base row whatever their dates),
+        newer start, newer row (so a correction with the same pattern and start replaces the
+        earlier one), later pricing version (so a batch that re-publishes a price with the same
+        start supersedes the earlier batch). The service tier is a filter, not a rank: an
+        any-tier row exists only as an override, and overrides win on their origin."""
         literal = sum(1 for ch in self.model_pattern if ch not in "*?")
         return (
             1 if self.origin == "override" else 0,
             1 if self.project_id is not None else 0,
             1 if self.provider is not None else 0,
             literal,
-            1 if self.service_tier is not None else 0,
             self.min_prompt_tokens if self.min_prompt_tokens is not None else -1,
             self.valid_from,
             self.created_at or _EPOCH,

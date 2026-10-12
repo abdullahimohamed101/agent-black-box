@@ -41,6 +41,7 @@ def call(
     tokens_in: int = M,
     tokens_out: int = 0,
     engine: CostEngine = ENGINE,
+    raw: bool = False,
     **attrs: Any,
 ) -> CostLine:
     event = llm(
@@ -52,6 +53,7 @@ def call(
             **attrs,
         },
         day=13,
+        raw=raw,
     )
     return engine.calculate(event)
 
@@ -740,3 +742,44 @@ def test_gemini_3_5_flash_lite_cached_tokens_use_the_stated_cache_price() -> Non
         pricing_version="2026-10-09",
     )
     assert pinned.total == D("0.30")  # the published version still reproduces itself
+
+
+def test_the_regional_factor_scales_cached_tokens_too() -> None:
+    eu = {"llm.data_residency": "eu", "llm.cached_input_tokens": 100_000}
+    line = call("openai", "gpt-6.1-sol", tokens_in=100_000, **eu)
+    assert line.cached_cost == D("100000") * D("0.10") * D("1.1") / M
+    plain = call("openai", "gpt-6.1-sol", tokens_in=100_000, **{"llm.cached_input_tokens": 100_000})
+    assert plain.cached_cost == D("0.01")
+
+
+def test_anthropic_prices_only_the_residency_the_page_offers() -> None:
+    for word in ("us", " US "):
+        assert total("anthropic", "claude-opus-5-5", **{"llm.data_residency": word}) == D("4.4")
+    for word in ("eu", "apac", "us-east"):
+        line = call("anthropic", "claude-opus-5-5", **{"llm.data_residency": word})
+        assert (line.source, line.unpriced_reason) == ("unpriced", NO_REGIONAL_PRICE), word
+    # OpenAI states a generic rule for its regional endpoints, so its stated models take any region.
+    assert total("openai", "gpt-6.1-sol", tokens_in=100_000, **{"llm.data_residency": "eu"}) > 0
+
+
+@pytest.mark.parametrize("bad", [7, True, ["batch"], {"a": 1}, 1.5])
+def test_a_non_string_tier_is_unknown_not_standard(bad: Any) -> None:
+    line = call("openai", "gpt-4.1", tokens_in=1000, raw=True, **{"llm.service_tier": bad})
+    assert (line.source, line.unpriced_reason) == ("unpriced", UNKNOWN_TIER)
+
+
+@pytest.mark.parametrize("bad", [7, True, ["us"], {"a": 1}])
+def test_a_non_string_residency_is_a_regional_call_nobody_priced(bad: Any) -> None:
+    line = call("openai", "gpt-6.1-sol", tokens_in=1000, raw=True, **{"llm.data_residency": bad})
+    assert (line.source, line.unpriced_reason) == ("unpriced", NO_REGIONAL_PRICE)
+
+
+def test_one_hour_writes_without_a_write_total_still_count_as_writes() -> None:
+    # The 1-hour tokens are written tokens by definition; a client that sends only that count
+    # (Anthropic always sends the total) is charged the 1-hour price for them, not the input price.
+    only = {"llm.cache_write_1h_tokens": 1_000_000}
+    assert total("anthropic", "claude-opus-5-5", **only) == D(8)
+    both = {"llm.cache_write_tokens": 1_000_000, **only}
+    assert total("anthropic", "claude-opus-5-5", **both) == D(8)
+    # Never more than the prompt holds.
+    assert total("anthropic", "claude-opus-5-5", tokens_in=500_000, **only) == D(4)
