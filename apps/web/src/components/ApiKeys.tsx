@@ -16,11 +16,13 @@ export function ApiKeys() {
   const revoke = useRevokeKey();
   return (
     <>
-      <h1>API keys</h1>
-      <p className="muted">
-        Keys let SDKs and tools send events and read runs. A token is shown once, when the key is
-        created.
-      </p>
+      <div className="page-head">
+        <h1>API keys</h1>
+        <p className="muted">
+          Keys let SDKs and tools send events and read runs. A token is shown once, when the key is
+          created.
+        </p>
+      </div>
       {canCreate && <CreateKeyForm />}
       {keys.isPending ? (
         <Loading label="Loading API keys" />

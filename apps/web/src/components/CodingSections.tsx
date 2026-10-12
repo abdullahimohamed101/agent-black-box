@@ -40,7 +40,7 @@ function Badge({
   testId?: string;
 }) {
   return (
-    <span className={`badge badge-${tone}`} data-testid={testId}>
+    <span className="badge" data-tone={tone} data-testid={testId}>
       {children}
     </span>
   );

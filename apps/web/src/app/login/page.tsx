@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { safeReturnTo, fixturesMode } from "@/server/config";
 import { loadMe } from "@/server/session";
+import { Brand } from "@/components/shell/Brand";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,8 @@ export default async function LoginPage({
   const message = params.error ? (MESSAGES[params.error] ?? MESSAGES.login_failed) : null;
   const href = `/api/auth/login${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ""}`;
   return (
-    <main>
+    <main className="auth">
+      <Brand />
       <h1>Sign in to Agent Black Box</h1>
       {message && (
         <p role="alert" className="notice">

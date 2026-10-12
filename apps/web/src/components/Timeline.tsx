@@ -20,6 +20,9 @@ type Props = {
   onActivate: (key: string) => void;
   onEscape: () => void;
   onJumpToError: () => void;
+  /** Events that just arrived on the live stream (tint) and the one a jump landed on (ring). Decoration only. */
+  newIds?: ReadonlySet<string>;
+  landedId?: string | null;
 };
 
 const rowId = (key: string) => `tl-${key}`;
@@ -38,6 +41,8 @@ export function Timeline({
   onActivate,
   onEscape,
   onJumpToError,
+  newIds,
+  landedId,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // TanStack Virtual returns unmemoizable functions; the React Compiler skips this component, which is acceptable here.
@@ -64,6 +69,8 @@ export function Timeline({
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // Keyboard moves repeat fast: row transitions are switched off until the pointer is used again (see globals.css).
+    scrollRef.current?.setAttribute("data-nav", "keyboard");
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const cur = selectedIndex < 0 ? -1 : selectedIndex;
     const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 400) / ROW_HEIGHT) - 1);
@@ -113,6 +120,7 @@ export function Timeline({
       aria-label={`Run timeline, ${rows.length} rows. Use j and k or arrow keys to move, Enter to open, e to jump to the first error.`}
       aria-activedescendant={selectedKey ? rowId(selectedKey) : undefined}
       onKeyDown={onKeyDown}
+      onPointerDown={() => scrollRef.current?.removeAttribute("data-nav")}
     >
       <div style={{ height: virt.getTotalSize(), position: "relative" }}>
         {virt.getVirtualItems().map((v) => {
@@ -175,6 +183,8 @@ export function Timeline({
               data-first-error={e.event_id === firstErrorId || undefined}
               data-indented={row.indented || undefined}
               data-retry={isRetry(e) || undefined}
+              data-arrived={newIds?.has(e.event_id) || undefined}
+              data-landed={e.event_id === landedId || undefined}
               style={style}
               onClick={() => {
                 onSelect(row.key);

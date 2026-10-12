@@ -8,6 +8,7 @@ import {
   type Viewer,
 } from "./evaluations";
 import { fixtureRuns } from "./index";
+import { withholdEvent, withholdSpan } from "./withhold";
 import { FixtureQueryError, fixtureSearch } from "./search";
 
 export type Reply = { status: number; body: unknown };
@@ -121,7 +122,7 @@ export function fixtureReply(
   if (!f) return notFound("RUN_NOT_FOUND", "Run not found.");
   if (!sub) return { status: 200, body: f.run };
   if (sub === "spans") {
-    const p = page(f.spans, q, 2000, 500);
+    const p = page(viewer.content ? f.spans : f.spans.map(withholdSpan), q, 2000, 500);
     return p ? { status: 200, body: p } : invalid("Malformed cursor.");
   }
   if (sub === "findings" && !eventId) {
@@ -138,7 +139,9 @@ export function fixtureReply(
   if (sub !== "events") return notFound("NOT_FOUND", "Not found.");
   if (eventId) {
     const e = f.events.find((x) => x.event_id === eventId);
-    return e ? { status: 200, body: e } : notFound("EVENT_NOT_FOUND", "Event not found.");
+    return e
+      ? { status: 200, body: viewer.content ? e : withholdEvent(e, true) }
+      : notFound("EVENT_NOT_FOUND", "Event not found.");
   }
   let evs: EventOut[] = f.events;
   const types = q.getAll("event_type");
@@ -154,7 +157,9 @@ export function fixtureReply(
     status: 200,
     body: {
       ...p,
-      items: p.items.map((e) => ({ ...e, payload: null })),
+      items: p.items.map((e) =>
+        viewer.content ? { ...e, payload: null } : withholdEvent(e, false),
+      ),
       ordering_mode: f.run.ordering_mode,
     },
   };

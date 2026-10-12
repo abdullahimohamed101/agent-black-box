@@ -66,11 +66,13 @@ export function Dashboard({ base }: { base: Base }) {
           Updating…
         </p>
       )}
-      <h1>Dashboard</h1>
-      <p className="muted">
-        All {d.runs.total.toLocaleString("en-US")} runs started in the last {DAYS} days.{" "}
-        <Link href={analyticsPath(base)}>Cost and reliability analytics →</Link>
-      </p>
+      <div className="page-head">
+        <h1>Dashboard</h1>
+        <p className="muted">
+          All {d.runs.total.toLocaleString("en-US")} runs started in the last {DAYS} days.{" "}
+          <Link href={analyticsPath(base)}>Cost and reliability analytics →</Link>
+        </p>
+      </div>
       <dl className="stats">
         <Stat
           label="Success rate"

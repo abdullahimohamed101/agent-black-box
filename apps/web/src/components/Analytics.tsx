@@ -121,13 +121,15 @@ export function Analytics({ base }: { base: Base }) {
 
   return (
     <>
-      <h1>Analytics</h1>
-      <div className="toolbar" role="group" aria-label="Time window">
-        {WINDOW_OPTIONS.map((d) => (
-          <button key={d} type="button" aria-pressed={d === days} onClick={() => setDays(d)}>
-            {d === 1 ? "Today" : `Last ${d} days`}
-          </button>
-        ))}
+      <div className="page-head">
+        <h1>Analytics</h1>
+        <div className="toolbar" role="group" aria-label="Time window">
+          {WINDOW_OPTIONS.map((d) => (
+            <button key={d} type="button" aria-pressed={d === days} onClick={() => setDays(d)}>
+              {d === 1 ? "Today" : `Last ${d} days`}
+            </button>
+          ))}
+        </div>
       </div>
       <p className="muted">
         Windows are whole UTC days; a run counts in the day it started. Percentiles are approximate

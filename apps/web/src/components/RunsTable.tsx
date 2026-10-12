@@ -101,11 +101,10 @@ export function RunsTable({
                 <td>
                   <StatusBadge status={r.status} />
                 </td>
-                <td>
+                <td className="name">
                   <Link href={runPath(base, r.id)}>{r.name ?? r.id}</Link>
                   {retries ? (
                     <span className="tag">
-                      {" "}
                       {retries} retr{retries === 1 ? "y" : "ies"}
                     </span>
                   ) : null}
