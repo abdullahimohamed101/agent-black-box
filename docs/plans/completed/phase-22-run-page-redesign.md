@@ -1,6 +1,6 @@
 # Phase 22: Run-page redesign, "Flight recorder trace"
 
-Status: Implemented; pending merge (PR open for review, 2026-10-12). Adversarial review done, every finding fixed or dispositioned below. Decisions D1-D12 were settled with the user one question at a time (grill, 2026-10-12).
+Status: Completed (merged 2026-10-12, PR #132). Adversarial review done, every finding fixed or dispositioned below. Decisions D1-D12 were settled with the user one question at a time (grill, 2026-10-12).
 Owner: web + api. Branch: `feature/phase-22-run-redesign` (from `main` `c7bf3e8`).
 Depends on: Phase 21 (merged, PR #119). Phase 12 (visual replay) builds on this page next.
 Spec refs: §62 invariants (INV-2 derived state rebuildable, INV-5 withheld content), `docs/design/ui-direction.md`, ADR-110.
@@ -137,7 +137,7 @@ Acceptance 12: every existing test or spec this branch changed (`git diff origin
 
 ## Code review dispositions
 
-Review: `docs/plans/active/phase-22-code-review.md` (0 P0, 3 P1, 6 P2, 12 P3). Each finding has its fail-before test (the test was run against the old code and failed, or, where noted, the failure is by reasoning).
+Review: `docs/plans/completed/phase-22-code-review.md` (0 P0, 3 P1, 6 P2, 12 P3). Each finding has its fail-before test (the test was run against the old code and failed, or, where noted, the failure is by reasoning).
 
 | Finding | Disposition | Fix and test |
 | --- | --- | --- |
