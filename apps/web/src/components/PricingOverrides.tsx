@@ -26,7 +26,7 @@ export function PricingOverrides() {
       ) : prices.data.length === 0 ? (
         <Empty title="No prices" />
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="Model prices">
           <table>
             <caption className="sr-only">Model prices</caption>
             <thead>
