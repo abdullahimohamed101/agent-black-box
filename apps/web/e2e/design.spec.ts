@@ -168,3 +168,65 @@ test.describe("status grammar", () => {
     });
   }
 });
+
+test.describe("run header", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  for (const [name, url] of [
+    ["failed run", `${BASE}/runs/${RUN(2)}`],
+    ["multi-agent run", `${BASE}/runs/${RUN(7)}`],
+  ] as const)
+    test(`the header is an instrument panel, not a page: ${name}`, async ({ page }) => {
+      await page.goto(url);
+      await expect(page.locator(".run-head .stats .stat").first()).toBeVisible();
+      const head = (await page.locator(".run-head").boundingBox())!;
+      expect(head.height).toBeLessThanOrEqual(190);
+      // one readout strip on one row at this width
+      const tops = await page
+        .locator(".run-head .stats .stat")
+        .evaluateAll(
+          (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size,
+        );
+      expect(tops).toBe(1);
+      await expect(page.getByTestId("headline")).toBeVisible();
+    });
+
+  test("annunciator grammar: one red readout and one amber readout on the failed run", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await expect(page.locator(".run-head .stats .stat").first()).toBeVisible();
+    const colours = await page.evaluate(() => {
+      const probe = (v: string) => {
+        const e = document.createElement("span");
+        e.style.color = `var(${v})`;
+        document.body.append(e);
+        const c = getComputedStyle(e).color;
+        e.remove();
+        return c;
+      };
+      const bad = probe("--bad");
+      const warn = probe("--warn");
+      // the status badge is the state itself and is red on a failed run by design; everything else in the header counts
+      const els = [...document.querySelectorAll(".run-head *")].filter((e) => !e.closest(".badge"));
+      const direct = (c: string) =>
+        els.filter(
+          (e) =>
+            getComputedStyle(e).color === c &&
+            [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent?.trim()),
+        );
+      return {
+        red: direct(bad).map((e) => e.textContent),
+        amber: direct(warn).map((e) => e.textContent),
+      };
+    });
+    expect(colours.red).toEqual(["4"]);
+    expect(colours.amber).toEqual(["2"]);
+  });
+
+  test("Show it opens the failing event from the header", async ({ page }) => {
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await page.getByRole("button", { name: "Show it" }).click();
+    await expect(page.getByRole("dialog")).toContainText("ConnectionTimeout");
+  });
+});

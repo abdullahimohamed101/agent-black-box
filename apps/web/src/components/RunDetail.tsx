@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isActive, type RunOut } from "@/lib/api/types";
@@ -19,7 +18,7 @@ import { codingKind } from "@/lib/coding";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
 import { runBounds } from "@/lib/waterfall";
-import { runsPath, type Base } from "@/lib/routes";
+import type { Base } from "@/lib/routes";
 import {
   CLASS_LABELS,
   CLASS_ORDER,
@@ -43,9 +42,9 @@ import { Timeline } from "./Timeline";
 import { ViewSwitch, type RunView } from "./ViewSwitch";
 import { Waterfall } from "./Waterfall";
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, tone }: { label: string; value: string; tone?: "warn" | "bad" }) {
   return (
-    <div className="stat">
+    <div className="stat" data-tone={tone}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -78,6 +77,23 @@ export function headline(
     default:
       return `In progress.${first}`;
   }
+}
+
+/**
+ * The headline cut into the parts the header lays out: the lead sentence, the "It recovered from an error." clause (a
+ * successful run that hit an error) and the first-error sentence that carries the inline "Show it" control. The text is
+ * `headline`'s own, so the two can never disagree.
+ */
+export function headlineParts(
+  run: RunOut,
+  errorText: string | null,
+  errorOffsetMs: number | null,
+): { lead: string; recovered: string; error: string | null } {
+  const lead = headline(run, null, null);
+  if (!errorText) return { lead, recovered: "", error: null };
+  const tail = headline(run, errorText, errorOffsetMs).slice(lead.length);
+  const at = tail.indexOf("First error at");
+  return { lead, recovered: at > 0 ? tail.slice(0, at) : " ", error: tail.slice(Math.max(at, 0)) };
 }
 
 /** Live-connection badge. State is spelled out in words and a glyph, never colour alone. */
@@ -123,7 +139,6 @@ function LiveBar({
 
 export function RunDetail({
   runId,
-  base,
   live = true,
 }: {
   runId: string;
@@ -293,60 +308,72 @@ export function RunDetail({
   const allGroups = groupKeys(buildRows(filtered, new Set()));
   const errText = err ? describe(err) || err.event_type : null;
 
+  const retries = num(s["retry_count"]) ?? 0;
+  const errors = num(s["error_count"]) ?? 0;
+  const models = Array.isArray(s["models"]) ? (s["models"] as string[]) : [];
+  const parts = headlineParts(r, errText, err ? Date.parse(err.occurred_at) - t0 : null);
+
   return (
     <div className="run-detail">
-      <p className="crumbs">
-        <Link href={runsPath(base)}>← Runs</Link>
-      </p>
       <header className="run-head">
-        <h1>{r.name ?? r.id}</h1>
-        <StatusBadge status={r.status} />
-      </header>
-      <p className="headline" data-testid="headline">
-        {headline(r, errText, err ? Date.parse(err.occurred_at) - t0 : null)}
-      </p>
-      {stream.state !== "off" && stream.state !== "ended" && (
-        <LiveBar state={stream.state} status={nowDoing} />
-      )}
-      {r.summary_state !== "current" && (
-        <p role="status" className="notice">
-          {r.summary_state === "processing"
-            ? "Summary is updating; figures below may lag the timeline."
-            : "Summary failed to update and needs an operator; the timeline is still accurate."}
-        </p>
-      )}
-      <dl className="stats" aria-label="Run summary">
-        <Metric label="Duration" value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))} />
-        <Metric label="Cost" value={formatCost(num(s["estimated_cost_usd"]))} />
-        <Metric
-          label="Tokens"
-          value={`${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`}
-        />
-        <Metric label="Model calls" value={formatInt(num(s["llm_calls"]))} />
-        <Metric label="Tool calls" value={formatInt(num(s["tool_calls"]))} />
-        <Metric label="Retries" value={formatInt(num(s["retry_count"]))} />
-        <Metric label="Errors" value={formatInt(num(s["error_count"]))} />
-        <Metric label="Files changed" value={formatInt(num(s["files_modified"]))} />
-      </dl>
-      <p className="muted meta">
-        Agent {r.agent_id ?? "—"} · ordered by {ev.data?.pages[0]?.ordering_mode ?? r.ordering_mode}{" "}
-        · started {formatTimestamp(r.started_at)} · run {r.id}
-        {Array.isArray(s["models"]) && s["models"].length > 0 && (
-          <> · {(s["models"] as string[]).join(", ")}</>
-        )}
-      </p>
-
-      {err && (
-        <div className="banner banner-bad" data-testid="first-error">
-          <span>
-            <strong>✕ First error</strong> at {formatOffset(Date.parse(err.occurred_at) - t0)}:{" "}
-            {errText}
+        <div className="run-title">
+          <h1>{r.name ?? r.id}</h1>
+          <StatusBadge status={r.status} />
+          {retries > 0 && (
+            <span className="tag">
+              {retries} retr{retries === 1 ? "y" : "ies"}
+            </span>
+          )}
+          <span className="id muted" title={r.id}>
+            {r.id.slice(0, 4)}…{r.id.slice(-6)} · {r.agent_id ?? "—"}
+            {models.length > 0 && <> · {models.join(", ")}</>} · ordered by{" "}
+            {ev.data?.pages[0]?.ordering_mode ?? r.ordering_mode} · started{" "}
+            {formatTimestamp(r.started_at)}
           </span>
-          <button type="button" onClick={jumpToError}>
-            Show it
-          </button>
         </div>
-      )}
+        <p className="headline" data-testid="headline">
+          {parts.lead}
+          {parts.error && (
+            <>
+              {parts.recovered}
+              <span data-testid="first-error">
+                {parts.error}{" "}
+                <button type="button" className="linkish" onClick={jumpToError}>
+                  Show it <kbd aria-hidden="true">e</kbd>
+                </button>
+              </span>
+            </>
+          )}
+        </p>
+        {stream.state !== "off" && stream.state !== "ended" && (
+          <LiveBar state={stream.state} status={nowDoing} />
+        )}
+        {r.summary_state !== "current" && (
+          <p role="status" className="notice">
+            {r.summary_state === "processing"
+              ? "Summary is updating; figures below may lag the timeline."
+              : "Summary failed to update and needs an operator; the timeline is still accurate."}
+          </p>
+        )}
+        <dl className="stats" aria-label="Run summary">
+          <Metric label="Duration" value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))} />
+          <Metric label="Cost" value={formatCost(num(s["estimated_cost_usd"]))} />
+          <Metric
+            label="Tokens"
+            value={`${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`}
+          />
+          <Metric label="Model calls" value={formatInt(num(s["llm_calls"]))} />
+          <Metric label="Tool calls" value={formatInt(num(s["tool_calls"]))} />
+          <Metric
+            label="Retries"
+            value={formatInt(retries)}
+            tone={retries > 0 ? "warn" : undefined}
+          />
+          <Metric label="Errors" value={formatInt(errors)} tone={errors > 0 ? "bad" : undefined} />
+          {multiAgent && <Metric label="Agents" value={formatInt(agents.length)} />}
+          <Metric label="Files changed" value={formatInt(num(s["files_modified"]))} />
+        </dl>
+      </header>
 
       <Findings
         runId={runId}

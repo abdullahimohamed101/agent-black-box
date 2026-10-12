@@ -478,33 +478,117 @@ h2 {
   font-size: 1.1rem;
   margin: 1.25rem 0 0.5rem;
 }
+/* ---- Readout strip (Phase 21): value in mono, small-caps label, hairlines instead of tiles ---- */
 .stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  gap: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
   margin: 0.75rem 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 .stat {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  background: var(--surface);
+  min-width: 6rem;
+  margin-right: 1.25rem;
+  padding: 0.5rem 1.25rem 0.55rem 0;
+  border-right: 1px solid var(--border);
+}
+.stat:last-child {
+  margin-right: 0;
+  padding-right: 0;
+  border-right: 0;
 }
 .stat dt {
-  font-size: 0.78rem;
+  font: 600 0.66rem/1.3 var(--cond);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: var(--muted);
 }
 .stat dd {
-  margin: 0.1rem 0 0;
-  font-size: 1.15rem;
-  font-weight: 600;
+  margin: 0.05rem 0 0;
+  font: 500 1.05rem/1.25 var(--mono);
   overflow-wrap: anywhere;
 }
 .stat small {
   display: block;
-  font-size: 0.75rem;
-  font-weight: 400;
+  font: 400 0.75rem/1.35 var(--sans);
+  color: var(--muted);
 }
+.stat[data-tone="bad"] dd {
+  color: var(--bad);
+}
+.stat[data-tone="warn"] dd {
+  color: var(--warn);
+}
+
+/* ---- Run header: instrument panel over the work area ---- */
+.run-head {
+  padding: 0.75rem 1.25rem 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.run-head .stats {
+  margin: 0.6rem 0 0;
+  border-bottom: 0;
+}
+.run-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+}
+.run-title h1 {
+  margin: 0;
+  font: 600 1.375rem/1.2 var(--cond);
+  overflow-wrap: anywhere;
+}
+.id {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.headline {
+  margin: 0.4rem 0 0;
+  font-size: 0.9375rem;
+}
+.linkish {
+  padding: 0.1rem 0.35rem;
+  margin: -0.1rem 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.linkish:hover {
+  text-decoration: underline;
+}
+.linkish kbd {
+  margin-left: 0.15rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.live-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+  align-items: center;
+  margin: 0.5rem 0 0;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--border);
+}
+.shell main.page:has(> .run-detail) {
+  padding: 0;
+}
+.run-detail > :not(.run-head) {
+  margin-inline: 1.25rem;
+}
+.run-head .notice {
+  margin: 0.5rem 0 0;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -664,20 +748,6 @@ select {
   background: var(--bg);
   color: var(--fg);
 }
-.headline {
-  font-size: 1.05rem;
-  margin: 0.25rem 0 0.5rem;
-}
-.run-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-}
-.meta {
-  font-size: 0.82rem;
-  overflow-wrap: anywhere;
-}
 /* Tone panels: a notice, an empty or error state, withheld content, a search problem. One rule; the tone is a left bar. */
 .state,
 .notice,
@@ -710,26 +780,6 @@ select {
   border-style: dashed dashed dashed solid;
   padding: 0.5rem 0.75rem;
 }
-.banner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.55rem 0.8rem;
-  border-radius: 6px;
-  margin: 0.75rem 0;
-}
-.live-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 1rem;
-  align-items: center;
-  padding: 0.4rem 0.75rem;
-  margin: 0.5rem 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
 .live-conn {
   font-weight: 600;
 }
@@ -738,10 +788,6 @@ select {
 }
 .live-bar[data-tone="bad"] .live-now {
   color: var(--bad);
-}
-.banner-bad {
-  background: var(--bad-bg);
-  border: 1px solid var(--bad);
 }
 .split {
   display: grid;
