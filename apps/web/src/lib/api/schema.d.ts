@@ -2079,6 +2079,41 @@ export interface components {
              */
             truncated: boolean;
         };
+        /**
+         * FirstErrorOut
+         * @description What the run's first error cost it (ADR-112). Metadata only: ids, counts, seconds, USD.
+         *
+         *     "After" is canonical event order, not clock order. The same figures sit flat in `summary`.
+         */
+        FirstErrorOut: {
+            /**
+             * Cost After Unpriced Calls
+             * @description Calls after the first error with no price; they add nothing to the figure.
+             */
+            cost_after_unpriced_calls: number;
+            /**
+             * Cost After Usd
+             * @description Model-call spend after the first error, priced like `estimated_cost_usd`.
+             */
+            cost_after_usd: number;
+            /** Event Id */
+            event_id: string;
+            /**
+             * Retries After
+             * @description `retry.attempted` events after the first error.
+             */
+            retries_after: number;
+            /**
+             * Seconds After
+             * @description From the first error to the run's end (or its last event while it runs).
+             */
+            seconds_after: number;
+            /**
+             * Sequence
+             * @description The error event's `sequence`, if it carried one.
+             */
+            sequence: number | null;
+        };
         /** HealthOut */
         HealthOut: {
             /** Dimensions */
@@ -2639,6 +2674,8 @@ export interface components {
             duration_ms: number | null;
             /** @description Derived findings summary; null when the response does not carry it. */
             findings?: components["schemas"]["RunFindingsBadge"] | null;
+            /** @description Null when the run has no error or its summary predates `summary_version` 5. */
+            first_error?: components["schemas"]["FirstErrorOut"] | null;
             /** Id */
             id: string;
             /** @description Why the run matched a search: the indexed values the query named. Only present when `q` named at least one indexed field or word. */

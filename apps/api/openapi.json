@@ -3175,6 +3175,57 @@
         "title": "FindingsState",
         "type": "object"
       },
+      "FirstErrorOut": {
+        "description": "What the run's first error cost it (ADR-112). Metadata only: ids, counts, seconds, USD.\n\n\"After\" is canonical event order, not clock order. The same figures sit flat in `summary`.",
+        "properties": {
+          "cost_after_unpriced_calls": {
+            "description": "Calls after the first error with no price; they add nothing to the figure.",
+            "title": "Cost After Unpriced Calls",
+            "type": "integer"
+          },
+          "cost_after_usd": {
+            "description": "Model-call spend after the first error, priced like `estimated_cost_usd`.",
+            "title": "Cost After Usd",
+            "type": "number"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "retries_after": {
+            "description": "`retry.attempted` events after the first error.",
+            "title": "Retries After",
+            "type": "integer"
+          },
+          "seconds_after": {
+            "description": "From the first error to the run's end (or its last event while it runs).",
+            "title": "Seconds After",
+            "type": "number"
+          },
+          "sequence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The error event's `sequence`, if it carried one.",
+            "title": "Sequence"
+          }
+        },
+        "required": [
+          "event_id",
+          "sequence",
+          "retries_after",
+          "seconds_after",
+          "cost_after_usd",
+          "cost_after_unpriced_calls"
+        ],
+        "title": "FirstErrorOut",
+        "type": "object"
+      },
       "HealthOut": {
         "properties": {
           "dimensions": {
@@ -4651,6 +4702,17 @@
               }
             ],
             "description": "Derived findings summary; null when the response does not carry it."
+          },
+          "first_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FirstErrorOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the run has no error or its summary predates `summary_version` 5."
           },
           "id": {
             "title": "Id",

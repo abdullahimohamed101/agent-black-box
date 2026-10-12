@@ -56,6 +56,26 @@ class RunFindingsBadge(BaseModel):
     )
 
 
+class FirstErrorOut(BaseModel):
+    """What the run's first error cost it (ADR-112). Metadata only: ids, counts, seconds, USD.
+
+    "After" is canonical event order, not clock order. The same figures sit flat in `summary`.
+    """
+
+    event_id: str
+    sequence: int | None = Field(description="The error event's `sequence`, if it carried one.")
+    retries_after: int = Field(description="`retry.attempted` events after the first error.")
+    seconds_after: float = Field(
+        description="From the first error to the run's end (or its last event while it runs)."
+    )
+    cost_after_usd: float = Field(
+        description="Model-call spend after the first error, priced like `estimated_cost_usd`."
+    )
+    cost_after_unpriced_calls: int = Field(
+        description="Calls after the first error with no price; they add nothing to the figure."
+    )
+
+
 class RunOut(BaseModel):
     id: str
     project_id: str
@@ -83,6 +103,10 @@ class RunOut(BaseModel):
     findings: RunFindingsBadge | None = Field(
         default=None,
         description="Derived findings summary; null when the response does not carry it.",
+    )
+    first_error: FirstErrorOut | None = Field(
+        default=None,
+        description="Null when the run has no error or its summary predates `summary_version` 5.",
     )
     # Appended after the existing fields (Phase 16). After Phase 10's `findings`.
     matched: MatchedOut | None = Field(

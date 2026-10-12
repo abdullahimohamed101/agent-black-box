@@ -53,7 +53,7 @@ evaluate-all) and `comparison` (step extraction per projection, a table-driven n
 ### Workers (`abb_api.worker`, same image as the API)
 PostgreSQL outbox, `FOR UPDATE SKIP LOCKED` leases, retries with backoff, dead letters, one writer per run via a
 row lock, debounced and coalesced `summarize_run` jobs; run state is a pure function of the run's events
-(`runs/summary.py`) so it is rebuildable (ADR-012). Status: implemented (Phase 2); cost and analytics refresh jobs (Phase 7); the `detect_findings` job (Phase 10: pure detectors over a capped canonical event load, derived findings, ADR-080); the `evaluate_run` job (Phase 11: a budgeted evaluator in a thread, writes only `evaluations`, ADR-090); alert jobs
+(`runs/summary.py`) so it is rebuildable (ADR-012); that includes the first-error facts (event, retries, time and spend after it, ADR-112). Status: implemented (Phase 2); cost and analytics refresh jobs (Phase 7); the `detect_findings` job (Phase 10: pure detectors over a capped canonical event load, derived findings, ADR-080); the `evaluate_run` job (Phase 11: a budgeted evaluator in a thread, writes only `evaluations`, ADR-090); alert jobs
 arrive in later phases.
 
 ### Python SDK (`packages/sdk-python`)

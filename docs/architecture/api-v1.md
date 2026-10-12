@@ -151,7 +151,9 @@ representation are `422`), `limit` (1-200, default 50) and
 requests never cause repeats or gaps.
 
 `GET /v1/runs/{id}` returns the run: `status`, `name`, `agent_id`, `trace_id`, `started_at`, `completed_at`,
-`duration_ms`, `ordering_mode`, `summary`, `summary_version`, `summary_state`, `metadata`.
+`duration_ms`, `ordering_mode`, `summary`, `summary_version`, `summary_state`, `metadata`, and `first_error`
+(`{event_id, sequence, retries_after, seconds_after, cost_after_usd, cost_after_unpriced_calls}`, a typed projection of the summary's
+first-error facts; null when the run has no error or was summarised before version 5, ADR-112).
 
 `summary_state`: `current`; `processing` while events wait to be folded in (new events debounce for about
 1 s, then the worker recomputes); `failed` if summarization was dead-lettered and needs an operator
@@ -169,12 +171,12 @@ Events are put in canonical order, then folded:
 | `name`, `agent_id`, `trace_id` | `run.name` of the earliest `run.started` (an explicit name from `POST /v1/runs` is kept unless events name the run); agent and trace of the **first `run.started` that carries a `sequence`** (the root emitter's; remote and forked emitters send none), else the earliest `run.started` (a skewed clock, a forged child agent event or `trace_id`, or a sequence-less `run.started` cannot become the run's agent or trace; a write key of the same project can still write any event into that project's runs, so this is consistency, not authentication); runs with no `run.started` (created by `POST /v1/runs`) use the earliest event |
 | `ordering_mode` | `sequence` if every event has a `sequence`, else `time`. A multi-process run (Phase 9, ADR-070) is `time`: continued runs and forked children send no `sequence`. |
 
-`summary` (version 3; **the next bump is 4**): `event_count`, `duration_ms`, `llm_calls` (`llm.request.completed|failed`), `tool_calls`
+`summary` (version 5; **the next bump is 6**; first-error facts since 5, ADR-112): `event_count`, `duration_ms`, `llm_calls` (`llm.request.completed|failed`), `tool_calls`
 (`tool.call.completed|failed`), `input_tokens` and `output_tokens` (sums over `llm.request.completed`),
 `estimated_cost_usd` (the effective cost: sum over model calls of the cost line, ADR-040; name kept for compatibility), `retry_cost_usd`, `initial_cost_usd`, `cost_by_source_usd`, `unpriced_calls`, `tool_spans_ok/finished`, `llm_spans_ok/finished`, `retry_count`, `retries_unattributed`
 (`retry.attempted`), `error_count` (events with status `error`/`timeout` or a `*.failed` type, each counted
 once), `files_modified` (distinct `file.path` of created/modified/deleted), `models`, `first_event_at`, `last_event_at`, `agent_count` (exact number of distinct agents, counting agents only named by an
-`agent.spawned`) and `agents` (**run detail only**; `GET /v1/runs` items carry `agent_count` but omit `agents`).
+`agent.spawned`) and `agents` (**run detail only**; `GET /v1/runs` items carry `agent_count` but omit `agents`), then the first-error facts: `first_error_event_id`, `first_error_sequence`, `retries_after`, `seconds_after`, `cost_after_usd`, `cost_after_unpriced_calls` (all null/0 for a run with no error; "after" means later in canonical order; same rule as the web client's `firstError()`; metadata, identical for every role).
 `agents` has at most 50 entries in order of first appearance, then one `(other)` row (state `mixed`) folding the rest; each entry:
 `agent_id`, `parent_agent_id` (the agent owning the span the child's `agent.started` nests under, else the agent that emitted the
 `agent.spawned` naming it; null for the root), `state` (`spawned` = named by a spawn and never started, `started`, `completed`,

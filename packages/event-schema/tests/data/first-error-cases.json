@@ -1,0 +1,30 @@
+{
+  "_comment": "Shared by the API (apps/api/tests/test_first_error.py) and the web client (firstError() in apps/web/src/lib/timeline.ts, ADR-112). Events are listed in canonical order; `expected` is the event_id of the first error, or null. An error is status error|timeout or an event_type ending in .failed.",
+  "cases": [
+    {"name": "empty run", "events": [], "expected": null},
+    {"name": "clean run", "events": [
+      {"event_id": "a", "event_type": "run.started", "status": null},
+      {"event_id": "b", "event_type": "tool.call.completed", "status": "success"},
+      {"event_id": "c", "event_type": "run.completed", "status": "success"}], "expected": null},
+    {"name": "status error", "events": [
+      {"event_id": "a", "event_type": "run.started", "status": null},
+      {"event_id": "b", "event_type": "tool.call.completed", "status": "error"},
+      {"event_id": "c", "event_type": "tool.call.failed", "status": "error"}], "expected": "b"},
+    {"name": "timeout status", "events": [
+      {"event_id": "a", "event_type": "llm.request.completed", "status": "success"},
+      {"event_id": "b", "event_type": "tool.call.completed", "status": "timeout"}], "expected": "b"},
+    {"name": "failed event type without a status", "events": [
+      {"event_id": "a", "event_type": "tool.call.started", "status": null},
+      {"event_id": "b", "event_type": "llm.request.failed", "status": null},
+      {"event_id": "c", "event_type": "tool.call.completed", "status": "error"}], "expected": "b"},
+    {"name": "run.failed alone", "events": [
+      {"event_id": "a", "event_type": "run.started", "status": null},
+      {"event_id": "b", "event_type": "run.failed", "status": null}], "expected": "b"},
+    {"name": "blocked and cancelled are not errors", "events": [
+      {"event_id": "a", "event_type": "policy.action.blocked", "status": "blocked"},
+      {"event_id": "b", "event_type": "run.cancelled", "status": "cancelled"}], "expected": null},
+    {"name": "retry is not an error", "events": [
+      {"event_id": "a", "event_type": "retry.attempted", "status": null},
+      {"event_id": "b", "event_type": "retry.attempted", "status": "success"}], "expected": null}
+  ]
+}

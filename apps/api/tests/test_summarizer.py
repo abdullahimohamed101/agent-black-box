@@ -534,10 +534,148 @@ async def test_a_multi_emitter_run_is_time_ordered_and_nests_by_parent_not_by_cl
     row = await run_row(engine, run["run_id"])
     assert row.ordering_mode == "time"
     assert row.agent_slug == "planner" and row.trace_id == to_uuid(run["trace_id"])
-    assert row.summary_version == SUMMARY_VERSION == 4
+    assert row.summary_version == SUMMARY_VERSION == 5
     assert {a["agent_id"] for a in row.summary["agents"]} == {"planner", "tester"}
     assert row.summary["agent_count"] == 2
     spans = await span_rows(engine, run["run_id"])
     child_row, deleg_row = spans[to_uuid(child)], spans[to_uuid(deleg)]
     assert child_row.parent_span_id == to_uuid(deleg) and child_row.agent_slug == "tester"
     assert child_row.started_at < deleg_row.started_at  # nested although its clock is behind
+
+
+# ------------------------------------------------------------------ first-error facts (ADR-112)
+
+
+def first_error_scenarios(tenant: Tenant) -> dict[str, list[Event]]:
+    """Runs that differ in what the first-error facts have to say."""
+    llm = {"llm.provider": "p", "llm.model": "m", "cost.estimated_usd": 0.25}
+
+    def build(run: dict[str, str], items: list[tuple[str, dict[str, Any], dict[str, Any]]]) -> Any:
+        return [
+            build_event(tenant, run, n=n, event_type=kind, attributes=attrs, **extra)
+            for n, (kind, attrs, extra) in enumerate(items, start=1)
+        ]
+
+    retry = {"retry.attempt": 1}
+    tool = {"tool.name": "t"}
+    fail = {"status": "error"}
+    scenarios: dict[str, list[tuple[str, dict[str, Any], dict[str, Any]]]] = {
+        "no error": [
+            ("run.started", {}, {"span_id": ...}),
+            ("llm.request.completed", llm, {}),
+            ("run.completed", {}, {"span_id": ...}),
+        ],
+        "error and no retries": [
+            ("run.started", {}, {"span_id": ...}),
+            ("tool.call.failed", tool, fail),
+            ("llm.request.completed", llm, {}),
+            ("run.failed", {}, {"span_id": ...}),
+        ],
+        "error then retries and spend": [
+            ("run.started", {}, {"span_id": ...}),
+            ("retry.attempted", retry, {}),
+            ("tool.call.failed", tool, fail),
+            ("retry.attempted", retry, {}),
+            ("llm.request.completed", llm, {}),
+            ("tool.call.failed", tool, fail),
+            ("run.failed", {}, {"span_id": ...}),
+        ],
+        "multi agent": [
+            ("run.started", {}, {"agent_id": "planner", "span_id": ...}),
+            ("agent.started", {}, {"agent_id": "tester"}),
+            ("tool.call.failed", tool, {"agent_id": "tester", **fail}),
+            ("llm.request.completed", llm, {"agent_id": "planner"}),
+            ("retry.attempted", retry, {"agent_id": "tester"}),
+            ("run.completed", {}, {"agent_id": "planner", "span_id": ...}),
+        ],
+        "still running": [
+            ("run.started", {}, {"span_id": ...}),
+            ("tool.call.failed", tool, fail),
+            ("llm.request.completed", llm, {}),
+        ],
+    }
+    return {name: build(make_run_ids(), items) for name, items in scenarios.items()}
+
+
+FIRST_ERROR_SCENARIOS = [
+    "no error",
+    "error and no retries",
+    "error then retries and spend",
+    "multi agent",
+    "still running",
+]
+
+
+@pytest.mark.parametrize("name", FIRST_ERROR_SCENARIOS)
+@pytest.mark.parametrize("seed", range(3))
+async def test_first_error_facts_equal_a_from_scratch_recomputation(
+    engine: AsyncEngine, database_url: str, name: str, seed: int
+) -> None:
+    rng = random.Random(f"{name}{seed}")
+    tenant = await make_tenant(engine, f"fe{seed}{FIRST_ERROR_SCENARIOS.index(name)}")
+    events = first_error_scenarios(tenant)[name]
+    run_id = events[0].run_id
+    worker = worker_for(engine, database_url)
+
+    arrival = events[:]
+    rng.shuffle(arrival)
+    arrival += rng.sample(events, k=rng.randint(0, 3))  # at-least-once: duplicates
+    cut = rng.randint(1, len(arrival) - 1)
+    for batch in (arrival[:cut], arrival[cut:]):
+        await ingest(engine, tenant, batch)
+        if rng.random() < 0.5:
+            await drain(worker)  # a partial summary that the full one must replace
+    await drain(worker)
+
+    stored = (await run_row(engine, run_id)).summary
+    expected = derive_run(events).summary
+    keys = {k for k in expected if k.startswith(("first_error", "cost_after")) or k in
+            ("retries_after", "seconds_after")}  # fmt: skip
+    assert len(keys) == 6
+    assert {k: stored[k] for k in keys} == {k: expected[k] for k in keys}
+    if name == "no error":
+        assert stored["first_error_event_id"] is None and stored["seconds_after"] is None
+    else:
+        assert stored["first_error_event_id"] is not None
+
+
+async def test_a_run_summarised_before_version_5_gains_the_facts_on_rebuild(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """`rebuild-costs` / `search-rebuild` re-enqueue summarisation; that is the rebuild path."""
+    from sqlalchemy import update
+
+    from abb_api.jobs.outbox import SUMMARIZE_RUN, OutboxRepository
+
+    tenant = await make_tenant(engine, "fe-old")
+    events = first_error_scenarios(tenant)["error then retries and spend"]
+    run_id = events[0].run_id
+    worker = worker_for(engine, database_url)
+    await ingest(engine, tenant, events)
+    await drain(worker)
+
+    facts = {
+        k: v
+        for k, v in derive_run(events).summary.items()
+        if k.startswith(("first_error", "cost_after")) or k in ("retries_after", "seconds_after")
+    }
+    async with engine.begin() as conn:  # what a v4 row looked like
+        row = await run_row(engine, run_id)
+        old = {k: v for k, v in row.summary.items() if k not in facts}
+        await conn.execute(
+            update(t.runs)
+            .where(t.runs.c.id == to_uuid(run_id))
+            .values(summary=old, summary_version=4)
+        )
+    assert not (facts.keys() & (await run_row(engine, run_id)).summary.keys())
+
+    async with engine.begin() as conn:
+        await OutboxRepository(conn, tenant.context).enqueue(
+            job_type=SUMMARIZE_RUN,
+            dedupe_key="rebuild-v5",
+            payload={"run_id": str(to_uuid(run_id))},
+        )
+    await drain(worker)
+    rebuilt = await run_row(engine, run_id)
+    assert rebuilt.summary_version == SUMMARY_VERSION
+    assert {k: rebuilt.summary[k] for k in facts} == facts

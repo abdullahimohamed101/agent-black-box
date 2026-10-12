@@ -25,8 +25,9 @@ from abb_api.cost.retries import retry_call_ids
 # 3: per-agent breakdown (`agents`, `agent_count`) and the run's agent and trace id come from
 #    `run.started` instead of the first event (Phase 9, ADR-070).
 # 4: runs gain a search document (ADR-100); its `agents` array reads `summary["agents"]`.
-#    The next bump is 5.
-SUMMARY_VERSION = 4
+# 5: first-error facts (`first_error_*`, `retries_after`, `seconds_after`, `cost_after_*`, ADR-112).
+#    The next bump is 6.
+SUMMARY_VERSION = 5
 
 MAX_AGENTS = 50  # entries in `summary.agents`; more agents fold into one "(other)" row (KI-018)
 OTHER_AGENTS = "(other)"
@@ -205,6 +206,51 @@ def _agents(
     return [*(entry(t) for t in kept), folded], len(ordered_tallies)
 
 
+def is_error_event(event: Event) -> bool:
+    """What counts as an error. Mirrors `isError` in web `timeline.ts` (parity-tested)."""
+    return event.status in _ERROR_STATUSES or event.event_type.endswith(".failed")
+
+
+def first_error_facts(
+    ordered: list[Event],
+    cost_lines: tuple[CostLine, ...],
+    *,
+    completed_at: datetime | None,
+    last_event_at: datetime,
+) -> dict[str, Any]:
+    """What the first error cost the run (ADR-112). `ordered` is in canonical order.
+
+    "After" means later in canonical order, not later by clock: `sequence` may be absent and
+    clocks skew, while canonical order is the product's evidence. A model call is priced on its
+    `llm.request.completed` event, so it counts as "after" when that event is. Unpriced calls
+    contribute nothing to `cost_after_usd` and are counted, exactly as in the run total.
+    """
+    first = next((i for i, e in enumerate(ordered) if is_error_event(e)), None)
+    if first is None:
+        return {
+            "first_error_event_id": None,
+            "first_error_sequence": None,
+            "retries_after": 0,
+            "seconds_after": None,
+            "cost_after_usd": None,
+            "cost_after_unpriced_calls": 0,
+        }
+    error = ordered[first]
+    later = ordered[first + 1 :]
+    later_ids = {e.event_id for e in later}
+    end = completed_at if completed_at is not None else last_event_at
+    after = cost_summary([ln for ln in cost_lines if ln.event_id in later_ids])
+    return {
+        "first_error_event_id": error.event_id,
+        "first_error_sequence": error.sequence,
+        "retries_after": sum(1 for e in later if e.event_type == "retry.attempted"),
+        # clamped: a skewed clock must not report negative time
+        "seconds_after": max(0.0, (end - error.occurred_at).total_seconds()),
+        "cost_after_usd": after["estimated_cost_usd"],
+        "cost_after_unpriced_calls": after["unpriced_calls"],
+    }
+
+
 def _int_attr(event: Event, key: str) -> int:
     value = event.attributes.get(key)
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
@@ -276,7 +322,7 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
                 retries_unattributed += (
                     1  # names no operation, so no cost can be attributed (ADR-042)
                 )
-        if event.status in _ERROR_STATUSES or kind.endswith(".failed"):
+        if is_error_event(event):
             error_count += 1  # each event counts once, however it qualifies
         if kind in ("file.created", "file.modified", "file.deleted"):
             path = event.attributes.get("file.path")
@@ -293,6 +339,7 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
     tool_spans = [s for s in finished if s.kind is SpanKind.TOOL]
     llm_spans = [s for s in finished if s.kind is SpanKind.LLM]
 
+    last_event_at = max(e.occurred_at for e in events)
     agents, agent_count = _agents(ordered, spans, cost_lines, root.agent_id, status)
     summary: dict[str, Any] = {
         "event_count": len(events),
@@ -315,7 +362,10 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
         "agents": agents,
         "agent_count": agent_count,
         "first_event_at": started_at.isoformat(),
-        "last_event_at": max(e.occurred_at for e in events).isoformat(),
+        "last_event_at": last_event_at.isoformat(),
+        **first_error_facts(
+            ordered, cost_lines, completed_at=completed_at, last_event_at=last_event_at
+        ),
     }
     return RunDerivation(
         status=status,
