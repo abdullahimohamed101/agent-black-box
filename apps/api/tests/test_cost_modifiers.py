@@ -447,8 +447,6 @@ def test_batch_2_adds_the_models_earlier_batches_left_out() -> None:
         ("openai", "o3-pro"),
         ("openai", "o1"),
         ("openai", "o1-pro"),
-        ("openai", "davinci-002"),
-        ("openai", "babbage-002"),
         ("anthropic", "claude-opus-5"),
         ("anthropic", "claude-opus-4-8-20260101"),
         ("anthropic", "claude-fable-5"),
@@ -507,8 +505,6 @@ def test_standard_prices_of_the_new_openai_models() -> None:
         "o3-pro": ("20", None, "80"),
         "o1": ("15", "7.50", "60"),
         "o1-pro": ("150", None, "600"),
-        "davinci-002": ("2", None, "2"),
-        "babbage-002": ("0.40", None, "0.40"),
     }
     for model, (i, c, o) in o_series.items():
         found = BOOK.find("openai", model, at(13), prompt_tokens=900_000)
@@ -616,8 +612,11 @@ def test_openai_standard_rows_equal_the_earlier_batch() -> None:
         for e in BATCH2_ENTRIES
         if e.provider == "openai" and e.service_tier == "standard"
     }
-    assert set(old) <= set(new)
+    gone = {(m, None) for m in SHUT_DOWN}  # published earlier, shut down since (not re-entered)
+    assert set(old) - gone <= set(new)
     for key, row in old.items():
+        if key in gone:
+            continue
         assert (
             row.input_per_million,
             row.cached_input_per_million,
@@ -674,3 +673,38 @@ def test_hostile_cache_write_values_are_ignored(bad: Any) -> None:
         raw=True,
     )
     assert ENGINE.calculate(event).total == D("0.2")  # 100k plain input at 2 per million
+
+
+SHUT_DOWN = ("davinci-002", "babbage-002", "gpt-3.5-turbo-1106", "gpt-3.5-turbo-instruct")
+SHUTS_DOWN_1023 = (
+    "gpt-3.5-turbo",
+    "gpt-3.5-turbo-0125",
+    "gpt-4o-2024-05-13",
+    "gpt-4-turbo-2024-04-09",
+    "gpt-4-0613",
+    "o1",
+    "o1-pro",
+    "o3-mini",
+    "o4-mini",
+)
+
+
+def test_models_the_deprecations_page_has_already_shut_down_are_not_entered() -> None:
+    # Deprecations page, read twice 2026-10-12: shut down 2026-09-28.
+    entered = {e.model_pattern for e in BATCH2_ENTRIES if e.provider == "openai"}
+    assert not entered & set(SHUT_DOWN)
+
+
+def test_models_with_a_stated_shutdown_date_stop_being_priced_on_it() -> None:
+    cutoff = datetime(2026, 10, 23, tzinfo=UTC)
+    for model in SHUTS_DOWN_1023:
+        rows = [e for e in BATCH2_ENTRIES if e.provider == "openai" and e.model_pattern == model]
+        assert rows, model
+        for row in rows:
+            assert row.valid_to == cutoff, (model, row.service_tier)
+            assert "2026-10-23" in row.source
+        assert BOOK.find("openai", model, datetime(2026, 10, 22, 23, tzinfo=UTC)) is not None
+    # o1 has no row in the earlier batch, so nothing prices it from the shutdown on.
+    assert BOOK.find("openai", "o1", datetime(2026, 10, 23, tzinfo=UTC)) is None
+    # A model that is not on the list keeps no end date.
+    assert all(e.valid_to is None for e in BATCH2_ENTRIES if e.model_pattern == "gpt-4.1")

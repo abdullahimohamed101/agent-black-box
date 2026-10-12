@@ -308,10 +308,6 @@ _OPENAI_V2_ROWS: tuple[tuple[str, str, _RateRow, _RateRow | None], ...] = (
     ("gpt-4-0613", "standard", ("30.00", None, None, "60.00"), None),
     ("gpt-3.5-turbo", "standard", ("0.50", None, None, "1.50"), None),
     ("gpt-3.5-turbo-0125", "standard", ("0.50", None, None, "1.50"), None),
-    ("gpt-3.5-turbo-1106", "standard", ("1.00", None, None, "2.00"), None),
-    ("gpt-3.5-turbo-instruct", "standard", ("1.50", None, None, "2.00"), None),
-    ("davinci-002", "standard", ("2.00", None, None, "2.00"), None),
-    ("babbage-002", "standard", ("0.40", None, None, "0.40"), None),
     (
         "gpt-6-astra",
         "batch",
@@ -356,9 +352,6 @@ _OPENAI_V2_ROWS: tuple[tuple[str, str, _RateRow, _RateRow | None], ...] = (
     ("gpt-4-turbo-2024-04-09", "batch", ("5.00", None, None, "15.00"), None),
     ("gpt-4-0613", "batch", ("15.00", None, None, "30.00"), None),
     ("gpt-3.5-turbo-0125", "batch", ("0.25", None, None, "0.75"), None),
-    ("gpt-3.5-turbo-1106", "batch", ("1.00", None, None, "2.00"), None),
-    ("davinci-002", "batch", ("1.00", None, None, "1.00"), None),
-    ("babbage-002", "batch", ("0.20", None, None, "0.20"), None),
     ("gpt-6-astra", "flex", ("5.00", "0.50", "6.25", "25.00"), ("10.00", "1.00", "12.50", "37.50")),
     ("gpt-6.1-sol", "flex", ("1.00", "0.05", "1.25", "5.00"), ("2.00", "0.10", "2.50", "7.50")),
     ("gpt-6-luna", "flex", ("0.05", "0.005", "0.0625", "0.25"), ("0.10", "0.01", "0.125", "0.375")),
@@ -447,12 +440,23 @@ _OPENAI_REGIONAL = frozenset(
     }
 )
 _OPENAI_NO_PAGE = frozenset(
+    {"gpt-4o-2024-05-13", "gpt-4-turbo-2024-04-09", "gpt-4-0613", "gpt-3.5-turbo-0125"}
+)
+# developers.openai.com/api/docs/deprecations, read twice 2026-10-12: davinci-002, babbage-002,
+# gpt-3.5-turbo-1106 and gpt-3.5-turbo-instruct were shut down on 2026-09-28 and are not entered
+# here (the earlier batch published the last two and cannot be edited); these stop on 2026-10-23.
+_OPENAI_SHUTDOWN = datetime(2026, 10, 23, tzinfo=UTC)
+_OPENAI_SHUTS_DOWN = frozenset(
     {
+        "gpt-3.5-turbo",
+        "gpt-3.5-turbo-0125",
         "gpt-4o-2024-05-13",
         "gpt-4-turbo-2024-04-09",
         "gpt-4-0613",
-        "gpt-3.5-turbo-0125",
-        "gpt-3.5-turbo-1106",
+        "o1",
+        "o1-pro",
+        "o3-mini",
+        "o4-mini",
     }
 )
 _REGIONAL_UPLIFT = Decimal("1.1")
@@ -476,6 +480,9 @@ def _openai_v2() -> tuple[PriceEntry, ...]:
             )
         if model == "gpt-5.6-sol":
             source += _OPENAI_PROMO
+        valid_to = _OPENAI_SHUTDOWN if model in _OPENAI_SHUTS_DOWN else None
+        if valid_to is not None:
+            source += "; shutdown 2026-10-23 (deprecations page, read twice 2026-10-12)"
         regional = _REGIONAL_UPLIFT if tier == "standard" and model in _OPENAI_REGIONAL else None
         # A tier whose long-context column is "-" has no price above 272K: leave those unpriced.
         ceiling = _LONG_272K if long_ is None and model in has_long else None
@@ -489,6 +496,7 @@ def _openai_v2() -> tuple[PriceEntry, ...]:
                     provider="openai",
                     model_pattern=model,
                     valid_from=_V4,
+                    valid_to=valid_to,
                     input_per_million=Decimal(inp),
                     output_per_million=Decimal(out),
                     cached_input_per_million=_price(cached),
