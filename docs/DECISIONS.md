@@ -47,3 +47,4 @@ plan's Decisions section; contestable ones become ADRs (skill `write-adr`).
 | ADR-091 | Model judges behind a one-method provider interface; a deterministic fake is the only shipped provider | 11 | Accepted ([file](decisions/ADR-091-model-judge-interface-fake-provider.md)) |
 | ADR-092 | Run comparison by normalised step alignment, computed on read, bounded by a work budget, role-aware | 11 | Accepted ([file](decisions/ADR-092-run-comparison-normalised-alignment.md)) |
 | ADR-110 | Self-hosted IBM Plex (Latin-1 woff2, OFL 1.1) through `next/font/local`; no runtime font request | 21 | Accepted ([file](decisions/ADR-110-self-hosted-plex-fonts.md)) |
+| ADR-111 | "Flight recorder trace" direction: semantic palette, red only for failure, glyph-plus-word status, Plex Serif for the failure line, motion language | 22 | Accepted ([file](decisions/ADR-111-flight-recorder-trace-direction.md)) |
