@@ -121,9 +121,11 @@ test("a ~220 KB log loads in chunks, with the planted secrets redacted", async (
   expect(requests).toHaveLength(2);
   while (await panel.getByRole("button", { name: "Load more" }).count()) {
     const before = requests.length;
+    const shown = (await progress.textContent()) ?? "";
     await panel.getByRole("button", { name: "Load more" }).click();
     await expect.poll(() => requests.length).toBeGreaterThan(before);
-    await page.waitForTimeout(100);
+    // wait for the rendered state to move on (KI-127), not a fixed pause: the next chunk has landed in the panel
+    await expect(progress).not.toHaveText(shown);
   }
   const text = (await page.getByLabel("stdout").textContent()) ?? "";
   expect(text.length).toBeGreaterThan(200_000);
