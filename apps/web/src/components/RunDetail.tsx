@@ -127,7 +127,10 @@ function LiveBar({
       data-tone={status?.tone ?? "work"}
     >
       <span className="live-conn">
-        <span aria-hidden="true">{connection.glyph}</span> {connection.text}
+        <span className="live-glyph" aria-hidden="true">
+          {connection.glyph}
+        </span>{" "}
+        {connection.text}
       </span>
       {status && <span className="live-now">{status.label}</span>}
       {partial && (
@@ -190,6 +193,9 @@ function ContextStripBody({
     </span>
   );
 }
+
+const NO_IDS: ReadonlySet<string> = new Set();
+const MAX_NEW_IDS = 200;
 
 export function RunDetail({
   runId,
@@ -318,6 +324,47 @@ export function RunDetail({
     contextPref === "closed" || (contextPref === "auto" && !!drawerEvent && narrow);
 
   const evidence = useMemo(() => evidenceRows(events), [events]);
+
+  // Motion cues (decoration only; all of them are zero-length under prefers-reduced-motion). Events that arrive after
+  // the run has loaded get a short tint; the target of a jump gets a ring. Both are bounded and pruned by timers.
+  const [newIds, setNewIds] = useState<ReadonlySet<string>>(NO_IDS);
+  const [landedId, setLandedId] = useState<string | null>(null);
+  const knownIds = useRef<Set<string> | null>(null);
+  const timers = useRef<number[]>([]);
+  useEffect(() => {
+    if (!restComplete) return;
+    if (knownIds.current === null) {
+      knownIds.current = new Set(events.map((e) => e.event_id));
+      return;
+    }
+    const known = knownIds.current;
+    const fresh: string[] = [];
+    for (const e of events) {
+      if (!known.has(e.event_id)) {
+        known.add(e.event_id);
+        fresh.push(e.event_id);
+      }
+    }
+    if (fresh.length === 0) return;
+    // From a timer, not the effect body: the tint is a cue after the commit, not state the render depends on.
+    const batch = new Set(fresh.slice(-MAX_NEW_IDS));
+    timers.current.push(
+      window.setTimeout(() => {
+        setNewIds(batch);
+        timers.current.push(window.setTimeout(() => setNewIds(NO_IDS), 500));
+      }, 0),
+    );
+  }, [events, restComplete]);
+  useEffect(
+    () => () => {
+      for (const t of timers.current) window.clearTimeout(t);
+    },
+    [],
+  );
+  const flashLanded = (id: string) => {
+    setLandedId(id);
+    timers.current.push(window.setTimeout(() => setLandedId(null), 600));
+  };
   const focusTimeline = () =>
     timelineWrap.current
       ?.querySelector<HTMLElement>('[role="listbox"], [role="treegrid"], [role="region"]')
@@ -342,6 +389,7 @@ export function RunDetail({
   };
 
   const jumpTo = (eventId: string) => {
+    flashLanded(eventId);
     // If a filter hides a loaded event, clear filters so the jump always lands.
     const loaded = events.some((e) => e.event_id === eventId);
     if (loaded && !filtered.some((e) => e.event_id === eventId)) setFilters(NO_FILTERS);
@@ -580,7 +628,12 @@ export function RunDetail({
               </button>
             </div>
           ) : (
-            <div className="pane-body" ref={timelineWrap}>
+            <div
+              className="pane-body"
+              key={view}
+
+              ref={timelineWrap}
+            >
               {view === "evidence" ? (
                 <EvidenceList rows={evidence} t0={t0} selectedEventId={selected} onOpen={jumpTo} />
               ) : view === "timeline" ? (
@@ -594,6 +647,8 @@ export function RunDetail({
                   onActivate={activate}
                   onEscape={closeDrawer}
                   onJumpToError={jumpToError}
+                  newIds={newIds}
+                  landedId={landedId}
                 />
               ) : (
                 <Waterfall
@@ -607,6 +662,8 @@ export function RunDetail({
                   onActivate={setDrawerEventId}
                   onEscape={closeDrawer}
                   onJumpToError={jumpToError}
+                  newIds={newIds}
+                  landedId={landedId}
                 />
               )}
             </div>

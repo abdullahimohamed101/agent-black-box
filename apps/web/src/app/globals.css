@@ -27,7 +27,18 @@
   --insp-w: 26rem;
   --t-fast: 120ms;
   --t-base: 180ms;
+  --t-slow: 400ms;
+  --t-land: 600ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+/* One switch for all motion: every duration below comes from these tokens. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 0ms;
+    --t-base: 0ms;
+    --t-slow: 0ms;
+    --t-land: 0ms;
+  }
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -2093,4 +2104,69 @@ tbody th a:focus-visible {
 }
 td .tag {
   margin-left: 0.5rem;
+}
+
+/* ---- Motion (Phase 21): only transform, opacity, background-color and box-shadow; nothing runs on first paint ---- */
+@keyframes arrive {
+  from {
+    background-color: var(--accent-bg);
+  }
+}
+@keyframes landed {
+  from {
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+  to {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+/* The inspector slides in 12 px from the right when an event opens. Transform only: an opacity fade would hand axe
+   (which runs right after the click in several specs) half-transparent text to measure. */
+.drawer {
+  transition: transform var(--t-base) var(--ease-out);
+}
+@starting-style {
+  .drawer {
+    transform: translateX(12px);
+  }
+}
+/* Hover fades in; leaving is instant (the transition belongs to the hover state), and selection never animates, so a
+   contrast check taken right after a click never sees a half-blended row. */
+.tl-row:not([data-selected], [data-error]):hover,
+.wf-row:not([data-selected], [data-error]):hover {
+  background-color: var(--surface);
+  transition: background-color var(--t-fast) var(--ease-out);
+}
+/* Held keys move the selection many rows a second: no row transition until the pointer is used again. */
+.timeline[data-nav="keyboard"] .tl-row:hover,
+.wf-scroll[data-nav="keyboard"] .wf-row:hover {
+  transition-duration: 0ms;
+}
+.tl-row[data-arrived],
+.wf-row[data-arrived] {
+  animation: arrive var(--t-slow) var(--ease-out);
+}
+.tl-row[data-landed],
+.wf-row[data-landed] {
+  animation: landed var(--t-land) var(--ease-out);
+}
+/* The live dot breathes only while the event stream is actually connected. */
+.live-bar[data-stream="live"] .live-glyph {
+  display: inline-block;
+  color: var(--ok);
+  animation: pulse 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-row[data-arrived],
+  .wf-row[data-arrived],
+  .tl-row[data-landed],
+  .wf-row[data-landed],
+  .live-bar[data-stream="live"] .live-glyph {
+    animation: none;
+  }
 }

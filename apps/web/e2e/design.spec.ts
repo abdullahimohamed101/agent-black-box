@@ -349,6 +349,7 @@ test.describe("inspector", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${BASE}/runs/${RUN(2)}`);
     await page.getByRole("button", { name: "Show it" }).click();
+    await page.waitForTimeout(300); // the inspector slides in for 180 ms
     const dlg = (await page.getByRole("dialog").boundingBox())!;
     expect(dlg.x + dlg.width).toBe(1440);
     expect(dlg.y + dlg.height).toBe(900);
@@ -385,6 +386,7 @@ test.describe("inspector", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`${BASE}/runs/${RUN(2)}`);
     await page.getByRole("button", { name: "Show it" }).click();
+    await page.waitForTimeout(300);
     const dlg = (await page.getByRole("dialog").boundingBox())!;
     expect(dlg).toMatchObject({ x: 0, y: 44, width: 375, height: 812 - 44 });
     await expect(page.getByRole("separator")).toBeHidden();
@@ -490,5 +492,123 @@ test.describe("runs list", () => {
     await expect(page.getByLabel("Failed")).toBeChecked();
     await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
     await expect(page.locator("tbody tr")).not.toHaveCount(12);
+  });
+});
+
+test.describe("motion", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  const animations = (page: Page) => page.evaluate(() => document.getAnimations().length);
+  const settled = async (page: Page) => {
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(300);
+  };
+
+  test.describe("reduced motion", () => {
+    test.use({ reducedMotion: "reduce" });
+
+    test("nothing animates after load, after opening the inspector or after a view switch", async ({
+      page,
+    }) => {
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await expect(page.getByTestId("headline")).toBeVisible();
+      await settled(page);
+      expect(await animations(page)).toBe(0);
+      await page.getByRole("button", { name: "Show it" }).click();
+      const drawer = page.getByRole("dialog");
+      await expect(drawer).toBeVisible();
+      await page.waitForTimeout(100);
+      expect(await animations(page)).toBe(0);
+      expect(await drawer.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
+      await page.getByRole("radio", { name: "Waterfall" }).check();
+      await page.waitForTimeout(100);
+      expect(await animations(page)).toBe(0);
+    });
+  });
+
+  test.describe("motion on", () => {
+    test.use({ reducedMotion: "no-preference" });
+
+    test("no route animates on first paint", async ({ page }) => {
+      for (const [, url] of ROUTES) {
+        await page.goto(url);
+        await settled(page);
+        expect(await animations(page), url).toBe(0);
+      }
+    });
+
+    test("the inspector slides in 180 ms; hovered rows fade their background in 120 ms", async ({
+      page,
+    }) => {
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await page.getByRole("button", { name: "Show it" }).click();
+      const drawer = page.getByRole("dialog");
+      await expect(drawer).toBeVisible();
+      expect(await drawer.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0.18s");
+      // the hover state carries the transition; keyboard navigation switches it off until the pointer is used again
+      const row = page.getByRole("option").first();
+      await row.hover();
+      expect(await row.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0.12s");
+      await page.getByRole("listbox").focus();
+      await page.keyboard.press("j");
+      expect(await row.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
+    });
+  });
+});
+
+test.describe("polish: one row of class chips, one story marker", () => {
+  for (const width of [1440, 1280]) {
+    test(`toolbar is a single row with the inspector open at ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(`${BASE}/runs/${RUN(7)}`);
+      await page.getByRole("button", { name: "Show it" }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      const bar = page.getByRole("group", { name: "Timeline filters" });
+      expect((await bar.boundingBox())!.height).toBeLessThan(48);
+      // the class group scrolls sideways instead of wrapping
+      const [sw, cw] = await bar
+        .locator("fieldset")
+        .evaluate((el) => [el.scrollWidth, el.clientWidth]);
+      expect(sw).toBeGreaterThanOrEqual(cw);
+    });
+  }
+
+  test("a story step has one marker: the list number, no glyph", async ({ page }) => {
+    await page.goto(`${BASE}/runs/${RUN(11)}`);
+    const glyph = page.getByTestId("story").locator(".story-glyph").first();
+    await expect(glyph).toBeHidden();
+    const marker = await page
+      .getByTestId("story")
+      .locator("li")
+      .first()
+      .evaluate((el) => getComputedStyle(el).display);
+    expect(marker).toBe("list-item");
+  });
+
+  test("the folded context strip is a labelled control with an icon", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`${BASE}/runs/${RUN(7)}`);
+    await page.getByRole("button", { name: "Show it" }).click();
+    const strip = page.getByRole("button", { name: "Show run context" });
+    await expect(strip).toBeVisible();
+    await expect(strip.locator("svg")).toBeVisible();
+    expect((await strip.boundingBox())!.width).toBeGreaterThanOrEqual(34);
+    await strip.click();
+    await expect(page.getByRole("button", { name: "Context" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  test("agents are clamped to two lines but keep their full text", async ({ page }) => {
+    await page.goto(`${BASE}/runs/${RUN(7)}`);
+    const item = page.getByTestId("agent-tree").getByRole("button").first();
+    await expect(item).toHaveAttribute("title", /events/);
+    expect((await item.boundingBox())!.height).toBeLessThan(64);
+  });
+
+  test("the view tabs show counts without changing their names", async ({ page }) => {
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await expect(page.getByRole("radio", { name: "Timeline", exact: true })).toBeChecked();
+    await expect(page.locator(".seg-count").first()).toHaveText("15");
   });
 });
