@@ -1,9 +1,9 @@
 # Project State
 
-Last updated: 2026-10-12 (Phase 21 and KI-050 batch 2 merged; MVP gate accepted)
+Last updated: 2026-10-12 (Phase 22 implemented and review-fixed on `feature/phase-22-run-redesign`, PR open pending merge)
 
 ## Current phase
-Phases 0-11, 15, 16 and 21 are merged to `main` (CI green; Phase 11 is PR #104, Phase 21 is PR #119; KI-050 prices are PRs #105 and #118). The MVP gate (spec §49, §138) was **accepted by the user on 2026-10-12**. Nothing is in progress; the next work is a run-page redesign (proposed Phase 22, "Flight recorder trace": failure line, fault line on the timeline, quiet status grammar; each new feature is grilled with the user one question at a time before it is built), then Phase 12.
+Phases 0-11, 15, 16 and 21 are merged to `main`. **Phase 22 (run-page redesign, "Flight recorder trace") is implemented on `feature/phase-22-run-redesign`, adversarially reviewed and fixed; its PR is open and pending merge** (plan, closing evidence per acceptance criterion, modified-test table and review dispositions: `docs/plans/active/phase-22-run-page-redesign.md`; review: `docs/plans/active/phase-22-code-review.md`; both move to `docs/plans/completed/` when the PR merges). The MVP gate was accepted on 2026-10-12. Next after the merge: Phase 12 (visual replay).
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -50,13 +50,15 @@ Code review (`docs/plans/completed/phase-21-code-review.md`): 0 P0, 1 P1 (React 
 here (KI-122). The reviewer did the keyboard walk, 200% zoom and 1024x640; screen-reader announcement of the radio-tab view switch and the folded strip is still judged from the accessibility tree only.
 
 ## Blocked work
-None.
+None for the code. Verification gap: KI-130 (Docker VM disk full while re-running the API suite and E2E scripts after the Phase 22 review fixes).
 
 ## Next actions (exact)
-1. Done 2026-10-12: the real OIDC sign-in with Google (KI-067 resolved). Still open for the user: a compose runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
-2. MVP gate accepted by the user (2026-10-12). KI-050 is closed for what the vendors' pages state (merged, PRs #105 and #118; prompt-size tiers, OpenAI/Anthropic/Gemini prices, ADR-044 billing modifiers); what stays open is the S3 remainder in the issue, and the OpenAI deprecations page is due a re-read on 2026-10-23.
-3. Proposed Phase 22, run-page redesign: settled with the user so far: primary user is an engineer whose agent just failed; success is a five-second first-error test (1440 px and 375 px); hierarchy is failure line, cost of the failure, quiet timeline, identity, findings out of the main view; the headline adapts to run state; direction "Flight recorder trace" with a fault line as the signature and colour reserved for failure. The user widened scope to new features, motion, fonts, dependencies and illustration, provided each new feature goes through the same one-question-at-a-time grilling. Open grill queue: server-computed first-error fields, facet column and top-bar search, runs list redesign, illustration and empty states, display font (Plex Serif for the failure line), login and landing, compare and analytics. Then Phases 12, 13 and 14, 17, 19, 20, the hosting guide, and the demo video (needs a designed brand mark).
-4. After deploying Phase 16, run `search-rebuild` for existing workspaces so older runs become searchable (KI-081, issue #94).
+1. Phase 22: the PR is open pending merge. Before merging, re-run the gates listed UNVERIFIED (env) in the plan and KI-130 (the Docker VM disk was full, so the full API suite and seven API-backed E2E scripts could not be re-run after the review fixes; free disk, then run them or let CI). After merge: move the plan and review to `docs/plans/completed/`, update this file, then start Phase 12.
+2. After deploying Phase 22 (and Phase 16): run `python -m abb_api.cli search-rebuild` so runs summarised below `SUMMARY_VERSION` 6 get first-error facts and are searchable (ADR-112, KI-081); until then their rows say "first-error facts not rebuilt yet" and the waste report counts them in `unrebuilt_runs`.
+3. Done 2026-10-12: the real OIDC sign-in with Google (KI-067 resolved). Still open for the user: a compose runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
+4. KI-050 is closed for what the vendors' pages state; the OpenAI deprecations page is due a re-read on 2026-10-23.
+5. Then Phases 12, 13 and 14, 17, 19, 20, the hosting guide, and the demo video (the brand mark now exists; the video is recorded after the redesign, ffmpeg needs approval).
+6. After deploying Phase 16, run `search-rebuild` for existing workspaces so older runs become searchable (KI-081, issue #94).
 
 ## Open decisions
 - MVP acceptance (after the gate items above).
@@ -68,6 +70,7 @@ None.
 `docs/KNOWN_ISSUES.md` (severity, target and GitHub issue per item): notably (Phase 15 additions KI-067..078: real-provider login unverified, no session list, no `email_verified`-less providers, audit retention, trusted proxies, compose login unverified) full recomputation of very large active runs (KI-016), no quotas (KI-018), no failed-auth throttling (KI-019).
 
 ## Last verified test status
+2026-10-12, Phase 22 branch after the review fixes (own databases `abb_p22_*`): web tsc, eslint and prettier clean, vitest 994 (61 files), `next build`, `pnpm gen:api:check`, fixtures Playwright 197 passed / 60 skipped; API ruff, ruff format, `mypy` (263 files) clean, `openapi --check` clean, focused API tests (`test_first_error`, `test_run_summary`, `test_analytics_waste`) 141 passed; `auth-e2e` 13 passed. Before the fixes (lead, merged branch): API 1,839 passed in 925 s, web vitest 970, fixtures Playwright 195 passed. UNVERIFIED (env) after the fixes: the full API suite (a re-run reached 66 % with no failure, then the Docker VM disk filled), and the `findings`, `multiagent`, `coding`, `eval`, `stream`, `analytics` and `integrations` E2E scripts (KI-130). Previous:
 2026-10-11, Phase 11 branch (final tree, own databases `abb_test_p11`/`abb_p11_*`, dropped afterwards): event-schema 351, sdk 893 (coverage 94.27%), examples 16 + 10, integrations 17/74/66/61/44, api 1,699 passed (authz 151, search 359, rest 742 + 447),
 web vitest 626, eslint/prettier/tsc/`next build` clean, openapi/schema/gen:api checks clean, migrations head 0071 <-> base and 0071 -> 0080 -> head. Fixtures Playwright 21. E2E: `auth-e2e` 13, `findings-e2e` 6, `multiagent-e2e` 6, `coding-e2e` 6, `eval-e2e` 7.
 Not run: `make smoke`, `sdk-e2e`, `stream-e2e`, `analytics-e2e`, compose jobs (UNVERIFIED (env)). Previous:

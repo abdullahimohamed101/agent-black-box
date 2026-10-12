@@ -106,7 +106,9 @@ class RunOut(BaseModel):
     )
     first_error: FirstErrorOut | None = Field(
         default=None,
-        description="Null when the run has no first error or its summary predates `summary_version` 6.",
+        description=(
+            "Null when the run has no first error or its summary predates `summary_version` 6."
+        ),
     )
     # Appended after the existing fields (Phase 16). After Phase 10's `findings`.
     matched: MatchedOut | None = Field(
