@@ -25,6 +25,14 @@
   overflow-wrap: anywhere;
   text-wrap: balance;
 }
+/* A phone must still show the fault line's label in its first viewport (acceptance 1): a smaller lead saves a line's height. */
+@media (max-width: 30rem) {
+  .hl-lead {
+    min-height: 26px;
+    font-size: 1.3rem;
+    line-height: 26px;
+  }
+}
 .hl[data-kind="failed"] .hl-lead {
   color: var(--fail);
 }

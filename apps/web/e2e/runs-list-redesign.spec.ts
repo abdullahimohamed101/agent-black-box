@@ -3,6 +3,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 // Phase 22 step 7: the runs list shows which runs need you, facets and the top-bar search edit one query string.
 const BASE = "/w/demo/projects/all";
+// Fixture runs: ten earlier ones, the two coding-agent runs (Phase 11) and the blocked run (Phase 22 review P1-3).
+const RUN_COUNT = 13;
+
 const SHOTS = "../../docs/screenshots/phase-22/step-7";
 
 async function axe(page: Page) {
@@ -49,13 +52,13 @@ test.describe("failure lines", () => {
     page,
   }) => {
     await page.goto(`${BASE}/runs`);
-    await expect(rows(page)).toHaveCount(12);
+    await expect(rows(page)).toHaveCount(RUN_COUNT);
     const needing = rows(page).filter({ has: page.locator(NEEDS) });
     const count = await needing.count();
     expect(count).toBeGreaterThanOrEqual(3);
     await expect(page.getByTestId("failure-line")).toHaveCount(count);
     for (const line of await page.getByTestId("failure-line").allInnerTexts())
-      expect(line).toMatch(/^(Failed|Timed out|Blocked)( at step \d+)?/);
+      expect(line).toMatch(/^(Failed|Timed out|Blocked) at step \d+/);
     await expect(needing.first().getByTestId("failure-line")).toContainText("Failed at step");
     // the line is above the fold of its row: clean rows are at most 34 px, failed ones at most two lines
     const clean = rows(page).filter({ hasNot: page.locator(NEEDS) });
@@ -81,7 +84,7 @@ test.describe("failure lines", () => {
     page,
   }) => {
     await page.goto(`${BASE}/runs`);
-    await expect(rows(page)).toHaveCount(12);
+    await expect(rows(page)).toHaveCount(RUN_COUNT);
     const expected = await rows(page)
       .filter({ has: page.locator(NEEDS) })
       .count();
@@ -96,7 +99,7 @@ test.describe("failure lines", () => {
     await expect(rows(page)).toHaveCount(expected);
     await expect(page.getByTestId("failure-line")).toHaveCount(expected);
     await button.click();
-    await expect(rows(page)).toHaveCount(12);
+    await expect(rows(page)).toHaveCount(RUN_COUNT);
     await expect(page).not.toHaveURL(/status=/);
   });
 });
@@ -125,7 +128,7 @@ test.describe("facet column", () => {
     await on.click();
     await expect(box).toHaveValue("");
     await expect(page).not.toHaveURL(/q=/);
-    await expect(rows(page)).toHaveCount(12);
+    await expect(rows(page)).toHaveCount(RUN_COUNT);
     // a shared link carries the facet state
     await page.goto(`${BASE}/runs?q=status%3Afailed`);
     await expect(box).toHaveValue("status:failed");
@@ -163,7 +166,7 @@ test.describe("compare mode", () => {
     await page.keyboard.press("Enter");
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
     const picks = page.getByRole("checkbox", { name: /^Compare / });
-    await expect(picks).toHaveCount(12);
+    await expect(picks).toHaveCount(RUN_COUNT);
     await picks.nth(0).check();
     await picks.nth(1).check();
     await expect(page.getByTestId("compare-bar")).toContainText("2 of 2 runs picked.");
@@ -254,7 +257,7 @@ test.describe("phone", () => {
 
   test("search collapses to an icon, facets fold, nothing overflows", async ({ page }) => {
     await page.goto(`${BASE}/runs`);
-    await expect(rows(page)).toHaveCount(12);
+    await expect(rows(page)).toHaveCount(RUN_COUNT);
     const icon = page.getByRole("button", { name: "Search runs" });
     await expect(icon).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Search all runs" })).toBeHidden();
@@ -294,7 +297,7 @@ for (const [scheme, width, height] of [
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     await page.goto(`${BASE}/runs`);
-    await expect(rows(page)).toHaveCount(12);
+    await expect(rows(page)).toHaveCount(RUN_COUNT);
     await page.evaluate(() => document.fonts.ready);
     await page.screenshot({ path: `${SHOTS}/runs-list-${width}-${scheme}.png`, fullPage: true });
     await page.getByRole("button", { name: "Needs attention" }).click();

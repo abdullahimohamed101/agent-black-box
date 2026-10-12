@@ -3,6 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { openContext, settleAnimations } from "./motion";
 
 const BASE = "/w/demo/projects/all";
+// Fixture runs: ten earlier ones, the two coding-agent runs (Phase 11) and the blocked run (Phase 22 review P1-3).
+const RUN_COUNT = 13;
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 const SHOTS = "../../docs/screenshots/phase-4";
 const SHOTS10 = "../../docs/screenshots/phase-10";
@@ -31,7 +33,7 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await page.goto(`${BASE}/runs`);
   await expect(page.getByRole("table")).toBeVisible();
   const all = await page.locator("tbody tr").count();
-  expect(all).toBe(12); // ten earlier fixture runs and the two coding-agent runs (Phase 11)
+  expect(all).toBe(RUN_COUNT);
   await page.getByLabel("Failed").check();
   await expect(page).toHaveURL(/status=FAILED/);
   await expect(page.locator("tbody tr")).toHaveCount(3); // billing migration, failure chain, wrong fix
@@ -39,7 +41,7 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await page.getByLabel("Agent").fill("nobody");
   await expect(page.getByText("No runs match these filters")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(12);
+  await expect(page.locator("tbody tr")).toHaveCount(RUN_COUNT);
   // the findings column reads as text: count and worst severity, or a dash with plain words
   const looping = page.locator("tbody tr", { hasText: "Resolve flaky docs search" });
   await expect(looping.getByTestId("findings-cell")).toContainText("1 · info");
@@ -447,7 +449,7 @@ test("runs list: pick two runs to compare (fixtures)", async ({ page }) => {
   // Phase 22 D8: the tick boxes exist only once the person starts comparing
   await expect(picks).toHaveCount(0);
   await page.getByRole("button", { name: "Compare", exact: true }).click();
-  await expect(picks).toHaveCount(12);
+  await expect(picks).toHaveCount(RUN_COUNT);
   await expect(page.getByTestId("compare-link")).toHaveCount(0);
   await picks.nth(0).check();
   await picks.nth(1).check();

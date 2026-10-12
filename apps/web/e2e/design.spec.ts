@@ -624,16 +624,27 @@ test.describe("motion", () => {
     });
   });
 
+  // The routes that open a run with a first error draw its fault line once, and nothing else on any route animates.
+  const FAULT_DRAWN: Record<string, string[]> = {
+    "failed run": ["fault-draw-x"],
+    "findings run": ["fault-draw-x"],
+    "coding run": ["fault-draw-x"],
+    "viewer run": ["fault-draw-x"],
+    "multi-agent waterfall": ["fault-draw-y"],
+  };
+
   test.describe("motion on", () => {
     test.use({ reducedMotion: "no-preference" });
 
     test("no route animates on first paint, except a failed run's fault line", async ({ page }) => {
       await recordAnimations(page);
-      for (const [, url] of ROUTES) {
+      for (const [name, url] of ROUTES) {
         await page.goto(url);
         await settled(page);
         // The only animation that may start is the failed run's fault line, drawn once (review P1-1).
-        expect(await started(page), url).toEqual(url.includes(RUN(2)) ? ["fault-draw-x"] : []);
+        // The loading spinner (`spin`) is a loading indicator the contract allows; it is gone once the page settles.
+        const names = (await started(page)).filter((n) => n !== "spin");
+        expect(names, `${name}: ${url}`).toEqual(FAULT_DRAWN[name] ?? []);
         await page.waitForFunction(() => document.getAnimations().length === 0, undefined, {
           timeout: 2000,
         });
