@@ -861,6 +861,8 @@ select {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
+  /* One row of the container's height: an auto row would grow with a tall inspector or context and stretch the lists. */
+  grid-template-rows: minmax(0, 1fr);
   grid-template-columns: var(--ctx-w) minmax(0, 1fr);
 }
 .work[data-inspector="open"] {
