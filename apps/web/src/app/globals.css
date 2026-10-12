@@ -542,8 +542,14 @@ h2 {
   margin: 0.6rem 0 0;
   border-bottom: 0;
 }
-@media (min-width: 52rem) {
-  /* Nine readouts fit one row at 1280: tighter gutters, no wrapping orphan. */
+/* A value or label never breaks inside itself; when the row is too narrow whole readouts wrap to the next line. */
+.run-head .stat dt,
+.run-head .stat dd {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+@media (min-width: 80rem) {
+  /* Nine readouts fit one row from 1280: tighter gutters, no wrapping orphan. */
   .run-head .stats {
     flex-wrap: nowrap;
   }

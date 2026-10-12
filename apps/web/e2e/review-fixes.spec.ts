@@ -19,3 +19,37 @@ test.describe("R4 focus after expanding the folded context", () => {
     expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BODY");
   });
 });
+
+test.describe("R5 readouts at the smallest app window", () => {
+  for (const [w, h] of [
+    [1024, 640],
+    [1280, 720],
+  ]) {
+    test(`${w}x${h}: no readout breaks inside a value or a label`, async ({ page }) => {
+      await page.setViewportSize({ width: w!, height: h! });
+      for (const n of [2, 7, 11]) {
+        await page.goto(`${BASE}/runs/${RUN(n)}`);
+        await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
+        const broken = await page.evaluate(() =>
+          [...document.querySelectorAll(".run-head .stat dt, .run-head .stat dd")]
+            .filter((el) => {
+              const r = document.createRange();
+              r.selectNodeContents(el);
+              const lines = new Set([...r.getClientRects()].map((q) => Math.round(q.top)));
+              return lines.size > 1;
+            })
+            .map((el) => el.textContent),
+        );
+        expect(broken, `run ${n}`).toEqual([]);
+        // the whole row stays inside the header
+        const out = await page.evaluate(() => {
+          const head = document.querySelector(".run-head")!.getBoundingClientRect();
+          return [...document.querySelectorAll(".run-head .stat")].filter(
+            (el) => el.getBoundingClientRect().right > head.right + 1,
+          ).length;
+        });
+        expect(out, `run ${n}`).toBe(0);
+      }
+    });
+  }
+});
