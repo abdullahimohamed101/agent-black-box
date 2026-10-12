@@ -1,6 +1,6 @@
 # Phase 21 plan review (adversarial, before implementation)
 
-Reviewed: `docs/plans/active/phase-21-ui-shell-and-design-pass.md` as refreshed on 2026-10-12 against `main` `2c07adc`. Method: read the plan, `docs/design/ui-direction.md`, every file the plan names, every Playwright spec (`apps/web/e2e/*.spec.ts`) and vitest file (`apps/web/tests/*`), and grepped the selectors they use. Nothing was run; every "would fail" below is reasoned from the spec text, not observed.
+Reviewed: `docs/plans/completed/phase-21-ui-shell-and-design-pass.md` as refreshed on 2026-10-12 against `main` `2c07adc`. Method: read the plan, `docs/design/ui-direction.md`, every file the plan names, every Playwright spec (`apps/web/e2e/*.spec.ts`) and vitest file (`apps/web/tests/*`), and grepped the selectors they use. Nothing was run; every "would fail" below is reasoned from the spec text, not observed.
 
 Severity: P0 = the step cannot land as written (a locked suite fails or a rule is broken); P1 = ships a defect or a security/accessibility regression; P2 = quality or maintainability; P3 = nit. **Applied** means the plan was edited to resolve it; **Open** means a decision is recorded as `[DECIDED: …]` and the user can overrule it.
 
