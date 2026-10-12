@@ -254,6 +254,66 @@ search permits are in use) and `503 SEARCH_TIMEOUT` (retryable: the statement ex
 (a legal 512-character `q` of non-ASCII text can exceed it); the UI shows it like a 422 without a caret. Search is per request bounded: at most two statements, a read-only transaction, the budget
 `ABB_SEARCH_TIMEOUT_SECONDS` (5) and `ABB_SEARCH_MAX_CONCURRENT` (4) permits per process.
 
+## Evaluations, comparison and experiments (Phase 11)
+
+Fifteen operations (ADR-090, ADR-091, ADR-092). All take `X-ABB-Workspace` for people; a project-bound key sees the evaluators of its project (or workspace-wide
+ones), the experiments of its project, and compares runs of its project only. Foreign and random ids answer one uniform `404` (`EVALUATOR_NOT_FOUND`,
+`EVALUATION_NOT_FOUND`, `EXPERIMENT_NOT_FOUND`, `VARIANT_NOT_FOUND`, `RUN_NOT_FOUND`). Writes by people carry the web app's `Origin` (as everywhere).
+
+| Operation | Action | Notes |
+| --- | --- | --- |
+| `GET /v1/evaluators?include_archived=` | `evaluation.read` | `EvaluatorOut`: `id` (`evr_`), `name`, `kind` (`deterministic`, `metric`, `human`, `llm_judge`), `implementation`, `version`, `config`, `project_id`, `archived_at`; `ground_truth` is derived (`false` only for `llm_judge`). For actors without `payload.read` the path-bearing config fields (`allowed_globs`, `forbidden_globs`, `required_paths`) and `rubric` are `null` and named in `config_withheld` |
+| `POST /v1/evaluators` | `evaluator.write` | `{name, kind, implementation, config, description?, project_id?}`. Built-ins: `run_succeeded`, `tests_passed`, `files_touched_only`, `no_policy_blocks`, `expected_files_changed`, `cost_under`, `latency_under`, `tool_error_rate_under`, `retries_under`, `llm_calls_under`, `human`; `judge` for `llm_judge`. `422 EVALUATOR_INVALID` (unknown implementation, invalid or oversized config; names fields, never values), `409 EVALUATOR_NAME_TAKEN`, `409 JUDGE_NOT_CONFIGURED` (`ABB_JUDGE_PROVIDER=none`), `409 LIMIT_REACHED` |
+| `DELETE /v1/evaluators/{id}` | `evaluator.write` | Archives (204); results stay |
+| `GET /v1/runs/{run_id}/evaluations` | `evaluation.read` | `{items, truncated}`, newest first, at most 20 rows per (run, evaluator); `latest` marks the newest row of each evaluator. `EvaluationOut`: `state` (`pending`, `running`, `completed`, `failed`), `score` (0..1 or null), `label`, `explanation`, `evidence_event_ids`, `metrics` (allowlisted keys per implementation), `metadata`, `error_code`, `error`, `evaluator_name`/`evaluator_version` (snapshots), `ground_truth`, timestamps. A `human` or `llm_judge` explanation and `metadata.raw` are `null` with `explanation_withheld` / `metadata_withheld` for actors without `payload.read`; built-in explanations are templates of numbers and are always visible |
+| `POST /v1/runs/{run_id}/evaluations` | `evaluation.run` | `{evaluator_id}` -> `202` with the `pending` row; a second trigger while a row is pending returns that row (`200`, no new job); after completion a trigger adds a row; the 21st is `409 LIMIT_REACHED`. `422 EVALUATOR_KIND_MISMATCH` (a human evaluator), `422 EVALUATOR_PROJECT_MISMATCH`, `409 EVALUATOR_ARCHIVED`. Computed by the `evaluate_run` job |
+| `POST /v1/runs/{run_id}/verdicts` | `evaluation.label` | `{evaluator_id, label, score?, explanation?}` for a `human` evaluator; `completed` at insert; audited without its explanation; `422 EVALUATOR_KIND_MISMATCH` otherwise |
+| `GET /v1/runs/{run_id}/compare?with_run_id=` | `run.read` (both runs) | See below |
+| `GET /v1/experiments?project_id=&include_archived=` | `experiment.read` | `ExperimentSummaryOut` (`id` `exp_`, `name`, `description`, `dataset_label`, `variant_count`, `run_count`) |
+| `POST /v1/experiments` | `experiment.write` | `{name, project_id, description?, dataset_label?, evaluator_ids}` (up to 20 evaluators of the workspace); `409 LIMIT_REACHED` |
+| `GET /v1/experiments/{id}` | `experiment.read` | `ExperimentOut`: `variants`, `warnings`, `metrics`, `runs`, `evaluators` (below) |
+| `DELETE /v1/experiments/{id}` | `experiment.write` | Archives (204) |
+| `POST /v1/experiments/{id}/variants` | `experiment.write` | `{name, role: baseline|candidate, config}`; `config` is a flat map of at most 32 keys with string values of at most 256 characters (8,192 bytes in total). Variant configs are labels visible to every reader: do not put secrets, prompts or paths in them. `409 BASELINE_EXISTS`, `409 BASELINE_REQUIRED` (a candidate needs the baseline first) |
+| `POST /v1/experiments/{id}/runs` | `experiment.write` | `{run_id, variant_id}`; at most 500 runs per experiment (`409 LIMIT_REACHED`); `422 RUN_PROJECT_MISMATCH`; a run joins an experiment once |
+| `DELETE /v1/experiments/{id}/runs/{run_id}` | `experiment.write` | Detaches (204) |
+| `POST /v1/experiments/{id}/evaluate` | `evaluation.run` | Starts every experiment evaluator on every attached run: a (run, evaluator) pair is started when it has no non-terminal and no completed row and fewer than 20 rows (a failed pair is retried). `202 {enqueued, remaining, jobs, at_limit, skipped_evaluators[]}`: at most 500 new rows per call (call again while `remaining > 0`), one `evaluate_run` job per run delayed by `ABB_EVAL_BATCH_DELAY_SECONDS`; archived, human, unconfigured-judge or cooling-down judge evaluators are skipped with a reason (`cooling_down`: a judge refused after an expensive reply; retrying would only add refusal rows); a repeat while rows are pending enqueues nothing. The body is empty; the web proxy still requires `Content-Type: application/json` on POST, so the browser sends `{}` |
+
+### Evaluation states
+
+An evaluation is a derived record with its own state, never part of the run (INV-2 and the roadmap rule "evaluator failures never change run status"): the
+handler runs the evaluator in a worker thread under a cooperative budget (`ABB_EVAL_TIMEOUT_SECONDS`, 25 s, which must be below half the worker lease), claims
+its `pending` rows with `FOR UPDATE SKIP LOCKED` and writes only to `evaluations`; it never locks or updates `runs` and enqueues no summary. Failures
+become `failed` rows with a fixed-text `error_code` (`TIMEOUT`, `RUN_TOO_LARGE` above `ABB_EVAL_MAX_EVENTS`, `INVALID_RESULT`, `JUDGE_BUDGET`, `JUDGE_COOLDOWN`, `JUDGE_INPUT`, `JUDGE_UNAVAILABLE`,
+`EVALUATOR_ERROR`, and `JOB_FAILED` for a pending row whose job was dead-lettered or that is older than `ABB_EVAL_STALE_SECONDS`); `error` carries only a built-in's own
+`EvaluatorError` text, never a value from the run. Terminal rows are immutable (a database trigger refuses updates). Such a stale `pending` row reads as `failed/JOB_FAILED`; a read writes nothing, and the next trigger of that evaluator makes the state real (`pending -> failed`) before it adds a fresh row, so a row once reported failed never completes. A model judge's row has `ground_truth: false` and `metadata.judge_model`; the prompt is never stored or returned.
+
+### Comparison
+
+`GET /v1/runs/{run_id}/compare?with_run_id=` compares two runs of the caller's scope (either order; a run with itself is allowed) from the actor's own projection:
+
+- `left`, `right`: `{run_id, status, steps, truncated, truncated_at_event}`; a run longer than `ABB_COMPARE_MAX_EVENTS` (20,000 events) is cut and says so.
+- `alignment`: `content` (with `payload.read`: steps align on the family and a normalised name, command text and relative paths included) or `metadata` (kinds, tool names,
+  model names only; labels are `null` with `label_withheld`). Every relation, the divergence and the files are computed from that projection, so a viewer can see a
+  different divergence than an owner; the UI says so.
+- `alignment_quality`: `full`, or `partial` when the middle needed more than `ABB_COMPARE_MAX_EDITS` edits (600; ADR-092): the common prefix is exact, so the first
+  divergence is exact, and the rest is one `left_only` and one `right_only` block. Steps are capped at `ABB_COMPARE_MAX_STEPS` (2,000) per side.
+- `steps[]`: `{relation: equal|changed|left_only|right_only, left, right}` with `StepOut` (`event_id`, `span_id`, `family`, `event_type`, `status`, `duration_ms`,
+  `offset_ms`, `label`, `label_withheld`). `changed` is an aligned pair whose status or projected label differs.
+- `divergence`: `{index, relation}` (the row is `steps[index]`) or `null` when every row is `equal`; `first_outcome_difference`: the index of the first aligned pair whose
+  status differs, or `null`.
+- `summary[]`: `{metric, left, right, delta}` for `duration_ms`, `estimated_cost_usd`, `retry_cost_usd`, `llm_calls`, `tool_calls`, `retry_count`, `error_count`,
+  `files_modified`, `input_tokens`, `output_tokens` (`delta` is right minus left, `null` when either side is unknown).
+- `cost_by_model[]`, `evaluations[]` (per evaluator on either run: the latest completed `{score, label}` per side and `delta`; no explanations), and `files`:
+  `{only_left, only_right, both}` for `content`; for `metadata` only `{left_count, right_count, paths_withheld: true}` (an intersection would be a membership oracle).
+
+### Experiments
+
+`ExperimentOut.variants[]` carry `controlled` and `changed_variables` against the baseline (a key that is missing counts as different; spec §86 single-variable
+rule: `controlled` is true when exactly one differs; both are `null` on the baseline). `warnings[]`: `not_single_variable`, `variant_models_vary`,
+`variant_agents_vary`, `unevaluated_runs`. `metrics[]` per variant (finished runs only; the latest terminal result per run and evaluator): `runs`, `finished`,
+`success_rate`, `cost_usd` and `duration_ms` as `{mean, median, p95}`, `retry_rate`, `tool_calls_mean`, `failure_categories` and `evaluations[]`
+(`completed`, `failed`, `mean_score`, `pass_rate` per evaluator). The statement runs under the analytics statement timeout.
+
 ## Cost and analytics
 
 All endpoints need `runs:read`. A project-bound key is confined to its project: `project_id` of another project is

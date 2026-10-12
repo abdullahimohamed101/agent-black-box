@@ -19,6 +19,13 @@ uv run --project packages/sdk-python python examples/coding-agent/run_demo.py
 The scripted model plays a fixed plan, so the run is identical every time (the E2E test uses it). Open the printed run id in the
 web app. `scripts/coding-e2e.sh` does all of this against a throwaway database and a real browser.
 
+### The `wrong-fix` variant (comparison and experiments)
+
+`run_demo.py --variant wrong-fix` plays the same first moves and then a plausible but wrong second patch (a docstring in
+`app/oauth.py`), so the tests keep failing, nothing is committed or pushed, and the run ends in error (`run.failed`, exit
+code 1). Recorded next to the default `baseline` run it is the pair the run-comparison view and the experiments
+view are demonstrated with (`scripts/gen_compare_fixture.py` builds the offline test fixture from both). Scripted model only.
+
 ## What is captured, and what is not
 
 - Capture is opt-in: the demo sets `PayloadMode.FULL`. Without it the SDK records metadata only and uploads nothing.

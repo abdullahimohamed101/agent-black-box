@@ -4,7 +4,7 @@ A flight recorder, observability, debugging, evaluation and (eventually) control
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell
 command, retry and failure, with cost and latency, live.
 
-> Status: Phases 0-10, 15 and 16 merged (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters, sign-in and roles, multi-agent tracing with a waterfall, reliability findings with explained health, search with filter chips). Run comparison and evaluations are being built. The MVP gate is open; see `docs/IMPLEMENTATION_PLAN.md`.
+> Status: Phases 0-10, 15 and 16 merged (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters, sign-in and roles, multi-agent tracing with a waterfall, reliability findings with explained health, search with filter chips). Evaluations, experiments and run comparison are implemented and await review. The MVP gate is open; see `docs/IMPLEMENTATION_PLAN.md`.
 > You can run the stack, trace an agent with the Python SDK or a framework adapter, and watch the run in the web UI, live.
 > See `docs/PROJECT_STATE.md`.
 
@@ -20,7 +20,7 @@ with bb.run("Fix OAuth timeout") as run:
 ```
 
 Open the dashboard and watch the run populate live: timeline, diffs, retries, cost, and
-where it failed. Diffs, shell output, cost and analytics are in the UI today; evaluations, policy and approvals, and multi-agent tracing are later phases (`docs/IMPLEMENTATION_PLAN.md`).
+where it failed. Diffs, shell output, cost and analytics are in the UI today; evaluations and run comparison are implemented and await review; policy and approvals are later phases (`docs/IMPLEMENTATION_PLAN.md`).
 
 ## Architecture in one picture
 
@@ -83,7 +83,7 @@ API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operat
 
 ## Phase Status
 
-See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-10, 15 and 16 merged, MVP gate open). Summary: Phases 0-7 build the MVP
+See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-10, 15 and 16 merged, MVP gate open; Phase 11 awaits its PR). Summary: Phases 0-7 build the MVP
 (foundation, event contract, ingestion, SDK, web, live streaming, coding-agent demo,
 analytics) followed by a human review gate; Phases 8-20 add integrations, multi-agent
 tracing, reliability intelligence, evaluations, replay, security, policy/approvals, RBAC,

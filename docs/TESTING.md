@@ -54,6 +54,16 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
   failed-tool jump, and that a VIEWER sees the same structure but never the tester's command (rows, tooltip, lanes, timeline, drawer). Example tests:
   `uv run --project packages/sdk-python pytest examples/multi-agent/tests`.
 
+- **Evaluations E2E** (`make eval-e2e`, `scripts/eval-e2e.sh`, CI job `eval-e2e`, Phase 11): dedicated `abb_p11` database, API (:8180) with `ABB_JUDGE_PROVIDER=fake` and a worker, the built web server (:3180).
+  The scripted coding agent runs twice through the SDK (`--variant baseline`, and `--variant wrong-fix`, which ends in `run.failed`); `scripts/eval_e2e_check.py` creates the evaluators (rule, metric, human, the fake
+  judge, and a judge whose rubric leaves no room for the run data), evaluates both runs, records a verdict carrying hostile text, proves that a failed evaluation leaves the run row identical (status, summary, `updated_at`),
+  creates an experiment with a baseline and a candidate that differ in two settings, and asserts the owner's and the viewer's comparison over the API. `apps/web/e2e/eval.spec.ts` then drives a real browser as an OWNER
+  (every evaluation state and the "not ground truth" badge, a verdict recorded in the form, the compare page: divergence at the `file.read` that opens the second edit, the first outcome difference at the second test run,
+  "Jump to divergence", keyboard; the experiment's not-controlled banner naming `model` and `variant`, "Evaluate all" filling the metrics) and as a VIEWER (scores and labels but no explanation text, a metadata-only
+  comparison whose divergence is the second test run, no paths or commands in the page, no forms). axe on every page; screenshots in `docs/screenshots/phase-11/`. The fixtures Playwright spec covers the same pages
+  against fixtures (compare, experiments, the viewer's views, mobile overflow). The compare fixture pair is generated from the real example by `scripts/gen_compare_fixture.py` (never hand-edited);
+  `scripts/bench_compare.py` records the alignment benchmarks (`docs/benchmarks/phase-11-compare.md`).
+
 ### Auth, workspaces and RBAC (Phase 15)
 - **Authorization generator** (`apps/api/tests/authz/`): `registry.py` lists every route the application serves with the expected outcome for each of
   27 actors (13 key kinds, six roles, and people who are not members, were removed, were demoted, hold an expired or revoked session, send a session as a
