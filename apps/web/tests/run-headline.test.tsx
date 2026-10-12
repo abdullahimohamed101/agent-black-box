@@ -6,8 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 import { RunHeadline } from "@/components/RunHeadline";
 import type { EventOut, RunOut } from "@/lib/api/types";
 import { withholdEvent, API_WITHHELD } from "@/fixtures/withhold";
-import { approvalRun, failureRetryRun, runningRun, successRun } from "@/fixtures/runs";
-import { firstError } from "@/lib/timeline";
+import { approvalRun, blockedRun, failureRetryRun, runningRun, successRun } from "@/fixtures/runs";
+import { firstError, firstErrorFor } from "@/lib/timeline";
 import {
   HEADLINE_KINDS,
   headlineKind,
@@ -45,21 +45,29 @@ const FOR_KIND: Record<HeadlineKind, () => HeadlineModel> = {
   cancelled: () => model(successRun(), { status: "CANCELLED" }),
 };
 
-describe("firstError() agrees with the server's rule (shared cases, ADR-112)", () => {
+describe("firstErrorFor() agrees with the server's rule (shared cases, ADR-112)", () => {
   const file = path.join(
     __dirname,
     "../../../packages/event-schema/tests/data/first-error-cases.json",
   );
   const { cases } = JSON.parse(readFileSync(file, "utf8")) as {
-    cases: { name: string; events: Partial<EventOut>[]; expected: string | null }[];
+    cases: {
+      name: string;
+      run_status?: RunOut["status"];
+      events: Partial<EventOut>[];
+      expected: string | null;
+    }[];
   };
-  it("reads the shared cases at all", () => {
-    expect(cases.length).toBeGreaterThanOrEqual(8);
+  it("reads the shared cases at all, blocked ones included", () => {
+    expect(cases.length).toBeGreaterThanOrEqual(12);
+    expect(cases.filter((c) => c.run_status === "BLOCKED").length).toBeGreaterThanOrEqual(3);
   });
   for (const c of cases)
     it(c.name, () => {
       const events = c.events.map((e) => ({ attributes: {}, ...e }) as EventOut);
-      expect(firstError(events)?.event_id ?? null).toBe(c.expected);
+      expect(firstErrorFor(c.run_status ?? "RUNNING", events)?.event_id ?? null).toBe(c.expected);
+      // an event-only rule is unchanged: a blocking event never makes firstError() answer
+      if (c.run_status !== "BLOCKED") expect(firstError(events)?.event_id ?? null).toBe(c.expected);
     });
 });
 
@@ -76,6 +84,44 @@ describe("headlineModel: the six states", () => {
   it("timed out and blocked use their own word", () => {
     expect(model(failureRetryRun(), { status: "TIMED_OUT" }).lead).toMatch(/^Timed out at step/);
     expect(model(failureRetryRun(), { status: "BLOCKED" }).lead).toMatch(/^Blocked at step/);
+  });
+  it("blocked: the blocking event is the first error, named by its kind", () => {
+    const f = blockedRun();
+    expect(f.run.status).toBe("BLOCKED");
+    expect(f.run.summary["error_count"]).toBe(0);
+    const m = model(f);
+    expect(m.kind).toBe("failed");
+    expect(m.lead).toMatch(/^Blocked at step \d+ \(\+[\d.]+ s\): policy action blocked$/);
+    expect(m.failure?.eventId).toBe(
+      f.events.find((e) => e.event_type === "policy.action.blocked")!.event_id,
+    );
+    expect(m.detail).toMatch(/^No retries/);
+    // the loaded events alone find it too (an older summary, or the stored one still catching up)
+    const loaded = model(f, { first_error: null, summary_version: 5 });
+    expect(loaded.failure?.eventId).toBe(m.failure?.eventId);
+  });
+  it("blocked with only the blocked completion names the run's end", () => {
+    const f = blockedRun();
+    const events = f.events.filter((e) => e.event_type !== "policy.action.blocked");
+    const m = model(f, { first_error: null }, { events });
+    expect(m.failure?.eventId).toBe(events[events.length - 1]!.event_id);
+    expect(m.lead).toMatch(/^Blocked at step \d+ \(\+[\d.]+ s\): the run's end$/);
+  });
+  it("a run that ends in a timeout or failure at its last event says 'the run's end', not the event type", () => {
+    const f = failureRetryRun();
+    const end = f.events[f.events.length - 1]!;
+    const events = f.events.filter((e) => e.status !== "error" || e === end);
+    expect(end.event_type).toBe("run.failed");
+    const m = model(f, { status: "TIMED_OUT", first_error: null }, { events });
+    expect(m.lead).toMatch(/: the run's end$/);
+    expect(m.lead).not.toMatch(/run\.failed|, error/);
+    const timedOut: EventOut = { ...end, event_type: "run.completed", status: "timeout" };
+    const m2 = model(
+      f,
+      { status: "TIMED_OUT", first_error: null },
+      { events: [...events.slice(0, -1), timedOut] },
+    );
+    expect(m2.lead).toMatch(/^Timed out at step \d+ \(\+[\d.]+ s\): the run's end$/);
   });
   it("failed without any error event says how long it ran, and offers no jump", () => {
     const f = successRun();
@@ -142,7 +188,7 @@ describe("headlineModel: the six states", () => {
     const ask = f.events.find((e) => e.event_type === "approval.requested")!;
     const m = model(f, {}, { now: Date.parse(ask.occurred_at) + 4 * 60_000 });
     expect(m.kind).toBe("waiting");
-    expect(m.lead).toMatch(/^Awaiting approval( to .+)? · step \d+$/);
+    expect(m.lead).toMatch(/^Awaiting approval · step \d+$/);
     expect(m.detail).toMatch(/waiting 4m 00s/);
   });
   it("recovered: succeeded after N retries, the error it recovered from, what the recovery cost", () => {
@@ -177,7 +223,7 @@ describe("headlineModel: the six states", () => {
   it("cancelled: at which step, after how long, and who or what stopped it", () => {
     const m = model(successRun(), { status: "CANCELLED" });
     expect(m.lead).toMatch(/^Cancelled at step \d+ after 11 s$/);
-    expect(m.detail).toMatch(/^Cancelled by no reason recorded · /);
+    expect(m.detail).toBe("$0.0253 total");
     const f = approvalRun();
     const denied: EventOut = {
       ...f.events[f.events.length - 1]!,
@@ -186,7 +232,7 @@ describe("headlineModel: the six states", () => {
       attributes: { "approval.action": "git push" },
     };
     const m2 = model(f, { status: "CANCELLED" }, { events: [...f.events, denied] });
-    expect(m2.detail).toMatch(/^Cancelled by approval denied: git push/);
+    expect(m2.detail).toMatch(/^Cancelled after an approval was denied · /);
   });
   it("covers every status", () => {
     const run = successRun().run;
@@ -286,6 +332,73 @@ describe("headline states x variants", () => {
     expect(screen.getByTestId("headline-detail")).toHaveTextContent(
       "details withheld for your role",
     );
+  });
+
+  it("no attribute outside the reviewed metadata ever reaches the headline, for any role (review P2-1)", () => {
+    const SENTINEL = "SENTINEL-do-not-print";
+    // Every free-text attribute the registry does not classify as reviewed metadata, plus the content ones.
+    const UNREVIEWED = [
+      "approval.action",
+      "error.summary",
+      "file.path",
+      "shell.command",
+      "shell.cwd",
+      "git.branch",
+      "git.push_target",
+      "run.note",
+    ];
+    const dirty = (f: FixtureRun): FixtureRun => ({
+      ...f,
+      events: f.events.map((e) => ({
+        ...e,
+        attributes: {
+          ...e.attributes,
+          ...Object.fromEntries(UNREVIEWED.map((k) => [k, SENTINEL])),
+        },
+      })),
+    });
+    const cases: [string, FixtureRun, Partial<RunOut>][] = [
+      ["failed", failureRetryRun(), {}],
+      ["blocked", blockedRun(), {}],
+      ["timed out", failureRetryRun(), { status: "TIMED_OUT" }],
+      ["recovered", failureRetryRun(), { status: "SUCCESS" }],
+      ["success", successRun(), {}],
+      ["running", runningRun(), {}],
+      ["awaiting approval", approvalRun(), {}],
+      ["waiting", runningRun(), { status: "WAITING" }],
+      ["cancelled", successRun(), { status: "CANCELLED" }],
+    ];
+    for (const [name, base, over] of cases) {
+      const f = dirty(base);
+      const denied: EventOut = {
+        ...f.events[f.events.length - 1]!,
+        event_id: "evt_denied",
+        event_type: "approval.denied",
+      };
+      const withDenied = name === "cancelled" ? [...f.events, denied] : f.events;
+      for (const role of ["owner", "viewer"] as const) {
+        const events =
+          role === "viewer" ? withDenied.map((e) => withholdEvent(e, false)) : withDenied;
+        const m = model(f, over, { events });
+        expect(`${m.lead} | ${m.detail}`, `${name} / ${role}`).not.toContain(SENTINEL);
+        expect(`${m.lead} | ${m.detail}`, `${name} / ${role}`).not.toContain(API_WITHHELD);
+      }
+    }
+  });
+
+  it("an awaiting-approval or cancelled headline names the kind, not what the approval was for", () => {
+    const f = approvalRun();
+    expect(model(f).lead).toBe(
+      `Awaiting approval · step ${f.events[f.events.length - 1]!.sequence}`,
+    );
+    const denied: EventOut = {
+      ...f.events[f.events.length - 1]!,
+      event_id: "evt_denied",
+      event_type: "approval.denied",
+      attributes: { "approval.action": "git push" },
+    };
+    const m = model(f, { status: "CANCELLED" }, { events: [...f.events, denied] });
+    expect(m.detail).toMatch(/^Cancelled after an approval was denied · /);
   });
 
   it("a pending detail is a skeleton bar, not a zero", () => {

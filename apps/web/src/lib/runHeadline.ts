@@ -1,6 +1,6 @@
 import type { EventOut, RunOut } from "@/lib/api/types";
 import { formatCost, formatDuration, formatRelative, num } from "./format";
-import { describe, firstError, isRetry } from "./timeline";
+import { firstErrorFor, isRetry } from "./timeline";
 
 /**
  * What the run page's headline says, as plain data (ADR-111, Phase 22 D4). The component only lays it out, so the words
@@ -60,12 +60,25 @@ const attr = (e: EventOut, k: string): string | null => {
   return typeof v === "string" && v ? v : null;
 };
 
-/** "Tool or event": the tool or model that failed, else the event's type. Metadata only, so it is never withheld. */
+/** The run's own closing events: when one of them is the first error, the run itself ended there. */
+const isRunEnd = (e: EventOut) => e.event_type === "run.completed" || e.event_type === "run.failed";
+
+/**
+ * "Tool or event": the tool or model that failed, else the event's kind in words. Metadata only, so it is never
+ * withheld, and never an attribute outside the reviewed metadata (tool, model and error type names).
+ */
 function subjectOf(e: EventOut): string {
-  return attr(e, "tool.name") ?? attr(e, "llm.model") ?? e.event_type;
+  return (
+    attr(e, "tool.name") ??
+    attr(e, "llm.model") ??
+    (isRunEnd(e) ? "the run's end" : e.event_type.replace(/[._]/g, " "))
+  );
 }
 function errorTypeOf(e: EventOut): string | null {
-  return attr(e, "tool.error_type") ?? attr(e, "llm.error_type") ?? e.status ?? null;
+  const named = attr(e, "tool.error_type") ?? attr(e, "llm.error_type");
+  if (named) return named;
+  // The status of a run's end or a policy block only repeats the lead's own word ("Timed out", "Blocked").
+  return isRunEnd(e) || e.status === "blocked" ? null : (e.status ?? null);
 }
 
 const costOf = (e: EventOut): number | null => num(e.attributes["cost.estimated_usd"]);
@@ -98,7 +111,7 @@ export function deriveFailure(
   eventsComplete: boolean,
 ): { failure: Failure | null; after: After | null } {
   const server = run.summary_state === "current" ? (run.first_error ?? null) : null;
-  const loaded = firstError(events);
+  const loaded = firstErrorFor(run.status, events);
   const eventId = server?.event_id ?? loaded?.event_id ?? null;
   if (!eventId) return { failure: null, after: null };
   const index = events.findIndex((e) => e.event_id === eventId);
@@ -181,16 +194,11 @@ function testsLine(events: readonly EventOut[]): string | null {
   return null;
 }
 
-/** Why a cancelled run stopped, as far as events say: a denied approval or the cancel event's own summary. */
-function cancelledBy(events: readonly EventOut[]): string {
-  const denied = [...events].reverse().find((e) => e.event_type === "approval.denied");
-  if (denied) {
-    const what = attr(denied, "approval.action");
-    return `approval denied${what ? `: ${what}` : ""}`;
-  }
-  const cancel = [...events].reverse().find((e) => e.event_type === "run.cancelled");
-  const why = cancel ? attr(cancel, "error.summary") : null;
-  return why ?? "no reason recorded";
+/** Why a cancelled run stopped, by kind only: what was denied or why it was cancelled is free text (review P2-1). */
+function cancelledBy(events: readonly EventOut[]): string | null {
+  return events.some((e) => e.event_type === "approval.denied")
+    ? "Cancelled after an approval was denied"
+    : null;
 }
 
 export function headlineModel(input: {
@@ -276,13 +284,13 @@ export function headlineModel(input: {
     }
     case "waiting": {
       const ask = [...events].reverse().find((e) => e.event_type === "approval.requested");
-      const action = ask ? attr(ask, "approval.action") : null;
       const since = ask ?? last;
       const wait = since ? formatDuration(Math.max(0, now - Date.parse(since.occurred_at))) : null;
+      // Never the approval's action or the last event's content: a viewer reads the same words as an owner.
       const what =
         run.status === "WAITING_FOR_APPROVAL"
-          ? `Awaiting approval${action ? ` to ${action}` : ""}`
-          : `Waiting${last && describe(last) ? ` on ${describe(last)}` : ""}`;
+          ? "Awaiting approval"
+          : `Waiting${last ? ` on ${subjectOf(last)}` : ""}`;
       return {
         ...common,
         live: false,
@@ -295,7 +303,7 @@ export function headlineModel(input: {
         ...common,
         live: false,
         lead: `Cancelled${lastStep == null ? "" : ` at step ${lastStep}`} after ${duration}`,
-        detail: join([`Cancelled by ${cancelledBy(events)}`, `${total} total`]),
+        detail: join([cancelledBy(events), `${total} total`]),
       };
   }
 }

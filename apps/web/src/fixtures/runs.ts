@@ -164,6 +164,18 @@ export function approvalRun(): FixtureRun {
   return b.build();
 }
 
+/** A policy stopped the run (BLOCKED): no error event, so the blocking event is its first error (ADR-112, version 6). */
+export function blockedRun(): FixtureRun {
+  const b = new RunBuilder(13, "Clean up release branch", "release-agent", FIXTURE_EPOCH + 4 * MIN);
+  open(b, "Clean up release branch");
+  tool(b, 2, "list_branches", 450);
+  llm(b, 3, "model-x", 1200, 90, 0.0084, 900);
+  b.add("policy.action.blocked", { "policy.id": "no-force-push" }, 300, { status: "blocked" });
+  b.add("agent.completed", {}, 200, { span_id: b.span(1), status: "cancelled" });
+  b.add("run.completed", {}, 100, { status: "blocked" });
+  return b.build();
+}
+
 /** 10,000 events: the virtualization stress case (§135). */
 export function stressRun(): FixtureRun {
   const b = new RunBuilder(

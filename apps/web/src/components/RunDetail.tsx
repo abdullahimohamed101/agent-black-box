@@ -19,7 +19,7 @@ import {
   NO_FILTERS,
   buildRows,
   filterEvents,
-  firstError,
+  firstErrorFor,
   groupKeys,
   type EventClass,
   type Filters,
@@ -261,7 +261,8 @@ export function RunDetail({
 
   // "last event 3 s ago" ticks while the run is live; a finished run's headline has no clock in it.
   const [now, setNow] = useState(() => Date.now());
-  const ticking = !!run.data && (run.data.status === "RUNNING" || run.data.status === "WAITING");
+  // Every active status ticks: a run awaiting approval or queued shows how long it has waited (review P1-2).
+  const ticking = !!run.data && isActive(run.data.status);
   useEffect(() => {
     if (!ticking) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -275,7 +276,19 @@ export function RunDetail({
     () => events.reduce((m, e) => Math.min(m, Date.parse(e.occurred_at)), Infinity),
     [events],
   );
-  const err = useMemo(() => firstError(events), [events]);
+  // The server's stored first error when the summary is current (it is known before its page has loaded), else the
+  // first error among the loaded events; the headline derives it the same way (`deriveFailure`). `err` is the loaded
+  // event, which the waterfall needs for its time.
+  const runStatus = run.data?.status ?? "RUNNING";
+  const stored = run.data?.summary_state === "current" ? run.data.first_error?.event_id : null;
+  const firstErrorId = useMemo(
+    () => stored ?? firstErrorFor(runStatus, events)?.event_id ?? null,
+    [stored, runStatus, events],
+  );
+  const err = useMemo(
+    () => (firstErrorId ? events.find((e) => e.event_id === firstErrorId) : undefined),
+    [firstErrorId, events],
+  );
   const bounds = useMemo(
     () => runBounds(run.data ?? { started_at: "", completed_at: null, summary: {} }, t0),
     [run.data, t0],
@@ -361,7 +374,7 @@ export function RunDetail({
   }, [events, restComplete, later]);
   // The fault line draws itself once, the first time rows and the first error are both on screen; a filter, a view
   // switch or a re-render later never replays it.
-  const hasFault = !!err && restComplete;
+  const hasFault = !!firstErrorId && restComplete;
   useEffect(() => {
     if (!hasFault || introPlayed.current) return;
     introPlayed.current = true;
@@ -411,7 +424,8 @@ export function RunDetail({
     setDrawerEventId(eventId);
   };
   const jumpToError = () => {
-    if (err) jumpTo(err.event_id, "error");
+    // An event on a page that has not loaded yet is fetched by the inspector, so the control never waits for paging.
+    if (firstErrorId) jumpTo(firstErrorId, "error");
   };
 
   const toggleClass = (c: EventClass) =>
@@ -657,7 +671,7 @@ export function RunDetail({
                   rows={rows}
                   t0={t0}
                   selectedKey={selectedKey}
-                  firstErrorId={err?.event_id ?? null}
+                  firstErrorId={firstErrorId}
                   faultStep={model.failure?.step ?? null}
                   showAgent={multiAgent}
                   onSelect={setSelected}
@@ -675,7 +689,7 @@ export function RunDetail({
                   bounds={bounds}
                   spanIdOf={spanIdOf}
                   selectedEventId={selected}
-                  firstErrorId={err?.event_id ?? null}
+                  firstErrorId={firstErrorId}
                   faultAtMs={err ? Date.parse(err.occurred_at) : null}
                   faultStep={model.failure?.step ?? null}
                   agentFilter={filters.agents ?? null}

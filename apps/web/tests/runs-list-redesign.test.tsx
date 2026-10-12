@@ -55,14 +55,29 @@ describe("failureLine", () => {
     expect(failureLine({ ...base, status: "BLOCKED" })!.sentence).toMatch(/^Blocked at step/);
   });
 
-  it("falls back to the bare word when the run has no stored first error yet", () => {
-    const old: RunOut = { ...base, first_error: null };
-    expect(failureLine(old)).toEqual({
+  it("a current-version failed run with no error event says so, with no 'yet' (review P1-3a)", () => {
+    const run: RunOut = { ...base, first_error: null, summary_version: 6 };
+    expect(failureLine(run)).toEqual({ sentence: "Failed", detail: "no error event recorded" });
+  });
+
+  it("an older summary says its first-error facts are not rebuilt yet", () => {
+    const run: RunOut = { ...base, first_error: null, summary_version: 5 };
+    expect(failureLine(run)).toEqual({
       sentence: "Failed",
-      detail: "first error not recorded for this run yet",
+      detail: "first-error facts not rebuilt yet",
     });
-    // a summary that is still catching up is not trusted either
+  });
+
+  it("a summary that is still catching up is not trusted, and says that instead", () => {
+    const run = { ...base, summary_state: "processing" as const };
+    expect(failureLine(run)).toEqual({ sentence: "Failed", detail: "summary still updating" });
     expect(failureLine({ ...base, summary_state: "stale" as never })!.sentence).toBe("Failed");
+  });
+
+  it("a blocked run names its blocking event's step, from the stored first error", () => {
+    const blocked = RUNS.find((r) => r.status === "BLOCKED")!;
+    expect(blocked.first_error).not.toBeNull();
+    expect(failureLine(blocked)!.sentence).toBe(`Blocked at step ${blocked.first_error!.sequence}`);
   });
 });
 

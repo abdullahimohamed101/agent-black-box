@@ -1,12 +1,21 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunDetail } from "@/components/RunDetail";
 import { headlineModel } from "@/lib/runHeadline";
-import { failureRetryRun, multiAgentRun, runningRun, successRun } from "@/fixtures/runs";
+import {
+  approvalRun,
+  failureRetryRun,
+  multiAgentRun,
+  runningRun,
+  successRun,
+} from "@/fixtures/runs";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("run header", () => {
   it("states the first error once, inside the headline, with the control beside it", async () => {
@@ -29,6 +38,40 @@ describe("run header", () => {
     renderWithQuery(<RunDetail runId={failureRetryRun().run.id} base={BASE} />);
     await screen.findByTestId("first-error");
     await user.click(screen.getByRole("button", { name: "Show it" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("ConnectionTimeout");
+  });
+
+  it("an approval wait keeps counting while the tab stays open (review P1-2)", async () => {
+    const f = approvalRun();
+    const ask = f.events.find((e) => e.event_type === "approval.requested")!;
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(Date.parse(ask.occurred_at) + 4 * 60_000);
+    stubApi();
+    renderWithQuery(<RunDetail runId={f.run.id} base={BASE} />);
+    const detail = await screen.findByTestId("headline-detail");
+    expect(detail).toHaveTextContent(/waiting 4m 0\ds/);
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(screen.getByTestId("headline-detail")).toHaveTextContent(/waiting 4m (2|3)\ds/);
+  });
+
+  it("Show it works before the page holding the first error has loaded (review P3-2)", async () => {
+    const f = failureRetryRun();
+    const errId = f.run.first_error!.event_id;
+    const cut = f.events.findIndex((e) => e.event_id === errId);
+    const user = userEvent.setup();
+    stubApi({
+      "/events": () =>
+        Response.json({
+          items: f.events.slice(0, cut),
+          next_cursor: null,
+          ordering_mode: "sequence",
+        }),
+    });
+    renderWithQuery(<RunDetail runId={f.run.id} base={BASE} />);
+    const go = await screen.findByRole("button", { name: "Show it" });
+    await user.click(go);
     expect(await screen.findByRole("dialog")).toHaveTextContent("ConnectionTimeout");
   });
 

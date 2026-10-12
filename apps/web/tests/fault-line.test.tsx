@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { FilterMenu } from "@/components/FilterMenu";
 import { Timeline } from "@/components/Timeline";
 import { Waterfall } from "@/components/Waterfall";
-import { failureRetryRun, successRun } from "@/fixtures/runs";
+import { blockedRun, failureRetryRun, successRun } from "@/fixtures/runs";
 import type { EventOut } from "@/lib/api/types";
 import { deriveSpans, SpanIndex } from "@/lib/spans";
 import {
@@ -15,6 +15,7 @@ import {
   faultRowIndex,
   filterEvents,
   firstError,
+  firstErrorFor,
 } from "@/lib/timeline";
 import type { EventClass } from "@/lib/timeline";
 import { BASE, tool } from "./spanEvents";
@@ -51,11 +52,10 @@ describe("the timeline's fault line", () => {
     expect(lines[0]).toHaveTextContent("first error · step 7");
     expect(lines[0]).toHaveAttribute("aria-hidden", "true");
     const rows = screen.getAllByRole("option");
-    // the first error is the second event of its group, so the line sits on the group's row and the error row is below it
-    const first = rows.findIndex((r) => r.hasAttribute("data-first-error"));
-    const at = rows.findIndex((r) => r.getAttribute("aria-label")?.includes("contains an error"));
-    expect(at).toBeGreaterThan(0);
-    expect(first).toBeGreaterThan(at);
+    // Expanded, the line sits on the error event's own row. The group header and the "started" row above it happened
+    // before the error: they are neither tinted as "after the fault" nor under the line (review P2-3).
+    const at = rows.findIndex((r) => r.hasAttribute("data-first-error"));
+    expect(at).toBeGreaterThan(1);
     rows.forEach((r, i) => {
       expect(r.hasAttribute("data-after-fault"), `row ${i}`).toBe(i > at);
     });
@@ -73,6 +73,48 @@ describe("the timeline's fault line", () => {
     expect((document.querySelector(".tl-fault") as HTMLElement).style.top).toBe(`${at * 36}px`);
     expect(rows[at]).not.toHaveAttribute("data-after-fault");
     expect(rows[at + 1]).toHaveAttribute("data-after-fault");
+  });
+
+  it("a blocked run's line sits on the blocking event, which is not an error row", () => {
+    const f = blockedRun();
+    const at = firstErrorFor(f.run.status, f.events)!;
+    expect(at.event_type).toBe("policy.action.blocked");
+    const err = firstError(f.events);
+    expect(err).toBeUndefined();
+    render(
+      <Timeline
+        rows={buildRows(f.events, new Set())}
+        t0={t0Of(f.events)}
+        selectedKey={null}
+        firstErrorId={at.event_id}
+        faultStep={at.sequence}
+        onSelect={() => {}}
+        onActivate={() => {}}
+        onEscape={() => {}}
+        onJumpToError={() => {}}
+      />,
+    );
+    const rows = screen.getAllByRole("option");
+    const i = rows.findIndex((r) => r.hasAttribute("data-first-error"));
+    expect(i).toBeGreaterThan(0);
+    expect(rows[i]).not.toHaveAttribute("data-error");
+    expect(document.querySelectorAll(".tl-fault")).toHaveLength(1);
+    expect((document.querySelector(".tl-fault") as HTMLElement).style.top).toBe(`${i * 36}px`);
+    rows.forEach((r, k) => expect(r.hasAttribute("data-after-fault")).toBe(k > i));
+  });
+
+  it("a collapsed group stands for a first error that is inside it, error event or not", () => {
+    const events = failureRetryRun().events;
+    const group = buildRows(events, new Set()).find((r) => r.kind === "group" && r.hasError)!;
+    const collapsed = buildRows(events, new Set([group.key]));
+    const startedId = events.find((e) => e.event_type === "tool.call.started")!.event_id;
+    // the started event is a member of the first tool group: collapsed, the group's row stands for it
+    const g = collapsed.find((r) => r.kind === "group" && r.eventIds.includes(startedId))!;
+    expect(faultRowIndex(collapsed, startedId)).toBe(collapsed.indexOf(g));
+    // expanded, the header is never the anchor
+    expect(faultRowIndex(buildRows(events, new Set()), startedId)).toBeGreaterThan(
+      buildRows(events, new Set()).findIndex((r) => r.kind === "group"),
+    );
   });
 
   it("a clean run has no line, no tint and a silent status column", () => {

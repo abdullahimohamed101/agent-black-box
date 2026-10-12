@@ -3,6 +3,7 @@ import { baselineCodingRun, wrongFixCodingRun } from "./codingRuns";
 import { withFindings } from "./findings";
 import {
   approvalRun,
+  blockedRun,
   cascadeRun,
   expensiveRun,
   failingChainRun,
@@ -30,6 +31,7 @@ export function fixtureRuns(): FixtureRun[] {
     loopingRun(),
     cascadeRun(),
     failingChainRun(),
+    blockedRun(),
     baselineCodingRun(),
     wrongFixCodingRun(),
   ]

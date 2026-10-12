@@ -1,5 +1,6 @@
 import type { RunOut } from "@/lib/api/types";
 import { formatCost } from "./format";
+import { missingFirstErrorText } from "./timeline";
 
 /**
  * What the runs list says under a run that needs attention (Phase 22 D8). It is the same opening as the run page's
@@ -33,7 +34,7 @@ export function failureLine(run: RunOut): FailureLine | null {
   const word = FAILURE_WORD[run.status];
   if (!word) return null;
   const f = run.summary_state === "current" ? (run.first_error ?? null) : null;
-  if (!f) return { sentence: word, detail: "first error not recorded for this run yet" };
+  if (!f) return { sentence: word, detail: missingFirstErrorText(run) };
   const after = [
     f.retries_after > 0 ? plural(f.retries_after, "retry", "retries") : "no retries",
     f.cost_after_usd > 0 ? `${formatCost(f.cost_after_usd)} spent after` : null,
