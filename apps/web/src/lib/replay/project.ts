@@ -206,6 +206,18 @@ export class ReplayProjection {
     return this.events.length;
   }
 
+  /** Index of the run's first error (or blocking event), -1 when there is none; known before the playhead gets there. */
+  get firstErrorIndex(): number {
+    return this.firstErr;
+  }
+
+  /** Recorded time from the earliest event to the latest, whatever order they are in (the scrub bar's full length). */
+  get durationMs(): number {
+    let max = 0;
+    for (const t of this.times) if (Number.isFinite(t) && t - this.t0 > max) max = t - this.t0;
+    return max;
+  }
+
   /**
    * Take a new event list (a live run's events grew, or the context changed). When the new list only extends the old
    * one the accumulators and checkpoints stay valid; any other change (a late event landing mid-run, a different run)

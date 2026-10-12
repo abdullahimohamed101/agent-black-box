@@ -40,6 +40,7 @@ const ALLOWED: RegExp[] = [
   /^\.(tl|wf)-row\[data-landed="error"\]::after$/, // the outline that fades after a jump to the first error (step 6)
   /^\.tl-row\[data-after-fault\]/, // the tint below the fault
   /^\.wf-fault-(line|region|flag)/,
+  /^\.replay-fault$/, // the first-error mark on the replay scrub bar (Phase 12 step 2)
   /^:root$/, // token definitions and aliases
 ];
 
