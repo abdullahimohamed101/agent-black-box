@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRun } from "@/lib/queries";
+import { useQueryClient } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
 import { projectPath, runsPath, experimentsPath, type Base } from "@/lib/routes";
 
 type Crumb = { label: string; href?: string };
@@ -14,13 +15,22 @@ const SETTINGS: Record<string, string> = {
   audit: "Audit log",
 };
 
-/** The run's name from the query cache the run page already fills; the short id until it loads. A text node, always. */
+/**
+ * The run's name, read from the query cache the run page fills; the short id until it lands. It must not start the
+ * query itself: a reply that arrives before the page boundary hydrates would make RunDetail's hydration render see
+ * data where the server rendered "Loading" (React #418). The server snapshot is always "no name yet". A text node.
+ */
 function RunName({ runId }: { runId: string }) {
-  const run = useRun(runId);
-  return <>{run.data?.name ?? runId.slice(-8)}</>;
+  const client = useQueryClient();
+  const name = useSyncExternalStore(
+    (notify) => client.getQueryCache().subscribe(notify),
+    () => client.getQueryData<{ name?: string | null }>(["run", runId])?.name ?? null,
+    () => null,
+  );
+  return <>{name ?? runId.slice(-8)}</>;
 }
 
-/** "Runs / Ship feature" from the pathname alone: no extra request except the shared run query on a run page. */
+/** "Runs / Ship feature" from the pathname alone: no request of its own. */
 export function Crumbs({ base }: { base: Base }) {
   const path = usePathname();
   const root = projectPath(base);

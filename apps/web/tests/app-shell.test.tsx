@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/AppShell";
 import { WorkspaceProvider } from "@/components/WorkspaceProvider";
+import { useRun } from "@/lib/queries";
 import { setApiWorkspace } from "@/lib/api/client";
 import type { WorkspaceContext } from "@/lib/workspace";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
@@ -113,7 +114,18 @@ describe("application frame", () => {
     ).toHaveAttribute("aria-current", "page");
     first.unmount();
     pathname = `/w/demo/projects/all/runs/run_${"2".padStart(26, "0")}`;
-    shell(ctx());
+    // The crumb only reads the cache the run page fills (see crumbs-hydration.test.tsx), so the page is stood in for.
+    function RunPage() {
+      useRun(`run_${"2".padStart(26, "0")}`);
+      return null;
+    }
+    renderWithQuery(
+      <WorkspaceProvider value={ctx()}>
+        <AppShell base={{ ...BASE, project: "all" }}>
+          <RunPage />
+        </AppShell>
+      </WorkspaceProvider>,
+    );
     const crumbs = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
     expect(crumbs.getByRole("link", { name: "Runs" })).toHaveAttribute(
       "href",
