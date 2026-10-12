@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { openContext, settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
 
 // Runs only through scripts/multiagent-e2e.sh: the multi-agent example (threads, an asyncio task and a subprocess whose
@@ -17,6 +18,7 @@ const open = async (page: Page, view = "waterfall") => {
   await page.goto(
     `/w/${workspace()}/projects/all/runs/${runId}${view === "waterfall" ? "?view=waterfall" : ""}`,
   );
+  await openContext(page); // the context column (agent tree) starts closed (Phase 22 D3)
   await expect(page.getByTestId(view === "waterfall" ? "waterfall" : "agent-tree")).toBeVisible();
 };
 const rowOf = (page: Page, agent: string) =>
@@ -28,6 +30,7 @@ const level = async (row: ReturnType<typeof rowOf>) =>
   Number(await row.first().getAttribute("aria-level"));
 
 async function axe(page: Page) {
+  await settleAnimations(page);
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual(

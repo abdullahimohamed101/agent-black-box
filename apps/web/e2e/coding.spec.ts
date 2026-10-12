@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { openContext, settleAnimations } from "./motion";
 import { signIn, workspace, workspaceHeader } from "./session";
 
 // Runs only through scripts/coding-e2e.sh: the scripted coding agent already wrote its run through the SDK into a
@@ -13,6 +14,7 @@ const SHOTS = "../../docs/screenshots/phase-6";
 
 const open = async (page: Page) => {
   await page.goto(`/w/${workspace()}/projects/all/runs/${runId}`);
+  await openContext(page); // the context column starts closed (Phase 22 D3)
   await expect(page.getByTestId("story")).toBeVisible();
 };
 const step = (page: Page, name: RegExp) =>
@@ -48,7 +50,10 @@ test("the run reads as a story: read, model, edit, failing tests, retry, edit, p
   expect(fail).toBeLessThan(retry);
   expect(retry).toBeLessThan(pass);
   expect(flat.slice(pass).join(" ")).toMatch(/Commit.*Push origin fix\/oauth-session-expiry/);
-  await expect(page.getByTestId("first-error")).toContainText("exit 1");
+  // recovered: the first error (the failing test command) is named in the detail line, with its step
+  await expect(page.getByTestId("headline-detail")).toContainText(
+    /Recovered from shell\.command\.failed, error at step \d+/,
+  );
   await noSecrets(page);
   await page.screenshot({ path: `${SHOTS}/story.png`, fullPage: true });
 });
@@ -176,6 +181,7 @@ test("the run page has no serious accessibility violations and no console errors
   await open(page);
   await step(page, /Edit \(modified\) app\/session\.py/).click();
   await expect(page.getByTestId("diff")).toBeVisible();
+  await settleAnimations(page);
   const bad = (
     await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()
   ).violations.filter((v) => v.impact === "serious" || v.impact === "critical");

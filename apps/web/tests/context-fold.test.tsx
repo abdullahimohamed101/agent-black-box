@@ -35,16 +35,24 @@ async function openInspector(width: number) {
   const { run } = failureRetryRun();
   const { container } = renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
   await screen.findByRole("listbox", { name: /Run timeline/ });
+  await user.click(screen.getByRole("button", { name: /^Context/ })); // Phase 22: closed until asked for
   await user.click(await screen.findByRole("button", { name: "Show it" }));
   await screen.findByRole("dialog");
   return container.querySelector(".work")!;
 }
 
-describe("the context column folds only when the pane lacks width", () => {
-  it("stays open at 1440px (pane 512px >= 480px) when the inspector opens", async () => {
-    expect(await openInspector(1440)).toHaveAttribute("data-context", "open");
+describe("an open context column folds only when the window cannot hold it", () => {
+  it("stays open at 1440px with the full-width inspector", async () => {
+    const work = await openInspector(1440);
+    expect(work).toHaveAttribute("data-context", "open");
+    expect(work).not.toHaveAttribute("data-compact");
   });
-  it("folds at 1280px where the pane would be 352px", async () => {
-    expect(await openInspector(1280)).toHaveAttribute("data-context", "closed");
+  it("stays open at 1280px (KI-126): the inspector narrows instead", async () => {
+    const work = await openInspector(1280);
+    expect(work).toHaveAttribute("data-context", "open");
+    expect(work).toHaveAttribute("data-compact");
+  });
+  it("folds below 1280px, where rail, column, inspector and pane cannot all fit", async () => {
+    expect(await openInspector(1100)).toHaveAttribute("data-context", "closed");
   });
 });

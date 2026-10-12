@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { settleAnimations } from "./motion";
 import { signIn, workspace, workspaceHeader } from "./session";
 
 // Runs only through scripts/e2e-web-real.sh, which ingests the runs over HTTP into a real API + worker.
@@ -13,8 +14,9 @@ const SHOTS = "../../docs/screenshots/phase-4";
 test("a really ingested failed run explains itself", async ({ page }) => {
   await page.goto(`/w/${workspace()}/projects/all/runs/${failed}`);
   await expect(page.getByRole("heading", { level: 1 })).toContainText("fails");
-  await expect(page.getByTestId("headline")).toContainText("Failed after 1 retry");
-  await expect(page.getByTestId("first-error")).toContainText("run_tests · TestFailure");
+  await expect(page.getByTestId("headline")).toContainText(/Failed at step \d+/);
+  await expect(page.getByTestId("headline-detail")).toContainText("1 retry");
+  await expect(page.getByTestId("first-error")).toContainText("run_tests, TestFailure");
   await expect(page.getByTestId("progress")).toContainText("events shown");
   const types = await page.locator(".tl-type").allTextContents();
   expect(types.slice(0, 4)).toEqual([
@@ -25,6 +27,7 @@ test("a really ingested failed run explains itself", async ({ page }) => {
   ]);
   await page.getByRole("button", { name: "Show it" }).click();
   await expect(page.getByRole("dialog")).toContainText("TestFailure");
+  await settleAnimations(page);
   const bad = (
     await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()
   ).violations.filter((v) => v.impact === "serious" || v.impact === "critical");
@@ -39,7 +42,7 @@ test("the real project lists both runs and the proxy exposes no credentials", as
   await page.getByLabel("Failed").check();
   await expect(page.locator("tbody tr")).toHaveCount(1);
   await page.goto(`/w/${workspace()}/projects/all/runs/${ok}`);
-  await expect(page.getByTestId("headline")).toContainText("Succeeded");
+  await expect(page.getByTestId("headline")).toContainText("Completed in");
   const html = await page.content();
   expect(html).not.toContain("abb_live_");
   const r = await page.request.get("/api/abb/v1/runs", { headers: await workspaceHeader(page) });

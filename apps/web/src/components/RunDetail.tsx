@@ -38,6 +38,7 @@ import { ErrorState, Loading } from "./States";
 import { Timeline } from "./Timeline";
 import { ViewSwitch, type RunView } from "./ViewSwitch";
 import { Waterfall } from "./Waterfall";
+import "../app/run-context.css";
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: "warn" | "bad" }) {
   return (
@@ -64,8 +65,14 @@ function LiveBar({
         : state === "reconnecting"
           ? { glyph: "↻", text: "Reconnecting" }
           : state === "unauthorized"
-            ? { glyph: "⏸", text: "Live updates stopped: your access to this run changed" }
-            : { glyph: "⏸", text: "Live updates unavailable, refreshing periodically" };
+            ? {
+                glyph: "⏸",
+                text: "Live updates stopped: your access to this run changed",
+              }
+            : {
+                glyph: "⏸",
+                text: "Live updates unavailable, refreshing periodically",
+              };
   const partial = state === "reconnecting" || state === "unavailable" || state === "unauthorized";
   return (
     <div
@@ -92,11 +99,12 @@ function LiveBar({
   );
 }
 
-/** `matchMedia` as external state; false on the server and where the API is missing (jsdom). */
-/** rem: rail 14 + context column 18 + the pane's minimum 30 (AC8: 480px). The inspector's width is added to it. */
-const FOLD_BASE_REM = 62;
-const DEFAULT_INSPECTOR_REM = 26; // --insp-w in globals.css
+/** Below this the rail, an open context column and the inspector leave the pane under ~350 px (KI-126). */
+const SQUEEZED = "(min-width: 833px) and (max-width: 1279px)";
+/** Below 88 rem the inspector is narrowed to 20 rem while the context column is open, so the column never has to fold. */
+const COMPACT = "(max-width: 1407px)";
 
+/** `matchMedia` as external state; false on the server and where the API is missing (jsdom). */
 function useMedia(query: string): boolean {
   return useSyncExternalStore(
     (notify) => {
@@ -144,6 +152,18 @@ function ContextStripBody({
           {agents}
         </span>
       )}
+    </span>
+  );
+}
+
+/** "Context · 2 findings": the closed column still says there is something in it. */
+function ContextSummary({ runId, poll }: { runId: string; poll: boolean }) {
+  const n = useRunFindings(runId, poll).data?.items.length ?? 0;
+  if (n === 0) return null;
+  return (
+    <span className="context-summary" data-testid="context-summary">
+      {" · "}
+      {n} finding{n === 1 ? "" : "s"}
     </span>
   );
 }
@@ -231,15 +251,14 @@ export function RunDetail({
   const [selected, setSelected] = useState<string | null>(null);
   const [drawerEventId, setDrawerEventId] = useState<string | null>(null);
   const timelineWrap = useRef<HTMLDivElement>(null);
-  // The context column (story, agents, findings, evaluations) yields to the inspector only when the pane would
-  // otherwise drop under its minimum width: rail + column + inspector + pane minimum (88rem with the default
-  // inspector). Clicking "Show it", a finding or a story step must not fold the column that was just clicked while
-  // there is room. The strip button and the header toggle override this and the choice sticks until the next toggle.
-  const [contextPref, setContextPref] = useState<"auto" | "open" | "closed">("auto");
+  // Phase 22 D3: the context column (story, agents, findings, evaluations) starts closed; the Context button says what
+  // is in it. Once the person opens it, it stays open beside the inspector (the inspector narrows instead, KI-126);
+  // only in a window too small for rail + column + inspector + pane (below 1280 px) does it fold while the inspector
+  // is open. A click on the strip or the button while it is squeezed "pins" it open until the next toggle.
+  const [contextPref, setContextPref] = useState<"closed" | "open" | "pinned">("closed");
   const [inspectorPx, setInspectorPx] = useState<number | null>(null);
-  const narrow = useMedia(
-    `(max-width: ${inspectorPx ? `${inspectorPx + FOLD_BASE_REM * 16}px` : `${FOLD_BASE_REM + DEFAULT_INSPECTOR_REM}rem`})`,
-  );
+  const squeezedWindow = useMedia(SQUEEZED);
+  const compactWindow = useMedia(COMPACT);
 
   // "last event 3 s ago" ticks while the run is live; a finished run's headline has no clock in it.
   const [now, setNow] = useState(() => Date.now());
@@ -287,8 +306,11 @@ export function RunDetail({
     drawerEventId && !loadedDrawerEvent ? drawerEventId : null,
   );
   const drawerEvent = loadedDrawerEvent ?? remoteDrawer.data;
+  const inspected = drawerEvent;
   const contextClosed =
-    contextPref === "closed" || (contextPref === "auto" && !!drawerEvent && narrow);
+    contextPref === "closed" || (contextPref === "open" && !!inspected && squeezedWindow);
+  const toggleContext = () =>
+    setContextPref(contextClosed ? (squeezedWindow && inspected ? "pinned" : "open") : "closed");
 
   // Expanding the strip hides the very button that was focused; move focus to the column it opened (it is a tab stop)
   // rather than let it fall to <body>.
@@ -398,7 +420,13 @@ export function RunDetail({
   const retries = num(s["retry_count"]) ?? 0;
   const errors = num(s["error_count"]) ?? 0;
   const models = Array.isArray(s["models"]) ? (s["models"] as string[]) : [];
-  const model = headlineModel({ run: r, events, t0, eventsComplete: restComplete, now });
+  const model = headlineModel({
+    run: r,
+    events,
+    t0,
+    eventsComplete: restComplete,
+    now,
+  });
   const kind = model.kind;
   // The error variant: the run says it failed but its first error cannot be located because the events did not load.
   const headlineFailed =
@@ -471,16 +499,18 @@ export function RunDetail({
           className="context-toggle"
           aria-pressed={!contextClosed}
           aria-controls="run-context"
-          onClick={() => setContextPref(contextClosed ? "open" : "closed")}
+          onClick={toggleContext}
         >
           Context
+          <ContextSummary runId={runId} poll={active || r.summary_state === "processing"} />
         </button>
       </div>
 
       <div
         className="work"
-        data-inspector={drawerEvent ? "open" : "closed"}
+        data-inspector={inspected ? "open" : "closed"}
         data-context={contextClosed ? "closed" : "open"}
+        data-compact={(!contextClosed && !!inspected && compactWindow && !inspectorPx) || undefined}
         style={
           inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
         }
@@ -498,7 +528,7 @@ export function RunDetail({
             className="context-strip"
             onClick={() => {
               focusContext.current = true;
-              setContextPref("open");
+              setContextPref(squeezedWindow && inspected ? "pinned" : "open");
             }}
             aria-label="Show run context"
             aria-expanded="false"
@@ -512,6 +542,14 @@ export function RunDetail({
             />
           </button>
           <div className="context-body" inert={contextClosed || undefined}>
+            {/* Findings first: they are why the column is opened (D3). */}
+            <Findings
+              runId={runId}
+              runActive={active}
+              summaryProcessing={r.summary_state === "processing"}
+              onShowEvent={jumpTo}
+            />
+
             <CodingSummary
               events={events}
               onOpen={(id) => {
@@ -529,13 +567,6 @@ export function RunDetail({
                 onClear={() => setFilters((f) => ({ ...f, agents: null }))}
               />
             )}
-
-            <Findings
-              runId={runId}
-              runActive={active}
-              summaryProcessing={r.summary_state === "processing"}
-              onShowEvent={jumpTo}
-            />
 
             <Evaluations runId={runId} onShowEvent={jumpTo} />
           </div>
@@ -661,7 +692,7 @@ export function RunDetail({
         </section>
 
         {drawerEvent && <InspectorResizer width={inspectorPx} onChange={setInspectorPx} />}
-        {drawerEvent && <EventDrawer runId={runId} event={drawerEvent} onClose={closeDrawer} />}
+        {inspected && <EventDrawer runId={runId} event={inspected} onClose={closeDrawer} />}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { settleAnimations } from "./motion";
 import { signIn } from "./session";
 
 // Runs only through scripts/auth-e2e.sh: a real API (stream re-check every 2 s), the DEVELOPMENT-ONLY fake OIDC provider
@@ -26,6 +27,7 @@ const INVITEE = process.env.E2E_INVITEE_EMAIL!;
 const STREAMER = process.env.E2E_STREAMER_EMAIL!;
 
 async function axe(page: Page) {
+  await settleAnimations(page);
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual(
@@ -196,7 +198,7 @@ test("a role downgrade to viewer takes effect at once: metadata stays, content i
 
     // before the downgrade this person holds payload.read: the command and the path are on the page
     await viewer.goto(`/w/${A}/projects/all/runs/${payloadRun}`);
-    await expect(viewer.getByTestId("headline")).toContainText("Succeeded");
+    await expect(viewer.getByTestId("headline")).toContainText("Completed in");
     await expect(viewer.locator("body")).toContainText(commandText!);
     await expect(viewer.locator("body")).toContainText(pathText!);
 
@@ -205,7 +207,7 @@ test("a role downgrade to viewer takes effect at once: metadata stays, content i
     await expect(page.getByLabel(`Role of ${INVITEE}`)).toHaveValue("VIEWER");
 
     await viewer.goto(`/w/${A}/projects/all/runs/${payloadRun}`);
-    await expect(viewer.getByTestId("headline")).toContainText("Succeeded"); // metadata still there
+    await expect(viewer.getByTestId("headline")).toContainText("Completed in"); // metadata still there
     await viewer.getByRole("option").filter({ hasText: "run.started" }).first().click();
     const drawer = viewer.getByRole("dialog");
     await expect(drawer.getByTestId("payload-withheld")).toBeVisible();

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { withArtifacts } from "./artifacts";
+import { openContext, settleAnimations } from "./motion";
 
 // Phase 21 design contract (fixtures build): the application frame, fonts, no third-party requests, axe in both colour
 // schemes and no horizontal scroll on a phone, on every kind of page. Objective checks only; the paired screenshots
@@ -22,6 +23,7 @@ const ROUTES: [string, string][] = [
 ];
 
 async function axe(page: Page) {
+  await settleAnimations(page);
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual(
@@ -255,33 +257,51 @@ test.describe("run work area", () => {
     expect(m.scroll).toBe(m.inner);
     const list = (await page.locator(".timeline").boundingBox())!;
     expect(list.height).toBeGreaterThan(300);
-    // the context column is visible on load, beside the pane
-    await expect(page.getByRole("complementary", { name: "Run context" })).toBeVisible();
-    await expect(page.getByTestId("findings")).toBeVisible();
-  });
-
-  test("opening the inspector keeps the pane usable: where it would lack width the context folds to a strip, one click restores it", async ({
-    page,
-  }) => {
-    // 1440 has room for all three columns (see review-fixes.spec.ts); 1280 does not.
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await page.getByRole("button", { name: "Show it" }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(480);
+    // Phase 22 D3: the context column starts closed (a strip beside the pane); findings are not in the main view
     await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
     await expect(page.getByTestId("findings")).toBeHidden();
+    await expect(page.getByRole("button", { name: /^Context/ })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  test("an open context column stays open beside the inspector at 1280 (KI-126): the inspector narrows, the pane stays usable", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await openContext(page);
+    await expect(page.getByTestId("findings")).toBeVisible();
+    await page.getByRole("button", { name: "Show it" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
+    await expect(page.getByTestId("findings")).toBeVisible();
+    expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(440);
+    // the header toggle folds it
+    await page.getByRole("button", { name: /^Context/ }).click();
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
+  });
+
+  test("below 1280 an open context folds to the strip when the inspector opens, and one click restores it", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await openContext(page);
+    await page.getByRole("button", { name: "Show it" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(300);
+    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
     await page.getByRole("button", { name: "Show run context" }).click();
     await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
     await expect(page.getByTestId("findings")).toBeVisible();
-    // the header toggle folds it again
-    await page.getByRole("button", { name: "Context", exact: true }).click();
-    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
   });
 
-  test("a wide window keeps the context open beside the inspector", async ({ page }) => {
+  test("a wide window keeps an open context beside the inspector", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1000 });
     await page.goto(`${BASE}/runs/${RUN(2)}`);
+    await openContext(page);
     await page.getByRole("button", { name: "Show it" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
@@ -571,7 +591,7 @@ test.describe("motion", () => {
   });
 });
 
-test.describe("polish: the toolbar takes one row, or two when the pane is narrow", () => {
+test.describe("polish: toolbar, story, agents, context strip and view tabs", () => {
   for (const width of [1440, 1280]) {
     test(`toolbar is at most two rows with the inspector open at ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
@@ -587,6 +607,7 @@ test.describe("polish: the toolbar takes one row, or two when the pane is narrow
 
   test("a story step has one marker: the list number, no glyph", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(11)}`);
+    await openContext(page);
     // the label and its detail stay separate words in the button's accessible name
     await expect(
       page
@@ -613,7 +634,7 @@ test.describe("polish: the toolbar takes one row, or two when the pane is narrow
     await expect(strip.locator("svg")).toBeVisible();
     expect((await strip.boundingBox())!.width).toBeGreaterThanOrEqual(34);
     await strip.click();
-    await expect(page.getByRole("button", { name: "Context" })).toHaveAttribute(
+    await expect(page.getByRole("button", { name: /^Context/ })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -621,6 +642,7 @@ test.describe("polish: the toolbar takes one row, or two when the pane is narrow
 
   test("agents are clamped to two lines but keep their full text", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(7)}`);
+    await openContext(page);
     const item = page.getByTestId("agent-tree").getByRole("button").first();
     await expect(item).toHaveAttribute("title", /events/);
     expect((await item.boundingBox())!.height).toBeLessThan(64);

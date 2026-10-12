@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { openContext, settleAnimations } from "./motion";
 
 const BASE = "/w/demo/projects/all";
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
@@ -7,6 +8,7 @@ const SHOTS = "../../docs/screenshots/phase-4";
 const SHOTS10 = "../../docs/screenshots/phase-10";
 
 async function axe(page: Page) {
+  await settleAnimations(page);
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   const bad = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual(
@@ -150,6 +152,7 @@ test("looping run shows a probable loop finding whose evidence jump selects the 
   page,
 }) => {
   await page.goto(`${BASE}/runs/${RUN(8)}`);
+  await openContext(page); // Phase 22 D3: findings live in the context panel, closed by default
   const panel = page.getByTestId("findings");
   await expect(panel.getByRole("heading", { name: "Findings" })).toBeVisible();
   await expect(panel.getByTestId("findings-state")).toContainText("Analysis is current");
@@ -159,7 +162,11 @@ test("looping run shows a probable loop finding whose evidence jump selects the 
     "Probable: the agent may be looping",
   );
   await expect(loop).toContainText("Probable");
+  // one line per finding: the explanation sits behind Details, the health dimensions behind their own disclosure
+  await expect(loop.getByLabel("Pattern")).toBeHidden();
+  await loop.getByText("Details", { exact: true }).click();
   await expect(loop.getByLabel("Pattern")).toContainText("tool:search_docs");
+  await panel.getByText(/^Health:/).click();
   await expect(panel.getByTestId("health")).toContainText("Loops");
   await expect(page.getByTestId("progress")).toContainText("events shown");
   await loop.getByRole("button", { name: "Show evidence" }).click();
@@ -173,7 +180,9 @@ test("looping run shows a probable loop finding whose evidence jump selects the 
 
 test("failed run: the failure chain lists linked events and each one opens", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(10)}`);
+  await openContext(page);
   const chain = page.getByTestId("finding").filter({ hasText: "the run failed" });
+  await chain.getByText("Details", { exact: true }).click();
   await expect(chain).toContainText("Observed");
   await expect(chain.getByRole("listitem")).toHaveCount(4);
   await expect(page.getByTestId("finding").filter({ hasText: "Probable:" })).toHaveCount(1);
@@ -185,8 +194,10 @@ test("failed run: the failure chain lists linked events and each one opens", asy
 
 test("analysis states are stated: processing and not analysed", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(4)}`);
+  await openContext(page);
   await expect(page.getByTestId("findings-state")).toContainText("Analysing");
   await page.goto(`${BASE}/runs/${RUN(5)}`);
+  await openContext(page);
   await expect(page.getByTestId("findings-state")).toContainText("Not analysed yet");
   await expect(page.getByTestId("health")).toContainText("No data");
 });
@@ -254,6 +265,7 @@ test("multi-agent waterfall: lanes, nesting under skew, critical path, synchroni
   page,
 }) => {
   await page.goto(`${BASE}/runs/${RUN(7)}`);
+  await openContext(page);
   await expect(page.getByTestId("agent-tree")).toContainText("Agents (5)");
   await page.getByRole("radio", { name: "Waterfall" }).check();
   await expect(page).toHaveURL(/view=waterfall/);
@@ -313,6 +325,7 @@ test("multi-agent waterfall: lanes, nesting under skew, critical path, synchroni
 
 test("agent filter narrows the timeline and dims the waterfall", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(7)}`);
+  await openContext(page);
   await page
     .getByTestId("agent-tree")
     .getByRole("button", { name: /^reviewer/ })
@@ -386,6 +399,7 @@ test("evaluations: every state, the judge badge, hostile text as text, and the v
     void d.dismiss();
   });
   await page.goto(`${BASE}/runs/${RUN(12)}`);
+  await openContext(page);
   const section = page.getByTestId("evaluations");
   await expect(section.getByRole("heading", { name: "Evaluations", level: 2 })).toBeVisible();
   // four latest results and one earlier (failed) one inside "Earlier results"
@@ -404,6 +418,7 @@ test("evaluations: every state, the judge badge, hostile text as text, and the v
 
   // the baseline carries a hostile explanation: it is text, never markup
   await page.goto(`${BASE}/runs/${RUN(11)}`);
+  await openContext(page);
   await expect(page.getByTestId("evaluation")).toHaveCount(4);
   await expect(page.getByTestId("explanation").first()).toContainText("<img src=x onerror=");
   expect(await page.locator("[data-testid=evaluations] img").count()).toBe(0);
@@ -415,6 +430,7 @@ test("evaluations: every state, the judge badge, hostile text as text, and the v
 
   // a viewer sees scores and labels, never free text, and no controls
   await page.goto(`/w/viewer-only/projects/all/runs/${RUN(11)}`);
+  await openContext(page);
   const viewer = page.getByTestId("evaluations");
   await expect(viewer.getByTestId("evaluation")).toHaveCount(4);
   await expect(viewer.getByTestId("explanation-withheld")).toHaveCount(2);

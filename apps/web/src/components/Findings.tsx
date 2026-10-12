@@ -24,36 +24,50 @@ function inputsText(inputs: DimensionOut["inputs"]): string {
     .join(" · ");
 }
 
+/** Health is the explanation behind the findings, so it sits in a quiet disclosure: one line, the dimensions on request. */
 function Health({ dimensions, overall }: { dimensions: readonly DimensionOut[]; overall: string }) {
   const o = healthMeta(overall);
   return (
-    <div className="health" data-testid="health">
-      <p className="health-overall">
-        Overall:{" "}
-        <span className="badge" data-tone={o.tone} data-status={overall}>
+    <details className="health-disclosure">
+      <summary>
+        Health:{" "}
+        <span className="badge" data-tone={o.tone}>
           <span aria-hidden="true">{o.glyph}</span> {o.label}
-        </span>{" "}
-        <span className="muted">The worst dimension. No score is computed.</span>
-      </p>
-      <dl className="health-dims" aria-label="Health dimensions">
-        {dimensions.map((d) => {
-          const m = healthMeta(d.status);
-          const inputs = inputsText(d.inputs);
-          return (
-            <div key={d.name} className="health-dim" data-dimension={d.name} data-status={d.status}>
-              <dt>{dimensionLabel(d.name)}</dt>
-              <dd>
-                <span className="badge" data-tone={m.tone}>
-                  <span aria-hidden="true">{m.glyph}</span> {m.label}
-                </span>
-                <span className="health-rule">{d.rule}</span>
-                {inputs && <span className="health-inputs muted">{inputs}</span>}
-              </dd>
-            </div>
-          );
-        })}
-      </dl>
-    </div>
+        </span>
+      </summary>
+      <div className="health" data-testid="health">
+        <p className="health-overall">
+          Overall:{" "}
+          <span className="badge" data-tone={o.tone} data-status={overall}>
+            <span aria-hidden="true">{o.glyph}</span> {o.label}
+          </span>{" "}
+          <span className="muted">The worst dimension. No score is computed.</span>
+        </p>
+        <dl className="health-dims" aria-label="Health dimensions">
+          {dimensions.map((d) => {
+            const m = healthMeta(d.status);
+            const inputs = inputsText(d.inputs);
+            return (
+              <div
+                key={d.name}
+                className="health-dim"
+                data-dimension={d.name}
+                data-status={d.status}
+              >
+                <dt>{dimensionLabel(d.name)}</dt>
+                <dd>
+                  <span className="badge" data-tone={m.tone}>
+                    <span aria-hidden="true">{m.glyph}</span> {m.label}
+                  </span>
+                  <span className="health-rule">{d.rule}</span>
+                  {inputs && <span className="health-inputs muted">{inputs}</span>}
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
+      </div>
+    </details>
   );
 }
 
@@ -78,67 +92,73 @@ function Finding({
       data-type={finding.finding_type}
       aria-labelledby={titleId}
     >
+      {/* One line: severity (glyph and word), the title (a probable finding says so in its first word) and the way to its evidence. */}
       <div className="finding-head">
         <span className="badge" data-tone={sev.tone}>
           <span aria-hidden="true">{sev.glyph}</span> {sev.label}
         </span>
-        <span className="badge" data-tone="neutral" data-kind={finding.kind}>
-          {kind}
-        </span>
         <h3 id={titleId}>{finding.title}</h3>
+        <button
+          type="button"
+          disabled={target == null}
+          onClick={() => target && onShowEvent(target)}
+          aria-describedby={titleId}
+        >
+          Show evidence
+        </button>
       </div>
-      <p>{finding.message}</p>
-      {ev.chips.length > 0 && (
-        <ul className="chips" aria-label="Pattern">
-          {ev.chips.map((c, i) => (
-            <li key={i} className="chip chip-static">
-              {c}
-            </li>
-          ))}
-        </ul>
-      )}
-      {ev.facts.length > 0 && (
-        <dl className="fields finding-facts">
-          {ev.facts.map(([k, v]) => (
-            <div key={k}>
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      {ev.steps.length > 0 && (
-        <div className="finding-steps">
-          <p className="muted">{ev.stepsTitle}</p>
-          <ol>
-            {ev.steps.map((s, i) => (
-              <li key={`${s.eventId}-${i}`}>
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={() => onShowEvent(s.eventId)}
-                >
-                  {s.label}
-                </button>
+      <details className="finding-more">
+        <summary>Details</summary>
+        <p>
+          <span className="badge" data-tone="neutral" data-kind={finding.kind}>
+            {kind}
+          </span>{" "}
+          {finding.message}
+        </p>
+        {ev.chips.length > 0 && (
+          <ul className="chips" aria-label="Pattern">
+            {ev.chips.map((c, i) => (
+              <li key={i} className="chip chip-static">
+                {c}
               </li>
             ))}
-          </ol>
-        </div>
-      )}
-      <p className="finding-foot muted">
-        {finding.detector_version} · confidence {Math.round(finding.confidence * 100)}%
-        {ev.thresholds.length > 0 && (
-          <> · rule thresholds {ev.thresholds.map(([k, v]) => `${k} ${v}`).join(", ")}</>
+          </ul>
         )}
-      </p>
-      <button
-        type="button"
-        disabled={target == null}
-        onClick={() => target && onShowEvent(target)}
-        aria-describedby={titleId}
-      >
-        Show evidence
-      </button>
+        {ev.facts.length > 0 && (
+          <dl className="fields finding-facts">
+            {ev.facts.map(([k, v]) => (
+              <div key={k}>
+                <dt>{k}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {ev.steps.length > 0 && (
+          <div className="finding-steps">
+            <p className="muted">{ev.stepsTitle}</p>
+            <ol>
+              {ev.steps.map((s, i) => (
+                <li key={`${s.eventId}-${i}`}>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => onShowEvent(s.eventId)}
+                  >
+                    {s.label}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+        <p className="finding-foot muted">
+          {finding.detector_version} · confidence {Math.round(finding.confidence * 100)}%
+          {ev.thresholds.length > 0 && (
+            <> · rule thresholds {ev.thresholds.map(([k, v]) => `${k} ${v}`).join(", ")}</>
+          )}
+        </p>
+      </details>
     </li>
   );
 }
@@ -197,12 +217,10 @@ function FindingsBody({
         {line.text}
         {runActive && " Severity may change until the run ends."}
       </p>
-      <Health dimensions={data.health.dimensions} overall={data.health.overall} />
       {shown.length === 0 ? (
         <p className="findings-empty" data-testid="findings-empty">
           <RecorderTape className="illus-sm" />
-          No findings
-          {data.state.status === "current" ? "." : " yet."}
+          {data.state.status === "current" ? "Nothing wrong found." : "No findings yet."}
         </p>
       ) : (
         <ul className="finding-list" aria-label="Findings">
@@ -211,6 +229,7 @@ function FindingsBody({
           ))}
         </ul>
       )}
+      <Health dimensions={data.health.dimensions} overall={data.health.overall} />
       {items.length > shown.length && (
         <p className="muted">
           Showing the first {MAX_SHOWN} of {items.length} findings.

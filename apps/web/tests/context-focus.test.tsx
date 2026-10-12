@@ -18,7 +18,6 @@ describe("expanding the folded context strip", () => {
     const { run } = failureRetryRun();
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
-    await user.click(screen.getByRole("button", { name: "Context" })); // fold it
     const strip = await screen.findByRole("button", { name: "Show run context" });
     expect(strip).toHaveAttribute("aria-expanded", "false");
     strip.focus();

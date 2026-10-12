@@ -1,5 +1,6 @@
 import { test, type Page } from "@playwright/test";
 import { withArtifacts } from "./artifacts";
+import { openContext } from "./motion";
 
 // Phase 21 screenshot set (fixtures build). `SHOTS_DIR=before|after` picks the folder under docs/screenshots/phase-21/.
 // The same script runs against the pre-redesign tree and the final tree, so it only uses roles, test ids and URLs.
@@ -50,12 +51,14 @@ test.describe("screenshot set", () => {
     await page.getByTestId("waterfall").waitFor();
     await shot(page, "run-multiagent-waterfall-1440");
     await page.goto(`${BASE}/runs/${RUN(8)}`);
+    await openContext(page);
     await page.getByTestId("findings").waitFor();
     await shot(page, "run-findings-loop-1440");
   });
 
   test("coding run: story, diff inspector, evidence", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(11)}`);
+    await openContext(page);
     await page.getByTestId("story").waitFor();
     await shot(page, "run-coding-story-1440");
     // the first story step that opens a diff; fall back to the first step so the shot still exists

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openContext } from "./motion";
 
 // Regressions found by the Phase 21 code review (docs/plans/active/phase-21-code-review.md). Fixtures build.
 const BASE = "/w/demo/projects/all";
@@ -10,7 +11,7 @@ test.describe("R4 focus after expanding the folded context", () => {
   test("Enter on the strip lands focus in the context column, not <body>", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
     await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
-    await page.getByRole("button", { name: "Context" }).click(); // fold
+    // closed by default (Phase 22 D3): the strip is already there
     const strip = page.getByRole("button", { name: "Show run context" });
     await strip.focus();
     await page.keyboard.press("Enter");
@@ -55,21 +56,23 @@ test.describe("R5 readouts at the smallest app window", () => {
 });
 
 test.describe("R7 the context column survives a click on it", () => {
-  test("1440: Show it opens the inspector and the column stays open; 1280: it folds", async ({
+  test("1440 and 1280: once open, Show it opens the inspector and the column stays open (KI-126); under 1280 it folds", async ({
     page,
   }) => {
     for (const [w, state] of [
       [1440, "open"],
-      [1280, "closed"],
+      [1280, "open"],
+      [1100, "closed"],
     ] as const) {
       await page.setViewportSize({ width: w, height: 900 });
       await page.goto(`${BASE}/runs/${RUN(2)}`);
       await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
+      await openContext(page);
       await page.getByRole("button", { name: "Show it" }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
       await expect(page.locator(".work")).toHaveAttribute("data-context", state);
       const pane = await page.locator(".pane").boundingBox();
-      expect(pane!.width, `${w}`).toBeGreaterThanOrEqual(w === 1440 ? 480 : 300);
+      expect(pane!.width, `${w}`).toBeGreaterThanOrEqual(w === 1440 ? 480 : w === 1280 ? 440 : 300);
     }
   });
 });
@@ -136,6 +139,7 @@ test.describe("R12 empty states are statements, not cards", () => {
   ] as const) {
     test(`${name}: no bordered box`, async ({ page }) => {
       await page.goto(url);
+      if (name === "run evaluations") await openContext(page); // the context column starts closed (Phase 22 D3)
       const empty = page.locator('[data-state="empty"]').first();
       await expect(empty).toBeVisible();
       const css = await empty.evaluate((el) => {
