@@ -323,6 +323,17 @@ export function RunDetail({
   const contextClosed =
     contextPref === "closed" || (contextPref === "auto" && !!drawerEvent && narrow);
 
+  // Expanding the strip hides the very button that was focused; move focus to the column it opened (it is a tab stop)
+  // rather than let it fall to <body>.
+  const contextRef = useRef<HTMLElement>(null);
+  const focusContext = useRef(false);
+  useEffect(() => {
+    if (!contextClosed && focusContext.current) {
+      focusContext.current = false;
+      contextRef.current?.focus();
+    }
+  }, [contextClosed]);
+
   const evidence = useMemo(() => evidenceRows(events), [events]);
 
   // Motion cues (decoration only; all of them are zero-length under prefers-reduced-motion). Events that arrive after
@@ -520,12 +531,18 @@ export function RunDetail({
           className="context"
           aria-label="Run context"
           tabIndex={contextClosed ? undefined : 0}
+          ref={contextRef}
         >
           <button
             type="button"
             className="context-strip"
-            onClick={() => setContextPref("open")}
+            onClick={() => {
+              focusContext.current = true;
+              setContextPref("open");
+            }}
             aria-label="Show run context"
+            aria-expanded="false"
+            aria-controls="run-context"
             tabIndex={contextClosed ? 0 : -1}
           >
             <ContextStripBody
