@@ -445,3 +445,50 @@ test.describe("evidence view", () => {
     expect(await page.content()).not.toContain("[withheld]");
   });
 });
+
+test.describe("runs list", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("dense: rows are at most 34 px, the toolbar is one row, no inner horizontal scroll", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/runs`);
+    await expect(page.getByRole("table")).toBeVisible();
+    const rows = await page
+      .locator("tbody tr")
+      .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+    expect(rows.length).toBeGreaterThan(5);
+    expect(Math.max(...rows)).toBeLessThanOrEqual(34);
+    const filters = (await page.getByRole("search", { name: "Filter runs" }).boundingBox())!;
+    expect(filters.height).toBeLessThanOrEqual(48);
+    const wrap = await page.locator(".table-wrap").evaluate((e) => [e.scrollWidth, e.clientWidth]);
+    expect(wrap[0]).toBeLessThanOrEqual(wrap[1]!);
+    // the count line sits in the page head, above the table
+    const head = (await page.locator(".page-head").boundingBox())!;
+    const table = (await page.getByRole("table").boundingBox())!;
+    expect(head.y).toBeLessThan(table.y);
+    await expect(page.locator(".page-head")).toContainText(/\d+ runs loaded/);
+  });
+
+  test("a search that adds the Matched column still fits without an inner scroll", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/runs`);
+    const box = page.getByRole("searchbox", { name: "Search" });
+    await box.fill("tool:run_migration");
+    await box.press("Enter");
+    await expect(page.getByRole("list", { name: "Search terms" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Matched" })).toBeVisible();
+    const wrap = await page.locator(".table-wrap").evaluate((e) => [e.scrollWidth, e.clientWidth]);
+    expect(wrap[0]).toBeLessThanOrEqual(wrap[1]!);
+    await expect(page.getByRole("region", { name: "Narrow the results" })).toBeVisible();
+  });
+
+  test("the status filter is a segmented toggle that still checks by label", async ({ page }) => {
+    await page.goto(`${BASE}/runs`);
+    await page.getByLabel("Failed").check();
+    await expect(page.getByLabel("Failed")).toBeChecked();
+    await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
+    await expect(page.locator("tbody tr")).not.toHaveCount(12);
+  });
+});

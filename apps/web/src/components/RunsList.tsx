@@ -93,9 +93,19 @@ export function RunsList({
         : [...filters.statuses, s],
     });
 
+  const showTable = !q.isPending && !problem && !q.isError && runs.length > 0;
+
   return (
-    <>
-      <h1>Runs</h1>
+    <div className="runs">
+      <div className="page-head">
+        <h1>Runs</h1>
+        {showTable && (
+          <p className="muted" aria-live="polite">
+            {runs.length} run{runs.length === 1 ? "" : "s"} loaded
+            {q.hasNextPage ? "" : " (end of list)"}
+          </p>
+        )}
+      </div>
       <SearchBox
         value={filters.q}
         fields={fields}
@@ -105,7 +115,7 @@ export function RunsList({
         <QueryChips q={effective} terms={echo.terms} onRemove={removeTerm} />
       )}
       <form
-        className="filters"
+        className="filters toolbar-row"
         role="search"
         aria-label="Filter runs"
         onSubmit={(e) => e.preventDefault()}
@@ -197,10 +207,6 @@ export function RunsList({
             selected={picked}
             onToggle={(id) => setPicked((p) => toggleRun(p, id))}
           />
-          <p className="muted" aria-live="polite">
-            {runs.length} run{runs.length === 1 ? "" : "s"} loaded
-            {q.hasNextPage ? "" : " (end of list)"}
-          </p>
           {q.hasNextPage && (
             <button
               type="button"
@@ -212,6 +218,6 @@ export function RunsList({
           )}
         </>
       )}
-    </>
+    </div>
   );
 }
