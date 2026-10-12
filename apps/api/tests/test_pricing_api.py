@@ -39,6 +39,23 @@ async def test_prices_list_builtin_entries_and_scoped_overrides(api: Api) -> Non
     assert {p["origin"] for p in body} == {"builtin", "override"}
     assert next(p for p in body if p["model_pattern"] == "model-x")["input_per_million"] == "3.0"
 
+    # tier rows are told apart by the new fields (ADR-044); an override prices every tier
+    opus = [
+        p
+        for p in body
+        if p["model_pattern"] == "claude-opus-5-5*" and p["pricing_version"] == "2026-10-12b"
+    ]
+    assert {p["service_tier"] for p in opus} == {"standard", "batch", "fast"}
+    fast = next(p for p in opus if p["service_tier"] == "fast")
+    assert (fast["input_per_million"], fast["regional_multiplier"]) == ("8", "1.1")
+    assert (
+        next(p for p in opus if p["service_tier"] == "standard")["cache_write_1h_per_million"]
+        == "8"
+    )
+    assert next(p for p in body if p["model_pattern"] == "ws-wide*")["service_tier"] is None
+    gpt = next(p for p in body if p["model_pattern"] == "gpt-6-astra" and p["min_prompt_tokens"])
+    assert gpt["min_prompt_tokens"] == 272_000 and gpt["max_prompt_tokens"] is None
+
     # an alpha-bound key sees workspace-wide overrides but not beta's
     mine = {p["model_pattern"] for p in (await api.get("/v1/pricing")).json()["prices"]}
     assert "ws-wide*" in mine and "beta-only*" not in mine

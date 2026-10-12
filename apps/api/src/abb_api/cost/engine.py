@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from abb_event_schema.event import Event
 
-from abb_api.cost.pricing import ZERO, PriceBook, PriceEntry
+from abb_api.cost.pricing import KNOWN_TIERS, STANDARD, ZERO, PriceBook, PriceEntry
 
 CostSource = Literal["provider_reported", "estimated", "client_estimate", "unpriced"]
 COST_SOURCES: tuple[CostSource, ...] = (
@@ -17,6 +17,13 @@ COST_SOURCES: tuple[CostSource, ...] = (
     "client_estimate",
     "unpriced",
 )
+# The reasons a call with a model and tokens is left unpriced. `no_price` is the plain case (the
+# model has no entry); the others mean the model is priced but not for this call's modifiers.
+UNKNOWN_TIER = "unknown_service_tier"
+NO_PRICE_FOR_TIER = "no_price_for_tier"
+NO_REGIONAL_PRICE = "no_regional_price"
+NO_PRICE = "no_price"
+UNPRICED_REASONS = (NO_PRICE, UNKNOWN_TIER, NO_PRICE_FOR_TIER, NO_REGIONAL_PRICE)
 _QUANT = Decimal("0.000000001")
 _MILLION = Decimal(1_000_000)
 MAX_TOKENS = 10**12  # absurd counts are hostile input; they are clamped, not trusted
@@ -51,6 +58,9 @@ class CostLine:
     client_total: Decimal | None = None  # the caller's own estimate (`cost.estimated_usd`)
     is_retry: bool = False
     clamped: bool = False  # a figure above MAX_LINE_USD was clamped
+    # Why the price book gave no estimate for a call that has a model and tokens (ADR-044): one of
+    # the UNPRICED_REASONS. Derived on every calculation, not stored.
+    unpriced_reason: str | None = None
 
     def with_retry(self, is_retry: bool) -> "CostLine":
         return replace(self, is_retry=is_retry)
@@ -65,6 +75,12 @@ def _tokens(attrs: dict[str, Any], key: str) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return None
     return min(value, MAX_TOKENS)
+
+
+def _word(attrs: dict[str, Any], key: str) -> str | None:
+    value = attrs.get(key)
+    word = value.strip().lower() if isinstance(value, str) else ""
+    return word or None
 
 
 def _usd(attrs: dict[str, Any], key: str) -> tuple[Decimal | None, bool]:
@@ -106,15 +122,43 @@ class CostEngine:
         reported, reported_clamped = _usd(attrs, "cost.provider_usd")
         client, client_clamped = _usd(attrs, "cost.estimated_usd")
 
+        writes_attr = _tokens(attrs, "llm.cache_write_tokens") or 0
+        writes_1h_attr = _tokens(attrs, "llm.cache_write_1h_tokens") or 0
+        tier = _word(attrs, "llm.service_tier") or STANDARD
+        residency = _word(attrs, "llm.data_residency")
+        regional = residency is not None and residency != "global"
+
         entry: PriceEntry | None = None
+        reason: str | None = None
+        factor = Decimal(1)
         if model is not None and (input_tokens is not None or output_tokens is not None):
-            entry = self._prices.find(
-                provider,
-                model,
-                event.occurred_at,
-                pricing_version=pricing_version,
-                prompt_tokens=input_tokens or 0,
-            )
+            if tier not in KNOWN_TIERS:
+                reason = UNKNOWN_TIER  # never silently standard
+            else:
+                at, prompt = event.occurred_at, input_tokens or 0
+                entry = self._prices.find(
+                    provider,
+                    model,
+                    at,
+                    pricing_version=pricing_version,
+                    prompt_tokens=prompt,
+                    service_tier=tier,
+                )
+                if entry is None:
+                    priced_elsewhere = self._prices.find(
+                        provider,
+                        model,
+                        at,
+                        pricing_version=pricing_version,
+                        prompt_tokens=0,  # any size: the question is whether the tier exists
+                        service_tier=None,
+                    )
+                    reason = NO_PRICE_FOR_TIER if priced_elsewhere is not None else NO_PRICE
+                elif regional and entry.origin != "override":
+                    if entry.regional_multiplier is None:
+                        entry, reason = None, NO_REGIONAL_PRICE
+                    else:
+                        factor = entry.regional_multiplier
 
         line = CostLine(
             event_id=event.event_id,
@@ -130,21 +174,43 @@ class CostEngine:
             total=ZERO,
             reported_total=reported,
             client_total=client,
+            unpriced_reason=reason,
         )
         if entry is not None:
             billed_cached = min(cached, input_tokens or 0)
-            plain = (input_tokens or 0) - billed_cached
+            remaining = (input_tokens or 0) - billed_cached
+            written = min(writes_attr, remaining)
+            written_1h = min(writes_1h_attr, written)
+            plain = remaining - written
             cached_price = entry.cached_input_per_million
-            input_cost, c1 = _clamp(_money(plain * entry.input_per_million / _MILLION))
+            write_price = entry.cache_write_per_million
+            if write_price is None:
+                write_price = entry.input_per_million
+            write_1h_price = entry.cache_write_1h_per_million
+            if write_1h_price is None:
+                write_1h_price = write_price
+            # Cache-write tokens are input: their cost joins `input_cost`.
+            input_cost, c1 = _clamp(
+                _money(
+                    (
+                        plain * entry.input_per_million
+                        + (written - written_1h) * write_price
+                        + written_1h * write_1h_price
+                    )
+                    * factor
+                    / _MILLION
+                )
+            )
             cached_cost, c2 = _clamp(
                 _money(
                     billed_cached
                     * (cached_price if cached_price is not None else entry.input_per_million)
+                    * factor
                     / _MILLION
                 )
             )
             output_cost, c3 = _clamp(
-                _money((output_tokens or 0) * entry.output_per_million / _MILLION)
+                _money((output_tokens or 0) * entry.output_per_million * factor / _MILLION)
             )
             request_cost, c4 = _clamp(_money(entry.request_price))
             estimated, c5 = _clamp(input_cost + cached_cost + output_cost + request_cost)

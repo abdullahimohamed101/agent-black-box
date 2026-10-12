@@ -2424,6 +2424,32 @@
       },
       "PriceOut": {
         "properties": {
+          "cache_write_1h_per_million": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "One-hour cache-write price; null means the cache-write price.",
+            "title": "Cache Write 1H Per Million"
+          },
+          "cache_write_per_million": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cache-write price; null means written tokens cost the input price.",
+            "title": "Cache Write Per Million"
+          },
           "cached_input_per_million": {
             "anyOf": [
               {
@@ -2444,6 +2470,30 @@
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Input Per Million",
             "type": "string"
+          },
+          "max_prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Applies only when the prompt has at most this many tokens.",
+            "title": "Max Prompt Tokens"
+          },
+          "min_prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Prompt-size tier: applies only when the prompt has more tokens than this.",
+            "title": "Min Prompt Tokens"
           },
           "model_pattern": {
             "title": "Model Pattern",
@@ -2486,10 +2536,35 @@
             ],
             "title": "Provider"
           },
+          "regional_multiplier": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Factor for calls on a regional endpoint; null means no stated price.",
+            "title": "Regional Multiplier"
+          },
           "request_price": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Request Price",
             "type": "string"
+          },
+          "service_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The service tier the price is for (`standard`, `batch`, `flex`, `fast`, `ultrafast`); null for an override, which prices every tier.",
+            "title": "Service Tier"
           },
           "source": {
             "title": "Source",
@@ -2526,7 +2601,13 @@
           "request_price",
           "currency",
           "source",
-          "project_id"
+          "project_id",
+          "service_tier",
+          "min_prompt_tokens",
+          "max_prompt_tokens",
+          "cache_write_per_million",
+          "cache_write_1h_per_million",
+          "regional_multiplier"
         ],
         "title": "PriceOut",
         "type": "object"
