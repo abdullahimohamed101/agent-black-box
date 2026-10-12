@@ -1,30 +1,95 @@
+/* Design tokens (docs/design/ui-direction.md Part 1E). Names the other stylesheets read stay: --bg --fg --muted --border --accent
+   --surface --sel --ok --bad --warn --info --bad-bg --warn-bg. Light is the default; dark follows the system. */
 :root {
   color-scheme: light dark;
-  --bg: #ffffff;
-  --fg: #14161a;
-  --muted: #5b6370;
-  --border: #d5d9e0;
-  --accent: #0b6bcb;
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #f5f7f9;
+  --border: #d3d9e0;
+  --border-strong: #b9c2cc;
+  --fg: #171b21;
+  --fg-2: #2f3845;
+  --muted: #566272;
+  --accent: #0b6f8f;
+  --accent-bg: #dff1f7;
+  --sel: #dceef5;
+  --ok: #1b7a3a;
+  --ok-bg: #e2f5e8;
+  --warn: #8a5a00;
+  --warn-bg: #fff1d1;
+  --bad: #b3261e;
+  --bad-bg: #fbe7e5;
+  --info: var(--accent);
+  --mark: #d9650f;
+  --sans:
+    var(--font-plex-sans), "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --cond: var(--font-plex-cond), "IBM Plex Sans Condensed", var(--sans);
+  --mono:
+    var(--font-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --rail-w: 14rem;
+  --top-h: 2.75rem;
+  --ctx-w: 18rem;
+  --insp-w: 26rem;
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e1013;
-    --fg: #e8eaee;
-    --muted: #9aa3b0;
-    --border: #2a2f38;
-    --accent: #5aa7ff;
+    --bg: #14181d;
+    --surface: #1b2027;
+    --surface-2: #222932;
+    --border: #2e3641;
+    --border-strong: #3c4654;
+    --fg: #e6ebf0;
+    --fg-2: #c5cdd6;
+    --muted: #9aa6b4;
+    --accent: #62c6e8;
+    --accent-bg: #17313d;
+    --sel: #1f3340;
+    --ok: #5fcf84;
+    --ok-bg: #16301f;
+    --warn: #f2b33d;
+    --warn-bg: #3a2c0f;
+    --bad: #ff6f66;
+    --bad-bg: #3b1d1b;
+    --mark: #ff7a1a;
   }
 }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
+  font: 13px/1.45 var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+h1,
+h2,
+h3,
+.stat dt,
+th,
+.subnav {
+  font-family: var(--cond);
+}
+.num,
+.tl-off,
+.tl-dur,
+.tl-type,
+.wf-meta,
+.wf-tick,
+.stat dd,
+.fields dd,
+.meta,
+.id,
+.secret,
+.diff,
+.query-chip,
+.step-label,
+pre,
+code,
+kbd {
+  font-family: var(--mono);
 }
 main {
   max-width: 56rem;
@@ -52,30 +117,6 @@ button {
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-/* ---- Phase 4 product UI ---- */
-:root {
-  --bad: #b3261e;
-  --bad-bg: #fdecea;
-  --ok: #1b7a3a;
-  --warn: #8a5a00;
-  --warn-bg: #fff4d6;
-  --info: #0b6bcb;
-  --surface: #f6f7f9;
-  --sel: #e3f0ff;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bad: #ff8a80;
-    --bad-bg: #3a1a18;
-    --ok: #6fd28d;
-    --warn: #ffcb6b;
-    --warn-bg: #3a2e12;
-    --info: #7db8ff;
-    --surface: #161a20;
-    --sel: #17304d;
-  }
 }
 * {
   box-sizing: border-box;
@@ -446,7 +487,7 @@ select {
   white-space: nowrap;
 }
 .tl-type {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--mono);
   font-size: 0.8rem;
 }
 .tl-desc {
@@ -617,7 +658,7 @@ pre {
   overflow-wrap: anywhere;
 }
 .diff {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--mono);
   font-size: 0.8rem;
 }
 .diff-path {
@@ -881,7 +922,7 @@ button.danger {
   font-size: 0.8rem;
 }
 .secret {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--mono);
   overflow-wrap: anywhere;
   background: var(--surface);
   border: 1px solid var(--border);

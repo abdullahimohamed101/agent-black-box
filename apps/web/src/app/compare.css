@@ -160,7 +160,7 @@ tr[data-picked="true"] {
 }
 /* Equal rows are muted by having no highlight, not by opacity: opacity would break the text contrast. */
 .aligned-row[data-relation="changed"] {
-  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  background: var(--warn-bg);
 }
 .aligned-row[data-divergence="true"] {
   outline: 2px solid var(--warn);
@@ -180,7 +180,7 @@ tr[data-picked="true"] {
   overflow-wrap: anywhere;
 }
 .step-label {
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
 }
 .file-sets {
   display: grid;
