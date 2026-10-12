@@ -207,9 +207,3 @@ tr[data-picked="true"] {
     display: none;
   }
 }
-
-/* The Experiments link made the primary nav wider than a phone in a signed-in session: let it wrap. */
-.topbar nav {
-  flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-}

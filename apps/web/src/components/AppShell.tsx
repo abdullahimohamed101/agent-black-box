@@ -6,7 +6,15 @@ import { analyticsPath, experimentsPath, projectPath, runsPath, type Base } from
 import { SignOutButton } from "./SignOutButton";
 import { useWorkspaceOptional } from "./WorkspaceProvider";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { Brand } from "./shell/Brand";
+import { Crumbs } from "./shell/Crumbs";
+import { LiveIndicator } from "./shell/LiveIndicator";
+import { ProjectSwitcher } from "./shell/ProjectSwitcher";
 
+/**
+ * The application frame: a left rail (brand, scope, primary navigation, who), a slim top bar (where you are, whether
+ * anything is recording) and the page. DOM order is the focus order: skip link, rail, top bar, main.
+ */
 export function AppShell({ base, children }: { base: Base; children: React.ReactNode }) {
   const path = usePathname();
   const ws = useWorkspaceOptional();
@@ -17,23 +25,20 @@ export function AppShell({ base, children }: { base: Base; children: React.React
   const settings = `/w/${base.workspace}/settings/members`;
   const cur = (href: string, exact: boolean) =>
     (exact ? path === href : path === href || path.startsWith(`${href}/`)) ? "page" : undefined;
-  const project = ws?.projects.find((p) => p.slug === base.project || p.id === base.project);
   return (
     <div className="shell">
       <a href="#main" className="skip">
         Skip to content
       </a>
-      <header className="topbar">
-        <Link href="/" className="brand">
-          Agent Black Box
-        </Link>
-        <WorkspaceSwitcher />
-        <span className="crumb muted" title="Project">
-          {base.project === "all" ? "all projects" : (project?.name ?? base.project)}
-        </span>
-        <nav aria-label="Primary">
+      <aside className="rail">
+        <Brand />
+        <div className="scope">
+          <WorkspaceSwitcher />
+          <ProjectSwitcher base={base} />
+        </div>
+        <nav aria-label="Primary" className="nav">
           <Link href={dash} aria-current={cur(dash, true)}>
-            Dashboard
+            Overview
           </Link>
           <Link href={runs} aria-current={cur(runs, false)}>
             Runs
@@ -54,7 +59,7 @@ export function AppShell({ base, children }: { base: Base; children: React.React
           )}
         </nav>
         {ws?.mode === "session" && ws.user && (
-          <div className="who">
+          <div className="rail-foot who">
             <span className="muted" title={ws.role ?? undefined}>
               {ws.user.email}
             </span>
@@ -62,8 +67,12 @@ export function AppShell({ base, children }: { base: Base; children: React.React
             <SignOutButton />
           </div>
         )}
+      </aside>
+      <header className="topbar">
+        <Crumbs base={base} />
+        <LiveIndicator base={base} />
       </header>
-      <main id="main" tabIndex={-1}>
+      <main id="main" tabIndex={-1} className="page">
         {children}
       </main>
     </div>
