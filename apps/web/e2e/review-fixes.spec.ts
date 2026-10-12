@@ -122,3 +122,21 @@ test.describe("R9 experiment detail on a phone", () => {
     });
   }
 });
+
+test.describe("R12 empty states are statements, not cards", () => {
+  for (const [name, url] of [
+    ["api keys", "/w/demo/settings/api-keys"],
+    ["run evaluations", `${BASE}/runs/${RUN(2)}`],
+  ] as const) {
+    test(`${name}: no bordered box`, async ({ page }) => {
+      await page.goto(url);
+      const empty = page.locator('[data-state="empty"]').first();
+      await expect(empty).toBeVisible();
+      const css = await empty.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return [s.borderLeftWidth, s.borderRightWidth, s.borderBottomWidth, s.borderRadius];
+      });
+      expect(css).toEqual(["0px", "0px", "0px", "0px"]);
+    });
+  }
+});

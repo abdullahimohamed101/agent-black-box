@@ -825,6 +825,14 @@ select {
   --tone: var(--bad);
   --tone-bg: var(--bad-bg);
 }
+/* An empty state is a statement, not a box: the shell's hairline and small type, no card. */
+.state[data-state="empty"] {
+  padding: 0.6rem 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
 .withheld {
   --tone: var(--muted);
   border-style: dashed dashed dashed solid;
