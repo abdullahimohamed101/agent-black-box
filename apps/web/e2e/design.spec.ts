@@ -192,7 +192,7 @@ test.describe("run header", () => {
       await expect(page.getByTestId("headline")).toBeVisible();
     });
 
-  test("annunciator grammar: one red readout and one amber readout on the failed run", async ({
+  test("annunciator grammar: the failure line and the error count are red, the retry count amber, on the failed run", async ({
     page,
   }) => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
@@ -209,7 +209,9 @@ test.describe("run header", () => {
       const bad = probe("--bad");
       const warn = probe("--warn");
       // the status badge is the state itself and is red on a failed run by design; everything else in the header counts
-      const els = [...document.querySelectorAll(".run-head *")].filter((e) => !e.closest(".badge"));
+      const els = [...document.querySelectorAll(".run-head *")].filter(
+        (e) => !e.closest(".badge") && !e.matches(".hl-nowrap"),
+      );
       const direct = (c: string) =>
         els.filter(
           (e) =>
@@ -221,7 +223,12 @@ test.describe("run header", () => {
         amber: direct(warn).map((e) => e.textContent),
       };
     });
-    expect(colours.red).toEqual(["4"]);
+    // Phase 22: the headline is the failure line (red, the one place red means "this run failed"); the Errors readout stays red
+    expect(colours.red).toHaveLength(2);
+    expect(colours.red[0]).toMatch(
+      /^Failed at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout/,
+    );
+    expect(colours.red[1]).toBe("4");
     expect(colours.amber).toEqual(["2"]);
   });
 

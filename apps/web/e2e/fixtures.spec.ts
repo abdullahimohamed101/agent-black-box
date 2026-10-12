@@ -93,7 +93,8 @@ test("failed run: headline, first error, drawer, keyboard navigation and focus r
   page,
 }) => {
   await page.goto(`${BASE}/runs/${RUN(2)}`);
-  await expect(page.getByTestId("headline")).toContainText("Failed after 2 retries");
+  await expect(page.getByTestId("headline")).toContainText(/Failed at step \d+/);
+  await expect(page.getByTestId("headline-detail")).toContainText("2 retries");
   await expect(page.getByTestId("first-error")).toContainText("run_migration");
   await expect(page.getByTestId("progress")).toContainText("events shown");
 
@@ -136,13 +137,13 @@ test("filters and groups act on the timeline", async ({ page }) => {
 
 test("successful and in-progress runs read at a glance", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(1)}`);
-  await expect(page.getByTestId("headline")).toContainText("Succeeded");
+  await expect(page.getByTestId("headline")).toContainText("Completed in");
   await expect(page.getByTestId("first-error")).toHaveCount(0);
   await page.screenshot({ path: `${SHOTS}/run-success.png`, fullPage: true });
   await page.goto(`${BASE}/runs/${RUN(4)}`);
-  await expect(page.getByTestId("headline")).toContainText("In progress");
+  await expect(page.getByTestId("headline")).toContainText("Running");
   await page.goto(`${BASE}/runs/${RUN(5)}`);
-  await expect(page.getByTestId("headline")).toContainText("Waiting for approval");
+  await expect(page.getByTestId("headline")).toContainText("Awaiting approval");
 });
 
 test("looping run shows a probable loop finding whose evidence jump selects the event", async ({
