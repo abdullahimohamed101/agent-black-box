@@ -39,6 +39,10 @@ type Props = {
   landedTone?: "error" | "evidence";
   /** How many events have arrived live so far. The list follows the live edge while the reader is on it. */
   arrived?: number;
+  /** Replay (Phase 12): the event at the playhead. Its row is marked `aria-current`; it does not move the selection. */
+  currentId?: string | null;
+  /** Replay: Space plays or pauses instead of opening the selected row (Enter still opens it). */
+  onSpace?: () => void;
 };
 
 const rowId = (key: string) => `tl-${key}`;
@@ -68,6 +72,8 @@ export function Timeline({
   landedId,
   landedTone,
   arrived = 0,
+  currentId = null,
+  onSpace,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   // TanStack Virtual returns unmemoizable functions; the React Compiler skips this component, which is acceptable here.
@@ -161,8 +167,14 @@ export function Timeline({
       case "End":
         move(rows.length - 1);
         break;
-      case "Enter":
       case " ":
+        if (onSpace) {
+          onSpace();
+          break;
+        }
+        if (selectedKey) onActivate(selectedKey);
+        break;
+      case "Enter":
         if (selectedKey) onActivate(selectedKey);
         break;
       case "Escape":
@@ -261,10 +273,12 @@ export function Timeline({
                 id={rowId(row.key)}
                 role="option"
                 aria-selected={selected}
+                aria-current={e.event_id === currentId ? "step" : undefined}
                 aria-posinset={v.index + 1}
                 aria-setsize={rows.length}
                 className="tl-row"
                 data-selected={selected || undefined}
+                data-current={e.event_id === currentId || undefined}
                 data-error={err || undefined}
                 data-first-error={e.event_id === firstErrorId || undefined}
                 data-after-fault={(faultIndex >= 0 && v.index > faultIndex) || undefined}

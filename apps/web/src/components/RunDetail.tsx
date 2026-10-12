@@ -1,14 +1,16 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { isActive, type EventOut } from "@/lib/api/types";
 import { formatCost, formatDuration, formatInt, formatTimestamp, num } from "@/lib/format";
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
 import { useEventDetail, useRun, useRunEvents, useRunFindings } from "@/lib/queries";
 import { useTimers } from "@/lib/useTimers";
-import { headlineKind, headlineModel } from "@/lib/runHeadline";
+import { headlineKind, headlineModel, replayHeadline } from "@/lib/runHeadline";
+import { STATUS_AS_OF, replayClockSkewed, useReplay } from "@/lib/replay";
+import { useMedia } from "@/lib/useMedia";
 import { evidenceRows } from "@/lib/evidence";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
@@ -34,12 +36,14 @@ import { Evaluations } from "./Evaluations";
 import { Findings } from "./Findings";
 import { RunHeadline } from "./RunHeadline";
 import { StatusBadge } from "./StatusBadge";
+import { ReplayTransport } from "./ReplayTransport";
 import { ErrorState, Loading } from "./States";
 import { Timeline } from "./Timeline";
 import { ViewSwitch, type RunView } from "./ViewSwitch";
 import { Waterfall } from "./Waterfall";
 import "../app/run-context.css";
 import "../app/run-motion.css";
+import "../app/run-replay.css";
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: "warn" | "bad" }) {
   return (
@@ -103,20 +107,6 @@ const MOTION = "(prefers-reduced-motion: no-preference)";
 const EXIT_MS = 110; // the inspector's exit animation (run-motion.css) is 100 ms
 const INTRO_MS = 340; // the fault line's entrance (run-motion.css) is 280 ms
 
-/** `matchMedia` as external state; false on the server and where the API is missing (jsdom). */
-function useMedia(query: string): boolean {
-  return useSyncExternalStore(
-    (notify) => {
-      if (typeof window.matchMedia !== "function") return () => undefined;
-      const m = window.matchMedia(query);
-      m.addEventListener("change", notify);
-      return () => m.removeEventListener("change", notify);
-    },
-    () => typeof window.matchMedia === "function" && window.matchMedia(query).matches,
-    () => false,
-  );
-}
-
 /**
  * What the folded context column shows: an icon, a vertical label and the counts a reader looks for first. The counts
  * are decoration for sighted users (the button keeps its fixed accessible name; the title spells them out).
@@ -165,6 +155,24 @@ function ContextSummary({ runId, poll }: { runId: string; poll: boolean }) {
       {n} finding{n === 1 ? "" : "s"}
     </span>
   );
+}
+
+/**
+ * The count that drives the timeline's "follow the live edge / N new events" behaviour. Live arrivals feed it as before;
+ * in replay the rows that the playhead adds feed it instead, and live arrivals during replay do not (they are not on the
+ * list until the playhead gets there). It never decreases, so switching in and out of replay is not an arrival.
+ */
+function useFollowCount(replaying: boolean, shownCount: number, arrived: number): number {
+  const [c, setC] = useState({ shown: shownCount, arrived, added: 0, ignored: 0 });
+  if (c.shown !== shownCount || c.arrived !== arrived) {
+    setC({
+      shown: shownCount,
+      arrived,
+      added: replaying && shownCount > c.shown ? c.added + shownCount - c.shown : c.added,
+      ignored: replaying && arrived > c.arrived ? c.ignored + arrived - c.arrived : c.ignored,
+    });
+  }
+  return arrived - c.ignored + c.added;
 }
 
 const NO_IDS: ReadonlySet<string> = new Set();
@@ -238,7 +246,8 @@ export function RunDetail({
   const view = chosen.view;
   const changeView = (next: RunView) => {
     setChosen((c) => ({ ...c, view: next }));
-    const q = new URLSearchParams(params?.toString() ?? "");
+    // The address bar, not `params`: replay writes `?t=` through history.replaceState and Next's copy can lag a tick.
+    const q = new URLSearchParams(window.location.search);
     if (next !== "timeline") q.set("view", next);
     else q.delete("view");
     const qs = q.toString();
@@ -249,6 +258,8 @@ export function RunDetail({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
   const [drawerEventId, setDrawerEventId] = useState<string | null>(null);
+  // The inspector eases out for 100 ms after it is closed: keep rendering the last event until then.
+  const [leaving, setLeaving] = useState<EventOut | null>(null);
   const timelineWrap = useRef<HTMLDivElement>(null);
   // Phase 22 D3: the context column (story, agents, findings, evaluations) starts closed; the Context button says what
   // is in it. Once the person opens it, it stays open beside the inspector (the inspector narrows instead, KI-126);
@@ -269,8 +280,6 @@ export function RunDetail({
     return () => window.clearInterval(id);
   }, [ticking]);
 
-  const filtered = useMemo(() => filterEvents(events, filters), [events, filters]);
-  const rows = useMemo(() => buildRows(filtered, collapsed), [filtered, collapsed]);
   // Earliest timestamp, not events[0]: sequence order can disagree with clocks.
   const t0 = useMemo(
     () => events.reduce((m, e) => Math.min(m, Date.parse(e.occurred_at)), Infinity),
@@ -289,16 +298,43 @@ export function RunDetail({
     () => (firstErrorId ? events.find((e) => e.event_id === firstErrorId) : undefined),
     [firstErrorId, events],
   );
-  const bounds = useMemo(
+  const fullBounds = useMemo(
     () => runBounds(run.data ?? { started_at: "", completed_at: null, summary: {} }, t0),
     [run.data, t0],
   );
+
+  // ---- Replay (Phase 12): one playhead, one projection. `rs` is the state as of the playhead (null outside replay, or
+  // while no event has loaded); every panel below reads it, so nothing keeps its own copy of "the state so far". ----
+  const replay = useReplay({
+    events,
+    ctx: { status: runStatus, firstErrorId },
+    eventsComplete: restComplete,
+    inspectorOpen: drawerEventId !== null || leaving !== null,
+  });
+  const rs = replay.mode && replay.state && replay.state.total > 0 ? replay.state : null;
+  const shown = rs ? rs.events : events;
+  const reachedFault = rs ? rs.firstErrorReached : true;
+  const skewed = useMemo(
+    () => (replay.mode && run.data ? replayClockSkewed(run.data, events) : false),
+    [replay.mode, run.data, events],
+  );
+  // Open spans grow to the playhead along the run's full axis.
+  const bounds = useMemo(
+    () => (rs ? { ...fullBounds, openEndMs: t0 + rs.elapsedMs } : fullBounds),
+    [fullBounds, rs, t0],
+  );
+  const agentsSoFar = useMemo(
+    () => (rs ? new Set(rs.events.map((e) => e.agent_id)).size : null),
+    [rs],
+  );
+  const filtered = useMemo(() => filterEvents(shown, filters), [shown, filters]);
+  const rows = useMemo(() => buildRows(filtered, collapsed), [filtered, collapsed]);
   const agents = useMemo(() => {
     const listed = run.data ? summaryAgents(run.data.summary) : null;
     return agentTreeRows(listed ?? agentsFromEvents(events));
   }, [run.data, events]);
   const multiAgent = agents.length > 1;
-  const { spans, spanIdOf } = useSpans(events, view === "waterfall");
+  const { spans, spanIdOf } = useSpans(shown, view === "waterfall");
   const toggleAgent = (agentId: string) =>
     setFilters((f) => {
       const cur = new Set(f.agents ?? []);
@@ -308,18 +344,27 @@ export function RunDetail({
     });
   // A filter or collapse can remove the selected row; never leave aria-activedescendant pointing at nothing.
   const selectedKey = selected && rows.some((r) => r.key === selected) ? selected : null;
-  const loadedDrawerEvent = drawerEventId
-    ? events.find((e) => e.event_id === drawerEventId)
-    : undefined;
+  // In replay the inspector never shows an event the playhead has not reached, and follows the playhead once playback
+  // pauses or steps (not on every tick: each follow is a request for that event's detail).
+  const eventIndex = useMemo(() => new Map(events.map((e, i) => [e.event_id, i])), [events]);
+  const drawerId =
+    rs && drawerEventId != null && (eventIndex.get(drawerEventId) ?? -1) > rs.index
+      ? null
+      : drawerEventId;
+  const currentId = rs?.current?.event_id ?? null;
+  const [followed, setFollowed] = useState<string | null>(null);
+  if (!rs) {
+    if (followed !== null) setFollowed(null);
+  } else if (!replay.playing && followed !== currentId) {
+    setFollowed(currentId);
+    if (drawerEventId != null && currentId != null && drawerEventId !== currentId)
+      setDrawerEventId(currentId);
+  }
+  const loadedDrawerEvent = drawerId ? events.find((e) => e.event_id === drawerId) : undefined;
   // A finding can cite an event the timeline has not paged in yet: fetch just that event (content is withheld
   // per actor by the same route the drawer always uses).
-  const remoteDrawer = useEventDetail(
-    runId,
-    drawerEventId && !loadedDrawerEvent ? drawerEventId : null,
-  );
+  const remoteDrawer = useEventDetail(runId, drawerId && !loadedDrawerEvent ? drawerId : null);
   const drawerEvent = loadedDrawerEvent ?? remoteDrawer.data;
-  // The inspector eases out for 100 ms after it is closed: keep rendering the last event until then.
-  const [leaving, setLeaving] = useState<EventOut | null>(null);
   const inspected = drawerEvent ?? leaving;
   const contextClosed =
     contextPref === "closed" || (contextPref === "open" && !!inspected && squeezedWindow);
@@ -344,6 +389,7 @@ export function RunDetail({
   // failed run draws its fault line once. All three are bounded and pruned by timers.
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(NO_IDS);
   const [arrived, setArrived] = useState(0);
+  const followCount = useFollowCount(!!rs, filtered.length, arrived);
   const [landed, setLanded] = useState<{ id: string; tone: "error" | "evidence" } | null>(null);
   const [faultIntro, setFaultIntro] = useState(false);
   const knownIds = useRef<Set<string> | null>(null);
@@ -390,6 +436,19 @@ export function RunDetail({
       later(() => setFaultIntro(false), INTRO_MS);
     }, 0);
   }, [hasFault, later]);
+  // Replay: the line draws itself at the moment the playhead reaches the first error (the same cue, still gated by
+  // `prefers-reduced-motion: no-preference` in run-motion.css, so reduced motion gets the line instantly).
+  const faultReached = !!rs && rs.firstErrorReached;
+  const wasReached = useRef(false);
+  useEffect(() => {
+    if (faultReached && !wasReached.current) {
+      later(() => {
+        setFaultIntro(true);
+        later(() => setFaultIntro(false), INTRO_MS);
+      }, 0);
+    }
+    wasReached.current = faultReached;
+  }, [faultReached, later]);
   const flashLanded = (id: string, tone: "error" | "evidence") => {
     setLanded({ id, tone });
     later(() => setLanded(null), 600);
@@ -408,6 +467,33 @@ export function RunDetail({
     requestAnimationFrame(focusTimeline);
   };
 
+  // Esc closes the inspector first; with nothing to close it leaves replay (the transport's own Leave button, `r` and Esc
+  // all end up in `replay.leave`).
+  const onEscape = () => {
+    if (inspected || !replay.escape()) closeDrawer();
+  };
+  // Focus: entering replay leaves focus on the Replay button (the transport is the next tab stop). Leaving by the
+  // transport's Leave button unmounts the focused control, so focus returns to the Replay button instead of <body>.
+  const replayButton = useRef<HTMLButtonElement>(null);
+  const wasReplaying = useRef(replay.mode);
+  const focusInTransport = useRef(false);
+  useEffect(() => {
+    if (!replay.mode) return;
+    const onIn = (e: FocusEvent) => {
+      focusInTransport.current = e.target instanceof Element && !!e.target.closest(".replay");
+    };
+    document.addEventListener("focusin", onIn);
+    return () => document.removeEventListener("focusin", onIn);
+  }, [replay.mode]);
+  useEffect(() => {
+    if (wasReplaying.current && !replay.mode) {
+      // Only when focus was inside the transport (now gone): anyone leaving with `r` or Esc from the list keeps their place.
+      if (focusInTransport.current) replayButton.current?.focus();
+      focusInTransport.current = false;
+    }
+    wasReplaying.current = replay.mode;
+  }, [replay.mode]);
+
   const activate = (key: string) => {
     const row = rows.find((r) => r.key === key);
     if (!row) return;
@@ -422,6 +508,8 @@ export function RunDetail({
   };
 
   const jumpTo = (eventId: string, tone: "error" | "evidence" = "evidence") => {
+    // In replay a jump moves the playhead there: the state so far always includes the event being shown.
+    if (replay.mode) replay.seekToId(eventId);
     flashLanded(eventId, tone);
     // If a filter hides a loaded event, clear filters so the jump always lands.
     const loaded = events.some((e) => e.event_id === eventId);
@@ -459,24 +547,33 @@ export function RunDetail({
   const loadingMore = ev.isPending || hasNextPage || isFetchingNextPage;
   const allGroups = groupKeys(buildRows(filtered, new Set()));
 
-  const retries = num(s["retry_count"]) ?? 0;
-  const errors = num(s["error_count"]) ?? 0;
+  // The header's figures: the whole run, or (in replay) the run as of the playhead.
+  const retries = rs ? rs.counts.retries : (num(s["retry_count"]) ?? 0);
+  const errors = rs ? rs.counts.errors : (num(s["error_count"]) ?? 0);
   const models = Array.isArray(s["models"]) ? (s["models"] as string[]) : [];
   const model = headlineModel({ run: r, events, t0, eventsComplete: restComplete, now });
-  const kind = model.kind;
+  // In replay the headline is the one as of the playhead (see `replayHeadline`); the live one would give the outcome away.
+  const shownModel = rs ? replayHeadline(model, rs) : model;
+  const kind = shownModel.kind;
   // The error variant: the run says it failed but its first error cannot be located because the events did not load.
   const headlineFailed =
-    ev.isError && (model.pending || (!model.failure && headlineKind(r, false) === "failed"));
+    !rs && ev.isError && (model.pending || (!model.failure && headlineKind(r, false) === "failed"));
   // A failed run whose first error is not known yet (older run, events paging in): hold the frame, say nothing wrong.
   const headlineLoading =
-    !ev.isError && !restComplete && !model.failure && headlineKind(r, false) === "failed";
+    !rs && !ev.isError && !restComplete && !model.failure && headlineKind(r, false) === "failed";
 
   return (
     <div className="run-detail app-page">
       <header className="run-head">
         <div className="run-title">
           <h1>{r.name ?? r.id}</h1>
-          <StatusBadge status={r.status} />
+          {rs ? (
+            <span className="replay-status" data-testid="replay-status">
+              {rs.statusText} · {STATUS_AS_OF}
+            </span>
+          ) : (
+            <StatusBadge status={r.status} />
+          )}
           <span className="id muted" title={r.id}>
             {r.id.slice(0, 4)}…{r.id.slice(-6)} · {r.agent_id ?? "—"}
             {models.length > 0 && <> · {models.join(", ")}</>} · ordered by{" "}
@@ -489,7 +586,7 @@ export function RunDetail({
         ) : headlineLoading ? (
           <RunHeadline kind={kind} variant="skeleton" />
         ) : (
-          <RunHeadline kind={kind} variant="ready" model={model} onGo={jumpToError} />
+          <RunHeadline kind={kind} variant="ready" model={shownModel} onGo={jumpToError} />
         )}
         {stream.state !== "off" && stream.state !== "ended" && (
           <LiveBar state={stream.state} status={nowDoing} />
@@ -502,22 +599,42 @@ export function RunDetail({
           </p>
         )}
         <dl className="stats figures" aria-label="Run summary">
-          <Metric label="Duration" value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))} />
-          <Metric label="Cost" value={formatCost(num(s["estimated_cost_usd"]))} />
+          {rs ? (
+            <Metric label="Elapsed" value={formatDuration(rs.elapsedMs)} />
+          ) : (
+            <Metric
+              label="Duration"
+              value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))}
+            />
+          )}
+          <Metric label="Cost" value={formatCost(rs ? rs.costUsd : num(s["estimated_cost_usd"]))} />
           <Metric
             label="Tokens"
-            value={`${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`}
+            value={
+              rs
+                ? `${formatInt(rs.inputTokens)} in / ${formatInt(rs.outputTokens)} out`
+                : `${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`
+            }
           />
-          <Metric label="Model calls" value={formatInt(num(s["llm_calls"]))} />
-          <Metric label="Tool calls" value={formatInt(num(s["tool_calls"]))} />
+          <Metric
+            label="Model calls"
+            value={formatInt(rs ? rs.counts.modelCalls : num(s["llm_calls"]))}
+          />
+          <Metric
+            label="Tool calls"
+            value={formatInt(rs ? rs.counts.toolCalls : num(s["tool_calls"]))}
+          />
           <Metric
             label="Retries"
             value={formatInt(retries)}
             tone={retries > 0 ? "warn" : undefined}
           />
           <Metric label="Errors" value={formatInt(errors)} tone={errors > 0 ? "bad" : undefined} />
-          {multiAgent && <Metric label="Agents" value={formatInt(agents.length)} />}
-          <Metric label="Files changed" value={formatInt(num(s["files_modified"]))} />
+          {multiAgent && <Metric label="Agents" value={formatInt(agentsSoFar ?? agents.length)} />}
+          <Metric
+            label="Files changed"
+            value={formatInt(rs ? rs.counts.filesChanged : num(s["files_modified"]))}
+          />
         </dl>
       </header>
 
@@ -530,17 +647,32 @@ export function RunDetail({
             evidence: evidence.length ? formatInt(evidence.length) : undefined,
           }}
         />
-        <button
-          type="button"
-          className="context-toggle"
-          aria-pressed={!contextClosed}
-          aria-controls="run-context"
-          onClick={toggleContext}
-        >
-          Context
-          <ContextSummary runId={runId} poll={active || r.summary_state === "processing"} />
-        </button>
+        <div className="pane-actions">
+          <button
+            type="button"
+            className="context-toggle"
+            aria-pressed={!contextClosed}
+            aria-controls="run-context"
+            onClick={toggleContext}
+          >
+            Context
+            <ContextSummary runId={runId} poll={active || r.summary_state === "processing"} />
+          </button>
+          <button
+            ref={replayButton}
+            type="button"
+            className="context-toggle replay-toggle"
+            aria-pressed={replay.mode}
+            aria-keyshortcuts="r"
+            disabled={events.length === 0 && !replay.mode}
+            onClick={replay.toggleMode}
+          >
+            Replay <kbd aria-hidden="true">r</kbd>
+          </button>
+        </div>
       </div>
+
+      {replay.mode && <ReplayTransport replay={replay} skewed={skewed} />}
 
       <div
         className="work"
@@ -579,6 +711,11 @@ export function RunDetail({
             />
           </button>
           <div className="context-body" inert={contextClosed || undefined}>
+            {replay.mode && (
+              <p className="replay-ctx-note muted" data-testid="replay-context-note">
+                Findings and agent totals reflect the whole run.
+              </p>
+            )}
             {/* Findings first: they are why the column is opened (D3). */}
             <Findings
               runId={runId}
@@ -588,7 +725,7 @@ export function RunDetail({
             />
 
             <CodingSummary
-              events={events}
+              events={shown}
               onOpen={(id) => {
                 setFilters(NO_FILTERS);
                 setSelected(id);
@@ -599,6 +736,7 @@ export function RunDetail({
             {multiAgent && (
               <AgentTree
                 rows={agents}
+                current={rs?.currentAgent ?? null}
                 active={filters.agents ?? null}
                 onToggle={toggleAgent}
                 onClear={() => setFilters((f) => ({ ...f, agents: null }))}
@@ -651,6 +789,11 @@ export function RunDetail({
               </button>
             </p>
           )}
+          {rs && view === "evidence" && (
+            <p className="notice replay-note" data-testid="replay-evidence-note">
+              Evidence shows the whole run.
+            </p>
+          )}
           {ev.isError && events.length === 0 ? (
             <ErrorState error={ev.error} onRetry={() => void ev.refetch()} />
           ) : events.length === 0 && !ev.isPending ? (
@@ -665,12 +808,7 @@ export function RunDetail({
               </button>
             </div>
           ) : (
-            <div
-              className="pane-body"
-              key={view}
-
-              ref={timelineWrap}
-            >
+            <div className="pane-body" key={view} ref={timelineWrap}>
               {view === "evidence" ? (
                 <EvidenceList rows={evidence} t0={t0} selectedEventId={selected} onOpen={jumpTo} />
               ) : view === "timeline" ? (
@@ -678,15 +816,17 @@ export function RunDetail({
                   rows={rows}
                   t0={t0}
                   selectedKey={selectedKey}
-                  firstErrorId={firstErrorId}
+                  firstErrorId={reachedFault ? firstErrorId : null}
+                  currentId={currentId}
+                  onSpace={rs ? replay.togglePlay : undefined}
                   faultStep={model.failure?.step ?? null}
                   showAgent={multiAgent}
                   onSelect={setSelected}
                   onActivate={activate}
-                  onEscape={closeDrawer}
+                  onEscape={onEscape}
                   onJumpToError={jumpToError}
                   newIds={newIds}
-                  arrived={arrived}
+                  arrived={followCount}
                   landedId={landed?.id ?? null}
                   landedTone={landed?.tone}
                 />
@@ -696,13 +836,16 @@ export function RunDetail({
                   bounds={bounds}
                   spanIdOf={spanIdOf}
                   selectedEventId={selected}
-                  firstErrorId={firstErrorId}
-                  faultAtMs={err ? Date.parse(err.occurred_at) : null}
+                  firstErrorId={reachedFault ? firstErrorId : null}
+                  currentEventId={currentId}
+                  replaying={!!rs}
+                  onSpace={rs ? replay.togglePlay : undefined}
+                  faultAtMs={reachedFault && err ? Date.parse(err.occurred_at) : null}
                   faultStep={model.failure?.step ?? null}
                   agentFilter={filters.agents ?? null}
                   onSelect={setSelected}
                   onActivate={setDrawerEventId}
-                  onEscape={closeDrawer}
+                  onEscape={onEscape}
                   onJumpToError={jumpToError}
                   newIds={newIds}
                   landedId={landed?.id ?? null}
@@ -718,14 +861,16 @@ export function RunDetail({
                 : view === "evidence"
                   ? `${formatInt(evidence.length)} artifact${evidence.length === 1 ? "" : "s"} in ${formatInt(events.length)} events`
                   : view === "waterfall"
-                    ? `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
-                    : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown`}
+                    ? rs
+                      ? `${formatInt(shown.length)} of ${formatInt(events.length)} events in ${formatInt(spans.length)} spans, replay`
+                      : `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
+                    : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown${rs ? ", replay" : ""}`}
               {ev.isError && " (some events failed to load)"}
             </p>
             {view !== "evidence" && (
               <p className="keys muted" aria-hidden="true">
                 <kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> open · <kbd>e</kbd> first error ·{" "}
-                <kbd>esc</kbd> close
+                <kbd>r</kbd> replay · <kbd>esc</kbd> close
               </p>
             )}
           </div>

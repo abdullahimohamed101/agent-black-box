@@ -29,9 +29,9 @@ const URL_DEBOUNCE_MS = 150;
 const MODE_KEYS = new Set([" ", "ArrowLeft", "ArrowRight", "[", "]", "Escape"]);
 /** Where Space and the arrows already mean something: a control being operated, or a widget with its own keys. */
 const OWN_KEYS =
-  '[role="tablist"],[role="menu"],[role="menubar"],[role="radiogroup"],[role="slider"]';
+  '[role="tablist"],[role="menu"],[role="menubar"],[role="radiogroup"],[role="slider"],input[type="range"],input[type="radio"]';
 const ACTIVATES_ON_SPACE =
-  'button,a[href],summary,[role="button"],[role="tab"],[role="menuitem"],[role="checkbox"],[role="switch"],[role="option"],[role="treeitem"],[role="row"]';
+  'button,a[href],summary,input[type="checkbox"],input[type="radio"],[role="button"],[role="tab"],[role="menuitem"],[role="checkbox"],[role="switch"],[role="option"],[role="treeitem"],[role="row"]';
 
 export type ReplayNotice = "unknown-playhead";
 

@@ -1,0 +1,63 @@
+/* ---- Phase 12 step 3: replay on the run page. Tokens only; no animation or transition (replay updates are instant, so
+   the zero-motion contract has nothing to gate here). The one motion cue, the fault line drawing in at the first error,
+   is the Phase 22 one in run-motion.css and stays gated there. Red is not used: failure colour belongs to the existing
+   failure selectors, and the first-error mark on the scrub bar is in replay.css. ---- */
+
+.pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.replay-toggle kbd {
+  margin-left: 0.35rem;
+  font: 500 0.7rem/1 var(--mono);
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--muted);
+}
+.replay-toggle[aria-pressed="true"] kbd {
+  color: var(--fg-2);
+}
+.replay-status {
+  font: 400 var(--fs-small) / 1.3 var(--mono);
+  color: var(--fg-2);
+}
+.replay-ctx-note,
+.replay-note {
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  font: 400 var(--fs-small) / 1.3 var(--sans);
+}
+
+/* The row at the playhead and the agent that emitted it: a mark on the leading edge, no fill and no colour of failure. */
+.tl-row[data-current],
+.wf-row[data-current] {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.agent-item[data-current] {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--sel);
+}
+
+/* The transport is docked under the header: in the fixed-height frame it is a flex item that never scrolls away; in the
+   stacked phone layout (the page scrolls) it sticks under the top bar so the controls stay in reach. */
+.run-detail > .replay {
+  flex: none;
+  z-index: 4;
+}
+@media (max-width: 52rem), (max-height: 36rem) {
+  .run-detail > .replay {
+    position: sticky;
+    top: var(--top-h);
+  }
+  .pane-head {
+    flex-wrap: wrap;
+    padding-block: 0.25rem;
+  }
+  .pane-actions {
+    margin-left: auto;
+  }
+}
