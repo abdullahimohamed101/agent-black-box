@@ -62,3 +62,9 @@ full request), Claude Haiku 5.5 above 100,000, Gemini 3.1 Pro and 2.5 Pro above 
 
 Evidence for each price is in `docs/research/openai-and-tiered-prices-2026-10-12.md`.
 
+## Amendment 2026-10-12 (2): service tiers, regional endpoints and cache writes
+Status: Accepted
+
+Batch, Flex, Fast mode, regional processing and cache writes are now modelled: see ADR-044 (four optional `llm.*` attributes, `PriceEntry.service_tier`
+and the write and regional prices, unpriced-with-reason for anything a vendor page does not price). Built-in version `2026-10-12b` carries the
+data; version ties are broken by the later `pricing_version`. The "not modelled" list in the amendment above no longer applies except for modality prices.

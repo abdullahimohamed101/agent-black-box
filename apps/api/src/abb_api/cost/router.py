@@ -54,6 +54,28 @@ class PriceOut(BaseModel):
     currency: str
     source: str
     project_id: str | None = Field(description="Set when an override applies to one project only.")
+    service_tier: str | None = Field(
+        description="The service tier the price is for (`standard`, `batch`, `flex`, `fast`, "
+        "`ultrafast`); null for an override, which prices every tier."
+    )
+    min_prompt_tokens: int | None = Field(
+        description="Prompt-size tier: applies only when the prompt has more tokens than this."
+    )
+    max_prompt_tokens: int | None = Field(
+        description="Applies only when the prompt has at most this many tokens."
+    )
+    cache_write_per_million: Decimal | None = Field(
+        description="Cache-write price; null means written tokens cost the input price."
+    )
+    cache_write_1h_per_million: Decimal | None = Field(
+        description="One-hour cache-write price; null means the cache-write price."
+    )
+    regional_multiplier: Decimal | None = Field(
+        description="Factor for calls on a regional endpoint; null means no stated price."
+    )
+    regional_regions: list[str] | None = Field(
+        description="The residency values the factor is stated for; null means any region."
+    )
 
 
 class PricingOut(BaseModel):
@@ -75,6 +97,13 @@ def _out(entry: PriceEntry) -> PriceOut:
         currency=entry.currency,
         source=entry.source,
         project_id=entry.project_id,
+        service_tier=entry.service_tier,
+        min_prompt_tokens=entry.min_prompt_tokens,
+        max_prompt_tokens=entry.max_prompt_tokens,
+        cache_write_per_million=entry.cache_write_per_million,
+        cache_write_1h_per_million=entry.cache_write_1h_per_million,
+        regional_multiplier=entry.regional_multiplier,
+        regional_regions=list(entry.regional_regions) if entry.regional_regions else None,
     )
 
 

@@ -28,13 +28,14 @@ export function PricingOverrides() {
       ) : prices.data.length === 0 ? (
         <Empty title="No prices" />
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="Model prices">
           <table>
             <caption className="sr-only">Model prices</caption>
             <thead>
               <tr>
                 <th>Model</th>
                 <th>Origin</th>
+                <th>Tier</th>
                 <th className="num">Input</th>
                 <th className="num">Output</th>
                 <th className="num">Cached input</th>
@@ -47,6 +48,12 @@ export function PricingOverrides() {
                 <tr key={`${p.pricing_version}-${p.model_pattern}-${i}`}>
                   <td>{p.model_pattern}</td>
                   <td>{p.origin}</td>
+                  <td>
+                    {p.service_tier ?? "any"}
+                    {p.min_prompt_tokens != null
+                      ? `, prompts over ${p.min_prompt_tokens.toLocaleString("en-US")}`
+                      : ""}
+                  </td>
                   <td className="num">{p.input_per_million}</td>
                   <td className="num">{p.output_per_million}</td>
                   <td className="num">{p.cached_input_per_million ?? "—"}</td>

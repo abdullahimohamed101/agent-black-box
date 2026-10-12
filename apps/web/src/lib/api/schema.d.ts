@@ -2257,12 +2257,32 @@ export interface components {
         };
         /** PriceOut */
         PriceOut: {
+            /**
+             * Cache Write 1H Per Million
+             * @description One-hour cache-write price; null means the cache-write price.
+             */
+            cache_write_1h_per_million: string | null;
+            /**
+             * Cache Write Per Million
+             * @description Cache-write price; null means written tokens cost the input price.
+             */
+            cache_write_per_million: string | null;
             /** Cached Input Per Million */
             cached_input_per_million: string | null;
             /** Currency */
             currency: string;
             /** Input Per Million */
             input_per_million: string;
+            /**
+             * Max Prompt Tokens
+             * @description Applies only when the prompt has at most this many tokens.
+             */
+            max_prompt_tokens: number | null;
+            /**
+             * Min Prompt Tokens
+             * @description Prompt-size tier: applies only when the prompt has more tokens than this.
+             */
+            min_prompt_tokens: number | null;
             /** Model Pattern */
             model_pattern: string;
             /**
@@ -2281,8 +2301,23 @@ export interface components {
             project_id: string | null;
             /** Provider */
             provider: string | null;
+            /**
+             * Regional Multiplier
+             * @description Factor for calls on a regional endpoint; null means no stated price.
+             */
+            regional_multiplier: string | null;
+            /**
+             * Regional Regions
+             * @description The residency values the factor is stated for; null means any region.
+             */
+            regional_regions: string[] | null;
             /** Request Price */
             request_price: string;
+            /**
+             * Service Tier
+             * @description The service tier the price is for (`standard`, `batch`, `flex`, `fast`, `ultrafast`); null for an override, which prices every tier.
+             */
+            service_tier: string | null;
             /** Source */
             source: string;
             /**

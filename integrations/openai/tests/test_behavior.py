@@ -47,6 +47,95 @@ def test_chat_and_responses_usage_mapping() -> None:
     assert started["llm.model"] == "gpt-x" and started["framework.name"] == "openai"
 
 
+def billing_usage(**details: Any) -> Any:
+    return SimpleNamespace(
+        prompt_tokens=100,
+        completion_tokens=10,
+        prompt_tokens_details=SimpleNamespace(cached_tokens=20, **details),
+    )
+
+
+@pytest.mark.parametrize(
+    ("sent", "recorded"),
+    [
+        ("default", "standard"),
+        ("flex", "flex"),
+        ("priority", "fast"),
+        ("fast", "fast"),
+        ("ultrafast", "ultrafast"),
+        ("Scale", "scale"),  # kept as the vendor wrote it: the server leaves it unpriced
+    ],
+)
+def test_service_tier_is_mapped_to_the_canonical_names(sent: str, recorded: str) -> None:
+    def go(bb: BlackBox) -> None:
+        chat = SimpleNamespace(usage=billing_usage(), service_tier=sent)
+        instrument(fake_client(chat=chat), bb).chat.completions.create(model="m")
+
+    attrs = of(in_run(go), "llm.request.completed")[0]["attributes"]
+    assert attrs["llm.service_tier"] == recorded
+
+
+def test_cache_write_tokens_come_from_either_usage_shape() -> None:
+    def go(bb: BlackBox) -> None:
+        responses = SimpleNamespace(
+            usage=SimpleNamespace(
+                input_tokens=100,
+                output_tokens=5,
+                input_tokens_details=SimpleNamespace(cached_tokens=20, cache_write_tokens=30),
+            )
+        )
+        chat = SimpleNamespace(usage=billing_usage(cache_write_tokens=40))
+        client = instrument(fake_client(chat=chat, responses=responses), bb)
+        client.chat.completions.create(model="m")
+        client.responses.create(model="m", input="x")
+
+    chat_done, responses_done = [e["attributes"] for e in of(in_run(go), "llm.request.completed")]
+    assert chat_done["llm.cache_write_tokens"] == 40
+    assert responses_done["llm.cache_write_tokens"] == 30
+
+
+def test_a_response_without_billing_fields_records_none_of_them() -> None:
+    def go(bb: BlackBox) -> None:
+        chat = SimpleNamespace(usage=billing_usage())
+        instrument(fake_client(chat=chat), bb).chat.completions.create(model="m")
+
+    attrs = of(in_run(go), "llm.request.completed")[0]["attributes"]
+    for key in ("llm.cache_write_tokens", "llm.service_tier", "llm.data_residency"):
+        assert key not in attrs
+
+
+@pytest.mark.parametrize(
+    ("host", "region"),
+    [("eu.api.openai.com", "eu"), ("us.api.openai.com", "us"), ("api.openai.com", None)],
+)
+def test_a_regional_endpoint_is_recorded_as_data_residency(host: str, region: str | None) -> None:
+    def go(bb: BlackBox) -> None:
+        client = fake_client()
+        client.base_url = SimpleNamespace(host=host)
+        instrument(client, bb).chat.completions.create(model="m")
+
+    attrs = of(in_run(go), "llm.request.completed")[0]["attributes"]
+    assert attrs.get("llm.data_residency") == region
+
+
+def test_a_streamed_response_reports_its_service_tier() -> None:
+    chunks = [
+        SimpleNamespace(type="response.output_text.delta"),
+        SimpleNamespace(
+            type="response.completed",
+            response=SimpleNamespace(usage=responses_usage(), service_tier="flex"),
+        ),
+    ]
+
+    def go(bb: BlackBox) -> None:
+        client = instrument(fake_client(responses=FakeStream(chunks)), bb)
+        with client.responses.create(model="m", input="x", stream=True) as stream:
+            for _ in stream:
+                pass
+
+    assert of(in_run(go), "llm.request.completed")[0]["attributes"]["llm.service_tier"] == "flex"
+
+
 def test_cost_fn_and_its_failure() -> None:
     seen: list[Any] = []
 

@@ -15,7 +15,7 @@ Each package has its own `pyproject.toml`/`uv.lock`; runtime dependency is `agen
 dependency. Tests run offline with fakes and with the real framework (fake chat model, `MockTransport`, in-memory MCP server).
 
 Shared mapping: `llm.provider`, `llm.model`, `llm.input_tokens`, `llm.output_tokens`, `llm.cached_input_tokens`, `llm.temperature`,
-`llm.max_tokens`; `cost.estimated_usd` only through the user's `cost_fn`; adapter spans carry `framework.name`. No payloads by default;
+`llm.max_tokens`; the OpenAI and Anthropic adapters also report the billing modifiers `llm.cache_write_tokens`, `llm.cache_write_1h_tokens`, `llm.service_tier` and `llm.data_residency` when the response says (ADR-044); `cost.estimated_usd` only through the user's `cost_fn`; adapter spans carry `framework.name`. No payloads by default;
 `capture_payloads=True` adds bounded previews that stay structured (so key-based redaction applies) and obey the SDK `payload_mode`.
 
 Run locally: `make integrations-test`; end to end: `make integrations-e2e` (`scripts/integrations-e2e.sh`, database `abb_p8`, API port 8160).

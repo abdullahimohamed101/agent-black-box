@@ -58,6 +58,16 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     "llm.input_tokens": AttrSpec(AttrType.INTEGER, 0),
     "llm.output_tokens": AttrSpec(AttrType.INTEGER, 0),
     "llm.cached_input_tokens": AttrSpec(AttrType.INTEGER, 0),
+    # Billing modifiers (ADR-044). All optional; absent means standard processing, no cache writes.
+    # `cache_write_tokens` are part of `input_tokens` (as cached ones are); the 1h count is a
+    # subset of the writes (the rest used the default 5-minute lifetime).
+    "llm.cache_write_tokens": AttrSpec(AttrType.INTEGER, 0),
+    "llm.cache_write_1h_tokens": AttrSpec(AttrType.INTEGER, 0),
+    # standard | batch | flex | fast | ultrafast, or the vendor's own word when it is none of them
+    # (the cost engine then leaves the call unpriced rather than guess).
+    "llm.service_tier": AttrSpec(AttrType.STRING),
+    # Where inference ran when the caller pinned it: "global" or a region such as "us" or "eu".
+    "llm.data_residency": AttrSpec(AttrType.STRING),
     "llm.latency_ms": AttrSpec(AttrType.NUMBER, 0),
     "llm.temperature": AttrSpec(AttrType.NUMBER, 0),
     "llm.max_tokens": AttrSpec(AttrType.INTEGER, 0),

@@ -51,6 +51,7 @@ _USAGE_FIELDS = (
     "cache_read_input_tokens",
     "cache_creation_input_tokens",
 )
+_USAGE_WORDS = ("service_tier", "speed", "inference_geo")
 
 
 def usage_of(usage: Any) -> tuple[int | None, int | None, int | None]:
@@ -61,6 +62,32 @@ def usage_of(usage: Any) -> tuple[int | None, int | None, int | None]:
     created = count(get(usage, "cache_creation_input_tokens"))
     parts = [v for v in (base, read, created) if v is not None]
     return (sum(parts) if parts else None), count(get(usage, "output_tokens")), read
+
+
+def billing_of(usage: Any) -> dict[str, Any]:
+    """The billing modifiers a usage object reports (ADR-044), for `record_usage`.
+
+    `cache_creation_input_tokens` is the cache-write count (already part of `llm.input_tokens`);
+    `cache_creation.ephemeral_1h_input_tokens` the part with the 1-hour lifetime. `speed: "fast"`
+    is Fast mode, `service_tier` is `standard`, `batch` or `priority`, and `inference_geo` is
+    `global` or `us`. A tier word the server does not price (`priority`) is passed through so the
+    server leaves the call unpriced instead of guessing."""
+    out: dict[str, Any] = {}
+    writes = count(get(usage, "cache_creation_input_tokens"))
+    if writes:  # zero is "no writes": leave the attribute out, as before this field existed
+        out["cache_write_tokens"] = writes
+    long_lived = count(get(get(usage, "cache_creation"), "ephemeral_1h_input_tokens"))
+    if long_lived:
+        out["cache_write_1h_tokens"] = long_lived
+    tier = text(get(usage, "service_tier"))
+    if text(get(usage, "speed")) == "fast":
+        tier = "fast"
+    if tier is not None:
+        out["service_tier"] = tier.strip().lower()
+    geo = text(get(usage, "inference_geo"))
+    if geo is not None:
+        out["data_residency"] = geo.strip().lower()
+    return out
 
 
 class Call:
@@ -74,7 +101,7 @@ class Call:
         self.model = model
         self.run = run
         self.request = request  # preview text, only when payload capture is on
-        self.usage: dict[str, int] = {}  # accumulated from stream events
+        self.usage: dict[str, Any] = {}  # accumulated from stream events
         self._ended = False
         self._lock = threading.Lock()
 
@@ -92,6 +119,13 @@ class Call:
                 value = count(get(usage, field))
                 if value is not None:
                     self.usage[field] = value
+            for field in _USAGE_WORDS:
+                word = text(get(usage, field))
+                if word is not None:
+                    self.usage[field] = word
+            created = get(usage, "cache_creation")
+            if created is not None:
+                self.usage["cache_creation"] = created
         except Exception:
             self.s.contained()
 
@@ -117,7 +151,11 @@ class Call:
                 except Exception:
                     self.s.contained()
             self.span.record_usage(
-                tokens_in, tokens_out, cached_input_tokens=cached, cost_usd=number(cost)
+                tokens_in,
+                tokens_out,
+                cached_input_tokens=cached,
+                cost_usd=number(cost),
+                **billing_of(usage or self.usage),
             )
             if self.s.capture:
                 self.span.set_payload({"request": self.request, "response": preview(response)})

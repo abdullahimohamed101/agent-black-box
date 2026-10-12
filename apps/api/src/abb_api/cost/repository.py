@@ -46,6 +46,7 @@ class OverrideRecord:
             request_price=self.request_price,
             source="workspace override",
             origin="override",
+            service_tier=None,
             project_id=str(self.project_id) if self.project_id else None,
             created_at=self.created_at,
         )

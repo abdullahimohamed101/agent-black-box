@@ -127,3 +127,24 @@ def test_golden_normalization_is_deterministic_and_valid(tmp_path):  # type: ign
     path.write_text(json.dumps(first))
     with pytest.raises(AssertionError, match="golden"):
         assert_golden(path, capture(one))
+
+
+def test_billing_modifier_attributes_satisfy_the_event_contract() -> None:
+    from abb_conformance import capture
+    from abb_conformance.harness import validate_events
+
+    def drive(bb: BlackBox) -> None:
+        with bb.run("r") as run, run.llm_call("acme", "m1") as llm:
+            llm.record_usage(
+                LLM_INPUT,
+                LLM_OUTPUT,
+                cache_write_tokens=10,
+                cache_write_1h_tokens=4,
+                service_tier="batch",
+                data_residency="eu",
+            )
+
+    events = capture(drive)
+    validate_events(events)
+    done = next(e for e in events if e["event_type"] == "llm.request.completed")["attributes"]
+    assert done["llm.cache_write_tokens"] == 10 and done["llm.service_tier"] == "batch"

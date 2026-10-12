@@ -371,7 +371,8 @@ def test_builtin_google_prices_follow_the_dated_and_exact_rows() -> None:
         D("7.50"),
     )
     lite = book.find("google", "gemini-3.5-flash-lite", at(10))
-    assert lite is not None and lite.cached_input_per_million is None
+    # 2026-10-12b states the cache price the first read missed (page: $0.03).
+    assert lite is not None and lite.cached_input_per_million == D("0.03")
     assert book.find("google", "gemini-3.5-flash", at(10)) is not lite
     # Exact IDs only: a different model sharing the prefix must stay unpriced.
     assert book.find("google", "gemini-3.8-flash-tts", at(10)) is None
@@ -427,7 +428,11 @@ def test_builtin_openai_tiers_use_the_272k_rule_for_the_whole_request() -> None:
     line = CostEngine(builtin_price_book()).calculate(event)
     # 200k plain at 20 + 100k cached at 2 + 10k out at 75, all at the long-context rates.
     assert (line.input_cost, line.cached_cost, line.output_cost) == (D(4), D("0.2"), D("0.75"))
-    assert line.pricing_version == TIERED_VERSION
+    # The 2026-10-12b batch re-publishes the standard rows; the later version wins the tie, and a
+    # pin to the earlier version still reproduces it with the same figures.
+    assert line.pricing_version == "2026-10-12b"
+    pinned = CostEngine(builtin_price_book()).calculate(event, pricing_version=TIERED_VERSION)
+    assert pinned.pricing_version == TIERED_VERSION and pinned.total == line.total
 
 
 def test_builtin_models_without_a_long_tier_stay_flat_and_old_dates_stay_unpriced() -> None:
@@ -463,7 +468,9 @@ def test_builtin_haiku_and_gemini_pro_tiers() -> None:
         D(18),
     )
     assert book_entry("google", "gemini-2.5-pro", 12, 200_000).input_per_million == D("1.25")
-    assert builtin_price_book().find("google", "gemini-2.5-flash", at(13)) is None
+    # Gemini Flash models priced by modality came in 2026-10-12b (text price only).
+    assert builtin_price_book().find("google", "gemini-2.5-flash", at(13)) is not None
+    assert builtin_price_book().find("google", "gemini-2.5-flash-8b", at(13)) is None
 
 
 def test_a_workspace_override_beats_a_builtin_tier_end_to_end() -> None:

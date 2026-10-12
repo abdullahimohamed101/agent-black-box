@@ -277,13 +277,16 @@ describe("PricingOverrides", () => {
     pricing_version: "v1", origin: "builtin", provider: null, model_pattern: "gpt-*",
     valid_from: "2026-01-01T00:00:00Z", valid_to: null, input_per_million: "2.5",
     output_per_million: "10", cached_input_per_million: null, request_price: "0", currency: "USD",
-    source: "x", project_id: null,
+    source: "x", project_id: null, service_tier: "batch", min_prompt_tokens: 272000,
+    max_prompt_tokens: null, cache_write_per_million: null, cache_write_1h_per_million: null,
+    regional_multiplier: null,
   }; // prettier-ignore
 
   it("lists prices; a reader sees no forms", async () => {
     api({ "GET /v1/pricing": () => Response.json({ prices: [PRICE] }) });
     mount(<PricingOverrides />, ctx(["pricing.read"]));
     expect(await screen.findByText("gpt-*")).toBeInTheDocument();
+    expect(screen.getByText("batch, prompts over 272,000")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add override" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Rebuild costs" })).toBeNull();
   });
