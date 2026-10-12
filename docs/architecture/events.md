@@ -67,7 +67,7 @@ A non-zero exit closes the span with `shell.command.failed` and `status=error`. 
 | --- | --- |
 | run | `run.started` `run.completed` `run.failed` `run.cancelled` |
 | agent | `agent.started` `agent.completed` `agent.state_changed` `agent.spawned` |
-| llm | `llm.request.started` `.completed` `.failed` (require `llm.provider`, `llm.model`; cost attributes: `cost.provider_usd` = reported by the provider, `cost.estimated_usd` = the caller's estimate, `cost.pricing_version`; the server prices tokens itself, ADR-040) |
+| llm | `llm.request.started` `.completed` `.failed` (require `llm.provider`, `llm.model`; cost attributes: `cost.provider_usd` = reported by the provider, `cost.estimated_usd` = the caller's estimate, `cost.pricing_version`; the server prices tokens itself, ADR-040; optional billing modifiers `llm.cache_write_tokens`, `llm.cache_write_1h_tokens`, `llm.service_tier` (`standard\|batch\|flex\|fast\|ultrafast`), `llm.data_residency` (`global`, `us`, `eu` ...): absent means standard processing, ADR-044) |
 | tool | `tool.call.started` `.completed` `.failed` (require `tool.name`) |
 | file | `file.read` `file.created` `file.modified` `file.deleted` (require `file.path`) |
 | git | `git.diff` `git.commit` `git.branch_created` `git.push` |

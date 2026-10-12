@@ -50,7 +50,7 @@ None.
 ## Next actions (exact)
 1. User: the one manual sign-in with a real OIDC provider (AC-14, KI-067; needs your own client id and secret, see `docs/runbooks/auth-and-access.md`), and a compose
    runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
-2. User: decide MVP gate acceptance. KI-050 is now mostly closed (branch `feature/ki-050-openai-prices`, unmerged): the engine has prompt-size tiers (`min_prompt_tokens`) and the built-in table has OpenAI, Haiku 5.5 and Gemini Pro prices (version `2026-10-12`); multipliers and a few models remain listed in the issue (now S3).
+2. User: decide MVP gate acceptance. KI-050 is closed for what the vendors' pages state (branch `feature/ki-050-batch2`, unmerged, after `feature/ki-050-openai-prices`): prompt-size tiers, OpenAI/Anthropic/Gemini prices, and ADR-044 billing modifiers (`llm.service_tier`, `llm.data_residency`, `llm.cache_write_tokens`, `llm.cache_write_1h_tokens`; batch/flex/fast/ultrafast, regional uplift, cache writes; built-in version `2026-10-12b`); an S3 row keeps the unpriced remainder. Existing runs keep their old cost lines until `rebuild-costs`; `SUMMARY_VERSION` is unchanged.
 3. Finish and merge Phase 11; then Phase 21 (UI shell), then 12, 13 and 14, 17, 19, 20.
 4. After deploying Phase 16, run `search-rebuild` for existing workspaces so older runs become searchable (KI-081, issue #94).
 

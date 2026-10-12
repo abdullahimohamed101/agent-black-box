@@ -17,6 +17,7 @@ with bb.run("support bot"):
 - Outside `bb.run(...)` a call is a transparent pass-through. Streaming reports tokens only if the stream carries usage
   (chat: `stream_options={"include_usage": True}`; responses: the `response.completed` event). A stream the caller abandons ends `cancelled`.
 - Cost: pass `cost_fn(provider, model, tokens_in, tokens_out, cached) -> usd`; otherwise none is recorded.
+- Billing modifiers (ADR-044): the response's `service_tier` (`default` -> `standard`, `priority`/`fast` -> `fast`, `flex`; other words kept and left unpriced) as `llm.service_tier`, `cache_write_tokens` from either usage shape as `llm.cache_write_tokens`, and a regional base URL (`eu.api.openai.com`) as `llm.data_residency`. Batch API calls are not visible to the client; record `service_tier="batch"` yourself.
 - Prompts and responses are not recorded; `capture_payloads=True` attaches bounded previews, gated by `payload_mode` and redacted.
 - Also traced: `client.with_options(...)` / `client.copy()` (derived clients stay instrumented) and `with_raw_response.create` (usage is read by parsing
   the response; the SDK caches the parse, so your own `.parse()` is unaffected; a raw streaming call is recorded without tokens and carries
