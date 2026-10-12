@@ -34,7 +34,7 @@ an overlay.
 ```text
 header.run-head   h1, status badge, retries tag, id line (mono) / headline sentence with the inline "Show it" control / readout strip
 div.pane-head     view tabs (native radios drawn as tabs: Timeline n | Waterfall | Evidence n)  ·  Context toggle
-div.work          context column (Story, Agents, Findings, Evaluations; 18rem; folds to a 2.25rem strip) | pane (timeline, waterfall or evidence) | inspector (26rem, draggable)
+div.work          context column (Story, Agents, Findings, Evaluations; 18rem; folds to a 2.25rem strip when the inspector opens and the pane would drop under 30rem, i.e. below 88rem) | pane (timeline, waterfall or evidence) | inspector (26rem, draggable)
 ```
 
 - The class-chip toolbar is one row; the chip group scrolls sideways (a fade marks the edge) while "Errors only" and "Collapse groups" stay pinned. Below `40rem` of pane width the "Event classes" legend is visually hidden but keeps naming the group.

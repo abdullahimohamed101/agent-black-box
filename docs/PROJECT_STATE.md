@@ -1,10 +1,10 @@
 # Project State
 
-Last updated: 2026-10-12 (Phase 21 implemented, pending review)
+Last updated: 2026-10-12 (Phase 21 reviewed, review findings fixed, awaiting the push approval)
 
 ## Current phase
 Phases 0-11, 15 and 16 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79, Phase 16 is PR #92, Phase 11 is PR #104; KI-050 prices are PR #105). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
-decides after reviewing the items under "Next actions". Phase 21 (UI application shell and design pass) is implemented on `feature/phase-21-ui-shell` (not pushed) and waits for review; nothing else is in progress.
+decides after reviewing the items under "Next actions". Phase 21 (UI application shell and design pass) is implemented, adversarially reviewed and the review findings are fixed on `feature/phase-21-ui-shell` (not pushed); it waits for the push/PR approval; nothing else is in progress.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -47,8 +47,8 @@ A second KI-050 batch (more models, batch/flex/fast/regional multipliers, cache 
 Phase 21 (web only; no API, schema or SDK change): rail, top bar, full-width pages, instrument-style run header, a viewport-filling run work area (context column, timeline / waterfall / evidence pane, draggable inspector), the Evidence view, the
 runs list and every document page restyled on shared tokens (IBM Plex self-hosted, ADR-110), one status grammar, a motion layer that is zero under reduced motion. Status, evidence per acceptance criterion and the deviations are in
 `docs/plans/active/phase-21-ui-shell-and-design-pass.md`; screenshots in `docs/screenshots/phase-21/` (before/after, with a critique); what landed in `docs/design/ui-direction.md`. No existing spec or vitest file was edited (additions only).
-Web gates on the branch: eslint, prettier, tsc, vitest 740, `next build`, fixtures Playwright 110 passed / 56 skipped, the eight API-backed E2E scripts (two needed a re-run under load; see the plan). `scripts/quality.sh quick` (Python steps) was not completed
-here (KI-122). A reviewer should look first at keyboard and screen-reader behaviour of the radio-tab view switch and the folded context strip, the viewer-withheld states in all three views, and the 10,000-event run.
+Code review (`docs/plans/active/phase-21-code-review.md`): 0 P0, 1 P1 (React #418 hydration mismatch from the breadcrumb), 6 P2, 7 P3; all fixed except what is listed as deferred in the plan's "Code review dispositions" (KI-123..126). Web gates after the fixes: eslint, prettier, tsc, vitest 755, `next build`, fixtures Playwright 136 passed / 56 skipped, the eight API-backed E2E scripts (several needed a re-run under load; see the plan). `scripts/quality.sh quick` (Python steps) was not completed
+here (KI-122). The reviewer did the keyboard walk, 200% zoom and 1024x640; screen-reader announcement of the radio-tab view switch and the folded strip is still judged from the accessibility tree only.
 
 ## Blocked work
 None.
@@ -56,7 +56,7 @@ None.
 ## Next actions (exact)
 1. Done 2026-10-12: the real OIDC sign-in with Google (KI-067 resolved). Still open for the user: a compose runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
 2. User: decide MVP gate acceptance. KI-050 is now mostly closed (merged, PR #105): the engine has prompt-size tiers (`min_prompt_tokens`) and the built-in table has OpenAI, Haiku 5.5 and Gemini Pro prices (version `2026-10-12`); multipliers and a few models remain listed in the issue (now S3).
-3. Review Phase 21 (`feature/phase-21-ui-shell`; read the plan's evidence table and the screenshots), fix findings, then push and open the PR on approval; then 12, 13 and 14, 17, 19, 20. New known issues KI-117..122 are "to file".
+3. Phase 21 (`feature/phase-21-ui-shell`): review done and fixed; push and open the PR on approval (the plan's "Code review dispositions" is the evidence), then 12, 13 and 14, 17, 19, 20. New known issues KI-117..126 are "to file".
 4. After deploying Phase 16, run `search-rebuild` for existing workspaces so older runs become searchable (KI-081, issue #94).
 
 ## Open decisions
