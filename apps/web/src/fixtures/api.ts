@@ -1,6 +1,12 @@
 import type { EventOut } from "@/lib/api/types";
 import { fixtureAnalytics } from "./analytics";
 import { fixtureSettings } from "./auth";
+import {
+  fixtureComparison,
+  fixtureRunEvaluations,
+  fixtureWorkspaceReply,
+  type Viewer,
+} from "./evaluations";
 import { fixtureRuns } from "./index";
 import { FixtureQueryError, fixtureSearch } from "./search";
 
@@ -49,7 +55,11 @@ function page<T>(all: T[], q: URLSearchParams, max: number, def: number) {
 }
 
 /** An in-memory implementation of the read API (§71, api-v1.md) over the deterministic fixtures. */
-export function fixtureReply(segments: string[], q: URLSearchParams): Reply {
+export function fixtureReply(
+  segments: string[],
+  q: URLSearchParams,
+  viewer: Viewer = { content: true },
+): Reply {
   const [v1, runs, runId, sub, eventId] = segments;
   if (v1 === "v1" && segments.length === 2) {
     const body = fixtureSettings(runs ?? "");
@@ -59,8 +69,11 @@ export function fixtureReply(segments: string[], q: URLSearchParams): Reply {
     const body = fixtureAnalytics(runId, q);
     return body ? { status: 200, body } : notFound("NOT_FOUND", "Not found.");
   }
-  if (v1 !== "v1" || runs !== "runs") return notFound("NOT_FOUND", "Not found.");
   const all = fixtureRuns();
+  if (v1 === "v1" && (runs === "evaluators" || runs === "experiments")) {
+    return fixtureWorkspaceReply(segments, all, viewer) ?? notFound("NOT_FOUND", "Not found.");
+  }
+  if (v1 !== "v1" || runs !== "runs") return notFound("NOT_FOUND", "Not found.");
   if (!runId) {
     let searched: ReturnType<typeof fixtureSearch> | null = null;
     const qText = q.get("q");
@@ -113,6 +126,14 @@ export function fixtureReply(segments: string[], q: URLSearchParams): Reply {
   }
   if (sub === "findings" && !eventId) {
     return f.findings ? { status: 200, body: f.findings } : notFound("NOT_FOUND", "Not found.");
+  }
+  if (sub === "evaluations" && !eventId)
+    return { status: 200, body: fixtureRunEvaluations(f, viewer) };
+  if (sub === "compare" && !eventId) {
+    const withId = q.get("with_run_id");
+    const other = withId ? all.find((x) => x.run.id === withId) : undefined;
+    if (!other) return notFound("RUN_NOT_FOUND", "Run not found.");
+    return { status: 200, body: fixtureComparison(f, other, viewer) };
   }
   if (sub !== "events") return notFound("NOT_FOUND", "Not found.");
   if (eventId) {

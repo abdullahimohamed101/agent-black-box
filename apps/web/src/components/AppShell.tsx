@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { analyticsPath, projectPath, runsPath, type Base } from "@/lib/routes";
+import { analyticsPath, experimentsPath, projectPath, runsPath, type Base } from "@/lib/routes";
 import { SignOutButton } from "./SignOutButton";
 import { useWorkspaceOptional } from "./WorkspaceProvider";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -13,6 +13,7 @@ export function AppShell({ base, children }: { base: Base; children: React.React
   const dash = projectPath(base);
   const runs = runsPath(base);
   const analytics = analyticsPath(base);
+  const experiments = experimentsPath(base);
   const settings = `/w/${base.workspace}/settings/members`;
   const cur = (href: string, exact: boolean) =>
     (exact ? path === href : path === href || path.startsWith(`${href}/`)) ? "page" : undefined;
@@ -39,6 +40,9 @@ export function AppShell({ base, children }: { base: Base; children: React.React
           </Link>
           <Link href={analytics} aria-current={cur(analytics, false)}>
             Analytics
+          </Link>
+          <Link href={experiments} aria-current={cur(experiments, false)}>
+            Experiments
           </Link>
           {ws?.mode === "session" && (
             <Link

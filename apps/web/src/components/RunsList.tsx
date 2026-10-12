@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
 import { ALL_STATUSES, type QueryTermOut, type RunStatus } from "@/lib/api/types";
 import { useRuns, useSearchCatalogue } from "@/lib/queries";
 import {
@@ -10,6 +12,7 @@ import {
   removeSpan,
   searchProblem,
 } from "@/lib/search";
+import { COMPARE_PICKS, compareHref, toggleRun } from "@/lib/compare";
 import type { Base } from "@/lib/routes";
 import { useProjectId } from "@/components/WorkspaceProvider";
 import { RunsTable } from "./RunsTable";
@@ -61,6 +64,8 @@ export function RunsList({
     pageSize,
   );
   const catalogue = useSearchCatalogue(project);
+  const [picked, setPicked] = useState<string[]>([]);
+  const href = compareHref(base, picked);
   const runs = q.data?.pages.flatMap((p) => p.items) ?? [];
   const first = q.data?.pages[0];
   const echo = q.isPlaceholderData ? null : (first?.query ?? null);
@@ -165,7 +170,33 @@ export function RunsList({
         <>
           {echo && <UnindexedNotice count={echo.unindexed} capped={echo.unindexed_capped} />}
           <Facets facets={first?.facets} skipped={first?.facets_skipped} onAdd={addFacet} />
-          <RunsTable runs={runs} base={base} caption="Runs" now={now} />
+          <div className="compare-bar" data-testid="compare-bar">
+            <span role="status">
+              {picked.length === 0
+                ? `Tick ${COMPARE_PICKS} runs to compare them.`
+                : `${picked.length} of ${COMPARE_PICKS} runs picked.`}
+            </span>
+            {href ? (
+              <Link href={href} className="button-link" data-testid="compare-link">
+                Compare the two runs
+              </Link>
+            ) : (
+              <span className="muted">Pick one more run.</span>
+            )}
+            {picked.length > 0 && (
+              <button type="button" onClick={() => setPicked([])}>
+                Clear picks
+              </button>
+            )}
+          </div>
+          <RunsTable
+            runs={runs}
+            base={base}
+            caption="Runs"
+            now={now}
+            selected={picked}
+            onToggle={(id) => setPicked((p) => toggleRun(p, id))}
+          />
           <p className="muted" aria-live="polite">
             {runs.length} run{runs.length === 1 ? "" : "s"} loaded
             {q.hasNextPage ? "" : " (end of list)"}

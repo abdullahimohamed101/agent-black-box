@@ -1,11 +1,10 @@
 # Project State
 
-Last updated: 2026-10-11
+Last updated: 2026-10-12 (Phase 11 merged)
 
 ## Current phase
-Phases 0-10, 15 and 16 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79, Phase 16 is PR #92). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
-decides after reviewing the items under "Next actions". Phase 11 (evaluations, experiments and run comparison) is being built on its branch (steps 1-5 done and verified); Phase 21 (UI application shell
-and design pass) is planned and lands after it.
+Phases 0-11, 15 and 16 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79, Phase 16 is PR #92, Phase 11 is PR #104; KI-050 prices are PR #105). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
+decides after reviewing the items under "Next actions". Phase 21 (UI application shell and design pass) is planned and is next.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -41,17 +40,17 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, 
   (`docs/benchmarks/phase-16-regression-check.md`).
 
 ## In-progress work
-Phase 11 builds in `../abb-worktrees/phase-11` (merged with main including Phase 16; migration 0070 chains after 0080). Nothing is pushed from a worktree until its phase is fully ready
-(built, independently reviewed, fixed, verified).
+Phase 11 is merged (PR #104): 15 operations, migrations 0070-0071 (head), the `evaluate_run` job, comparison, experiments, the run-page Evaluations section, the compare and experiments pages, `scripts/eval-e2e.sh`
+(CI job `eval-e2e`), `docs/runbooks/evaluations.md`; the independent review found no P0/P1 and two P2 defects, fixed (`docs/plans/completed/phase-11-code-review.md`). KI-100..109 and KI-116 are GitHub issues #106-#116.
+A second KI-050 batch (more models, batch/flex/fast/regional multipliers, cache writes) is being built on `feature/ki-050-batch2`; Phase 21 starts after it.
 
 ## Blocked work
 None.
 
 ## Next actions (exact)
-1. User: the one manual sign-in with a real OIDC provider (AC-14, KI-067; needs your own client id and secret, see `docs/runbooks/auth-and-access.md`), and a compose
-   runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
+1. Done 2026-10-12: the real OIDC sign-in with Google (KI-067 resolved). Still open for the user: a compose runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
 2. User: decide MVP gate acceptance. KI-050 is closed for what the vendors' pages state (branch `feature/ki-050-batch2`, unmerged, after `feature/ki-050-openai-prices`): prompt-size tiers, OpenAI/Anthropic/Gemini prices, and ADR-044 billing modifiers (`llm.service_tier`, `llm.data_residency`, `llm.cache_write_tokens`, `llm.cache_write_1h_tokens`; batch/flex/fast/ultrafast, regional uplift, cache writes; built-in version `2026-10-12b`); an S3 row keeps the unpriced remainder. Existing runs keep their old cost lines until `rebuild-costs`; `SUMMARY_VERSION` is unchanged.
-3. Finish and merge Phase 11; then Phase 21 (UI shell), then 12, 13 and 14, 17, 19, 20.
+3. Phase 21 (UI shell and design pass), then 12, 13 and 14, 17, 19, 20.
 4. After deploying Phase 16, run `search-rebuild` for existing workspaces so older runs become searchable (KI-081, issue #94).
 
 ## Open decisions
@@ -64,6 +63,9 @@ None.
 `docs/KNOWN_ISSUES.md` (severity, target and GitHub issue per item): notably (Phase 15 additions KI-067..078: real-provider login unverified, no session list, no `email_verified`-less providers, audit retention, trusted proxies, compose login unverified) full recomputation of very large active runs (KI-016), no quotas (KI-018), no failed-auth throttling (KI-019).
 
 ## Last verified test status
+2026-10-11, Phase 11 branch (final tree, own databases `abb_test_p11`/`abb_p11_*`, dropped afterwards): event-schema 351, sdk 893 (coverage 94.27%), examples 16 + 10, integrations 17/74/66/61/44, api 1,699 passed (authz 151, search 359, rest 742 + 447),
+web vitest 626, eslint/prettier/tsc/`next build` clean, openapi/schema/gen:api checks clean, migrations head 0071 <-> base and 0071 -> 0080 -> head. Fixtures Playwright 21. E2E: `auth-e2e` 13, `findings-e2e` 6, `multiagent-e2e` 6, `coding-e2e` 6, `eval-e2e` 7.
+Not run: `make smoke`, `sdk-e2e`, `stream-e2e`, `analytics-e2e`, compose jobs (UNVERIFIED (env)). Previous:
 2026-10-11, Phase 16 branch merged with `origin/main` (Phase 10), own databases `abb_test_p16`/`abb_p16`: event-schema 351, sdk 893 (coverage 94.24%), examples 12 + 10, integrations 17/74/66/61/44,
 api 1,411 passed (authz 121, search 359, rest 931), web vitest 567, eslint/prettier/tsc/`next build` clean, openapi/gen:api checks clean, migrations head 0080 <-> base and 0080 -> 0060 -> head. E2E: `auth-e2e` 13 (8 auth + 5 search),
 `findings-e2e` 6 (its runs-list test now searches `status:failed` and still sees the findings column), `multiagent-e2e` 6, `coding-e2e` 6, fixtures Playwright 17. Not run: compose-based jobs and `make smoke`/`sdk-e2e`/`up` (UNVERIFIED (env)).

@@ -37,7 +37,7 @@ Depends on nothing else in the repo. Status: implemented (Phase 1): IDs, envelop
 ### API (`apps/api`) - modular monolith
 Routers -> services -> repositories -> db, with modules `ingestion`, `runs`, `traces`, `jobs`, `auth`, `projects`
 `artifacts`, `analytics`, `authz` (one `authorize()` path, the role/scope matrix as data), `audit` and `workspaces` (members, invitations, projects)
-`findings` (Phase 10: detectors, finding contract, health, `GET /v1/runs/{id}/findings`) (plus `core` and `db`); evaluations and policies arrive in later phases. Ingestion and query are separate
+`findings` (Phase 10: detectors, finding contract, health, `GET /v1/runs/{id}/findings`) (plus `core` and `db`); policies arrive in a later phase. Ingestion and query are separate
 routers so a slow query never sits on the SDK path. Repositories take a tenant context (INV-3) and tables are keyed
 `(workspace_id, id)` with composite foreign keys (ADR-002). Status: implemented (Phase 2): health, API-key auth, ingestion,
 run/event/span queries, provisioning CLI, OpenAPI contract (`apps/api/openapi.json`); artifacts (Phase 6) and analytics (Phase 7) are implemented.
@@ -46,11 +46,14 @@ overrides, an append-only audit log and re-authentication of open streams (ADR-0
 Phase 16 adds `search` (a hand-written parser for the §152 grammar into a typed AST, a field catalogue as data, a compiler that takes the `Principal` and never emits a content
 column for an actor without `payload.read`, the derived `run_search` document built by the summarizer, bounded reads with a per-process concurrency cap and a time budget);
 the runs router carries it as `GET /v1/runs?q=` (ADR-100, ADR-101). `abb_api/content.py` holds the content classification both `runs` and `search` use.
+Phase 11 adds `evaluations` (the evaluator protocol and built-ins, the judge interface with its deterministic fake, repositories, the `evaluate_run` job body), `experiments` (declared variants, the control check, a metrics read-model over `runs` and `evaluations`,
+evaluate-all) and `comparison` (step extraction per projection, a table-driven normaliser, prefix/suffix plus budgeted Myers alignment, computed on read in a thread); the worker gains the `evaluate_run` handler, which writes only to `evaluations` (ADR-090..092).
+
 
 ### Workers (`abb_api.worker`, same image as the API)
 PostgreSQL outbox, `FOR UPDATE SKIP LOCKED` leases, retries with backoff, dead letters, one writer per run via a
 row lock, debounced and coalesced `summarize_run` jobs; run state is a pure function of the run's events
-(`runs/summary.py`) so it is rebuildable (ADR-012). Status: implemented (Phase 2); cost and analytics refresh jobs (Phase 7); the `detect_findings` job (Phase 10: pure detectors over a capped canonical event load, derived findings, ADR-080); alert jobs
+(`runs/summary.py`) so it is rebuildable (ADR-012). Status: implemented (Phase 2); cost and analytics refresh jobs (Phase 7); the `detect_findings` job (Phase 10: pure detectors over a capped canonical event load, derived findings, ADR-080); the `evaluate_run` job (Phase 11: a budgeted evaluator in a thread, writes only `evaluations`, ADR-090); alert jobs
 arrive in later phases.
 
 ### Python SDK (`packages/sdk-python`)

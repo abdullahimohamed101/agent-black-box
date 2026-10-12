@@ -35,6 +35,9 @@ class IdKind(str, Enum):
     USER = "usr"  # dashboard users (Phase 15); never appears in events
     INVITATION = "inv"
     FINDING = "fnd"  # derived findings (Phase 10); the id is a UUIDv5 of the fingerprint
+    EVALUATOR = "evr"  # evaluator definitions (Phase 11)
+    EXPERIMENT = "exp"
+    VARIANT = "var"  # an experiment's variant
 
 
 def id_pattern(kind: IdKind) -> str:

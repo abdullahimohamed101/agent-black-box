@@ -1,0 +1,215 @@
+/* Phase 11: evaluations on the run page and the compare selection in the runs list. Tokens come from globals.css. */
+.evaluations {
+  margin: 1.25rem 0;
+}
+.evaluation-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.evaluation {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+.evaluation[data-state="failed"] {
+  border-color: var(--bad);
+}
+.evaluation-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  align-items: center;
+}
+.evaluation-head h4 {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.evaluation-result,
+.evaluation-text,
+.evaluation-error {
+  margin: 0.35rem 0;
+}
+.evaluation-text,
+.evaluation-error {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.evaluation-error {
+  color: var(--bad);
+}
+.evaluation-facts {
+  margin: 0.25rem 0;
+}
+.evaluation-foot {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+.evaluation-history {
+  margin: 0.5rem 0;
+}
+.evaluation-start,
+.verdict-form {
+  margin: 0.75rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: flex-end;
+}
+.verdict-form {
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 36rem;
+}
+.verdict-form h3 {
+  margin: 0;
+}
+.verdict-form .form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+.verdict-form label:not(.chip) {
+  display: grid;
+  gap: 0.2rem;
+}
+.verdict-form textarea {
+  width: 100%;
+  font: inherit;
+}
+.compare-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+.compare-pick {
+  width: 2rem;
+}
+tr[data-picked="true"] {
+  background: var(--warn-bg);
+}
+.button-link {
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+}
+
+/* Compare page and experiments. */
+.compare-runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 2rem;
+}
+.compare-notices {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+.compare-table th,
+.compare-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.compare-table .delta[data-tone="bad"] {
+  color: var(--bad);
+}
+.compare-table .delta[data-tone="ok"] {
+  color: var(--ok);
+}
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.aligned-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.aligned-head,
+.aligned-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 11rem) 1fr 1fr;
+  gap: 0.5rem;
+}
+.aligned-head {
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+}
+.aligned-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.aligned-row {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+/* Equal rows are muted by having no highlight, not by opacity: opacity would break the text contrast. */
+.aligned-row[data-relation="changed"] {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+.aligned-row[data-divergence="true"] {
+  outline: 2px solid var(--warn);
+  outline-offset: -2px;
+}
+.aligned-row:focus-visible {
+  outline: 2px solid var(--info);
+  outline-offset: -2px;
+}
+.aligned-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: flex-start;
+}
+.step-cell {
+  overflow-wrap: anywhere;
+}
+.step-label {
+  font-family: ui-monospace, monospace;
+}
+.file-sets {
+  display: grid;
+  gap: 0.5rem 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+.plain {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0;
+}
+.experiment-form {
+  margin: 1rem 0;
+  display: grid;
+  gap: 0.6rem;
+  max-width: 36rem;
+}
+@media (max-width: 40rem) {
+  .aligned-head,
+  .aligned-row {
+    grid-template-columns: 1fr;
+  }
+  .aligned-head {
+    display: none;
+  }
+}
+
+/* The Experiments link made the primary nav wider than a phone in a signed-in session: let it wrap. */
+.topbar nav {
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}

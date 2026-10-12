@@ -57,6 +57,16 @@ class Side:
     user_id: str  # another member of the workspace (not a role actor)
     invitation_id: str
     key_id: str  # an API key of the workspace (made by the CLI: no creator)
+    # Phase 11: a path-bearing evaluator, a model-judge evaluator with a completed evaluation
+    # (its explanation carries a canary), an experiment with a baseline variant holding a run, and
+    # a second run of the tenant (the `?with=` of a comparison; a Side field because the id
+    # parameter's name must be an attribute of the Side).
+    evaluator_id: str
+    evaluation_id: str
+    experiment_id: str
+    variant_id: str
+    with_run_id: str
+    human_evaluator_id: str  # a `human` evaluator (the target of a verdict)
     every_id: frozenset[str]  # every id the tenant owns (for leak scans)
 
 
@@ -67,8 +77,9 @@ class RequestSpec:
     params: dict[str, str] = field(default_factory=dict)
     content: bytes | None = None
     headers: dict[str, str] = field(default_factory=dict)
-    # "member" | "invitation" | "api_key": the world creates a fresh target in acme and puts its
-    # id where the path says FRESH, so a mutating request is valid for every actor that may send it.
+    # "member" | "invitation" | "api_key" | "evaluator": the world creates a fresh target in acme
+    # and puts its id where the path says FRESH, so a mutating request is valid for every actor
+    # that may send it.
     fresh: str | None = None
 
 
@@ -98,6 +109,12 @@ def _ids(side: Side, overrides: dict[str, str]) -> dict[str, str]:
         "run_id": side.run_id,
         "event_id": side.event_id,
         "artifact_id": side.artifact_id,
+        "evaluator_id": side.evaluator_id,
+        "evaluation_id": side.evaluation_id,
+        "experiment_id": side.experiment_id,
+        "variant_id": side.variant_id,
+        "with_run_id": side.with_run_id,
+        "human_evaluator_id": side.human_evaluator_id,
         **overrides,
     }
 
@@ -196,6 +213,67 @@ def _post_rebuild(side: Side, overrides: dict[str, str]) -> RequestSpec:
     return RequestSpec("POST", "/v1/cost/rebuild", content=b"{}", headers=JSON)
 
 
+def _post_evaluator(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    body = {"name": f"probe-{uuid.uuid4().hex[:10]}", "kind": "deterministic",
+            "implementation": "run_succeeded"}  # fmt: skip
+    return RequestSpec("POST", "/v1/evaluators", content=json.dumps(body).encode(), headers=JSON)
+
+
+def _post_evaluation(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    ids = _ids(side, overrides)
+    body = {"evaluator_id": ids["evaluator_id"]}
+    return RequestSpec(
+        "POST", f"/v1/runs/{ids['run_id']}/evaluations", content=json.dumps(body).encode(),
+        headers=JSON,
+    )  # fmt: skip
+
+
+def _post_verdict(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    ids = _ids(side, overrides)
+    body = {"evaluator_id": ids["human_evaluator_id"], "label": "pass", "explanation": "ok"}
+    return RequestSpec(
+        "POST", f"/v1/runs/{ids['run_id']}/verdicts", content=json.dumps(body).encode(),
+        headers=JSON,
+    )  # fmt: skip
+
+
+def _compare(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    ids = _ids(side, overrides)
+    return RequestSpec(
+        "GET", f"/v1/runs/{ids['run_id']}/compare", params={"with_run_id": ids["with_run_id"]}
+    )
+
+
+def _post_experiment(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    body = {"name": f"probe-{uuid.uuid4().hex[:8]}",
+            "project_id": overrides.get("project_id", side.project_id)}  # fmt: skip
+    return RequestSpec("POST", "/v1/experiments", content=json.dumps(body).encode(), headers=JSON)
+
+
+def _on_experiment(
+    method: str, suffix: str = "", body: Callable[[dict[str, str]], dict[str, object]] | None = None
+) -> Builder:
+    """A call on the seeded experiment; `suffix` may name Side fields, `body` builds the JSON."""
+
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        ids = _ids(side, overrides)
+        content = json.dumps(body(ids)).encode() if body else None
+        return RequestSpec(
+            method, f"/v1/experiments/{ids['experiment_id']}{suffix.format(**ids)}",
+            content=content, headers=JSON if content else {},
+        )  # fmt: skip
+
+    return build
+
+
+def _variant_body(ids: dict[str, str]) -> dict[str, object]:
+    return {"name": f"c-{uuid.uuid4().hex[:8]}", "role": "candidate", "config": {"model": "x"}}
+
+
+def _attach_body(ids: dict[str, str]) -> dict[str, object]:
+    return {"run_id": ids["with_run_id"], "variant_id": ids["variant_id"]}
+
+
 _ANALYTICS = ("summary", "cost", "reliability", "performance")
 
 CASES: dict[tuple[str, str], RouteCase] = {
@@ -267,6 +345,66 @@ CASES: dict[tuple[str, str], RouteCase] = {
             ("key_id",), probe_actors=ADMINS,
         ),
         RouteCase("GET", "/v1/audit", actions.AUDIT_READ, _get("/v1/audit"), 200),
+        RouteCase(
+            "GET", "/v1/evaluators", actions.EVALUATION_READ, _get("/v1/evaluators"), 200
+        ),
+        RouteCase("POST", "/v1/evaluators", actions.EVALUATOR_WRITE, _post_evaluator, 201),
+        RouteCase(
+            "DELETE", "/v1/evaluators/{evaluator_id}", actions.EVALUATOR_WRITE,
+            _target("DELETE", "/v1/evaluators", "evaluator_id", "evaluator", None), 204,
+            ("evaluator_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/runs/{run_id}/compare", actions.RUN_READ, _compare, 200,
+            ("run_id", "with_run_id"),
+        ),
+        RouteCase(
+            "GET", "/v1/runs/{run_id}/evaluations", actions.EVALUATION_READ,
+            _get("/v1/runs/{run_id}/evaluations"), 200, ("run_id",),
+        ),
+        RouteCase(
+            "POST", "/v1/runs/{run_id}/evaluations", actions.EVALUATION_RUN, _post_evaluation, 202,
+            ("run_id", "evaluator_id"), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/runs/{run_id}/verdicts", actions.EVALUATION_LABEL, _post_verdict, 201,
+            ("run_id", "human_evaluator_id"), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/experiments", actions.EXPERIMENT_READ, _get("/v1/experiments"), 200,
+            ("project_id",),
+        ),
+        RouteCase(
+            "POST", "/v1/experiments", actions.EXPERIMENT_WRITE, _post_experiment, 201,
+            ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/experiments/{experiment_id}", actions.EXPERIMENT_READ,
+            _get("/v1/experiments/{experiment_id}"), 200, ("experiment_id",),
+        ),
+        RouteCase(
+            "POST", "/v1/experiments/{experiment_id}/variants", actions.EXPERIMENT_WRITE,
+            _on_experiment("POST", "/variants", _variant_body), 201,
+            ("experiment_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/experiments/{experiment_id}/runs", actions.EXPERIMENT_WRITE,
+            _on_experiment("POST", "/runs", _attach_body),
+            201, ("experiment_id", "with_run_id", "variant_id"), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/experiments/{experiment_id}/evaluate", actions.EVALUATION_RUN,
+            _on_experiment("POST", "/evaluate"), 202, ("experiment_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "DELETE", "/v1/experiments/{experiment_id}/runs/{run_id}", actions.EXPERIMENT_WRITE,
+            _on_experiment("DELETE", "/runs/{run_id}"), 204, ("experiment_id", "run_id"),
+            probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "DELETE", "/v1/experiments/{experiment_id}", actions.EXPERIMENT_WRITE,
+            _on_experiment("DELETE"), 204, ("experiment_id",), probe_actors=ADMINS,
+        ),
         RouteCase("POST", "/v1/pricing/overrides", actions.PRICING_WRITE, _post_override, 201),
         RouteCase("POST", "/v1/cost/rebuild", actions.PRICING_WRITE, _post_rebuild, 202),
         RouteCase("PUT", "/v1/artifacts/{artifact_id}", actions.ARTIFACT_WRITE, _put_artifact, 201),

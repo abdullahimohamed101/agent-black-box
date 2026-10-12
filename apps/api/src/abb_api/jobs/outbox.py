@@ -23,6 +23,7 @@ from abb_api.tenancy import TenantContext
 SUMMARIZE_RUN = "summarize_run"
 REFRESH_ANALYTICS_DAY = "refresh_analytics_day"
 DETECT_FINDINGS = "detect_findings"
+EVALUATE_RUN = "evaluate_run"
 MAX_ERROR_LENGTH = 2000
 
 
@@ -59,6 +60,11 @@ def _truncate(error: str) -> str:
 
 def summarize_key(workspace_id: uuid.UUID, run_id: uuid.UUID) -> str:
     """The coalescing key of a run's summarize job (shared by ingestion and rebuilds)."""
+    return f"{workspace_id}:{run_id}"
+
+
+def evaluate_key(workspace_id: uuid.UUID, run_id: uuid.UUID) -> str:
+    """The coalescing key of a run's evaluation job (one job per run carries every pending row)."""
     return f"{workspace_id}:{run_id}"
 
 

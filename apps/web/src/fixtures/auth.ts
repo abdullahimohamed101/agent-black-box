@@ -11,10 +11,12 @@ const OWNER_PERMISSIONS = [
   "analytics.read", "api_key.create", "api_key.read", "api_key.revoke", "artifact.read", "audit.read",
   "billing.read", "invite.read", "invite.write", "member.read", "member.write", "member.write_owner",
   "payload.read", "pricing.read", "pricing.write", "project.read", "project.write", "run.read",
-  "workspace.read",
+  "workspace.read", "evaluation.read", "evaluation.run", "evaluation.label", "evaluator.write",
+  "experiment.read", "experiment.write",
 ]; // prettier-ignore
 const VIEWER_PERMISSIONS = [
   "analytics.read", "member.read", "pricing.read", "project.read", "run.read", "workspace.read",
+  "evaluation.read", "experiment.read",
 ]; // prettier-ignore
 
 export const FIXTURE_USER = {
@@ -28,6 +30,10 @@ const WS_DEFAULT = {
   name: "Default workspace",
 };
 const WS_VIEWER = { id: "ws_00000000000000000000000002", slug: "viewer-only", name: "Viewer only" };
+
+/** The fixture workspace whose person is a VIEWER: reads there see the metadata-only projections. */
+export const isFixtureViewerWorkspace = (workspaceId: string | null | undefined): boolean =>
+  workspaceId === WS_VIEWER.id;
 
 export const FIXTURE_ME: Me = {
   user: FIXTURE_USER,

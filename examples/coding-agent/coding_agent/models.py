@@ -42,12 +42,17 @@ def _reply(turn: int, text: str, *calls: tuple[str, dict[str, Any]]) -> Reply:
     )
 
 
-def _script() -> list[Reply]:
+def _script(variant: str = "baseline") -> list[Reply]:
     first_fix = ("app/session.py", "    return now > session.expires_at",
                  "    return now >= session.expires_at - REFRESH_SKEW_SECONDS")  # fmt: skip
     second_fix = ("app/session.py", "        token.refresh_token,\n",
                   "        token.refresh_token or session.refresh_token,\n")  # fmt: skip
-    return [
+    wrong_fix = (
+        "app/oauth.py",
+        '"""A stand-in for the identity provider\'s token endpoint."""',
+        '"""A stand-in for the identity provider\'s token endpoint (refresh responses may omit tokens)."""',
+    )
+    turns = [
         _reply(
             0,
             "Users are logged out early. I'll read the session code and its tests first.",
@@ -97,6 +102,26 @@ def _script() -> list[Reply]:
             "refresh token keeps the old one. All six tests pass; pushed fix/oauth-session-expiry.",
         ),
     ]
+    if variant == "baseline":
+        return turns
+    if variant != "wrong-fix":
+        raise ValueError(f"unknown variant {variant!r}")
+    # Same first moves, then a plausible but wrong second patch: only documentation changes, the provider
+    # response is never fixed, so the tests still fail and the run ends in error.
+    return [
+        *turns[:5],
+        _reply(
+            5,
+            "The provider's refresh response looks like the culprit. I'll note in the identity provider "
+            "stand-in that refresh responses may omit tokens.",
+            ("edit_file", dict(zip(("path", "old", "new"), wrong_fix, strict=True))),
+        ),
+        _reply(6, "Running the tests again.", ("run_tests", {})),
+        _reply(
+            7,
+            "The refresh test still fails and I could not find the cause. Stopping without committing.",
+        ),
+    ]
 
 
 @dataclass
@@ -107,6 +132,10 @@ class ScriptedModel:
     name: str = "scripted-agent-1"
     turns: list[Reply] = field(default_factory=_script)
     _next: int = 0
+
+    @classmethod
+    def for_variant(cls, variant: str) -> "ScriptedModel":
+        return cls(turns=_script(variant))
 
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> Reply:
         if self._next >= len(self.turns):

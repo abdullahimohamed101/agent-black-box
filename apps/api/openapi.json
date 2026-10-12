@@ -297,6 +297,62 @@
         "title": "ArtifactOut",
         "type": "object"
       },
+      "AttachIn": {
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "variant_id": {
+            "pattern": "^var_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "variant_id"
+        ],
+        "title": "AttachIn",
+        "type": "object"
+      },
+      "AttachedRunOut": {
+        "properties": {
+          "added_at": {
+            "format": "date-time",
+            "title": "Added At",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "variant_id": {
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "variant_id",
+          "status",
+          "started_at",
+          "added_at"
+        ],
+        "title": "AttachedRunOut",
+        "type": "object"
+      },
       "AuditEntryOut": {
         "properties": {
           "action": {
@@ -552,6 +608,102 @@
         "title": "ChangeRole",
         "type": "object"
       },
+      "ComparisonOut": {
+        "properties": {
+          "alignment": {
+            "description": "`metadata` without `payload.read`: steps align on kinds, tool and model names only, and every relation below is computed from that projection.",
+            "enum": [
+              "content",
+              "metadata"
+            ],
+            "title": "Alignment",
+            "type": "string"
+          },
+          "alignment_quality": {
+            "description": "`partial`: the middle was too different to align within the work budget.",
+            "enum": [
+              "full",
+              "partial"
+            ],
+            "title": "Alignment Quality",
+            "type": "string"
+          },
+          "cost_by_model": {
+            "items": {
+              "$ref": "#/components/schemas/CostModelOut"
+            },
+            "title": "Cost By Model",
+            "type": "array"
+          },
+          "divergence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DivergenceOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationDiffOut"
+            },
+            "title": "Evaluations",
+            "type": "array"
+          },
+          "files": {
+            "$ref": "#/components/schemas/FilesOut"
+          },
+          "first_outcome_difference": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Index of the first aligned pair whose status differs.",
+            "title": "First Outcome Difference"
+          },
+          "left": {
+            "$ref": "#/components/schemas/SideOut"
+          },
+          "right": {
+            "$ref": "#/components/schemas/SideOut"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RowOut"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "summary": {
+            "items": {
+              "$ref": "#/components/schemas/MetricOut"
+            },
+            "title": "Summary",
+            "type": "array"
+          }
+        },
+        "required": [
+          "left",
+          "right",
+          "alignment",
+          "alignment_quality",
+          "summary",
+          "steps",
+          "divergence",
+          "first_outcome_difference",
+          "cost_by_model",
+          "files",
+          "evaluations"
+        ],
+        "title": "ComparisonOut",
+        "type": "object"
+      },
       "CostByAgent": {
         "properties": {
           "agent": {
@@ -774,6 +926,34 @@
           "unrebuilt_runs"
         ],
         "title": "CostHeadline",
+        "type": "object"
+      },
+      "CostModelOut": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "number"
+          },
+          "left": {
+            "title": "Left",
+            "type": "number"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "right": {
+            "title": "Right",
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "left",
+          "right",
+          "delta"
+        ],
+        "title": "CostModelOut",
         "type": "object"
       },
       "CostReport": {
@@ -1205,6 +1385,74 @@
         "title": "DimensionOut",
         "type": "object"
       },
+      "Distribution": {
+        "properties": {
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "p95": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95"
+          }
+        },
+        "required": [
+          "mean",
+          "median",
+          "p95"
+        ],
+        "title": "Distribution",
+        "type": "object"
+      },
+      "DivergenceOut": {
+        "properties": {
+          "index": {
+            "description": "Index into `steps`.",
+            "title": "Index",
+            "type": "integer"
+          },
+          "relation": {
+            "enum": [
+              "changed",
+              "left_only",
+              "right_only"
+            ],
+            "title": "Relation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "relation"
+        ],
+        "title": "DivergenceOut",
+        "type": "object"
+      },
       "ErrorBody": {
         "properties": {
           "category": {
@@ -1280,6 +1528,624 @@
           "error"
         ],
         "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "EvaluateOut": {
+        "properties": {
+          "at_limit": {
+            "description": "Pairs skipped: 20 results already exist for the evaluator.",
+            "title": "At Limit",
+            "type": "integer"
+          },
+          "enqueued": {
+            "description": "New pending evaluations created by this call.",
+            "title": "Enqueued",
+            "type": "integer"
+          },
+          "jobs": {
+            "description": "Runs whose evaluation job was queued or already waiting.",
+            "title": "Jobs",
+            "type": "integer"
+          },
+          "remaining": {
+            "description": "Pairs still to start; call again.",
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "skipped_evaluators": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedEvaluatorOut"
+            },
+            "title": "Skipped Evaluators",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enqueued",
+          "remaining",
+          "jobs",
+          "at_limit",
+          "skipped_evaluators"
+        ],
+        "title": "EvaluateOut",
+        "type": "object"
+      },
+      "EvaluationDiffOut": {
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "evaluator_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluator Id"
+          },
+          "evaluator_name": {
+            "title": "Evaluator Name",
+            "type": "string"
+          },
+          "ground_truth": {
+            "title": "Ground Truth",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "left": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScoreOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "right": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScoreOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "evaluator_id",
+          "evaluator_name",
+          "kind",
+          "ground_truth",
+          "left",
+          "right",
+          "delta"
+        ],
+        "title": "EvaluationDiffOut",
+        "type": "object"
+      },
+      "EvaluationOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fixed text of a failure; needs `payload.read`.",
+            "title": "Error"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "evaluator_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluator Id"
+          },
+          "evaluator_name": {
+            "title": "Evaluator Name",
+            "type": "string"
+          },
+          "evaluator_version": {
+            "title": "Evaluator Version",
+            "type": "string"
+          },
+          "evidence_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Event Ids",
+            "type": "array"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null (`explanation_withheld`) for human/judge text without `payload.read`.",
+            "title": "Explanation"
+          },
+          "explanation_withheld": {
+            "title": "Explanation Withheld",
+            "type": "boolean"
+          },
+          "ground_truth": {
+            "description": "False for model judges: an opinion, not a fact.",
+            "title": "Ground Truth",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "implementation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Implementation"
+          },
+          "kind": {
+            "enum": [
+              "deterministic",
+              "metric",
+              "human",
+              "llm_judge"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "latest": {
+            "description": "The newest row of its evaluator on this run.",
+            "title": "Latest",
+            "type": "boolean"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Judge model, template version, tokens and cost; `raw` needs `payload.read`.",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "metadata_withheld": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Metadata Withheld",
+            "type": "array"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "description": "`pending` rows whose job was dead-lettered, or that waited past the stale limit with no job, read as `failed` with `error_code` `JOB_FAILED` (a read writes nothing; the next trigger of the evaluator writes it).",
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "evaluator_id",
+          "evaluator_name",
+          "evaluator_version",
+          "kind",
+          "implementation",
+          "ground_truth",
+          "state",
+          "latest",
+          "score",
+          "label",
+          "explanation",
+          "explanation_withheld",
+          "metrics",
+          "evidence_event_ids",
+          "metadata",
+          "metadata_withheld",
+          "error_code",
+          "error",
+          "created_at",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "EvaluationOut",
+        "type": "object"
+      },
+      "EvaluationPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "truncated": {
+            "description": "True when older rows were left out (newest first).",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "truncated"
+        ],
+        "title": "EvaluationPage",
+        "type": "object"
+      },
+      "EvaluatorIn": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "description": "Validated by the implementation's own model; unknown keys are rejected.",
+            "title": "Config",
+            "type": "object"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "implementation": {
+            "description": "A built-in id, e.g. `tests_passed` or `cost_under`; `human` for verdicts.",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Implementation",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "deterministic",
+              "metric",
+              "human",
+              "llm_judge"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "description": "Unique per workspace; lower-case letters, digits, `-`, `_`.",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Omit for an evaluator that applies to every project of the workspace.",
+            "title": "Project Id"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "implementation"
+        ],
+        "title": "EvaluatorIn",
+        "type": "object"
+      },
+      "EvaluatorInfoOut": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "ground_truth": {
+            "title": "Ground Truth",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "deterministic",
+              "metric",
+              "human",
+              "llm_judge"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "ground_truth",
+          "archived"
+        ],
+        "title": "EvaluatorInfoOut",
+        "type": "object"
+      },
+      "EvaluatorMetricsOut": {
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "evaluator_id": {
+            "title": "Evaluator Id",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "mean_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Score"
+          },
+          "pass_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Rate"
+          }
+        },
+        "required": [
+          "evaluator_id",
+          "completed",
+          "failed",
+          "mean_score",
+          "pass_rate"
+        ],
+        "title": "EvaluatorMetricsOut",
+        "type": "object"
+      },
+      "EvaluatorOut": {
+        "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "config": {
+            "additionalProperties": true,
+            "description": "Path globs, required paths and rubrics are null without `payload.read` and listed in `config_withheld`; thresholds and labels are always shown.",
+            "title": "Config",
+            "type": "object"
+          },
+          "config_withheld": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Config Withheld",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "ground_truth": {
+            "description": "False for model judges: an opinion, not a fact.",
+            "title": "Ground Truth",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "implementation": {
+            "title": "Implementation",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "deterministic",
+              "metric",
+              "human",
+              "llm_judge"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "implementation",
+          "version",
+          "config",
+          "config_withheld",
+          "description",
+          "project_id",
+          "ground_truth",
+          "created_at",
+          "archived_at"
+        ],
+        "title": "EvaluatorOut",
+        "type": "object"
+      },
+      "EvaluatorPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluatorOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EvaluatorPage",
         "type": "object"
       },
       "EventErrorOut": {
@@ -1665,6 +2531,264 @@
         "title": "ExpensiveRun",
         "type": "object"
       },
+      "ExperimentIn": {
+        "additionalProperties": false,
+        "properties": {
+          "dataset_label": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A label for the task set; this product does not run tasks.",
+            "title": "Dataset Label"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "evaluator_ids": {
+            "description": "Evaluated by `evaluate`; up to 20.",
+            "items": {
+              "pattern": "^evr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Evaluator Ids",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "project_id"
+        ],
+        "title": "ExperimentIn",
+        "type": "object"
+      },
+      "ExperimentOut": {
+        "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Label"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "evaluators": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluatorInfoOut"
+            },
+            "title": "Evaluators",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/VariantMetricsOut"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/AttachedRunOut"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/VariantOut"
+            },
+            "title": "Variants",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/WarningOut"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "description",
+          "dataset_label",
+          "evaluators",
+          "variants",
+          "warnings",
+          "metrics",
+          "runs",
+          "created_at",
+          "archived_at"
+        ],
+        "title": "ExperimentOut",
+        "type": "object"
+      },
+      "ExperimentPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExperimentSummaryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ExperimentPage",
+        "type": "object"
+      },
+      "ExperimentSummaryOut": {
+        "properties": {
+          "archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Label"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "run_count": {
+            "title": "Run Count",
+            "type": "integer"
+          },
+          "variant_count": {
+            "title": "Variant Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "description",
+          "dataset_label",
+          "variant_count",
+          "run_count",
+          "created_at",
+          "archived_at"
+        ],
+        "title": "ExperimentSummaryOut",
+        "type": "object"
+      },
       "FacetValueOut": {
         "properties": {
           "count": {
@@ -1795,6 +2919,59 @@
           "timeout_rate"
         ],
         "title": "FailureDay",
+        "type": "object"
+      },
+      "FilesOut": {
+        "properties": {
+          "both": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Both",
+            "type": "array"
+          },
+          "left_count": {
+            "title": "Left Count",
+            "type": "integer"
+          },
+          "only_left": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Only Left",
+            "type": "array"
+          },
+          "only_right": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Only Right",
+            "type": "array"
+          },
+          "paths_withheld": {
+            "description": "True without `payload.read`: per-side counts only, no paths, no overlap.",
+            "title": "Paths Withheld",
+            "type": "boolean"
+          },
+          "right_count": {
+            "title": "Right Count",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paths_withheld",
+          "left_count",
+          "right_count",
+          "only_left",
+          "only_right",
+          "both",
+          "truncated"
+        ],
+        "title": "FilesOut",
         "type": "object"
       },
       "FindingOut": {
@@ -2325,6 +3502,65 @@
           "own_permissions"
         ],
         "title": "MembershipOut",
+        "type": "object"
+      },
+      "MetricOut": {
+        "properties": {
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`right - left`; null when either is missing.",
+            "title": "Delta"
+          },
+          "left": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Left"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right"
+          }
+        },
+        "required": [
+          "metric",
+          "left",
+          "right",
+          "delta"
+        ],
+        "title": "MetricOut",
         "type": "object"
       },
       "OtherBucket": {
@@ -3201,6 +4437,47 @@
         "title": "RetryHeavyRun",
         "type": "object"
       },
+      "RowOut": {
+        "properties": {
+          "left": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "relation": {
+            "enum": [
+              "equal",
+              "changed",
+              "left_only",
+              "right_only"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "right": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "relation",
+          "left",
+          "right"
+        ],
+        "title": "RowOut",
+        "type": "object"
+      },
       "RunCounts": {
         "properties": {
           "active": {
@@ -3550,6 +4827,105 @@
         "title": "RunPage",
         "type": "object"
       },
+      "ScoreOut": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "score",
+          "label"
+        ],
+        "title": "ScoreOut",
+        "type": "object"
+      },
+      "SideOut": {
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "description": "Steps compared (after the event and step caps).",
+            "title": "Steps",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "truncated_at_event": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last event compared when the run was cut by the caps.",
+            "title": "Truncated At Event"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "steps",
+          "truncated",
+          "truncated_at_event"
+        ],
+        "title": "SideOut",
+        "type": "object"
+      },
+      "SkippedEvaluatorOut": {
+        "properties": {
+          "evaluator_id": {
+            "title": "Evaluator Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "missing",
+              "archived",
+              "human",
+              "judge_not_configured",
+              "cooling_down"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluator_id",
+          "reason"
+        ],
+        "title": "SkippedEvaluatorOut",
+        "type": "object"
+      },
       "SlowOperation": {
         "properties": {
           "calls": {
@@ -3783,6 +5159,95 @@
         "title": "SpanRate",
         "type": "object"
       },
+      "StepOut": {
+        "properties": {
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tool, model, span or (with `payload.read`) command, path or branch. Null when `label_withheld`.",
+            "title": "Label"
+          },
+          "label_withheld": {
+            "title": "Label Withheld",
+            "type": "boolean"
+          },
+          "offset_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offset Ms"
+          },
+          "span_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "event_id",
+          "span_id",
+          "family",
+          "event_type",
+          "status",
+          "duration_ms",
+          "offset_ms",
+          "label",
+          "label_withheld"
+        ],
+        "title": "StepOut",
+        "type": "object"
+      },
       "Summary": {
         "properties": {
           "active_agents": {
@@ -3875,6 +5340,21 @@
         "title": "ToolReliability",
         "type": "object"
       },
+      "TriggerIn": {
+        "additionalProperties": false,
+        "properties": {
+          "evaluator_id": {
+            "pattern": "^evr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "title": "Evaluator Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluator_id"
+        ],
+        "title": "TriggerIn",
+        "type": "object"
+      },
       "UserOut": {
         "properties": {
           "email": {
@@ -3903,6 +5383,298 @@
           "name"
         ],
         "title": "UserOut",
+        "type": "object"
+      },
+      "VariantIn": {
+        "additionalProperties": false,
+        "properties": {
+          "config": {
+            "description": "Declared settings of the variant (model, prompt version, ...). Flat, at most 32 keys, values at most 256 characters. Visible to every reader: do not put secrets, prompts or paths here.",
+            "maxProperties": 32,
+            "patternProperties": {
+              "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$": {
+                "maxLength": 256,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "type": "string"
+              }
+            },
+            "title": "Config",
+            "type": "object"
+          },
+          "name": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "baseline",
+              "candidate"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "role"
+        ],
+        "title": "VariantIn",
+        "type": "object"
+      },
+      "VariantMetricsOut": {
+        "properties": {
+          "cost_usd": {
+            "$ref": "#/components/schemas/Distribution"
+          },
+          "duration_ms": {
+            "$ref": "#/components/schemas/Distribution"
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluatorMetricsOut"
+            },
+            "title": "Evaluations",
+            "type": "array"
+          },
+          "failure_categories": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Finished runs by non-success status; `recovered`: successes with errors.",
+            "title": "Failure Categories",
+            "type": "object"
+          },
+          "finished": {
+            "description": "Runs with a terminal status; the figures below use them.",
+            "title": "Finished",
+            "type": "integer"
+          },
+          "retry_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of finished runs with at least one retry.",
+            "title": "Retry Rate"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Rate"
+          },
+          "tool_calls_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Calls Mean"
+          },
+          "variant_id": {
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant_id",
+          "runs",
+          "finished",
+          "success_rate",
+          "cost_usd",
+          "duration_ms",
+          "retry_rate",
+          "tool_calls_mean",
+          "failure_categories",
+          "evaluations"
+        ],
+        "title": "VariantMetricsOut",
+        "type": "object"
+      },
+      "VariantOut": {
+        "properties": {
+          "changed_variables": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Keys that differ from the baseline (a missing key counts); null for it.",
+            "title": "Changed Variables"
+          },
+          "config": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Config",
+            "type": "object"
+          },
+          "controlled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True when exactly one variable changed against the baseline (spec §86).",
+            "title": "Controlled"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "baseline",
+              "candidate"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "run_count": {
+            "title": "Run Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "config",
+          "run_count",
+          "changed_variables",
+          "controlled"
+        ],
+        "title": "VariantOut",
+        "type": "object"
+      },
+      "VerdictIn": {
+        "additionalProperties": false,
+        "properties": {
+          "evaluator_id": {
+            "description": "A `human` evaluator.",
+            "pattern": "^evr_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "title": "Evaluator Id",
+            "type": "string"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "label": {
+            "description": "One of the evaluator's `allowed_labels`.",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Label",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          }
+        },
+        "required": [
+          "evaluator_id",
+          "label"
+        ],
+        "title": "VerdictIn",
+        "type": "object"
+      },
+      "WarningOut": {
+        "properties": {
+          "code": {
+            "enum": [
+              "not_single_variable",
+              "variant_models_vary",
+              "variant_agents_vary",
+              "unevaluated_runs"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keys",
+            "type": "array"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "code",
+          "variant_id"
+        ],
+        "title": "WarningOut",
         "type": "object"
       },
       "Window": {
@@ -5994,6 +7766,329 @@
         ]
       }
     },
+    "/v1/evaluators": {
+      "get": {
+        "description": "Evaluator definitions visible to the caller (a project key sees its project's and the workspace-wide ones). Path globs and rubrics are null without `payload.read`.",
+        "operationId": "list_evaluators_v1_evaluators_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluatorPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name or the judge configuration conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List evaluators",
+        "tags": [
+          "evaluations"
+        ]
+      },
+      "post": {
+        "description": "A built-in implementation plus validated configuration. Model-judge evaluators answer `409 JUDGE_NOT_CONFIGURED` unless a judge provider is configured. At most 100 active evaluators per workspace.",
+        "operationId": "create_evaluator_v1_evaluators_post",
+        "parameters": [
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluatorIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluatorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name or the judge configuration conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Define an evaluator",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
+    "/v1/evaluators/{evaluator_id}": {
+      "delete": {
+        "description": "Archives the definition (it is never deleted: existing results keep their snapshot). Archiving twice is allowed.",
+        "operationId": "archive_evaluator_v1_evaluators__evaluator_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evaluator_id",
+            "required": true,
+            "schema": {
+              "title": "Evaluator Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name or the judge configuration conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Archive an evaluator",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
     "/v1/events": {
       "post": {
         "operationId": "ingest_event_v1_events_post",
@@ -6204,6 +8299,925 @@
         "summary": "Ingest a batch of events",
         "tags": [
           "ingestion"
+        ]
+      }
+    },
+    "/v1/experiments": {
+      "get": {
+        "description": "Newest first, at most 200. A project-bound key sees its project's experiments.",
+        "operationId": "list_experiments_v1_experiments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name, the baseline or an archived resource conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or a run or evaluator does not belong to the project."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List experiments",
+        "tags": [
+          "experiments"
+        ]
+      },
+      "post": {
+        "description": "A named group of runs of one project with a baseline and candidate variants added afterwards. At most 200 active experiments per workspace and 20 evaluators each.",
+        "operationId": "create_experiment_v1_experiments_post",
+        "parameters": [
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExperimentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name, the baseline or an archived resource conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or a run or evaluator does not belong to the project."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create an experiment",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
+    "/v1/experiments/{experiment_id}": {
+      "delete": {
+        "description": "Archived experiments stay readable and accept no further changes. Idempotent.",
+        "operationId": "archive_experiment_v1_experiments__experiment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name, the baseline or an archived resource conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or a run or evaluator does not belong to the project."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Archive an experiment",
+        "tags": [
+          "experiments"
+        ]
+      },
+      "get": {
+        "description": "Per candidate `changed_variables` and `controlled` (exactly one variable differs from the baseline, spec §86), observed `warnings` (`not_single_variable`, `variant_models_vary`, `variant_agents_vary`, `unevaluated_runs`) and per-variant metrics over finished runs: success rate, cost and duration (mean, median, p95), retry rate, failure categories and the latest evaluation results per evaluator. Model-judge scores are opinions (`ground_truth: false` on the evaluator).",
+        "operationId": "get_experiment_v1_experiments__experiment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExperimentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name, the baseline or an archived resource conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or a run or evaluator does not belong to the project."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get an experiment with its variants, control check and metrics",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
+    "/v1/experiments/{experiment_id}/evaluate": {
+      "post": {
+        "description": "Starts the experiment's evaluators on each (run, evaluator) pair that has no pending and no completed result (a failed one is retried), at most 500 new evaluations per call; `remaining` says whether to call again. One job per run. A repeat while evaluations are pending creates nothing. Archived, human, other-project and unconfigured judge evaluators are skipped and reported.",
+        "operationId": "evaluate_experiment_v1_experiments__experiment_id__evaluate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name, the baseline or an archived resource conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or a run or evaluator does not belong to the project."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Evaluate every run of the experiment",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
+    "/v1/experiments/{experiment_id}/runs": {
+      "post": {
+        "description": "The run must belong to the experiment's project (`422 RUN_PROJECT_MISMATCH`). A run is in at most one variant of an experiment (`409 RUN_ALREADY_ATTACHED`); at most 500 runs.",
+        "operationId": "attach_run_v1_experiments__experiment_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachedRunOut"
+                }
+              }
+            },
+            "description": "The run was already attached to that variant."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachedRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name, the baseline or an archived resource conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or a run or evaluator does not belong to the project."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Attach a run to a variant",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
+    "/v1/experiments/{experiment_id}/runs/{run_id}": {
+      "delete": {
+        "description": "The run itself and its evaluations are untouched.",
+        "operationId": "detach_run_v1_experiments__experiment_id__runs__run_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name, the baseline or an archived resource conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or a run or evaluator does not belong to the project."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Detach a run",
+        "tags": [
+          "experiments"
+        ]
+      }
+    },
+    "/v1/experiments/{experiment_id}/variants": {
+      "post": {
+        "description": "Exactly one baseline, added first, then up to nine candidates. `config` is a flat map of declared settings visible to every reader: do not put secrets, prompts or paths in it.",
+        "operationId": "add_variant_v1_experiments__experiment_id__variants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "experiment_id",
+            "required": true,
+            "schema": {
+              "title": "Experiment Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariantIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariantOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, a name, the baseline or an archived resource conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or a run or evaluator does not belong to the project."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Add a variant",
+        "tags": [
+          "experiments"
         ]
       }
     },
@@ -7871,6 +10885,356 @@
         ]
       }
     },
+    "/v1/runs/{run_id}/compare": {
+      "get": {
+        "description": "Computed on read from derived data; nothing is stored. Steps are aligned by what the agent did, with ids, timestamps and temporary paths normalised, and the first divergence and the first outcome difference are reported. Without `payload.read` the alignment uses tool, model and span kinds only (`alignment: metadata`), every relation is computed from that projection, and files are per-side counts. Runs longer than the event or step caps are cut and flagged; a middle too different to align within the work budget is reported as unaligned blocks (`alignment_quality: partial`). Comparing a run with itself is allowed.",
+        "operationId": "compare_runs_v1_runs__run_id__compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The run to compare against (either order).",
+            "in": "query",
+            "name": "with_run_id",
+            "required": true,
+            "schema": {
+              "description": "The run to compare against (either order).",
+              "pattern": "^run_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+              "title": "With Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks `run.read`."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A run was not found, or is not visible to this caller (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter is invalid."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Compare two runs",
+        "tags": [
+          "comparison"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/evaluations": {
+      "get": {
+        "description": "Newest first; `latest` marks the newest row of each evaluator. Scores, labels and states are visible to every reader; explanations of human and model-judge rows, `metadata.raw` and failure text need `payload.read`. Model-judge rows carry `ground_truth: false`.",
+        "operationId": "list_evaluations_v1_runs__run_id__evaluations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or the evaluator does not fit the run or the call."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List a run's evaluations",
+        "tags": [
+          "evaluations"
+        ]
+      },
+      "post": {
+        "description": "Inserts a `pending` evaluation and queues one `evaluate_run` job for the run. While a live evaluation of the same evaluator exists it is returned (200) and nothing is created. At most 20 results per evaluator and run (`409 LIMIT_REACHED`). The run is never changed.",
+        "operationId": "trigger_evaluation_v1_runs__run_id__evaluations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationOut"
+                }
+              }
+            },
+            "description": "A pending evaluation of this evaluator already exists; returned as is."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or the evaluator does not fit the run or the call."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Start an evaluator on a run",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
     "/v1/runs/{run_id}/events": {
       "get": {
         "description": "Ordered by sequence when every event of the run has one, otherwise by time (`ordering_mode`). Payloads are omitted; fetch one event for its payload.",
@@ -8550,6 +11914,126 @@
         "summary": "Stream a run's events live (SSE)",
         "tags": [
           "streams"
+        ]
+      }
+    },
+    "/v1/runs/{run_id}/verdicts": {
+      "post": {
+        "description": "A person's verdict against a `human` evaluator: terminal at insert, never edited (a correction is a newer row). The label must be one of the evaluator's `allowed_labels`. At most 50 verdicts per run. Audited without the explanation.",
+        "operationId": "record_verdict_v1_runs__run_id__verdicts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerdictIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing, malformed, unknown, revoked or expired credentials."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid, or the evaluator does not fit the run or the call."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Record a human verdict",
+        "tags": [
+          "evaluations"
         ]
       }
     }

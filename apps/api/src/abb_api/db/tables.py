@@ -618,22 +618,202 @@ artifacts = Table(
     Index("ix_artifacts_run", "workspace_id", "run_id"),
 )
 
+# ------------------------------------------------ evaluations (Phase 11, ADR-090)
+
+EVALUATOR_KINDS = ("deterministic", "metric", "human", "llm_judge")
+EVALUATION_STATES = ("pending", "running", "completed", "failed")
+EXPERIMENT_ROLES = ("baseline", "candidate")
+
+# Workspace-level definitions of built-in evaluators (D2). Archived, never deleted: `evaluations`
+# rows keep a snapshot and a RESTRICT foreign key. The byte limits are backstops: the pydantic
+# models enforce them first (octet_length, not pg_column_size, which measures compressed size).
+evaluators = Table(
+    "evaluators",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("name", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("implementation", Text, nullable=False),
+    Column("version", Integer, nullable=False),
+    Column("config", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("description", Text),
+    Column("created_by", UUID(as_uuid=True), ForeignKey("users.id")),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("archived_at"),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
+    UniqueConstraint("workspace_id", "name", name="uq_evaluators_name"),
+    CheckConstraint(_in("kind", EVALUATOR_KINDS), name="ck_evaluators_kind"),
+    CheckConstraint("jsonb_typeof(config) = 'object'", name="ck_evaluators_config_object"),
+    CheckConstraint("octet_length(config::text) <= 16384", name="ck_evaluators_config_size"),
+    CheckConstraint(
+        "char_length(name) <= 64 AND char_length(implementation) <= 64 "
+        "AND char_length(description) <= 500",
+        name="ck_evaluators_text_sizes",
+    ),
+)
+
+# One row per application of an evaluator to a run (a re-run is a new row). A terminal row is
+# never updated: `UPDATE ... WHERE state = 'pending'` is the only way out of pending, and a
+# trigger (migration 0070) refuses any update of a completed or failed row (INV-1).
 evaluations = Table(
     "evaluations",
     metadata,
     Column("workspace_id", UUID(as_uuid=True), nullable=False),
     Column("id", UUID(as_uuid=True), nullable=False),
     Column("run_id", UUID(as_uuid=True), nullable=False),
+    # Snapshots (the evaluator's slug and version at the time), so a row survives a rename.
     Column("evaluator_name", Text, nullable=False),
     Column("evaluator_version", Text, nullable=False),
     Column("score", Float),
     Column("label", Text),
     Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     _ts("created_at", nullable=False, default_now=True),
+    Column("evaluator_id", UUID(as_uuid=True)),
+    Column("kind", Text, nullable=False, server_default="deterministic"),
+    Column("implementation", Text),
+    Column("state", Text, nullable=False, server_default="pending"),
+    Column("explanation", Text),
+    Column("metrics", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("evidence_event_ids", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("config_snapshot", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("error_code", Text),
+    Column("error", Text),
+    Column("requested_by", UUID(as_uuid=True), ForeignKey("users.id")),
+    _ts("started_at"),
+    _ts("completed_at"),
     PrimaryKeyConstraint("workspace_id", "id"),
     ForeignKeyConstraint(
         ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
     ),
+    ForeignKeyConstraint(
+        ["workspace_id", "evaluator_id"],
+        ["evaluators.workspace_id", "evaluators.id"],
+        ondelete="RESTRICT",
+    ),
+    CheckConstraint(_in("kind", EVALUATOR_KINDS), name="ck_evaluations_kind"),
+    CheckConstraint(_in("state", EVALUATION_STATES), name="ck_evaluations_state"),
+    CheckConstraint("score BETWEEN 0 AND 1", name="ck_evaluations_score"),
+    CheckConstraint("octet_length(explanation) <= 16384", name="ck_evaluations_explanation_size"),
+    CheckConstraint("octet_length(metrics::text) <= 16384", name="ck_evaluations_metrics_size"),
+    CheckConstraint("octet_length(metadata::text) <= 16384", name="ck_evaluations_metadata_size"),
+    CheckConstraint(
+        "octet_length(config_snapshot::text) <= 16384", name="ck_evaluations_config_size"
+    ),
+    CheckConstraint(
+        "jsonb_typeof(evidence_event_ids) = 'array' "
+        "AND octet_length(evidence_event_ids::text) <= 8192",
+        name="ck_evaluations_evidence",
+    ),
+    CheckConstraint(
+        "char_length(label) <= 64 AND char_length(error_code) <= 64 AND char_length(error) <= 512 "
+        "AND char_length(evaluator_name) <= 64 AND char_length(evaluator_version) <= 32",
+        name="ck_evaluations_text_sizes",
+    ),
+    Index(
+        "ix_evaluations_run_evaluator",
+        "workspace_id",
+        "run_id",
+        "evaluator_id",
+        text("created_at DESC"),
+    ),
+    Index(
+        "ix_evaluations_open",
+        "workspace_id",
+        "state",
+        postgresql_where=text("state IN ('pending', 'running')"),
+    ),
+)
+
+# ------------------------------------------------ experiments (Phase 11, ADR-090)
+
+experiments = Table(
+    "experiments",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("description", Text),
+    Column("dataset_label", Text),
+    Column("evaluator_ids", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("created_by", UUID(as_uuid=True), ForeignKey("users.id")),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("archived_at"),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
+    CheckConstraint(
+        "char_length(name) <= 128 AND char_length(description) <= 2000 "
+        "AND char_length(dataset_label) <= 128",
+        name="ck_experiments_text_sizes",
+    ),
+    CheckConstraint(
+        "jsonb_typeof(evaluator_ids) = 'array' AND octet_length(evaluator_ids::text) <= 2048",
+        name="ck_experiments_evaluator_ids",
+    ),
+    Index("ix_experiments_project", "workspace_id", "project_id", text("created_at DESC")),
+)
+
+experiment_variants = Table(
+    "experiment_variants",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("experiment_id", UUID(as_uuid=True), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("role", Text, nullable=False),
+    Column("config", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    _ts("created_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "experiment_id"],
+        ["experiments.workspace_id", "experiments.id"],
+        ondelete="CASCADE",
+    ),
+    UniqueConstraint("workspace_id", "experiment_id", "name", name="uq_experiment_variants_name"),
+    CheckConstraint(_in("role", EXPERIMENT_ROLES), name="ck_experiment_variants_role"),
+    CheckConstraint("jsonb_typeof(config) = 'object'", name="ck_experiment_variants_config_object"),
+    CheckConstraint(
+        "octet_length(config::text) <= 8192", name="ck_experiment_variants_config_size"
+    ),
+    CheckConstraint("char_length(name) <= 64", name="ck_experiment_variants_name_size"),
+    # Exactly one baseline per experiment (at most one here; the service requires one first).
+    Index(
+        "uq_experiment_variants_baseline",
+        "workspace_id",
+        "experiment_id",
+        unique=True,
+        postgresql_where=text("role = 'baseline'"),
+    ),
+)
+
+experiment_runs = Table(
+    "experiment_runs",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("experiment_id", UUID(as_uuid=True), nullable=False),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("variant_id", UUID(as_uuid=True), nullable=False),
+    Column("added_by", UUID(as_uuid=True), ForeignKey("users.id")),
+    _ts("added_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "experiment_id", "run_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "experiment_id"],
+        ["experiments.workspace_id", "experiments.id"],
+        ondelete="CASCADE",
+    ),
+    ForeignKeyConstraint(
+        ["workspace_id", "variant_id"],
+        ["experiment_variants.workspace_id", "experiment_variants.id"],
+        ondelete="CASCADE",
+    ),
+    ForeignKeyConstraint(
+        ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
+    ),
+    Index("ix_experiment_runs_variant", "workspace_id", "variant_id"),
+    Index("ix_experiment_runs_run", "workspace_id", "run_id"),
 )
 
 policies = Table(

@@ -29,15 +29,15 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await page.goto(`${BASE}/runs`);
   await expect(page.getByRole("table")).toBeVisible();
   const all = await page.locator("tbody tr").count();
-  expect(all).toBe(10);
+  expect(all).toBe(12); // ten earlier fixture runs and the two coding-agent runs (Phase 11)
   await page.getByLabel("Failed").check();
   await expect(page).toHaveURL(/status=FAILED/);
-  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(page.locator("tbody tr")).toHaveCount(3); // billing migration, failure chain, wrong fix
   await expect(page.locator("tbody tr").first()).toContainText("Failed");
   await page.getByLabel("Agent").fill("nobody");
   await expect(page.getByText("No runs match these filters")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page.locator("tbody tr")).toHaveCount(10);
+  await expect(page.locator("tbody tr")).toHaveCount(12);
   // the findings column reads as text: count and worst severity, or a dash with plain words
   const looping = page.locator("tbody tr", { hasText: "Resolve flaky docs search" });
   await expect(looping.getByTestId("findings-cell")).toContainText("1 · info");
@@ -79,8 +79,8 @@ test("search: chips from the server parse, matched column, facets, refusal and k
   await page.screenshot({ path: `${SHOTS16}/fixtures-search-error.png`, fullPage: true });
   await box.fill("status:failed");
   await box.press("Enter");
-  // two fixture runs failed: the billing migration and the failure chain (Phase 10)
-  await expect(page.locator("tbody tr")).toHaveCount(2);
+  // three fixture runs failed: the billing migration, the failure chain (Phase 10) and the wrong fix (Phase 11)
+  await expect(page.locator("tbody tr")).toHaveCount(3);
   // mobile: no horizontal scroll
   await page.setViewportSize({ width: 375, height: 812 });
   const overflow = await page.evaluate(
@@ -373,4 +373,160 @@ test("10,000-event run in the waterfall: bounded rows, auto-collapse, zoom stays
   );
   expect(median).toBeLessThan(100);
   expect(await page.locator('[role="row"]').count()).toBeLessThanOrEqual(80);
+});
+
+test("evaluations: every state, the judge badge, hostile text as text, and the viewer's withheld view (fixtures)", async ({
+  page,
+}) => {
+  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const alerts: string[] = [];
+  page.on("dialog", (d) => {
+    alerts.push(d.message());
+    void d.dismiss();
+  });
+  await page.goto(`${BASE}/runs/${RUN(12)}`);
+  const section = page.getByTestId("evaluations");
+  await expect(section.getByRole("heading", { name: "Evaluations", level: 2 })).toBeVisible();
+  // four latest results and one earlier (failed) one inside "Earlier results"
+  await expect(section.getByTestId("evaluation")).toHaveCount(5);
+  for (const state of ["pending", "running", "completed"])
+    await expect(section.locator(`[data-testid=evaluation][data-state=${state}]`)).toHaveCount(1);
+  await expect(section.locator("[data-testid=evaluation][data-state=failed]")).toHaveCount(2);
+  await expect(section.getByTestId("evaluation-error").first()).toContainText("TIMEOUT");
+  await expect(section.getByTestId("evaluation-error").last()).toContainText("JOB_FAILED");
+  await expect(section.getByTestId("judge-badge")).toHaveText("model judge, not ground truth");
+  await expect(section.getByRole("button", { name: "Run evaluator" })).toBeVisible();
+  await expect(section.getByRole("form", { name: "Record a verdict" })).toBeVisible();
+  await axe(page);
+  await section.scrollIntoViewIfNeeded();
+  await section.screenshot({ path: `${SHOTS11}/fixtures-evaluations-wrong-fix.png` });
+
+  // the baseline carries a hostile explanation: it is text, never markup
+  await page.goto(`${BASE}/runs/${RUN(11)}`);
+  await expect(page.getByTestId("evaluation")).toHaveCount(4);
+  await expect(page.getByTestId("explanation").first()).toContainText("<img src=x onerror=");
+  expect(await page.locator("[data-testid=evaluations] img").count()).toBe(0);
+  // Show evidence opens the cited test run in the drawer
+  await page.getByRole("button", { name: "Show evidence" }).click();
+  await expect(page.getByRole("dialog")).toContainText("shell.command");
+  await page.keyboard.press("Escape");
+  expect(alerts).toEqual([]);
+
+  // a viewer sees scores and labels, never free text, and no controls
+  await page.goto(`/w/viewer-only/projects/all/runs/${RUN(11)}`);
+  const viewer = page.getByTestId("evaluations");
+  await expect(viewer.getByTestId("evaluation")).toHaveCount(4);
+  await expect(viewer.getByTestId("explanation-withheld")).toHaveCount(2);
+  await expect(viewer).not.toContainText("onerror");
+  await expect(viewer.getByRole("button", { name: "Run evaluator" })).toHaveCount(0);
+  await expect(viewer.getByRole("form", { name: "Record a verdict" })).toHaveCount(0);
+  await axe(page);
+  await viewer.screenshot({ path: `${SHOTS11}/fixtures-evaluations-viewer.png` });
+});
+
+test("runs list: pick two runs to compare (fixtures)", async ({ page }) => {
+  await page.goto(`${BASE}/runs`);
+  const picks = page.getByRole("checkbox", { name: /^Compare / });
+  await expect(picks).toHaveCount(12);
+  await expect(page.getByTestId("compare-link")).toHaveCount(0);
+  await picks.nth(0).check();
+  await picks.nth(1).check();
+  await expect(page.getByTestId("compare-bar")).toContainText("2 of 2 runs picked.");
+  await expect(picks.nth(2)).toBeDisabled();
+  await expect(page.getByTestId("compare-link")).toHaveAttribute(
+    "href",
+    /\/runs\/compare\?left=run_\w+&right=run_\w+$/,
+  );
+  await axe(page);
+  await page.getByRole("button", { name: "Clear picks" }).click();
+  await expect(picks.nth(2)).toBeEnabled();
+  await page.setViewportSize({ width: 375, height: 812 });
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("compare: divergence, keyboard, notices and the viewer's metadata-only view (fixtures)", async ({
+  page,
+}) => {
+  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const url = (b: string) => `${b}/runs/compare?left=${RUN(11)}&right=${RUN(12)}`;
+  await page.goto(url(BASE));
+  await expect(page.getByRole("heading", { name: "Compare runs", level: 1 })).toBeVisible();
+  await expect(page.getByTestId("compare-summary")).toBeVisible();
+  await expect(page.getByTestId("aligned-steps")).toBeVisible();
+  await expect(page.getByTestId("divergence-flag")).toHaveCount(1);
+  await expect(page.getByTestId("outcome-flag")).toHaveCount(1);
+  await expect(page.getByTestId("metadata-notice")).toHaveCount(0);
+  await expect(page.getByTestId("compare-files")).toContainText("Only in the left run");
+  await page.getByRole("button", { name: "Jump to divergence" }).click();
+  await expect(page.locator("[data-divergence=true]")).toBeFocused();
+  await expect(page.getByTestId("aligned-live")).toContainText("Divergence:");
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("aligned-row").nth(1)).toBeVisible();
+  await axe(page);
+  await page.screenshot({ path: `${SHOTS11}/fixtures-compare-owner.png`, fullPage: true });
+
+  // a viewer's comparison is metadata only and says so; the file paths are withheld
+  await page.goto(url("/w/viewer-only/projects/all"));
+  await expect(page.getByTestId("metadata-notice")).toContainText("metadata only");
+  await expect(page.getByTestId("compare-files")).toHaveAttribute("data-withheld", "true");
+  await expect(page.getByText("Only in the left run")).toHaveCount(0);
+  await axe(page);
+  await page.screenshot({ path: `${SHOTS11}/fixtures-compare-viewer.png`, fullPage: true });
+
+  // no runs picked: a plain empty state; and a phone has no horizontal scroll
+  await page.goto(`${BASE}/runs/compare`);
+  await expect(page.getByText("Pick two runs to compare")).toBeVisible();
+  await page.goto(url(BASE));
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByTestId("aligned-steps")).toBeVisible();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("experiments: list, the control banner, warnings, metrics and forms by role (fixtures)", async ({
+  page,
+}) => {
+  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const alerts: string[] = [];
+  page.on("dialog", (d) => {
+    alerts.push(d.message());
+    void d.dismiss();
+  });
+  await page.goto(`${BASE}/experiments`);
+  await expect(page.getByRole("heading", { name: "Experiments", level: 1 })).toBeVisible();
+  await expect(page.getByTestId("experiment-list").getByRole("row")).toHaveCount(3);
+  await expect(page.getByRole("navigation", { name: "Primary" })).toContainText("Experiments");
+  await axe(page);
+  // the second experiment: two settings differ, so it is not controlled; its hostile name is text
+  await page.getByRole("link", { name: /not.*controlled/ }).click();
+  await expect(page.getByTestId("control-banner")).toContainText("Not controlled");
+  await expect(page.getByTestId("control-banner")).toContainText("model, prompt");
+  await expect(page.getByTestId("warnings")).toContainText("More than one setting differs");
+  expect(await page.locator("h1 b").count()).toBe(0);
+  await expect(page.getByRole("form", { name: "Add a variant" })).toBeVisible();
+  await axe(page);
+  // the first: controlled, with metrics and a link to compare with the baseline run
+  await page.goto(`${BASE}/experiments`);
+  await page.getByRole("link", { name: "Session fix: second patch" }).click();
+  await expect(page.getByTestId("control-banner")).toContainText("Controlled");
+  await expect(page.getByTestId("metrics")).toContainText("Cost, 95th percentile");
+  await page.getByRole("link", { name: "Compare with baseline run" }).click();
+  await expect(page.getByTestId("aligned-steps")).toBeVisible();
+  await page.goBack();
+  await axe(page);
+  await page.screenshot({ path: `${SHOTS11}/fixtures-experiment.png`, fullPage: true });
+  expect(alerts).toEqual([]);
+
+  // a viewer reads the same page without forms or the evaluate button
+  await page.goto("/w/viewer-only/projects/all/experiments");
+  await page.getByRole("link", { name: "Session fix: second patch" }).click();
+  await expect(page.getByTestId("control-banner")).toBeVisible();
+  await expect(page.getByRole("form", { name: "Add a variant" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Evaluate all" })).toHaveCount(0);
+  await axe(page);
 });

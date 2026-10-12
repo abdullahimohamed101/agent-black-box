@@ -24,6 +24,8 @@ from abb_api.auth.oidc import OidcClient
 from abb_api.auth.router import router as auth_router
 from abb_api.authz.audit import new_denial_limiter
 from abb_api.clock import Clock, system_clock
+from abb_api.comparison.router import router as comparison_router
+from abb_api.comparison.service import ComparisonService
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.errors import install_error_handlers
 from abb_api.core.logging import configure_logging
@@ -31,6 +33,12 @@ from abb_api.core.middleware import RequestContextMiddleware
 from abb_api.cost.router import rebuild_router
 from abb_api.cost.router import router as pricing_router
 from abb_api.db import create_engine
+from abb_api.evaluations.router import router as evaluators_router
+from abb_api.evaluations.run_router import router as run_evaluations_router
+from abb_api.evaluations.runs import RunEvaluationService
+from abb_api.evaluations.service import EvaluatorService
+from abb_api.experiments.router import router as experiments_router
+from abb_api.experiments.service import ExperimentService
 from abb_api.findings.router import router as findings_router
 from abb_api.findings.service import FindingsService
 from abb_api.health.router import router as health_router
@@ -177,6 +185,14 @@ def create_app(
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)
+        app.state.comparison = ComparisonService(engine, settings)
+        app.state.experiments = ExperimentService(engine, settings)
+        app.state.evaluators = EvaluatorService(engine, settings.judge_provider)
+        app.state.run_evaluations = RunEvaluationService(
+            engine,
+            stale_seconds=settings.eval_stale_seconds,
+            judge_provider=settings.judge_provider,
+        )
         app.state.login = LoginService(engine, oidc, settings, clock) if oidc else None
         app.state.artifacts = ArtifactService(
             engine,
@@ -237,6 +253,10 @@ def create_app(
     app.include_router(members_router)
     app.include_router(api_keys_router)
     app.include_router(audit_router)
+    app.include_router(evaluators_router)
+    app.include_router(run_evaluations_router)
+    app.include_router(comparison_router)
+    app.include_router(experiments_router)
     _install_openapi(app, settings)
     return app
 

@@ -45,10 +45,27 @@ U_KEYS_REVOKE = U_KEYS_READ
 U_PRICES = "allow allow deny      deny   deny     allow   | 404 404 deny  401 401 401 401 400"
 # audit.read: owner, admin and the security role.
 U_AUDIT = "allow allow deny      deny   allow    deny    | 404 404 deny  401 401 401 401 400"
+# evaluator.write (and the other Phase 11 write actions): owner, admin and developer.
+U_BUILD = U_KEYS_CREATE
 U_ADMIN_ONLY = U_PROJECT_ADMIN  # member.write, invite.read, invite.write: owner and admin
 
 EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/v1/audit"): (NO_KEY, U_AUDIT),
+    ("GET", "/v1/evaluators"): (LIST, U_RUNS),
+    ("POST", "/v1/evaluators"): (NO_KEY, U_BUILD),
+    ("DELETE", "/v1/evaluators/{evaluator_id}"): (NO_KEY, U_BUILD),
+    ("GET", "/v1/runs/{run_id}/compare"): (READ_ID, U_RUNS),
+    ("GET", "/v1/runs/{run_id}/evaluations"): (READ_ID, U_RUNS),
+    ("POST", "/v1/runs/{run_id}/evaluations"): (NO_KEY, U_BUILD),
+    ("POST", "/v1/runs/{run_id}/verdicts"): (NO_KEY, U_BUILD),
+    ("GET", "/v1/experiments"): (LIST, U_RUNS),
+    ("POST", "/v1/experiments"): (NO_KEY, U_BUILD),
+    ("GET", "/v1/experiments/{experiment_id}"): (READ_ID, U_RUNS),
+    ("POST", "/v1/experiments/{experiment_id}/variants"): (NO_KEY, U_BUILD),
+    ("POST", "/v1/experiments/{experiment_id}/runs"): (NO_KEY, U_BUILD),
+    ("POST", "/v1/experiments/{experiment_id}/evaluate"): (NO_KEY, U_BUILD),
+    ("DELETE", "/v1/experiments/{experiment_id}/runs/{run_id}"): (NO_KEY, U_BUILD),
+    ("DELETE", "/v1/experiments/{experiment_id}"): (NO_KEY, U_BUILD),
     ("POST", "/v1/pricing/overrides"): (NO_KEY, U_PRICES),
     ("POST", "/v1/cost/rebuild"): (NO_KEY, U_PRICES),
     ("GET", "/v1/api-keys"): (NO_KEY, U_KEYS_READ),
@@ -107,7 +124,10 @@ def allowed_codes(actor: str, want: str) -> set[str]:
     if want == "404":
         if actor in ("no_membership", "removed_member"):
             return {"WORKSPACE_NOT_FOUND"}
-        return {"RUN_NOT_FOUND", "ARTIFACT_NOT_FOUND"}
+        return {
+            "RUN_NOT_FOUND", "ARTIFACT_NOT_FOUND", "EVALUATOR_NOT_FOUND", "EVALUATION_NOT_FOUND",
+            "EXPERIMENT_NOT_FOUND", "VARIANT_NOT_FOUND",
+        }  # fmt: skip
     return {"WORKSPACE_REQUIRED"}
 
 
