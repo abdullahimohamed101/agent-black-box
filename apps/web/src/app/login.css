@@ -1,0 +1,64 @@
+/* Phase 22 D11: sign-in and invitation inside the product. A quiet, single-purpose page: the brand mark, one sentence, the
+   button. No card, no gradient, no marketing copy. Tokens only (ADR-111). `main.auth.auth-page` outranks the older
+   `main.auth` card rule in globals.css, which the plain fallback pages (home) still use. */
+main.auth.auth-page {
+  max-width: 26rem;
+  margin: 0 auto;
+  /* 1rem side gutter at every width: a phone never gets text against the screen edge. */
+  padding: clamp(2.5rem, 16vh, 8rem) 1rem 2rem;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+  min-width: 0;
+}
+.auth-page .brand {
+  padding: 0;
+  margin: 0 0 0.75rem;
+  height: auto;
+}
+.auth-page h1 {
+  margin: 0;
+  font: 600 var(--fs-headline) / 1.25 var(--cond);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+.auth-page p {
+  margin: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.auth-page .auth-context {
+  color: var(--muted);
+}
+.auth-page .notice {
+  width: 100%;
+}
+/* The one action: a full-size target (at least 44 px tall) with a focus ring that shows against both themes. */
+.auth-page a.button,
+.auth-page button.primary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.5rem 1.5rem;
+  font-weight: 500;
+}
+.auth-page a.button:focus-visible,
+.auth-page button.primary:focus-visible,
+.auth-page .brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.auth-page .auth-aside {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+@media (max-width: 26rem) {
+  .auth-page a.button,
+  .auth-page button.primary {
+    width: 100%;
+    justify-content: center;
+  }
+}
