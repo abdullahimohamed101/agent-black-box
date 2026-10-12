@@ -29,7 +29,7 @@ SEES_CONTENT = ("owner", "admin", "developer", "security", "reader", "wide_reade
 REVIEWED_METADATA = frozenset(
     {
         "run.name", "agent.state", "agent.child_id", "span.name", "span.kind", "llm.provider",
-        "llm.model", "llm.error_type", "cost.pricing_version", "tool.name", "tool.operation",
+        "llm.model", "llm.error_type", "llm.service_tier", "llm.data_residency", "cost.pricing_version", "tool.name", "tool.operation",
         "tool.error_type", "file.hash_before", "file.hash_after", "file.language",
         "file.operation", "diff.artifact", "diff.withheld", "git.base_commit", "git.head_commit",
         "git.commit_hash", "shell.risk_class", "shell.category", "shell.stdout_artifact",
