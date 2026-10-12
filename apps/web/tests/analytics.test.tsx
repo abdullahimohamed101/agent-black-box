@@ -221,6 +221,21 @@ describe("Where the money was wasted (Phase 22 D12)", () => {
     expect(screen.getByTestId("waste-unknown")).toHaveTextContent("2 failed runs");
   });
 
+  it("says how many runs were summarised below the current version, and says nothing at zero (review P2-5)", async () => {
+    const w = { ...fixture(), unrebuilt_runs: 7 };
+    stubApi({ "/analytics/waste": () => Response.json(w) });
+    const { unmount } = renderWithQuery(<Analytics base={BASE} />);
+    expect(await screen.findByTestId("waste-unrebuilt")).toHaveTextContent(
+      "7 runs were summarised by an older version",
+    );
+    unmount();
+    vi.unstubAllGlobals();
+    stubApi({ "/analytics/waste": () => Response.json(fixture()) });
+    renderWithQuery(<Analytics base={BASE} />);
+    await screen.findByTestId("waste-panel");
+    expect(screen.queryByTestId("waste-unrebuilt")).toBeNull();
+  });
+
   it("an empty window is a statement with the tape motif, and an error offers a retry", async () => {
     const w = { ...fixture(), wasted_usd: 0 };
     stubApi({ "/analytics/waste": () => Response.json(w) });

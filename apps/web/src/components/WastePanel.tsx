@@ -114,6 +114,13 @@ export function WastePanel({
                   counted.
                 </p>
               )}
+              {w.unrebuilt_runs > 0 && (
+                <p className="muted" data-testid="waste-unrebuilt">
+                  {formatInt(w.unrebuilt_runs)} {w.unrebuilt_runs === 1 ? "run was" : "runs were"}{" "}
+                  summarised by an older version and lack first-error facts; rebuild them to
+                  complete these figures.
+                </p>
+              )}
             </>
           )}
         </div>
