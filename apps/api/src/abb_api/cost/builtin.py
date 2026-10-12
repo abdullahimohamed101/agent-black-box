@@ -627,6 +627,19 @@ GOOGLE_V2_ENTRIES: tuple[PriceEntry, ...] = (
     _google_v2("gemini-3-flash-preview", "0.50", "3.00", "0.05"),
     _google_v2("gemini-2.5-flash", "0.30", "2.50", "0.03"),
     _google_v2("gemini-2.5-flash-lite", "0.10", "0.40", "0.01"),
+    # Correction of version 2026-10-09, which left this cache price unset (cached tokens were
+    # billed at the input price). The page states $0.03 for every modality, read twice
+    # 2026-10-12. Same start date as the row it corrects, so the later version wins from then on.
+    PriceEntry(
+        pricing_version=BATCH2_VERSION,
+        provider="google",
+        model_pattern="gemini-3.5-flash-lite",
+        valid_from=_V2,
+        input_per_million=Decimal("0.30"),
+        output_per_million=Decimal("2.50"),
+        cached_input_per_million=Decimal("0.03"),
+        source="https://ai.google.dev/gemini-api/docs/pricing (read twice 2026-10-12)",
+    ),
 )
 
 BATCH2_ENTRIES: tuple[PriceEntry, ...] = (

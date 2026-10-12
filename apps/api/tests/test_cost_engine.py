@@ -371,7 +371,8 @@ def test_builtin_google_prices_follow_the_dated_and_exact_rows() -> None:
         D("7.50"),
     )
     lite = book.find("google", "gemini-3.5-flash-lite", at(10))
-    assert lite is not None and lite.cached_input_per_million is None
+    # 2026-10-12b states the cache price the first read missed (page: $0.03).
+    assert lite is not None and lite.cached_input_per_million == D("0.03")
     assert book.find("google", "gemini-3.5-flash", at(10)) is not lite
     # Exact IDs only: a different model sharing the prefix must stay unpriced.
     assert book.find("google", "gemini-3.8-flash-tts", at(10)) is None

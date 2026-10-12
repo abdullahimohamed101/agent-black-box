@@ -428,6 +428,7 @@ def test_every_batch_2_entry_records_its_source_and_fetch_date() -> None:
     for e in BATCH2_ENTRIES:
         assert e.pricing_version == BATCH2_VERSION and e.origin == "builtin"
         assert e.valid_from in {
+            datetime(2026, 10, 9, tzinfo=UTC),  # the Gemini correction
             datetime(2026, 10, 12, tzinfo=UTC),
             datetime(2027, 1, 1, tzinfo=UTC),
         }
@@ -708,3 +709,34 @@ def test_models_with_a_stated_shutdown_date_stop_being_priced_on_it() -> None:
     assert BOOK.find("openai", "o1", datetime(2026, 10, 23, tzinfo=UTC)) is None
     # A model that is not on the list keeps no end date.
     assert all(e.valid_to is None for e in BATCH2_ENTRIES if e.model_pattern == "gpt-4.1")
+
+
+def test_gemini_3_5_flash_lite_cached_tokens_use_the_stated_cache_price() -> None:
+    # The pricing page states $0.03 for context caching (read twice 2026-10-12); the earlier
+    # version left it unset, which billed cached tokens at the input price.
+    cached = {"llm.cached_input_tokens": M}
+    assert total("google", "gemini-3.5-flash-lite", **cached) == D("0.03")
+    for day in (9, 10, 11):  # the correction covers the whole span of the version it corrects
+        event = llm(
+            {
+                "llm.provider": "google",
+                "llm.model": "gemini-3.5-flash-lite",
+                "llm.input_tokens": M,
+                "llm.cached_input_tokens": M,
+            },
+            day=day,
+        )
+        assert ENGINE.calculate(event).total == D("0.03"), day
+    pinned = ENGINE.calculate(
+        llm(
+            {
+                "llm.provider": "google",
+                "llm.model": "gemini-3.5-flash-lite",
+                "llm.input_tokens": M,
+                "llm.cached_input_tokens": M,
+            },
+            day=13,
+        ),
+        pricing_version="2026-10-09",
+    )
+    assert pinned.total == D("0.30")  # the published version still reproduces itself
