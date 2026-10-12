@@ -603,14 +603,38 @@ h2 {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
 }
 th,
 td {
   text-align: left;
-  padding: 0.45rem 0.6rem;
+  padding: 0.25rem 0.6rem;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+}
+/* Column heads are small-caps labels in every table of the app; row heads stay ordinary text. */
+thead th,
+th[scope="col"] {
+  padding-block: 0.35rem;
+  font: 600 0.66rem/1.3 var(--cond);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom-color: var(--border-strong);
+}
+tbody th {
+  font-weight: 500;
+}
+tbody tr:hover {
+  background: var(--surface);
+}
+caption {
+  text-align: left;
+  padding: 0 0 0.35rem;
+  font: 600 0.72rem/1.3 var(--cond);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 td:nth-child(2),
 td.name {
@@ -1534,18 +1558,26 @@ button.danger {
 .subnav {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
-  margin: 0.5rem 0 1rem;
+  gap: 0.25rem;
+  margin: 0 0 0.9rem;
   border-bottom: 1px solid var(--border);
 }
 .subnav a {
   text-decoration: none;
-  padding: 0.3rem 0.1rem;
+  padding: 0.5rem 0.85rem;
+  font: 600 0.8rem/1 var(--cond);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
   border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.subnav a:hover {
+  color: var(--fg);
 }
 .subnav a[aria-current="page"] {
+  color: var(--fg);
   border-bottom-color: var(--accent);
-  font-weight: 600;
 }
 .form {
   display: flex;
@@ -1880,6 +1912,26 @@ td a {
   margin: 0;
   font-size: 0.8rem;
 }
+.page-head .toolbar {
+  margin: 0;
+}
+/* Document pages: one head style, one rhythm. */
+.page > h1,
+.page > div > h1 {
+  font: 600 1.375rem/1.2 var(--cond);
+  margin: 0 0 0.6rem;
+}
+.page h2 {
+  font: 600 0.95rem/1.3 var(--cond);
+  letter-spacing: 0.02em;
+  margin: 1.25rem 0 0.4rem;
+}
+.page .stats {
+  margin: 0.5rem 0 0.75rem;
+}
+.page .muted {
+  font-size: 0.8rem;
+}
 .toolbar-row {
   display: flex;
   flex-wrap: wrap;
@@ -2029,4 +2081,16 @@ td a {
   .context-toggle {
     padding-inline: 0.5rem;
   }
+}
+
+/* ---- Document pages: table links, tags beside names ---- */
+tbody th a {
+  text-decoration: none;
+}
+tbody th a:hover,
+tbody th a:focus-visible {
+  text-decoration: underline;
+}
+td .tag {
+  margin-left: 0.5rem;
 }

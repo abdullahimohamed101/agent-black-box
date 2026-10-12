@@ -132,10 +132,12 @@ export function Experiments({ base }: { base: Base }) {
   const canWrite = useCan("experiment.write");
   return (
     <div className="experiments" data-testid="experiments">
-      <h1>Experiments</h1>
-      <p className="muted">
-        Compare variants of an agent: the same task set run with one thing changed.
-      </p>
+      <div className="page-head">
+        <h1>Experiments</h1>
+        <p className="muted">
+          Compare variants of an agent: the same task set run with one thing changed.
+        </p>
+      </div>
       {list.isPending ? (
         <Loading label="Loading experiments" />
       ) : list.isError ? (
