@@ -59,6 +59,8 @@ type Props = {
   /** Events that just arrived on the live stream (tint) and the one a jump landed on (ring). Decoration only. */
   newIds?: ReadonlySet<string>;
   landedId?: string | null;
+  /** Why the jump landed: the first error (a red outline that fades) or any other evidence (an accent one). */
+  landedTone?: "error" | "evidence";
 };
 
 /** The event a click on this row selects: the span's opener, or its only event. */
@@ -82,6 +84,7 @@ export function Waterfall({
   selectedEventId,
   newIds,
   landedId,
+  landedTone,
   firstErrorId,
   faultAtMs = null,
   faultStep = null,
@@ -489,7 +492,7 @@ export function Waterfall({
                 data-root={n.id === ROOT_ID || undefined}
                 data-dim={agentFilter && agent && !agentFilter.has(agent) ? "" : undefined}
                 data-arrived={(span && newIds?.has(span.head.event_id)) || undefined}
-                data-landed={(span && span.head.event_id === landedId) || undefined}
+                data-landed={(span && span.head.event_id === landedId && landedTone) || undefined}
                 data-skewed={n.flags.skewed || undefined}
                 data-unfinished={n.flags.unfinished || undefined}
                 style={style}

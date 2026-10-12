@@ -1,8 +1,8 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { isActive } from "@/lib/api/types";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { isActive, type EventOut } from "@/lib/api/types";
 import { formatCost, formatDuration, formatInt, formatTimestamp, num } from "@/lib/format";
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
@@ -39,6 +39,7 @@ import { Timeline } from "./Timeline";
 import { ViewSwitch, type RunView } from "./ViewSwitch";
 import { Waterfall } from "./Waterfall";
 import "../app/run-context.css";
+import "../app/run-motion.css";
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: "warn" | "bad" }) {
   return (
@@ -65,14 +66,8 @@ function LiveBar({
         : state === "reconnecting"
           ? { glyph: "↻", text: "Reconnecting" }
           : state === "unauthorized"
-            ? {
-                glyph: "⏸",
-                text: "Live updates stopped: your access to this run changed",
-              }
-            : {
-                glyph: "⏸",
-                text: "Live updates unavailable, refreshing periodically",
-              };
+            ? { glyph: "⏸", text: "Live updates stopped: your access to this run changed" }
+            : { glyph: "⏸", text: "Live updates unavailable, refreshing periodically" };
   const partial = state === "reconnecting" || state === "unavailable" || state === "unauthorized";
   return (
     <div
@@ -103,6 +98,10 @@ function LiveBar({
 const SQUEEZED = "(min-width: 833px) and (max-width: 1279px)";
 /** Below 88 rem the inspector is narrowed to 20 rem while the context column is open, so the column never has to fold. */
 const COMPACT = "(max-width: 1407px)";
+/** Motion is decoration: only when the person has not asked for less (and jsdom, which has no matchMedia, gets none). */
+const MOTION = "(prefers-reduced-motion: no-preference)";
+const EXIT_MS = 110; // the inspector's exit animation (run-motion.css) is 100 ms
+const INTRO_MS = 340; // the fault line's entrance (run-motion.css) is 280 ms
 
 /** `matchMedia` as external state; false on the server and where the API is missing (jsdom). */
 function useMedia(query: string): boolean {
@@ -306,7 +305,9 @@ export function RunDetail({
     drawerEventId && !loadedDrawerEvent ? drawerEventId : null,
   );
   const drawerEvent = loadedDrawerEvent ?? remoteDrawer.data;
-  const inspected = drawerEvent;
+  // The inspector eases out for 100 ms after it is closed: keep rendering the last event until then.
+  const [leaving, setLeaving] = useState<EventOut | null>(null);
+  const inspected = drawerEvent ?? leaving;
   const contextClosed =
     contextPref === "closed" || (contextPref === "open" && !!inspected && squeezedWindow);
   const toggleContext = () =>
@@ -325,11 +326,15 @@ export function RunDetail({
 
   const evidence = useMemo(() => evidenceRows(events), [events]);
 
-  // Motion cues (decoration only; all of them are zero-length under prefers-reduced-motion). Events that arrive after
-  // the run has loaded get a short tint; the target of a jump gets a ring. Both are bounded and pruned by timers.
+  // Motion cues (decoration only; run-motion.css plays them under `prefers-reduced-motion: no-preference` and nowhere
+  // else). Events that arrive after the run has loaded fade in; the target of a jump gets an outline that fades; a
+  // failed run draws its fault line once. All three are bounded and pruned by timers.
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(NO_IDS);
-  const [landedId, setLandedId] = useState<string | null>(null);
+  const [arrived, setArrived] = useState(0);
+  const [landed, setLanded] = useState<{ id: string; tone: "error" | "evidence" } | null>(null);
+  const [faultIntro, setFaultIntro] = useState(false);
   const knownIds = useRef<Set<string> | null>(null);
+  const introPlayed = useRef(false);
   const { later } = useTimers();
   useEffect(() => {
     if (!restComplete) return;
@@ -346,26 +351,42 @@ export function RunDetail({
       }
     }
     if (fresh.length === 0) return;
-    // From a timer, not the effect body: the tint is a cue after the commit, not state the render depends on.
+    // From a timer, not the effect body: the fade is a cue after the commit, not state the render depends on.
     const batch = new Set(fresh.slice(-MAX_NEW_IDS));
     later(() => {
       setNewIds(batch);
-      later(() => setNewIds(NO_IDS), 500);
+      setArrived((n) => n + fresh.length);
+      later(() => setNewIds(NO_IDS), 400);
     }, 0);
   }, [events, restComplete, later]);
-  const flashLanded = (id: string) => {
-    setLandedId(id);
-    later(() => setLandedId(null), 600);
+  // The fault line draws itself once, the first time rows and the first error are both on screen; a filter, a view
+  // switch or a re-render later never replays it.
+  const hasFault = !!err && restComplete;
+  useEffect(() => {
+    if (!hasFault || introPlayed.current) return;
+    introPlayed.current = true;
+    later(() => {
+      setFaultIntro(true);
+      later(() => setFaultIntro(false), INTRO_MS);
+    }, 0);
+  }, [hasFault, later]);
+  const flashLanded = (id: string, tone: "error" | "evidence") => {
+    setLanded({ id, tone });
+    later(() => setLanded(null), 600);
   };
   const focusTimeline = () =>
     timelineWrap.current
       ?.querySelector<HTMLElement>('[role="listbox"], [role="treegrid"], [role="region"]')
       ?.focus();
-  const closeDrawer = useCallback(() => {
+  const closeDrawer = () => {
+    if (drawerEvent && window.matchMedia?.(MOTION).matches) {
+      setLeaving(drawerEvent);
+      later(() => setLeaving(null), EXIT_MS);
+    }
     setDrawerEventId(null);
     // Return focus to where the reader was.
     requestAnimationFrame(focusTimeline);
-  }, []);
+  };
 
   const activate = (key: string) => {
     const row = rows.find((r) => r.key === key);
@@ -380,8 +401,8 @@ export function RunDetail({
     } else setDrawerEventId(row.event.event_id);
   };
 
-  const jumpTo = (eventId: string) => {
-    flashLanded(eventId);
+  const jumpTo = (eventId: string, tone: "error" | "evidence" = "evidence") => {
+    flashLanded(eventId, tone);
     // If a filter hides a loaded event, clear filters so the jump always lands.
     const loaded = events.some((e) => e.event_id === eventId);
     if (loaded && !filtered.some((e) => e.event_id === eventId)) setFilters(NO_FILTERS);
@@ -390,7 +411,7 @@ export function RunDetail({
     setDrawerEventId(eventId);
   };
   const jumpToError = () => {
-    if (err) jumpTo(err.event_id);
+    if (err) jumpTo(err.event_id, "error");
   };
 
   const toggleClass = (c: EventClass) =>
@@ -420,13 +441,7 @@ export function RunDetail({
   const retries = num(s["retry_count"]) ?? 0;
   const errors = num(s["error_count"]) ?? 0;
   const models = Array.isArray(s["models"]) ? (s["models"] as string[]) : [];
-  const model = headlineModel({
-    run: r,
-    events,
-    t0,
-    eventsComplete: restComplete,
-    now,
-  });
+  const model = headlineModel({ run: r, events, t0, eventsComplete: restComplete, now });
   const kind = model.kind;
   // The error variant: the run says it failed but its first error cannot be located because the events did not load.
   const headlineFailed =
@@ -511,6 +526,7 @@ export function RunDetail({
         data-inspector={inspected ? "open" : "closed"}
         data-context={contextClosed ? "closed" : "open"}
         data-compact={(!contextClosed && !!inspected && compactWindow && !inspectorPx) || undefined}
+        data-fault-intro={faultIntro || undefined}
         style={
           inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
         }
@@ -649,7 +665,9 @@ export function RunDetail({
                   onEscape={closeDrawer}
                   onJumpToError={jumpToError}
                   newIds={newIds}
-                  landedId={landedId}
+                  arrived={arrived}
+                  landedId={landed?.id ?? null}
+                  landedTone={landed?.tone}
                 />
               ) : (
                 <Waterfall
@@ -666,7 +684,8 @@ export function RunDetail({
                   onEscape={closeDrawer}
                   onJumpToError={jumpToError}
                   newIds={newIds}
-                  landedId={landedId}
+                  landedId={landed?.id ?? null}
+                  landedTone={landed?.tone}
                 />
               )}
             </div>
@@ -692,7 +711,14 @@ export function RunDetail({
         </section>
 
         {drawerEvent && <InspectorResizer width={inspectorPx} onChange={setInspectorPx} />}
-        {inspected && <EventDrawer runId={runId} event={inspected} onClose={closeDrawer} />}
+        {inspected && (
+          <EventDrawer
+            runId={runId}
+            event={inspected}
+            onClose={closeDrawer}
+            closing={!drawerEvent}
+          />
+        )}
       </div>
     </div>
   );

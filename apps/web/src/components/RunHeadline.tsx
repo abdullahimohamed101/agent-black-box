@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { HeadlineKind, HeadlineModel } from "@/lib/runHeadline";
 import "../app/run-header.css";
 
@@ -53,8 +54,25 @@ function GoControl({ onGo }: { onGo: () => void }) {
   );
 }
 
+/**
+ * Counts the state changes of a ready headline (running to failed). The first one on screen is not a change, so a page
+ * that opens already failed does not fade; a later change remounts the block with `data-fade`, which run-motion.css
+ * fades in over 120 ms.
+ */
+function useStateChange(kind: HeadlineKind, ready: boolean): number {
+  const [seen, setSeen] = useState<{ kind: HeadlineKind | null; changes: number }>({
+    kind: null,
+    changes: 0,
+  });
+  // Adjusting state while rendering is React's pattern for "the prop changed"; no ref, no effect.
+  if (ready && seen.kind !== kind)
+    setSeen({ kind, changes: seen.kind === null ? 0 : seen.changes + 1 });
+  return seen.changes;
+}
+
 export function RunHeadline(props: HeadlineProps) {
   const { kind } = props;
+  const changes = useStateChange(kind, props.variant === "ready");
   if (props.variant === "skeleton") {
     return (
       <div className="hl" data-kind={kind} data-variant="skeleton" aria-busy="true">
@@ -86,7 +104,13 @@ export function RunHeadline(props: HeadlineProps) {
   }
   const m = props.model;
   return (
-    <div className="hl" data-kind={m.kind} data-variant="ready">
+    <div
+      key={changes}
+      className="hl"
+      data-kind={m.kind}
+      data-variant="ready"
+      data-fade={changes > 0 || undefined}
+    >
       <p className="hl-lead" data-testid="headline">
         {m.live && <span className="hl-dot" aria-hidden="true" />}
         {m.failure ? (

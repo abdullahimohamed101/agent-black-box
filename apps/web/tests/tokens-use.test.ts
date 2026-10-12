@@ -11,6 +11,8 @@ const FILES = [
   "search.css",
   "run-header.css",
   "run-timeline.css",
+  "run-motion.css",
+  "run-context.css",
   "runs-list.css",
   "topbar-search.css",
 ];
@@ -41,7 +43,8 @@ const ALLOWED: RegExp[] = [
   /^\.wf-lane-bar\[data-error\]/,
   /^\.search-caret span$/,
   /^\.hl\[data-kind="failed"\] \.hl-lead$/,
-  /^\.tl-fault(-label)?$/, // the fault line and its label (Phase 22 step 4)
+  /^\.tl-fault(-label|::before)?$/, // the fault line (its ::before is the line itself) and its label (Phase 22 step 4)
+  /^\.(tl|wf)-row\[data-landed="error"\]::after$/, // the outline that fades after a jump to the first error (step 6)
   /^\.tl-row\[data-after-fault\]/, // the tint below the fault
   /^\.wf-fault-(line|region|flag)/,
   /^:root$/, // token definitions and aliases

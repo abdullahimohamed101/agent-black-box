@@ -538,6 +538,15 @@ test.describe("motion", () => {
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(300);
   };
+  /** Every animation that starts, by keyframe name (the DOM event fires for CSS animations only). */
+  const recordAnimations = (page: Page) =>
+    page.addInitScript(() => {
+      const w = window as unknown as { __anims: string[] };
+      w.__anims = [];
+      document.addEventListener("animationstart", (e) => w.__anims.push(e.animationName), true);
+    });
+  const started = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __anims: string[] }).__anims);
 
   test.describe("reduced motion", () => {
     test.use({ reducedMotion: "reduce" });
@@ -559,34 +568,162 @@ test.describe("motion", () => {
       await page.waitForTimeout(100);
       expect(await animations(page)).toBe(0);
     });
+
+    test("phase 22: the fault line, the jump outline and the inspector are static and complete", async ({
+      page,
+    }) => {
+      await recordAnimations(page);
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await expect(page.locator(".tl-fault")).toBeVisible();
+      await settled(page);
+      // drawn at full size at once: no transform, no animation
+      const line = await page.locator(".tl-fault").evaluate((el) =>
+        ((c: CSSStyleDeclaration) => ({
+          animationName: c.animationName,
+          opacity: c.opacity,
+          transform: c.transform,
+          outlineStyle: c.outlineStyle,
+          transitionDuration: c.transitionDuration,
+        }))(getComputedStyle(el, "::before")),
+      );
+      expect(line.animationName).toBe("none");
+      expect(line.transform).toBe("none");
+      await page.getByRole("button", { name: "Show it" }).click();
+      const drawer = page.getByRole("dialog");
+      await expect(drawer).toBeVisible();
+      expect(
+        await drawer.evaluate((el) =>
+          ((c: CSSStyleDeclaration) => ({
+            animationName: c.animationName,
+            opacity: c.opacity,
+            transform: c.transform,
+            outlineStyle: c.outlineStyle,
+            transitionDuration: c.transitionDuration,
+          }))(getComputedStyle(el)),
+        ),
+      ).toMatchObject({
+        animationName: "none",
+        opacity: "1",
+        transform: "none",
+      });
+      // the landing outline is a static outline in the failure colour, not a fade
+      const ring = await page.locator('.tl-row[data-landed="error"]').evaluate((el) =>
+        ((c: CSSStyleDeclaration) => ({
+          animationName: c.animationName,
+          opacity: c.opacity,
+          transform: c.transform,
+          outlineStyle: c.outlineStyle,
+          transitionDuration: c.transitionDuration,
+        }))(getComputedStyle(el, "::after")),
+      );
+      expect(ring).toMatchObject({ animationName: "none", opacity: "1", outlineStyle: "solid" });
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0); // gone at once: no exit to wait for
+      expect(await started(page)).toEqual([]);
+      expect(await animations(page)).toBe(0);
+    });
   });
 
   test.describe("motion on", () => {
     test.use({ reducedMotion: "no-preference" });
 
-    test("no route animates on first paint", async ({ page }) => {
+    test("no route loops or stays animated after first paint", async ({ page }) => {
+      await recordAnimations(page);
       for (const [, url] of ROUTES) {
         await page.goto(url);
         await settled(page);
-        expect(await animations(page), url).toBe(0);
+        // a failed run draws its fault line once on opening (Phase 22); everything else is already still
+        await page.waitForFunction(() => document.getAnimations().length === 0, undefined, {
+          timeout: 2000,
+        });
+        const infinite = await page.evaluate(
+          () =>
+            document
+              .getAnimations()
+              .filter((a) => a.effect?.getComputedTiming().iterations === Infinity).length,
+        );
+        expect(infinite, url).toBe(0);
       }
     });
 
-    test("the inspector slides in 180 ms; hovered rows fade their background in 120 ms", async ({
+    test("the fault line draws itself once when a failed run opens, never on a filter or a view change", async ({
       page,
     }) => {
+      await recordAnimations(page);
       await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await expect(page.locator(".tl-fault")).toBeVisible();
+      await page.waitForFunction(() => document.getAnimations().length === 0);
+      expect(await started(page)).toEqual(["fault-draw-x"]);
+      await page.getByLabel("Errors only").check();
+      await page.getByLabel("Errors only").uncheck();
+      await page.getByRole("radio", { name: "Waterfall" }).check();
+      await expect(page.getByTestId("waterfall")).toBeVisible();
+      await page.getByRole("radio", { name: "Timeline", exact: false }).first().check();
+      await page.waitForTimeout(400);
+      expect(await started(page)).toEqual(["fault-draw-x"]);
+    });
+
+    test("a run that opened clean and shows no fault line plays nothing", async ({ page }) => {
+      await recordAnimations(page);
+      await page.goto(`${BASE}/runs/${RUN(1)}`);
+      await expect(page.getByTestId("headline")).toContainText("Completed in");
+      await settled(page);
+      expect(await started(page)).toEqual([]);
+    });
+
+    test("Go scrolls to the first error and fades one 600 ms red outline; the inspector slides in over 160 ms and out over 100 ms", async ({
+      page,
+    }) => {
+      await recordAnimations(page);
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await page.waitForFunction(() => document.getAnimations().length === 0);
       await page.getByRole("button", { name: "Show it" }).click();
       const drawer = page.getByRole("dialog");
       await expect(drawer).toBeVisible();
-      expect(await drawer.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0.18s");
-      // the hover state carries the transition; keyboard navigation switches it off until the pointer is used again
+      const timing = await page.evaluate(() =>
+        document.getAnimations().map((a) => {
+          const t = a.effect!.getComputedTiming();
+          return {
+            name: (a as CSSAnimation).animationName,
+            duration: t.duration,
+            easing: (a.effect as KeyframeEffect).getKeyframes()[0]?.easing,
+            iterations: t.iterations,
+          };
+        }),
+      );
+      const by = Object.fromEntries(timing.map((t) => [t.name, t]));
+      expect(by["inspector-in"]).toMatchObject({ duration: 160, iterations: 1 });
+      expect(by["land-fade"]).toMatchObject({ duration: 600, iterations: 1 });
+      expect(by["land-fade"]!.easing).toBe("cubic-bezier(0.2, 0, 0, 1)");
+      expect(
+        await page
+          .locator('.tl-row[data-landed="error"]')
+          .evaluate((el) => getComputedStyle(el, "::after").outlineColor),
+      ).not.toBe("rgba(0, 0, 0, 0)");
+      await page.waitForFunction(() => document.getAnimations().length === 0);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      expect(await started(page)).toContain("inspector-out");
+    });
+
+    test("row hover is an instant background change: no transition on rows", async ({ page }) => {
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
       const row = page.getByRole("option").first();
       await row.hover();
-      expect(await row.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0.12s");
-      await page.getByRole("listbox").focus();
-      await page.keyboard.press("j");
       expect(await row.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
+      expect(await row.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe("all");
+      await page.getByRole("button", { name: "Show it" }).click();
+      expect(
+        await page.getByRole("dialog").evaluate((el) => getComputedStyle(el).transitionDuration),
+      ).toBe("0s");
+    });
+
+    test("the Live indicator is a steady dot, not a pulse", async ({ page }) => {
+      await page.goto(`${BASE}/runs/${RUN(4)}`);
+      await settled(page);
+      const glyph = page.locator(".live-glyph").first();
+      if (await glyph.count())
+        expect(await glyph.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
     });
   });
 });

@@ -1,6 +1,6 @@
 /* ---- Phase 22 step 4: the fault line. A 2px line at the first error on the timeline (across the rows) and the waterfall
    (across the lanes). Above it everything is quiet; below it the recovery path carries a faint tint, retries in amber. Static:
-   motion arrives in step 6. Red is only ever the failure, so every --fail use here is a failure selector in tokens-use.test.ts. ---- */
+   the entrance is in run-motion.css. Red is only ever the failure, so every --fail use here is a failure selector in tokens-use.test.ts. ---- */
 
 /* Timeline: the line sits on the top edge of the first-error row (or of the group that holds it). */
 .tl-fault {
@@ -10,8 +10,15 @@
   z-index: 3;
   height: 2px;
   margin-top: -1px;
-  background: var(--fail);
   pointer-events: none;
+}
+/* The line itself is a pseudo-element so the entrance (run-motion.css) can scale it without squashing the label. */
+.tl-fault::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--fail);
+  transform-origin: left center;
 }
 /* The label straddles the line at the right: the status column above it is empty (successes are silent), and a 12px chip
    fits between the text lines of the two rows (36px rows, ~19px text centred in each). */
@@ -184,4 +191,20 @@
 .filter-reset {
   margin-top: 0.3rem;
   font-size: var(--fs-small);
+}
+
+/* Live edge: when the reader has scrolled away from the bottom, new events do not move the list; this says how many came. */
+.pane-body {
+  position: relative;
+}
+.tl-new {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  transform: translateX(-50%);
+  z-index: 4;
+  padding: 0.25rem 0.75rem;
+  border-color: var(--accent);
+  background: var(--surface);
+  font-size: 0.75rem;
 }

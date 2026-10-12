@@ -1,0 +1,105 @@
+/* ---- Phase 22 step 6: the run page's motion layer (the one file where anything moves). ----
+   Language: 100-280 ms, ease-out cubic-bezier(0.2, 0, 0, 1), transform and opacity only, no springs, no bounce, no loops.
+   Every animation is inside the `no-preference` gate, so a person who asks for reduced motion gets the final states and
+   nothing else; the only rule outside it is the static outline that stands in for the fading one. tests/motion-contract.test.ts
+   fails when a keyframe, animation or transition anywhere in src/app is neither gated nor switched off for `reduce`.
+   Axe runs right after a click in several specs and would measure a half-transparent inspector, so those specs wait for
+   `document.getAnimations()` to settle (e2e/motion.ts). */
+
+/* The landing outline (a jump to an event) is a pseudo-element over the row. Without motion it is simply drawn for the
+   600 ms the row is marked, which is the static form of the fade. */
+.tl-row[data-landed]::after,
+.wf-row[data-landed]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  pointer-events: none;
+}
+.tl-row[data-landed="error"]::after,
+.wf-row[data-landed="error"]::after {
+  outline-color: var(--fail);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root {
+    --t-exit: 100ms;
+    --t-panel: 160ms;
+    --t-fault: 280ms;
+  }
+
+  /* (1) The fault line draws itself once when the first error is first on screen: from the left on the timeline, from the
+     top on the waterfall (its line is vertical). RunDetail sets data-fault-intro for 340 ms, once per page. */
+  @keyframes fault-draw-x {
+    from {
+      transform: scaleX(0);
+    }
+  }
+  @keyframes fault-draw-y {
+    from {
+      transform: scaleY(0);
+    }
+  }
+  .work[data-fault-intro] .tl-fault::before {
+    animation: fault-draw-x var(--t-fault) var(--ease-out) backwards;
+  }
+  .work[data-fault-intro] .wf-fault-line {
+    transform-origin: top;
+    animation: fault-draw-y var(--t-fault) var(--ease-out) backwards;
+  }
+
+  /* (2) A change of state in the headline (running to failed) fades the new one in over 120 ms. */
+  @keyframes headline-in {
+    from {
+      opacity: 0;
+    }
+  }
+  .hl[data-fade] {
+    animation: headline-in var(--t-fast) var(--ease-out) backwards;
+  }
+
+  /* (3) Jumping to an event: the outline fades once over 600 ms (red for the first error, the accent otherwise). */
+  @keyframes land-fade {
+    to {
+      opacity: 0;
+    }
+  }
+  .tl-row[data-landed]::after,
+  .wf-row[data-landed]::after {
+    animation: land-fade var(--t-land) var(--ease-out) forwards;
+  }
+
+  /* (4) The inspector slides 8 px and fades in over 160 ms; closing is shorter and softer (100 ms, 4 px). */
+  @keyframes inspector-in {
+    from {
+      opacity: 0;
+      transform: translateX(8px);
+    }
+  }
+  @keyframes inspector-out {
+    to {
+      opacity: 0;
+      transform: translateX(4px);
+    }
+  }
+  .drawer {
+    animation: inspector-in var(--t-panel) var(--ease-out) backwards;
+  }
+  .drawer[data-closing] {
+    animation: inspector-out var(--t-exit) var(--ease-out) forwards;
+  }
+
+  /* (5) A row that arrives on the live stream fades in over 180 ms with a 4 px rise. The cells move, not the row: the
+     virtualised row is positioned with its own transform. All arrivals start together, never staggered. */
+  @keyframes row-arrive {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  .tl-row[data-arrived] > *,
+  .wf-row[data-arrived] > * {
+    animation: row-arrive var(--t-base) var(--ease-out) backwards;
+  }
+}
