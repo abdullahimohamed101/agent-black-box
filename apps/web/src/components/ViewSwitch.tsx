@@ -16,9 +16,12 @@ const LABEL: Record<RunView, string> = {
 export function ViewSwitch({
   view,
   onChange,
+  counts,
 }: {
   view: RunView;
   onChange: (view: RunView) => void;
+  /** Shown beside the tab name. Decoration only (aria-hidden), so each radio keeps its plain name. */
+  counts?: Partial<Record<RunView, string | undefined>>;
 }) {
   return (
     <fieldset className="seg">
@@ -33,6 +36,11 @@ export function ViewSwitch({
             onChange={() => onChange(v)}
           />
           {LABEL[v]}
+          {counts?.[v] && (
+            <span className="seg-count" aria-hidden="true">
+              {counts[v]}
+            </span>
+          )}
         </label>
       ))}
     </fieldset>

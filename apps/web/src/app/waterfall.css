@@ -64,6 +64,19 @@
 .agent-name {
   font-weight: 600;
 }
+/* Two lines at most; the full text stays in the DOM and in the title. */
+.agent-item {
+  display: block;
+  padding: 0.25rem 0.4rem;
+  line-height: 1.35;
+}
+.agent-detail {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.75rem;
+}
 
 .tl-agent {
   font-size: 0.72rem;

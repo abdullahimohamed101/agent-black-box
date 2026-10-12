@@ -13,7 +13,7 @@ import {
 } from "@/lib/format";
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
-import { useEventDetail, useRun, useRunEvents } from "@/lib/queries";
+import { useEventDetail, useRun, useRunEvents, useRunFindings } from "@/lib/queries";
 import { evidenceRows } from "@/lib/evidence";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
@@ -150,6 +150,44 @@ function useMedia(query: string): boolean {
     },
     () => typeof window.matchMedia === "function" && window.matchMedia(query).matches,
     () => false,
+  );
+}
+
+/**
+ * What the folded context column shows: an icon, a vertical label and the counts a reader looks for first. The counts
+ * are decoration for sighted users (the button keeps its fixed accessible name; the title spells them out).
+ */
+function ContextStripBody({
+  runId,
+  poll,
+  agents,
+}: {
+  runId: string;
+  poll: boolean;
+  agents: number;
+}) {
+  const findings = useRunFindings(runId, poll).data?.items.length ?? 0;
+  return (
+    <span
+      className="strip-body"
+      title={`Run context: ${findings} finding${findings === 1 ? "" : "s"}${agents ? `, ${agents} agents` : ""}`}
+    >
+      <svg className="strip-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" />
+        <path d="M6 2.5v11" stroke="currentColor" />
+      </svg>
+      <span className="strip-label">Context</span>
+      {findings > 0 && (
+        <span className="strip-count" data-tone="warn" aria-hidden="true">
+          {findings}
+        </span>
+      )}
+      {agents > 0 && (
+        <span className="strip-count" aria-hidden="true">
+          {agents}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -401,7 +439,14 @@ export function RunDetail({
       </header>
 
       <div className="pane-head">
-        <ViewSwitch view={view} onChange={changeView} />
+        <ViewSwitch
+          view={view}
+          onChange={changeView}
+          counts={{
+            timeline: events.length ? formatInt(events.length) : undefined,
+            evidence: evidence.length ? formatInt(evidence.length) : undefined,
+          }}
+        />
         <button
           type="button"
           className="context-toggle"
@@ -435,7 +480,11 @@ export function RunDetail({
             aria-label="Show run context"
             tabIndex={contextClosed ? 0 : -1}
           >
-            Context
+            <ContextStripBody
+              runId={runId}
+              poll={active || r.summary_state === "processing"}
+              agents={multiAgent ? agents.length : 0}
+            />
           </button>
           <div className="context-body" inert={contextClosed || undefined}>
             <CodingSummary

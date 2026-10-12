@@ -531,6 +531,17 @@ h2 {
   margin: 0.6rem 0 0;
   border-bottom: 0;
 }
+@media (min-width: 52rem) {
+  /* Nine readouts fit one row at 1280: tighter gutters, no wrapping orphan. */
+  .run-head .stats {
+    flex-wrap: nowrap;
+  }
+  .run-head .stat {
+    min-width: 0;
+    margin-right: 0.85rem;
+    padding-right: 0.85rem;
+  }
+}
 .run-title {
   display: flex;
   flex-wrap: wrap;
@@ -887,16 +898,44 @@ select {
   display: none;
   width: 100%;
   height: 100%;
-  padding: 0.75rem 0;
+  padding: 0.6rem 0;
   border: 0;
   border-radius: 0;
   background: none;
   color: var(--muted);
+  cursor: pointer;
+}
+.strip-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+.strip-label {
   writing-mode: vertical-rl;
-  text-align: start;
   font: 600 0.72rem/1 var(--cond);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+.strip-count {
+  min-width: 1.35rem;
+  padding: 0.05rem 0.25rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font: 500 0.68rem/1.3 var(--mono);
+  text-align: center;
+  color: var(--fg);
+}
+.strip-count[data-tone="warn"] {
+  background: var(--warn-bg);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.seg-count {
+  margin-left: 0.4rem;
+  font: 400 0.68rem/1 var(--mono);
+  letter-spacing: 0;
+  color: var(--muted);
 }
 .context-strip:hover {
   color: var(--fg);
@@ -1184,9 +1223,12 @@ pre {
     border-right: 0;
     border-top: 1px solid var(--border);
   }
-  .context-strip {
+  .strip-body {
+    flex-direction: row;
+    justify-content: center;
+  }
+  .strip-label {
     writing-mode: horizontal-tb;
-    padding: 0.5rem 0;
   }
   .timeline {
     flex: none;
@@ -1214,20 +1256,32 @@ pre {
 /* ---- Phase 6: coding-agent views ---- */
 .story ol {
   list-style: decimal;
-  margin: 0.25rem 0 1rem;
-  padding-left: 2rem;
+  margin: 0.25rem 0 0;
+  padding-left: 1.6rem;
   display: grid;
-  gap: 0.2rem;
+  gap: 0.1rem;
+}
+/* One marker per step: the number. The tone glyph is redundant with the label's words ("fail", "Retry #1") and
+   with its colour, and drawing both read as "1. • Model". */
+.story li::marker {
+  font: 400 0.72rem var(--mono);
+  color: var(--muted);
+}
+.story-glyph {
+  display: none;
 }
 .story li button {
   all: unset;
+  box-sizing: border-box;
   cursor: pointer;
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0.2rem 0.6rem;
-  align-items: baseline;
-  padding: 0.1rem 0.35rem;
+  display: block;
+  width: 100%;
+  padding: 0.12rem 0.35rem;
   border-radius: 4px;
+  line-height: 1.4;
+}
+.story li button > * + * {
+  margin-left: 0.45rem;
 }
 .story li button:hover {
   background: var(--sel);
@@ -1645,17 +1699,51 @@ td a {
 }
 
 /* ---- Run page: compact forms of the shared sections inside the 18rem context column and the pane toolbar ---- */
+.pane .toolbar {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+/* One row: the class chips scroll sideways inside their own group; "Errors only" and "Collapse groups" stay pinned. */
 .pane .toolbar fieldset {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
+  flex-wrap: nowrap;
   gap: 0.3rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+.pane .toolbar > :not(fieldset) {
+  flex: none;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  padding-block: 0.1rem;
+}
+/* A hint that the chips scroll: the right edge fades out. */
+.pane .toolbar fieldset {
+  mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+}
+@container (max-width: 40rem) {
+  /* Keeps the group's accessible name while giving the chips the room. */
+  .pane .toolbar legend {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
 }
 .pane .toolbar legend {
+  float: left;
+  margin: 0 0.4rem 0 0;
+  white-space: nowrap;
   font: 600 0.66rem/1.3 var(--cond);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 .pane .toolbar .chip {
+  flex: none;
+  white-space: nowrap;
   padding: 0.02rem 0.4rem;
   font-size: 0.72rem;
 }
@@ -1909,4 +1997,36 @@ td a {
 }
 .runs .state {
   margin: 0.5rem 0;
+}
+
+/* ---- Phone: readouts as an even grid, tabs on one row ---- */
+@media (max-width: 52rem) {
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+    gap: 0 0.75rem;
+  }
+  .stat,
+  .stat:last-child {
+    min-width: 0;
+    margin: 0;
+    padding: 0.4rem 0;
+    border-right: 0;
+  }
+  .run-head .stat:nth-child(3) {
+    grid-column: span 2;
+  }
+  .pane-head {
+    gap: 0.25rem;
+  }
+  .seg {
+    gap: 0;
+  }
+  .seg-item {
+    padding: 0 0.55rem;
+    letter-spacing: 0.03em;
+  }
+  .context-toggle {
+    padding-inline: 0.5rem;
+  }
 }
