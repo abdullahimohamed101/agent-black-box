@@ -106,6 +106,10 @@ def _normalise(variant: str, raw: list[Event]) -> list[Event]:
         for key, value in attrs.items():
             if key.endswith("_ms") and isinstance(value, (int, float)):
                 attrs[key] = FIXED_DURATION_MS
+            elif key in ("shell.stdout_bytes", "shell.stderr_bytes") and isinstance(value, int):
+                # the size of the captured text depends on the interpreter's traceback and git's
+                # wording, so it differs between machines; keep only whether there was any output
+                attrs[key] = 1 if value else 0
             elif key in ("git.commit_hash", "git.head_commit", "git.base_commit"):
                 attrs[key] = hashlib.sha1(f"{variant}:{key}".encode()).hexdigest()  # noqa: S324
         out["attributes"] = attrs
