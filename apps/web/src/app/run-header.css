@@ -6,11 +6,11 @@
   gap: 0.15rem 0.6rem;
 }
 .run-head .run-title h1 {
-  font: 600 0.9375rem / 1.4 var(--cond);
+  font: 600 0.9375rem / 22px var(--cond);
   letter-spacing: 0;
 }
 .run-head .run-title .id {
-  font: 400 var(--fs-small) / 1.4 var(--mono);
+  font: 400 var(--fs-small) / 18px var(--mono);
 }
 
 /* Headline: one fixed place, adapting to the run's state. The frame is the same for ready, skeleton and error. */
@@ -19,8 +19,8 @@
 }
 .hl-lead {
   margin: 0;
-  min-height: calc(var(--fs-headline) * 1.25);
-  font: 500 var(--fs-headline) / 1.25 var(--serif);
+  min-height: 30px;
+  font: 500 var(--fs-headline) / 30px var(--serif);
   color: var(--ink);
   overflow-wrap: anywhere;
   text-wrap: balance;
@@ -29,9 +29,9 @@
   color: var(--fail);
 }
 .hl-detail {
-  margin: 0.3rem 0 0;
-  min-height: 1.5em;
-  font: 400 var(--fs-body) / 1.5 var(--mono);
+  margin: 4px 0 0;
+  min-height: 20px;
+  font: 400 var(--fs-body) / 20px var(--mono);
   color: var(--fg-2);
   overflow-wrap: anywhere;
 }
@@ -52,15 +52,15 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  min-height: 1.75rem;
-  margin-left: 0.5rem;
+  min-height: 26px;
+  margin: -4px 0 -4px 0.5rem;
   padding: 0 0.6rem;
   border: 1px solid var(--accent);
   border-radius: 4px;
   background: transparent;
   color: var(--accent);
   font: 500 var(--fs-small) / 1 var(--sans);
-  vertical-align: 0.15em;
+  vertical-align: middle;
   cursor: pointer;
 }
 .hl-go:hover {
@@ -112,8 +112,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.1rem 1rem;
-  margin: 0.6rem 0 0;
-  padding: 0.4rem 0 0.5rem;
+  margin: 8px 0 0;
+  padding: 6px 0 8px;
   border-top: 1px solid var(--border);
   border-bottom: 0;
 }
@@ -128,11 +128,11 @@
   grid-column: auto;
 }
 .run-head dl.stats.figures .stat dt {
-  font: 400 var(--fs-small) / 1.4 var(--sans);
+  font: 400 var(--fs-small) / 18px var(--sans);
 }
 .run-head dl.stats.figures .stat dd {
   margin: 0;
-  font: 400 var(--fs-small) / 1.4 var(--mono);
+  font: 400 var(--fs-small) / 18px var(--mono);
 }
 .run-head dl.stats.figures .stat:not([data-tone]) dd {
   color: var(--fg-2);

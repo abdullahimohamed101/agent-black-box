@@ -3,6 +3,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import "../app/run-timeline.css";
 import { formatDuration } from "@/lib/format";
 import type { DerivedSpan } from "@/lib/spans";
 import {
@@ -46,6 +47,9 @@ type Props = {
   /** The one selection of the run page: an event id. A row stands for the span that holds that event. */
   selectedEventId: string | null;
   firstErrorId: string | null;
+  /** When the first error happened (epoch ms) and at which step: the waterfall's fault line cuts every lane there. */
+  faultAtMs?: number | null;
+  faultStep?: number | null;
   /** When set, other agents' rows are dimmed and the first filtered lane is scrolled to. */
   agentFilter: ReadonlySet<string> | null;
   onSelect: (eventId: string) => void;
@@ -79,6 +83,8 @@ export function Waterfall({
   newIds,
   landedId,
   firstErrorId,
+  faultAtMs = null,
+  faultStep = null,
   agentFilter,
   onSelect,
   onActivate,
@@ -101,6 +107,9 @@ export function Waterfall({
   );
   const sc = scale(domain, view.zoom, view.panMs, 100);
   const vp = viewport(domain, view);
+  // Where the fault line falls on the track, in percent; hidden when the zoomed window does not include it.
+  const faultPct = faultAtMs == null ? null : sc.x(faultAtMs);
+  const faultShown = faultPct != null && faultPct >= 0 && faultPct <= 100 ? faultPct : null;
 
   // Only rows that stand for a span can be selected; the root and lane headers are labels.
   const selectable = useMemo(
@@ -337,6 +346,21 @@ export function Waterfall({
         </span>
         <span className="wf-axis-meta">Duration · status</span>
       </div>
+      {faultShown != null && (
+        <div className="wf-fault-strip" aria-hidden="true">
+          <span />
+          <span className="wf-fault-strip-track">
+            <span
+              className="wf-fault-flag"
+              data-side={faultShown > 70 ? "left" : "right"}
+              style={{ left: `${faultShown}%` }}
+            >
+              first error{faultStep == null ? "" : ` · step ${faultStep}`}
+            </span>
+          </span>
+          <span />
+        </div>
+      )}
       <div
         ref={scrollRef}
         className="wf-scroll"
@@ -357,6 +381,15 @@ export function Waterfall({
         onPointerDown={() => scrollRef.current?.removeAttribute("data-nav")}
       >
         <div style={{ height: virt.getTotalSize(), position: "relative" }}>
+          {faultShown != null && (
+            <div className="wf-fault-layer" data-part="region" aria-hidden="true">
+              <span />
+              <span className="wf-fault-track">
+                <span className="wf-fault-region" style={{ left: `${faultShown}%` }} />
+              </span>
+              <span />
+            </div>
+          )}
           {virt.getVirtualItems().map((v) => {
             const row = rows[v.index];
             if (!row) return null;
@@ -523,7 +556,12 @@ export function Waterfall({
                 </div>
                 <div role="gridcell" className="wf-meta">
                   <span className="wf-dur">{durationText}</span>
-                  {statusText && <span className="wf-status"> · {statusText}</span>}
+                  {statusText && (
+                    <span className={!err && quietStatus(status) ? "sr-only" : "wf-status"}>
+                      {" "}
+                      · {statusText}
+                    </span>
+                  )}
                   {flags.map((f) => (
                     <span key={f} className="tag" data-flag={f}>
                       {FLAG_TEXT[f]}
@@ -534,6 +572,15 @@ export function Waterfall({
               </div>
             );
           })}
+          {faultShown != null && (
+            <div className="wf-fault-layer" data-part="line" aria-hidden="true">
+              <span />
+              <span className="wf-fault-track">
+                <span className="wf-fault-line" style={{ left: `${faultShown}%` }} />
+              </span>
+              <span />
+            </div>
+          )}
         </div>
       </div>
       {hover &&
@@ -560,6 +607,9 @@ export function Waterfall({
     </div>
   );
 }
+
+/** A success says nothing on screen (the fault line is the signal); its text stays for assistive technology. */
+const quietStatus = (status: string | null) => status == null || status === "success";
 
 /** Position in percent of the track; the minimum width keeps an instant span visible. */
 function barStyle(left: number, width: number): React.CSSProperties {

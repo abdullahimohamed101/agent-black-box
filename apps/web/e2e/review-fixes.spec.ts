@@ -74,13 +74,13 @@ test.describe("R7 the context column survives a click on it", () => {
   });
 });
 
-test.describe("R8 the class chips are never cut in half", () => {
+test.describe("R8 the toolbar controls and the Filter popover are never cut in half", () => {
   for (const [w, h, inspector] of [
     [1024, 640, true],
     [1280, 720, true],
     [1440, 900, false],
   ] as const) {
-    test(`${w}x${h}${inspector ? " with the inspector" : ""}: every chip is fully inside its row`, async ({
+    test(`${w}x${h}${inspector ? " with the inspector" : ""}: every toolbar control is fully inside its row`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: w, height: h });
@@ -92,11 +92,7 @@ test.describe("R8 the class chips are never cut in half", () => {
       }
       const clipped = await page.evaluate(() => {
         const toolbar = document.querySelector(".pane .toolbar")!.getBoundingClientRect();
-        return [
-          ...document.querySelectorAll(
-            ".pane .toolbar fieldset .chip, .pane .toolbar fieldset label",
-          ),
-        ]
+        return [...document.querySelectorAll(".pane .toolbar > *")]
           .filter((c) => {
             const r = c.getBoundingClientRect();
             return r.right > toolbar.right + 0.5 || r.left < toolbar.left - 0.5;
@@ -104,6 +100,16 @@ test.describe("R8 the class chips are never cut in half", () => {
           .map((c) => c.textContent);
       });
       expect(clipped).toEqual([]);
+      // the Filter popover holds every class and stays inside the window
+      await page.getByRole("button", { name: /^Filter/ }).click();
+      const panel = page.getByRole("group", { name: "Event classes" });
+      await expect(panel.getByRole("checkbox")).toHaveCount(8);
+      const box = (await panel.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(w);
+      expect(box.y + box.height).toBeLessThanOrEqual(h);
+      await page.keyboard.press("Escape");
+      await expect(panel).toBeHidden();
     });
   }
 });

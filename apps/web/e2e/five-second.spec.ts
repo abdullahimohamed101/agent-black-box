@@ -41,6 +41,13 @@ for (const [width, height] of [
       expect(await page.evaluate(() => window.scrollY)).toBe(0);
     });
 
+    test("the fault line marks the first error on the timeline", async ({ page }) => {
+      await page.goto(RUN);
+      const line = page.locator(".tl-fault");
+      await expect(line).toContainText(/^first error · step \d+$/);
+      await inFirstViewport(page, line.locator(".tl-fault-label"));
+    });
+
     test("Go jumps to the first error", async ({ page }) => {
       await page.goto(RUN);
       await page.getByRole("button", { name: "Show it" }).click();

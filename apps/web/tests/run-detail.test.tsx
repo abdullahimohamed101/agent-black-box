@@ -69,9 +69,16 @@ describe("RunDetail", () => {
     expect(screen.getByTestId("progress")).toHaveTextContent("4 of 15");
     expect(rowsText().every((t) => /error|failed/.test(t))).toBe(true);
     await user.click(screen.getByLabelText("Errors only"));
+    // the class filters live in the Filter popover (Phase 22 step 4); the button counts the classes hidden
+    await user.click(screen.getByRole("button", { name: /^Filter/ }));
     await user.click(screen.getByLabelText("Model calls"));
     expect(rowsText().some((t) => t.includes("llm.request"))).toBe(false);
+    expect(screen.getByRole("button", { name: "Filter 1" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     await user.click(screen.getByLabelText("Model calls"));
+    expect(screen.getByRole("button", { name: "Filter" })).toBeInTheDocument();
     const before = screen.getAllByRole("option").length;
     await user.click(screen.getByRole("button", { name: "Collapse groups" }));
     expect(screen.getAllByRole("option").length).toBeLessThan(before);

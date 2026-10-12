@@ -10,6 +10,7 @@ const FILES = [
   "waterfall.css",
   "search.css",
   "run-header.css",
+  "run-timeline.css",
   "runs-list.css",
   "topbar-search.css",
 ];
@@ -40,6 +41,9 @@ const ALLOWED: RegExp[] = [
   /^\.wf-lane-bar\[data-error\]/,
   /^\.search-caret span$/,
   /^\.hl\[data-kind="failed"\] \.hl-lead$/,
+  /^\.tl-fault(-label)?$/, // the fault line and its label (Phase 22 step 4)
+  /^\.tl-row\[data-after-fault\]/, // the tint below the fault
+  /^\.wf-fault-(line|region|flag)/,
   /^:root$/, // token definitions and aliases
 ];
 

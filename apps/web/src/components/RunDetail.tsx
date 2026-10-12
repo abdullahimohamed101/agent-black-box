@@ -15,7 +15,6 @@ import { useSpans } from "@/lib/useSpans";
 import { runBounds } from "@/lib/waterfall";
 import type { Base } from "@/lib/routes";
 import {
-  CLASS_LABELS,
   CLASS_ORDER,
   NO_FILTERS,
   buildRows,
@@ -27,6 +26,7 @@ import {
 } from "@/lib/timeline";
 import { AgentTree } from "./AgentTree";
 import { CodingSummary } from "./CodingSummary";
+import { FilterMenu } from "./FilterMenu";
 import { EvidenceList } from "./EvidenceList";
 import { EventDrawer } from "./EventDrawer";
 import { InspectorResizer } from "./InspectorResizer";
@@ -546,20 +546,12 @@ export function RunDetail({
             {view === "waterfall" ? "Waterfall" : view === "evidence" ? "Evidence" : "Timeline"}
           </h2>
           {view === "timeline" && (
-            <div className="toolbar" role="group" aria-label="Timeline filters">
-              <fieldset>
-                <legend>Event classes</legend>
-                {CLASS_ORDER.map((c) => (
-                  <label key={c} className="chip">
-                    <input
-                      type="checkbox"
-                      checked={filters.classes ? filters.classes.has(c) : true}
-                      onChange={() => toggleClass(c)}
-                    />
-                    {CLASS_LABELS[c]}
-                  </label>
-                ))}
-              </fieldset>
+            <div className="toolbar tl-toolbar" role="group" aria-label="Timeline filters">
+              <FilterMenu
+                classes={filters.classes}
+                onToggle={toggleClass}
+                onReset={() => setFilters((f) => ({ ...f, classes: null }))}
+              />
               <label className="chip">
                 <input
                   type="checkbox"
@@ -619,6 +611,7 @@ export function RunDetail({
                   t0={t0}
                   selectedKey={selectedKey}
                   firstErrorId={err?.event_id ?? null}
+                  faultStep={model.failure?.step ?? null}
                   showAgent={multiAgent}
                   onSelect={setSelected}
                   onActivate={activate}
@@ -634,6 +627,8 @@ export function RunDetail({
                   spanIdOf={spanIdOf}
                   selectedEventId={selected}
                   firstErrorId={err?.event_id ?? null}
+                  faultAtMs={err ? Date.parse(err.occurred_at) : null}
+                  faultStep={model.failure?.step ?? null}
                   agentFilter={filters.agents ?? null}
                   onSelect={setSelected}
                   onActivate={setDrawerEventId}

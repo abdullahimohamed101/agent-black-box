@@ -1,10 +1,19 @@
 "use client";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { formatOffset, formatDuration } from "@/lib/format";
 import { agentChip } from "@/lib/waterfall";
-import { CLASS_LABELS, describe, eventClass, isError, isRetry, type Row } from "@/lib/timeline";
+import {
+  CLASS_LABELS,
+  describe,
+  eventClass,
+  faultRowIndex,
+  isError,
+  isRetry,
+  type Row,
+} from "@/lib/timeline";
+import "../app/run-timeline.css";
 
 const ROW_HEIGHT = 36;
 
@@ -13,6 +22,8 @@ type Props = {
   t0: number;
   selectedKey: string | null;
   firstErrorId: string | null;
+  /** The step the first error happened at, for the fault line's label. */
+  faultStep?: number | null;
   /** Show which agent emitted each event (runs with more than one agent). */
   showAgent?: boolean;
   onSelect: (key: string) => void;
@@ -27,6 +38,12 @@ type Props = {
 
 const rowId = (key: string) => `tl-${key}`;
 
+/** A success says nothing: its status stays in the DOM for assistive tech but is not drawn (the fault line is the signal). */
+const quiet = (status: string | null | undefined) =>
+  status == null || status === "" || status === "success";
+const StatusText = ({ text, silent }: { text: string; silent: boolean }) =>
+  silent ? <span className="sr-only">{text}</span> : <>{text}</>;
+
 /**
  * Virtualized: only the rows in (and near) the viewport are in the DOM, so a 10,000-event run costs the same as a
  * 100-event run. Rows carry aria-posinset/setsize so assistive tech still hears "row 4,512 of 10,000".
@@ -36,6 +53,7 @@ export function Timeline({
   t0,
   selectedKey,
   firstErrorId,
+  faultStep = null,
   showAgent = false,
   onSelect,
   onActivate,
@@ -55,6 +73,7 @@ export function Timeline({
     initialRect: { width: 900, height: 600 },
   });
 
+  const faultIndex = useMemo(() => faultRowIndex(rows, firstErrorId), [rows, firstErrorId]);
   const selectedIndex = selectedKey == null ? -1 : rows.findIndex((r) => r.key === selectedKey);
   useEffect(() => {
     if (selectedIndex >= 0) virt.scrollToIndex(selectedIndex, { align: "auto" });
@@ -123,6 +142,18 @@ export function Timeline({
       onPointerDown={() => scrollRef.current?.removeAttribute("data-nav")}
     >
       <div style={{ height: virt.getTotalSize(), position: "relative" }}>
+        {faultIndex >= 0 && (
+          <div
+            className="tl-fault"
+            aria-hidden="true"
+            data-top={faultIndex === 0 || undefined}
+            style={{ top: faultIndex * ROW_HEIGHT }}
+          >
+            <span className="tl-fault-label">
+              first error{faultStep == null ? "" : ` · step ${faultStep}`}
+            </span>
+          </div>
+        )}
         {virt.getVirtualItems().map((v) => {
           const row = rows[v.index];
           if (!row) return null;
@@ -148,6 +179,7 @@ export function Timeline({
                 className="tl-row tl-group"
                 data-selected={selected || undefined}
                 data-error={row.hasError || undefined}
+                data-after-fault={(faultIndex >= 0 && v.index > faultIndex) || undefined}
                 style={style}
                 onClick={() => {
                   onSelect(row.key);
@@ -162,7 +194,12 @@ export function Timeline({
                   {row.label} <span className="muted">({row.count} events)</span>
                 </span>
                 <span className="tl-dur">{formatDuration(row.durationMs)}</span>
-                <span className="tl-status">{row.hasError ? "✕ error" : (row.status ?? "")}</span>
+                <span className="tl-status">
+                  <StatusText
+                    text={row.hasError ? "✕ error" : (row.status ?? "")}
+                    silent={!row.hasError && quiet(row.status)}
+                  />
+                </span>
               </div>
             );
           }
@@ -181,6 +218,7 @@ export function Timeline({
               data-selected={selected || undefined}
               data-error={err || undefined}
               data-first-error={e.event_id === firstErrorId || undefined}
+              data-after-fault={(faultIndex >= 0 && v.index > faultIndex) || undefined}
               data-indented={row.indented || undefined}
               data-retry={isRetry(e) || undefined}
               data-arrived={newIds?.has(e.event_id) || undefined}
@@ -196,7 +234,7 @@ export function Timeline({
                 {CLASS_LABELS[cls]}
               </span>
               <span className="tl-sum">
-                {e.event_id === firstErrorId && <span className="tag tag-bad">First error </span>}
+                {e.event_id === firstErrorId && <span className="sr-only">First error </span>}
                 {isRetry(e) && <span className="tag tag-warn">Retry </span>}
                 {showAgent && <span className="tl-agent">{agentChip(e.agent_id)}</span>}
                 <span className="tl-type">{e.event_type}</span>{" "}
@@ -204,7 +242,10 @@ export function Timeline({
               </span>
               <span className="tl-dur">{formatDuration(e.duration_ms)}</span>
               <span className="tl-status">
-                {err ? `✕ ${e.status ?? "failed"}` : (e.status ?? "")}
+                <StatusText
+                  text={err ? `✕ ${e.status ?? "failed"}` : (e.status ?? "")}
+                  silent={!err && quiet(e.status)}
+                />
               </span>
             </div>
           );

@@ -154,6 +154,8 @@ export type GroupRow = {
   status: string | null;
   durationMs: number | null;
   hasError: boolean;
+  /** The group's own first error event, so the fault line can anchor on the group that holds the run's first error. */
+  errorEventId: string | null;
   collapsed: boolean;
   first: EventOut;
 };
@@ -192,6 +194,7 @@ export function buildRows(events: readonly EventOut[], collapsed: ReadonlySet<st
         status: members.some(isError) ? "error" : (last.status ?? null),
         durationMs: members.map((m) => m.duration_ms).find((d) => d != null) ?? null,
         hasError: members.some(isError),
+        errorEventId: members.find(isError)?.event_id ?? null,
         collapsed: isCollapsed,
         first,
       });
@@ -209,3 +212,11 @@ export const groupKeys = (rows: readonly Row[]): string[] =>
   rows.filter((r): r is GroupRow => r.kind === "group").map((r) => r.key);
 
 export const describeDuration = (e: EventOut): string => formatDuration(e.duration_ms);
+
+/** The row the fault line sits on: the first-error event's row, or the group holding it; -1 when it is not shown. */
+export const faultRowIndex = (rows: readonly Row[], firstErrorId: string | null): number =>
+  firstErrorId == null
+    ? -1
+    : rows.findIndex((r) =>
+        r.kind === "group" ? r.errorEventId === firstErrorId : r.event.event_id === firstErrorId,
+      );
