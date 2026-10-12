@@ -783,3 +783,11 @@ def test_one_hour_writes_without_a_write_total_still_count_as_writes() -> None:
     assert total("anthropic", "claude-opus-5-5", **both) == D(8)
     # Never more than the prompt holds.
     assert total("anthropic", "claude-opus-5-5", tokens_in=500_000, **only) == D(4)
+
+
+def test_the_batch_2_price_rows_match_the_reviewed_snapshot() -> None:
+    from tests.golden_prices import FIXTURE, render
+
+    assert render() == FIXTURE.read_text(), (
+        "a built-in price changed: check the vendor page, then `python -m tests.golden_prices`"
+    )
