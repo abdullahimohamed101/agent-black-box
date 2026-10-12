@@ -143,6 +143,10 @@ function LiveBar({
 }
 
 /** `matchMedia` as external state; false on the server and where the API is missing (jsdom). */
+/** rem: rail 14 + context column 18 + the pane's minimum 30 (AC8: 480px). The inspector's width is added to it. */
+const FOLD_BASE_REM = 62;
+const DEFAULT_INSPECTOR_REM = 26; // --insp-w in globals.css
+
 function useMedia(query: string): boolean {
   return useSyncExternalStore(
     (notify) => {
@@ -277,11 +281,15 @@ export function RunDetail({
   const [selected, setSelected] = useState<string | null>(null);
   const [drawerEventId, setDrawerEventId] = useState<string | null>(null);
   const timelineWrap = useRef<HTMLDivElement>(null);
-  // The context column (story, agents, findings, evaluations) yields to the inspector on a window narrower than 100rem;
-  // the strip button and the header toggle override that and the choice sticks until the next toggle.
+  // The context column (story, agents, findings, evaluations) yields to the inspector only when the pane would
+  // otherwise drop under its minimum width: rail + column + inspector + pane minimum (88rem with the default
+  // inspector). Clicking "Show it", a finding or a story step must not fold the column that was just clicked while
+  // there is room. The strip button and the header toggle override this and the choice sticks until the next toggle.
   const [contextPref, setContextPref] = useState<"auto" | "open" | "closed">("auto");
-  const narrow = useMedia("(max-width: 100rem)");
   const [inspectorPx, setInspectorPx] = useState<number | null>(null);
+  const narrow = useMedia(
+    `(max-width: ${inspectorPx ? `${inspectorPx + FOLD_BASE_REM * 16}px` : `${FOLD_BASE_REM + DEFAULT_INSPECTOR_REM}rem`})`,
+  );
 
   const filtered = useMemo(() => filterEvents(events, filters), [events, filters]);
   const rows = useMemo(() => buildRows(filtered, collapsed), [filtered, collapsed]);

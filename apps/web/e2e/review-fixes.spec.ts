@@ -53,3 +53,23 @@ test.describe("R5 readouts at the smallest app window", () => {
     });
   }
 });
+
+test.describe("R7 the context column survives a click on it", () => {
+  test("1440: Show it opens the inspector and the column stays open; 1280: it folds", async ({
+    page,
+  }) => {
+    for (const [w, state] of [
+      [1440, "open"],
+      [1280, "closed"],
+    ] as const) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
+      await page.getByRole("button", { name: "Show it" }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await expect(page.locator(".work")).toHaveAttribute("data-context", state);
+      const pane = await page.locator(".pane").boundingBox();
+      expect(pane!.width, `${w}`).toBeGreaterThanOrEqual(w === 1440 ? 480 : 300);
+    }
+  });
+});

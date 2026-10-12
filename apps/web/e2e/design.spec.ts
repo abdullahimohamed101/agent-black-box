@@ -252,9 +252,11 @@ test.describe("run work area", () => {
     await expect(page.getByTestId("findings")).toBeVisible();
   });
 
-  test("opening the inspector keeps the pane usable: the context folds to a strip, one click restores it", async ({
+  test("opening the inspector keeps the pane usable: where it would lack width the context folds to a strip, one click restores it", async ({
     page,
   }) => {
+    // 1440 has room for all three columns (see review-fixes.spec.ts); 1280 does not.
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`${BASE}/runs/${RUN(2)}`);
     await page.getByRole("button", { name: "Show it" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
