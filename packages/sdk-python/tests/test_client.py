@@ -130,6 +130,39 @@ def test_llm_call_records_usage_and_failures() -> None:
     assert by_type(evs, "llm.request.failed")[0]["status"] == "error"
 
 
+def test_llm_call_records_billing_modifiers_and_drops_bad_ones() -> None:
+    bb = offline()
+    with bb.run("r") as run:
+        with run.llm_call("anthropic", "claude") as llm:
+            llm.record_usage(
+                100,
+                5,
+                cache_write_tokens=40,
+                cache_write_1h_tokens=10,
+                service_tier=" Batch ",
+                data_residency="us",
+            )
+        with run.llm_call("anthropic", "claude") as llm:
+            llm.record_usage(
+                1,
+                1,
+                cache_write_tokens=-1,
+                cache_write_1h_tokens=True,  # type: ignore[arg-type]
+                service_tier="not a word; drop table",
+                data_residency=7,  # type: ignore[arg-type]
+            )
+    first, second = [e["attributes"] for e in by_type(events_of(bb), "llm.request.completed")]
+    assert first["llm.cache_write_tokens"] == 40 and first["llm.cache_write_1h_tokens"] == 10
+    assert first["llm.service_tier"] == "batch" and first["llm.data_residency"] == "us"
+    for key in (
+        "llm.cache_write_tokens",
+        "llm.cache_write_1h_tokens",
+        "llm.service_tier",
+        "llm.data_residency",
+    ):
+        assert key not in second  # omitted, never guessed
+
+
 def test_set_attribute_lands_on_the_closing_event() -> None:
     bb = offline()
     with (

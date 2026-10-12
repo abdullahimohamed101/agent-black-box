@@ -262,6 +262,17 @@ class Span:
                 _current_span.set(None)
 
 
+_LABEL_RE = re.compile(r"[a-z0-9][a-z0-9_.-]{0,31}")
+
+
+def _label(value: object) -> str | None:
+    """A short lowercase word (a tier or a region); anything else is dropped, not guessed."""
+    if not isinstance(value, str):
+        return None
+    word = value.strip().lower()
+    return word if _LABEL_RE.fullmatch(word) else None
+
+
 class LlmCall(Span):
     """A model call. `record_usage` fills token counts and optional costs."""
 
@@ -296,15 +307,33 @@ class LlmCall(Span):
         cached_input_tokens: int | None = None,
         cost_usd: float | None = None,
         provider_cost_usd: float | None = None,
+        cache_write_tokens: int | None = None,
+        cache_write_1h_tokens: int | None = None,
+        service_tier: str | None = None,
+        data_residency: str | None = None,
     ) -> None:
-        """`cost_usd` is your estimate; `provider_cost_usd` the provider's own (ADR-040)."""
+        """`cost_usd` is your estimate; `provider_cost_usd` the provider's own (ADR-040).
+
+        Billing modifiers (ADR-044), all optional: `cache_write_tokens` (part of `input_tokens`;
+        `cache_write_1h_tokens` is the part of those with the 1-hour lifetime), `service_tier`
+        (`standard`, `batch`, `flex`, `fast`, `ultrafast`) and `data_residency` (`global`, `us`,
+        `eu` ...). Omit what you do not know: the server then prices the call as standard."""
         for key, value in (
             ("llm.input_tokens", input_tokens),
             ("llm.output_tokens", output_tokens),
             ("llm.cached_input_tokens", cached_input_tokens),
+            ("llm.cache_write_tokens", cache_write_tokens),
+            ("llm.cache_write_1h_tokens", cache_write_1h_tokens),
         ):
             if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
                 self._attrs[key] = value
+        for key, word in (
+            ("llm.service_tier", service_tier),
+            ("llm.data_residency", data_residency),
+        ):
+            label = _label(word)
+            if label is not None:
+                self._attrs[key] = label
         if isinstance(cost_usd, (int, float)) and not isinstance(cost_usd, bool) and cost_usd >= 0:
             self._attrs["cost.estimated_usd"] = float(cost_usd)
         if (

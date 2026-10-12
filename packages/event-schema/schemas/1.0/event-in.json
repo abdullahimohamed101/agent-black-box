@@ -988,9 +988,21 @@
           "maxLength": 4096,
           "type": "string"
         },
+        "llm.cache_write_1h_tokens": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "llm.cache_write_tokens": {
+          "minimum": 0,
+          "type": "integer"
+        },
         "llm.cached_input_tokens": {
           "minimum": 0,
           "type": "integer"
+        },
+        "llm.data_residency": {
+          "maxLength": 4096,
+          "type": "string"
         },
         "llm.error_type": {
           "maxLength": 4096,
@@ -1017,6 +1029,10 @@
           "type": "integer"
         },
         "llm.provider": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "llm.service_tier": {
           "maxLength": 4096,
           "type": "string"
         },

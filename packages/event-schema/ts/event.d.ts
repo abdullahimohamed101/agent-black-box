@@ -44,7 +44,10 @@ export type Event = {
     "http.method"?: string;
     "http.status_code"?: number;
     "http.url"?: string;
+    "llm.cache_write_1h_tokens"?: number;
+    "llm.cache_write_tokens"?: number;
     "llm.cached_input_tokens"?: number;
+    "llm.data_residency"?: string;
     "llm.error_type"?: string;
     "llm.input_tokens"?: number;
     "llm.latency_ms"?: number;
@@ -52,6 +55,7 @@ export type Event = {
     "llm.model"?: string;
     "llm.output_tokens"?: number;
     "llm.provider"?: string;
+    "llm.service_tier"?: string;
     "llm.temperature"?: number;
     /**
      * @maxItems 64
