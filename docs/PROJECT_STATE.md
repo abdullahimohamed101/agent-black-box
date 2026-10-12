@@ -1,11 +1,10 @@
 # Project State
 
-Last updated: 2026-10-11 (Phase 11 implemented on its branch)
+Last updated: 2026-10-12 (Phase 11 merged)
 
 ## Current phase
-Phases 0-10, 15 and 16 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79, Phase 16 is PR #92). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
-decides after reviewing the items under "Next actions". Phase 11 (evaluations, experiments and run comparison) is being built on its branch (steps 1-5 done and verified); Phase 21 (UI application shell
-and design pass) is planned and lands after it.
+Phases 0-11, 15 and 16 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79, Phase 16 is PR #92, Phase 11 is PR #104; KI-050 prices are PR #105). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
+decides after reviewing the items under "Next actions". Phase 21 (UI application shell and design pass) is planned and is next.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -41,25 +40,17 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, 
   (`docs/benchmarks/phase-16-regression-check.md`).
 
 ## In-progress work
-Phase 11 builds in `../abb-worktrees/phase-11` (merged with main including Phase 16; migration 0070 chains after 0080). Nothing is pushed from a worktree until its phase is fully ready
-(built, independently reviewed, fixed, verified).
-
-Phase 11 (evaluations, experiments, comparison; plan `docs/plans/active/phase-11-evaluations.md`, branch `feature/phase-11-evaluations`, worktree `../abb-worktrees/phase-11`) is **implemented (steps 1-15)**
-and verified on the final tree (closing evidence and the AC table are in the plan; ADR-090..092 Accepted; KI-100..109 filed as "to file"). It is merged with Phases 9, 10 and 16 on its branch. Next: the independent `review-change`
-pass (AC-11; attack first: the viewer's comparison and evaluation projections, the evaluator thread budget, the judge prompt delimiter, evaluate-all bounds), its fixes, then move the plan to `completed/` and open the PR
-(needs approval). What it adds: 15 operations (`/v1/evaluators`, `/v1/runs/{id}/evaluations|verdicts|compare`, `/v1/experiments...`), migrations 0070-0071 (head), the `evaluate_run` job, the deterministic fake judge,
-comparison by prefix/suffix plus budgeted Myers alignment (role-aware: a viewer is compared on metadata only), experiments with the single-variable control check, the run-page Evaluations section, the compare page,
-the experiments pages, `examples/coding-agent --variant wrong-fix`, `scripts/eval-e2e.sh` (CI job `eval-e2e`, ports 8180/3180), `docs/runbooks/evaluations.md`. Defects found by the E2E and fixed: `tests_passed` ignored failing suites,
-"Evaluate all" sent no JSON body through the proxy, the new nav link overflowed a phone.
+Phase 11 is merged (PR #104): 15 operations, migrations 0070-0071 (head), the `evaluate_run` job, comparison, experiments, the run-page Evaluations section, the compare and experiments pages, `scripts/eval-e2e.sh`
+(CI job `eval-e2e`), `docs/runbooks/evaluations.md`; the independent review found no P0/P1 and two P2 defects, fixed (`docs/plans/completed/phase-11-code-review.md`). KI-100..109 and KI-116 are GitHub issues #106-#116.
+A second KI-050 batch (more models, batch/flex/fast/regional multipliers, cache writes) is being built on `feature/ki-050-batch2`; Phase 21 starts after it.
 
 ## Blocked work
 None.
 
 ## Next actions (exact)
-1. User: the one manual sign-in with a real OIDC provider (AC-14, KI-067; needs your own client id and secret, see `docs/runbooks/auth-and-access.md`), and a compose
-   runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
+1. Done 2026-10-12: the real OIDC sign-in with Google (KI-067 resolved). Still open for the user: a compose runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
 2. User: decide MVP gate acceptance. KI-050 is now mostly closed (merged, PR #105): the engine has prompt-size tiers (`min_prompt_tokens`) and the built-in table has OpenAI, Haiku 5.5 and Gemini Pro prices (version `2026-10-12`); multipliers and a few models remain listed in the issue (now S3).
-3. Review and merge Phase 11 (PR #104); then Phase 21 (UI shell), then 12, 13 and 14, 17, 19, 20.
+3. Phase 21 (UI shell and design pass), then 12, 13 and 14, 17, 19, 20.
 4. After deploying Phase 16, run `search-rebuild` for existing workspaces so older runs become searchable (KI-081, issue #94).
 
 ## Open decisions

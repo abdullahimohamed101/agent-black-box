@@ -19,7 +19,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 8 | Framework integrations | §70, §18 | post-MVP | Complete (merged, CI green) |
 | 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Complete (merged, CI green; plan: `docs/plans/completed/phase-9-multi-agent-tracing.md`) |
 | 10 | Reliability intelligence | §80-81 | M5 | Complete (merged, CI green; plan: `docs/plans/completed/phase-10-reliability-intelligence.md`) |
-| 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Implemented; pending security review and merge (plan: `docs/plans/active/phase-11-evaluations.md`) |
+| 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Complete (merged, PR #104; plan: `docs/plans/completed/phase-11-evaluations.md`) |
 | 12 | Visual replay | §87 (level 1) | | Not started |
 | 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Not started |
 | 14 | Policy engine and human approvals | §88-89, §151 | M8 | Not started |

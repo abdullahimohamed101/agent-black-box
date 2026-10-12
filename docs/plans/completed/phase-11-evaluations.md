@@ -1,6 +1,6 @@
 # Phase 11 - Evaluations, experiments and run comparison
 
-Status: Implemented 2026-10-11; pending security review (closing evidence below; the plan stays in `active/` until the review and its fixes land)
+Status: Completed 2026-10-12 (merged: PR #104; independent review and fixes in `phase-11-code-review.md`; KI-100..109 and KI-116 are GitHub issues #106-#116)
 Owner: implementer agent
 Branch: `feature/phase-11-evaluations` (from `main` c212058; worktree `../abb-worktrees/phase-11`). **Merges last** of the four parallel phases (order 9, 10, 16, 11); see Merge notes.
 Depends on: Phase 2 (outbox, run queries), Phase 6 (coding telemetry, artifacts), Phase 7 (cost lines, typed run columns), Phase 15 (`require(action)`, matrix, registry, `payload.read`); at merge time Phase 10 (`load_run(limit)`, `summary_states(job_type)`, `IdKind.FINDING`, migration 0060) and Phase 16 (migration 0080)
