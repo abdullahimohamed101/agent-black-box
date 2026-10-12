@@ -13,6 +13,7 @@ from __future__ import annotations
 import functools
 import inspect
 import logging
+import re
 import threading
 import weakref
 from collections.abc import Callable
@@ -67,6 +68,39 @@ def usage_of(usage: Any) -> tuple[int | None, int | None, int | None]:
     return tokens_in, tokens_out, cached
 
 
+# OpenAI's `service_tier` words -> the canonical tier names (ADR-044). `priority` was renamed Fast
+# mode; both are reported as `fast`. Anything else is kept as the vendor wrote it so the server
+# leaves the call unpriced instead of guessing.
+_TIERS = {"default": "standard", "flex": "flex", "priority": "fast", "fast": "fast"}
+_REGIONAL_HOST = re.compile(r"([a-z]{2,8})\.api\.openai\.com")
+
+
+def tier_of(value: Any) -> str | None:
+    word = text(value)
+    if word is None:
+        return None
+    word = word.strip().lower()
+    return _TIERS.get(word, word)
+
+
+def cache_writes_of(usage: Any) -> int | None:
+    """Tokens written to the prompt cache (part of the prompt count), when the response says."""
+    written = count(get(get(usage, "prompt_tokens_details"), "cache_write_tokens"))
+    if written is None:
+        written = count(get(get(usage, "input_tokens_details"), "cache_write_tokens"))
+    return written or None  # zero is "no writes": leave the attribute out
+
+
+def region_of(client: Any) -> str | None:
+    """The data-residency region of a client on a regional endpoint (`eu.api.openai.com`)."""
+    try:
+        host = str(get(get(client, "base_url"), "host") or "").lower()
+    except Exception:
+        return None
+    match = _REGIONAL_HOST.fullmatch(host)
+    return match.group(1) if match else None
+
+
 class Call:
     """One in-flight model call: ends its span exactly once."""
 
@@ -79,6 +113,8 @@ class Call:
         self.run = run
         self.request = request  # preview text, only when payload capture is on
         self.usage: Any = None
+        self.tier: str | None = None  # the response's `service_tier`, canonicalised
+        self.region: str | None = None  # set by the wrapper from the client's endpoint
         self._ended = False
         self._lock = threading.Lock()
 
@@ -88,6 +124,11 @@ class Call:
             usage = get(chunk, "usage") or get(get(chunk, "response"), "usage")
             if usage:
                 self.usage = usage
+            tier = tier_of(
+                get(chunk, "service_tier") or get(get(chunk, "response"), "service_tier")
+            )
+            if tier is not None:
+                self.tier = tier
         except Exception:
             self.s.contained()
 
@@ -113,7 +154,13 @@ class Call:
                 except Exception:
                     self.s.contained()
             self.span.record_usage(
-                tokens_in, tokens_out, cached_input_tokens=cached, cost_usd=number(cost)
+                tokens_in,
+                tokens_out,
+                cached_input_tokens=cached,
+                cost_usd=number(cost),
+                cache_write_tokens=cache_writes_of(usage if usage else self.usage),
+                service_tier=tier_of(get(response, "service_tier")) or self.tier,
+                data_residency=self.region,
             )
             if self.s.capture:
                 self.span.set_payload({"request": self.request, "response": preview(response)})
@@ -141,7 +188,9 @@ class Call:
             self.s.contained()
 
 
-def begin(settings: Settings, kwargs: dict[str, Any], raw: bool = False) -> Call | None:
+def begin(
+    settings: Settings, kwargs: dict[str, Any], raw: bool = False, region: str | None = None
+) -> Call | None:
     """Start the span for a call; None means pass through (no run, disabled, or a failure)."""
     try:
         run = current_run()
@@ -166,7 +215,9 @@ def begin(settings: Settings, kwargs: dict[str, Any], raw: bool = False) -> Call
         )
         span.start()
         request = preview(kwargs.get("messages") or kwargs.get("input")) if settings.capture else ""
-        return Call(settings, span, request, model, run)
+        call = Call(settings, span, request, model, run)
+        call.region = region
+        return call
     except Exception:
         settings.contained()
         return None
@@ -293,13 +344,13 @@ def _finish(settings: Settings, call: Call, result: Any, streaming: bool, raw: b
 
 
 def _make_wrapper(
-    orig: Callable[..., Any], settings: Settings, raw: bool = False
+    orig: Callable[..., Any], settings: Settings, raw: bool = False, region: str | None = None
 ) -> Callable[..., Any]:
     if inspect.iscoroutinefunction(orig):
 
         @functools.wraps(orig)
         async def awrapper(*args: Any, **kwargs: Any) -> Any:
-            call = begin(settings, kwargs, raw)
+            call = begin(settings, kwargs, raw, region)
             if call is None:
                 return await orig(*args, **kwargs)
             try:
@@ -314,7 +365,7 @@ def _make_wrapper(
 
     @functools.wraps(orig)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        call = begin(settings, kwargs, raw)
+        call = begin(settings, kwargs, raw, region)
         if call is None:
             return orig(*args, **kwargs)
         try:
@@ -341,6 +392,7 @@ def _make_wrapper(
 
 def _apply(client: Any, settings: Settings) -> None:
     """Wrap the call paths on `client`, and `with_options`/`copy` so derived clients stay traced."""
+    region = region_of(client)
     for paths, raw in ((_TARGETS, False), (_RAW_TARGETS, True)):
         for path in paths:
             target = client
@@ -348,7 +400,7 @@ def _apply(client: Any, settings: Settings) -> None:
                 target = getattr(target, part, None)
             orig = getattr(target, path[-1], None) if target is not None else None
             if callable(orig) and not getattr(orig, _RAW_MARK if raw else _MARK, False):
-                setattr(target, path[-1], _make_wrapper(orig, settings, raw))
+                setattr(target, path[-1], _make_wrapper(orig, settings, raw, region))
     for name in _COPIERS:
         copier = getattr(client, name, None)
         if callable(copier) and not getattr(copier, _MARK, False):

@@ -74,6 +74,71 @@ def test_cache_creation_tokens_count_toward_input() -> None:
     assert a["llm.input_tokens"] == 22 and a["llm.cached_input_tokens"] == 5
 
 
+def test_cache_writes_tiers_speed_and_geo_are_recorded() -> None:
+    usage = SimpleNamespace(
+        input_tokens=10,
+        output_tokens=2,
+        cache_read_input_tokens=5,
+        cache_creation_input_tokens=7,
+        cache_creation=SimpleNamespace(ephemeral_5m_input_tokens=4, ephemeral_1h_input_tokens=3),
+        service_tier="batch",
+        inference_geo="US",
+    )
+
+    def go(bb: BlackBox) -> None:
+        instrument(fake_client(chat=SimpleNamespace(usage=usage)), bb).messages.create(model="m")
+
+    a = of(in_run(go), "llm.request.completed")[0]["attributes"]
+    assert a["llm.input_tokens"] == 22 and a["llm.cache_write_tokens"] == 7
+    assert a["llm.cache_write_1h_tokens"] == 3
+    assert a["llm.service_tier"] == "batch" and a["llm.data_residency"] == "us"
+
+
+def test_fast_speed_wins_over_the_service_tier_and_standard_speed_changes_nothing() -> None:
+    def usage(**extra: Any) -> Any:
+        return SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=1, output_tokens=1, service_tier="standard", **extra)
+        )
+
+    def go(bb: BlackBox) -> None:
+        instrument(fake_client(chat=usage(speed="fast")), bb).messages.create(model="m")
+        instrument(fake_client(chat=usage(speed="standard")), bb).messages.create(model="m")
+
+    fast, plain = [e["attributes"] for e in of(in_run(go), "llm.request.completed")]
+    assert fast["llm.service_tier"] == "fast" and plain["llm.service_tier"] == "standard"
+
+
+def test_a_usage_without_billing_fields_records_none_of_them() -> None:
+    def go(bb: BlackBox) -> None:
+        instrument(fake_client(), bb).messages.create(model="m")
+
+    a = of(in_run(go), "llm.request.completed")[0]["attributes"]
+    for key in (
+        "llm.cache_write_tokens",
+        "llm.cache_write_1h_tokens",
+        "llm.service_tier",
+        "llm.data_residency",
+    ):
+        assert key not in a
+
+
+def test_a_stream_collects_cache_writes_and_the_tier_from_its_usage() -> None:
+    events = stream_events()
+    events[0].message.usage.cache_creation_input_tokens = 6
+    events[0].message.usage.cache_creation = {"ephemeral_1h_input_tokens": 2}
+    events[0].message.usage.service_tier = "standard"
+    events[2].usage.speed = "fast"
+
+    def go(bb: BlackBox) -> None:
+        client = instrument(fake_client(chat=FakeStream(events)), bb)
+        with client.messages.create(model="m", max_tokens=8, messages=[], stream=True) as stream:
+            list(stream)
+
+    a = of(in_run(go), "llm.request.completed")[0]["attributes"]
+    assert a["llm.cache_write_tokens"] == 6 and a["llm.cache_write_1h_tokens"] == 2
+    assert a["llm.service_tier"] == "fast"
+
+
 def test_cost_fn_and_its_failure() -> None:
     seen: list[Any] = []
 
