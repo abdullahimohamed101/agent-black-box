@@ -3,9 +3,9 @@
 Last updated: 2026-10-11 (Phase 11 implemented on its branch)
 
 ## Current phase
-Phases 0-10 and 15 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
-decides after reviewing the items under "Next actions". **Phase 16 (search and investigation) is built, independently reviewed (no P0/P1; its P2/P3 findings are fixed or filed) and merged with Phase 10 on its branch; it awaits its PR**
-(closing evidence for AC-1..14 is in `docs/plans/active/phase-16-search-investigation.md`). Phase 11 (evaluations and comparison) builds next; Phase 21 (UI application shell and design pass) is planned and lands after them.
+Phases 0-10, 15 and 16 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79, Phase 16 is PR #92). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
+decides after reviewing the items under "Next actions". Phase 11 (evaluations, experiments and run comparison) is being built on its branch (steps 1-5 done and verified); Phase 21 (UI application shell
+and design pass) is planned and lands after it.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -41,8 +41,8 @@ post-MVP and also done. Phase 15 (auth, RBAC) is done. M4 (multi-agent tracing, 
   (`docs/benchmarks/phase-16-regression-check.md`).
 
 ## In-progress work
-Phase 16 is implemented, independently reviewed and its findings fixed (`docs/plans/active/phase-16-security-review.md`; KI-110..115 filed in the register); it is merged with Phase 10 on its branch and awaits its PR.
-Phase 11 is built in its own worktree (`../abb-worktrees/phase-11`). Nothing is pushed from a worktree until its phase is fully ready (built, independently reviewed, fixed, verified).
+Phase 11 builds in `../abb-worktrees/phase-11` (merged with main including Phase 16; migration 0070 chains after 0080). Nothing is pushed from a worktree until its phase is fully ready
+(built, independently reviewed, fixed, verified).
 
 Phase 11 (evaluations, experiments, comparison; plan `docs/plans/active/phase-11-evaluations.md`, branch `feature/phase-11-evaluations`, worktree `../abb-worktrees/phase-11`) is **implemented (steps 1-15)**
 and verified on the final tree (closing evidence and the AC table are in the plan; ADR-090..092 Accepted; KI-100..109 filed as "to file"). It is merged with Phases 9, 10 and 16 on its branch. Next: the independent `review-change`
@@ -59,8 +59,8 @@ None.
 1. User: the one manual sign-in with a real OIDC provider (AC-14, KI-067; needs your own client id and secret, see `docs/runbooks/auth-and-access.md`), and a compose
    runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
 2. User: decide MVP gate acceptance. Remaining gate item: KI-050 (OpenAI prices and tiered models are not in the built-in table; the engine has no price tiers).
-3. Merge Phase 16 (merge notes applied: `SUMMARY_VERSION` 4, migration 0080 on 0060), then Phase 11 (already merged with 9, 10 and 16 on its branch; review first); then Phase 21 (UI shell), then 12, 13 and 14, 17, 19, 20.
-4. File GitHub issues for the Phase 16 known issues (KI-080..083 and KI-110..115, placeholders say "to file"). After deploying Phase 16, run `search-rebuild` for existing workspaces (KI-081).
+3. Review and merge Phase 11 (PR open); then Phase 21 (UI shell), then 12, 13 and 14, 17, 19, 20.
+4. After deploying Phase 16, run `search-rebuild` for existing workspaces so older runs become searchable (KI-081, issue #94).
 
 ## Open decisions
 - MVP acceptance (after the gate items above).

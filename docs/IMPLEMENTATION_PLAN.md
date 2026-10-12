@@ -24,7 +24,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Not started |
 | 14 | Policy engine and human approvals | §88-89, §151 | M8 | Not started |
 | 15 | Auth, workspaces, RBAC | §91-92 | | Complete (merged, CI green; plan: `docs/plans/completed/phase-15-auth-rbac.md`) |
-| 16 | Search and investigation | §77, §152 | | Implemented; independent review done and its findings fixed; pending merge (plan: `docs/plans/active/phase-16-search-investigation.md`) |
+| 16 | Search and investigation | §77, §152 | | Complete (merged, CI green; plan: `docs/plans/completed/phase-16-search-investigation.md`) |
 | 17 | Alerting and integrations | §35 | | Not started |
 | 18 | Performance and scale hardening (measure first) | §57, §74, §107, §119-120 | | Deferred (trigger) |
 | 19 | Production hardening | §43, §116-125 | | Not started |
