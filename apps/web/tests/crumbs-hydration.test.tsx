@@ -43,6 +43,8 @@ describe("the run crumb and hydration (React #418)", () => {
     render(tree);
     expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent(RUN.slice(-8));
     act(() => qc.setQueryData(["run", RUN], { name: "Ship <b>it</b>" }));
-    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent("Ship <b>it</b>");
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent(
+      "Ship <b>it</b>",
+    );
   });
 });

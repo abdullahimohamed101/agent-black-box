@@ -14,6 +14,7 @@ import {
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
 import { useEventDetail, useRun, useRunEvents, useRunFindings } from "@/lib/queries";
+import { useTimers } from "@/lib/useTimers";
 import { evidenceRows } from "@/lib/evidence";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
@@ -349,7 +350,7 @@ export function RunDetail({
   const [newIds, setNewIds] = useState<ReadonlySet<string>>(NO_IDS);
   const [landedId, setLandedId] = useState<string | null>(null);
   const knownIds = useRef<Set<string> | null>(null);
-  const timers = useRef<number[]>([]);
+  const { later } = useTimers();
   useEffect(() => {
     if (!restComplete) return;
     if (knownIds.current === null) {
@@ -367,22 +368,14 @@ export function RunDetail({
     if (fresh.length === 0) return;
     // From a timer, not the effect body: the tint is a cue after the commit, not state the render depends on.
     const batch = new Set(fresh.slice(-MAX_NEW_IDS));
-    timers.current.push(
-      window.setTimeout(() => {
-        setNewIds(batch);
-        timers.current.push(window.setTimeout(() => setNewIds(NO_IDS), 500));
-      }, 0),
-    );
-  }, [events, restComplete]);
-  useEffect(
-    () => () => {
-      for (const t of timers.current) window.clearTimeout(t);
-    },
-    [],
-  );
+    later(() => {
+      setNewIds(batch);
+      later(() => setNewIds(NO_IDS), 500);
+    }, 0);
+  }, [events, restComplete, later]);
   const flashLanded = (id: string) => {
     setLandedId(id);
-    timers.current.push(window.setTimeout(() => setLandedId(null), 600));
+    later(() => setLandedId(null), 600);
   };
   const focusTimeline = () =>
     timelineWrap.current
