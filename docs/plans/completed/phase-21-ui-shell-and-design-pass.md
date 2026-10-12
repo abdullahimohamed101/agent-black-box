@@ -1,10 +1,10 @@
 # Phase 21: UI application shell and design pass
 
-Status: Implemented; pending review (2026-10-12). Planned 2026-10-11; refreshed against `main` `2c07adc`. Evidence table at the end. Not moved to `completed/` until the review closes.
+Status: Completed (merged 2026-10-12, PR #119; review closed, CI green). Planned 2026-10-11; refreshed against `main` `2c07adc`. Evidence table at the end.
 Owner: web. Branch: `feature/phase-21-ui-shell` (from `main` `2c07adc`).
 Depends on: nothing open. Phases 10, 16 and 11 are merged, so every file this phase edits is in its final pre-21 shape.
 Spec refs: §62 invariants (INV-4 bounded buffers, INV-5 withheld content), `docs/design/ui-direction.md` (the approved direction), `docs/IMPLEMENTATION_PLAN.md` "Planned additions".
-Review: `docs/plans/active/phase-21-plan-review.md` (adversarial review of this plan; its P0/P1 edits are applied here).
+Review: `docs/plans/completed/phase-21-plan-review.md` (adversarial review of this plan; its P0/P1 edits are applied here).
 
 Decisions already confirmed by the user (not reopened): self-hosted IBM Plex; system light/dark only, no toggle; page title "Dashboard" with rail label "Overview"; Evidence as its own run view; the direction's six decisions; the product must read as an application (rail, top bar, full-width dense work area, instrument-style run header, inspector), not a centred column of cards.
 

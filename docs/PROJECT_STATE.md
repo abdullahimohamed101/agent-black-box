@@ -1,10 +1,9 @@
 # Project State
 
-Last updated: 2026-10-12 (Phase 21 reviewed, review findings fixed, awaiting the push approval)
+Last updated: 2026-10-12 (Phase 21 and KI-050 batch 2 merged; MVP gate accepted)
 
 ## Current phase
-Phases 0-11, 15 and 16 are merged to `main` (CI green; Phase 15 is PR #58, Phase 9 is PR #73, Phase 10 is PR #79, Phase 16 is PR #92, Phase 11 is PR #104; KI-050 prices are PR #105). The MVP gate (spec §49, §138) is reached but **not accepted**: the user
-decides after reviewing the items under "Next actions". Phase 21 (UI application shell and design pass) is implemented, adversarially reviewed and the review findings are fixed on `feature/phase-21-ui-shell` (not pushed); it waits for the push/PR approval; nothing else is in progress.
+Phases 0-11, 15, 16 and 21 are merged to `main` (CI green; Phase 11 is PR #104, Phase 21 is PR #119; KI-050 prices are PRs #105 and #118). The MVP gate (spec §49, §138) was **accepted by the user on 2026-10-12**. Nothing is in progress; the next work is a run-page redesign (proposed Phase 22, "Flight recorder trace": failure line, fault line on the timeline, quiet status grammar; each new feature is grilled with the user one question at a time before it is built), then Phase 12.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -46,8 +45,8 @@ A second KI-050 batch (more models, batch/flex/fast/regional multipliers, cache 
 
 Phase 21 (web only; no API, schema or SDK change): rail, top bar, full-width pages, instrument-style run header, a viewport-filling run work area (context column, timeline / waterfall / evidence pane, draggable inspector), the Evidence view, the
 runs list and every document page restyled on shared tokens (IBM Plex self-hosted, ADR-110), one status grammar, a motion layer that is zero under reduced motion. Status, evidence per acceptance criterion and the deviations are in
-`docs/plans/active/phase-21-ui-shell-and-design-pass.md`; screenshots in `docs/screenshots/phase-21/` (before/after, with a critique); what landed in `docs/design/ui-direction.md`. No existing spec or vitest file was edited (additions only).
-Code review (`docs/plans/active/phase-21-code-review.md`): 0 P0, 1 P1 (React #418 hydration mismatch from the breadcrumb), 6 P2, 7 P3; all fixed except what is listed as deferred in the plan's "Code review dispositions" (KI-123..126). Web gates after the fixes: eslint, prettier, tsc, vitest 755, `next build`, fixtures Playwright 136 passed / 56 skipped, the eight API-backed E2E scripts (several needed a re-run under load; see the plan). `scripts/quality.sh quick` (Python steps) was not completed
+`docs/plans/completed/phase-21-ui-shell-and-design-pass.md`; screenshots in `docs/screenshots/phase-21/` (before/after, with a critique); what landed in `docs/design/ui-direction.md`. No existing spec or vitest file was edited (additions only).
+Code review (`docs/plans/completed/phase-21-code-review.md`): 0 P0, 1 P1 (React #418 hydration mismatch from the breadcrumb), 6 P2, 7 P3; all fixed except what is listed as deferred in the plan's "Code review dispositions" (KI-123..126). Web gates after the fixes: eslint, prettier, tsc, vitest 755, `next build`, fixtures Playwright 136 passed / 56 skipped, the eight API-backed E2E scripts (several needed a re-run under load; see the plan). `scripts/quality.sh quick` (Python steps) was not completed
 here (KI-122). The reviewer did the keyboard walk, 200% zoom and 1024x640; screen-reader announcement of the radio-tab view switch and the folded strip is still judged from the accessibility tree only.
 
 ## Blocked work
@@ -55,8 +54,8 @@ None.
 
 ## Next actions (exact)
 1. Done 2026-10-12: the real OIDC sign-in with Google (KI-067 resolved). Still open for the user: a compose runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
-2. User: decide MVP gate acceptance. KI-050 is closed for what the vendors' pages state (branch `feature/ki-050-batch2`, unmerged, after `feature/ki-050-openai-prices`): prompt-size tiers, OpenAI/Anthropic/Gemini prices, and ADR-044 billing modifiers (`llm.service_tier`, `llm.data_residency`, `llm.cache_write_tokens`, `llm.cache_write_1h_tokens`; batch/flex/fast/ultrafast, regional uplift, cache writes; built-in version `2026-10-12b`); an S3 row keeps the unpriced remainder. Existing runs keep their old cost lines until `rebuild-costs`; `SUMMARY_VERSION` is unchanged.
-3. Phase 21 (UI shell and design pass), then 12, 13 and 14, 17, 19, 20.
+2. MVP gate accepted by the user (2026-10-12). KI-050 is closed for what the vendors' pages state (merged, PRs #105 and #118; prompt-size tiers, OpenAI/Anthropic/Gemini prices, ADR-044 billing modifiers); what stays open is the S3 remainder in the issue, and the OpenAI deprecations page is due a re-read on 2026-10-23.
+3. Proposed Phase 22, run-page redesign: settled with the user so far: primary user is an engineer whose agent just failed; success is a five-second first-error test (1440 px and 375 px); hierarchy is failure line, cost of the failure, quiet timeline, identity, findings out of the main view; the headline adapts to run state; direction "Flight recorder trace" with a fault line as the signature and colour reserved for failure. The user widened scope to new features, motion, fonts, dependencies and illustration, provided each new feature goes through the same one-question-at-a-time grilling. Open grill queue: server-computed first-error fields, facet column and top-bar search, runs list redesign, illustration and empty states, display font (Plex Serif for the failure line), login and landing, compare and analytics. Then Phases 12, 13 and 14, 17, 19, 20, the hosting guide, and the demo video (needs a designed brand mark).
 4. After deploying Phase 16, run `search-rebuild` for existing workspaces so older runs become searchable (KI-081, issue #94).
 
 ## Open decisions
