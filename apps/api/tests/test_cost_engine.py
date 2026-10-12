@@ -220,6 +220,108 @@ def test_historical_calculations_reproduce_after_prices_change() -> None:
     assert pinned.total == stored.total  # same tokens, same pinned prices, same cost
 
 
+# ------------------------------------------------------------------ prompt-size tiers
+
+
+def tiered(version: str = "v1", **kw: Any) -> list[PriceEntry]:
+    """A base row (2 / 10, cached 0.2) and a tier over 272,000 tokens (4 / 15, cached 0.4)."""
+    base = entry(version, input_per_million=D(2), output_per_million=D(10))
+    base = PriceEntry(**{**base.__dict__, "cached_input_per_million": D("0.2"), **kw})
+    tier = PriceEntry(
+        **{
+            **base.__dict__,
+            "input_per_million": D(4),
+            "output_per_million": D(15),
+            "cached_input_per_million": D("0.4"),
+            "min_prompt_tokens": 272_000,
+        }
+    )
+    return [base, tier]
+
+
+def test_a_tier_applies_only_strictly_above_its_threshold() -> None:
+    eng = engine(*tiered())
+    at_edge = eng.calculate(llm({"llm.input_tokens": 272_000, "llm.output_tokens": 1_000_000}))
+    over = eng.calculate(llm({"llm.input_tokens": 272_001, "llm.output_tokens": 1_000_000}))
+    assert at_edge.input_cost == D("0.544") and at_edge.output_cost == D(10)
+    # The whole request moves to the tier's rates, not only the tokens above the line.
+    assert over.input_cost == D("1.088004") and over.output_cost == D(15)
+
+
+def test_cached_tokens_are_priced_at_the_tier_cache_rate_and_count_toward_the_prompt() -> None:
+    eng = engine(*tiered())
+    line = eng.calculate(
+        llm(
+            {
+                "llm.input_tokens": 300_000,
+                "llm.cached_input_tokens": 250_000,
+                "llm.output_tokens": 0,
+            }
+        )
+    )
+    # 50k plain at 4 + 250k cached at 0.4; the prompt (300k, cached included) is over the line.
+    assert line.input_cost == D("0.2") and line.cached_cost == D("0.1")
+    small = eng.calculate(
+        llm(
+            {
+                "llm.input_tokens": 200_000,
+                "llm.cached_input_tokens": 190_000,
+                "llm.output_tokens": 0,
+            }
+        )
+    )
+    assert small.cached_cost == D("0.038") and small.input_cost == D("0.02")
+
+
+def test_a_tier_wins_over_a_newer_base_row_and_a_model_without_tiers_stays_flat() -> None:
+    base, tier = tiered()
+    newer_base = PriceEntry(**{**base.__dict__, "valid_from": at(5)})
+    book = PriceBook([base, tier, newer_base])
+    assert book.find(None, "model-x", at(7), prompt_tokens=300_000) is tier
+    assert book.find(None, "model-x", at(7), prompt_tokens=10) is newer_base
+    flat = engine(entry("v1")).calculate(llm({"llm.input_tokens": 5_000_000}))
+    assert flat.input_cost == D(15)  # no threshold: any prompt size, same rate
+
+
+def test_the_largest_satisfied_tier_wins() -> None:
+    base, tier = tiered()
+    huge = PriceEntry(**{**tier.__dict__, "min_prompt_tokens": 1_000_000})
+    book = PriceBook([base, tier, huge])
+    assert book.find(None, "model-x", at(7), prompt_tokens=500_000) is tier
+    assert book.find(None, "model-x", at(7), prompt_tokens=1_000_001) is huge
+
+
+def test_an_override_without_tiers_beats_a_built_in_tier() -> None:
+    override = entry("override:a", origin="override", input_per_million=D(7))
+    eng = engine(*tiered(), override)
+    line = eng.calculate(llm({"llm.input_tokens": 400_000}))
+    assert (line.pricing_origin, line.input_cost) == ("override", D("2.8"))
+
+
+def test_pinned_old_version_and_history_reproduce_with_tiers() -> None:
+    old = tiered("v1")
+    new_rows = [
+        PriceEntry(
+            **{
+                **e.__dict__,
+                "pricing_version": "v2",
+                "valid_from": at(9),
+                "input_per_million": e.input_per_million * 2,
+            }
+        )
+        for e in old
+    ]
+    event = llm({"llm.input_tokens": 300_000, "llm.output_tokens": 1000}, day=7)
+    before = engine(*old).calculate(event)
+    after_book = engine(*old, *new_rows)
+    assert after_book.calculate(event) == before  # event time selects v1 for history
+    late = event.model_copy(update={"occurred_at": at(10)})
+    assert after_book.calculate(late).pricing_version == "v2"
+    assert after_book.calculate(late, pricing_version="v1").total == before.total
+    # Recomputation is deterministic whatever the order of the entries.
+    assert engine(*reversed([*old, *new_rows])).calculate(late) == after_book.calculate(late)
+
+
 def test_builtin_table_has_no_invented_vendor_prices() -> None:
     book = builtin_price_book()
     assert book.find("example-provider", "model-x", at(7)) is not None

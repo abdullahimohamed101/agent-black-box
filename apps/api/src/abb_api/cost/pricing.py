@@ -29,23 +29,34 @@ class PriceEntry:
     origin: str = "builtin"  # "builtin" | "override"
     project_id: str | None = None  # overrides only: None = whole workspace
     created_at: datetime | None = None  # overrides only: the newer of two equal rows wins
+    # A prompt-size tier: applies only to calls whose prompt tokens (cached ones included) are
+    # strictly greater than this, and then prices the whole request at this entry's rates (the
+    # vendors' "over 272K" rule), not just the tokens above the line. None: any prompt size.
+    min_prompt_tokens: int | None = None
 
-    def applies(self, provider: str | None, model: str, at: datetime) -> bool:
+    def applies(
+        self, provider: str | None, model: str, at: datetime, prompt_tokens: int = 0
+    ) -> bool:
         if self.valid_from > at or (self.valid_to is not None and at >= self.valid_to):
+            return False
+        if self.min_prompt_tokens is not None and prompt_tokens <= self.min_prompt_tokens:
             return False
         if self.provider is not None and (provider or "").lower() != self.provider.lower():
             return False
         return fnmatchcase(model.lower(), self.model_pattern.lower())
 
-    def specificity(self) -> tuple[int, int, int, int, datetime, datetime]:
-        """Bigger wins: override, project scope, provider-specific, longer literal, newer start,
-        newer row (so a correction with the same pattern and start replaces the earlier one)."""
+    def specificity(self) -> tuple[int, int, int, int, int, datetime, datetime]:
+        """Bigger wins: override, project scope, provider-specific, longer literal, higher satisfied
+        prompt tier (before the start date, so a tier beats its base row whatever their dates),
+        newer start, newer row (so a correction with the same pattern and start replaces the
+        earlier one)."""
         literal = sum(1 for ch in self.model_pattern if ch not in "*?")
         return (
             1 if self.origin == "override" else 0,
             1 if self.project_id is not None else 0,
             1 if self.provider is not None else 0,
             literal,
+            self.min_prompt_tokens if self.min_prompt_tokens is not None else -1,
             self.valid_from,
             self.created_at or _EPOCH,
         )
@@ -68,14 +79,16 @@ class PriceBook:
         at: datetime,
         *,
         pricing_version: str | None = None,
+        prompt_tokens: int = 0,
     ) -> PriceEntry | None:
         """`pricing_version` pins built-in entries to one version (reproducing an old calculation).
 
-        Overrides carry their own `override:<id>` version, so a pin selects them the same way."""
+        Overrides carry their own `override:<id>` version, so a pin selects them the same way.
+        `prompt_tokens` selects a prompt-size tier among otherwise equal entries."""
         candidates = [
             e
             for e in self._entries
-            if e.applies(provider, model, at)
+            if e.applies(provider, model, at, prompt_tokens)
             and (pricing_version is None or e.pricing_version == pricing_version)
         ]
         return max(candidates, key=PriceEntry.specificity, default=None)

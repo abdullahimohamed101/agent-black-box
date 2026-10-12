@@ -109,7 +109,11 @@ class CostEngine:
         entry: PriceEntry | None = None
         if model is not None and (input_tokens is not None or output_tokens is not None):
             entry = self._prices.find(
-                provider, model, event.occurred_at, pricing_version=pricing_version
+                provider,
+                model,
+                event.occurred_at,
+                pricing_version=pricing_version,
+                prompt_tokens=input_tokens or 0,
             )
 
         line = CostLine(
