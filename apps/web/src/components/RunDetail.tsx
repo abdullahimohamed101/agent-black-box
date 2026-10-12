@@ -14,6 +14,7 @@ import {
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
 import { useEventDetail, useRun, useRunEvents } from "@/lib/queries";
+import { evidenceRows } from "@/lib/evidence";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
 import { runBounds } from "@/lib/waterfall";
@@ -32,6 +33,7 @@ import {
 } from "@/lib/timeline";
 import { AgentTree } from "./AgentTree";
 import { CodingSummary } from "./CodingSummary";
+import { EvidenceList } from "./EvidenceList";
 import { EventDrawer } from "./EventDrawer";
 import { InspectorResizer } from "./InspectorResizer";
 import { Evaluations } from "./Evaluations";
@@ -212,14 +214,15 @@ export function RunDetail({
   // Timeline or waterfall, kept in the URL (`?view=waterfall`) so a link to the waterfall is shareable.
   const pathname = usePathname();
   const params = useSearchParams();
-  const paramView: RunView = params?.get("view") === "waterfall" ? "waterfall" : "timeline";
+  const wanted = params?.get("view");
+  const paramView: RunView = wanted === "waterfall" || wanted === "evidence" ? wanted : "timeline";
   const [chosen, setChosen] = useState({ view: paramView, param: paramView });
   if (chosen.param !== paramView) setChosen({ view: paramView, param: paramView }); // the URL changed under us
   const view = chosen.view;
   const changeView = (next: RunView) => {
     setChosen((c) => ({ ...c, view: next }));
     const q = new URLSearchParams(params?.toString() ?? "");
-    if (next === "waterfall") q.set("view", "waterfall");
+    if (next !== "timeline") q.set("view", next);
     else q.delete("view");
     const qs = q.toString();
     window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
@@ -276,9 +279,10 @@ export function RunDetail({
   const contextClosed =
     contextPref === "closed" || (contextPref === "auto" && !!drawerEvent && narrow);
 
+  const evidence = useMemo(() => evidenceRows(events), [events]);
   const focusTimeline = () =>
     timelineWrap.current
-      ?.querySelector<HTMLElement>('[role="listbox"], [role="treegrid"]')
+      ?.querySelector<HTMLElement>('[role="listbox"], [role="treegrid"], [role="region"]')
       ?.focus();
   const closeDrawer = useCallback(() => {
     setDrawerEventId(null);
@@ -459,7 +463,7 @@ export function RunDetail({
 
         <section aria-labelledby="tl-h" className="pane">
           <h2 id="tl-h" className="sr-only">
-            {view === "waterfall" ? "Waterfall" : "Timeline"}
+            {view === "waterfall" ? "Waterfall" : view === "evidence" ? "Evidence" : "Timeline"}
           </h2>
           {view === "timeline" && (
             <div className="toolbar" role="group" aria-label="Timeline filters">
@@ -522,7 +526,9 @@ export function RunDetail({
             </div>
           ) : (
             <div className="pane-body" ref={timelineWrap}>
-              {view === "timeline" ? (
+              {view === "evidence" ? (
+                <EvidenceList rows={evidence} t0={t0} selectedEventId={selected} onOpen={jumpTo} />
+              ) : view === "timeline" ? (
                 <Timeline
                   rows={rows}
                   t0={t0}
@@ -554,15 +560,19 @@ export function RunDetail({
             <p className="muted" role="status" aria-live="polite" data-testid="progress">
               {loadingMore
                 ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
-                : view === "waterfall"
-                  ? `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
-                  : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown`}
+                : view === "evidence"
+                  ? `${formatInt(evidence.length)} artifact${evidence.length === 1 ? "" : "s"} in ${formatInt(events.length)} events`
+                  : view === "waterfall"
+                    ? `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
+                    : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown`}
               {ev.isError && " (some events failed to load)"}
             </p>
-            <p className="keys muted" aria-hidden="true">
-              <kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> open · <kbd>e</kbd> first error ·{" "}
-              <kbd>esc</kbd> close
-            </p>
+            {view !== "evidence" && (
+              <p className="keys muted" aria-hidden="true">
+                <kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> open · <kbd>e</kbd> first error ·{" "}
+                <kbd>esc</kbd> close
+              </p>
+            )}
           </div>
         </section>
 

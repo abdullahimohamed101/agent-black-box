@@ -62,7 +62,7 @@ describe("run work area", () => {
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
     const group = screen.getByRole("group", { name: "View" });
-    expect(within(group).getAllByRole("radio")).toHaveLength(2);
+    expect(within(group).getAllByRole("radio")).toHaveLength(3);
   });
 
   it("on a narrow window the inspector folds the context to a strip; the strip and the toggle bring it back", async () => {

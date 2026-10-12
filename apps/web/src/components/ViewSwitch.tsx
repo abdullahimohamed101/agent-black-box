@@ -1,8 +1,12 @@
 "use client";
 
-export type RunView = "timeline" | "waterfall";
+export type RunView = "timeline" | "waterfall" | "evidence";
 
-const LABEL: Record<RunView, string> = { timeline: "Timeline", waterfall: "Waterfall" };
+const LABEL: Record<RunView, string> = {
+  timeline: "Timeline",
+  waterfall: "Waterfall",
+  evidence: "Evidence",
+};
 
 /**
  * The run's views, drawn as tabs but built from native radio buttons: arrow keys and Space work and screen readers

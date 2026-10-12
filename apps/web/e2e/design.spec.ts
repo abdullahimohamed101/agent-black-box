@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { withArtifacts } from "./artifacts";
 
 // Phase 21 design contract (fixtures build): the application frame, fonts, no third-party requests, axe in both colour
 // schemes and no horizontal scroll on a phone, on every kind of page. Objective checks only; the paired screenshots
@@ -397,5 +398,50 @@ test.describe("inspector", () => {
     await page.getByRole("button", { name: "Show it" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     expect(await page.locator("body").innerText()).not.toContain("[withheld]");
+  });
+});
+
+test.describe("evidence view", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("a table of the run's artifacts in the pane, axe clean, the inspector opens from a row", async ({
+    page,
+  }) => {
+    await withArtifacts(page);
+    await page.goto(`${BASE}/runs/${RUN(11)}?view=evidence`);
+    const region = page.getByRole("region", { name: "Captured artifacts" });
+    await expect(region.getByRole("row")).toHaveCount(1 + 4); // header, two diffs, stdout and stderr of the one failed command
+    await expect(page.getByRole("radio", { name: "Evidence" })).toBeChecked();
+    await axe(page);
+    await region
+      .getByRole("button", { name: /^Open diff/ })
+      .first()
+      .click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(region).toBeFocused();
+    const m = await page.evaluate(() => [
+      document.scrollingElement!.scrollHeight,
+      window.innerHeight,
+    ]);
+    expect(m[0]).toBe(m[1]);
+  });
+
+  test("a run without artifacts says so", async ({ page }) => {
+    await page.goto(`${BASE}/runs/${RUN(2)}?view=evidence`);
+    await expect(page.getByTestId("evidence-empty")).toHaveText(
+      "No artifacts were captured in this run.",
+    );
+    await axe(page);
+  });
+
+  test("a viewer's evidence view never shows the API's placeholder", async ({ page }) => {
+    await withArtifacts(page);
+    await page.goto(`/w/viewer-only/projects/all/runs/${RUN(7)}?view=evidence`);
+    await expect(page.getByRole("radio", { name: "Evidence" })).toBeChecked();
+    await page.waitForTimeout(300);
+    const text = await page.locator("body").innerText();
+    expect(text).not.toContain("[withheld]");
+    expect(await page.content()).not.toContain("[withheld]");
   });
 });

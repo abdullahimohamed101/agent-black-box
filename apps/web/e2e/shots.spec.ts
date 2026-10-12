@@ -1,4 +1,5 @@
 import { test, type Page } from "@playwright/test";
+import { withArtifacts } from "./artifacts";
 
 // Phase 21 screenshot set (fixtures build). `SHOTS_DIR=before|after` picks the folder under docs/screenshots/phase-21/.
 // The same script runs against the pre-redesign tree and the final tree, so it only uses roles, test ids and URLs.
@@ -63,7 +64,9 @@ test.describe("screenshot set", () => {
     await ((await edit.count()) ? edit : steps.first()).click();
     await page.getByRole("dialog").waitFor();
     await shot(page, "run-coding-inspector-diff-1440");
-    // the evidence view arrives in a later step; before it exists the URL param is ignored and the shot shows the default view
+    // the evidence view arrives in a later step; before it exists the URL param is ignored and the shot shows the default view.
+    // The fixture coding run has no artifact store, so the events get artifact references for this shot.
+    await withArtifacts(page);
     await page.goto(`${BASE}/runs/${RUN(11)}?view=evidence`);
     await page.getByTestId("headline").waitFor();
     await shot(page, "run-evidence-1440");

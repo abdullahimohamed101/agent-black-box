@@ -1719,3 +1719,53 @@ td a {
   margin: 0.25rem 0;
   padding: 0.5rem 0.75rem;
 }
+
+/* ---- Evidence view: the artifacts of the run, a dense table that scrolls inside the pane ---- */
+.evidence {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg);
+}
+.evidence:focus-visible {
+  outline-offset: -2px;
+}
+.evidence table {
+  font-size: 0.8rem;
+}
+.evidence th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.35rem 0.75rem;
+  background: var(--surface);
+  font: 600 0.66rem/1.3 var(--cond);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.evidence td {
+  padding: 0.3rem 0.75rem;
+  height: 2.25rem;
+  white-space: nowrap;
+}
+.evidence td.evidence-what {
+  min-width: 0;
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+}
+.evidence td.evidence-source {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+.evidence tr[data-selected] td {
+  background: var(--sel);
+}
+.evidence tr[data-selected] td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.evidence .state {
+  margin: 0.75rem;
+}
