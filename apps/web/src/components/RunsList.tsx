@@ -191,7 +191,7 @@ export function RunsList({
                 Compare the two runs
               </Link>
             ) : (
-              <span className="muted">Pick one more run.</span>
+              picked.length === 1 && <span className="muted">Pick one more run.</span>
             )}
             {picked.length > 0 && (
               <button type="button" onClick={() => setPicked([])}>
