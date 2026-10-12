@@ -574,6 +574,13 @@ test.describe("polish: one row of class chips, one story marker", () => {
 
   test("a story step has one marker: the list number, no glyph", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(11)}`);
+    // the label and its detail stay separate words in the button's accessible name
+    await expect(
+      page
+        .getByTestId("story")
+        .getByRole("button", { name: /Read app\/session\.py/ })
+        .first(),
+    ).toBeVisible();
     const glyph = page.getByTestId("story").locator(".story-glyph").first();
     await expect(glyph).toBeHidden();
     const marker = await page
