@@ -13,6 +13,7 @@ dependencies = [
   "abb-event-schema",
   "httpx>=0.28",
   "pyjwt[crypto]>=2.10",
+  "pyyaml>=6.0.2",
 ]
 
 [tool.uv.sources]
@@ -58,7 +59,7 @@ files = ["src", "tests"]
 plugins = []
 
 [[tool.mypy.overrides]]
-module = ["asyncpg", "asyncpg.*"]
+module = ["asyncpg", "asyncpg.*", "yaml", "yaml.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
