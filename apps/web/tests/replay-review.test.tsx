@@ -186,8 +186,9 @@ describe("P2-2: Esc with the inspector hidden by the playhead", () => {
     await screen.findByRole("dialog");
     // Play from the end starts over, and the follow only runs while paused: the event the inspector holds is now in the
     // future, so its dialog is not on screen
+    // (no assertion on the Play/Pause label here: with "Pause at first error" on, a slow runner can already have paused
+    // playback by the time the click returns, so the label is a race; the dialog being gone is what this test is about)
     await user.click(screen.getByRole("button", { name: "Play" }));
-    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.queryByTestId("event-notice")).toBeNull();
     // Esc from the page must leave replay, not be swallowed by a dialog nobody can see
