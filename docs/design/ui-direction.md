@@ -112,6 +112,29 @@ contrast of every pair in both themes). The glyph is `aria-hidden`; the word is 
   with client-side validation that mirrors the API; a save shows what the API stored (no optimistic UI); changes are audit-logged.
 - No animation was added.
 
+## Approvals and Policies (Phase 14)
+
+Same grammar as Security (ADR-111): an outcome is a glyph and a word, carried by weight, never a new hue and never red. Waiting and expired are amber
+(`--wait`), Approved, Allowed and Used are a check in ink, Denied is an outlined slashed circle in ink with a bold word (a denial is a policy outcome, not a
+failed run), Cancelled is muted. Risk class is the Security shield (filled for R4, amber outline for R3, muted below). `policy.css` is covered by the red-only,
+motion and contrast tests (`tests/policy-css.test.ts`); no animation was added.
+
+- Words that state the guarantee (D1): "Policies are enforced for agents that ask Agent Black Box through the SDK guard. They do not stop code that bypasses it."
+  sits at the top of the Policies page in a bordered note; no "protected" badge anywhere.
+- Approvals `/w/{workspace}/approvals` (rail item with a live pending count, polled every ~30 s on a visible tab; shown with `approval.read`): tabs Pending, Decided, All as
+  links writing `?state=`; the open request is `?approval=<id>`. Table (request with scrubbed resource, risk, state, run, project, requested, time left, policy and
+  version), cursor paging, pending list re-read every ~10 s on a visible tab. The detail is a sticky side panel (full screen at 375 px, where the list steps aside):
+  the intent as the API returns it, arguments as formatted JSON text, Approve and Deny with an optional comment (1,000 characters) and a confirm step; the API's fixed
+  errors are shown as fixed sentences and the answer takes the focus. Time left is the server's `seconds_left` aged by the time since it arrived, never negative, "Expired" at zero.
+- Policies `/w/{workspace}/settings/policies` (tab with `policy.read`; editing needs `policy.write`): scope picker (`?project=`), plain monospace editor with a line-number gutter and
+  no editor library, debounced validation by the API with `line:column` issues that move the caret, "Start from the example", Dry run with a result panel (counts, rules, up to 25 samples
+  linking to the run and `?event=`), Publish with an optional comment and `base_version`, a conflict notice with a reload action, version history with read-only versions and a unified
+  diff (added lines bold ink, removed lines amber), an unsaved-changes guard, and a pointer to the audit log.
+- Run page: `policy.decision`, `policy.action.blocked` and `approval.*` rows read "Allowed by rule vN" / "Allowed (default)", "Denied by rule vN" plus the policy's own reason, "Approval requested",
+  "Approved", "Approval expired", "Approval cancelled", "Approval used", in the existing "Approvals & policy" class, with a small "policy service" marker (full sentence for assistive tech and
+  the inspector) on events whose `sdk.name` is `abb-policy-service`. A WAITING_FOR_APPROVAL run's headline reads "Waiting for approval: <capability>" with the real time left (roles that
+  may read approvals) and a banner with "Open Approvals". Nothing about the fault line changed: a denial is not an error event.
+
 ## Left out of this phase (deliberately)
 
 - Top-bar search slot and command palette (D6); the runs-list search box stays on its page.

@@ -58,3 +58,4 @@ idea: colour only ever means a problem. This ADR records the visual language tha
 - Two more font files (about 47 KB) are preloaded. `next/font` preloads every file of a declared family, as in ADR-110.
 - Glyph characters in `StatusBadge` still come from system fonts when outside Latin-1; each is paired with a word.
 - Phase 13 (security findings) adds no token and no hue: severity is a shield glyph and weight in ink, amber (`--wait`) and muted ink, never red. `security.css` is covered by the red-only test; see `docs/design/ui-direction.md` (Security).
+- Phase 14 (policies and approvals) adds no token and no hue either: outcomes are glyph, word and weight (a denial is ink, waiting and expired are amber), `policy.css` is covered by the red-only, motion and contrast tests, and the removed lines of a policy diff are amber like every other removal. See `docs/design/ui-direction.md` (Approvals and Policies).

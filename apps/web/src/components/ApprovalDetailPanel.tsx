@@ -124,6 +124,11 @@ function Body({
   const [outcome, setOutcome] = useState<
     { kind: "ok"; text: string } | { kind: "error"; error: ApiRequestError } | null
   >(null);
+  // The form the person was in is gone once a decision lands: the answer takes the focus, so keys keep working in the panel.
+  const answer = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (outcome) answer.current?.focus();
+  }, [outcome]);
   const json =
     a.arguments && Object.keys(a.arguments).length > 0
       ? JSON.stringify(a.arguments, null, 2)
@@ -207,12 +212,25 @@ function Body({
         )}
       </section>
       {outcome?.kind === "ok" && (
-        <p role="status" className="notice apr-flash" data-testid="decision-saved">
+        <p
+          role="status"
+          className="notice apr-flash"
+          data-testid="decision-saved"
+          ref={answer}
+          tabIndex={-1}
+        >
           {outcome.text}
         </p>
       )}
       {outcome?.kind === "error" && (
-        <p role="alert" className="notice" data-state="denied" data-testid="decision-error">
+        <p
+          role="alert"
+          className="notice"
+          data-state="denied"
+          data-testid="decision-error"
+          ref={answer}
+          tabIndex={-1}
+        >
           {decisionErrorText(
             outcome.error.code,
             outcome.error.status,
@@ -241,7 +259,19 @@ function DecideForm({
     o: { kind: "ok"; text: string } | { kind: "error"; error: ApiRequestError } | null,
   ) => void;
 }) {
-  const decide = useDecideApproval(id);
+  const decide = useDecideApproval(id, (o) =>
+    onOutcome(
+      o.kind === "ok"
+        ? {
+            kind: "ok",
+            text:
+              o.state === "APPROVED" ? "You approved this request." : "You denied this request.",
+          }
+        : o.error instanceof ApiRequestError
+          ? { kind: "error", error: o.error }
+          : null,
+    ),
+  );
   const [comment, setComment] = useState("");
   const [confirming, setConfirming] = useState<"approve" | "deny" | null>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -267,20 +297,7 @@ function DecideForm({
         onOutcome(null);
         decide.mutate(
           { decision: confirming, comment: comment.trim() },
-          {
-            onSuccess: (d) =>
-              onOutcome({
-                kind: "ok",
-                text:
-                  d.state === "APPROVED"
-                    ? "You approved this request."
-                    : "You denied this request.",
-              }),
-            onError: (e) => {
-              if (e instanceof ApiRequestError) onOutcome({ kind: "error", error: e });
-            },
-            onSettled: () => setConfirming(null),
-          },
+          { onSettled: () => setConfirming(null) },
         );
       }}
     >

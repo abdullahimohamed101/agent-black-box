@@ -49,6 +49,8 @@ export function PoliciesSettings() {
   const scopeId = project?.id ?? null;
   const [dirty, setDirty] = useState(false);
   const [published, setPublished] = useState<number | null>(null);
+  // Bumped by an explicit reload, so the editor starts again from the published text even if nobody else published.
+  const [reloads, setReloads] = useState(0);
   const pickerId = useId();
   const q = usePolicyCurrent(scopeId);
 
@@ -101,7 +103,7 @@ export function PoliciesSettings() {
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
       ) : (
         <PolicyPane
-          key={`${scopeId}|${q.data.source}|${q.data.policy?.version ?? 0}`}
+          key={`${scopeId}|${q.data.source}|${q.data.policy?.version ?? 0}|${reloads}`}
           scopeId={scopeId}
           current={q.data}
           canWrite={canWrite}
@@ -111,6 +113,10 @@ export function PoliciesSettings() {
           published={published}
           onPublished={setPublished}
           onDirty={setDirty}
+          onReload={async () => {
+            await q.refetch();
+            setReloads((n) => n + 1);
+          }}
         />
       )}
     </div>
@@ -127,6 +133,7 @@ function PolicyPane({
   published,
   onPublished,
   onDirty,
+  onReload,
 }: {
   scopeId: string | null;
   current: NonNullable<ReturnType<typeof usePolicyCurrent>["data"]>;
@@ -137,6 +144,7 @@ function PolicyPane({
   published: number | null;
   onPublished: (v: number) => void;
   onDirty: (d: boolean) => void;
+  onReload: () => Promise<void>;
 }) {
   const client = useQueryClient();
   const initial = current.policy?.document ?? "";
@@ -364,8 +372,8 @@ function PolicyPane({
             type="button"
             onClick={() => {
               publish.reset();
-              void client.invalidateQueries({ queryKey: ["policy"] });
-              void client.refetchQueries({ queryKey: ["policy", "current", scopeId] });
+              void client.invalidateQueries({ queryKey: ["policy", "versions"] });
+              void onReload();
             }}
           >
             Reload the latest version

@@ -80,7 +80,10 @@ type Pages = InfiniteData<{ items: ApprovalSummary[]; next_cursor: string | null
  * Approve or deny. What the screen shows afterwards is what the API answered: the response replaces the detail and the
  * matching row, then the lists and the count are read again (a decided request leaves the Pending list).
  */
-export function useDecideApproval(id: string) {
+export type DecideOutcome =
+  { kind: "ok"; state: ApprovalDetail["state"] } | { kind: "error"; error: unknown };
+
+export function useDecideApproval(id: string, onOutcome?: (o: DecideOutcome) => void) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (body: { decision: "approve" | "deny"; comment?: string }) =>
@@ -91,6 +94,9 @@ export function useDecideApproval(id: string) {
         }),
       ),
     onSuccess: async (detail: ApprovalDetail) => {
+      // First, and from here rather than from `mutate`'s callbacks: the cache write below replaces the decide form, and a
+      // callback given to `mutate` is dropped with the component that called it.
+      onOutcome?.({ kind: "ok", state: detail.state });
       client.setQueryData(["approvals", "detail", id], detail);
       client.setQueriesData<Pages>({ queryKey: ["approvals", "list"] }, (old) =>
         old
@@ -107,7 +113,8 @@ export function useDecideApproval(id: string) {
       await client.invalidateQueries({ queryKey: ["audit"] });
     },
     // A lost race (409) or a refusal (403) is an answer, not a failure of the page: re-read what is true now.
-    onError: async () => {
+    onError: async (error) => {
+      onOutcome?.({ kind: "error", error });
       await client.invalidateQueries({ queryKey: ["approvals"] });
     },
   });

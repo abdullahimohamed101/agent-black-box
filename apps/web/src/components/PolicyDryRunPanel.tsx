@@ -99,9 +99,7 @@ export function PolicyDryRunPanel({
                   <td>
                     <code>{s.capability}</code>
                   </td>
-                  <td>
-                    <RiskMark risk={s.risk_class} />
-                  </td>
+                  <td>{s.risk_class ? <RiskMark risk={s.risk_class} /> : "—"}</td>
                   <td>
                     <OutcomeMark meta={dryDecisionMeta(s.decision)} />
                   </td>
