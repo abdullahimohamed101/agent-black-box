@@ -221,7 +221,9 @@ def upgrade() -> None:
         "ix_approvals_expiry",
         "approvals",
         ["workspace_id", "expires_at"],
-        postgresql_where=sa.text("state = 'REQUESTED' OR (state = 'APPROVED' AND consumed_at IS NULL)"),
+        postgresql_where=sa.text(
+            "state = 'REQUESTED' OR (state = 'APPROVED' AND consumed_at IS NULL)"
+        ),
     )
     op.create_index(
         "uq_approvals_open_intent",
