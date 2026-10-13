@@ -74,6 +74,21 @@ def test_approvals_pause_and_resume_the_run() -> None:
     assert derive_run(done).status is RunStatus.FAILED
 
 
+@pytest.mark.parametrize("ending", ["approval.expired", "approval.cancelled"])
+def test_an_approval_that_expires_or_is_withdrawn_resumes_the_run(ending: str) -> None:
+    """Phase 14 step 2: the server also ends a request by time or by the agent's withdrawal."""
+    approval = {"attributes": {"approval.id": "apr_1"}}
+    events = lifecycle(("run.started", {}), ("approval.requested", approval), (ending, approval))
+    assert derive_run(events).status is RunStatus.RUNNING
+    consumed = lifecycle(
+        ("run.started", {}),
+        ("approval.requested", approval),
+        ("approval.granted", approval),
+        ("approval.consumed", approval),
+    )
+    assert derive_run(consumed).status is RunStatus.RUNNING
+
+
 def test_terminal_status_is_final_so_late_events_cannot_reopen_a_run() -> None:
     late = lifecycle(
         ("run.started", {}),

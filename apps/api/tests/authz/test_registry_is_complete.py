@@ -13,8 +13,9 @@ from tests.authz.routes import enumerate_routes
 # operations of Phase 11 (3 evaluator, 3 run-evaluation, 1 compare, 8 experiment: 15 in all) and
 # Phase 22's `GET /v1/analytics/waste`, plus Phase 13's security routes (findings list, detector
 # catalogue, project security settings GET and PUT), plus Phase 14's seven policy routes
-# (current, versions, one version, diff, validate, publish, dry-run).
-EXPECTED_V1_OPERATIONS = 32 + 15 + 1 + 4 + 7
+# (current, versions, one version, diff, validate, publish, dry-run), plus Phase 14 step 2's nine
+# (decide, fail-modes, wait, consume, cancel, list, pending count, detail, decision).
+EXPECTED_V1_OPERATIONS = 32 + 15 + 1 + 4 + 7 + 9
 
 
 def _app() -> FastAPI:

@@ -48,6 +48,9 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
     overrides.setdefault("policy_writes_per_minute", 1_000_000)
     overrides.setdefault("policy_validations_per_minute", 1_000_000)
     overrides.setdefault("policy_dry_runs_per_minute", 1_000_000)
+    # Same for the decision endpoint (Phase 14 step 2); the flood tests set real numbers.
+    overrides.setdefault("policy_decide_per_minute_key", 1_000_000)
+    overrides.setdefault("policy_decide_per_minute_workspace", 1_000_000)
     return Settings(
         environment="test",
         log_level="WARNING",

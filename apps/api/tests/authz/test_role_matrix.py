@@ -53,7 +53,26 @@ U_ADMIN_ONLY = U_PROJECT_ADMIN  # member.write, invite.read, invite.write: owner
 U_POLICY_READ = U_CONTENT
 U_POLICY_WRITE = U_PROJECT_ADMIN
 
+# Phase 14 step 2. An agent's key (events:write or policy:check, bound to a project) asks the policy
+# and uses its own approvals: another key of the same project and another project's key get a 404
+# for an id that is not theirs. The fail-mode table is also readable by a workspace-wide key.
+ASK = INGEST
+USE_OWN = "allow deny  deny deny   allow  404   deny  deny  404   401 401 401 401"
+FAIL_MODES = "allow deny  allow deny   allow  allow deny  deny  allow 401 401 401 401"
+# approval.read and approval.decide: owner, admin, developer, security (those who read payloads);
+# the rule's approver_role narrows who may decide a given approval (tests/approvals).
+U_APPROVALS = U_CONTENT
+
 EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
+    ("POST", "/v1/policy/decide"): (ASK, U_NEVER),
+    ("GET", "/v1/policies/fail-modes"): (FAIL_MODES, U_POLICY_READ),
+    ("GET", "/v1/approvals/{approval_id}/wait"): (USE_OWN, U_NEVER),
+    ("POST", "/v1/approvals/{approval_id}/consume"): (USE_OWN, U_NEVER),
+    ("DELETE", "/v1/approvals/{approval_id}"): (USE_OWN, U_NEVER),
+    ("GET", "/v1/approvals"): (NO_KEY, U_APPROVALS),
+    ("GET", "/v1/approvals/pending-count"): (NO_KEY, U_APPROVALS),
+    ("GET", "/v1/approvals/{approval_id}"): (NO_KEY, U_APPROVALS),
+    ("POST", "/v1/approvals/{approval_id}/decision"): (NO_KEY, U_APPROVALS),
     ("GET", "/v1/audit"): (NO_KEY, U_AUDIT),
     ("GET", "/v1/evaluators"): (LIST, U_RUNS),
     ("POST", "/v1/evaluators"): (NO_KEY, U_BUILD),
@@ -142,7 +161,7 @@ def allowed_codes(actor: str, want: str) -> set[str]:
             return {"WORKSPACE_NOT_FOUND"}
         return {
             "RUN_NOT_FOUND", "ARTIFACT_NOT_FOUND", "EVALUATOR_NOT_FOUND", "EVALUATION_NOT_FOUND",
-            "EXPERIMENT_NOT_FOUND", "VARIANT_NOT_FOUND",
+            "EXPERIMENT_NOT_FOUND", "VARIANT_NOT_FOUND", "APPROVAL_NOT_FOUND",
         }  # fmt: skip
     return {"WORKSPACE_REQUIRED"}
 
