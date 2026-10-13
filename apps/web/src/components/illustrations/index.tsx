@@ -62,9 +62,22 @@ export function RecorderTape({ className }: Props) {
   );
 }
 
-export type Motif = "trace" | "cut" | "tape";
+/** A shield on the trace, for "nothing suspicious found": the same two strokes as the rest of the set. */
+export function ShieldTrace({ className }: Props) {
+  return (
+    <Svg className={className}>
+      <path d="M3 24h30M87 24h30" />
+      <path d="M60 4l15 5v10c0 9-6 15-15 19-9-4-15-10-15-19V9Z" />
+      <path className="illus-accent" d="M53 20l5 5 9-10" />
+    </Svg>
+  );
+}
+
+export type Motif = "trace" | "cut" | "tape" | "shield";
 export function Motif({ kind, className }: { kind: Motif; className?: string }) {
-  return kind === "cut" ? (
+  return kind === "shield" ? (
+    <ShieldTrace className={className} />
+  ) : kind === "cut" ? (
     <FaultCut className={className} />
   ) : kind === "tape" ? (
     <RecorderTape className={className} />

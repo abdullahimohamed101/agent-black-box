@@ -58,12 +58,13 @@ describe("application frame", () => {
     expect(screen.getByRole("link", { name: "Skip to content" })).toHaveAttribute("href", "#main");
   });
 
-  it("lists Overview, Runs, Analytics, Experiments and (session only) Settings", () => {
+  it("lists Overview, Runs, Security, Analytics, Experiments and (session only) Settings", () => {
     shell(ctx());
     const nav = within(screen.getByRole("navigation", { name: "Primary" }));
     expect(nav.getAllByRole("link").map((a) => a.textContent)).toEqual([
       "Overview",
       "Runs",
+      "Security",
       "Analytics",
       "Experiments",
       "Settings",
@@ -83,7 +84,7 @@ describe("application frame", () => {
   it("works without a workspace provider: brand, primary links and crumbs only", () => {
     shell(null);
     const nav = within(screen.getByRole("navigation", { name: "Primary" }));
-    expect(nav.getAllByRole("link")).toHaveLength(4);
+    expect(nav.getAllByRole("link")).toHaveLength(5);
     expect(screen.queryByRole("status")).toBeNull(); // no live indicator without a workspace
     expect(screen.getByText("All projects")).toBeInTheDocument();
   });

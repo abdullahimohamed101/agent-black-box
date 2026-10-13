@@ -163,7 +163,7 @@ export type SecurityQuery = {
   since?: string;
   until?: string;
 };
-export const SECURITY_PAGE_SIZE = 25;
+export const SECURITY_PAGE_SIZE = 10;
 
 /** The workspace's security findings, newest run first, keyset-paged. Counts for the facets come with every page. */
 export function useSecurityFindings(f: SecurityQuery, enabled = true) {
@@ -191,7 +191,6 @@ export function useSecurityFindings(f: SecurityQuery, enabled = true) {
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     staleTime: 15_000,
     placeholderData: keepPreviousData,
-    retry: (count, error) => !(error instanceof ApiRequestError && error.status < 500) && count < 2,
   });
 }
 

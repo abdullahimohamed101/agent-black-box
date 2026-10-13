@@ -13,6 +13,7 @@ const SETTINGS: Record<string, string> = {
   "api-keys": "API keys",
   pricing: "Pricing",
   audit: "Audit log",
+  security: "Security",
 };
 
 /**
@@ -37,7 +38,9 @@ export function Crumbs({ base }: { base: Base }) {
   const settings = `/w/${base.workspace}/settings`;
   let trail: Crumb[];
   let runId: string | null = null;
-  if (path.startsWith(settings)) {
+  if (path === `/w/${base.workspace}/security`) {
+    trail = [{ label: "Security" }];
+  } else if (path.startsWith(settings)) {
     const leaf = SETTINGS[path.slice(settings.length + 1).split("/")[0] ?? ""];
     trail = [{ label: "Settings" }, ...(leaf ? [{ label: leaf }] : [])];
   } else if (path === root || !path.startsWith(root)) {
