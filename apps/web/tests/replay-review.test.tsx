@@ -186,15 +186,17 @@ describe("P2-2: Esc with the inspector hidden by the playhead", () => {
     await screen.findByRole("dialog");
     // Play from the end starts over, and the follow only runs while paused: the event the inspector holds is now in the
     // future, so its dialog is not on screen
-    // (no assertion on the Play/Pause label here: with "Pause at first error" on, a slow runner can already have paused
-    // playback by the time the click returns, so the label is a race; the dialog being gone is what this test is about)
-    await user.click(screen.getByRole("button", { name: "Play" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // Playback runs on timers, and on a slow runner it can reach the first error (and pause there, where the inspector
+    // rightly follows the playhead again) before an assertion runs. So the ticks are frozen: Play starts over from the
+    // first event and nothing moves on until we say so, which is the state this test is about.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByTestId("event-notice")).toBeNull();
     // Esc from the page must leave replay, not be swallowed by a dialog nobody can see
     (document.activeElement as HTMLElement | null)?.blur();
-    await user.keyboard("{Escape}");
-    await waitFor(() => expect(button).toHaveAttribute("aria-pressed", "false"));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(button).toHaveAttribute("aria-pressed", "false");
   });
 
   it("with the dialog really on screen Esc still closes it first", async () => {
