@@ -270,11 +270,11 @@ export function fixtureSecuritySettings(
       ].sort();
       if (hosts.length > 256)
         return err(422, "SETTINGS_INVALID", "at most 256 allowlist entries", "VALIDATION");
-      if (hosts.some((h) => h.length > 100 || !HOST.test(h)))
+      if (hosts.some((h) => h.replace(/^\*\./, "").length > 253 || !HOST.test(h)))
         return err(
           422,
           "SETTINGS_INVALID",
-          "an allowlist entry must be a host name such as 'api.example.com' or '*.example.com' (no scheme, port or path)",
+          "an allowlist entry must be a host name such as 'api.example.com' or '*.example.com' (no scheme, port or path); write an international name in its punycode form, such as 'xn--bcher-kva.example'",
           "VALIDATION",
         );
       next.destination_allowlist = hosts;

@@ -32,8 +32,9 @@ from abb_api.tenancy import TenantContext
 
 MAX_MUTED_DETECTORS = 64
 MAX_ALLOWLIST_ENTRIES = 256
-MAX_HOST_PATTERN_LENGTH = 100  # audit details keep values short (audit.repository)
+MAX_HOST_PATTERN_LENGTH = 253  # a DNS name is at most 253 characters (RFC 1035); `*.` is extra
 AUDIT_LIST_ITEMS = 4  # entries named in an audit row; the counts always say how many changed
+AUDIT_ENTRY_LENGTH = 100  # an entry is shortened to this in an audit row (audit.repository limits)
 
 # Detector ids are `sec.<name>` (plan, "Contract between the parts"). Whether an id names a real
 # detector is checked where detectors are known (the API of step 2), not by storage.
@@ -102,10 +103,13 @@ def normalize_host_patterns(values: Iterable[str]) -> tuple[str, ...]:
     if len(hosts) > MAX_ALLOWLIST_ENTRIES:
         raise InvalidSettingsError(f"at most {MAX_ALLOWLIST_ENTRIES} allowlist entries")
     for host in hosts:
-        if len(host) > MAX_HOST_PATTERN_LENGTH or not _HOST_PATTERN.fullmatch(host):
+        if len(host.removeprefix("*.")) > MAX_HOST_PATTERN_LENGTH or not _HOST_PATTERN.fullmatch(
+            host
+        ):
             raise InvalidSettingsError(
                 "an allowlist entry must be a host name such as 'api.example.com' or "
-                "'*.example.com' (no scheme, port or path)"
+                "'*.example.com' (no scheme, port or path); write an international name in its "
+                "punycode form, such as 'xn--bcher-kva.example'"
             )
     return tuple(hosts)
 
@@ -240,6 +244,10 @@ def _delta(before: Sequence[str], after: Sequence[str]) -> tuple[list[str], list
     return sorted(set(after) - set(before)), sorted(set(before) - set(after))
 
 
+def _audit_name(value: str) -> str:
+    return value if len(value) <= AUDIT_ENTRY_LENGTH else value[: AUDIT_ENTRY_LENGTH - 1] + "…"
+
+
 def audit_details(before: SecuritySettings, after: SecuritySettings) -> dict[str, Any]:
     """What changed, bounded for the audit log. Names the first few entries and counts the rest."""
     details: dict[str, Any] = {"fields": []}
@@ -256,8 +264,8 @@ def audit_details(before: SecuritySettings, after: SecuritySettings) -> dict[str
         added, removed = _delta(old, new)
         if added or removed:
             fields.append(field_name)
-            details[f"{key}_added"] = added[:AUDIT_LIST_ITEMS]
-            details[f"{key}_removed"] = removed[:AUDIT_LIST_ITEMS]
+            details[f"{key}_added"] = [_audit_name(v) for v in added[:AUDIT_LIST_ITEMS]]
+            details[f"{key}_removed"] = [_audit_name(v) for v in removed[:AUDIT_LIST_ITEMS]]
             details[f"{key}_added_count"] = len(added)
             details[f"{key}_removed_count"] = len(removed)
     return details

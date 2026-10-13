@@ -220,21 +220,26 @@ export const findingHref = (
 
 // ------------------------------------------------------------------------------------- allowlist (mirrors the API)
 
-export const MAX_HOST_PATTERN_LENGTH = 100;
+/** A DNS name is at most 253 characters (RFC 1035); a leading `*.` is on top of that. */
+export const MAX_HOST_PATTERN_LENGTH = 253;
 export const MAX_ALLOWLIST_ENTRIES = 256;
 const HOST_PATTERN =
   /^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
 
 /** The API's fixed sentence for a malformed entry (never repeats the value). */
 export const HOST_PATTERN_MESSAGE =
-  "An allowlist entry must be a host name such as 'api.example.com' or '*.example.com' (no scheme, port or path).";
+  "An allowlist entry must be a host name such as 'api.example.com' or '*.example.com' (no scheme, port or path). Write an international name in its punycode form, such as 'xn--bcher-kva.example'.";
 
 /** Normalises like the API (trim, lower-case, no trailing dot). Returns the entry or the fixed message. */
 export function normalizeHostPattern(
   raw: string,
 ): { ok: true; host: string } | { ok: false; message: string } {
   const host = raw.trim().toLowerCase().replace(/\.+$/, "");
-  if (host.length === 0 || host.length > MAX_HOST_PATTERN_LENGTH || !HOST_PATTERN.test(host))
+  if (
+    host.length === 0 ||
+    host.replace(/^\*\./, "").length > MAX_HOST_PATTERN_LENGTH ||
+    !HOST_PATTERN.test(host)
+  )
     return { ok: false, message: HOST_PATTERN_MESSAGE };
   return { ok: true, host };
 }
@@ -247,7 +252,7 @@ export const CAPTURE_MODES: readonly {
   {
     value: "METADATA_ONLY",
     label: "Metadata only (default)",
-    hint: "Timings, types and counts are kept. No payloads or artifact bodies are stored.",
+    hint: "Commands, file paths, URLs, error messages, run metadata, timings and counts are kept. Inline payloads, diffs and artifact bodies are not stored.",
   },
   {
     value: "FULL",
@@ -257,6 +262,6 @@ export const CAPTURE_MODES: readonly {
   {
     value: "DISABLED",
     label: "Disabled",
-    hint: "Metadata only, and no free text such as error messages.",
+    hint: "As Metadata only, and also no error messages or run metadata.",
   },
 ];

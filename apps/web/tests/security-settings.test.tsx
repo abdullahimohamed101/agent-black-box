@@ -61,12 +61,18 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("host patterns mirror the API", () => {
-  it.each(["api.example.com", "*.example.com", "  API.Example.com. ", "10.0.0.1"])(
-    "accepts %s",
-    (v) => {
-      expect(normalizeHostPattern(v).ok).toBe(true);
-    },
-  );
+  it.each([
+    "api.example.com",
+    "*.example.com",
+    "  API.Example.com. ",
+    "10.0.0.1",
+    // 253 characters, the longest DNS name (review P3-5), with and without the wildcard
+    [`${"a".repeat(63)}`, `${"b".repeat(63)}`, `${"c".repeat(63)}`, `${"d".repeat(61)}`].join("."),
+    `*.${[`${"a".repeat(63)}`, `${"b".repeat(63)}`, `${"c".repeat(63)}`, `${"d".repeat(61)}`].join(".")}`,
+    "xn--bcher-kva.example",
+  ])("accepts %s", (v) => {
+    expect(normalizeHostPattern(v).ok).toBe(true);
+  });
   it.each([
     "https://api.example.com",
     "api.example.com:443",
@@ -75,10 +81,18 @@ describe("host patterns mirror the API", () => {
     "a_b.com",
     "*",
     `${"a".repeat(101)}.com`,
+    "bücher.example",
+    "*.münchen.de",
+    // 254 characters: four labels of at most 63 do not fit (RFC 1035 allows 253)
+    [`${"a".repeat(63)}`, `${"b".repeat(63)}`, `${"c".repeat(63)}`, `${"d".repeat(62)}`].join("."),
   ])("refuses %s with the fixed message that does not echo it", (v) => {
     const r = normalizeHostPattern(v);
     expect(r).toEqual({ ok: false, message: HOST_PATTERN_MESSAGE });
     if (v && v !== "*") expect(HOST_PATTERN_MESSAGE).not.toContain(v);
+  });
+  it("tells a person to write an international name in punycode", () => {
+    expect(HOST_PATTERN_MESSAGE).toContain("punycode");
+    expect(HOST_PATTERN_MESSAGE).toContain("xn--");
   });
 });
 
@@ -88,9 +102,15 @@ describe("Security settings", () => {
     mount();
     const modes = await screen.findByRole("group", { name: "Capture mode" });
     expect(within(modes).getByRole("radio", { name: /^Metadata only \(default\)/ })).toBeChecked();
-    expect(modes).toHaveTextContent("No payloads or artifact bodies are stored");
+    // Review P2-2: Metadata only keeps commands, paths, URLs, error messages and run metadata
+    // (shown to people who may read payloads) and drops payloads, diffs and artifact bodies.
+    expect(modes).toHaveTextContent(
+      "Commands, file paths, URLs, error messages, run metadata, timings and counts are kept",
+    );
+    expect(modes).toHaveTextContent("Inline payloads, diffs and artifact bodies are not stored");
+    expect(modes).not.toHaveTextContent("Timings, types and counts");
     expect(modes).toHaveTextContent("after the server removes secret-shaped values");
-    expect(modes).toHaveTextContent("no free text such as error messages");
+    expect(modes).toHaveTextContent("also no error messages or run metadata");
     expect(modes).toHaveTextContent("applies to new events only");
     expect(screen.getByRole("link", { name: "audit log" })).toHaveAttribute(
       "href",

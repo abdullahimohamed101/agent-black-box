@@ -351,3 +351,38 @@ async def test_concurrent_changes_are_applied_one_after_another(engine: AsyncEng
     final = await service.get(a.context, project)
     last = rows[-1].details
     assert list(final.muted_detectors) == last["muted_added"]
+
+
+def test_a_host_name_may_be_as_long_as_a_dns_name_and_no_longer() -> None:
+    """RFC 1035: 253 characters in labels of at most 63 (review P3-5); `*.` is on top of that."""
+    labels = ["a" * 63, "b" * 63, "c" * 63, "d" * 61]
+    longest = ".".join(labels)
+    assert len(longest) == 253
+    assert normalize_host_patterns([longest]) == (longest,)
+    assert normalize_host_patterns(["*." + longest]) == ("*." + longest,)
+    with pytest.raises(InvalidSettingsError):
+        normalize_host_patterns([longest + "e"])  # 254 characters
+    with pytest.raises(InvalidSettingsError):
+        normalize_host_patterns(["*." + longest + "e"])
+
+
+def test_a_non_ascii_host_is_refused_with_a_punycode_hint() -> None:
+    for entry in ("bücher.example", "例え.jp", "*.münchen.de"):
+        with pytest.raises(InvalidSettingsError) as caught:
+            normalize_host_patterns([entry])
+        assert "punycode" in str(caught.value) and "xn--" in str(caught.value)
+        assert entry not in str(caught.value)  # the message never echoes the value
+    assert normalize_host_patterns(["xn--bcher-kva.example"]) == ("xn--bcher-kva.example",)
+
+
+def test_the_audit_row_of_long_allowlist_entries_stays_within_the_audit_limits() -> None:
+    from abb_api.audit.repository import clean_details
+
+    longs = [f"{i}{'a' * 63}.{'b' * 63}.{'c' * 63}.{'d' * 58}" for i in range(4)]
+    before = SecuritySettings(uuid.uuid4())
+    after = SecuritySettings(before.project_id, destination_allowlist=tuple(longs))
+    clean_details(audit_details(before, after))  # raises ValueError when a value is too long
+    clean_details(audit_details(after, before))
+    clean_details(
+        audit_details(after, SecuritySettings(before.project_id, muted_detectors=("sec.a",)))
+    )
