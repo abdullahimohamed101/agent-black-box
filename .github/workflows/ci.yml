@@ -9,7 +9,36 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    # A pull request that touches only documentation skips the heavy jobs below (they report "skipped", which counts as
+    # passing). Anything else, including .github/, scripts, code, and every push to main, runs the full set.
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.sha }}
+        run: |
+          docs_only=false
+          if [ "$EVENT" = "pull_request" ]; then
+            files=$(git diff --name-only "$BASE_SHA" "$MERGE_SHA")
+            echo "changed files:"; echo "$files"
+            other=$(printf '%s\n' "$files" | grep -vcE '^(docs/|[A-Za-z_]+\.md$|LICENSE$)' || true)
+            if [ -n "$files" ] && [ "$other" = "0" ]; then
+              docs_only=true
+            fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
   quality:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -47,6 +76,8 @@ jobs:
         run: make audit
 
   sdk:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # The SDK promises Python >= 3.10 and no dependencies: test the oldest and a current version.
     runs-on: ubuntu-latest
     strategy:
@@ -61,6 +92,8 @@ jobs:
           uv run pytest -q
 
   integrations:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # Framework adapters (ADR-050): own environment per package, fakes plus the real framework, no network needed.
     runs-on: ubuntu-latest
     strategy:
@@ -79,6 +112,8 @@ jobs:
           uv run pytest -q --cov
 
   integrations-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # A LangGraph example through the real API (scripts/integrations-e2e.sh; own database and port).
     runs-on: ubuntu-latest
     services:
@@ -106,6 +141,8 @@ jobs:
         run: scripts/integrations-e2e.sh
 
   stream-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # Live streaming in a real browser: API + worker + built web server + Python SDK writer (scripts/stream-e2e.sh).
     runs-on: ubuntu-latest
     services:
@@ -147,6 +184,8 @@ jobs:
           if-no-files-found: ignore
 
   analytics-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # Live streaming in a real browser: API + worker + built web server + Python SDK writer (scripts/analytics-e2e.sh).
     runs-on: ubuntu-latest
     services:
@@ -188,6 +227,8 @@ jobs:
           if-no-files-found: ignore
 
   coding-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # Coding-agent demo in a real browser: API + worker + artifacts + built web server + scripted agent (scripts/coding-e2e.sh).
     runs-on: ubuntu-latest
     services:
@@ -229,6 +270,8 @@ jobs:
           if-no-files-found: ignore
 
   auth-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # Sign-in through the dev-only fake OIDC provider, workspaces, roles, invitations and stream re-check in a real
     # browser: API + worker + fake provider + built web server (scripts/auth-e2e.sh).
     runs-on: ubuntu-latest
@@ -270,6 +313,8 @@ jobs:
           if-no-files-found: ignore
 
   findings-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # Pathological runs through ingestion and the worker, findings read in a real browser by an owner and a viewer:
     # API + worker + built web server (scripts/findings-e2e.sh).
     runs-on: ubuntu-latest
@@ -309,6 +354,8 @@ jobs:
           name: findings-e2e-results
 
   multiagent-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # Multi-agent example (threads, asyncio, a subprocess with a skewed clock) in a real browser: API + worker + built web server
     # (scripts/multiagent-e2e.sh).
     runs-on: ubuntu-latest
@@ -351,6 +398,8 @@ jobs:
           if-no-files-found: ignore
 
   eval-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     # Evaluations, run comparison and experiments in a real browser: the coding agent twice through the SDK (baseline and
     # wrong-fix), API + worker + fake judge + built web server, an owner and a viewer (scripts/eval-e2e.sh).
     runs-on: ubuntu-latest
@@ -393,6 +442,8 @@ jobs:
           if-no-files-found: ignore
 
   containers:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
