@@ -994,4 +994,24 @@ def ui_prepare() -> None:
     emit(ui_prepare={"events": len(events), "policy_version": current, "waiting_approval": waiting})
 
 
-GATES: dict[str, Callable[[], None]] = {"ui-prepare": ui_prepare, "gate2": gate2, "gate5": gate5, "gate7": gate7, "gate6-prepare": gate6_prepare, "gate6-verify": gate6_verify, "gate8": gate8}
+def expiry_probe() -> None:
+    from datetime import UTC  # noqa: PLC0415
+
+    client = agent("races")
+    body = intent(capability="test.short", resource="probe", risk_class=None, arguments={"n": 1})
+    approval = ask_ok(client, body)
+    asked = datetime.now(UTC)
+    rounds = []
+    while True:
+        started = datetime.now(UTC)
+        r = client.get(f"/v1/approvals/{approval}/wait", params={"timeout": 25}, timeout=40)
+        ended = datetime.now(UTC)
+        rounds.append((started.strftime("%H:%M:%S.%f")[:-3], ended.strftime("%H:%M:%S.%f")[:-3], r.json()["state"]))
+        if r.json()["state"] != "REQUESTED":
+            break
+    d = detail(approval)
+    events = [(e["event_type"], e["occurred_at"]) for e in run_events(body["run_id"]) if e["event_type"].startswith("approval.")]
+    emit(probe=True, asked=asked.isoformat(), rounds=rounds, expires_at=d["expires_at"], closed_at=d["closed_at"], events=events)
+
+
+GATES: dict[str, Callable[[], None]] = {"expiry-probe": expiry_probe, "ui-prepare": ui_prepare, "gate2": gate2, "gate5": gate5, "gate7": gate7, "gate6-prepare": gate6_prepare, "gate6-verify": gate6_verify, "gate8": gate8}

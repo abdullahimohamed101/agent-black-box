@@ -261,6 +261,25 @@ def gate4() -> None:
     results: dict[str, Any] = {}
     expiry_variants(results)  # background; talks to the API that stays up
 
+    # --- concurrent callers against the live API: every answer arrives (found by this script: uvicorn writes the headers and the body
+    # separately, and the SDK's transport used to read the body from a closed socket, so about one call in twenty reported an outage)
+    busy = client(FAIL_API)
+    outcomes: list[str] = []
+    with busy.run("concurrent decisions") as b_run:
+        def hammer(thread: int) -> None:
+            for i in range(120):
+                outcomes.append(guard(busy, b_run, f"stress.t{thread}", "R0")[0])
+
+        crowd = [threading.Thread(target=hammer, args=(n,)) for n in range(8)]
+        for thread in crowd:
+            thread.start()
+        for thread in crowd:
+            thread.join(120)
+    expect(len(outcomes) == 960 and set(outcomes) == {"policy"}, f"concurrent decisions: {len(outcomes)} answers, outcomes {sorted(set(outcomes))}")
+    expect(busy.stats().get("policy_fail_open", 0) == 0, f"SDK stats after 960 concurrent decisions: {busy.stats()}")
+    busy.shutdown(10)
+    results["concurrent_decisions"] = {"threads": 8, "decisions": len(outcomes), "answered_by_policy": len(outcomes)}
+
     # --- warm clients while the service answers: allow, deny, and the cached fail-mode table
     warm = client(FAIL_API)
     cold = client(FAIL_API)  # never asked while the service was up: no cached table
