@@ -70,3 +70,10 @@ the exception text (the worker logs only the exception class), because an except
 - Retry windows are judged per emitter on `occurred_at`; clocks that differ between agents of one run make windows approximate (KI-095).
 - Findings carry no command text, paths, payloads, run names or error messages (ADR-080); to see the content, open the cited event as a person with `payload.read`.
 - `rebuild-findings` after a baseline change can legitimately add or drop a cost spike (the baseline moved).
+
+## Security findings (Phase 13, ADR-131)
+
+The same job and the same command produce the `sec.*` findings. Run `rebuild-findings` after changing a project's muted detectors or destination allowlist
+(`PUT /v1/projects/{id}/security-settings`): the settings are read when a run is analysed, and nothing re-analyses on its own (KI-133). Muting a detector
+removes its finding on the rebuild; unmuting brings it back with the same `fnd_` id. `--project` limits the rebuild to the project whose settings changed.
+

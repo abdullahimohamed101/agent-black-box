@@ -63,3 +63,13 @@ Unit tests per detector (positive, negative, edge), the planted-secret and preci
 - Step 1 (2026-10-13): built on this branch. ADR-130; `project_security_settings` (migration 0090), `abb_api/security/` (scanner, redaction, settings), ingestion and artifact
   enforcement, `redaction.*` registered, CLI `set-capture-mode` / `create-project --capture-mode`. Security-sensitive (tenant scoping, redaction, audit): review pass is step 5.
   One deviation from the plan text, recorded in ADR-130 (4): METADATA_ONLY drops payload and artifact references, not `CONTENT_ATTRIBUTES`.
+- Step 2 (2026-10-13): built on this branch. ADR-131; detectors `sec.*` (`findings/detectors/security.py`, rules in `security/rules.py`, wording in
+  `findings/security_words.py`), `DETECTORS_VERSION` 2, migration 0091 (severities `medium`/`high`, `security_count`/`security_max_severity`, partial index),
+  `GET /v1/security/findings`, `GET /v1/security/detectors`, `GET|PUT /v1/projects/{id}/security-settings`, `RunOut.security_findings`,
+  `FindingOut.category`. Two refinements of the plan text, both in ADR-131: a recorded R3 is reported only when the server re-check agrees (R3 includes
+  `rm file`), and the reliability badge (`RunOut.findings`) stays reliability-only with the security count beside it. BILLING cannot read runs, so it
+  cannot read security findings (403); every role that can read runs gets identical bodies. Known issues KI-132 (pattern based), KI-133 (settings apply on
+  re-analysis). The generated web client changed: `severity` gains `medium`/`high` and `category` is required, which breaks 8 type errors in
+  `apps/web/src/fixtures/findings.ts` and `apps/web/src/lib/findings.ts` until step 3. Security-sensitive (content read by detectors, tenant scoping, authz):
+  review pass is step 5.
+

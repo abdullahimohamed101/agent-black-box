@@ -191,3 +191,16 @@ holds test data.
   (`tests/secret_scan_helpers.py`: `find_in_database`) and the artifact directory (`find_on_disk`) for the planted secrets. `test_security_settings.py`: defaults,
   workspace/project scoping, validation, audit atomicity, concurrent changes, runtime role. `tests/authz/test_content_withheld.py` covers the markers for every role.
 - `make_tenant(..., capture_mode=CaptureMode.FULL)` is the default for test projects; pass `None` for the product default (METADATA_ONLY).
+
+### Security detectors and findings (Phase 13 step 2, ADR-131)
+- `apps/api/tests/test_security_rules.py`: every matcher with positives, negatives and edges (secret-file names, destructive commands, risky git, SQL, hosts and the
+  allowlist), plus 35 adversarial 200 KB inputs run through every matcher with a wall-clock bound (ReDoS). `test_security_detectors.py`: the six detectors through
+  the real `run_all` (severities, rule wording, R3 vs R4, muting, allowlist wildcards, localhost, SDK markers, artifact records), sentinel tests (a planted
+  string never reaches any finding field), the precision corpus (`tests/security_corpus.py`, about 245 benign commands and paths, must yield zero findings with and
+  without an allowlist; add every false positive you find) over the pathological and comparison fixtures and the schema example events, and a 10,000-event
+  timing test (`-s` prints the measured time).
+- `tests/authz/test_security_findings_access.py`: a planted run through the real ingestion path and worker (AWS-style key, private key, `.env` read, `rm -rf /`,
+  force push to main, `DROP TABLE`, off-allowlist host) yields exactly the expected findings with evidence ids and fixed messages, identical for owner, admin,
+  developer, viewer, security and read keys; billing is 403; facets, filters, paging, search, cross-workspace and cross-project isolation, settings roles,
+  validation without echo, audit rows, mutes and allowlist changes through `rebuild-findings`. `tests/test_security_findings_job.py`: artifacts, per-project
+  settings, INV-2, and a 10,000-event run through ingestion, summary and detection. The route registry and role matrix list the four new routes.

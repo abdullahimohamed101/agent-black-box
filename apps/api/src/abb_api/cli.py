@@ -214,7 +214,9 @@ def build_parser() -> argparse.ArgumentParser:
     search_rebuild.add_argument("--limit", type=int, default=10_000)
 
     findings = sub.add_parser(
-        "rebuild-findings", help="re-run the reliability detectors (after a detector version bump)"
+        "rebuild-findings",
+        help="re-run the reliability and security detectors (after a detector version bump or "
+        "a change to a project's security mutes or allowlist)",
     )
     findings.add_argument("--workspace", required=True, help="workspace slug")
     findings.add_argument("--project", help="project slug")
