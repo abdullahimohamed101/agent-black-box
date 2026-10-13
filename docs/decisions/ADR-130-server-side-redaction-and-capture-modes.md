@@ -101,3 +101,17 @@ out is before the event is accepted. INV-5 says sensitive capture is opt-in and 
   (the settings read, 1.5 ms pooled, is in both). Hostile 1 MB inputs (every pattern's worst case) finish in under 0.4 s each.
 - Mode defaults change what existing projects store (see 9).
 - `ArtifactRecord` gains `redaction`, kept in the existing `artifacts.metadata` column (no artifacts migration).
+
+## Amendment 1 (Phase 13, step 4): the backstop gate
+
+`scripts/security-e2e.sh` ran gate 2 end to end and it passed, after one fix it forced: an artifact's **name** (a query parameter, up to 128
+characters) was stored as sent, so an upload with an AWS-style key in its name put the key in `artifacts.name`. `ArtifactService.put` now passes the
+name through `ServerRedactor.label` (the same scanner, a small budget; a name that cannot be scanned is stored as no name). Everything else the gate
+sent was already redacted or dropped: a command, an inline payload (including a value under a denied key), an error message, an artifact body, an
+oversized payload (`too_large`), and, on an API with a nanosecond scan budget and a 2 KiB artifact cap, every scan failure (`scan_failed`, `too_large`),
+with nothing unscanned stored. The scan covered 141 text, jsonb, tsvector and bytea columns of the whole database, the artifact directory and the server
+logs, with a positive control. KI-032 and KI-042 are resolved; the residue (a secret of unknown shape in FULL mode) is inherent to pattern detection.
+
+Two facts the gate also established, kept as consequences: in METADATA_ONLY and DISABLED the payload is dropped **before it is read**, so a secret inside
+it is neither stored nor counted (`redaction.server_count` is absent), and the credential finding needs the server to have seen the value (FULL) or an SDK
+marker in an attribute; and a credential an SDK redacted into an artifact leaves only a marker there (KI-134).

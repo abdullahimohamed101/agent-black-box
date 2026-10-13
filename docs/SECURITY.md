@@ -34,8 +34,10 @@ ingestion edge | control plane | database/object storage | human approvers.
   stored as a one-line note; unreadable settings refuse the batch (503). `redaction.server_count`, `redaction.server_kinds` and
   `redaction.dropped_reason` are metadata for every role. Settings changes (`security.settings.update`) are audit-logged in the same transaction.
   Tests plant secrets and scan every table and artifact file for them (`tests/test_ingestion_redaction.py`, `tests/secret_scan_helpers.py`).
-  **Not done:** stored events and artifacts are never scrubbed retroactively; unknown-shape secrets still pass in FULL mode (KI-032, KI-042 stay
-  open until the Phase 13 backstop gate passes).
+  Artifact names are scanned too (found by the end-to-end gate). The backstop gate passed (`make security-e2e`): a client that skips redaction sends an AWS-style
+  key and a PEM block in a command, a payload, an error message and an artifact, and a scan of every text column of the database, the artifact directory and the logs finds
+  them nowhere. KI-032 and KI-042 are resolved. **Not done:** stored events and artifacts are never scrubbed retroactively; unknown-shape secrets still pass in FULL mode
+  (inherent to pattern detection); a credential that an SDK already redacted into an artifact is not a finding (KI-134).
 - Security findings (Phase 13 step 2, ADR-131): six deterministic, versioned detectors (`sec.secret_file_read`, `sec.credential_in_output`,
   `sec.destructive_command`, `sec.risky_git`, `sec.privileged_db`, `sec.unexpected_destination`) report that a rule matched, never what it matched
   on. A finding has a category, a fixed sentence, a severity, a count and event links; no path, command, host or secret is ever interpolated, and
@@ -43,7 +45,9 @@ ingestion edge | control plane | database/object storage | human approvers.
   channel). Detection runs over the full events whatever the reader's role; the evidence link opens the event, where `payload.read` still decides what is
   shown. Findings are not searchable and no facet mentions them (ADR-101). `GET /v1/security/findings` is `run.read` (BILLING, which cannot read runs, gets
   403); the per-project settings (capture mode, mutes, destination allowlist) need `project.write` and are audit-logged. Patterns miss obfuscated or indirect
-  commands (KI-132), and an unconfigured destination allowlist means no destination findings by design.
+  commands (KI-132), and an unconfigured destination allowlist means no destination findings by design. A mute, an unmute or an allowlist change queues the
+  project's recent runs for re-analysis in the same transaction as its audit row (bounded, newest first, coalesced; ADR-131 Amendment 1, KI-133 resolved).
+  Operator notes: `docs/runbooks/security-observability.md`.
 - Never log secrets or payload bodies (implemented): request logs carry method, path, status, duration, request id and the
   safe identifiers `workspace_id`, `project_id`, `key_id`; a test posts secret-looking keys and payloads and asserts none
   appear in any log record. The reason a key was rejected is logged server-side only.
