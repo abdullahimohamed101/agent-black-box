@@ -76,7 +76,7 @@ fi
 step "provision a workspace, a project, a write key and a script-only read key (secrets never printed)"
 suffix="$(date +%s)$RANDOM"
 cli create-workspace --name "Analytics E2E" --slug "analytics-e2e-$suffix" >/dev/null
-cli create-project --workspace "analytics-e2e-$suffix" --name Demo --slug demo >/dev/null
+cli create-project --workspace "analytics-e2e-$suffix" --name Demo --slug demo --capture-mode full >/dev/null
 WRITE_KEY="$(cli create-key --workspace "analytics-e2e-$suffix" --project demo --scopes events:write runs:read --name analytics-write)"
 READ_KEY="$(cli create-key --workspace "analytics-e2e-$suffix" --scopes runs:read --name analytics-script-read)"
 [[ "$WRITE_KEY" == abb_live_* && "$READ_KEY" == abb_live_* ]] || fail "key creation"

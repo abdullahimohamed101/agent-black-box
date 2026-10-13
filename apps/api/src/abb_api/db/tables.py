@@ -78,7 +78,7 @@ JOB_STATUSES = ("pending", "running", "done", "dead_letter")
 POLICY_ACTIONS = ("allow", "deny", "require_approval")
 COST_SOURCES = ("provider_reported", "estimated", "client_estimate", "unpriced")
 FINDING_KINDS = ("deterministic", "probable")
-FINDING_SEVERITIES = ("info", "warning", "critical")
+FINDING_SEVERITIES = ("info", "warning", "medium", "high", "critical")
 
 # ---------------------------------------------------------------- tenancy and identity
 
@@ -881,6 +881,14 @@ findings = Table(
     ),
     Index("ix_findings_run", "workspace_id", "run_id"),
     Index("ix_findings_project_started", "workspace_id", "project_id", "run_started_at"),
+    # The workspace Security view lists only security findings, newest run first (ADR-131).
+    Index(
+        "ix_findings_security",
+        "workspace_id",
+        "run_started_at",
+        "id",
+        postgresql_where=text("detector LIKE 'sec.%'"),
+    ),
 )
 
 # One row per analysed run: what the analysis looked at, so findings can be marked outdated or
@@ -897,8 +905,11 @@ run_findings = Table(
     _ts("computed_at", nullable=False),
     Column("event_count_seen", Integer, nullable=False),
     Column("truncated", Boolean, nullable=False),
+    # Reliability findings only: the run list's badge predates the security category (ADR-131).
     Column("finding_count", Integer, nullable=False),
     Column("max_severity", Text),
+    Column("security_count", Integer, nullable=False, server_default=text("0")),
+    Column("security_max_severity", Text),
     PrimaryKeyConstraint("workspace_id", "run_id"),
     ForeignKeyConstraint(
         ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
@@ -908,6 +919,11 @@ run_findings = Table(
         "max_severity IS NULL OR " + _in("max_severity", FINDING_SEVERITIES),
         name="ck_run_findings_severity",
     ),
+    CheckConstraint(
+        "security_max_severity IS NULL OR " + _in("security_max_severity", FINDING_SEVERITIES),
+        name="ck_run_findings_security_severity",
+    ),
+    CheckConstraint("security_count >= 0", name="ck_run_findings_security_count"),
 )
 
 # ---------------------------------------------------------------- search (ADR-100, ADR-101)
@@ -956,4 +972,42 @@ run_search = Table(
     Index("ix_run_search_content", "content_doc", postgresql_using="gin"),
     Index("ix_run_search_event_types", "event_types", postgresql_using="gin"),
     Index("ix_run_search_tools", "tools", postgresql_using="gin"),
+)
+
+# ---------------------------------------------------------------- security settings (ADR-130)
+
+CAPTURE_MODES = ("FULL", "METADATA_ONLY", "DISABLED")
+
+# Per-project security configuration: how much the server stores (capture mode), which detectors a
+# workspace owner muted and which destinations are expected (used by the Phase 13 detectors). A
+# project without a row uses the defaults (METADATA_ONLY, no mutes, no allowlist), so the safe
+# behaviour needs no backfill. Plain DML for the runtime role: this is configuration, not history;
+# every change is recorded in `audit_log`.
+project_security_settings = Table(
+    "project_security_settings",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("capture_mode", Text, nullable=False, server_default="METADATA_ONLY"),
+    Column("muted_detectors", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("destination_allowlist", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    _ts("updated_at", nullable=False, default_now=True),
+    Column("updated_by", Text, nullable=False),
+    PrimaryKeyConstraint("workspace_id", "project_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="CASCADE",
+    ),
+    CheckConstraint(_in("capture_mode", CAPTURE_MODES), name="ck_security_capture_mode"),
+    CheckConstraint(
+        "jsonb_typeof(muted_detectors) = 'array' AND jsonb_array_length(muted_detectors) <= 64",
+        name="ck_security_muted_detectors",
+    ),
+    CheckConstraint(
+        "jsonb_typeof(destination_allowlist) = 'array' "
+        "AND jsonb_array_length(destination_allowlist) <= 256",
+        name="ck_security_destination_allowlist",
+    ),
+    CheckConstraint("char_length(updated_by) <= 128", name="ck_security_updated_by"),
 )

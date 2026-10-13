@@ -15,10 +15,10 @@ json() { python3 -c "import sys, json; d = json.load(sys.stdin); print($1)"; }  
 
 step "provision two workspaces (keys are shown once and never echoed here)"
 cli create-workspace --name "Smoke A" --slug "smoke-a-$suffix" 2>/dev/null
-cli create-project --workspace "smoke-a-$suffix" --name Demo --slug demo 2>/dev/null
+cli create-project --workspace "smoke-a-$suffix" --name Demo --slug demo --capture-mode full 2>/dev/null
 KEY="$(cli create-key --workspace "smoke-a-$suffix" --project demo --scopes events:write runs:read --name smoke 2>/dev/null)"
 cli create-workspace --name "Smoke B" --slug "smoke-b-$suffix" 2>/dev/null
-cli create-project --workspace "smoke-b-$suffix" --name Demo --slug demo 2>/dev/null
+cli create-project --workspace "smoke-b-$suffix" --name Demo --slug demo --capture-mode full 2>/dev/null
 OTHER_KEY="$(cli create-key --workspace "smoke-b-$suffix" --project demo --scopes events:write runs:read 2>/dev/null)"
 [[ "$KEY" == abb_live_* && "$OTHER_KEY" == abb_live_* ]] || fail "key creation"
 

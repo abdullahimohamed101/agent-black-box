@@ -48,7 +48,13 @@ class FindingOut(BaseModel):
     detector_version: str = Field(description="`name@x.y.z`.")
     finding_type: str
     kind: Literal["deterministic", "probable"]
-    severity: Literal["info", "warning", "critical"]
+    severity: Literal["info", "warning", "medium", "high", "critical"]
+    category: Literal["reliability", "security"] = Field(
+        description=(
+            "`security` for the Phase 13 detectors (ids `sec.*`: fixed wording, `evidence.rule` "
+            "states the rule that matched, no captured content); `reliability` otherwise."
+        )
+    )
     confidence: float
     title: str = Field(description='Starts with "Probable:" iff `kind` is `probable`.')
     message: str

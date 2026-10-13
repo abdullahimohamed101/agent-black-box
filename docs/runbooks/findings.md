@@ -70,3 +70,13 @@ the exception text (the worker logs only the exception class), because an except
 - Retry windows are judged per emitter on `occurred_at`; clocks that differ between agents of one run make windows approximate (KI-095).
 - Findings carry no command text, paths, payloads, run names or error messages (ADR-080); to see the content, open the cited event as a person with `payload.read`.
 - `rebuild-findings` after a baseline change can legitimately add or drop a cost spike (the baseline moved).
+
+## Security findings (Phase 13, ADR-131)
+
+The same job and the same command produce the `sec.*` findings. Changing a project's muted detectors or destination allowlist
+(`PUT /v1/projects/{id}/security-settings`, or the Security settings page) queues the project's recent runs for re-analysis in the same transaction
+(ADR-131 Amendment 1): at most `ABB_SECURITY_REANALYSE_MAX_RUNS` (default 200) started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS` (default 30), newest first,
+one pending job per run, after the findings debounce. Muting removes the finding when the job has run; unmuting brings it back with the same `fnd_` id. A
+capture mode change queues nothing. Runs older than the bound keep their findings until you run `rebuild-findings --workspace W --project P` (add
+`--since`/`--limit` to widen or narrow); the same command is how you re-derive after a detector version bump.
+

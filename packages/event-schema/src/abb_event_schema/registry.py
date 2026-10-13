@@ -150,7 +150,31 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     "secret.kind": AttrSpec(AttrType.STRING),
     "approval.id": AttrSpec(AttrType.STRING),
     "approval.capability": AttrSpec(AttrType.STRING),
+    # Written by the server when it redacted or stripped an event at ingestion (ADR-130, Phase 13).
+    # Metadata only: a count, kind names and a reason, never a value. Client-supplied values for
+    # these keys are discarded, so they always describe what the server did.
+    "redaction.server_count": AttrSpec(AttrType.INTEGER, 0),
+    "redaction.server_kinds": AttrSpec(AttrType.STRING_LIST),
+    "redaction.dropped_reason": AttrSpec(AttrType.STRING),
 }
+
+# Owned by the server (ADR-130). `dropped_reason` is one of DROPPED_REASONS, absent otherwise.
+SERVER_REDACTION_ATTRIBUTES: frozenset[str] = frozenset(
+    {"redaction.server_count", "redaction.server_kinds", "redaction.dropped_reason"}
+)
+DROPPED_REASONS: tuple[str, ...] = (
+    "mode_metadata_only",
+    "mode_disabled",
+    "scan_failed",
+    "too_large",
+)
+
+# Attributes that point at captured payload stored outside the event (an artifact reference).
+# Capture modes other than FULL drop them together with `payload` and `payload_ref`; the other
+# content attributes (command, path ...) stay, as they do in the SDK's METADATA_ONLY mode.
+PAYLOAD_REFERENCE_ATTRIBUTES: frozenset[str] = frozenset(
+    {"diff.artifact", "shell.stdout_artifact", "shell.stderr_artifact"}
+)
 
 
 # Attributes that carry captured content (what the agent ran, read or touched), not metadata about

@@ -1068,6 +1068,22 @@
           "minimum": 0,
           "type": "number"
         },
+        "redaction.dropped_reason": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "redaction.server_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "redaction.server_kinds": {
+          "items": {
+            "maxLength": 4096,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
         "retry.attempt": {
           "minimum": 1,
           "type": "integer"

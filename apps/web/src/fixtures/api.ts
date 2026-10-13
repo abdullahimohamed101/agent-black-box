@@ -8,6 +8,7 @@ import {
   type Viewer,
 } from "./evaluations";
 import { fixtureRuns } from "./index";
+import { fixtureSecurityDetectors, fixtureSecurityList, fixtureSecuritySettings } from "./security";
 import { withholdEvent, withholdSpan } from "./withhold";
 import { FixtureForbiddenError, FixtureQueryError, fixtureSearch } from "./search";
 
@@ -70,6 +71,12 @@ export function fixtureReply(
     const body = fixtureAnalytics(runId, q);
     return body ? { status: 200, body } : notFound("NOT_FOUND", "Not found.");
   }
+  if (v1 === "v1" && runs === "security" && runId === "findings" && !sub)
+    return fixtureSecurityList(q);
+  if (v1 === "v1" && runs === "security" && runId === "detectors" && !sub)
+    return fixtureSecurityDetectors(q);
+  if (v1 === "v1" && runs === "projects" && runId && sub === "security-settings")
+    return fixtureSecuritySettings(runId, undefined, viewer.content);
   const all = fixtureRuns();
   if (v1 === "v1" && (runs === "evaluators" || runs === "experiments")) {
     return fixtureWorkspaceReply(segments, all, viewer) ?? notFound("NOT_FOUND", "Not found.");

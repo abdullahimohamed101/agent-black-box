@@ -3,8 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 // Phase 22 step 7: the runs list shows which runs need you, facets and the top-bar search edit one query string.
 const BASE = "/w/demo/projects/all";
-// Fixture runs: ten earlier ones, the two coding-agent runs (Phase 11) and the blocked run (Phase 22 review P1-3).
-const RUN_COUNT = 13;
+// Fixture runs: ten earlier ones, the two coding-agent runs (Phase 11) and the blocked run (Phase 22 review P1-3). Phase 13 adds three security runs.
+const RUN_COUNT = 16;
 
 const SHOTS = "../../docs/screenshots/phase-22/step-7";
 

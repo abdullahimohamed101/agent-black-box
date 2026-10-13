@@ -13,6 +13,7 @@ from abb_api.findings.detectors.cost_spike import CostSpike
 from abb_api.findings.detectors.identical import IdenticalRequest
 from abb_api.findings.detectors.reported import ReportedLoop
 from abb_api.findings.detectors.retries import RetryStorm
+from abb_api.findings.detectors.security import SECURITY_DETECTORS
 from abb_api.findings.detectors.sequence import RepeatedSequence
 from abb_api.findings.model import (
     MAX_PER_DETECTOR,
@@ -24,7 +25,7 @@ from abb_api.findings.model import (
     Finding,
 )
 
-DETECTORS_VERSION = 1
+DETECTORS_VERSION = 2  # 2: the six security detectors (ADR-131)
 
 DETECTORS: tuple[Detector, ...] = (
     RepeatedSequence(),
@@ -35,6 +36,7 @@ DETECTORS: tuple[Detector, ...] = (
     ToolFailureCascade(),
     FailureChain(),
     ReportedLoop(),
+    *SECURITY_DETECTORS,
 )
 
 

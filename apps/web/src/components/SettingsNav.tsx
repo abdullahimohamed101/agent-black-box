@@ -10,6 +10,7 @@ const TABS = [
   { slug: "members", label: "Members", needs: "member.read" },
   { slug: "api-keys", label: "API keys", needs: "api_key.read" },
   { slug: "pricing", label: "Pricing", needs: "pricing.read" },
+  { slug: "security", label: "Security", needs: "project.write" },
   { slug: "audit", label: "Audit log", needs: "audit.read" },
 ] as const;
 

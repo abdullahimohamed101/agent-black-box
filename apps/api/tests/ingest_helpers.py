@@ -11,6 +11,7 @@ from abb_event_schema.parse import parse_event_in
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.projects.repository import ProjectRepository
+from abb_api.security.settings import CaptureMode, PgSecuritySettingsStore
 from abb_api.tenancy import TenantContext
 from abb_api.workspaces import WorkspaceProvisioning
 
@@ -26,13 +27,26 @@ class Tenant:
     project_uuids: dict[str, uuid.UUID]
 
 
-async def make_tenant(engine: AsyncEngine, slug: str, projects: tuple[str, ...] = ("p",)) -> Tenant:
+async def make_tenant(
+    engine: AsyncEngine,
+    slug: str,
+    projects: tuple[str, ...] = ("p",),
+    capture_mode: CaptureMode | None = CaptureMode.FULL,
+) -> Tenant:
+    """A workspace with projects. Projects capture FULL payloads unless `capture_mode` says
+    otherwise: the product default is METADATA_ONLY (ADR-130), which most tests are not about.
+    Pass None to keep the default (no settings row)."""
     async with engine.begin() as conn:
         workspace = await WorkspaceProvisioning(conn).create(name=slug, slug=slug)
         context = TenantContext(workspace.id)
         created = {
             p: await ProjectRepository(conn, context).create(name=p, slug=p) for p in projects
         }
+        if capture_mode is not None:
+            for project in created.values():
+                await PgSecuritySettingsStore(conn, context).upsert(
+                    project.id, updated_by="test:fixture", capture_mode=capture_mode
+                )
     return Tenant(
         context=context,
         workspace_id=from_uuid(IdKind.WORKSPACE, workspace.id),

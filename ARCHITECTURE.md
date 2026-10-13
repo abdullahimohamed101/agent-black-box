@@ -50,6 +50,15 @@ Phase 11 adds `evaluations` (the evaluator protocol and built-ins, the judge int
 evaluate-all) and `comparison` (step extraction per projection, a table-driven normaliser, prefix/suffix plus budgeted Myers alignment, computed on read in a thread); the worker gains the `evaluate_run` handler, which writes only to `evaluations` (ADR-090..092).
 
 
+### Security (`apps/api/src/abb_api/security`, `findings/detectors/security.py`) - Phase 13
+Redaction before persistence (ADR-130): ingestion and the artifact store pass every string through a bounded, linear-time `SecretScanner` and apply the project's capture mode
+(FULL, METADATA_ONLY the default, DISABLED) before anything is stored, because accepted events are immutable (INV-1); a value that cannot be scanned is dropped and the reason recorded
+(fail closed). Settings live in `project_security_settings` behind `SecuritySettingsStore` (workspace and project scoped, every change audit-logged in the same transaction; a mute or
+allowlist change also queues re-analysis of the project's recent runs, ADR-131 Amendment 1). Six deterministic `sec.*` detectors run in the existing `detect_findings` job, read the full
+events whatever the viewer's role and produce content-free findings (fixed wording, event links); `GET /v1/security/findings`, `/v1/security/detectors` and the settings routes
+expose them (ADR-131). The web has the run page's chip and Security group, a workspace Security page and a settings page. Status: implemented (Phase 13; independent review pending);
+end-to-end evidence is `make security-e2e`.
+
 ### Workers (`abb_api.worker`, same image as the API)
 PostgreSQL outbox, `FOR UPDATE SKIP LOCKED` leases, retries with backoff, dead letters, one writer per run via a
 row lock, debounced and coalesced `summarize_run` jobs; run state is a pure function of the run's events

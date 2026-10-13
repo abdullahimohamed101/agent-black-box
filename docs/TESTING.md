@@ -182,3 +182,48 @@ holds test data.
   planted secret reaches any page or API response. The script refuses to start if the port is already serving and kills the whole
   process tree on exit. **The Playwright spec writes screenshots into the tracked `docs/screenshots/phase-6/`**: commit them when they changed
   meaningfully, otherwise `git checkout` them. Example tests: `uv run --project packages/sdk-python pytest examples/coding-agent/tests`.
+
+### Server-side redaction and capture modes (Phase 13 step 1, ADR-130)
+- `apps/api/tests/test_security_scanner.py`: one sample per kind, near misses, unicode, NUL/escape splitting, idempotence, size and time budgets, and 22 hostile
+  1 MB inputs with a wall-clock bound; `test_security_scanner_parity.py` loads the SDK from the monorepo and asserts the same kinds, deny keys, output on a corpus and
+  per-mode decisions. `test_server_redactor.py`: limits that redaction could break (lengthened strings, 64 attributes, inline payload size), budgets, determinism.
+- `test_ingestion_redaction.py`: through the real API, per mode and fail-closed, redelivery and mode changes, artifacts; each test scans every table
+  (`tests/secret_scan_helpers.py`: `find_in_database`) and the artifact directory (`find_on_disk`) for the planted secrets. `test_security_settings.py`: defaults,
+  workspace/project scoping, validation, audit atomicity, concurrent changes, runtime role. `tests/authz/test_content_withheld.py` covers the markers for every role.
+- `make_tenant(..., capture_mode=CaptureMode.FULL)` is the default for test projects; pass `None` for the product default (METADATA_ONLY).
+- Review fixes (Phase 13 step 5): `test_security_scanner.py` also holds the corpora that the scanner must leave alone (ordinary `-u` commands, benign assignments, long user names, non-ASCII text) and must still redact
+  (`user:password` arguments, real secret assignments, look-alike characters, secrets straddling a window cut); `test_security_scanner_parity.py` runs those corpora and every attribute of the schema through the SDK and the server
+  in each mode. `test_artifact_redaction_kinds.py` (repository method and the module boundary), `test_security_bench_bounds.py`, and the cooldown tests in `test_security_settings.py`. `make_settings` sets the re-analysis cooldown to 0
+  for tests. A change to the SDK's redaction patterns can change recorded fixtures: regenerate `apps/api/tests/fixtures/compare_pair` with `scripts/gen_compare_fixture.py --out` (a test fails when it is stale).
+
+### Security detectors and findings (Phase 13 step 2, ADR-131)
+- `apps/api/tests/test_security_rules.py`: every matcher with positives, negatives and edges (secret-file names, destructive commands, risky git, SQL, hosts and the
+  allowlist), plus 35 adversarial 200 KB inputs run through every matcher with a wall-clock bound (ReDoS). `test_security_detectors.py`: the six detectors through
+  the real `run_all` (severities, rule wording, R3 vs R4, muting, allowlist wildcards, localhost, SDK markers, artifact records), sentinel tests (a planted
+  string never reaches any finding field), the precision corpus (`tests/security_corpus.py`, about 245 benign commands and paths, must yield zero findings with and
+  without an allowlist; add every false positive you find) over the pathological and comparison fixtures and the schema example events, and a 10,000-event
+  timing test (`-s` prints the measured time).
+- `tests/authz/test_security_findings_access.py`: a planted run through the real ingestion path and worker (AWS-style key, private key, `.env` read, `rm -rf /`,
+  force push to main, `DROP TABLE`, off-allowlist host) yields exactly the expected findings with evidence ids and fixed messages, identical for owner, admin,
+  developer, viewer, security and read keys; billing is 403; facets, filters, paging, search, cross-workspace and cross-project isolation, settings roles,
+  validation without echo, audit rows, mutes and allowlist changes through `rebuild-findings`. `tests/test_security_findings_job.py`: artifacts, per-project
+  settings, INV-2, and a 10,000-event run through ingestion, summary and detection. The route registry and role matrix list the four new routes.
+
+### Security end to end (Phase 13 step 4, gates 1-7)
+- **Security E2E** (`make security-e2e`, `scripts/security-e2e.sh`, CI job `security-e2e`): dedicated `abb_security_e2e` database (`SECURITY_E2E_DB_NAME`), API (:8190), a
+  second API on :8192 with a nanosecond scan budget and a 2 KiB artifact cap (same database and artifact directory), a worker, the dev-only fake OIDC provider (:8191) and the
+  built web server (:3190). Pieces: `scripts/security_e2e_plant.py` (the planted and the ordinary run through the REAL Python SDK and `CodingRecorder`; harmful commands are recorded
+  as spans with the classifier's verdict, never executed; the SDK process gets a clean environment because the helpers mask host environment values),
+  `scripts/security_e2e_check.py` (the API, database and disk assertions, one subcommand per gate), `scripts/security_bench.py` (gate 7), and
+  `apps/web/e2e/security-real.spec.ts` (the browser, signed in through the real OIDC flow as an owner, a viewer and a billing person; axe in light and dark; screenshots to
+  `docs/screenshots/phase-13/real-*.png`). Per gate: (1) exactly the six findings with evidence events resolved as the owner, fixed wording, no planted value, byte-identical bodies for
+  owner, developer, viewer and a read key, billing 403; (2) raw HTTP "SDK that skips redaction" into a FULL project, then a scan of every text/jsonb/tsvector/bytea column of the
+  database, the artifact directory and the server logs for the sentinels (with a positive control), the stored redaction record, the oversized payload (`too_large`) and, on the strict
+  API, `scan_failed` and `too_large` for events and artifacts; (3) FULL / METADATA_ONLY / DISABLED projects get the same payload-bearing run and are checked in the database and
+  through the API; (4) the ordinary SDK run has zero security findings; (6) findings deleted by SQL come back identical from `rebuild-findings`, and a mute, an unmute and an
+  allowlist change update the findings in the background without a rebuild; (7) 100-event batch latency and a 10,000-event run with asserted bounds
+  (`docs/benchmarks/phase-13-security.md`). `SECURITY_E2E_LOG_DIR` keeps the server logs of a failed run. The precision corpus of gate 4 is in the API suite
+  (`tests/test_security_detectors.py`, `tests/security_corpus.py`).
+- `apps/api/tests/authz/test_security_reanalysis.py`: a settings change queues recent runs (mute, unmute, allowlist), a capture mode change and a no-op do not, edits coalesce
+  to one job per run, only the project's own runs are queued, refused changes queue nothing, the bound by count and by age, newest first, and 0 turns it off
+  (KI-133). `tests/test_artifact_name_redaction.py`: a secret in an artifact name is redacted before storing.

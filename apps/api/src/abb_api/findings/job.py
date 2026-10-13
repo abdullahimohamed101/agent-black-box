@@ -23,6 +23,7 @@ from abb_api.findings.detectors import DETECTORS_VERSION, run_all
 from abb_api.findings.detectors.cost_spike import FINISHED
 from abb_api.findings.model import DetectorConfig, DetectorError
 from abb_api.findings.repository import AnalysisState, FindingsRepository
+from abb_api.findings.security_inputs import load_security_inputs
 from abb_api.ingestion.store import PgEventStore
 from abb_api.runs.queries import RunQueries
 from abb_api.tenancy import TenantContext
@@ -109,10 +110,12 @@ async def _detect_run(
     events = sort_events(loaded)[:limit]
 
     config = detector_config(settings)
+    security = await load_security_inputs(conn, tenant, row.project_id, run_id)
     try:
         ctx = build_context(
             events, cost_usd=row.cost_usd, retry_cost_usd=row.retry_cost_usd, config=config
         )
+        ctx = replace(ctx, security=security)
         if ctx.facts.status in FINISHED and row.agent_slug is not None:
             rows = await queries.cost_baseline(
                 row.project_id,

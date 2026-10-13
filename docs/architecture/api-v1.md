@@ -135,6 +135,13 @@ come from the key (an event naming another tenant is rejected, never overwritten
 - Order of arrival does not matter. Events may arrive after their run completed.
 - `POST /v1/events` is the single-event form: `202 {event_id, status: accepted|duplicate|conflict}` or a
   typed 4xx (`422 EVENT_INVALID`, `400 EVENT_SCHEMA_UNSUPPORTED`, `413`, `409 RUN_PROJECT_MISMATCH`).
+- **Server-side redaction (Phase 13, ADR-130).** Before an event is stored the server applies the project's capture mode (`FULL`,
+  `METADATA_ONLY` by default, `DISABLED`; set with `python -m abb_api.cli set-capture-mode` until the settings API of step 2) and scans every
+  string it carries; secret-shaped text becomes `[REDACTED:<label>]`, and the event records `redaction.server_count`, `redaction.server_kinds`
+  and `redaction.dropped_reason` ([events](events.md)). An event that cannot be scanned keeps its metadata and loses the value that could not be
+  scanned. An event whose redaction fails outright is rejected with `REDACTION_FAILED`. If the project's settings cannot be read the whole batch
+  is refused with a retryable `503`. Artifacts follow the same modes (see `PUT /v1/artifacts/{id}` in the OpenAPI document): dropped bodies are
+  stored as a one-line note and the `sha256`/`size_bytes` returned describe what is stored.
 - Per-project rate limit: 2,000 events/s (burst 10,000) and 10 MiB/s by default, per API process
   (`ABB_RATE_LIMIT_*`); exceeding it returns `429` and stores nothing from that request.
 
@@ -200,7 +207,7 @@ rollups).
 - `state`: `status` (`none | processing | current | outdated | failed`), `detectors_version`, `summary_version_seen`, `computed_at`, `event_count_seen` and `truncated`
   (true when only the first `ABB_FINDINGS_MAX_EVENTS` events were read). After a dead letter the previous items are still returned, status `failed`.
 - `items[]` (the §81.2 contract): `id` (`fnd_...`, stable across rebuilds), `detector`, `detector_version` (`name@x.y.z`), `finding_type`, `kind`
-  (`deterministic | probable`), `severity` (`info | warning | critical`), `confidence` (0 to 1), `title` (starts with `Probable:` iff `kind` is `probable`),
+  (`deterministic | probable`), `severity` (`info | warning | medium | high | critical`), `category` (`reliability | security`), `confidence` (0 to 1), `title` (starts with `Probable:` iff `kind` is `probable`),
   `message`, `start_event_id`, `end_event_id`, `evidence_event_ids` (every cited `evt_` id; each resolves through `GET /v1/runs/{id}/events/{event_id}`),
   `fingerprint`, `evidence` and `created_at`/`updated_at`. `evidence` is typed per `finding_type`, holds metadata only (ids, counts, tool and model names,
   codes) and lists the `thresholds` the detector used.
@@ -208,6 +215,27 @@ rollups).
   `inputs`, a one-sentence `rule` and `finding_ids`. No numeric score exists (ADR-081); finding-based dimensions are `no_data` unless the analysis is `current`.
 
 `RunOut` (list and detail) gains `findings`: `{count, max_severity, state}` with `state` one of `none | current | outdated`, read from one query per page.
+`findings` counts reliability findings only; `security_findings` (Phase 13, ADR-131) is the same shape for the security category (`max_severity` is `medium`,
+`high` or `critical`). The security detectors' findings appear in `items` with `category: "security"`, `detector` `sec.*`, `kind: "probable"`, and evidence
+`{rule, rules, count, event_ids, artifact_ids?, kinds?}`: fixed wording, event ids, counts and credential kind names only.
+
+### Security (Phase 13, ADR-131)
+
+All metadata: no route accepts or returns captured content, and each returns the same body to every caller it admits.
+
+- `GET /v1/security/findings` (`run.read`; BILLING 403; a project-bound key sees its project): `{items, next_cursor, facets}`, newest run first (`run_started_at`
+  then id), `limit` 1-200 (default 50). Filters (AND): `severity` (repeatable), `detector` (repeatable `sec.*`), `project_id`, `run_status` (repeatable),
+  `since`/`until` (on the run's start, with a timezone). Item: `id` (`fnd_`), `run_id`, `run_name`, `run_status`, `project_id`, `project_slug`, `project_name`,
+  `detector`, `detector_version`, `finding_type`, `kind`, `severity`, `title`, `message` (the detector's fixed sentence), `rule`, `count`, `start_event_id`,
+  `evidence_event_ids`, `run_started_at`, `detected_at`, `updated_at`. `facets` = `{severity, detector, project}` of `{value, label, count}`, each counted under
+  the other filters but not its own (`label` is the project name). `400 CURSOR_INVALID`, `404 PROJECT_NOT_FOUND` for an unknown or foreign `project_id`.
+- `GET /v1/security/detectors[?project_id=]` (`run.read`): `items[]` of `{id, title, description, severities[], version, muted, active}`. Without a project
+  `muted` is false and `active` is null for the destination detector (it depends on a project's allowlist).
+- `GET /v1/projects/{project_id}/security-settings` and `PUT` (`project.write`: owners and admins): `{project_id, capture_mode, muted_detectors,
+  destination_allowlist, updated_at, updated_by, detectors[]}`. `PUT` takes any of `capture_mode` (`FULL | METADATA_ONLY | DISABLED`), `muted_detectors`
+  (`sec.*` ids; at most 64) and `destination_allowlist` (host names or `*.suffix`; at most 256); a list given replaces the stored list, omitted fields stay,
+  a request that changes nothing writes no audit row. `422 SETTINGS_INVALID` (fixed message, never the value), `404 PROJECT_NOT_FOUND`. A new capture mode applies
+  to the next accepted batch; a change to the mutes or the allowlist queues the project's recent runs for re-analysis in the same transaction (at most `ABB_SECURITY_REANALYSE_MAX_RUNS`=200 started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS`=30, newest first, coalesced per run, and a wave within `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS`=60 of the project's previous mute or allowlist change is queued but not due until the cooldown ends; older runs: `python -m abb_api.cli rebuild-findings`), a capture mode change does not. An allowlist entry is a host name of at most 253 characters (punycode for an international name).
 
 ### Search (`GET /v1/runs?q=`)
 

@@ -47,7 +47,7 @@ suffix="$(date +%s)$RANDOM"
 WS="findings-e2e-$suffix"; OWNER="owner-$suffix@findings.test"; VIEWER="viewer-$suffix@findings.test"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Findings E2E" --slug "$WS" >/dev/null
-cli create-project --workspace "$WS" --name Demo --slug demo >/dev/null
+cli create-project --workspace "$WS" --name Demo --slug demo --capture-mode full >/dev/null
 WRITE_KEY="$(cli create-key --workspace "$WS" --project demo --scopes events:write --name findings-write)"
 READ_KEY="$(cli create-key --workspace "$WS" --scopes runs:read --name findings-script-read)"   # polling only; never given to the web
 [[ "$WRITE_KEY" == abb_live_* && "$READ_KEY" == abb_live_* ]] || fail "key creation"

@@ -44,7 +44,7 @@ step "provision a workspace, a project, a write key (events + artifacts) and a d
 suffix="$(date +%s)$RANDOM"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Coding E2E" --slug "coding-e2e-$suffix" >/dev/null
-cli create-project --workspace "coding-e2e-$suffix" --name Demo --slug demo >/dev/null
+cli create-project --workspace "coding-e2e-$suffix" --name Demo --slug demo --capture-mode full >/dev/null
 WRITE_KEY="$(cli create-key --workspace "coding-e2e-$suffix" --project demo --scopes events:write artifacts:write --name coding-write)"
 [[ "$WRITE_KEY" == abb_live_* ]] || fail "key creation"
 

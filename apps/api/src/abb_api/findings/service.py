@@ -10,7 +10,7 @@ from abb_api.authz.principal import Principal
 from abb_api.findings.describe import describe
 from abb_api.findings.detectors import DETECTORS_VERSION
 from abb_api.findings.health import FindingRef, health
-from abb_api.findings.model import RunFacts, Severity
+from abb_api.findings.model import SECURITY_PREFIX, RunFacts, Severity
 from abb_api.findings.repository import FindingRecord, FindingsRepository, RunFindingsState
 from abb_api.findings.schemas import (
     DimensionOut,
@@ -59,6 +59,7 @@ def _finding_out(record: FindingRecord) -> FindingOut:
         detector=record.detector,
         detector_version=record.detector_version,
         finding_type=record.finding_type,
+        category="security" if record.detector.startswith(SECURITY_PREFIX) else "reliability",
         kind=record.kind,  # type: ignore[arg-type]
         severity=record.severity,  # type: ignore[arg-type]
         confidence=record.confidence,

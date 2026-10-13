@@ -85,6 +85,8 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0080",
         "0070",
         "0071",
+        "0090",
+        "0091",
     ]
 
 
@@ -183,3 +185,40 @@ def test_a_database_at_0080_upgrades_to_0071_and_back_to_0080() -> None:
         alembic(url, "downgrade", "0080")
         assert asyncio.run(table_names(url)) == before
         assert asyncio.run(column_names(url, "evaluations")) == columns_before
+
+
+def test_0090_creates_the_security_settings_table_and_drops_it_again() -> None:
+    """Phase 13: one additive table; the previous head upgrades to it and back."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0071")
+        before = asyncio.run(table_names(url))
+        assert "project_security_settings" not in before
+        alembic(url, "upgrade", "0090")
+        assert asyncio.run(table_names(url)) - before == {"project_security_settings"}
+        assert asyncio.run(column_names(url, "project_security_settings")) == {
+            "workspace_id",
+            "project_id",
+            "capture_mode",
+            "muted_detectors",
+            "destination_allowlist",
+            "updated_at",
+            "updated_by",
+        }
+        alembic(url, "downgrade", "0071")
+        assert asyncio.run(table_names(url)) == before
+
+
+def test_0091_widens_severities_and_adds_the_security_badge_and_back() -> None:
+    """Phase 13 step 2: medium/high severities, a separate security badge, a partial index."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0090")
+        before = asyncio.run(column_names(url, "run_findings"))
+        alembic(url, "upgrade", "0091")
+        assert asyncio.run(column_names(url, "run_findings")) - before == {
+            "security_count",
+            "security_max_severity",
+        }
+        assert "ix_findings_security" in asyncio.run(index_names(url, "findings"))
+        alembic(url, "downgrade", "0090")
+        assert asyncio.run(column_names(url, "run_findings")) == before
+        assert "ix_findings_security" not in asyncio.run(index_names(url, "findings"))

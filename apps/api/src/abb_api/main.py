@@ -47,6 +47,9 @@ from abb_api.ingestion.router import router as ingestion_router
 from abb_api.ingestion.service import IngestionService
 from abb_api.runs.router import router as runs_router
 from abb_api.runs.service import RunService
+from abb_api.security.api_service import SecurityApiService
+from abb_api.security.router import router as security_router
+from abb_api.security.settings import ReanalysisPolicy
 from abb_api.streaming.hub import StreamHub
 from abb_api.streaming.router import router as streams_router
 from abb_api.streaming.service import StreamService
@@ -185,6 +188,16 @@ def create_app(
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)
+        app.state.security = SecurityApiService(
+            engine,
+            ReanalysisPolicy(
+                max_runs=settings.security_reanalyse_max_runs,
+                max_age_days=settings.security_reanalyse_max_age_days,
+                delay_seconds=settings.findings_delay_seconds,
+                cooldown_seconds=settings.security_reanalyse_cooldown_seconds,
+            ),
+            clock,
+        )
         app.state.comparison = ComparisonService(engine, settings)
         app.state.experiments = ExperimentService(engine, settings)
         app.state.evaluators = EvaluatorService(engine, settings.judge_provider)
@@ -200,6 +213,8 @@ def create_app(
             limiter,
             clock,
             max_bytes=settings.artifact_max_bytes,
+            scan_max_bytes=settings.security_scan_artifact_max_bytes,
+            scan_max_seconds=settings.security_scan_artifact_max_seconds,
         )
         app.state.analytics = AnalyticsService(
             engine,
@@ -244,6 +259,7 @@ def create_app(
     app.include_router(ingestion_router)
     app.include_router(runs_router)
     app.include_router(findings_router)
+    app.include_router(security_router)
     app.include_router(artifacts_router)
     app.include_router(streams_router)
     app.include_router(pricing_router)

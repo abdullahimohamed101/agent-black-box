@@ -61,6 +61,23 @@ All optional and additive (schema 1.0 is unchanged). Content is never an attribu
 
 A non-zero exit closes the span with `shell.command.failed` and `status=error`. The environment of a command is never recorded.
 
+### Server redaction markers (Phase 13, ADR-130)
+
+Written by the server when it redacts or strips an event at ingestion, before the event is accepted. Metadata, never content: every role that
+can read the run receives them unchanged.
+
+| Attribute | Type | Meaning |
+| --- | --- | --- |
+| `redaction.server_count` | integer | secret-shaped values the server found in this event (replaced in place, or inside a payload that was then dropped) |
+| `redaction.server_kinds` | list of strings | sorted kind names (`aws_access_key`, `private_key`, `github_token` ...), never values |
+| `redaction.dropped_reason` | string | `mode_metadata_only`, `mode_disabled`, `scan_failed` or `too_large`; absent unless something was dropped. When several apply: `scan_failed` > `too_large` > `mode_disabled` > `mode_metadata_only` |
+
+Client-supplied values for these keys are discarded. Capture modes (per project, enforced on the server, the SDK's names): `FULL` stores
+payloads after redaction; `METADATA_ONLY` (the default) drops `payload`, `payload_ref` and the artifact references `diff.artifact`,
+`shell.stdout_artifact`, `shell.stderr_artifact` (other attributes stay, as in the SDK); `DISABLED` also drops `error.message` and `metadata.*`.
+Secret-shaped text becomes `[REDACTED:<label>]`. A value that cannot be scanned is dropped (a required attribute becomes `[dropped]`).
+Events already stored are never rewritten.
+
 ## Event families
 
 | Class | Types |
@@ -136,7 +153,8 @@ the run's agent or trace.
 At-least-once submission, idempotent persistence on `(workspace_id, event_id)`, first write wins.
 `dedup.content_hash` (SHA-256 of the canonical JSON excluding `received_at` and tenant ids) separates
 a harmless retry from the same id with different content, which the server counts as a conflict and
-does not store.
+does not store. Since Phase 13 the hash is of the event *after* server redaction, so a redelivery after the project's capture mode changed is
+a conflict (the first accepted version is kept).
 
 ## Errors
 

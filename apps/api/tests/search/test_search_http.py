@@ -188,7 +188,11 @@ async def test_a_content_field_is_allowed_for_a_key_with_payload_read(
     api: Api, ids: dict[str, str]
 ) -> None:
     assert names(ids, await api.get("/v1/runs", token=READER, q="command:curl")) == {"fail"}
-    assert names(ids, await api.get("/v1/runs", token=READER, q="s3cr3t")) == {"fail"}
+    # The seeded command carries "Bearer s3cr3t". Since Phase 13 the server redacts it before the
+    # event is stored (ADR-130), so the search document never contained it: the old term finds
+    # nothing, and the marker that replaced it is what a payload reader can search for.
+    assert names(ids, await api.get("/v1/runs", token=READER, q="s3cr3t")) == set()
+    assert names(ids, await api.get("/v1/runs", token=READER, q="redacted")) == {"fail"}
 
 
 async def test_a_key_without_read_scope_is_refused_before_the_query_is_parsed(api: Api) -> None:

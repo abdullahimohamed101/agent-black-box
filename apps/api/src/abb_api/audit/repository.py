@@ -8,11 +8,12 @@ can never turn a 403 into a 500 or undo an action (D11). The CLI appends on its 
 import json
 import logging
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from abb_api.core.request_context import get_request_id
@@ -121,6 +122,33 @@ class AuditRepository:
             .limit(limit)
         )
         return [AuditRow(**r._asdict()) for r in rows]
+
+    async def latest_at(
+        self,
+        *,
+        action: str,
+        resource_kind: str,
+        resource_id: str,
+        details_contain_any: Sequence[dict[str, Any]],
+        since: datetime,
+    ) -> datetime | None:
+        """When the newest matching entry since `since` was written (a rate limit asks "when did
+        this last happen", and only looks as far back as the limit itself, so the time index
+        bounds the read). An entry matches when its details contain any of the given objects."""
+        if not details_contain_any:
+            return None
+        c = t.audit_log.c
+        newest: datetime | None = await self._conn.scalar(
+            select(func.max(c.occurred_at)).where(
+                c.workspace_id == self._tenant.workspace_id,
+                c.occurred_at >= since,
+                c.action == action,
+                c.resource_kind == resource_kind,
+                c.resource_id == resource_id,
+                or_(*(c.details.contains(d) for d in details_contain_any)),
+            )
+        )
+        return newest
 
     async def page(
         self, *, limit: int, before_id: int | None = None, since: datetime | None = None

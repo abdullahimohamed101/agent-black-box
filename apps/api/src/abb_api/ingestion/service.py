@@ -1,5 +1,6 @@
 """Ingestion use case: validate each event, bind it to the tenant, store, and report per event."""
 
+import asyncio
 import json
 import logging
 import re
@@ -27,8 +28,20 @@ from abb_api.ingestion.body import batch_invalid
 from abb_api.ingestion.ratelimit import RateLimiter, retry_after_seconds
 from abb_api.ingestion.schemas import BatchResponse, EventErrorOut, IssueOut
 from abb_api.ingestion.store import PgEventStore
+from abb_api.security.redaction import (
+    REASON,
+    SCAN_FAILED,
+    TOO_LARGE,
+    RedactionError,
+    ServerRedactor,
+)
+from abb_api.security.settings import CaptureMode, PgSecuritySettingsStore
 
 logger = logging.getLogger(__name__)
+
+# Below this many bytes a batch is redacted on the event loop (a few hundred microseconds);
+# above it in a worker thread, so a large batch of text does not stall other requests.
+_INLINE_REDACTION_BYTES = 32 * 1024
 
 _BATCH_ID = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 _EVENT_ID_HINT = re.compile(r"evt_[0-9A-Z]{26}")
@@ -58,12 +71,20 @@ def rate_limited(wait: float) -> AppError:
 
 class IngestionService:
     def __init__(
-        self, engine: AsyncEngine, limiter: RateLimiter, settings: Settings, clock: Clock
+        self,
+        engine: AsyncEngine,
+        limiter: RateLimiter,
+        settings: Settings,
+        clock: Clock,
+        redactor: ServerRedactor | None = None,
     ) -> None:
         self._engine = engine
         self._limiter = limiter
         self._settings = settings
         self._clock = clock
+        self._redactor = redactor or ServerRedactor(
+            event_max_seconds=settings.security_scan_event_max_seconds
+        )
         self._summary_delay = timedelta(seconds=settings.summary_debounce_seconds)
 
     async def ingest_batch(self, principal: Principal, document: bytes) -> BatchResponse:
@@ -116,6 +137,8 @@ class IngestionService:
 
         accepted = duplicates = conflicts = 0
         if valid:
+            valid = await self._redact(principal, valid, errors, size=len(document))
+        if valid:
             try:
                 async with self._engine.begin() as conn:
                     outcome = await PgEventStore(
@@ -154,6 +177,75 @@ class IngestionService:
             server_time=received_at,
             request_id=get_request_id(),
         )
+
+    async def _redact(
+        self,
+        principal: Principal,
+        valid: list[tuple[int, Event]],
+        errors: list[EventErrorOut],
+        *,
+        size: int,
+    ) -> list[tuple[int, Event]]:
+        """Apply the project's capture mode and the secret scan before anything is stored.
+
+        The mode is read for every batch (never cached): tightening a project must take effect
+        at once. If it cannot be read nothing is stored (fail closed): a 503 the SDK retries.
+        """
+        assert principal.project_id is not None
+        try:
+            async with self._engine.connect() as conn:
+                mode = (
+                    await PgSecuritySettingsStore(conn, principal.tenant).get(principal.project_id)
+                ).capture_mode
+        except Exception as exc:
+            if is_connectivity_error(exc):
+                logger.warning("security settings unavailable")
+                raise dependency_unavailable() from exc
+            raise
+        if size <= _INLINE_REDACTION_BYTES:
+            redacted, failed = self._redact_batch(valid, mode)
+        else:
+            redacted, failed = await asyncio.to_thread(self._redact_batch, valid, mode)
+        for index, event in failed:
+            errors.append(
+                EventErrorOut(
+                    index=index,
+                    event_id=event.event_id,
+                    code="REDACTION_FAILED",
+                    issues=[IssueOut(loc=[], code="redaction_failed", message="Event rejected.")],
+                )
+            )
+        original = {event.event_id: event for _, event in valid}
+        changed = sum(1 for _, event in redacted if event is not original[event.event_id])
+        if changed:
+            # `scan_failed` (time budget, scanner error) is a capacity signal an operator watches;
+            # `too_large` is the client's payload. Counts only, never a value.
+            failures = [e.attributes.get(REASON) for _, e in redacted]
+            logger.info(
+                "server redaction applied",
+                extra={
+                    "events_changed": changed,
+                    "scan_failed": failures.count(SCAN_FAILED),
+                    "too_large": failures.count(TOO_LARGE),
+                },
+            )
+        return redacted
+
+    def _redact_batch(
+        self, valid: list[tuple[int, Event]], mode: CaptureMode
+    ) -> tuple[list[tuple[int, Event]], list[tuple[int, Event]]]:
+        kept: list[tuple[int, Event]] = []
+        failed: list[tuple[int, Event]] = []
+        for index, event in valid:
+            try:
+                kept.append((index, self._redactor.apply(event, mode)))
+            except RedactionError:
+                failed.append((index, event))
+            except Exception as exc:
+                # Not stored as received: an unredacted event must never reach storage.
+                logger.error("redaction crashed", extra={"error_type": type(exc).__name__})
+                failed.append((index, event))
+        return kept, failed
 
     def _parse_batch(self, document: bytes) -> tuple[str | None, list[Any]]:
         try:

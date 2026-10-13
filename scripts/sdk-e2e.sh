@@ -9,7 +9,7 @@ suffix="$(date +%s)$RANDOM"
 fail() { echo "SDK E2E FAILED: $*" >&2; exit 1; }
 
 cli create-workspace --name "SDK $suffix" --slug "sdk-$suffix" >/dev/null 2>&1
-cli create-project --workspace "sdk-$suffix" --name Demo --slug demo >/dev/null 2>&1
+cli create-project --workspace "sdk-$suffix" --name Demo --slug demo --capture-mode full >/dev/null 2>&1
 KEY="$(cli create-key --workspace "sdk-$suffix" --project demo --scopes events:write runs:read --name sdk-e2e 2>/dev/null)"
 [[ "$KEY" == abb_live_* ]] || fail "key creation"
 

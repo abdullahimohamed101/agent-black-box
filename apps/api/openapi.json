@@ -1341,6 +1341,88 @@
         "title": "CreatedKey",
         "type": "object"
       },
+      "DetectorList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DetectorOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "DetectorList",
+        "type": "object"
+      },
+      "DetectorOut": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether it can report for the project: not muted and, for the destination detector, an allowlist exists. Null when no project was named and it depends on one.",
+            "title": "Active"
+          },
+          "description": {
+            "description": "What the detector looks for, in fixed words.",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "description": "`sec.<name>`: the id a project can mute.",
+            "title": "Id",
+            "type": "string"
+          },
+          "muted": {
+            "description": "Muted for the project asked about (false without one).",
+            "title": "Muted",
+            "type": "boolean"
+          },
+          "severities": {
+            "description": "Severities it reports, ascending.",
+            "items": {
+              "enum": [
+                "info",
+                "warning",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "type": "string"
+            },
+            "title": "Severities",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "description": "The rule version (`x.y.z`) findings record.",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "severities",
+          "version",
+          "muted",
+          "active"
+        ],
+        "title": "DetectorOut",
+        "type": "object"
+      },
       "DimensionOut": {
         "properties": {
           "finding_ids": {
@@ -2807,6 +2889,37 @@
         "title": "ExperimentSummaryOut",
         "type": "object"
       },
+      "FacetValue": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A project's name; null for severities and detectors.",
+            "title": "Label"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "count"
+        ],
+        "title": "FacetValue",
+        "type": "object"
+      },
       "FacetValueOut": {
         "properties": {
           "count": {
@@ -3030,6 +3143,15 @@
       },
       "FindingOut": {
         "properties": {
+          "category": {
+            "description": "`security` for the Phase 13 detectors (ids `sec.*`: fixed wording, `evidence.rule` states the rule that matched, no captured content); `reliability` otherwise.",
+            "enum": [
+              "reliability",
+              "security"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
           "confidence": {
             "title": "Confidence",
             "type": "number"
@@ -3104,6 +3226,8 @@
             "enum": [
               "info",
               "warning",
+              "medium",
+              "high",
               "critical"
             ],
             "title": "Severity",
@@ -3139,6 +3263,7 @@
           "finding_type",
           "kind",
           "severity",
+          "category",
           "confidence",
           "title",
           "message",
@@ -4837,6 +4962,17 @@
             "title": "Project Id",
             "type": "string"
           },
+          "security_findings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunSecurityBadge"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Security findings summary (Phase 13); null when the response omits it."
+          },
           "started_at": {
             "format": "date-time",
             "title": "Started At",
@@ -4969,6 +5105,50 @@
         "title": "RunPage",
         "type": "object"
       },
+      "RunSecurityBadge": {
+        "description": "Security findings of the run (Phase 13): a count and the worst severity, nothing about what\nthey are about. The full list is `GET .../findings` (category `security`).",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "max_severity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "info",
+                  "warning",
+                  "medium",
+                  "high",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Severity"
+          },
+          "state": {
+            "description": "`none`: not analysed yet; `outdated`: detector rules changed since.",
+            "enum": [
+              "none",
+              "current",
+              "outdated"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "max_severity",
+          "state"
+        ],
+        "title": "RunSecurityBadge",
+        "type": "object"
+      },
       "ScoreOut": {
         "properties": {
           "label": {
@@ -4999,6 +5179,355 @@
           "label"
         ],
         "title": "ScoreOut",
+        "type": "object"
+      },
+      "SecurityFacets": {
+        "properties": {
+          "detector": {
+            "items": {
+              "$ref": "#/components/schemas/FacetValue"
+            },
+            "title": "Detector",
+            "type": "array"
+          },
+          "project": {
+            "items": {
+              "$ref": "#/components/schemas/FacetValue"
+            },
+            "title": "Project",
+            "type": "array"
+          },
+          "severity": {
+            "items": {
+              "$ref": "#/components/schemas/FacetValue"
+            },
+            "title": "Severity",
+            "type": "array"
+          }
+        },
+        "required": [
+          "severity",
+          "detector",
+          "project"
+        ],
+        "title": "SecurityFacets",
+        "type": "object"
+      },
+      "SecurityFindingOut": {
+        "properties": {
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Events (and artifacts) that matched.",
+            "title": "Count"
+          },
+          "detected_at": {
+            "format": "date-time",
+            "title": "Detected At",
+            "type": "string"
+          },
+          "detector": {
+            "title": "Detector",
+            "type": "string"
+          },
+          "detector_version": {
+            "title": "Detector Version",
+            "type": "string"
+          },
+          "evidence_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Event Ids",
+            "type": "array"
+          },
+          "finding_type": {
+            "title": "Finding Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "probable",
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "description": "The detector's fixed sentence; never any captured content.",
+            "title": "Message",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_name": {
+            "title": "Project Name",
+            "type": "string"
+          },
+          "project_slug": {
+            "title": "Project Slug",
+            "type": "string"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The rule that matched, in words.",
+            "title": "Rule"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Name"
+          },
+          "run_started_at": {
+            "format": "date-time",
+            "title": "Run Started At",
+            "type": "string"
+          },
+          "run_status": {
+            "title": "Run Status",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "start_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Event Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "run_name",
+          "run_status",
+          "project_id",
+          "project_slug",
+          "project_name",
+          "detector",
+          "detector_version",
+          "finding_type",
+          "kind",
+          "severity",
+          "title",
+          "message",
+          "rule",
+          "count",
+          "start_event_id",
+          "evidence_event_ids",
+          "run_started_at",
+          "detected_at",
+          "updated_at"
+        ],
+        "title": "SecurityFindingOut",
+        "type": "object"
+      },
+      "SecurityFindingPage": {
+        "properties": {
+          "facets": {
+            "$ref": "#/components/schemas/SecurityFacets",
+            "description": "Counts under the other filters, so a chosen value keeps its siblings."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SecurityFindingOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "facets"
+        ],
+        "title": "SecurityFindingPage",
+        "type": "object"
+      },
+      "SecuritySettingsIn": {
+        "description": "Fields left out stay as they are; a given list replaces the stored list.",
+        "properties": {
+          "capture_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "FULL",
+                  "METADATA_ONLY",
+                  "DISABLED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture Mode"
+          },
+          "destination_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 256,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Allowlist"
+          },
+          "muted_detectors": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Muted Detectors"
+          }
+        },
+        "title": "SecuritySettingsIn",
+        "type": "object"
+      },
+      "SecuritySettingsOut": {
+        "properties": {
+          "capture_mode": {
+            "enum": [
+              "FULL",
+              "METADATA_ONLY",
+              "DISABLED"
+            ],
+            "title": "Capture Mode",
+            "type": "string"
+          },
+          "destination_allowlist": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Destination Allowlist",
+            "type": "array"
+          },
+          "detectors": {
+            "items": {
+              "$ref": "#/components/schemas/DetectorOut"
+            },
+            "title": "Detectors",
+            "type": "array"
+          },
+          "muted_detectors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Muted Detectors",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while the project has no stored row.",
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "required": [
+          "project_id",
+          "capture_mode",
+          "muted_detectors",
+          "destination_allowlist",
+          "updated_at",
+          "updated_by",
+          "detectors"
+        ],
+        "title": "SecuritySettingsOut",
         "type": "object"
       },
       "SideOut": {
@@ -7340,7 +7869,7 @@
         ]
       },
       "put": {
-        "description": "Raw body (optionally gzip), at most the configured artifact limit. The client chooses the id (`art_<ULID>`), so retries are idempotent: the same id and content returns `200`, different content `409`. `X-Content-SHA256` (hex) is verified when sent. Needs a project-bound key with `artifacts:write`.",
+        "description": "Raw body (optionally gzip), at most the configured artifact limit. The client chooses the id (`art_<ULID>`), so retries are idempotent: the same id and content returns `200`, different content `409`. `X-Content-SHA256` (hex) is verified against the body as sent. Needs a project-bound key with `artifacts:write`. The server redacts before storing (ADR-130): secret-shaped text is replaced with `[REDACTED:...]`, and in a project whose capture mode is METADATA_ONLY or DISABLED, or when the body is too large or fails to scan, the artifact is created with a one-line note in place of the body. The returned `sha256` and `size_bytes` describe what is stored, so they can differ from the upload. A retry of a stored upload is a duplicate whatever the project's mode is now.",
         "operationId": "put_artifact_v1_artifacts__artifact_id__put",
         "parameters": [
           {
@@ -10940,6 +11469,234 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/security-settings": {
+      "get": {
+        "description": "Capture mode, muted detectors and destination allowlist. Owners and admins only.",
+        "operationId": "get_security_settings_v1_projects__project_id__security_settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecuritySettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor is not valid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter or the body is invalid; the message never repeats a value."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read a project's security settings",
+        "tags": [
+          "security"
+        ]
+      },
+      "put": {
+        "description": "Fields left out stay as they are; a list given replaces the stored list. Owners and admins only. Every change is audit-logged (`security.settings.update`). A change to the mutes or the allowlist queues the project's recent runs (at most `ABB_SECURITY_REANALYSE_MAX_RUNS` started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS`, newest first) for re-analysis in the background; older runs change with `rebuild-findings`. A wave within `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS` of the project's previous mute or allowlist change is queued but not due until the cooldown ends. The capture mode applies to the next accepted batch only.",
+        "operationId": "put_security_settings_v1_projects__project_id__security_settings_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecuritySettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecuritySettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor is not valid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter or the body is invalid; the message never repeats a value."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change a project's security settings",
+        "tags": [
+          "security"
+        ]
+      }
+    },
     "/v1/runs": {
       "get": {
         "description": "Newest first by default. Page with `next_cursor`; filters combine with AND. `q` takes the search grammar (docs/architecture/api-v1.md, Search): `QUERY_INVALID` (422) for a bad query, `PERMISSION_DENIED` (403, `details.field`) for a content field without `payload.read`, `SEARCH_BUSY` and `SEARCH_TIMEOUT` (503, retryable).",
@@ -12536,6 +13293,379 @@
         "summary": "Record a human verdict",
         "tags": [
           "evaluations"
+        ]
+      }
+    },
+    "/v1/security/detectors": {
+      "get": {
+        "description": "Id, title, fixed description, severities and rule version of each detector. With `project_id`, also whether it is muted and whether it can report for that project (the destination detector needs an allowlist).",
+        "operationId": "list_security_detectors_v1_security_detectors_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetectorList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor is not valid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter or the body is invalid; the message never repeats a value."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List the security detectors",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/v1/security/findings": {
+      "get": {
+        "description": "Newest run first (`run_started_at`), keyset-paged. Every role that may read runs sees the same rows: a finding states a category, severity, count and event links, never a path, command, host or secret. Filters combine with AND; `facets` count under the other filters. A project-bound key sees only its project.",
+        "operationId": "list_security_findings_v1_security_findings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "pattern": "^(info|warning|medium|high|critical)$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "detector",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "pattern": "^sec\\.[a-z][a-z0-9_]{0,59}$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Detector"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "QUEUED",
+                      "RUNNING",
+                      "WAITING",
+                      "WAITING_FOR_APPROVAL",
+                      "SUCCESS",
+                      "FAILED",
+                      "CANCELLED",
+                      "TIMED_OUT",
+                      "BLOCKED"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Status"
+            }
+          },
+          {
+            "description": "Runs started at or after.",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Runs started at or after.",
+              "title": "Since"
+            }
+          },
+          {
+            "description": "Runs started at or before.",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Runs started at or before.",
+              "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityFindingPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor is not valid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A parameter or the body is invalid; the message never repeats a value."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List security findings across the workspace",
+        "tags": [
+          "security"
         ]
       }
     }

@@ -674,7 +674,7 @@ def test_duplicate_fingerprints_collapse_to_the_highest_severity() -> None:
 
 
 def test_detector_versions_are_unique_and_versioned() -> None:
-    assert DETECTORS_VERSION == 1
+    assert DETECTORS_VERSION == 2  # 2: the security detectors (Phase 13, ADR-131)
     assert len({d.name for d in DETECTORS}) == len(DETECTORS)
     assert all(re.fullmatch(r"\d+\.\d+\.\d+", d.version) for d in DETECTORS)
 

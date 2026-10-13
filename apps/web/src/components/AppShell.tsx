@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { securityPath } from "@/lib/security";
 import { analyticsPath, experimentsPath, projectPath, runsPath, type Base } from "@/lib/routes";
 import { SignOutButton } from "./SignOutButton";
 import { useWorkspaceOptional } from "./WorkspaceProvider";
@@ -24,6 +25,9 @@ export function AppShell({ base, children }: { base: Base; children: React.React
   const analytics = analyticsPath(base);
   const experiments = experimentsPath(base);
   const settings = `/w/${base.workspace}/settings/members`;
+  // In a project the link is the same page pre-filtered to it (the project's Security view).
+  const securityBase = `/w/${base.workspace}/security`;
+  const security = securityPath(base.workspace, base.project === "all" ? null : base.project);
   const cur = (href: string, exact: boolean) =>
     (exact ? path === href : path === href || path.startsWith(`${href}/`)) ? "page" : undefined;
   return (
@@ -44,6 +48,11 @@ export function AppShell({ base, children }: { base: Base; children: React.React
           <Link href={runs} aria-current={cur(runs, false)}>
             Runs
           </Link>
+          {(!ws || ws.permissions.includes("run.read")) && (
+            <Link href={security} aria-current={cur(securityBase, false)}>
+              Security
+            </Link>
+          )}
           <Link href={analytics} aria-current={cur(analytics, false)}>
             Analytics
           </Link>
