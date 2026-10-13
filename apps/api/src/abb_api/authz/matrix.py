@@ -33,25 +33,28 @@ _READ_RUNS = frozenset({a.RUN_READ, a.EVALUATION_READ, a.EXPERIMENT_READ})
 # People who may start evaluators, record verdicts and shape experiments (Phase 11, decision 1).
 _EVALUATE = frozenset({a.EVALUATION_RUN, a.EVALUATION_LABEL, a.EVALUATOR_WRITE, a.EXPERIMENT_WRITE})
 _CONTENT = frozenset({a.PAYLOAD_READ, a.ARTIFACT_READ})
+# People who read policies: those who build agents and review their safety (Phase 14, ADR-140).
+_POLICY_READ = frozenset({a.POLICY_READ})
 
 ROLE_GRANTS: Final[Mapping[str, frozenset[str | Own]]] = {
     OWNER: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
     | {
         a.ANALYTICS_READ, a.PROJECT_WRITE, a.API_KEY_READ, a.API_KEY_CREATE, a.API_KEY_REVOKE,
         a.MEMBER_WRITE, a.MEMBER_WRITE_OWNER, a.INVITE_READ, a.INVITE_WRITE, a.PRICING_WRITE,
-        a.AUDIT_READ, a.BILLING_READ,
+        a.AUDIT_READ, a.BILLING_READ, a.POLICY_READ, a.POLICY_WRITE,
     },
     ADMIN: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
     | {
         a.ANALYTICS_READ, a.PROJECT_WRITE, a.API_KEY_READ, a.API_KEY_CREATE, a.API_KEY_REVOKE,
         a.MEMBER_WRITE, a.INVITE_READ, a.INVITE_WRITE, a.PRICING_WRITE, a.AUDIT_READ,
-        a.BILLING_READ,
+        a.BILLING_READ, a.POLICY_READ, a.POLICY_WRITE,
     },
     DEVELOPER: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
+    | _POLICY_READ
     | {a.ANALYTICS_READ, a.API_KEY_READ, a.API_KEY_CREATE, Own(a.API_KEY_REVOKE)},
     # Metadata only: captured content needs payload.read (decision 3).
     VIEWER: _EVERYONE | _READ_RUNS | {a.ANALYTICS_READ},
-    SECURITY: _EVERYONE | _READ_RUNS | _CONTENT
+    SECURITY: _EVERYONE | _READ_RUNS | _CONTENT | _POLICY_READ
     | {a.ANALYTICS_READ, a.API_KEY_READ, a.API_KEY_REVOKE, a.AUDIT_READ},
     # Money only: analytics and prices, never runs or payloads (decision 4).
     BILLING: _EVERYONE | {a.ANALYTICS_READ, a.PRICING_WRITE, a.BILLING_READ},

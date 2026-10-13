@@ -657,6 +657,143 @@ export interface paths {
         patch: operations["change_role_v1_members__user_id__patch"];
         trace?: never;
     };
+    "/v1/policies/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the policy that governs a project
+         * @description With `project_id`, the effective policy: the project's own latest version, else the workspace base, else `source: default` (nothing published; every action is allowed). Without it, the workspace base. Enforcement is cooperative: it applies to agents that ask the policy service through the SDK.
+         */
+        get: operations["current_policy_v1_policies_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare two versions of a scope
+         * @description Unified diff text (at most 64 KiB; `truncated` says if it was cut).
+         */
+        get: operations["policy_diff_v1_policies_diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate a draft against a project's recorded events
+         * @description Replays the project's newest runs (bounded by runs, events and time) through the draft and returns counts by decision and rule plus a few sample hits made of ids, capability, risk class, decision and rule id. No command, path or argument is returned.
+         */
+        post: operations["dry_run_policy_v1_policies_dry_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish a new policy version
+         * @description Validates, then stores version N+1 of the scope (a project, or the workspace base) and appends the `policy.publish` audit row in one transaction. An invalid document is a 422 with `details.issues` and stores nothing. Existing versions are never changed.
+         */
+        post: operations["publish_policy_v1_policies_publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate a draft policy
+         * @description No side effects and no audit row. Problems come back as `issues` with line, column, code and a fixed message; the response is 200 either way.
+         */
+        post: operations["validate_policy_v1_policies_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the published versions of a scope
+         * @description Newest first, without document text. With `project_id` only that project's own versions are listed (not the inherited base).
+         */
+        get: operations["policy_versions_v1_policies_versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one published version with its text */
+        get: operations["policy_version_v1_policies_versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/pricing": {
         parameters: {
             query?: never;
@@ -1465,6 +1602,22 @@ export interface components {
              */
             token: string;
         };
+        /** CurrentPolicyOut */
+        CurrentPolicyOut: {
+            /** @description Null when `source` is `default`. */
+            policy: components["schemas"]["PolicyVersionDetail"] | null;
+            /**
+             * Project Id
+             * @description The project asked about; null for the base.
+             */
+            project_id: string | null;
+            /**
+             * Source
+             * @description Where the governing policy comes from: the project's own, the workspace base, or `default` (nothing published: every action is allowed).
+             * @enum {string}
+             */
+            source: "project" | "workspace" | "default";
+        };
         /** DetectorList */
         DetectorList: {
             /** Items */
@@ -1504,6 +1657,22 @@ export interface components {
              * @description The rule version (`x.y.z`) findings record.
              */
             version: string;
+        };
+        /** DiffOut */
+        DiffOut: {
+            /**
+             * Diff
+             * @description Unified diff text, at most 64 KiB.
+             */
+            diff: string;
+            /** From Version */
+            from_version: number;
+            /** Project Id */
+            project_id: string | null;
+            /** To Version */
+            to_version: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** DimensionOut */
         DimensionOut: {
@@ -1547,6 +1716,95 @@ export interface components {
              * @enum {string}
              */
             relation: "changed" | "left_only" | "right_only";
+        };
+        /** DryRunIn */
+        DryRunIn: {
+            /**
+             * Document
+             * @description The draft policy.
+             */
+            document: string;
+            /**
+             * Project Id
+             * @description The project whose recorded events are replayed.
+             */
+            project_id: string;
+        };
+        /** DryRunLimitsOut */
+        DryRunLimitsOut: {
+            /** Max Events */
+            max_events: number;
+            /** Max Runs */
+            max_runs: number;
+            /** Max Samples */
+            max_samples: number;
+            /** Time Budget Seconds */
+            time_budget_seconds: number;
+        };
+        /** DryRunOut */
+        DryRunOut: {
+            /** By Decision */
+            by_decision: {
+                [key: string]: number;
+            };
+            /** By Rule */
+            by_rule: components["schemas"]["DryRunRuleCount"][];
+            /**
+             * Events Evaluated
+             * @description Recorded actions the draft was evaluated against.
+             */
+            events_evaluated: number;
+            /**
+             * Events Skipped
+             * @description Events read that are not guardable actions.
+             */
+            events_skipped: number;
+            limits: components["schemas"]["DryRunLimitsOut"];
+            /** Runs Considered */
+            runs_considered: number;
+            /** Samples */
+            samples: components["schemas"]["DryRunSample"][];
+            /**
+             * Truncated
+             * @description Why the replay stopped early, if it did; counts then cover a prefix.
+             */
+            truncated: ("runs" | "events" | "time_budget") | null;
+        };
+        /** DryRunRuleCount */
+        DryRunRuleCount: {
+            /** Count */
+            count: number;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow" | "deny" | "require_approval";
+            /**
+             * Rule Id
+             * @description Null: no rule matched and the default applied.
+             */
+            rule_id: string | null;
+        };
+        /**
+         * DryRunSample
+         * @description An id-only pointer to one recorded action the draft would not simply allow.
+         */
+        DryRunSample: {
+            /** Capability */
+            capability: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow" | "deny" | "require_approval";
+            /** Event Id */
+            event_id: string;
+            /** Risk Class */
+            risk_class: string | null;
+            /** Rule Id */
+            rule_id: string | null;
+            /** Run Id */
+            run_id: string;
         };
         /** ErrorBody */
         ErrorBody: {
@@ -1841,7 +2099,7 @@ export interface components {
              * Issues
              * @default []
              */
-            issues: components["schemas"]["IssueOut"][];
+            issues: components["schemas"]["abb_api__ingestion__schemas__IssueOut"][];
         };
         /**
          * EventOut
@@ -2355,15 +2613,6 @@ export interface components {
              */
             role: "OWNER" | "ADMIN" | "DEVELOPER" | "VIEWER" | "SECURITY" | "BILLING";
         };
-        /** IssueOut */
-        IssueOut: {
-            /** Code */
-            code: string;
-            /** Loc */
-            loc: (string | number)[];
-            /** Message */
-            message: string;
-        };
         /** LogoutOut */
         LogoutOut: {
             /**
@@ -2465,6 +2714,83 @@ export interface components {
             tool: components["schemas"]["Percentiles"];
             window: components["schemas"]["Window"];
         };
+        /** PolicyHistory */
+        PolicyHistory: {
+            /** Items */
+            items: components["schemas"]["PolicyVersionOut"][];
+            /**
+             * Next Before Version
+             * @description Pass as `before_version` for the next (older) page.
+             */
+            next_before_version: number | null;
+        };
+        /** PolicyVersionDetail */
+        PolicyVersionDetail: {
+            /** Comment */
+            comment: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Document
+             * @description The policy text exactly as published.
+             */
+            document: string;
+            /** Document Sha256 */
+            document_sha256: string;
+            /**
+             * Project Id
+             * @description Null for the workspace-wide base policy.
+             */
+            project_id: string | null;
+            /** Rule Count */
+            rule_count: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "workspace" | "project";
+            /**
+             * Version
+             * @description 1, 2, 3 ... per scope; never reused.
+             */
+            version: number;
+        };
+        /** PolicyVersionOut */
+        PolicyVersionOut: {
+            /** Comment */
+            comment: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Document Sha256 */
+            document_sha256: string;
+            /**
+             * Project Id
+             * @description Null for the workspace-wide base policy.
+             */
+            project_id: string | null;
+            /** Rule Count */
+            rule_count: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "workspace" | "project";
+            /**
+             * Version
+             * @description 1, 2, 3 ... per scope; never reused.
+             */
+            version: number;
+        };
         /** PriceOut */
         PriceOut: {
             /**
@@ -2556,6 +2882,23 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** PublishIn */
+        PublishIn: {
+            /**
+             * Base Version
+             * @description The version the editor started from (0: none yet). If the scope's current version differs the request is a 409 and nothing is stored.
+             */
+            base_version?: number | null;
+            /** Comment */
+            comment?: string | null;
+            /** Document */
+            document: string;
+            /**
+             * Project Id
+             * @description The project to publish for; omit for the workspace base.
+             */
+            project_id?: string | null;
         };
         /** QueryFieldOut */
         QueryFieldOut: {
@@ -3239,6 +3582,26 @@ export interface components {
             /** Name */
             name: string | null;
         };
+        /** ValidateIn */
+        ValidateIn: {
+            /**
+             * Document
+             * @description The policy YAML.
+             */
+            document: string;
+        };
+        /** ValidateOut */
+        ValidateOut: {
+            /** Issues */
+            issues: components["schemas"]["abb_api__policies__schemas__IssueOut"][];
+            /**
+             * Rule Count
+             * @description Rules in the document when it is valid.
+             */
+            rule_count: number | null;
+            /** Valid */
+            valid: boolean;
+        };
         /** VariantIn */
         VariantIn: {
             /**
@@ -3464,6 +3827,38 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** IssueOut */
+        abb_api__ingestion__schemas__IssueOut: {
+            /** Code */
+            code: string;
+            /** Loc */
+            loc: (string | number)[];
+            /** Message */
+            message: string;
+        };
+        /** IssueOut */
+        abb_api__policies__schemas__IssueOut: {
+            /**
+             * Code
+             * @description Stable code such as `unknown_key` or `invalid_duration`.
+             */
+            code: string;
+            /**
+             * Column
+             * @description 1-based column.
+             */
+            column: number;
+            /**
+             * Line
+             * @description 1-based line of the offending entry.
+             */
+            line: number;
+            /**
+             * Message
+             * @description A fixed sentence. It may name a key, never a value.
+             */
+            message: string;
         };
     };
     responses: never;
@@ -6491,6 +6886,638 @@ export interface operations {
             };
             /** @description A dependency is unavailable; retry with backoff. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    current_policy_v1_policies_current_get: {
+        parameters: {
+            query?: {
+                /** @description The project; omit for the workspace-wide base policy. */
+                project_id?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentPolicyOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The scope has a newer version than `base_version`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The document or a parameter is invalid; `details.issues` lists line-level problems. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many policy changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dry run took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    policy_diff_v1_policies_diff_get: {
+        parameters: {
+            query: {
+                from_version: number;
+                to_version: number;
+                /** @description The project; omit for the workspace-wide base policy. */
+                project_id?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiffOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The scope has a newer version than `base_version`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The document or a parameter is invalid; `details.issues` lists line-level problems. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many policy changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dry run took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    dry_run_policy_v1_policies_dry_run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DryRunIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DryRunOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The scope has a newer version than `base_version`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The document or a parameter is invalid; `details.issues` lists line-level problems. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many policy changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dry run took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    publish_policy_v1_policies_publish_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyVersionDetail"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The scope has a newer version than `base_version`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The document or a parameter is invalid; `details.issues` lists line-level problems. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many policy changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dry run took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    validate_policy_v1_policies_validate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidateOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The scope has a newer version than `base_version`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The document or a parameter is invalid; `details.issues` lists line-level problems. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many policy changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dry run took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    policy_versions_v1_policies_versions_get: {
+        parameters: {
+            query?: {
+                /** @description The project; omit for the workspace-wide base policy. */
+                project_id?: string | null;
+                limit?: number;
+                before_version?: number | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyHistory"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The scope has a newer version than `base_version`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The document or a parameter is invalid; `details.issues` lists line-level problems. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many policy changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dry run took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    policy_version_v1_policies_versions__version__get: {
+        parameters: {
+            query?: {
+                /** @description The project; omit for the workspace-wide base policy. */
+                project_id?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyVersionDetail"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The scope has a newer version than `base_version`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The document or a parameter is invalid; `details.issues` lists line-level problems. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many policy changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dry run took too long. */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

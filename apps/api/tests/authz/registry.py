@@ -186,6 +186,36 @@ def _security_settings(method: str) -> Builder:
     return build
 
 
+POLICY_DOC = (
+    "version: 1\npolicies:\n  - id: deny-env\n    description: Do not read dotenv files.\n"
+    "    when: {capability: filesystem.read, resource: '**/.env*'}\n    decision: deny\n"
+)
+
+
+def _policy_get(template: str, extra: dict[str, str] | None = None) -> Builder:
+    """GET on the policy routes: the workspace base unless the probe names a project."""
+
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        params = {**(extra or {})}
+        if "project_id" in overrides:
+            params["project_id"] = overrides["project_id"]
+        return RequestSpec("GET", template, params)
+
+    return build
+
+
+def _policy_post(path: str, *, project_in_body: bool) -> Builder:
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        body: dict[str, object] = {"document": POLICY_DOC}
+        if project_in_body:
+            body["project_id"] = overrides.get("project_id", side.project_id)
+        elif "project_id" in overrides:
+            body["project_id"] = overrides["project_id"]
+        return RequestSpec("POST", path, content=json.dumps(body).encode(), headers=JSON)
+
+    return build
+
+
 def _target(
     method: str, prefix: str, param: str, kind: str, body: dict[str, str] | None
 ) -> Builder:
@@ -335,6 +365,37 @@ CASES: dict[tuple[str, str], RouteCase] = {
         RouteCase(
             "PUT", "/v1/projects/{project_id}/security-settings", actions.PROJECT_WRITE,
             _security_settings("PUT"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/policies/current", actions.POLICY_READ, _policy_get("/v1/policies/current"),
+            200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/policies/versions", actions.POLICY_READ,
+            _policy_get("/v1/policies/versions"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/policies/versions/{version}", actions.POLICY_READ,
+            _policy_get("/v1/policies/versions/1"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/policies/diff", actions.POLICY_READ,
+            _policy_get("/v1/policies/diff", {"from_version": "1", "to_version": "2"}), 200,
+            ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/policies/validate", actions.POLICY_WRITE,
+            _policy_post("/v1/policies/validate", project_in_body=False), 200,
+        ),
+        RouteCase(
+            "POST", "/v1/policies/publish", actions.POLICY_WRITE,
+            _policy_post("/v1/policies/publish", project_in_body=False), 201,
+            ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/policies/dry-run", actions.POLICY_WRITE,
+            _policy_post("/v1/policies/dry-run", project_in_body=True), 200,
+            ("project_id",), probe_actors=ADMINS,
         ),
         RouteCase("GET", "/v1/projects", actions.PROJECT_READ, _list_projects, 200),
         RouteCase("POST", "/v1/projects", actions.PROJECT_WRITE, _create_project, 201),

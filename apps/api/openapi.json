@@ -1341,6 +1341,50 @@
         "title": "CreatedKey",
         "type": "object"
       },
+      "CurrentPolicyOut": {
+        "properties": {
+          "policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicyVersionDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when `source` is `default`."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The project asked about; null for the base.",
+            "title": "Project Id"
+          },
+          "source": {
+            "description": "Where the governing policy comes from: the project's own, the workspace base, or `default` (nothing published: every action is allowed).",
+            "enum": [
+              "project",
+              "workspace",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "source",
+          "policy"
+        ],
+        "title": "CurrentPolicyOut",
+        "type": "object"
+      },
       "DetectorList": {
         "properties": {
           "items": {
@@ -1421,6 +1465,47 @@
           "active"
         ],
         "title": "DetectorOut",
+        "type": "object"
+      },
+      "DiffOut": {
+        "properties": {
+          "diff": {
+            "description": "Unified diff text, at most 64 KiB.",
+            "title": "Diff",
+            "type": "string"
+          },
+          "from_version": {
+            "title": "From Version",
+            "type": "integer"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "to_version": {
+            "title": "To Version",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "project_id",
+          "from_version",
+          "to_version",
+          "diff",
+          "truncated"
+        ],
+        "title": "DiffOut",
         "type": "object"
       },
       "DimensionOut": {
@@ -1533,6 +1618,220 @@
           "relation"
         ],
         "title": "DivergenceOut",
+        "type": "object"
+      },
+      "DryRunIn": {
+        "properties": {
+          "document": {
+            "description": "The draft policy.",
+            "maxLength": 262144,
+            "title": "Document",
+            "type": "string"
+          },
+          "project_id": {
+            "description": "The project whose recorded events are replayed.",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "document"
+        ],
+        "title": "DryRunIn",
+        "type": "object"
+      },
+      "DryRunLimitsOut": {
+        "properties": {
+          "max_events": {
+            "title": "Max Events",
+            "type": "integer"
+          },
+          "max_runs": {
+            "title": "Max Runs",
+            "type": "integer"
+          },
+          "max_samples": {
+            "title": "Max Samples",
+            "type": "integer"
+          },
+          "time_budget_seconds": {
+            "title": "Time Budget Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "max_runs",
+          "max_events",
+          "time_budget_seconds",
+          "max_samples"
+        ],
+        "title": "DryRunLimitsOut",
+        "type": "object"
+      },
+      "DryRunOut": {
+        "properties": {
+          "by_decision": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Decision",
+            "type": "object"
+          },
+          "by_rule": {
+            "items": {
+              "$ref": "#/components/schemas/DryRunRuleCount"
+            },
+            "title": "By Rule",
+            "type": "array"
+          },
+          "events_evaluated": {
+            "description": "Recorded actions the draft was evaluated against.",
+            "title": "Events Evaluated",
+            "type": "integer"
+          },
+          "events_skipped": {
+            "description": "Events read that are not guardable actions.",
+            "title": "Events Skipped",
+            "type": "integer"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/DryRunLimitsOut"
+          },
+          "runs_considered": {
+            "title": "Runs Considered",
+            "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/DryRunSample"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "truncated": {
+            "anyOf": [
+              {
+                "enum": [
+                  "runs",
+                  "events",
+                  "time_budget"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the replay stopped early, if it did; counts then cover a prefix.",
+            "title": "Truncated"
+          }
+        },
+        "required": [
+          "runs_considered",
+          "events_evaluated",
+          "events_skipped",
+          "truncated",
+          "by_decision",
+          "by_rule",
+          "samples",
+          "limits"
+        ],
+        "title": "DryRunOut",
+        "type": "object"
+      },
+      "DryRunRuleCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "decision": {
+            "enum": [
+              "allow",
+              "deny",
+              "require_approval"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null: no rule matched and the default applied.",
+            "title": "Rule Id"
+          }
+        },
+        "required": [
+          "rule_id",
+          "decision",
+          "count"
+        ],
+        "title": "DryRunRuleCount",
+        "type": "object"
+      },
+      "DryRunSample": {
+        "description": "An id-only pointer to one recorded action the draft would not simply allow.",
+        "properties": {
+          "capability": {
+            "title": "Capability",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "allow",
+              "deny",
+              "require_approval"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "risk_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Class"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "event_id",
+          "capability",
+          "risk_class",
+          "decision",
+          "rule_id"
+        ],
+        "title": "DryRunSample",
         "type": "object"
       },
       "ErrorBody": {
@@ -2257,7 +2556,7 @@
           "issues": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/IssueOut"
+              "$ref": "#/components/schemas/abb_api__ingestion__schemas__IssueOut"
             },
             "title": "Issues",
             "type": "array"
@@ -3569,39 +3868,6 @@
         "title": "InviteIn",
         "type": "object"
       },
-      "IssueOut": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Loc",
-            "type": "array"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          }
-        },
-        "required": [
-          "loc",
-          "code",
-          "message"
-        ],
-        "title": "IssueOut",
-        "type": "object"
-      },
       "LogoutOut": {
         "properties": {
           "ok": {
@@ -3888,6 +4154,179 @@
         "title": "PerformanceReport",
         "type": "object"
       },
+      "PolicyHistory": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyVersionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_before_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as `before_version` for the next (older) page.",
+            "title": "Next Before Version"
+          }
+        },
+        "required": [
+          "items",
+          "next_before_version"
+        ],
+        "title": "PolicyHistory",
+        "type": "object"
+      },
+      "PolicyVersionDetail": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "document": {
+            "description": "The policy text exactly as published.",
+            "title": "Document",
+            "type": "string"
+          },
+          "document_sha256": {
+            "title": "Document Sha256",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for the workspace-wide base policy.",
+            "title": "Project Id"
+          },
+          "rule_count": {
+            "title": "Rule Count",
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "workspace",
+              "project"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "version": {
+            "description": "1, 2, 3 ... per scope; never reused.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "project_id",
+          "version",
+          "document_sha256",
+          "rule_count",
+          "created_at",
+          "created_by",
+          "comment",
+          "document"
+        ],
+        "title": "PolicyVersionDetail",
+        "type": "object"
+      },
+      "PolicyVersionOut": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "document_sha256": {
+            "title": "Document Sha256",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for the workspace-wide base policy.",
+            "title": "Project Id"
+          },
+          "rule_count": {
+            "title": "Rule Count",
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "workspace",
+              "project"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "version": {
+            "description": "1, 2, 3 ... per scope; never reused.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "project_id",
+          "version",
+          "document_sha256",
+          "rule_count",
+          "created_at",
+          "created_by",
+          "comment"
+        ],
+        "title": "PolicyVersionOut",
+        "type": "object"
+      },
       "PriceOut": {
         "properties": {
           "cache_write_1h_per_million": {
@@ -4147,6 +4586,57 @@
           "name"
         ],
         "title": "ProjectOut",
+        "type": "object"
+      },
+      "PublishIn": {
+        "properties": {
+          "base_version": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The version the editor started from (0: none yet). If the scope's current version differs the request is a 409 and nothing is stored.",
+            "title": "Base Version"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "document": {
+            "maxLength": 262144,
+            "title": "Document",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The project to publish for; omit for the workspace base.",
+            "title": "Project Id"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "PublishIn",
         "type": "object"
       },
       "QueryFieldOut": {
@@ -6056,6 +6546,55 @@
         "title": "UserOut",
         "type": "object"
       },
+      "ValidateIn": {
+        "properties": {
+          "document": {
+            "description": "The policy YAML.",
+            "maxLength": 262144,
+            "title": "Document",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "ValidateIn",
+        "type": "object"
+      },
+      "ValidateOut": {
+        "properties": {
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/abb_api__policies__schemas__IssueOut"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "rule_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rules in the document when it is valid.",
+            "title": "Rule Count"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid",
+          "issues",
+          "rule_count"
+        ],
+        "title": "ValidateOut",
+        "type": "object"
+      },
       "VariantIn": {
         "additionalProperties": false,
         "properties": {
@@ -6595,6 +7134,71 @@
           "name"
         ],
         "title": "WorkspaceOut",
+        "type": "object"
+      },
+      "abb_api__ingestion__schemas__IssueOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "code",
+          "message"
+        ],
+        "title": "IssueOut",
+        "type": "object"
+      },
+      "abb_api__policies__schemas__IssueOut": {
+        "properties": {
+          "code": {
+            "description": "Stable code such as `unknown_key` or `invalid_duration`.",
+            "title": "Code",
+            "type": "string"
+          },
+          "column": {
+            "description": "1-based column.",
+            "title": "Column",
+            "type": "integer"
+          },
+          "line": {
+            "description": "1-based line of the offending entry.",
+            "title": "Line",
+            "type": "integer"
+          },
+          "message": {
+            "description": "A fixed sentence. It may name a key, never a value.",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "column",
+          "code",
+          "message"
+        ],
+        "title": "IssueOut",
         "type": "object"
       }
     },
@@ -11047,6 +11651,946 @@
         "summary": "Change a member's role",
         "tags": [
           "members"
+        ]
+      }
+    },
+    "/v1/policies/current": {
+      "get": {
+        "description": "With `project_id`, the effective policy: the project's own latest version, else the workspace base, else `source: default` (nothing published; every action is allowed). Without it, the workspace base. Enforcement is cooperative: it applies to agents that ask the policy service through the SDK.",
+        "operationId": "current_policy_v1_policies_current_get",
+        "parameters": [
+          {
+            "description": "The project; omit for the workspace-wide base policy.",
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The project; omit for the workspace-wide base policy.",
+              "title": "Project Id"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The scope has a newer version than `base_version`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The document or a parameter is invalid; `details.issues` lists line-level problems."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many policy changes; see `Retry-After`."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The dry run took too long."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read the policy that governs a project",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/v1/policies/diff": {
+      "get": {
+        "description": "Unified diff text (at most 64 KiB; `truncated` says if it was cut).",
+        "operationId": "policy_diff_v1_policies_diff_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from_version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "From Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_version",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "To Version",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The project; omit for the workspace-wide base policy.",
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The project; omit for the workspace-wide base policy.",
+              "title": "Project Id"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiffOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The scope has a newer version than `base_version`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The document or a parameter is invalid; `details.issues` lists line-level problems."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many policy changes; see `Retry-After`."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The dry run took too long."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Compare two versions of a scope",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/v1/policies/dry-run": {
+      "post": {
+        "description": "Replays the project's newest runs (bounded by runs, events and time) through the draft and returns counts by decision and rule plus a few sample hits made of ids, capability, risk class, decision and rule id. No command, path or argument is returned.",
+        "operationId": "dry_run_policy_v1_policies_dry_run_post",
+        "parameters": [
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DryRunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The scope has a newer version than `base_version`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The document or a parameter is invalid; `details.issues` lists line-level problems."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many policy changes; see `Retry-After`."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The dry run took too long."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Evaluate a draft against a project's recorded events",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/v1/policies/publish": {
+      "post": {
+        "description": "Validates, then stores version N+1 of the scope (a project, or the workspace base) and appends the `policy.publish` audit row in one transaction. An invalid document is a 422 with `details.issues` and stores nothing. Existing versions are never changed.",
+        "operationId": "publish_policy_v1_policies_publish_post",
+        "parameters": [
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyVersionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The scope has a newer version than `base_version`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The document or a parameter is invalid; `details.issues` lists line-level problems."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many policy changes; see `Retry-After`."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The dry run took too long."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Publish a new policy version",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/v1/policies/validate": {
+      "post": {
+        "description": "No side effects and no audit row. Problems come back as `issues` with line, column, code and a fixed message; the response is 200 either way.",
+        "operationId": "validate_policy_v1_policies_validate_post",
+        "parameters": [
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The scope has a newer version than `base_version`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The document or a parameter is invalid; `details.issues` lists line-level problems."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many policy changes; see `Retry-After`."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The dry run took too long."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Validate a draft policy",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/v1/policies/versions": {
+      "get": {
+        "description": "Newest first, without document text. With `project_id` only that project's own versions are listed (not the inherited base).",
+        "operationId": "policy_versions_v1_policies_versions_get",
+        "parameters": [
+          {
+            "description": "The project; omit for the workspace-wide base policy.",
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The project; omit for the workspace-wide base policy.",
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The scope has a newer version than `base_version`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The document or a parameter is invalid; `details.issues` lists line-level problems."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many policy changes; see `Retry-After`."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The dry run took too long."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List the published versions of a scope",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/v1/policies/versions/{version}": {
+      "get": {
+        "operationId": "policy_version_v1_policies_versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The project; omit for the workspace-wide base policy.",
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^prj_[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The project; omit for the workspace-wide base policy.",
+              "title": "Project Id"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyVersionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The scope has a newer version than `base_version`."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The document or a parameter is invalid; `details.issues` lists line-level problems."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many policy changes; see `Retry-After`."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The dry run took too long."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read one published version with its text",
+        "tags": [
+          "policies"
         ]
       }
     },

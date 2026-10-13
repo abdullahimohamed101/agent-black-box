@@ -48,6 +48,10 @@ U_AUDIT = "allow allow deny      deny   allow    deny    | 404 404 deny  401 401
 # evaluator.write (and the other Phase 11 write actions): owner, admin and developer.
 U_BUILD = U_KEYS_CREATE
 U_ADMIN_ONLY = U_PROJECT_ADMIN  # member.write, invite.read, invite.write: owner and admin
+# policy.read: owner, admin, developer and security (the people who read content); never viewer or
+# billing. policy.write is owner and admin. No API key holds either (management is for people).
+U_POLICY_READ = U_CONTENT
+U_POLICY_WRITE = U_PROJECT_ADMIN
 
 EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/v1/audit"): (NO_KEY, U_AUDIT),
@@ -91,6 +95,13 @@ EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/v1/security/detectors"): (LIST, U_RUNS),
     ("GET", "/v1/projects/{project_id}/security-settings"): (NO_KEY, U_PROJECT_ADMIN),
     ("PUT", "/v1/projects/{project_id}/security-settings"): (NO_KEY, U_PROJECT_ADMIN),
+    ("GET", "/v1/policies/current"): (NO_KEY, U_POLICY_READ),
+    ("GET", "/v1/policies/versions"): (NO_KEY, U_POLICY_READ),
+    ("GET", "/v1/policies/versions/{version}"): (NO_KEY, U_POLICY_READ),
+    ("GET", "/v1/policies/diff"): (NO_KEY, U_POLICY_READ),
+    ("POST", "/v1/policies/validate"): (NO_KEY, U_POLICY_WRITE),
+    ("POST", "/v1/policies/publish"): (NO_KEY, U_POLICY_WRITE),
+    ("POST", "/v1/policies/dry-run"): (NO_KEY, U_POLICY_WRITE),
     ("GET", "/v1/projects"): (EVERY_KEY, U_PROJECTS),
     ("POST", "/v1/projects"): (NO_KEY, U_PROJECT_ADMIN),
     ("GET", "/v1/pricing"): (LIST, U_MONEY),

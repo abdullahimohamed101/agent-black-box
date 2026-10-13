@@ -131,6 +131,11 @@ class Settings(BaseSettings):
     # Denied requests by one person that are written to the audit log per minute; the rest are
     # only logged (D11), so a refused client cannot fill the table.
     audit_denials_per_minute: int = Field(default=10, ge=1)
+    # Policy management per workspace (Phase 14, ADR-140), per minute: publishes, validations (an
+    # editor validates as people type) and the heavier dry runs. Per process, like ingestion.
+    policy_writes_per_minute: int = Field(default=30, ge=1)
+    policy_validations_per_minute: int = Field(default=120, ge=1)
+    policy_dry_runs_per_minute: int = Field(default=20, ge=1)
     # Lets the CLI mint sessions without an identity provider. Honoured only in development/test.
     allow_dev_sessions: bool = False
 

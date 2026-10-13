@@ -22,6 +22,8 @@ from abb_api.cost.repository import CostRepository
 from abb_api.db import tables as t
 from abb_api.evaluations.repository import EvaluatorRepository
 from abb_api.ids import new_uuid, parse_public_id, public_id
+from abb_api.policies.service import publish_policy
+from abb_api.security.settings import Actor
 from abb_api.workspaces.repository import InvitationRepository
 from tests.api_fixtures import NOW, Api
 from tests.auth_helpers import add_member, mint_session, remove_member, set_role
@@ -367,6 +369,16 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             )
         artifact_id = await _upload(api, art_token, run_ids[0], f"{label}.txt", f"{label} output")
         public_project = tenant.projects["alpha" if name == "acme" else "p"]
+        # Two published base policies per tenant; the description carries the tenant's canary so a
+        # policy read that crosses workspaces shows up in the leak scans (Phase 14).
+        async with api.engine.begin() as conn:
+            for number in (1, 2):
+                await publish_policy(
+                    conn, tenant.context, None, Actor("cli", "cli:seed"),
+                    f"version: 1\npolicies:\n  - id: seeded-{number}\n"
+                    f"    description: {label} policy {number}\n"
+                    "    when: {capability: filesystem.read}\n    decision: deny\n",
+                )  # fmt: skip
         seeded = await _seed_evaluations(
             api, tenant, "alpha" if name == "acme" else "p", run_ids, label
         )
