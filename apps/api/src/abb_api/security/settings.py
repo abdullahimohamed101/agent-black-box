@@ -11,7 +11,7 @@ import re
 import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Protocol
 
@@ -22,9 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from abb_api.audit.repository import ActorKind, AuditEntry, AuditRepository
 from abb_api.authz.principal import Principal
+from abb_api.clock import Clock, system_clock
 from abb_api.core.domain import DomainError, NotFoundError
 from abb_api.db import tables as t
 from abb_api.ids import public_id
+from abb_api.jobs.outbox import OutboxRepository
+from abb_api.runs.repository import RunRepository
 from abb_api.tenancy import TenantContext
 
 MAX_MUTED_DETECTORS = 64
@@ -39,6 +42,25 @@ _DETECTOR_ID = re.compile(r"sec\.[a-z][a-z0-9_]{0,59}")
 _HOST_PATTERN = re.compile(
     r"(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*"
 )
+
+
+@dataclass(frozen=True)
+class ReanalysisPolicy:
+    """Which runs a detector-affecting settings change re-analyses (KI-133, ADR-131 amendment):
+    at most `max_runs` of the project's newest runs that started within `max_age_days`. Older
+    runs keep the findings they were analysed with until `rebuild-findings`. 0 runs turns it off."""
+
+    max_runs: int = 200
+    max_age_days: int = 30
+    delay_seconds: float = 5.0  # the findings debounce: a burst of edits coalesces into one pass
+
+
+DEFAULT_REANALYSIS = ReanalysisPolicy()
+
+# The worker takes the oldest `available_at` first, so the newest run gets the earliest time, a few
+# milliseconds apart: the runs people are looking at are fresh before the long tail. Every job is
+# due no later than the debounce delay itself.
+_STAGGER = timedelta(milliseconds=5)
 
 
 class CaptureMode(StrEnum):
@@ -250,8 +272,13 @@ async def update_settings(
     capture_mode: CaptureMode | None = None,
     muted_detectors: Sequence[str] | None = None,
     destination_allowlist: Sequence[str] | None = None,
+    reanalysis: ReanalysisPolicy = DEFAULT_REANALYSIS,
+    now: datetime | None = None,
 ) -> SecuritySettings:
     """Apply the given fields and append the audit entry, on the caller's transaction.
+
+    A change to the mutes or the allowlist also queues the project's recent runs for re-analysis
+    in the same transaction (a capture mode change does not: it only affects future events).
 
     A request that changes nothing writes nothing (and no audit entry). The project row is locked
     for the duration, so concurrent changes are applied one after another and each audit entry
@@ -289,14 +316,47 @@ async def update_settings(
             details=details,
         )
     )
+    if "muted_detectors" in details["fields"] or "destination_allowlist" in details["fields"]:
+        await _queue_reanalysis(conn, tenant, project_id, reanalysis, now or datetime.now(UTC))
     return after
+
+
+async def _queue_reanalysis(
+    conn: AsyncConnection,
+    tenant: TenantContext,
+    project_id: uuid.UUID,
+    policy: ReanalysisPolicy,
+    now: datetime,
+) -> int:
+    """Queue `detect_findings` for the project's recent runs. Idempotent: a run that already has a
+    pending job is not queued twice, so repeated edits cost one pass."""
+    if policy.max_runs <= 0:
+        return 0
+    since = now - timedelta(days=policy.max_age_days)
+    run_ids = await RunRepository(conn, tenant).run_ids(
+        project_id=project_id, since=since, limit=policy.max_runs
+    )
+    outbox = OutboxRepository(conn, tenant)
+    base = timedelta(seconds=policy.delay_seconds)
+    queued = 0
+    for position, run_id in enumerate(run_ids):  # newest first
+        delay = base - _STAGGER * (len(run_ids) - position)
+        queued += await outbox.enqueue_detect([run_id], delay=delay)
+    return queued
 
 
 class SecuritySettingsService:
     """Reads and changes settings for the API (step 2) with one transaction per change."""
 
-    def __init__(self, engine: AsyncEngine) -> None:
+    def __init__(
+        self,
+        engine: AsyncEngine,
+        reanalysis: ReanalysisPolicy = DEFAULT_REANALYSIS,
+        clock: Clock = system_clock,
+    ) -> None:
         self._engine = engine
+        self._reanalysis = reanalysis
+        self._clock = clock
 
     async def get(self, tenant: TenantContext, project_id: uuid.UUID) -> SecuritySettings:
         async with self._engine.connect() as conn:
@@ -321,4 +381,6 @@ class SecuritySettingsService:
                 capture_mode=capture_mode,
                 muted_detectors=muted_detectors,
                 destination_allowlist=destination_allowlist,
+                reanalysis=self._reanalysis,
+                now=self._clock(),
             )

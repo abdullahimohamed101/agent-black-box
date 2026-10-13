@@ -112,6 +112,9 @@ describe("Security settings", () => {
     expect(calls[0]!.body).toEqual({ capture_mode: "FULL", muted_detectors: ["sec.risky_git"] });
     const status = screen.getByTestId("save-status");
     await waitFor(() => expect(status).toHaveTextContent("Saved."));
+    expect(status).toHaveTextContent(
+      "Existing runs are re-analysed in the background; recent runs first.",
+    );
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(screen.getByRole("radio", { name: /^Full/ })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Report risky git" })).not.toBeChecked();

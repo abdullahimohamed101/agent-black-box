@@ -11,6 +11,7 @@ from abb_event_schema.ids import IdKind, from_uuid
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.authz.principal import Principal
+from abb_api.clock import Clock, system_clock
 from abb_api.core.domain import NotFoundError
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.findings.describe import describe
@@ -28,10 +29,12 @@ from abb_api.projects.repository import ProjectRepository
 from abb_api.runs import cursors
 from abb_api.security import schemas as s
 from abb_api.security.settings import (
+    DEFAULT_REANALYSIS,
     Actor,
     CaptureMode,
     InvalidSettingsError,
     PgSecuritySettingsStore,
+    ReanalysisPolicy,
     SecuritySettings,
     update_settings,
 )
@@ -126,8 +129,15 @@ def _facet(values: list[FacetCount], *, project: bool = False) -> list[s.FacetVa
 
 
 class SecurityApiService:
-    def __init__(self, engine: AsyncEngine) -> None:
+    def __init__(
+        self,
+        engine: AsyncEngine,
+        reanalysis: ReanalysisPolicy = DEFAULT_REANALYSIS,
+        clock: Clock = system_clock,
+    ) -> None:
         self._engine = engine
+        self._reanalysis = reanalysis
+        self._clock = clock
 
     async def detectors(self, principal: Principal, project_id: str | None) -> s.DetectorList:
         async with self._engine.connect() as conn:
@@ -227,6 +237,8 @@ class SecurityApiService:
                     capture_mode=CaptureMode(body.capture_mode) if body.capture_mode else None,
                     muted_detectors=body.muted_detectors,
                     destination_allowlist=body.destination_allowlist,
+                    reanalysis=self._reanalysis,
+                    now=self._clock(),
                 )
         except InvalidSettingsError as error:
             raise settings_invalid(str(error)) from None

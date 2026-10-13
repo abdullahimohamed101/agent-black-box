@@ -73,7 +73,10 @@ the exception text (the worker logs only the exception class), because an except
 
 ## Security findings (Phase 13, ADR-131)
 
-The same job and the same command produce the `sec.*` findings. Run `rebuild-findings` after changing a project's muted detectors or destination allowlist
-(`PUT /v1/projects/{id}/security-settings`): the settings are read when a run is analysed, and nothing re-analyses on its own (KI-133). Muting a detector
-removes its finding on the rebuild; unmuting brings it back with the same `fnd_` id. `--project` limits the rebuild to the project whose settings changed.
+The same job and the same command produce the `sec.*` findings. Changing a project's muted detectors or destination allowlist
+(`PUT /v1/projects/{id}/security-settings`, or the Security settings page) queues the project's recent runs for re-analysis in the same transaction
+(ADR-131 Amendment 1): at most `ABB_SECURITY_REANALYSE_MAX_RUNS` (default 200) started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS` (default 30), newest first,
+one pending job per run, after the findings debounce. Muting removes the finding when the job has run; unmuting brings it back with the same `fnd_` id. A
+capture mode change queues nothing. Runs older than the bound keep their findings until you run `rebuild-findings --workspace W --project P` (add
+`--since`/`--limit` to widen or narrow); the same command is how you re-derive after a detector version bump.
 

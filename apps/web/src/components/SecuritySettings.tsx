@@ -174,6 +174,10 @@ function SettingsForm({
 
       <fieldset>
         <legend>Detectors</legend>
+        <p className="muted sec-note">
+          Muting a detector or changing the allowed hosts re-analyses this project&apos;s recent
+          runs in the background; recent runs first.
+        </p>
         {settings.detectors.map((d) => {
           const on = !muted.includes(d.id);
           const sev = d.severities.map((s) => securitySeverityMeta(s).label).join(" or ");
@@ -272,7 +276,7 @@ function SettingsForm({
       </button>
       <div className="sec-status" role="status" aria-live="polite" data-testid="save-status">
         {saved && !dirty
-          ? "Saved. Changes apply to new events and to the next analysis of a run."
+          ? "Saved. Changes apply to new events now. Existing runs are re-analysed in the background; recent runs first."
           : ""}
       </div>
       {apiMessage ? (

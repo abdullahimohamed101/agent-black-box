@@ -63,7 +63,7 @@ being read.
      environment variables and globs are not hosts. **With no allowlist configured it reports nothing**: there is no honest baseline to guess.
 4. **Muting and settings.** A project's `muted_detectors` (ids validated against the registry) removes that detector from the project's analyses;
    the allowlist feeds the destination detector. Both come from `project_security_settings` (ADR-130), read by the job. A change applies to a run when it
-   is next analysed (a new summary, or `rebuild-findings`); nothing re-analyses on its own (KI-133). Rebuild is deterministic: ids are derived from the
+   is next analysed; **see Amendment 1: a change to the mutes or the allowlist now queues that analysis itself**. Rebuild is deterministic: ids are derived from the
    fingerprint, so muting and unmuting returns the same finding id.
 5. **Severity scale.** `medium` and `high` join `info`, `warning`, `critical` (info < warning < medium < high < critical). Migration 0091 widens the two
    CHECK constraints. `run_findings.finding_count/max_severity` keep their meaning (reliability findings), so the run list's badge and the web code that
@@ -107,3 +107,25 @@ excessive permission requests are not in scope (plan non-goals). These are findi
   matcher (cut to 16 KiB head and tail first) take at most 2 ms a call. Events are capped at 4,096 characters per attribute and 64 KiB of inline payload, so one event's
   work is small and bounded; matching results are memoised per run by command text.
 - The web client types change (`severity` gains two values, `category` is required on findings); see the step report.
+
+## Amendment 1 (Phase 13, step 4): settings changes re-analyse recent runs (resolves KI-133)
+
+As first built, a mute, an unmute or an allowlist change applied to a run only when the run was next analysed, so the run page read `current` while
+showing findings from the old settings until someone ran `rebuild-findings`. The step-4 end-to-end run showed that this is a trust problem (a
+person mutes a detector and the finding stays). Decision:
+
+- `update_settings` (the only writer; it already writes the settings row and the `security.settings.update` audit row in one transaction) also queues
+  `detect_findings` jobs in that transaction when the change touches `muted_detectors` or `destination_allowlist`. If the transaction rolls back, no job
+  exists; if it commits, the jobs exist. A `capture_mode` change does **not** queue anything (it governs future events, INV-1) and a request that changes
+  nothing writes neither an audit row nor jobs.
+- **Bounded**: the project's newest runs only, at most `ABB_SECURITY_REANALYSE_MAX_RUNS` (default 200; 0 turns this off) that started within
+  `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS` (default 30). Older runs keep their findings until `rebuild-findings`, which stays the tool for everything else
+  (detector version bumps, a larger range).
+- **Idempotent and debounced**: the jobs use the existing coalescing key (one pending job per run), are delayed by the findings debounce
+  (`ABB_FINDINGS_DELAY_SECONDS`), and read the settings when they run, so a burst of edits costs one pass per run and the last settings win.
+  Newest runs get the earliest due time (a few milliseconds apart), so the runs people look at are fresh first.
+- Authorization is unchanged (`project.write`; a refused or foreign-project request queues nothing); the audit row is unchanged.
+- The settings page says so: "Existing runs are re-analysed in the background; recent runs first."
+
+Not changed: `run_findings` still records no settings version, so between the change and the job (seconds) a run reads `current` with the old
+findings; and a run older than the bound needs `rebuild-findings`. These are the residue of KI-133.

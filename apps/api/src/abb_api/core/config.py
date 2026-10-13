@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     security_scan_event_max_seconds: float = Field(default=1.0, gt=0)
     security_scan_artifact_max_bytes: int = Field(default=4 * 1024 * 1024, ge=1024)
     security_scan_artifact_max_seconds: float = Field(default=10.0, gt=0)
+    # A change to a project's muted detectors or destination allowlist re-analyses its newest runs
+    # (ADR-131 amendment, KI-133): at most this many, started within this many days. 0 runs: off.
+    security_reanalyse_max_runs: int = Field(default=200, ge=0, le=5000)
+    security_reanalyse_max_age_days: int = Field(default=30, ge=1)
     # Background worker (spec §72)
     # Delay before a run's summary job becomes due. A burst of batches for one run coalesces into
     # a single recomputation instead of one per batch (see docs/benchmarks/phase-2-ingestion.md).

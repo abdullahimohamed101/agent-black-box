@@ -124,9 +124,11 @@ async def get_security_settings(
     summary="Change a project's security settings",
     description=(
         "Fields left out stay as they are; a list given replaces the stored list. Owners and "
-        "admins only. Every change is audit-logged (`security.settings.update`). Mutes and "
-        "allowlist entries apply to a run when it is next analysed (`rebuild-findings`); the "
-        "capture mode applies to the next accepted batch."
+        "admins only. Every change is audit-logged (`security.settings.update`). A change to the "
+        "mutes or the allowlist queues the project's recent runs (at most "
+        "`ABB_SECURITY_REANALYSE_MAX_RUNS` started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS`, "
+        "newest first) for re-analysis in the background; older runs change with "
+        "`rebuild-findings`. The capture mode applies to the next accepted batch only."
     ),
 )
 async def put_security_settings(

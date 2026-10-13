@@ -49,6 +49,7 @@ from abb_api.runs.router import router as runs_router
 from abb_api.runs.service import RunService
 from abb_api.security.api_service import SecurityApiService
 from abb_api.security.router import router as security_router
+from abb_api.security.settings import ReanalysisPolicy
 from abb_api.streaming.hub import StreamHub
 from abb_api.streaming.router import router as streams_router
 from abb_api.streaming.service import StreamService
@@ -187,7 +188,15 @@ def create_app(
         app.state.ingestion = IngestionService(engine, limiter, settings, clock)
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)
-        app.state.security = SecurityApiService(engine)
+        app.state.security = SecurityApiService(
+            engine,
+            ReanalysisPolicy(
+                max_runs=settings.security_reanalyse_max_runs,
+                max_age_days=settings.security_reanalyse_max_age_days,
+                delay_seconds=settings.findings_delay_seconds,
+            ),
+            clock,
+        )
         app.state.comparison = ComparisonService(engine, settings)
         app.state.experiments = ExperimentService(engine, settings)
         app.state.evaluators = EvaluatorService(engine, settings.judge_provider)
