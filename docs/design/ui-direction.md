@@ -69,6 +69,27 @@ neither gated, nor switched off under `reduce`, nor timed only by the `--t-*` to
 - The loading spinner (`States.tsx`) is the one remaining loop; it has a reduced-motion override.
 - Nothing animates on first paint apart from a failed run's fault line: `e2e/design.spec.ts` asserts no animation is left running and none loops, on every route.
 
+## Replay
+
+Phase 12 (ADR-120) adds a replay mode to the run page. The header gets a `Replay` toggle beside `Context` (`aria-pressed`, key hint `r`); when on, a transport
+bar is docked under the header (in the fixed-height frame it is a flex item that never scrolls away; in the stacked phone layout it sticks under the top bar).
+Everything below reads one playhead (`replay.state`), so the page is the same page, "as of this moment":
+
+- Header: the figures are as of the playhead (`Elapsed`, cost so far, tokens, calls, retries, errors, files changed) and the status badge becomes a plain mono line
+  ("Running, 1 error so far, as of this moment"), never the final status. The headline reads "Running, step N, replay" until the first error is reached and then the
+  first-error line in the existing failure style; it never states the outcome. Leaving replay restores the live header.
+- Timeline: rows after the playhead are not in the list, so it grows as the run plays and follows the live edge only while the reader has not scrolled away (the
+  existing "N new events" control). The row at the playhead carries `aria-current="step"` and a leading edge mark in the accent colour; the fault line appears
+  when it is reached.
+- Waterfall: spans appear when the playhead reaches their start and open spans grow to it along the run's full axis ("in progress"); the agent tree marks the current
+  agent with the same accent edge. Evidence and the context column's findings and agent totals are whole-run views and say so in one line.
+- Red stays for failure only: the transport uses the accent for the playhead and play, and the one failure mark is the first-error tick on the scrub bar.
+- No animation is added. Replay updates are instant; the fault line's Phase 22 draw-in plays at the moment it is reached, only under `no-preference`.
+- At 375 px the transport keeps play, step, time and the scrub bar and moves speed, the two toggles and "Leave replay" into an Options menu; targets are 44 px.
+- Keys: Space play/pause, Left/Right step, `[` `]` speed, `r` enter or leave, Esc closes the inspector and then leaves; a focused control, a text field or a widget with its own
+  arrow keys (the scrub bar, the view tabs) keeps its keys. Focus stays on the Replay button on entry (the transport is the next tab stop) and returns to it when the
+  transport's own Leave button is used.
+
 ## Left out of this phase (deliberately)
 
 - Top-bar search slot and command palette (D6); the runs-list search box stays on its page.

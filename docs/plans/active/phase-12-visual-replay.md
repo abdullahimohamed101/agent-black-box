@@ -1,6 +1,6 @@
 # Phase 12: Visual replay (level 1)
 
-Status: Planned (2026-10-12). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-12).
+Status: Implemented; pending review (2026-10-12; steps 1-4 committed, step 5 is review, fixes, push and PR). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-12).
 Owner: web (no API change planned). Branch: `feature/phase-12-visual-replay` (from `main` `4941661`).
 Depends on: Phase 22 (merged: run header, fault line, motion layer, context column), Phase 9 (waterfall, agent tree, skew detection), Phase 15 (roles, withholding).
 Spec refs: §29, §87 level 1, §62 invariants (INV-5 withheld content), `docs/design/ui-direction.md`, ADR-111.
@@ -61,3 +61,34 @@ Unit tests for the projection, checkpoints and pacing; component tests for the t
 3. Wire into the run page: header figures, timeline, waterfall, context/inspector, story/diff/shell panels follow the playhead; fault line at first error; pause at first error; multi-agent spans, agent tree and skew note; withheld behaviour for viewers.
 4. Verification suite: network isolation, success test, viewer case, keyboard, URL, reduced motion, axe, performance; screenshots; ADR and docs.
 5. Review, fixes, closing evidence, push and PR.
+
+## Closing evidence
+
+Evidence vocabulary: VERIFIED (run in this environment, output observed), UNVERIFIED (env), ASSUMED. Commands from `apps/web` unless stated. Fixtures Playwright: `pnpm test:e2e` -> 228 passed, 74 skipped, 0 failed (59.8 s; an earlier full run during a machine stall timed out on 21 tests and was discarded, the replay specs alone passed 31/31 both times).
+
+| # | Criterion | Evidence |
+| --- | --- | --- |
+| 1 | state equals an independent recomputation; last event equals the summary | VERIFIED `vitest run tests/replay-projection.test.ts` (step 1); on the page, `tests/replay-run.test.tsx` compares header figures at five playheads with figures reduced from the raw events here and with the live readouts at the end |
+| 2 | pacing clamps, scales, labels; canonical order | VERIFIED `tests/replay-pacing.test.ts` (includes the skewed multi-agent run) |
+| 3 | network isolation | VERIFIED `e2e/replay.spec.ts` "acceptance 3": `context.route` aborts any non-GET or cross-origin request (none), and the page made 0 requests after replay started through play-to-error at 5x and on to the end. Chrome re-fetches the tab icon `/icon.svg` (resource type "other") on every address-bar URL change, so replay's `?t=` writes show 1-2 of those; excluded from the count and shown to be the browser's own by a control test that changes the URL with replay never entered |
+| 4 | viewer: metadata only, nothing extra fetched | VERIFIED `tests/replay-run.test.tsx` (viewer projection, no request while replaying, withheld wording), `e2e/replay.spec.ts` (fixtures viewer, coding run), and API-backed `e2e/replay-viewer-real.spec.ts` inside `AUTH_E2E_DB_NAME=abb_p12_auth` with that file appended to the script's Playwright command in a temporary copy (15 passed, "AUTH-E2E PASSED"). The committed `scripts/auth-e2e.sh` is outside this phase's paths and does not yet list the new file: add `e2e/replay-viewer-real.spec.ts` to its Playwright line |
+| 5 | transport by mouse and keyboard, no key clashes, slider, axe, 375 px, reduced motion | VERIFIED `tests/replay-transport.test.tsx`, `tests/replay-hook.test.tsx`, `tests/replay-run.test.tsx` (keyboard precedence), `e2e/replay.spec.ts` (keyboard, 375 px bar and 44 px targets, axe light and dark at start/first error/inspector/waterfall, reduced motion: paused, `document.getAnimations()` empty and `animation-name: none` at the fault) |
+| 6 | playhead in the URL | VERIFIED `e2e/replay.spec.ts`: `?t=` through reload and with `?view=`, leave removes `t`, goBack/goForward across pages, unknown id notice, no hydration warning on a deep link. Limitation observed: Next ignores state-less `pushState` entries on back, so only navigations the app makes round trip; replaceState writes never create entries |
+| 7 | success test at 1440 and 375 | VERIFIED `e2e/replay.spec.ts` "acceptance 7": 2 actions, stops at the first error unaided (about 6 s at 1x), headline, cost so far, retries, errors and fault line equal values computed from the fixture events |
+| 8 | 10,000-event scrub and 5x playback | VERIFIED `e2e/replay-perf.spec.ts`: 12 scrub jumps median 16 ms, max 25 ms (bounds 150 median, 500 max); 5x playback for 3 s on the timeline and on the waterfall: max frame gap 17 ms, no long task |
+| 9 | multi-agent | VERIFIED `e2e/replay-agents.spec.ts` (spans appear, an open span grows then closes, agent highlight, skew note present on run 7 and absent on run 2, fault line on the waterfall); the existing fixture run 7 is already clock-skewed, so no new fixture was needed |
+| 10 | no endpoint or schema change; existing tests pass; modified tests listed | VERIFIED: no file under `apps/api`; web vitest 1,112 passed in 67 files, `tsc`, `eslint`, `prettier --check`, `pnpm build` clean; fixtures Playwright above; table below. API-backed scripts with `abb_p12_*` databases: `auth` 15 passed, `multiagent` 6, `coding` 6, `stream` 5, `findings` 6, all "PASSED". `scripts/quality.sh full` and CI: UNVERIFIED (env), left to the PR. Adversarial review: step 5 |
+
+Regression found and fixed in step 4: the Replay button wrapped to a second row at 375 px and pushed the fault line below the fold in `e2e/five-second.spec.ts` (outside replay). At 375 px the tabs, Context and Replay now share one row (`run-replay.css`: tab counts and the key hint hidden below 26 rem).
+
+Decisions taken in step 3 (recorded here, none changes D1-D6): the inspector follows the playhead when it is open and playback is paused or stepping (not on each tick, each follow being a request); Space on the timeline or waterfall plays/pauses while replaying (Enter still opens a row); `[`/`]` keep panning on a focused waterfall; "Show it", `e` and Evidence jumps move the playhead; Evidence and the context column are whole-run views with a one-line note; focus stays on the Replay button on entry and returns to it only when the transport's own Leave button is used.
+
+## Modified existing tests
+
+None weakened, skipped or deleted. `git diff main...HEAD --name-status` over `apps/web/tests`, `apps/web/e2e`, `scripts`, `packages`, `apps/api` shows one modified file; everything else is added.
+
+| File | Why it changed |
+| --- | --- |
+| `apps/web/tests/tokens-use.test.ts` | step 2: one allowlist line for `replay.css`'s first-error mark on the scrub bar (`--fail`, a failure marker) |
+
+Added: `tests/replay-{projection,pacing,hook,transport,run,waterfall-bounds}`, `e2e/replay.ts`, `e2e/replay{,-agents,-perf,-shots,-viewer-real}.spec.ts`.

@@ -189,6 +189,7 @@ run status.
 Level 1 only (§87): play/pause/step/1x/2x/5x over recorded events, reduced-motion aware, no
 external contact. Levels 2-3 stay deferred. **Acceptance**: a failed run replays event by event
 without network calls to original systems (asserted in test).
+**Status: Implemented; pending review** (ADR-120, `docs/plans/active/phase-12-visual-replay.md`). Next: Phase 13 after merge.
 
 ## Phase 13 - Security observability
 Detectors (secret access, `.env` reads, credential-looking output, destructive commands,

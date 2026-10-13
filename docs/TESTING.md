@@ -64,6 +64,17 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
   against fixtures (compare, experiments, the viewer's views, mobile overflow). The compare fixture pair is generated from the real example by `scripts/gen_compare_fixture.py` (never hand-edited);
   `scripts/bench_compare.py` records the alignment benchmarks (`docs/benchmarks/phase-11-compare.md`).
 
+### Visual replay (Phase 12)
+- **Web unit**: `replay-projection.test.ts` (state at any index equals an independent recomputation over the fixture runs; incremental advance; checkpoints; the 10,000-event bound), `replay-pacing.test.ts` (clamping, speeds, gap labels,
+  skewed run), `replay-hook.test.tsx` (player, URL, keyboard, pause at the first error), `replay-transport.test.tsx` (controls, slider, phone menu), `replay-run.test.tsx` (the run page wired to the playhead: header figures as of the playhead,
+  a headline that does not leak the future, the timeline and fault line, inspector follow, waterfall spans and the agent highlight, a viewer's replay, live append, keyboard precedence, the URL) and `replay-waterfall-bounds.test.ts`.
+- **Fixtures Playwright** (port 3100; `e2e/replay.ts` is the shared helper, expected values are computed from the fixture events inside the specs): `e2e/replay.spec.ts` (network isolation: every request a same-origin GET and none made by the page
+  after replay starts, with a control for Chrome's own tab-icon refresh; the D5 success test at 1440 and 375 px; a viewer's replay; the keyboard map; `?t=` through reload; reduced motion; the 375 px bar; axe in both schemes; hydration),
+  `e2e/replay-agents.spec.ts` (spans appear and grow, the agent highlight, the skew note), `e2e/replay-perf.spec.ts` (10,000-event scrub jumps and 5x playback responsiveness; the numbers are printed and attached as annotations),
+  `e2e/replay-shots.spec.ts` (skipped unless `SHOTS_PHASE12=1`; writes `docs/screenshots/phase-12/`).
+- **API-backed**: `e2e/replay-viewer-real.spec.ts` (a real viewer and owner through the auth E2E environment: the viewer's replay shows no content and asks for nothing of its own; the owner is the control). `scripts/auth-e2e.sh` lists its spec files, so
+  the new file has to be appended to its Playwright command (see the Phase 12 plan, closing evidence).
+
 ### UI shell and design pass (Phase 21)
 - **Design contract** (`apps/web/e2e/design.spec.ts`, fixtures build, port 3100): frame geometry at 1440x900 (rail 224 px, top bar 44 px, `main` to the viewport edge), axe (WCAG A/AA, no serious or critical) on 11 routes in both colour
   schemes, 375 px with no horizontal scroll, the status grammar (one red and one amber element in a failed run's header, radius and shadow scans), the run work area (no document scroll, header at most 190 px, pane at least 480 px beside the

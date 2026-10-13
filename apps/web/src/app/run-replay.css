@@ -61,3 +61,28 @@
     margin-left: auto;
   }
 }
+
+/* A 375 px phone: the view tabs, Context and Replay share one row, as the tabs and Context did before replay, so the
+   page is no taller than it was (e2e/five-second.spec.ts keeps the fault line in the first screen). The tab counts are
+   decoration and the key hint means nothing without a keyboard; both give way. */
+@media (max-width: 26rem) {
+  .pane-head {
+    flex-wrap: nowrap;
+    padding-block: 0;
+  }
+  .pane-head .seg-item {
+    padding: 0 0.3rem;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+  .pane-head .seg {
+    flex-wrap: nowrap;
+  }
+  .pane-head .seg-count,
+  .replay-toggle kbd {
+    display: none;
+  }
+  .pane-actions {
+    gap: 0.25rem;
+  }
+}
