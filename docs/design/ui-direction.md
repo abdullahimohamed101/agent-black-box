@@ -19,7 +19,7 @@ interaction colour. System light and dark (no toggle). IBM Plex, self-hosted (AD
 
 ```text
 .shell   grid: 14rem rail | 1fr    rows: 2.75rem top bar | 1fr
-  aside.rail   brand, workspace and project switchers, nav[aria-label=Primary] (Overview, Runs, Analytics, Experiments, Settings in session mode), sign-out
+  aside.rail   brand, workspace and project switchers, nav[aria-label=Primary] (Overview, Runs, Security, Analytics, Experiments, Settings in session mode), sign-out
   header.topbar   breadcrumb (nav[aria-label=Breadcrumb]), live indicator ("Recording" while a run is RUNNING, else "Idle")
   main#main.page      document pages: scrolls the document
   main#main.app-page  run page only: fixed height, header on top, work area scrolls inside
@@ -91,6 +91,26 @@ Everything below reads one playhead (`replay.state`), so the page is the same pa
 - Keys: Space play/pause, Left/Right step, `[` `]` speed, `r` enter or leave, Esc closes the inspector and then leaves; a focused control, a text field or a widget with its own
   arrow keys (the scrub bar, the view tabs) keeps its keys. Focus stays on the Replay button on entry (the transport is the next tab stop) and returns to it when the
   transport's own Leave button is used.
+
+## Security (Phase 13)
+
+Security findings (ADR-131) follow the same grammar as every other status, with no new colour token. Severity is a shield glyph plus a word, carried by
+weight: Critical is a filled shield in ink with a bold word, High an outlined shield in amber (`--wait`) with a semi-bold word, Medium and below an outlined
+shield in muted ink. Never red: red stays for a failed run (`tests/tokens-use.test.ts` covers `security.css`; `tests/security-severity.test.tsx` asserts the
+contrast of every pair in both themes). The glyph is `aria-hidden`; the word is the name.
+
+- Run page: a quiet chip beside the status ("N security findings", only when there are some) opens the Context column on a separate Security group above
+  the reliability findings: one line per finding (severity, the API's fixed title, a one-line rule in words, "Show evidence", or "No event to show" for an
+  artifact-only finding). The Context button reads "Context · 2 security, 1 finding". Replay keeps the group live (whole run) under the existing one-line note.
+  `?finding=<id>` (the link from the Security page) opens the column, marks that finding and opens its evidence.
+- Only the API's fixed strings and counts are rendered (`securityLine` reads known fields and ignores the rest); the evidence link is where role rules apply.
+- Workspace page `/w/{workspace}/security` (rail item after Runs): dense table (severity, title and rule, run as a link, project, when), facet column
+  (severity, detector, project, run-started presets) whose clicks write the URL (`pushState`), cursor paging, skeleton, error with retry, "Nothing suspicious found"
+  with the detectors that are on, "No findings match" with Clear filters. In a project the rail link is the same page pre-filtered with `?project=`. At 375 px the
+  facets fold into "Narrow results" and rows become cards. BILLING (no `run.read`) sees "Not available for your role".
+- Settings `/w/{workspace}/settings/security` (tab shown with `project.write`): capture mode radios with plain explanations, detector mutes, destination allowlist
+  with client-side validation that mirrors the API; a save shows what the API stored (no optimistic UI); changes are audit-logged.
+- No animation was added.
 
 ## Left out of this phase (deliberately)
 

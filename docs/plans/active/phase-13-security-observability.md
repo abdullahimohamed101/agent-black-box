@@ -72,4 +72,7 @@ Unit tests per detector (positive, negative, edge), the planted-secret and preci
   re-analysis). The generated web client changed: `severity` gains `medium`/`high` and `category` is required, which breaks 8 type errors in
   `apps/web/src/fixtures/findings.ts` and `apps/web/src/lib/findings.ts` until step 3. Security-sensitive (content read by detectors, tenant scoping, authz):
   review pass is step 5.
+- Step 3 (2026-10-13): built on this branch (web only). Run chip and Security group, `?finding=` deep link, `/w/{ws}/security`, `/w/{ws}/settings/security`,
+  fixtures (three runs, workspace list with facets and paging, detectors, in-memory settings with PUT through the proxy), glyph and contrast tests,
+  fixtures Playwright (`e2e/security.spec.ts`), screenshots in `docs/screenshots/phase-13/`. Needs API-backed browser checks in step 4.
 
