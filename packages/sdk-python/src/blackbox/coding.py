@@ -4,7 +4,13 @@
 them as typed events. Contents never go into events: diffs and terminal output are redacted and
 uploaded as artifacts (ADR-030). The environment is never recorded, commands run with a minimal
 allowlisted environment, and the host's own secret-looking values are masked wherever they appear
-in captured output. Command risk classes (spec §83) are observed, never enforced.
+in captured output. Command risk classes (spec §83) are observed, not enforced by the
+classifier; with `policy_mode="enforce"` the recorder asks the policy service before it acts (a
+cooperative guard, D1: it stops an agent that goes through the recorder, not one that bypasses it).
+Every method that performs an action calls the matching `guard_*` pre-check first, and a denied
+action does not happen and records no step of its own (the server records `policy.action.blocked`).
+The capability, resource and attributes follow the dry-run table in `abb_api/policies/mapping.py`
+exactly, so a dry run of a draft policy predicts what enforcement does.
 """
 
 import difflib
@@ -26,6 +32,7 @@ from pathlib import Path
 from typing import IO
 
 from blackbox.client import BlackBox, Run
+from blackbox.policy_intent import RISK_CLASSES
 from blackbox.secretscan import (
     SecretFiles,
     command_may_reach_secrets,
@@ -52,6 +59,25 @@ class Classification:
     @property
     def level(self) -> int:
         return int(self.risk_class[1:])
+
+
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+_POLICY_WRAPPERS = frozenset({"sudo", "env", "nohup", "time", "nice"})
+MAX_EXECUTABLE = 128
+
+
+def executable_of(command: str) -> str:
+    """The policy resource of a shell command: the executable name (dry-run mapping, ADR-140).
+
+    The first word after leading `NAME=value` assignments and the wrappers `sudo`, `env`, `nohup`,
+    `time`, `nice`, reduced to its last path segment and cut to 128 characters. Derived, never the
+    command itself, so no argument reaches the policy service.
+    """
+    for word in command.split():
+        if _ASSIGNMENT.match(word) or word in _POLICY_WRAPPERS:
+            continue
+        return word.rsplit("/", 1)[-1][:MAX_EXECUTABLE]
+    return ""
 
 
 MAX_REASONS = 8
@@ -1193,6 +1219,56 @@ class CodingRecorder:
         text = mask_values(text, self._file_secrets, "[REDACTED:file]")
         return self.bb.redact_text(text)
 
+    # -- policy pre-checks (cooperative enforcement, D1) -------------------------------------------
+
+    def _guard(
+        self,
+        capability: str,
+        resource: str,
+        risk_class: str | None = None,
+        arguments: dict[str, object] | None = None,
+    ) -> None:
+        if self.bb.config.policy_mode != "enforce":
+            return
+        self.bb.guard(
+            capability,
+            resource,
+            risk_class,
+            arguments,
+            run=self.run,
+        )
+
+    def guard_command(self, command: str) -> None:
+        """Ask before a shell command runs: `shell.execute`, resource the executable name,
+        the classifier's risk class, argument `category`. Raises the policy exceptions; returns
+        None when the command may run. `run_command` calls this; call it yourself before running
+        a command outside the recorder."""
+        verdict = self.classify(command)
+        risk = verdict.risk_class if verdict.risk_class in RISK_CLASSES else None
+        self._guard(
+            "shell.execute",
+            executable_of(command),
+            risk,
+            {"category": verdict.category} if verdict.category else None,
+        )
+
+    def guard_read(self, path: str) -> None:
+        """Ask before a file is read: `filesystem.read`, resource the workspace-relative path."""
+        self._guard("filesystem.read", self.rel(self.resolve(path)))
+
+    def guard_write(self, path: str, operation: str | None = None) -> None:
+        """Ask before a file is created, modified or deleted: `filesystem.write`, resource the
+        path, argument `operation` (`created`, `modified` or `deleted`; by default decided from
+        whether the file exists)."""
+        full = self.resolve(path)
+        if operation not in ("created", "modified", "deleted"):
+            operation = "modified" if full.exists() else "created"
+        self._guard("filesystem.write", self.rel(full), None, {"operation": operation})
+
+    def guard_push(self, remote: str, branch: str) -> None:
+        """Ask before a git push: `github.push`, resource `<remote> <branch>`, argument `branch`."""
+        self._guard("github.push", f"{remote} {branch}", None, {"branch": branch})
+
     # -- files -------------------------------------------------------------------------------------
 
     def read_file(
@@ -1201,6 +1277,7 @@ class CodingRecorder:
         """Read a file for the agent. The text is redacted by default (the model must not see
         secrets either); pass `redact=False` and `max_bytes=None` only to edit the real content."""
         full = self.resolve(path)
+        self.guard_read(path)
         data = full.read_bytes()
         self.run.event(
             "file.read",
@@ -1228,6 +1305,7 @@ class CodingRecorder:
         """Write a file; records created/modified with a diff artifact. False if nothing changed."""
         full = self.resolve(path)
         rel = self.rel(full)
+        self.guard_write(path, "modified" if full.exists() else "created")
         old = full.read_bytes() if full.exists() else None
         new = content.encode("utf-8")
         if old == new:
@@ -1255,6 +1333,7 @@ class CodingRecorder:
         full = self.resolve(path)
         if not full.is_file():
             return False
+        self.guard_write(path, "deleted")
         old = full.read_bytes()
         full.unlink()
         rel = self.rel(full)
@@ -1313,6 +1392,7 @@ class CodingRecorder:
         known_before = list(self._files.paths)
         label = self.root_label + ("" if work == self.root else "/" + self.rel(work))
         verdict = self.classify(command)
+        self.guard_command(command)  # a denied command never starts and records no step
         # Sanitize BEFORE cutting to the attribute length: a cut must not leave a secret's prefix.
         shown = self.sanitize(command)
         label = self.sanitize(label)
@@ -1492,6 +1572,7 @@ class CodingRecorder:
     def git_push(self, remote: str, branch: str) -> CommandResult:
         _valid_ref(remote, "remote name")
         _valid_ref(branch, "branch name")
+        self.guard_push(remote, branch)  # then the shell command itself is guarded too
         result = self._git("push", "-u", remote, branch)
         if result.ok:
             self.run.event(
