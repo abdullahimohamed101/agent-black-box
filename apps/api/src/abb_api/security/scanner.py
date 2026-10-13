@@ -25,6 +25,7 @@ close it.
 
 import re
 import time
+import unicodedata
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
@@ -326,6 +327,42 @@ def normalize(text: str) -> str:
     return text
 
 
+# Zero-width and soft-hyphen code points that split a secret from its pattern without changing how
+# it reads. They, and compatibility forms such as full-width letters, are folded away for
+# DETECTION only (below); the stored text is never rewritten by the fold itself.
+_INVISIBLE = {ord(c): None for c in "\u00ad\u180e\u200b\u200c\u200d\u2060\ufeff"}
+
+
+def _fold(text: str) -> str:
+    return unicodedata.normalize("NFKC", text.translate(_INVISIBLE))
+
+
+def _redact_hidden_secrets(text: str, tally: _Tally, budget: "ScanBudget") -> str:
+    """Redact whole lines whose secret shows only after folding look-alike characters.
+
+    The patterns run on the folded line; a match cannot be mapped back to the original characters,
+    so the line is replaced by the markers of what was found. A line the fold does not change, or
+    in which the fold finds nothing, is stored exactly as it was.
+    """
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        if line.isascii():
+            continue
+        folded = _fold(line)
+        if folded == line:
+            continue
+        found = _Tally()
+        for window in _windows(folded, budget):
+            budget.check_time()
+            _scan_window(window, found)
+        if found.count:
+            kinds = sorted(found.kinds)
+            lines[index] = "".join(f"[REDACTED:{kind}]" for kind in kinds)
+            for kind in kinds:
+                tally.add(kind)
+    return "\n".join(lines)
+
+
 def _redact_private_keys(text: str, tally: _Tally) -> str:
     if "PRIVATE KEY" not in text:
         return text
@@ -460,4 +497,7 @@ class SecretScanner:
         for window in _windows(text, budget):
             budget.check_time()
             out.append(_scan_window(window, tally))
-        return ScanResult("".join(out), tally.count, tuple(sorted(tally.kinds)))
+        redacted = "".join(out)
+        if not redacted.isascii():
+            redacted = _redact_hidden_secrets(redacted, tally, budget)
+        return ScanResult(redacted, tally.count, tuple(sorted(tally.kinds)))

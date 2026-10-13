@@ -556,3 +556,44 @@ def test_a_cut_is_moved_to_the_nearest_safe_break() -> None:
     cut_inside = text.index("def")  # between `abc ` and `def`
     assert not _seam_is_safe(text, cut_inside)
     assert _seam_is_safe(text, text.index("x"))
+
+
+# ------------------------------------- look-alike and zero-width characters (review P3-6)
+
+FULLWIDTH_AWS = "".join(chr(ord(c) + 0xFEE0) for c in AWS)  # the same key in full-width letters
+
+
+@pytest.mark.parametrize(
+    "obfuscated",
+    [
+        AWS[:4] + "\u200b" + AWS[4:],  # zero-width space
+        AWS[:6] + "⁠" + AWS[6:],  # word joiner
+        AWS[:3] + "\ufeff" + AWS[3:],  # byte-order mark inside the key
+        FULLWIDTH_AWS,
+    ],
+    ids=["zero-width-space", "word-joiner", "bom", "full-width"],
+)
+def test_a_secret_hidden_by_look_alike_characters_is_redacted_line_wise(obfuscated: str) -> None:
+    text = f"first line é\nkey {obfuscated} end\nlast line ñ"
+    result = scan(text)
+    assert obfuscated not in result.text and AWS not in result.text
+    assert result.text.split("\n")[0] == "first line é"  # other lines are stored as they were
+    assert result.text.split("\n")[2] == "last line ñ"
+    assert "[REDACTED:aws_access_key]" in result.text
+    assert result.kinds == ("aws_access_key",) and result.count == 1
+    again = scan(result.text)
+    assert again.text == result.text and again.count == 0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\uff21\uff22\uff23\u3000\uff54\uff45\uff53\uff54 \uff11\uff12\uff13",  # full-width
+        "zero\u200bwidth in prose\u200d is kept",
+        "日本語のテキスト、\uff21\uff2b\uff29\uff21 is short",
+        "ﬁle ﬂow ① ② ㎏",
+    ],
+)
+def test_non_ascii_text_that_is_not_a_secret_is_stored_as_it_was(text: str) -> None:
+    result = scan(text)
+    assert result.text == text and result.count == 0
