@@ -158,7 +158,7 @@ Areas with **no substantive issues** (stated explicitly, as asked):
 
 ### P2-4 Plan and state documents do not meet their own gate
 
-- `docs/plans/active/phase-22-run-page-redesign.md` has no "modified tests" list (acceptance 12), no closing evidence
+- `docs/plans/completed/phase-22-run-page-redesign.md` has no "modified tests" list (acceptance 12), no closing evidence
   per criterion, and still reads "Status: Planned"; `docs/PROJECT_STATE.md` and `docs/KNOWN_ISSUES.md` are untouched on
   the branch although the plan pulls in KI-119, KI-120, KI-124, KI-125, KI-126, KI-127 (the code cites KI-125/126 as done)
   and the session protocol requires the state file to be updated. If step 11 is still to come, fine, but the review

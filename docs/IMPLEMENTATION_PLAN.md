@@ -20,7 +20,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Complete (merged, CI green; plan: `docs/plans/completed/phase-9-multi-agent-tracing.md`) |
 | 10 | Reliability intelligence | §80-81 | M5 | Complete (merged, CI green; plan: `docs/plans/completed/phase-10-reliability-intelligence.md`) |
 | 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Complete (merged, PR #104; plan: `docs/plans/completed/phase-11-evaluations.md`) |
-| 12 | Visual replay | §87 (level 1) | | Implemented; review fixed, pending PR |
+| 12 | Visual replay | §87 (level 1) | | Completed (PR #136) |
 | 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Not started |
 | 14 | Policy engine and human approvals | §88-89, §151 | M8 | Not started |
 | 15 | Auth, workspaces, RBAC | §91-92 | | Complete (merged, CI green; plan: `docs/plans/completed/phase-15-auth-rbac.md`) |
@@ -189,7 +189,7 @@ run status.
 Level 1 only (§87): play/pause/step/1x/2x/5x over recorded events, reduced-motion aware, no
 external contact. Levels 2-3 stay deferred. **Acceptance**: a failed run replays event by event
 without network calls to original systems (asserted in test).
-**Status: Implemented; review fixed, pending push and PR** (ADR-120, ADR-121, `docs/plans/active/phase-12-visual-replay.md`). Next: Phase 13 after merge.
+**Status: Completed (merged 2026-10-12, PR #136)** (ADR-120, ADR-121, `docs/plans/completed/phase-12-visual-replay.md`). Next: Phase 13.
 
 ## Phase 13 - Security observability
 Detectors (secret access, `.env` reads, credential-looking output, destructive commands,
@@ -253,7 +253,7 @@ Added at the user's request ("go with your recommendation"). The design pass has
   toggle; (4) the page title stays "Dashboard" with the rail label "Overview" until a later pass; (5) Evidence is its own run tab, which also gives Phase 12 (replay) a home;
   (6) the demo video is recorded as WebM; an MP4 needs `brew install ffmpeg`, which needs the user's approval first. Open: the brand mark is a placeholder glyph
   ([NEEDS INPUT]: a designed mark); the video's closing caption "open source, self-hosted" must be checked against the README and the hosting guide before use.
-- **Run-page redesign: Phase 22, "Flight recorder trace". Status: Implemented; pending merge (PR open).** Plan and closing evidence: `docs/plans/active/phase-22-run-page-redesign.md`; review: `docs/plans/active/phase-22-code-review.md` (0 P0, 3 P1, 6 P2, 12 P3, all fixed or dispositioned). Adds first-error facts to the run summary (ADR-112, `SUMMARY_VERSION` 6; a blocked run's first error is its blocking event), the run headline and fault line, the runs-list failure lines and facet column, the `/` top-bar search, the setup guide, the compare divergence line, the wasted-spend report (`GET /v1/analytics/waste`, ADR-113) and rebuilt login pages (ADR-111). Phase 12 (visual replay) builds on this page next.
+- **Run-page redesign: Phase 22, "Flight recorder trace". Status: Completed (merged 2026-10-12, PR #132; plan in `docs/plans/completed/`).** Plan and closing evidence: `docs/plans/completed/phase-22-run-page-redesign.md`; review: `docs/plans/completed/phase-22-code-review.md` (0 P0, 3 P1, 6 P2, 12 P3, all fixed or dispositioned). Adds first-error facts to the run summary (ADR-112, `SUMMARY_VERSION` 6; a blocked run's first error is its blocking event), the run headline and fault line, the runs-list failure lines and facet column, the `/` top-bar search, the setup guide, the compare divergence line, the wasted-spend report (`GET /v1/analytics/waste`, ADR-113) and rebuilt login pages (ADR-111). Phase 12 (visual replay) builds on this page next.
 - **Private hosting.** After Phase 19 (production hardening). A hosting guide and recipe for one small server: the compose stack behind a reverse proxy with automatic
   HTTPS, a domain, a persistent volume for artifacts (object storage stays deferred, Phase 18), Postgres backups, a real OIDC provider (KI-067) and
   `ABB_TRUST_PROXY` behind the proxy (KI-073). Pull a minimal slice earlier only if the user asks. Assumed audience: the user and a small team (not confirmed).

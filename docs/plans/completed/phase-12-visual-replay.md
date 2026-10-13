@@ -1,6 +1,6 @@
 # Phase 12: Visual replay (level 1)
 
-Status: Implemented; review fixed (2026-10-12; steps 1-5 committed, nothing pushed: the push and PR are the lead's). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-12).
+Status: Completed (merged 2026-10-12, PR #136). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-12).
 Owner: web, plus one additive API field pair added by the review (ADR-121: per-event settled cost, replay parity). Branch: `feature/phase-12-visual-replay` (from `main` `4941661`).
 Depends on: Phase 22 (merged: run header, fault line, motion layer, context column), Phase 9 (waterfall, agent tree, skew detection), Phase 15 (roles, withholding).
 Spec refs: §29, §87 level 1, §62 invariants (INV-5 withheld content), `docs/design/ui-direction.md`, ADR-111.
@@ -102,7 +102,7 @@ Added: `tests/replay-{projection,pacing,hook,transport,run,waterfall-bounds,fide
 
 ## Code review dispositions
 
-Review: `docs/plans/active/phase-12-code-review.md` (P0 0, P1 2, P2 2, P3 9). Each fix has a test that failed on the old code (run against the pre-fix sources with `git stash`) and passes now.
+Review: `docs/plans/completed/phase-12-code-review.md` (P0 0, P1 2, P2 2, P3 9). Each fix has a test that failed on the old code (run against the pre-fix sources with `git stash`) and passes now.
 
 | # | Severity | Status | Fix and test |
 | --- | --- | --- | --- |
