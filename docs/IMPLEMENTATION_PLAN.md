@@ -21,7 +21,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 10 | Reliability intelligence | §80-81 | M5 | Complete (merged, CI green; plan: `docs/plans/completed/phase-10-reliability-intelligence.md`) |
 | 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Complete (merged, PR #104; plan: `docs/plans/completed/phase-11-evaluations.md`) |
 | 12 | Visual replay | §87 (level 1) | | Completed (PR #136) |
-| 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Not started |
+| 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Completed (PR #143) |
 | 14 | Policy engine and human approvals | §88-89, §151 | M8 | Not started |
 | 15 | Auth, workspaces, RBAC | §91-92 | | Complete (merged, CI green; plan: `docs/plans/completed/phase-15-auth-rbac.md`) |
 | 16 | Search and investigation | §77, §152 | | Complete (merged, CI green; plan: `docs/plans/completed/phase-16-search-investigation.md`) |
@@ -196,8 +196,8 @@ Detectors (secret access, `.env` reads, credential-looking output, destructive c
 privileged DB actions, suspicious destinations, risky git); findings; server-side secret
 backstop; redaction config; modes FULL / METADATA_ONLY / DISABLED verified end to end.
 **Acceptance**: detection and redaction tests; a trace can be configured to store no payloads.
-**Status: Implemented; review fixed** (2026-10-13; ADR-130, ADR-131 with Amendment 2 for the review fixes; plan with closing evidence for the seven gates:
-`docs/plans/active/phase-13-security-observability.md`; `make security-e2e`; `docs/benchmarks/phase-13-security.md`). Next: Phase 14.
+**Status: Completed (merged 2026-10-13, PR #143)** ( ADR-130, ADR-131 with Amendment 2 for the review fixes; plan with closing evidence for the seven gates:
+`docs/plans/completed/phase-13-security-observability.md`; `make security-e2e`; `docs/benchmarks/phase-13-security.md`). Next: Phase 14.
 
 ## Phase 14 - Policy engine and approvals
 Small policy DSL (§151), deterministic ordered evaluation, ALLOW/DENY/REQUIRE_APPROVAL,

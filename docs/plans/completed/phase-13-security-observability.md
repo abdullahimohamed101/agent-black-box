@@ -1,6 +1,6 @@
 # Phase 13: Security observability and redaction modes
 
-Status: Implemented; review fixed (2026-10-13; steps 1-4 built, step 5 the independent review `docs/plans/active/phase-13-code-review.md` found P1 1, P2 4, P3 10, every finding is dispositioned below; evidence below; the PR needs the user's approval). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
+Status: Completed (merged 2026-10-13, PR #143; 2026-10-13; steps 1-4 built, step 5 the independent review `docs/plans/completed/phase-13-code-review.md` found P1 1, P2 4, P3 10, every finding is dispositioned below; evidence below; the PR needs the user's approval). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
 Owner: api + web (+ sdk-compatible attribute contract). Branch: `feature/phase-13-security-observability` (from `main` `c25beaf`).
 Depends on: Phase 6 (command risk classes, SDK redaction), Phase 10 (findings framework), Phase 15 (roles, withholding, audit log), Phase 16 (search oracle rules), Phase 22 (run page).
 Spec refs: §32, §83, §93 (data classes, layered redaction), §62 invariants (INV-1 immutable events, INV-2 rebuildable derived state, INV-3 tenancy, INV-5 sensitive capture opt-in, redact before export).
@@ -142,7 +142,7 @@ with real data; screenshots `docs/screenshots/phase-13/real-*.png` (looked at: t
 
 ## Code review dispositions (step 5)
 
-Every finding of `docs/plans/active/phase-13-code-review.md`, with the fix, the test that failed before it, and where it is recorded. "Fixed" means a test failed on the old code and passes now.
+Every finding of `docs/plans/completed/phase-13-code-review.md`, with the fix, the test that failed before it, and where it is recorded. "Fixed" means a test failed on the old code and passes now.
 
 | Finding | Disposition | Fix and test |
 | --- | --- | --- |
