@@ -72,8 +72,11 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
   after replay starts, with a control for Chrome's own tab-icon refresh; the D5 success test at 1440 and 375 px; a viewer's replay; the keyboard map; `?t=` through reload; reduced motion; the 375 px bar; axe in both schemes; hydration),
   `e2e/replay-agents.spec.ts` (spans appear and grow, the agent highlight, the skew note), `e2e/replay-perf.spec.ts` (10,000-event scrub jumps and 5x playback responsiveness; the numbers are printed and attached as annotations),
   `e2e/replay-shots.spec.ts` (skipped unless `SHOTS_PHASE12=1`; writes `docs/screenshots/phase-12/`).
-- **API-backed**: `e2e/replay-viewer-real.spec.ts` (a real viewer and owner through the auth E2E environment: the viewer's replay shows no content and asks for nothing of its own; the owner is the control). `scripts/auth-e2e.sh` lists its spec files, so
-  the new file has to be appended to its Playwright command (see the Phase 12 plan, closing evidence).
+- **API-backed**: `e2e/replay-viewer-real.spec.ts` (a real viewer and owner through the auth E2E environment: the viewer's replay shows no content and asks for nothing of its own; the owner is the control; and on a run with
+  no cost attribute and two edited files, both roles' replay ends on the header's own Cost and Files changed). `scripts/auth-e2e.sh` lists it in its Playwright command and ingests that run.
+- **Review fixes (Phase 12)**: `replay-fidelity.test.ts` (a viewer's files changed, the settled cost and its floor/"about" wording, blocked status and headline), `replay-review.test.tsx` (the same on the page, Esc with a
+  hidden inspector, live appends are incremental, `r` on an empty run, the playhead inside a collapsed group, speed changes and live arrivals mid-gap), `e2e/replay-fidelity.spec.ts` (owner and viewer, fixtures), and on the API
+  `apps/api/tests/test_event_costs.py` (per-event cost equals the run summary, one lookup per page, workspace scoping, index plan) and `tests/authz/test_content_withheld.py` (identical for every role).
 
 ### UI shell and design pass (Phase 21)
 - **Design contract** (`apps/web/e2e/design.spec.ts`, fixtures build, port 3100): frame geometry at 1440x900 (rail 224 px, top bar 44 px, `main` to the viewport edge), axe (WCAG A/AA, no serious or critical) on 11 routes in both colour

@@ -104,9 +104,9 @@ def build(name, finish):
         # A plain SDK run for replay: two model calls with NO cost attribute that the server prices (the built-in price book,
         # and a provider-reported figure) and two edits to two different files, whose paths a viewer must not see.
         priced = {"llm.provider": "example-provider", "llm.model": "model-x", "llm.input_tokens": 1000000, "llm.output_tokens": 100000}
-        ev("llm.request.completed", priced, status="success")
+        ev("llm.request.completed", priced, status="success", span_id=new_id(IdKind.SPAN))
         ev("file.modified", {"file.path": "src/AUTH-E2E-REPLAY-A.py", "file.lines_added": 1}, status="success")
-        ev("llm.request.completed", {**priced, "llm.input_tokens": 500000, "cost.provider_usd": 1.25}, status="success")
+        ev("llm.request.completed", {**priced, "llm.input_tokens": 500000, "cost.provider_usd": 1.25}, status="success", span_id=new_id(IdKind.SPAN))
         ev("file.modified", {"file.path": "src/AUTH-E2E-REPLAY-B.py", "file.lines_added": 1}, status="success")
         ev("agent.completed", span_id=root, status="success")
         ev("run.completed", status="success")

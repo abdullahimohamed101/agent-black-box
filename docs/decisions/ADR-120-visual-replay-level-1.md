@@ -1,6 +1,7 @@
 # ADR-120: Visual Replay (Level 1) Is a Client-Side Projection over Loaded Events
 
-Status: Accepted (Phase 12, step 4).
+Status: Accepted (Phase 12, step 4). Amended by review: ADR-121 (events carry the cost engine's settled per-call cost), and the wording below that the
+review found to describe code that did not run (the projection's incrementality) or a guarantee it did not give (cost and files changed).
 Date: 2026-10-12
 Phase: 12
 
@@ -17,9 +18,18 @@ follows from them, so the rules that tests now enforce are written down where th
   it, and playback can pause there (on by default).
 - **Client-side projection (D3).** `ReplayProjection` (`apps/web/src/lib/replay/project.ts`) computes the state as of an event index from
   the events the page already loaded through the existing read endpoints: counts, cost so far, tokens, files changed, elapsed time,
-  status text, open and finished spans. It is incremental, with a checkpoint every 256 events, so a jump re-applies at most one block.
+  status text, open and finished spans. It is incremental, with a checkpoint every 256 events, so a jump re-applies at most one block, and a
+  live run's appended events are applied in place: the hook holds one projection per run page and calls `setEvents` on every change of the
+  list, which keeps the accumulators and checkpoints when the new list only extends the old one (a late event landing mid-run starts over).
+  The remaining per-arrival work is a few light O(n) passes (parsing timestamps, the id index, the step groups), not a re-walk of the run.
   Every panel reads `replay.state`; no component keeps a second copy of "the state so far". At the last event the state equals the run
-  summary (a property test over the fixture runs).
+  summary (a property test over the fixture runs, and an API-backed check).
+- **Figures say how exact they are.** Cost so far is the server's settled per-call figure (`cost_usd`, ADR-121), summed and rounded to nine
+  places like the summary's. A call nothing could price makes it a floor ("at least $X, N calls unpriced"); a call the server has not priced
+  yet (a live arrival) is added from the event's own attributes in the engine's order (`cost.provider_usd`, then `cost.estimated_usd`) and the
+  figure reads "about". A role without `payload.read` has its file paths withheld, so "files changed" counts such events one by one and
+  reads "up to N" (a file edited twice counts twice); at the last event of a finished run it is the summary's exact count. Replay never states
+  a precision it does not have.
 - **Canonical order, never the clock (D2, D6).** The playhead is an index into the page's canonical order (`sortEvents`). A multi-agent
   run's timestamps can run backwards (clock skew), so wall-clock order is unsafe. Elapsed time never decreases, and when skew is
   flagged (`replayClockSkewed`: Phase 9's skewed-span flag, plus canonical order running backwards across agents) the transport says
@@ -38,12 +48,13 @@ follows from them, so the rules that tests now enforce are written down where th
   when the person seeks, steps, enters or leaves, never on a tick. It is not `router.replace`, which would refetch the server component
   and break the "no request" rule. It coexists with `?view=`, survives a reload, is adopted when the URL changes from outside, and an
   unknown id degrades to the start with a notice. Leaving replay removes `t`.
-- **No new endpoint, no schema change, no new state (D3).** Nothing is saved on the server; a live run replays only the events received so
-  far (the playhead index stays put while events append).
+- **No new endpoint, no migration, no new state (D3).** Nothing is saved on the server; a live run replays only the events received so
+  far (the playhead index stays put while events append). The one server change is ADR-121's additive `cost_usd`/`cost_unpriced` on the
+  events the page already reads.
 - **Interaction (D4).** A Replay button in the run header (`aria-pressed`, shortcut `r`) docks a transport bar under it. Keys: Space
   play/pause, Left/Right step, `[` `]` speed, `r` enter or leave, Esc closes the inspector and then leaves replay; they yield to a
   focused control, a text field or a widget with its own arrow keys. On the waterfall `[` and `]` keep their existing meaning (pan) while
-  it has focus. Reduced motion opens paused and every update is instant; the fault line's Phase 22 draw-in plays at the moment it is
+  it has focus. Replay always opens paused (the hook's `autoplay` option is for other callers; the run page does not set it) and reduced motion also makes every update instant; the fault line's Phase 22 draw-in plays at the moment it is
   reached only when motion is allowed. At 375 px the bar keeps play, step and the scrub bar and moves speed, the toggles and "Leave replay"
   into an options menu. The scrub bar is a native range input with a text value.
 - **What is not replayed.** Evidence stays a whole-run view (with a note), and the context column's findings and agent totals reflect the

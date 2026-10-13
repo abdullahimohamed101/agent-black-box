@@ -1,9 +1,9 @@
 # Project State
 
-Last updated: 2026-10-12 (Phase 12 implemented on `feature/phase-12-visual-replay`, pending review; Phase 22 implemented and review-fixed on `feature/phase-22-run-redesign`, PR open pending merge)
+Last updated: 2026-10-12 (Phase 12 implemented and review-fixed on `feature/phase-12-visual-replay`, awaiting push and PR; Phase 22 implemented and review-fixed on `feature/phase-22-run-redesign`, PR open pending merge)
 
 ## Current phase
-Phases 0-11, 15, 16 and 21 are merged to `main`. **Phase 22 (run-page redesign, "Flight recorder trace") is implemented on `feature/phase-22-run-redesign`, adversarially reviewed and fixed; its PR is open and pending merge** (plan, closing evidence per acceptance criterion, modified-test table and review dispositions: `docs/plans/active/phase-22-run-page-redesign.md`; review: `docs/plans/active/phase-22-code-review.md`; both move to `docs/plans/completed/` when the PR merges). The MVP gate was accepted on 2026-10-12. Phase 12 (visual replay, level 1; ADR-120; plan `docs/plans/active/phase-12-visual-replay.md`, closing evidence inside) is implemented on `feature/phase-12-visual-replay` and pending review (step 5: review, fixes, push, PR). Next after it merges: Phase 13.
+Phases 0-11, 15, 16 and 21 are merged to `main`. **Phase 22 (run-page redesign, "Flight recorder trace") is implemented on `feature/phase-22-run-redesign`, adversarially reviewed and fixed; its PR is open and pending merge** (plan, closing evidence per acceptance criterion, modified-test table and review dispositions: `docs/plans/active/phase-22-run-page-redesign.md`; review: `docs/plans/active/phase-22-code-review.md`; both move to `docs/plans/completed/` when the PR merges). The MVP gate was accepted on 2026-10-12. Phase 12 (visual replay, level 1; ADR-120; plan `docs/plans/active/phase-12-visual-replay.md`, closing evidence inside) is implemented on `feature/phase-12-visual-replay` and adversarially reviewed and fixed (review `docs/plans/active/phase-12-code-review.md`, dispositions in the plan; ADR-121 adds the per-event settled cost to the events API for replay parity). Not pushed: push and PR need approval. Next after it merges: Phase 13.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -53,7 +53,7 @@ here (KI-122). The reviewer did the keyboard walk, 200% zoom and 1024x640; scree
 None for the code. Verification: after the review fixes the full API suite and the API-backed E2E scripts were re-run and pass (see the plan).
 
 ## Next actions (exact)
-1. Phase 22: the PR is open pending merge. After merge: move the plan and review to `docs/plans/completed/`, update this file, file the new known issues (KI-128, KI-129) as GitHub issues, then continue Phase 12 review (step 5).
+1. Phase 22: the PR is open pending merge. After merge: move the plan and review to `docs/plans/completed/`, update this file, file the new known issues (KI-128, KI-129) as GitHub issues, then push Phase 12 and open its PR (approval needed; file KI-130 and KI-131 as GitHub issues).
 2. After deploying Phase 22 (and Phase 16): run `python -m abb_api.cli search-rebuild` so runs summarised below `SUMMARY_VERSION` 6 get first-error facts and are searchable (ADR-112, KI-081); until then their rows say "first-error facts not rebuilt yet" and the waste report counts them in `unrebuilt_runs`.
 3. Done 2026-10-12: the real OIDC sign-in with Google (KI-067 resolved). Still open for the user: a compose runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
 4. KI-050 is closed for what the vendors' pages state; the OpenAI deprecations page is due a re-read on 2026-10-23.

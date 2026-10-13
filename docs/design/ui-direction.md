@@ -75,7 +75,9 @@ Phase 12 (ADR-120) adds a replay mode to the run page. The header gets a `Replay
 bar is docked under the header (in the fixed-height frame it is a flex item that never scrolls away; in the stacked phone layout it sticks under the top bar).
 Everything below reads one playhead (`replay.state`), so the page is the same page, "as of this moment":
 
-- Header: the figures are as of the playhead (`Elapsed`, cost so far, tokens, calls, retries, errors, files changed) and the status badge becomes a plain mono line
+- Header: the figures are as of the playhead (`Elapsed`, cost so far, tokens, calls, retries, errors, files changed) and a figure the replay cannot state exactly says so in words: Cost
+  reads "at least $X" with "N calls unpriced" under it, or "about $X" while the server has not priced a call yet; a viewer's Files changed reads "up to N" (paths are withheld) until the
+  last event. The status badge becomes a plain mono line
   ("Running, 1 error so far, as of this moment"), never the final status. The headline reads "Running, step N, replay" until the first error is reached and then the
   first-error line in the existing failure style; it never states the outcome. Leaving replay restores the live header.
 - Timeline: rows after the playhead are not in the list, so it grows as the run plays and follows the live edge only while the reader has not scrolled away (the
