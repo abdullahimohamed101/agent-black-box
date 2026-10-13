@@ -23,6 +23,8 @@ class AgentResult:
     test_runs: int
     retries: int
     tests_passed: bool
+    blocked: tuple[str, ...] = ()  # tools policy refused (empty unless policy is enforced)
+    pushed: bool = False
 
 
 def run_agent(
@@ -75,4 +77,4 @@ def run_agent(
                 last_tests_failed = None if passed else (outcome.failing or ("unknown",))
             results.append({"id": tc.id, "text": outcome.text})
         messages.append({"role": "tool", "results": results})
-    return AgentResult(final, turns, test_runs, retries, passed)
+    return AgentResult(final, turns, test_runs, retries, passed, tuple(tools.blocked), tools.pushed)

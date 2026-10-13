@@ -42,6 +42,35 @@ def _reply(turn: int, text: str, *calls: tuple[str, dict[str, Any]]) -> Reply:
     )
 
 
+def _policy_script(first_fix: tuple[str, str, str]) -> list[Reply]:
+    """The policy scenario (Phase 14): a blocked read of `.env`, then a push to main that waits
+    for a person. Short on purpose: the point is what policy does, not the bug fix."""
+    return [
+        _reply(
+            0,
+            "I'll read the session code first.",
+            ("read_file", {"path": "app/session.py"}),
+        ),
+        _reply(
+            1,
+            "Let me check the environment configuration for the session settings.",
+            ("read_file", {"path": ".env"}),
+        ),
+        _reply(
+            2,
+            "I'll fix the expiry check without it.",
+            ("edit_file", dict(zip(("path", "old", "new"), first_fix, strict=True))),
+        ),
+        _reply(
+            3,
+            "Committing the fix on main and pushing it.",
+            ("git_commit", {"message": "Refresh sessions before expiry"}),
+            ("git_push", {"branch": "main"}),
+        ),
+        _reply(4, "Finished. The run shows which steps policy blocked or held for approval."),
+    ]
+
+
 def _script(variant: str = "baseline") -> list[Reply]:
     first_fix = ("app/session.py", "    return now > session.expires_at",
                  "    return now >= session.expires_at - REFRESH_SKEW_SECONDS")  # fmt: skip
@@ -104,6 +133,8 @@ def _script(variant: str = "baseline") -> list[Reply]:
     ]
     if variant == "baseline":
         return turns
+    if variant == "policy":
+        return _policy_script(first_fix)
     if variant != "wrong-fix":
         raise ValueError(f"unknown variant {variant!r}")
     # Same first moves, then a plausible but wrong second patch: only documentation changes, the provider

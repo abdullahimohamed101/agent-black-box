@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from blackbox import PolicyError
 from blackbox.coding import CodingRecorder
 from blackbox.secretscan import is_sensitive_path
 
@@ -52,6 +53,10 @@ def _clip(text: str) -> str:
 class Toolbox:
     def __init__(self, rec: CodingRecorder) -> None:
         self.rec = rec
+        self.blocked: list[
+            str
+        ] = []  # tools policy refused, in order (the scripted run reports them)
+        self.pushed = False
 
     def call(self, name: str, args: dict[str, Any]) -> ToolOutcome:
         handler = getattr(self, f"_{name}", None)
@@ -59,6 +64,11 @@ class Toolbox:
             raise ToolError(f"unknown tool {name!r}")
         try:
             return handler(**args)  # type: ignore[no-any-return]
+        except PolicyError as exc:
+            # Policy said no (or could not be asked): the action did not happen. The model sees a
+            # fixed sentence, the tool span is marked failed, and the agent carries on.
+            self.blocked.append(name)
+            raise ToolError(f"blocked by policy: {exc}") from exc
         except TypeError as exc:
             raise ToolError(f"bad arguments for {name}: {exc}") from exc
 
@@ -118,4 +128,5 @@ class Toolbox:
 
     def _git_push(self, branch: str) -> ToolOutcome:
         result = self.rec.git_push("origin", branch)
+        self.pushed = result.ok
         return ToolOutcome(_clip(result.output), result.ok)
