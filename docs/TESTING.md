@@ -191,6 +191,10 @@ holds test data.
   (`tests/secret_scan_helpers.py`: `find_in_database`) and the artifact directory (`find_on_disk`) for the planted secrets. `test_security_settings.py`: defaults,
   workspace/project scoping, validation, audit atomicity, concurrent changes, runtime role. `tests/authz/test_content_withheld.py` covers the markers for every role.
 - `make_tenant(..., capture_mode=CaptureMode.FULL)` is the default for test projects; pass `None` for the product default (METADATA_ONLY).
+- Review fixes (Phase 13 step 5): `test_security_scanner.py` also holds the corpora that the scanner must leave alone (ordinary `-u` commands, benign assignments, long user names, non-ASCII text) and must still redact
+  (`user:password` arguments, real secret assignments, look-alike characters, secrets straddling a window cut); `test_security_scanner_parity.py` runs those corpora and every attribute of the schema through the SDK and the server
+  in each mode. `test_artifact_redaction_kinds.py` (repository method and the module boundary), `test_security_bench_bounds.py`, and the cooldown tests in `test_security_settings.py`. `make_settings` sets the re-analysis cooldown to 0
+  for tests. A change to the SDK's redaction patterns can change recorded fixtures: regenerate `apps/api/tests/fixtures/compare_pair` with `scripts/gen_compare_fixture.py --out` (a test fails when it is stale).
 
 ### Security detectors and findings (Phase 13 step 2, ADR-131)
 - `apps/api/tests/test_security_rules.py`: every matcher with positives, negatives and edges (secret-file names, destructive commands, risky git, SQL, hosts and the

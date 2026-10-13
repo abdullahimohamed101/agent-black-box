@@ -189,14 +189,14 @@ run status.
 Level 1 only (§87): play/pause/step/1x/2x/5x over recorded events, reduced-motion aware, no
 external contact. Levels 2-3 stay deferred. **Acceptance**: a failed run replays event by event
 without network calls to original systems (asserted in test).
-**Status: Completed (merged 2026-10-12, PR #136)** (ADR-120, ADR-121, `docs/plans/completed/phase-12-visual-replay.md`). Next: Phase 14 (Phase 13 is implemented and under review).
+**Status: Completed (merged 2026-10-12, PR #136)** (ADR-120, ADR-121, `docs/plans/completed/phase-12-visual-replay.md`). Next: Phase 14 (Phase 13 is implemented and its review is fixed).
 
 ## Phase 13 - Security observability
 Detectors (secret access, `.env` reads, credential-looking output, destructive commands,
 privileged DB actions, suspicious destinations, risky git); findings; server-side secret
 backstop; redaction config; modes FULL / METADATA_ONLY / DISABLED verified end to end.
 **Acceptance**: detection and redaction tests; a trace can be configured to store no payloads.
-**Status: Implemented; pending review** (2026-10-13; ADR-130, ADR-131; plan with closing evidence for the seven gates:
+**Status: Implemented; review fixed** (2026-10-13; ADR-130, ADR-131 with Amendment 2 for the review fixes; plan with closing evidence for the seven gates:
 `docs/plans/active/phase-13-security-observability.md`; `make security-e2e`; `docs/benchmarks/phase-13-security.md`). Next: Phase 14.
 
 ## Phase 14 - Policy engine and approvals

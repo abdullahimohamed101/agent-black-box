@@ -1,6 +1,6 @@
 # Phase 13: Security observability and redaction modes
 
-Status: Implemented; pending review (2026-10-13; steps 1-4 built, evidence below; step 5 is the independent review, fixes and the PR). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
+Status: Implemented; review fixed (2026-10-13; steps 1-4 built, step 5 the independent review `docs/plans/active/phase-13-code-review.md` found P1 1, P2 4, P3 10, every finding is dispositioned below; evidence below; the PR needs the user's approval). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
 Owner: api + web (+ sdk-compatible attribute contract). Branch: `feature/phase-13-security-observability` (from `main` `c25beaf`).
 Depends on: Phase 6 (command risk classes, SDK redaction), Phase 10 (findings framework), Phase 15 (roles, withholding, audit log), Phase 16 (search oracle rules), Phase 22 (run page).
 Spec refs: §32, §83, §93 (data classes, layered redaction), §62 invariants (INV-1 immutable events, INV-2 rebuildable derived state, INV-3 tenancy, INV-5 sensitive capture opt-in, redact before export).
@@ -82,6 +82,11 @@ Unit tests per detector (positive, negative, edge), the planted-secret and preci
   ADR-130 Amendment 1). It also found KI-134 (a credential an SDK redacts into an artifact is not a finding). (C) the ordinary-run gate. (D) docs: runbook
   `docs/runbooks/security-observability.md`, benchmark `docs/benchmarks/phase-13-security.md`, `docs/TESTING.md`, KNOWN_ISSUES (KI-032, KI-042, KI-133 resolved).
 
+- Step 5 (2026-10-13): the independent review (`phase-13-code-review.md`: P0 0, P1 1, P2 4, P3 10) and its fixes, one failing test first for each. The server and the
+  SDK patterns now redact only a `user:password` argument and names that end in a secret word; a long line is cut only where no secret straddles the cut; look-alike
+  characters are folded for detection; settings-triggered re-analysis is rate limited; the findings job reads artifacts through `ArtifactRepository`; the settings copy says
+  what METADATA_ONLY keeps; ADR-130 Amendment 2, ADR-131 Amendment 2; KI-135 to KI-139. See "Code review dispositions".
+
 ## Closing evidence (step 4, 2026-10-13)
 
 Evidence vocabulary: VERIFIED = a command was run in this environment and its output observed. Everything below is VERIFIED unless marked otherwise. Run on macOS
@@ -119,6 +124,44 @@ with real data; screenshots `docs/screenshots/phase-13/real-*.png` (looked at: t
 | `packages/event-schema`, `packages/sdk-python` | not touched in step 4 (step 1 changed event-schema; its suite ran then); not re-run here |
 | `scripts/quality.sh full` | UNVERIFIED (env) as a single command here; its parts were run separately as above. CI runs it |
 
+### Gates run after the review fixes (step 5, 2026-10-13, branch head after the last fix; VERIFIED)
+
+| Check | Result |
+| --- | --- |
+| `apps/api`: `ruff check .`, `ruff format --check .`, `mypy` (no arguments) | all passed; 316 files formatted, 292 source files typed |
+| `apps/api`: full `pytest` (database `abb_p13_fix`) | 2626 passed, 4 failed in 1,438 s. Cause of each: `test_comparison_align::test_the_fixture_is_current`, the recorded compare fixture held `git push -u [REDACTED:cli_user]` (the P1-1 bug; regenerated, 90 comparison and detector tests pass); `test_openapi::test_the_committed_file_is_current`, the route description was edited while the suite ran (re-run in the next row, passes); `test_findings_job::test_a_losing_job_that_is_not_pending_enqueues_a_delayed_successor`, a timing flake under load (passes alone); `test_stream_reauth::test_a_revoked_or_expired_session_ends_its_stream`, **not caused by this branch**: it revokes sessions with `expires_at > now() + 1 day` while its fake clock is 2026-10-07 (168 h sessions), so it fails on any run after 2026-10-13 12:00 UTC (fails alone, deterministic; the lead's earlier 2414 passed ran before that moment). Not touched here; see the state file |
+| `apps/api`: re-run after the last edits: `test_openapi`, comparison, `test_findings_job`, `test_migrations`, `tests/authz` | 322 passed in 642 s |
+| `python -m abb_api.openapi --check`, `pnpm gen:api:check` | current (exit 0) |
+| `packages/sdk-python`: `pytest`, `ruff check`, `ruff format --check`, `mypy` | 922 passed (893 before; 29 added); ruff and format clean; mypy 31 files |
+| `packages/event-schema` | not touched; not re-run |
+| `apps/web`: `tsc --noEmit`, `eslint .`, `prettier --check .` | clean |
+| `apps/web`: `vitest run` | 1,235 passed, 1 failed (`replay-run.test.tsx` "Space on the timeline plays", a 5 s load timeout; the file alone: 25 passed) |
+| `apps/web`: `pnpm build` | passed |
+| Fixtures Playwright (`pnpm test:e2e --workers=2`) | **247 passed, 83 skipped, 0 failed** (3.7 min). Screenshots the run rewrote were restored except the settings pages whose copy changed |
+| API-backed E2E scripts (sequential, databases `abb_p13_fix_*`) | security 7 passed, coding 6, auth 17, findings 6, analytics 4, integrations passed; multiagent 6, stream 5 and eval 7 passed on a second run: the first run of each failed one timing-sensitive check (a drawer-closing check, the p95 spec at its 30 s test timeout, the human-verdict case) under machine load, the cases KI-127 describes |
+
+## Code review dispositions (step 5)
+
+Every finding of `docs/plans/active/phase-13-code-review.md`, with the fix, the test that failed before it, and where it is recorded. "Fixed" means a test failed on the old code and passes now.
+
+| Finding | Disposition | Fix and test |
+| --- | --- | --- |
+| P1-1 `-u`/`-U` redacted after any program | Fixed | `cli_user` (server and SDK, same commit) redacts only a `user:password` value (uid:gid pairs excepted). `test_ordinary_commands_with_a_u_flag_are_stored_verbatim` (16 commands incl. `python -u`, `pip install -U`, `sort -u`, `docker run -u 1000`), `test_a_user_password_credential_argument_is_still_redacted` (10 forms incl. mysql `-p`, docker login), `test_a_u_flag_does_not_blind_the_secret_file_detector` (`sort -u .env` reaches `reads_secret_file`); SDK `test_ordinary_commands_and_assignments_are_left_alone`; the parity corpus carries them. ADR-130 Amendment 2 (2); residual `docker run -u root:root` is KI-135 |
+| P2-1 assignment patterns redact ordinary text | Fixed | A name is a credential only when it ends in a secret word or a qualified `key` (segments, camel case); `PWD`, `MONKEY`, `primary_key`, `cache_key`, `"path"`, `"author"` stay. `test_assignments_that_are_not_credentials_are_stored_verbatim` (27 texts), `test_assignments_of_real_secrets_are_still_redacted` (39), both in the SDK parity corpus; SDK in the same commit. ADR-130 Amendment 2 (3), `docs/SECURITY.md`, runbook; residual (a name ending in `token` is redacted whatever it holds) KI-135 |
+| P2-2 settings copy overstates METADATA_ONLY | Fixed | `lib/security.ts` hints: Metadata only keeps commands, file paths, URLs, error messages, run metadata, timings and counts and drops inline payloads, diffs and artifact bodies; Disabled also drops error messages and run metadata. `security-settings.test.tsx` (the two copy assertions changed, see below). Screenshots refreshed. Gate 3's "no payloads" reads as `payload`, `payload_ref`, artifact bodies and the attributes that point at them |
+| P2-3 determinism claim vs the time budget | Fixed (docs and signal) | ADR-130 §1 corrected and Amendment 2 (1): the time budget is the one non-deterministic path, a load-induced `scan_failed` then a clean redelivery is a `conflict`, first stored version wins; per-event budget kept on purpose. The `server redaction applied` log line counts `scan_failed` and `too_large` apart (`test_the_log_line_counts_time_budget_and_size_drops_apart`); runbook and SECURITY.md say to watch it |
+| P2-4 findings reads the `artifacts` table | Fixed | `ArtifactRepository.redaction_kinds` (tenant scoped) used by `findings/security_inputs.py`. `tests/test_artifact_redaction_kinds.py` (run scoping, kind filter, limit, other workspace and project see nothing, and a test that no file under `findings/` names `t.artifacts`). The runs/projects listing join stays, recorded in ADR-131 Amendment 2 |
+| P3-1 window cut leaks a quoted value's tail | Fixed | `_seam_is_safe` / `_safe_cut`: a cut is used only if scanning 4,096 characters either side whole and in two pieces agrees; else the next candidate, else `ScanTooLarge`. `test_a_secret_that_straddles_a_window_cut_is_still_redacted` (quoted value, `DB_PASSWORD='..'`, `Bearer` token, `mysql -p`, `Cookie:`: all leaked before), `test_a_cut_that_cannot_be_made_safe_fails_closed`. Residual KI-138 |
+| P3-2 quoted marker redacted again | Fixed | `(?!["']?\[REDACTED)` in the assignment, flag and quoted-key patterns, both layers. `test_a_quoted_marker_is_not_redacted_again_or_counted`, SDK `test_a_quoted_marker_is_not_redacted_again` |
+| P3-3 mode read and store not one transaction | Documented (accepted) | ADR-130 Amendment 2 (7): the window is the batch's processing time and reading the mode inside the ingest transaction would not remove it; contract stays "the next batch"; KI-139 |
+| P3-4 settings PUT has no rate limit | Fixed | Coalescing was verified (`test_repeated_edits_coalesce_into_one_job_per_run` passes unchanged); a per-project cooldown (`ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS`, default 60, 0 off) defers a later wave to the end of the cooldown (not dropped; previous change read from the audit log). `test_a_second_wave_within_the_cooldown_is_deferred_not_dropped`, `test_the_cooldown_is_per_project_and_a_mode_change_does_not_start_it`, `test_a_zero_cooldown_switches_the_rate_limit_off`. ADR-131 Amendment 2, runbook, OPERATIONS, `.env.example`, api-v1, OpenAPI |
+| P3-5 host pattern 100 characters, no IDN hint | Fixed (one part not done) | 253 characters (plus `*.`), validation message in the API, the web and the fixtures says to use punycode, audit entries shortened to 100 characters (`test_a_host_name_may_be_as_long_as_a_dns_name_and_no_longer`, `test_a_non_ascii_host_is_refused_with_a_punycode_hint`, `test_the_audit_row_of_long_allowlist_entries_stays_within_the_audit_limits`, web `host patterns mirror the API`). A warning for a one-label wildcard (`*.com`) is not built: it is the owner's choice and the effect is stated in the allowlist description |
+| P3-6 look-alike and zero-width characters | Fixed (partly; residual filed) | A non-ASCII line is folded (zero-width removed, NFKC) for detection only; a hit replaces that line with the markers found, every other line is stored as sent. `test_a_secret_hidden_by_look_alike_characters_is_redacted_line_wise` (zero-width space, word joiner, BOM, full-width), `test_non_ascii_text_that_is_not_a_secret_is_stored_as_it_was`. Other confusables, URL encoding and base64: KI-136 |
+| P3-7 `url_token_user` redacts long user names | Fixed | needs a digit, an underscore or mixed case; `test_a_long_username_without_a_password_is_not_a_credential`, `test_a_long_token_shaped_user_is_still_redacted`, SDK in step |
+| P3-8 0091 index not CONCURRENTLY | Documented | migration docstring (locking, the 0041 / KI-056 precedent, downgrade), runbook; KI-137 (S3, Phase 19) |
+| P3-9 benchmark bounds load-sensitive | Fixed | p95 1,000 ms and every bound scaled by a calibration read (`REFERENCE_FLOOR_MS`; never scaled down): `tests/test_security_bench_bounds.py` |
+| P3-10 parity test compared four attributes | Fixed | `test_every_attribute_is_kept_or_dropped_as_the_sdk_does` runs every attribute of `KNOWN_ATTRIBUTES` plus unknown and `metadata.*` keys through the SDK and the server in each mode (the one deliberate difference, the artifact-pointer attributes, is asserted separately); `test_the_free_text_the_disabled_mode_drops_is_exactly_what_the_sdk_drops` names `error.message` and `metadata.*`. A mutation of the server's DISABLED list fails it |
+
 ## Extra acceptance items
 
 - No existing test weakened: see "Modified existing tests". The authz registry, role matrix, route-completeness and withheld-content tests list the four security routes and the new attributes (VERIFIED: part of the 2414).
@@ -143,6 +186,19 @@ Every test or script that exists on `main` and was changed by steps 1-4 (`git di
 | `scripts/analytics-e2e.sh`, `auth-e2e.sh`, `coding-e2e.sh`, `e2e-web-real.sh`, `eval-e2e.sh`, `findings-e2e.sh`, `integrations-e2e.sh`, `multiagent-e2e.sh`, `sdk-e2e.sh`, `smoke.sh`, `stream-e2e.sh` | `create-project ... --capture-mode full` (one line each): these scripts need payloads, and the default is METADATA_ONLY |
 | `apps/api/tests/authz/test_security_reanalysis.py`, `apps/web/tests/security-settings.test.tsx`, `apps/web/tests/security-run.test.tsx` | not on `main` (new in this branch). Step 4 touched the last two: the settings test gained an assertion for the new "Existing runs are re-analysed in the background; recent runs first." note (no existing assertion changed), and the `?finding=` test waits for the column to open instead of racing it |
 | `apps/web/e2e/security.spec.ts` (new in step 3) | unchanged in step 4; its settings screenshots in `docs/screenshots/phase-13/security-settings-*.png` were regenerated because the page gained the note |
+
+Step 5 (review fixes) additions to the table above. No test was weakened, skipped or deleted; two changed an expectation, for the reason stated.
+
+| File | Change and why |
+| --- | --- |
+| `packages/sdk-python/tests/test_redaction.py` (on `main`) | additions only (ordinary commands and assignments are left alone, credential-shaped names still redacted, a quoted marker): the SDK patterns changed in the same commit as the server's (review P1-1, P2-1, P3-2, P3-7); no existing assertion changed, all 893 earlier SDK tests still pass |
+| `apps/api/tests/conftest.py` (on `main`) | `make_settings` sets `security_reanalyse_cooldown_seconds` to 0 by default, like the debounce settings next to it: tests change settings many times in a row and drain the worker, and the cooldown (default 60 s) would defer the later waves (review P3-4); the cooldown tests set their own policy |
+| `apps/api/tests/authz/test_security_reanalysis.py` (new in this branch) | the two policies in `test_the_run_count_and_the_age_are_bounds_and_the_newest_come_first` get `cooldown_seconds=0`: the test is about the run and age bounds, and with the default cooldown the second wave is (correctly) deferred. Expectation unchanged |
+| `apps/api/tests/test_security_scanner.py` (new in this branch) | `test_hostile_input_of_a_megabyte_scans_in_bounded_time` accepts `ScanTooLarge` as well as a result (still within 8 s): a line built so that every cut changes the result is now refused instead of cut blindly (review P3-1); 3 of the 22 inputs end that way. The time bound is unchanged |
+| `apps/api/tests/test_security_scanner_parity.py` (new in this branch) | the corpus gained the new ordinary, benign and secret-shaped texts; the four-attribute comparison was replaced by one over every attribute (the old test still exists) |
+| `apps/web/tests/security-settings.test.tsx` (new in this branch) | the two capture-mode copy assertions changed with the copy (review P2-2: "No payloads or artifact bodies are stored" became "Inline payloads, diffs and artifact bodies are not stored" plus what is kept; "no free text such as error messages" became "also no error messages or run metadata"), and the old "Timings, types and counts" sentence is asserted absent; host cases added (253 characters, punycode) |
+| `apps/api/tests/fixtures/compare_pair/baseline.ndjson` (on `main`) | regenerated with `scripts/gen_compare_fixture.py --out`: the recorded SDK output had `git push -u [REDACTED:cli_user] fix/oauth-session-expiry` (review P1-1, the bug itself); it now reads `git push -u origin fix/oauth-session-expiry`. Two lines changed; `test_the_fixture_is_current` failed until regenerated and the comparison tests pass on it |
+| `scripts/security-e2e.sh` | exports `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS=0`: the check changes one project's settings several times in a row and expects each re-analysis |
 
 ## Known issues (step 4 disposition)
 
