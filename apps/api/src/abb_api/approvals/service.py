@@ -286,7 +286,10 @@ class ApprovalService:
                                     "decision",
                                 ),
                             ),
-                            transition_event(tenant, ref, approval, now=now),
+                            # One microsecond later, so the request sorts after its decision.
+                            transition_event(
+                                tenant, ref, approval, now=now + timedelta(microseconds=1)
+                            ),
                         ],
                     )
                 return out.model_copy(

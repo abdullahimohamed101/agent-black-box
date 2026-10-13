@@ -71,3 +71,12 @@ Unit and property tests for the DSL parser, validator and evaluator; API tests f
   dry-run) with `policy.read`/`policy.write`, the `policy.decision` event and three attributes, ADR-140, KI-140/141. Steps 2-6 open. Contract for step 2: `evaluate(policy,
   intent) -> Decision{decision, rule_id, policy_version, reason}`, `store.PgPolicyStore.effective(project_id)`, `parser.compile_cached(text)`, action `approval.decide`
   still reserved.
+- Step 2 (decisions and approvals backend, 2026-10-13): migration 0093 (`approvals`: CHECK constraints plus the `approvals_guard` and `approvals_born` triggers; the runtime role cannot
+  DELETE or TRUNCATE; audit actor kind `system`), `POST /v1/policy/decide`, `GET /v1/approvals/{id}/wait`, `POST /v1/approvals/{id}/consume`, `DELETE /v1/approvals/{id}`,
+  `GET /v1/approvals`, `/pending-count`, `/{id}`, `POST /v1/approvals/{id}/decision`, `GET /v1/policies/fail-modes`, the `expire_approval` outbox timer plus lazy sweeps, server-written
+  `policy.*`/`approval.*` events with the reserved emitter `abb-policy-service`, three new event types (`approval.consumed`, `.expired`, `.cancelled`), the intent hash in
+  `packages/event-schema` with golden vectors (`tests/data/intent-hash-vectors.json`), five actions (`policy.decide`, `approval.use`, `approval.read`, `approval.decide`,
+  `policy.fail_modes`), ADR-141, KI-142 to KI-147. Contract changes for step 3 against the plan's "Contract between the parts": consume takes the **whole intent** (the server recomputes
+  the hash; no hash is ever returned), the decide response is `{decision, policy_id, policy_version, reason, on_error, approval_id?, approval_state?, expires_at?, on_expiry?}`, and
+  approvals belong to the asking key. Gates 2, 4 (server side), 5 and 6 are evidenced by `apps/api/tests/approvals/` and `apps/api/tests/authz/`; gate 8's decision latency is in
+  `docs/benchmarks/phase-14-decide.md`. Steps 3-6 open.

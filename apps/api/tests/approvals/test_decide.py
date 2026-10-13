@@ -46,7 +46,8 @@ async def test_a_gated_action_creates_one_approval_and_two_events(api: Api) -> N
     assert out["approval_state"] == "REQUESTED" and out["on_expiry"] == "deny"
     assert out["approval_id"].startswith("apr_") and out["expires_at"]
     events = await events_of(api, body["run_id"])
-    assert sorted(e.event_type for e in events) == ["approval.requested", "policy.decision"]
+    # The decision comes first, then the request it led to (they would tie otherwise).
+    assert [e.event_type for e in events] == ["policy.decision", "approval.requested"]
     requested = next(e for e in events if e.event_type == "approval.requested")
     assert requested.attributes["approval.id"] == out["approval_id"]
     assert requested.attributes["approval.state"] == "REQUESTED"
