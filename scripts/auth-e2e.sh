@@ -100,7 +100,17 @@ def build(name, finish):
         e.update(kw); out.append(e)
     ev("run.started", {"run.name": name}, payload={"note": os.environ["PAYLOAD_TEXT"]})
     ev("agent.started", span_id=root)
-    if finish:
+    if finish == "replay":
+        # A plain SDK run for replay: two model calls with NO cost attribute that the server prices (the built-in price book,
+        # and a provider-reported figure) and two edits to two different files, whose paths a viewer must not see.
+        priced = {"llm.provider": "example-provider", "llm.model": "model-x", "llm.input_tokens": 1000000, "llm.output_tokens": 100000}
+        ev("llm.request.completed", priced, status="success")
+        ev("file.modified", {"file.path": "src/AUTH-E2E-REPLAY-A.py", "file.lines_added": 1}, status="success")
+        ev("llm.request.completed", {**priced, "llm.input_tokens": 500000, "cost.provider_usd": 1.25}, status="success")
+        ev("file.modified", {"file.path": "src/AUTH-E2E-REPLAY-B.py", "file.lines_added": 1}, status="success")
+        ev("agent.completed", span_id=root, status="success")
+        ev("run.completed", status="success")
+    elif finish:
         shell = new_id(IdKind.SPAN)
         ev("shell.command.started", {"shell.command": os.environ["COMMAND_TEXT"]}, span_id=shell)
         ev("shell.command.completed", {"shell.command": os.environ["COMMAND_TEXT"], "shell.exit_code": 0},
@@ -113,10 +123,11 @@ def build(name, finish):
 
 print("E2E_RUN_PAYLOAD=" + build("Auth: payload run", True))
 print("E2E_RUN_LIVE=" + build("Auth: live run", False))
+print("E2E_RUN_REPLAY=" + build("Auth: replay run", "replay"))
 PY
 set -a; . "$WORK/runs.env"; set +a
 READ_KEY="$(cli create-key --workspace "$A" --scopes runs:read --name auth-e2e-script-read)"   # polling only; never given to the web
-for id in "$E2E_RUN_PAYLOAD" "$E2E_RUN_LIVE"; do
+for id in "$E2E_RUN_PAYLOAD" "$E2E_RUN_LIVE" "$E2E_RUN_REPLAY"; do
   state=""
   for _ in $(seq 1 40); do
     state="$(curl -sS "$API/v1/runs/$id" -H "Authorization: Bearer $READ_KEY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("summary_state"))')"
@@ -131,6 +142,6 @@ cd "$root/apps/web"
 mkdir -p "$root/docs/screenshots/phase-15" "$root/docs/screenshots/phase-16"
 E2E_AUTH_API_URL="$API" E2E_WORKSPACE="$A" E2E_WORKSPACE_B="$B" E2E_STREAMER_SESSION="$STREAMER_SESSION" E2E_OWNER_EMAIL="$OWNER" E2E_INVITEE_EMAIL="$INVITEE" E2E_STREAMER_EMAIL="$STREAMER" \
   E2E_SEARCH_OWNER_SESSION="$SEARCH_OWNER_SESSION" E2E_SEARCH_VIEWER_SESSION="$SEARCH_VIEWER_SESSION" \
-  E2E_RUN_PAYLOAD="$E2E_RUN_PAYLOAD" E2E_RUN_LIVE="$E2E_RUN_LIVE" E2E_PAYLOAD_TEXT="$PAYLOAD_TEXT" E2E_COMMAND_TEXT="$COMMAND_TEXT" E2E_PATH_TEXT="$PATH_TEXT" \
+  E2E_RUN_PAYLOAD="$E2E_RUN_PAYLOAD" E2E_RUN_LIVE="$E2E_RUN_LIVE" E2E_RUN_REPLAY="$E2E_RUN_REPLAY" E2E_PAYLOAD_TEXT="$PAYLOAD_TEXT" E2E_COMMAND_TEXT="$COMMAND_TEXT" E2E_PATH_TEXT="$PATH_TEXT" \
   pnpm exec playwright test e2e/auth.spec.ts e2e/search.spec.ts e2e/replay-viewer-real.spec.ts
 printf '\nAUTH-E2E PASSED\n'

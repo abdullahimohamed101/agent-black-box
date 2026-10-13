@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { enterReplay, openRun, scrub, seekTo } from "./replay";
+import { enterReplay, figure, openRun, scrub, seekTo } from "./replay";
 import { signIn } from "./session";
 
 // API-backed replay for a viewer (Phase 12 acceptance 4). Runs only through scripts/auth-e2e.sh's environment: a real API,
@@ -89,3 +89,46 @@ test("the control: the owner's replay of the same run shows the command and the 
   await expect(page.locator("body")).toContainText(pathText!);
   await expect(page.locator("body")).toContainText(commandText!);
 });
+
+// ADR-121 / review P1-1, P1-2: the figures replay shows are the page's own at the last event, for both roles, on a run
+// traced the plain way (no cost attribute at all: the server priced the calls) that edited two different files.
+const replayRun = process.env.E2E_RUN_REPLAY;
+const REPLAY_PATHS = ["AUTH-E2E-REPLAY-A", "AUTH-E2E-REPLAY-B"];
+
+for (const [role, session] of [
+  ["viewer", viewerSession],
+  ["owner", ownerSession],
+] as const) {
+  test(`the ${role}'s replay of a server-priced run ends on the header's Cost and Files changed`, async () => {
+    test.skip(!replayRun, "needs scripts/auth-e2e.sh");
+    const page = await person(session!);
+    await openRun(page, BASE(), replayRun!);
+    const live = { cost: await figure(page, "Cost"), files: await figure(page, "Files changed") };
+    // the server's own pricing: 1M in + 100k out on the built-in price book ($4.50) plus a provider-reported $1.25
+    expect(live.cost).toBe("$5.75");
+    expect(live.files).toBe("2");
+    await enterReplay(page);
+    const last = Number(await scrub(page).getAttribute("max"));
+    const costs = new Set<string>();
+    const files: string[] = [];
+    for (let i = 0; i <= last; i++) {
+      await seekTo(page, i);
+      costs.add(await figure(page, "Cost"));
+      files.push(await figure(page, "Files changed"));
+      if (role === "viewer") {
+        const text = await surface(page);
+        for (const path of REPLAY_PATHS) expect(text, `leaked at ${i}`).not.toContain(path);
+      }
+    }
+    expect(await figure(page, "Cost")).toBe(live.cost); // before the fix: $0.00 for a run with no cost attribute
+    expect(await figure(page, "Files changed")).toBe(live.files); // before the fix a viewer saw 1
+    expect(costs.has("$4.50")).toBe(true); // after the first call, priced by the server's price book
+    if (role === "viewer") {
+      expect(files.some((f) => /^up to 1\b/.test(f))).toBe(true);
+      expect(files.at(-1)).toBe("2");
+    } else {
+      expect(files.some((f) => f.startsWith("up to"))).toBe(false);
+      expect(new Set(files)).toEqual(new Set(["0", "1", "2"]));
+    }
+  });
+}
