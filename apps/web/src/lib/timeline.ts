@@ -1,4 +1,5 @@
 import type { EventOut } from "@/lib/api/types";
+import { policyEventLabel } from "./policy";
 import { contentText } from "./withheld";
 import { formatCost, formatDuration, formatInt, num } from "./format";
 
@@ -110,6 +111,9 @@ const attr = (e: EventOut, k: string): string | null => {
 /** One-line human summary of an event; text only (payloads and attributes are untrusted). */
 export function describe(e: EventOut): string {
   const a = e.attributes;
+  // Policy decisions and approvals: the outcome in words ("Denied by deny-env-read v3"), then the policy's own reason.
+  const policy = policyEventLabel(e);
+  if (policy) return policy.detail ? `${policy.word} · ${policy.detail}` : policy.word;
   switch (e.event_type) {
     case "llm.request.completed": {
       const parts = [attr(e, "llm.model") ?? "model"];

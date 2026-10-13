@@ -9,6 +9,8 @@ import { liveStatus } from "@/lib/liveStatus";
 import { useEventDetail, useRun, useRunEvents, useRunFindings } from "@/lib/queries";
 import { useTimers } from "@/lib/useTimers";
 import { headlineKind, headlineModel, replayHeadline } from "@/lib/runHeadline";
+import { ageSeconds, pendingApproval } from "@/lib/policy";
+import { useApproval } from "@/lib/policyApi";
 import {
   STATUS_AS_OF,
   costDisplay,
@@ -43,10 +45,12 @@ import { Findings } from "./Findings";
 import { ShieldGlyph } from "./SecuritySeverity";
 import { SecurityChip, SecurityFindings, useFindingCounts } from "./SecurityFindings";
 import { contextSummary, securityLine } from "@/lib/security";
+import { ApprovalBanner } from "./ApprovalBanner";
 import { RunHeadline } from "./RunHeadline";
 import { StatusBadge } from "./StatusBadge";
 import { ReplayTransport } from "./ReplayTransport";
 import { ErrorState, Loading } from "./States";
+import { useCan, useWorkspaceOptional } from "./WorkspaceProvider";
 import { Timeline } from "./Timeline";
 import { ViewSwitch, type RunView } from "./ViewSwitch";
 import { Waterfall } from "./Waterfall";
@@ -312,6 +316,16 @@ export function RunDetail({
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [ticking]);
+
+  // A run waiting for a person: the real expiry comes from the approval itself, for roles that may read approvals.
+  const canReadApprovals = useCan("approval.read");
+  const wsCtx = useWorkspaceOptional();
+  const waitingOn = run.data?.status === "WAITING_FOR_APPROVAL" ? pendingApproval(events) : null;
+  const approval = useApproval(waitingOn?.id ?? null, canReadApprovals && waitingOn != null);
+  const approvalLeft =
+    approval.data?.state === "REQUESTED"
+      ? ageSeconds(approval.data.seconds_left, approval.dataUpdatedAt, now)
+      : null;
 
   // Earliest timestamp, not events[0]: sequence order can disagree with clocks.
   const t0 = useMemo(
@@ -613,6 +627,16 @@ export function RunDetail({
     }, 0);
   }, [focusId, deepFindings, later]);
 
+  // `?event=<id>` (a sample of a policy dry run): select that event and open it once the run's events have loaded.
+  const wantedEvent = params?.get("event") ?? null;
+  const handledEvent = useRef<string | null>(null);
+  useEffect(() => {
+    if (!wantedEvent || handledEvent.current === wantedEvent || !restComplete) return;
+    handledEvent.current = wantedEvent;
+    if (events.some((e) => e.event_id === wantedEvent))
+      later(() => jumpRef.current(wantedEvent), 0);
+  }, [wantedEvent, restComplete, events, later]);
+
   const toggleClass = (c: EventClass) =>
     setFilters((f) => {
       const cur = new Set(f.classes ?? CLASS_ORDER);
@@ -641,7 +665,14 @@ export function RunDetail({
   const retries = rs ? rs.counts.retries : (num(s["retry_count"]) ?? 0);
   const errors = rs ? rs.counts.errors : (num(s["error_count"]) ?? 0);
   const models = Array.isArray(s["models"]) ? (s["models"] as string[]) : [];
-  const model = headlineModel({ run: r, events, t0, eventsComplete: restComplete, now });
+  const model = headlineModel({
+    run: r,
+    events,
+    t0,
+    eventsComplete: restComplete,
+    now,
+    approvalLeftSeconds: approvalLeft,
+  });
   // In replay the headline is the one as of the playhead (see `replayHeadline`); the live one would give the outcome away.
   const shownModel = rs ? replayHeadline(model, rs) : model;
   const kind = shownModel.kind;
@@ -678,6 +709,15 @@ export function RunDetail({
           <RunHeadline kind={kind} variant="skeleton" />
         ) : (
           <RunHeadline kind={kind} variant="ready" model={shownModel} onGo={jumpToError} />
+        )}
+        {!rs && r.status === "WAITING_FOR_APPROVAL" && (
+          <ApprovalBanner
+            capability={waitingOn?.capability ?? null}
+            approvalId={waitingOn?.id ?? null}
+            workspace={wsCtx?.workspace.slug ?? null}
+            canOpen={canReadApprovals}
+            leftSeconds={approvalLeft}
+          />
         )}
         {stream.state !== "off" && stream.state !== "ended" && (
           <LiveBar state={stream.state} status={nowDoing} />

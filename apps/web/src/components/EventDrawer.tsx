@@ -4,10 +4,12 @@ import { useEffect, useRef } from "react";
 import type { EventOut } from "@/lib/api/types";
 import { formatCost, formatDuration, formatInt, formatTimestamp, num } from "@/lib/format";
 import { useEventDetail } from "@/lib/queries";
+import { isPolicyService, policyEventLabel, PROVENANCE_TEXT } from "@/lib/policy";
 import { eventClass, isError } from "@/lib/timeline";
 import { isWithheld, WITHHELD_TEXT } from "@/lib/withheld";
 import { CodingSections } from "./CodingSections";
 import { ErrorState, Loading } from "./States";
+import "../app/policy.css";
 
 const PAYLOAD_CHARS = 20_000;
 
@@ -77,6 +79,7 @@ export function EventDrawer({
   const payload = detail.data?.payload ?? null;
   const json = payload ? JSON.stringify(payload, null, 2) : null;
   const msg = err ? errorMessage(event, payload) : null;
+  const policy = policyEventLabel(event);
 
   return (
     <aside
@@ -165,6 +168,38 @@ export function EventDrawer({
               ["Duration", event.duration_ms != null ? formatDuration(event.duration_ms) : null],
             ]}
           />
+        </section>
+      )}
+
+      {policy && (
+        <section aria-labelledby="d-policy" className="pol-drawer" data-testid="drawer-policy">
+          <h3 id="d-policy">Policy</h3>
+          <p>
+            <span className="tl-pol" data-tone={policy.tone}>
+              <span className="pol-glyph" aria-hidden="true">
+                {policy.glyph}
+              </span>
+              <span>{policy.word}</span>
+            </span>
+          </p>
+          {policy.detail && <p className="muted">{policy.detail}</p>}
+          <Fields
+            rows={[
+              ["Rule", str(a["policy.id"])],
+              [
+                "Rule version",
+                num(a["policy.version"]) != null ? String(num(a["policy.version"])) : null,
+              ],
+              ["Capability", str(a["policy.capability"]) ?? str(a["approval.capability"])],
+              ["Approval", str(a["approval.id"])],
+              ["Approval state", str(a["approval.state"])],
+            ]}
+          />
+          {isPolicyService(event) && (
+            <p className="muted" data-testid="provenance">
+              {PROVENANCE_TEXT}, not by the agent.
+            </p>
+          )}
         </section>
       )}
 
