@@ -136,6 +136,20 @@ class Settings(BaseSettings):
     policy_writes_per_minute: int = Field(default=30, ge=1)
     policy_validations_per_minute: int = Field(default=120, ge=1)
     policy_dry_runs_per_minute: int = Field(default=20, ge=1)
+    # Decisions and approvals (Phase 14 step 2, ADR-141). Decision-style calls of an agent's key
+    # (decide, consume, cancel, wait start) are limited per key and per workspace, per minute;
+    # long polls are capped per workspace and per process, and each poll holds no database
+    # connection between reads. Per process, like ingestion (KI-141).
+    policy_decide_per_minute_key: int = Field(default=1200, ge=1)
+    policy_decide_per_minute_workspace: int = Field(default=6000, ge=1)
+    approval_waiters_per_workspace: int = Field(default=20, ge=1)
+    approval_waiters_per_process: int = Field(default=200, ge=1)
+    approval_wait_poll_seconds: float = Field(default=1.0, gt=0)
+    approval_max_body_bytes: int = Field(default=64 * 1024, ge=1024)
+    # Requests waiting for a decision: at most this many per key and per workspace, so a runaway
+    # agent cannot bury the approvers. The decision endpoint refuses more with a 429.
+    approval_max_open_per_key: int = Field(default=100, ge=1)
+    approval_max_open_per_workspace: int = Field(default=1000, ge=1)
     # Lets the CLI mint sessions without an identity provider. Honoured only in development/test.
     allow_dev_sessions: bool = False
 

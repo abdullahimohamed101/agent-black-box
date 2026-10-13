@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from abb_api.approvals import schemas as approval_schemas
 from abb_api.authz.principal import Principal
 from abb_api.core.domain import NotFoundError
 from abb_api.core.errors import AppError, ErrorCategory
@@ -18,15 +19,15 @@ from abb_api.ingestion.ratelimit import InMemoryRateLimiter, retry_after_seconds
 from abb_api.policies import schemas as s
 from abb_api.policies.dryrun import DryRunLimits, DryRunResult, evaluate_events
 from abb_api.policies.mapping import MAPPED_EVENT_TYPES
-from abb_api.policies.model import DecisionKind
-from abb_api.policies.parser import Issue, parse_policy
+from abb_api.policies.model import RISK_CLASSES, DecisionKind
+from abb_api.policies.parser import Issue, compile_cached, parse_policy
 from abb_api.policies.service import (
     PolicyInvalidError,
     VersionConflictError,
     publish_policy,
 )
 from abb_api.policies.store import PgPolicyStore, PolicyVersion, StoredPolicy
-from abb_api.projects.access import project_not_found
+from abb_api.projects.access import authorise_project, project_not_found
 from abb_api.projects.repository import ProjectRepository
 from abb_api.runs.event_queries import EventQueries
 from abb_api.runs.repository import RunRepository
@@ -214,6 +215,39 @@ class PolicyApiService:
             to_version=to_version,
             diff=text_out,
             truncated=truncated,
+        )
+
+    async def fail_modes(
+        self, principal: Principal, project_id: str | None
+    ) -> approval_schemas.FailModesOut:
+        """The compact fail-mode table an SDK caches at startup (ADR-141): the rules that set
+        `on_error` explicitly, in policy order, and the risk-class defaults. A key sees its own
+        project's policy; a person names the project (none: the workspace base)."""
+        async with self._engine.connect() as conn:
+            scope = await authorise_project(conn, principal, project_id)
+            source, stored = await PgPolicyStore(conn, principal.tenant).effective(scope)
+        policy = compile_cached(stored.document_text) if stored else None
+        rules = [
+            approval_schemas.FailModeRule(
+                rule_id=rule.id,
+                capability=rule.when.capability,
+                resource=rule.when.resource.source if rule.when.resource else None,
+                risk_classes=list(rule.when.risk_classes),
+                has_attribute_conditions=bool(rule.when.attributes),
+                on_error=rule.on_error.value,
+            )
+            for rule in (policy.rules if policy else ())
+            if rule.on_error is not None
+        ]
+        return approval_schemas.FailModesOut(
+            project_id=public_id(IdKind.PROJECT, scope) if scope else None,
+            source=source,
+            policy_version=stored.version if stored else 0,
+            rules=rules,
+            defaults={
+                **{c: ("closed" if c in ("R3", "R4") else "open") for c in RISK_CLASSES},
+                "unclassified": "open",
+            },
         )
 
     # ------------------------------------------------------------------ validate and publish

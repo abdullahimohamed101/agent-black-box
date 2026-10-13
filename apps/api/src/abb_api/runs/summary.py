@@ -72,8 +72,8 @@ def _status_after(event: Event) -> RunStatus | None:
         return RunStatus.CANCELLED
     if kind == "approval.requested":
         return RunStatus.WAITING_FOR_APPROVAL
-    if kind in ("approval.granted", "approval.denied"):
-        return RunStatus.RUNNING
+    if kind in ("approval.granted", "approval.denied", "approval.expired", "approval.cancelled"):
+        return RunStatus.RUNNING  # the request is over (a decision, its time, or its withdrawal)
     return None
 
 

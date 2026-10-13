@@ -24,6 +24,7 @@ SUMMARIZE_RUN = "summarize_run"
 REFRESH_ANALYTICS_DAY = "refresh_analytics_day"
 DETECT_FINDINGS = "detect_findings"
 EVALUATE_RUN = "evaluate_run"
+EXPIRE_APPROVAL = "expire_approval"
 MAX_ERROR_LENGTH = 2000
 
 

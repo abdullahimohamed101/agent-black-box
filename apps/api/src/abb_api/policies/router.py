@@ -11,6 +11,7 @@ from typing import Annotated, Any
 from abb_event_schema.ids import IdKind, id_pattern
 from fastapi import APIRouter, Depends, Query, Request
 
+from abb_api.approvals.schemas import FailModesOut
 from abb_api.authz import actions
 from abb_api.authz.dependencies import require
 from abb_api.authz.principal import Principal
@@ -22,6 +23,7 @@ router = APIRouter(tags=["policies"])
 
 Reader = Annotated[Principal, Depends(require(actions.POLICY_READ))]
 Writer = Annotated[Principal, Depends(require(actions.POLICY_WRITE))]
+FailModeReader = Annotated[Principal, Depends(require(actions.POLICY_FAIL_MODES))]
 
 _ERRORS: dict[int | str, dict[str, Any]] = {
     code: {"description": text, "model": ErrorEnvelope}
@@ -65,6 +67,25 @@ async def current_policy(
     request: Request, principal: Reader, project_id: ProjectParam = None
 ) -> s.CurrentPolicyOut:
     return await _service(request).current(principal, project_id)
+
+
+@router.get(
+    "/v1/policies/fail-modes",
+    response_model=FailModesOut,
+    responses=_ERRORS,
+    summary="The fail-mode table an SDK caches",
+    description=(
+        "For an agent's key (its own project) or a person (`project_id`, else the workspace "
+        "base): the rules of the governing policy that set `on_error` explicitly, plus the "
+        "risk-class defaults (R0-R2 and unclassified `open`, R3-R4 `closed`). A rule's own "
+        "`on_error` is only known to an SDK that read this table before the service went away; "
+        "otherwise it falls back to the defaults and its own configuration."
+    ),
+)
+async def fail_modes(
+    request: Request, principal: FailModeReader, project_id: ProjectParam = None
+) -> FailModesOut:
+    return await _service(request).fail_modes(principal, project_id)
 
 
 @router.get(

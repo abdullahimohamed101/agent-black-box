@@ -182,6 +182,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List approval requests
+         * @description Newest first. `state=pending` is requests still waiting; `decided` is everything else (approved, denied, expired, cancelled). Content is secret-scrubbed. People with `approval.read` only.
+         */
+        get: operations["list_approvals_v1_approvals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approvals/pending-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many requests are waiting for a decision
+         * @description For the top bar. People with `approval.read` only.
+         */
+        get: operations["pending_count_v1_approvals_pending_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approvals/{approval_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one approval request
+         * @description What the approver is asked to approve, after secret scrubbing. Never the hash.
+         */
+        get: operations["approval_detail_v1_approvals__approval_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Withdraw a waiting approval request
+         * @description Only the key that asked, while the request is still waiting (409 otherwise).
+         */
+        delete: operations["cancel_v1_approvals__approval_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approvals/{approval_id}/consume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Spend an approval for exactly this action, once
+         * @description Present the whole intent again. The server recomputes its hash and spends the approval only if it is approved, unexpired, unspent, the caller's own and bound to this very intent, in one atomic statement. Refusals are `APPROVAL_NOT_FOUND` (404), `APPROVAL_NOT_APPROVED`, `APPROVAL_EXPIRED`, `APPROVAL_CONSUMED` and `APPROVAL_INTENT_MISMATCH` (409); none echoes the intent. A lost response cannot be retried: the second call is `APPROVAL_CONSUMED`.
+         */
+        post: operations["consume_v1_approvals__approval_id__consume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approvals/{approval_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or deny a request
+         * @description A signed-in person whose role satisfies the rule's `approver_role` (owner; admin or owner; security, admin or owner; developer, security, admin or owner; unset: owner or admin) and who holds `payload.read`. The requester cannot approve a request made with their own key unless the rule allows it. One atomic transition: a concurrent decision, cancellation or expiry leaves exactly one winner and the loser gets 409 `APPROVAL_NOT_REQUESTED`.
+         */
+        post: operations["decide_approval_v1_approvals__approval_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approvals/{approval_id}/wait": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wait for an approval to be decided
+         * @description Long poll for the key that asked. Returns at once when the approval is no longer waiting; otherwise at the first change or after `timeout` seconds (at most 25) with the current state. No database connection is held while waiting; concurrent waiters are capped per workspace and per process (429 `TOO_MANY_WAITERS`). Another key's, project's or workspace's approval is the same 404 as an unknown one.
+         */
+        get: operations["wait_v1_approvals__approval_id__wait_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/artifacts/{artifact_id}": {
         parameters: {
             query?: never;
@@ -717,6 +841,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/policies/fail-modes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The fail-mode table an SDK caches
+         * @description For an agent's key (its own project) or a person (`project_id`, else the workspace base): the rules of the governing policy that set `on_error` explicitly, plus the risk-class defaults (R0-R2 and unclassified `open`, R3-R4 `closed`). A rule's own `on_error` is only known to an SDK that read this table before the service went away; otherwise it falls back to the defaults and its own configuration.
+         */
+        get: operations["fail_modes_v1_policies_fail_modes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/policies/publish": {
         parameters: {
             query?: never;
@@ -788,6 +932,26 @@ export interface paths {
         get: operations["policy_version_v1_policies_versions__version__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policy/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the policy whether an action may happen
+         * @description The SDK posts the action it is about to take and gets `allow`, `deny` or `require_approval`. For `require_approval` an approval request is created (or the caller's open one for the same intent is returned) and the caller waits on `GET /v1/approvals/{id}/wait`. The server writes the `policy.decision`, `policy.action.blocked` and `approval.requested` events itself. Needs a key bound to a project with scope `policy:check` or `events:write`. Enforcement is cooperative: it applies to agents that ask.
+         */
+        post: operations["decide_v1_policy_decide_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1200,6 +1364,165 @@ export interface components {
              */
             status: "active" | "expired";
         };
+        /** ApprovalDetail */
+        ApprovalDetail: {
+            /** Agent Id */
+            agent_id: string;
+            /** Allow Self Approval */
+            allow_self_approval: boolean;
+            /**
+             * Approver Role
+             * @description Null: an owner or an admin.
+             */
+            approver_role: ("OWNER" | "ADMIN" | "DEVELOPER" | "SECURITY") | null;
+            /**
+             * Arguments
+             * @description Secret-scrubbed arguments; null if they were withheld.
+             */
+            arguments: {
+                [key: string]: unknown;
+            } | null;
+            /** Capability */
+            capability: string;
+            /** Closed At */
+            closed_at: string | null;
+            /** Comment */
+            comment: string | null;
+            /** Consumed */
+            consumed: boolean;
+            /** Consumed At */
+            consumed_at: string | null;
+            /**
+             * Content Withheld
+             * @description True if the scanner could not clear the resource or arguments.
+             */
+            content_withheld: boolean;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Decided By
+             * @description The `usr_` id of the person who decided.
+             */
+            decided_by: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: string;
+            /**
+             * On Expiry
+             * @enum {string}
+             */
+            on_expiry: "deny" | "allow";
+            /**
+             * Policy Id
+             * @description The rule that required the approval.
+             */
+            policy_id: string;
+            /** Policy Version */
+            policy_version: number;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Redactions
+             * @description Secrets replaced in the resource and arguments.
+             */
+            redactions: number;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /**
+             * Resource
+             * @description Secret-scrubbed; null if it could not be scrubbed.
+             */
+            resource: string | null;
+            /** Risk Class */
+            risk_class: string | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Seconds Left
+             * @description Seconds until `expires_at` while the approval is still usable, else null.
+             */
+            seconds_left: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "REQUESTED" | "APPROVED" | "DENIED" | "EXPIRED" | "CANCELLED";
+        };
+        /** ApprovalList */
+        ApprovalList: {
+            /** Items */
+            items: components["schemas"]["ApprovalSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** ApprovalSummary */
+        ApprovalSummary: {
+            /** Agent Id */
+            agent_id: string;
+            /**
+             * Approver Role
+             * @description Null: an owner or an admin.
+             */
+            approver_role: ("OWNER" | "ADMIN" | "DEVELOPER" | "SECURITY") | null;
+            /** Capability */
+            capability: string;
+            /** Consumed */
+            consumed: boolean;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Decided By
+             * @description The `usr_` id of the person who decided.
+             */
+            decided_by: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: string;
+            /**
+             * Policy Id
+             * @description The rule that required the approval.
+             */
+            policy_id: string;
+            /** Policy Version */
+            policy_version: number;
+            /** Project Id */
+            project_id: string;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /**
+             * Resource
+             * @description Secret-scrubbed; null if it could not be scrubbed.
+             */
+            resource: string | null;
+            /** Risk Class */
+            risk_class: string | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Seconds Left
+             * @description Seconds until `expires_at` while the approval is still usable, else null.
+             */
+            seconds_left: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "REQUESTED" | "APPROVED" | "DENIED" | "EXPIRED" | "CANCELLED";
+        };
         /** ArtifactChunk */
         ArtifactChunk: {
             /**
@@ -1397,6 +1720,16 @@ export interface components {
             steps: components["schemas"]["RowOut"][];
             /** Summary */
             summary: components["schemas"]["MetricOut"][];
+        };
+        /** ConsumeOut */
+        ConsumeOut: {
+            /** Approval Id */
+            approval_id: string;
+            /**
+             * Consumed At
+             * Format: date-time
+             */
+            consumed_at: string;
         };
         /** CostByAgent */
         CostByAgent: {
@@ -1617,6 +1950,62 @@ export interface components {
              * @enum {string}
              */
             source: "project" | "workspace" | "default";
+        };
+        /** DecideOut */
+        DecideOut: {
+            /**
+             * Approval Id
+             * @description Set when the decision is `require_approval`.
+             */
+            approval_id: string | null;
+            /** Approval State */
+            approval_state?: ("REQUESTED" | "APPROVED" | "DENIED" | "EXPIRED" | "CANCELLED") | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "allow" | "deny" | "require_approval";
+            /**
+             * Expires At
+             * @description When the approval stops being usable (also when approved and unused).
+             */
+            expires_at: string | null;
+            /**
+             * On Error
+             * @description What the SDK should do the next time the service cannot be reached for an action like this: the matching rule's `on_error`, else `open` for R0-R2 (or unclassified) and `closed` for R3-R4.
+             * @enum {string}
+             */
+            on_error: "open" | "closed";
+            /**
+             * On Expiry
+             * @description The rule's fallback when the approval expires.
+             */
+            on_expiry: ("deny" | "allow") | null;
+            /**
+             * Policy Id
+             * @description The id of the rule that decided; null when the policy default applied.
+             */
+            policy_id: string | null;
+            /**
+             * Policy Version
+             * @description The policy version that decided (0: none published).
+             */
+            policy_version: number;
+            /**
+             * Reason
+             * @description The policy author's own words (a rule's description), never built from the action.
+             */
+            reason: string;
+        };
+        /** DecisionIn */
+        DecisionIn: {
+            /** Comment */
+            comment?: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "deny";
         };
         /** DetectorList */
         DetectorList: {
@@ -2354,6 +2743,60 @@ export interface components {
             /** Tools */
             tools: components["schemas"]["FacetValueOut"][];
         };
+        /** FailModeRule */
+        FailModeRule: {
+            /**
+             * Capability
+             * @description Exact or `prefix.*`; null: any capability.
+             */
+            capability: string | null;
+            /**
+             * Has Attribute Conditions
+             * @description The rule also matches on argument attributes, which this table cannot carry.
+             */
+            has_attribute_conditions: boolean;
+            /**
+             * On Error
+             * @enum {string}
+             */
+            on_error: "open" | "closed";
+            /**
+             * Resource
+             * @description Glob source; null: any resource.
+             */
+            resource: string | null;
+            /**
+             * Risk Classes
+             * @description Empty: any class.
+             */
+            risk_classes: string[];
+            /** Rule Id */
+            rule_id: string;
+        };
+        /** FailModesOut */
+        FailModesOut: {
+            /**
+             * Defaults
+             * @description `R0`..`R4` and `unclassified`: the mode when no listed rule applies.
+             */
+            defaults: {
+                [key: string]: "open" | "closed";
+            };
+            /** Policy Version */
+            policy_version: number;
+            /** Project Id */
+            project_id: string | null;
+            /**
+             * Rules
+             * @description Rules that set `on_error` explicitly, in policy order.
+             */
+            rules: components["schemas"]["FailModeRule"][];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "project" | "workspace" | "default";
+        };
         /** FailedRunSpend */
         FailedRunSpend: {
             /**
@@ -2692,6 +3135,14 @@ export interface components {
              * @description How many groups are folded into this bucket.
              */
             groups: number;
+        };
+        /** PendingCount */
+        PendingCount: {
+            /**
+             * Count
+             * @description Requests waiting for a decision right now.
+             */
+            count: number;
         };
         /**
          * Percentiles
@@ -3696,6 +4147,35 @@ export interface components {
             /** Score */
             score?: number | null;
         };
+        /** WaitOut */
+        WaitOut: {
+            /** Approval Id */
+            approval_id: string;
+            /**
+             * Consumed
+             * @description True once the approval has been spent.
+             */
+            consumed: boolean;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * On Expiry
+             * @enum {string}
+             */
+            on_expiry: "deny" | "allow";
+            /** Policy Id */
+            policy_id: string;
+            /** Policy Version */
+            policy_version: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "REQUESTED" | "APPROVED" | "DENIED" | "EXPIRED" | "CANCELLED";
+        };
         /** WarningOut */
         WarningOut: {
             /**
@@ -4493,6 +4973,735 @@ export interface operations {
                 };
             };
             /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_approvals_v1_approvals_get: {
+        parameters: {
+            query?: {
+                state?: "pending" | "decided" | "all";
+                project_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalList"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential may not use this route (people only, or keys only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The approval is not in a state that allows this; `code` says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request body is too large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intent or a parameter is invalid; no value is echoed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests or waiters; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; apply the fail mode. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    pending_count_v1_approvals_pending_count_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingCount"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential may not use this route (people only, or keys only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The approval is not in a state that allows this; `code` says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request body is too large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intent or a parameter is invalid; no value is echoed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests or waiters; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; apply the fail mode. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approval_detail_v1_approvals__approval_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDetail"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential may not use this route (people only, or keys only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The approval is not in a state that allows this; `code` says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request body is too large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intent or a parameter is invalid; no value is echoed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests or waiters; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; apply the fail mode. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancel_v1_approvals__approval_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential may not use this route (people only, or keys only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The approval is not in a state that allows this; `code` says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request body is too large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intent or a parameter is invalid; no value is echoed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests or waiters; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; apply the fail mode. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    consume_v1_approvals__approval_id__consume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * IntentIn
+                     * @description What an agent is about to do. The workspace and project come from the API key.
+                     */
+                    intent: {
+                        /**
+                         * Agent Id
+                         * @description The agent's slug, as in its events.
+                         */
+                        agent_id: string;
+                        /**
+                         * Arguments
+                         * @description JSON arguments of the action: strings, integers, booleans, null, lists and objects, at most 8 deep and 512 values. Floats are refused (send decimals as strings). Top-level scalars are the attributes a policy rule can match.
+                         */
+                        arguments?: {
+                            [key: string]: unknown;
+                        };
+                        /**
+                         * Capability
+                         * @description What kind of action, e.g. `shell.execute` or `github.merge`.
+                         */
+                        capability: string;
+                        /**
+                         * Idempotency Key
+                         * @description Makes the events of an allow or deny decision idempotent across retries. Not hashed.
+                         */
+                        idempotency_key?: string | null;
+                        /**
+                         * Resource
+                         * @description What it acts on (an executable name, a path, a tool operation).
+                         * @default
+                         */
+                        resource?: string;
+                        /**
+                         * Risk Class
+                         * @description The SDK classifier's class.
+                         */
+                        risk_class?: ("R0" | "R1" | "R2" | "R3" | "R4") | null;
+                        /**
+                         * Run Id
+                         * @description The run the action is in.
+                         */
+                        run_id: string;
+                        /**
+                         * Trace Id
+                         * @description The run's trace, used only if the run has no events yet. Not hashed.
+                         */
+                        trace_id?: string | null;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumeOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential may not use this route (people only, or keys only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The approval is not in a state that allows this; `code` says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request body is too large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intent or a parameter is invalid; no value is echoed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests or waiters; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; apply the fail mode. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_approval_v1_approvals__approval_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDetail"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential may not use this route (people only, or keys only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The approval is not in a state that allows this; `code` says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request body is too large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intent or a parameter is invalid; no value is echoed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests or waiters; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; apply the fail mode. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    wait_v1_approvals__approval_id__wait_get: {
+        parameters: {
+            query?: {
+                timeout?: number;
+            };
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaitOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential may not use this route (people only, or keys only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The approval is not in a state that allows this; `code` says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request body is too large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intent or a parameter is invalid; no value is echoed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests or waiters; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; apply the fail mode. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -7165,6 +8374,95 @@ export interface operations {
             };
         };
     };
+    fail_modes_v1_policies_fail_modes_get: {
+        parameters: {
+            query?: {
+                /** @description The project; omit for the workspace-wide base policy. */
+                project_id?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailModesOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The scope has a newer version than `base_version`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The document or a parameter is invalid; `details.issues` lists line-level problems. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many policy changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dry run took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     publish_policy_v1_policies_publish_post: {
         parameters: {
             query?: never;
@@ -7518,6 +8816,146 @@ export interface operations {
             };
             /** @description The dry run took too long. */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_v1_policy_decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Agent Id
+                     * @description The agent's slug, as in its events.
+                     */
+                    agent_id: string;
+                    /**
+                     * Arguments
+                     * @description JSON arguments of the action: strings, integers, booleans, null, lists and objects, at most 8 deep and 512 values. Floats are refused (send decimals as strings). Top-level scalars are the attributes a policy rule can match.
+                     */
+                    arguments?: {
+                        [key: string]: unknown;
+                    };
+                    /**
+                     * Capability
+                     * @description What kind of action, e.g. `shell.execute` or `github.merge`.
+                     */
+                    capability: string;
+                    /**
+                     * Idempotency Key
+                     * @description Makes the events of an allow or deny decision idempotent across retries. Not hashed.
+                     */
+                    idempotency_key?: string | null;
+                    /**
+                     * Resource
+                     * @description What it acts on (an executable name, a path, a tool operation).
+                     * @default
+                     */
+                    resource?: string;
+                    /**
+                     * Risk Class
+                     * @description The SDK classifier's class.
+                     */
+                    risk_class?: ("R0" | "R1" | "R2" | "R3" | "R4") | null;
+                    /**
+                     * Run Id
+                     * @description The run the action is in.
+                     */
+                    run_id: string;
+                    /**
+                     * Trace Id
+                     * @description The run's trace, used only if the run has no events yet. Not hashed.
+                     */
+                    trace_id?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecideOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The credential may not use this route (people only, or keys only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The approval is not in a state that allows this; `code` says which. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request body is too large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intent or a parameter is invalid; no value is echoed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests or waiters; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; apply the fail mode. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

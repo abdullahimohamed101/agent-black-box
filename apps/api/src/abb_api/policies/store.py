@@ -68,6 +68,8 @@ class PolicyStore(Protocol):
         self, project_id: uuid.UUID | None
     ) -> tuple[Source, StoredPolicy | None]: ...
 
+    async def for_decision(self, project_id: uuid.UUID) -> tuple[int, str] | None: ...
+
 
 _META = (
     t.policy_versions.c.project_id,
@@ -192,3 +194,21 @@ class PgPolicyStore:
         if base is not None:
             return "workspace", base
         return "default", None
+
+    async def for_decision(self, project_id: uuid.UUID) -> tuple[int, str] | None:
+        """`(version, document_text)` of the policy that governs a project, or None (nothing
+        published). The decision endpoint's read: no project check (the caller's key already
+        bound the project), no metadata, at most two indexed single-row statements."""
+        c = t.policy_versions.c
+        for scope in (c.project_id == project_id, c.project_id.is_(None)):
+            row = (
+                await self._conn.execute(
+                    select(c.version, c.document_text)
+                    .where(c.workspace_id == self._tenant.workspace_id, scope)
+                    .order_by(c.version.desc())
+                    .limit(1)
+                )
+            ).first()
+            if row is not None:
+                return int(row.version), str(row.document_text)
+        return None
