@@ -567,7 +567,7 @@ FULLWIDTH_AWS = "".join(chr(ord(c) + 0xFEE0) for c in AWS)  # the same key in fu
     "obfuscated",
     [
         AWS[:4] + "\u200b" + AWS[4:],  # zero-width space
-        AWS[:6] + "⁠" + AWS[6:],  # word joiner
+        AWS[:6] + "\u2060" + AWS[6:],  # word joiner
         AWS[:3] + "\ufeff" + AWS[3:],  # byte-order mark inside the key
         FULLWIDTH_AWS,
     ],
