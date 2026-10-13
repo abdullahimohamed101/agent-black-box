@@ -25,7 +25,17 @@ ingestion edge | control plane | database/object storage | human approvers.
   cannot reference another tenant's parent (database-enforced, tested); repositories are built with a tenant and no method
   takes a workspace argument; other tenants' and other projects' resources are indistinguishable from nonexistent (404, same
   body). Cross-workspace and cross-project tests cover every read route. Optional Postgres RLS remains a later defence in depth (§73.4).
-- Redaction: SDK-side before export, server-side backstop, payload modes FULL/METADATA_ONLY/DISABLED. (Phases 3, 13)
+- Redaction (SDK Phase 3, server Phase 13 step 1, ADR-130): the SDK redacts before export; the server redacts again **before an event or artifact is
+  stored** (accepted events are immutable, so this is the only moment it can). Per-project capture mode, enforced on the server with the SDK's names:
+  `FULL` (payloads kept after redaction), `METADATA_ONLY` (default for a project with no settings: `payload`, `payload_ref` and artifact references
+  dropped even if the SDK sends them), `DISABLED` (also no `error.message` or `metadata.*`). The scanner has the SDK's kinds with patterns bounded
+  for hostile input (no backtracking blow-up; 64 KiB windows; a size and a time budget), never logs or returns a value, and is idempotent. Fail
+  closed: a value that cannot be scanned is dropped with `redaction.dropped_reason` (`scan_failed`, `too_large`); an artifact over its budget is
+  stored as a one-line note; unreadable settings refuse the batch (503). `redaction.server_count`, `redaction.server_kinds` and
+  `redaction.dropped_reason` are metadata for every role. Settings changes (`security.settings.update`) are audit-logged in the same transaction.
+  Tests plant secrets and scan every table and artifact file for them (`tests/test_ingestion_redaction.py`, `tests/secret_scan_helpers.py`).
+  **Not done:** stored events and artifacts are never scrubbed retroactively; unknown-shape secrets still pass in FULL mode (KI-032, KI-042 stay
+  open until the Phase 13 backstop gate passes).
 - Never log secrets or payload bodies (implemented): request logs carry method, path, status, duration, request id and the
   safe identifiers `workspace_id`, `project_id`, `key_id`; a test posts secret-looking keys and payloads and asserts none
   appear in any log record. The reason a key was rejected is logged server-side only.
@@ -121,8 +131,9 @@ Login and key-management endpoints are throttled only by the per-client/per-inst
 quotas and failed-authentication throttling are Phase 19 (KI-017, KI-018, KI-019). The identity provider integration was exercised against the fake
 provider only; a real provider login is an open acceptance check (KI-067). Session listing and "log out everywhere" are not in the UI (SQL/CLI
 recovery is in the runbook, KI-068). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits are per process. The Python SDK
-redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads);
-server-side redaction arrives in Phase 13, so **other clients are responsible for not sending secrets**, and inline payloads are stored as received.
+redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads); since Phase 13 the server
+redacts again, but detection is best effort, so **clients should still keep secrets out of events**, and a project that needs no payloads should stay
+METADATA_ONLY.
 
 ## Process
 Security-sensitive changes require a `review-change` pass and a note in the phase plan.

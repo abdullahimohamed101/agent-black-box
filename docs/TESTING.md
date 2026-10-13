@@ -182,3 +182,12 @@ holds test data.
   planted secret reaches any page or API response. The script refuses to start if the port is already serving and kills the whole
   process tree on exit. **The Playwright spec writes screenshots into the tracked `docs/screenshots/phase-6/`**: commit them when they changed
   meaningfully, otherwise `git checkout` them. Example tests: `uv run --project packages/sdk-python pytest examples/coding-agent/tests`.
+
+### Server-side redaction and capture modes (Phase 13 step 1, ADR-130)
+- `apps/api/tests/test_security_scanner.py`: one sample per kind, near misses, unicode, NUL/escape splitting, idempotence, size and time budgets, and 22 hostile
+  1 MB inputs with a wall-clock bound; `test_security_scanner_parity.py` loads the SDK from the monorepo and asserts the same kinds, deny keys, output on a corpus and
+  per-mode decisions. `test_server_redactor.py`: limits that redaction could break (lengthened strings, 64 attributes, inline payload size), budgets, determinism.
+- `test_ingestion_redaction.py`: through the real API, per mode and fail-closed, redelivery and mode changes, artifacts; each test scans every table
+  (`tests/secret_scan_helpers.py`: `find_in_database`) and the artifact directory (`find_on_disk`) for the planted secrets. `test_security_settings.py`: defaults,
+  workspace/project scoping, validation, audit atomicity, concurrent changes, runtime role. `tests/authz/test_content_withheld.py` covers the markers for every role.
+- `make_tenant(..., capture_mode=CaptureMode.FULL)` is the default for test projects; pass `None` for the product default (METADATA_ONLY).

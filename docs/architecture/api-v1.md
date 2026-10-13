@@ -135,6 +135,13 @@ come from the key (an event naming another tenant is rejected, never overwritten
 - Order of arrival does not matter. Events may arrive after their run completed.
 - `POST /v1/events` is the single-event form: `202 {event_id, status: accepted|duplicate|conflict}` or a
   typed 4xx (`422 EVENT_INVALID`, `400 EVENT_SCHEMA_UNSUPPORTED`, `413`, `409 RUN_PROJECT_MISMATCH`).
+- **Server-side redaction (Phase 13, ADR-130).** Before an event is stored the server applies the project's capture mode (`FULL`,
+  `METADATA_ONLY` by default, `DISABLED`; set with `python -m abb_api.cli set-capture-mode` until the settings API of step 2) and scans every
+  string it carries; secret-shaped text becomes `[REDACTED:<label>]`, and the event records `redaction.server_count`, `redaction.server_kinds`
+  and `redaction.dropped_reason` ([events](events.md)). An event that cannot be scanned keeps its metadata and loses the value that could not be
+  scanned. An event whose redaction fails outright is rejected with `REDACTION_FAILED`. If the project's settings cannot be read the whole batch
+  is refused with a retryable `503`. Artifacts follow the same modes (see `PUT /v1/artifacts/{id}` in the OpenAPI document): dropped bodies are
+  stored as a one-line note and the `sha256`/`size_bytes` returned describe what is stored.
 - Per-project rate limit: 2,000 events/s (burst 10,000) and 10 MiB/s by default, per API process
   (`ABB_RATE_LIMIT_*`); exceeding it returns `429` and stores nothing from that request.
 

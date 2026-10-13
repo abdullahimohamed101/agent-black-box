@@ -33,7 +33,7 @@ cp .env.example .env && make setup
 | API + web natively (Postgres in Compose) | `make dev` |
 | Background worker natively | `cd apps/api && uv run python -m abb_api.worker` (needs `.env` exported) |
 | Everything in containers | `make up`, then `make smoke` |
-| Provision a tenant and key | `make seed` (local dev key) or `python -m abb_api.cli --help` |
+| Provision a tenant and key | `make seed` (local dev key; the dev project captures FULL payloads) or `python -m abb_api.cli --help` |
 | Latency baseline | `make seed && make bench` (read `docs/benchmarks/phase-2-ingestion.md` first) |
 
 Database roles: Compose runs `migrate` as the owner (`abb`) and the API/worker as `abb_runtime` (cannot UPDATE/DELETE `events`). The native
@@ -66,3 +66,10 @@ session (prints the cookie value once; refused unless `ABB_ENVIRONMENT` is devel
 only browser test that logs in for real is `make auth-e2e` (fake provider). A real provider needs only `ABB_OIDC_ISSUER`,
 `ABB_OIDC_CLIENT_ID` (+ `ABB_OIDC_CLIENT_SECRET`) and `ABB_WEB_ORIGIN`; the provider must send `email_verified: true`
 ([auth-and-access runbook](../runbooks/auth-and-access.md)).
+
+## Capture modes (Phase 13, ADR-130)
+A project with no security settings is `METADATA_ONLY`: the server drops `payload`, `payload_ref` and artifact bodies even if an SDK sends them. To see
+prompts, tool results, diffs and terminal output in a project, set it to `FULL` (secrets are still redacted on the server):
+`python -m abb_api.cli create-project ... --capture-mode full` or `python -m abb_api.cli set-capture-mode --workspace W --project P --mode full`
+(audited). `make seed` sets the local demo project to `FULL`; the e2e scripts create their projects with `--capture-mode full`. Tests that need payloads
+use `make_tenant`, whose projects are `FULL` unless told otherwise.

@@ -57,3 +57,9 @@ Unit tests per detector (positive, negative, edge), the planted-secret and preci
 3. Web: run chip and Security group, workspace Security page, Security settings, glyphs, empty states.
 4. Verification suite: planted-secret e2e through the real SDK, precision corpus, modes, performance, roles; docs and closing evidence.
 5. Review, fixes, push and PR.
+
+## Progress
+
+- Step 1 (2026-10-13): built on this branch. ADR-130; `project_security_settings` (migration 0090), `abb_api/security/` (scanner, redaction, settings), ingestion and artifact
+  enforcement, `redaction.*` registered, CLI `set-capture-mode` / `create-project --capture-mode`. Security-sensitive (tenant scoping, redaction, audit): review pass is step 5.
+  One deviation from the plan text, recorded in ADR-130 (4): METADATA_ONLY drops payload and artifact references, not `CONTENT_ATTRIBUTES`.
