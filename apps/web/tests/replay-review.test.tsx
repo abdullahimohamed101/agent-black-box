@@ -299,6 +299,30 @@ describe("P2-2/P3-1: hook", () => {
   });
 });
 
+describe("P2-2: the inspector's own Esc does not also leave replay", () => {
+  it("asks whether the inspector was open when the key went down, not after React has closed it", () => {
+    const f = failureRetryRun();
+    let shown = true;
+    const { result } = renderHook(() =>
+      useReplay({ ...hookEvents(f), inspectorOpen: () => shown }),
+    );
+    act(() => result.current.enter());
+    // the inspector's handler (React's, at the root) runs before the document listener and closes it: the page re-renders
+    // and the answer flips within the same keydown
+    const close = () => {
+      shown = false;
+    };
+    document.body.addEventListener("keydown", close);
+    act(() => {
+      document.body.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+    });
+    document.body.removeEventListener("keydown", close);
+    expect(result.current.mode).toBe(true); // found by the axe spec in a real browser: it used to leave here too
+  });
+});
+
 describe("P2-1: a live append is incremental", () => {
   const stress = stressRun();
   const spyApply = () =>

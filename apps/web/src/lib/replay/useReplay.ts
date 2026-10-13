@@ -442,6 +442,13 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
   // ---- keyboard ----
   useEffect(() => {
     if (!keys) return;
+    // Whether the inspector was on screen when the key went down. React runs its own handlers first (the inspector's Esc
+    // closes it) and flushes that update before this document listener sees the same event, so asking now would see it
+    // already closed and Esc would close the inspector and leave replay in one press.
+    let inspectorAtKeyDown = false;
+    const snapshot = () => {
+      inspectorAtKeyDown = inspectorIsOpen();
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       if (isTypingTarget(e.target)) return;
@@ -475,14 +482,18 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
           bumpSpeed(1);
           break;
         case "Escape":
-          if (inspectorIsOpen() || e.repeat) return;
+          if (inspectorAtKeyDown || e.repeat) return;
           leave();
           break;
       }
       e.preventDefault();
     };
+    document.addEventListener("keydown", snapshot, true);
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", snapshot, true);
+      document.removeEventListener("keydown", onKey);
+    };
     // `inspectorIsOpen` reads the live ref only
   }, [keys, enter, leave, togglePlay, stepBck, stepFwd, bumpSpeed]);
 
