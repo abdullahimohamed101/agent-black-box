@@ -1,12 +1,13 @@
 """Artifact metadata persistence. Every statement carries the tenant (INV-3)."""
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Row, select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import array, insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
@@ -85,3 +86,31 @@ class ArtifactRepository:
             .returning(t.artifacts.c.id)
         )
         return result.first() is not None
+
+    async def redaction_kinds(
+        self, run_id: uuid.UUID, project_id: uuid.UUID, *, kinds: Collection[str], limit: int
+    ) -> dict[uuid.UUID, tuple[str, ...]]:
+        """For the run's artifacts the server redacted, which of `kinds` it found in each.
+
+        Names only, never content, for the security detectors (ADR-131). Artifacts without any of
+        `kinds` are left out; at most `limit` artifacts (lowest ids first) are considered.
+        """
+        recorded = t.artifacts.c["metadata"]["redaction"]["server_kinds"]
+        rows = await self._conn.execute(
+            select(t.artifacts.c.id, recorded)
+            .where(
+                t.artifacts.c.workspace_id == self._tenant.workspace_id,
+                t.artifacts.c.project_id == project_id,
+                t.artifacts.c.run_id == run_id,
+                recorded.has_any(array(sorted(kinds))),
+            )
+            .order_by(t.artifacts.c.id)
+            .limit(limit)
+        )
+        found: dict[uuid.UUID, tuple[str, ...]] = {}
+        for artifact_id, names in rows:
+            if isinstance(names, list):
+                found[artifact_id] = tuple(
+                    sorted({n for n in names if isinstance(n, str) and n in kinds})
+                )
+        return found
