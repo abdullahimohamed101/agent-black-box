@@ -61,3 +61,4 @@ SELECT id, job_type, attempt_count, left(last_error, 120) FROM outbox_jobs WHERE
 
 Still to write (Phases 18-19): database saturation, backup and restore drill (spec §123).
 Recovery targets: RPO <= 15 min, RTO <= 4 h (spec §122) once managed PostgreSQL with point-in-time recovery is in place.
+
