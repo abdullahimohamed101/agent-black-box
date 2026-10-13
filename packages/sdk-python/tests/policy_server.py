@@ -139,7 +139,7 @@ def table(version: int = 3, rules: list[Any] | None = None, **defaults: str) -> 
 
 
 class PolicyServer:
-    def __init__(self) -> None:
+    def __init__(self, tls: tuple[str, str] | None = None) -> None:
         self.requests: list[Req] = []
         self.event_batches: list[dict[str, Any]] = []
         self.lock = threading.Lock()
@@ -228,13 +228,21 @@ class PolicyServer:
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
+        self.scheme = "http"
+        if tls is not None:  # (certificate file, key file)
+            import ssl
+
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(*tls)
+            self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
+            self.scheme = "https"
         threading.Thread(
             target=lambda: self.server.serve_forever(poll_interval=0.01), daemon=True
         ).start()
 
     @property
     def url(self) -> str:
-        return f"http://127.0.0.1:{self.server.server_address[1]}"
+        return f"{self.scheme}://127.0.0.1:{self.server.server_address[1]}"
 
     def stop(self) -> None:
         self.server.shutdown()
