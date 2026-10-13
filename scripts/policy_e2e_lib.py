@@ -132,8 +132,11 @@ def record_group(pgid: int) -> None:
 def spawn(argv: list[str], env: dict[str, str], log: Path, cwd: Path | None = None) -> subprocess.Popen[bytes]:
     """Start a process in a group of its own (so it can be stopped by that group, never by name)."""
     handle = log.open("ab")
+    # A script run in the background (CI, `&`) has SIGINT ignored, and Python only installs its KeyboardInterrupt handler when it is not:
+    # the child gets the default back, so a Ctrl-C (SIGINT to the group) means what it means in a terminal.
     proc = subprocess.Popen(  # noqa: S603  (argv is fixed by this script)
-        argv, cwd=cwd or ROOT, env=env, stdout=handle, stderr=subprocess.STDOUT, start_new_session=True
+        argv, cwd=cwd or ROOT, env=env, stdout=handle, stderr=subprocess.STDOUT, start_new_session=True,
+        preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL),  # noqa: PLW1509
     )
     record_group(proc.pid)
     return proc

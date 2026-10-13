@@ -490,6 +490,57 @@ jobs:
             ${{ runner.temp }}/security-e2e-logs
           if-no-files-found: ignore
 
+  policy-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Policy engine and approvals (Phase 14): the coding-agent demo through the real SDK paused for a person in a real browser (approve,
+    # deny, expiry), a replayed approval, failure modes against a live and a stopped API (a second API process on the same database),
+    # the state machine under concurrency and illegal SQL as the runtime role, authorization by role, SDK safety, a dry run against an
+    # independent evaluation and decision latency: API + second API + worker + fake OIDC provider + built web server
+    # (scripts/policy-e2e.sh). About six minutes: the expiry variants wait out a one-minute approval.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          pnpm install --frozen-lockfile
+          cp .env.example .env
+      - name: Build the web app
+        run: pnpm --filter @abb/web build
+      - name: Policy end to end
+        env:
+          POLICY_E2E_LOG_DIR: ${{ runner.temp }}/policy-e2e-logs
+        run: scripts/policy-e2e.sh
+      - name: Keep Playwright output and server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-e2e-results
+          path: |
+            apps/web/test-results
+            ${{ runner.temp }}/policy-e2e-logs
+          if-no-files-found: ignore
+
   containers:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'

@@ -9,6 +9,7 @@ import {
 } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { settleAnimations } from "./motion";
+import { workspaceHeader } from "./session";
 
 // Phase 14 step 5, API-backed. Runs only through scripts/policy-e2e.sh: a real API and worker, the DEVELOPMENT-ONLY fake OIDC
 // provider, the built web server on :3200 and runs recorded by the real Python SDK against the starter policy. People sign in
@@ -138,11 +139,18 @@ for (const variant of ["approve", "deny"] as const)
     page.on("pageerror", (e) => problems.push(e.message));
 
     // DURING the wait: the headline, the banner with real time left, the decisions so far.
+    await expect(page.getByTestId("approval-banner")).toBeVisible();
+    if (variant === "approve") {
+      await settleAnimations(page);
+      await page.screenshot({ path: `${SHOTS}/real-run-waiting.png`, fullPage: false });
+    }
     await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
     const detail = page.getByTestId("headline-detail");
     await expect(detail).toContainText(/\d+ (min|s|h)/);
     const banner = page.getByTestId("approval-banner");
     await expect(banner).toContainText("Waiting for a person to approve github.push");
+    // the time left comes from the approvals read, a moment after the banner itself
+    await expect(banner).toContainText(/· \d+ (min|s|h)/);
     const bannerText = (await banner.innerText()).replace(/\s+/g, " ");
     const minutes = /· (\d+) min/.exec(bannerText);
     const seconds = /· (\d+) s\b/.exec(bannerText);
@@ -163,10 +171,7 @@ for (const variant of ["approve", "deny"] as const)
     await expect(timelineRow(page, "approval.requested")).toContainText(
       "Recorded by the policy service",
     );
-    if (variant === "approve") {
-      await page.screenshot({ path: `${SHOTS}/real-run-waiting.png`, fullPage: false });
-      await axe(page);
-    }
+    if (variant === "approve") await axe(page);
 
     // The human: the Approvals page lists the request with capability, resource, policy and version.
     await banner.getByRole("link", { name: "Open Approvals" }).click();
@@ -240,4 +245,232 @@ for (const variant of ["approve", "deny"] as const)
       await axe(page);
     }
     expect(problems.filter((p) => /418|hydrat/i.test(p))).toEqual([]);
+  });
+
+// -------------------------------------------------------------------------------------------------------- gate 6
+
+const refusal = async (page: Page, approval: string, button: "Approve" | "Deny" = "Approve") => {
+  await page.goto(`/w/${WS}/approvals?approval=${approval}`);
+  const panel = page.getByTestId("approval-detail");
+  await expect(panel.getByRole("heading", { level: 2 })).toBeVisible();
+  const answered = page.waitForResponse(
+    (r) => r.url().includes(`/v1/approvals/${approval}/decision`) && r.request().method() === "POST",
+  );
+  await panel.getByRole("button", { name: button, exact: true }).click();
+  await panel.getByRole("button", { name: `Confirm ${button.toLowerCase()}` }).click();
+  const response = await answered;
+  const body = (await response.json()) as { error?: { code?: string } };
+  return { panel, status: response.status(), code: body.error?.code };
+};
+
+for (const role of ["viewer", "billing"] as const)
+  test(`@gate6 ${role}: 'Not available for your role' on Approvals and Policies, and 403 from the APIs`, async () => {
+    const page = await signedIn(role, `/w/${WS}/approvals`);
+    await expect(page.getByText("Not available for your role")).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Approvals/ })).toHaveCount(0);
+    await page.goto(`/w/${WS}/settings/policies`);
+    await expect(page.getByText("Not available for your role")).toBeVisible();
+    const headers = await workspaceHeader(page);
+    for (const path of ["/api/abb/v1/approvals", "/api/abb/v1/approvals/pending-count", "/api/abb/v1/policies/current"]) {
+      const r = await page.request.get(path, { headers });
+      expect(r.status(), `${role} ${path}`).toBe(403);
+    }
+    await axe(page);
+  });
+
+test("@gate6 developer: cannot decide a request whose rule needs an admin (APPROVER_ROLE_REQUIRED)", async () => {
+  const g = shared().gate6 as Record<string, string>;
+  const page = await signedIn("developer", `/w/${WS}/approvals?approval=${g.admin_only}`);
+  await expect(page.getByTestId("approval-detail")).toContainText("Admin or above");
+  const { panel, status, code } = await refusal(page, g.admin_only);
+  expect([status, code]).toEqual([403, "APPROVER_ROLE_REQUIRED"]);
+  await expect(panel.getByTestId("decision-error")).toHaveText("Your role cannot decide this request.");
+  await expect(panel).toContainText("Waiting");
+  await page.screenshot({ path: `${SHOTS}/real-approver-role-required.png` });
+  await axe(page);
+});
+
+test("@gate6 owner: cannot approve a request made with a key they created (SELF_APPROVAL_FORBIDDEN), can when the rule allows it", async () => {
+  const g = shared().gate6 as Record<string, string>;
+  const page = await signedIn("owner", `/w/${WS}/approvals?approval=${g.admin_only}`);
+  const { panel, status, code } = await refusal(page, g.admin_only);
+  expect([status, code]).toEqual([403, "SELF_APPROVAL_FORBIDDEN"]);
+  await expect(panel.getByTestId("decision-error")).toHaveText(
+    "You cannot decide a request made with your own API key.",
+  );
+  await page.screenshot({ path: `${SHOTS}/real-self-approval-forbidden.png` });
+  await axe(page);
+  // the rule `gate-self` has allow_self_approval: the same person may approve this one
+  await page.goto(`/w/${WS}/approvals?approval=${g.self_ok}`);
+  const allowed = page.getByTestId("approval-detail");
+  await expect(allowed).toContainText("notes.write");
+  await allowed.getByLabel("Comment (optional)").fill("Mine to approve: the rule allows it.");
+  await allowed.getByRole("button", { name: "Approve", exact: true }).click();
+  await allowed.getByRole("button", { name: "Confirm approve" }).click();
+  await expect(allowed.getByTestId("decision-saved")).toHaveText("You approved this request.");
+});
+
+test("@gate6 admin: the approver sees scrubbed arguments, and an owner-only rule refuses an admin", async () => {
+  const g = shared().gate6 as Record<string, string>;
+  const secrets = [process.env.E2E_AWS ?? "", process.env.E2E_PASSWORD ?? ""];
+  expect(secrets.every((s) => s.length > 8)).toBe(true);
+  const page = await signedIn("admin", `/w/${WS}/approvals`);
+  const bodies: string[] = [];
+  page.on("response", async (r) => {
+    if (!r.url().includes("/api/abb/")) return;
+    try {
+      bodies.push(await r.text());
+    } catch {
+      /* a stream or a navigation: nothing to read */
+    }
+  });
+  await page.goto(`/w/${WS}/approvals?approval=${g.secret}`);
+  const panel = page.getByTestId("approval-detail");
+  await expect(panel.getByRole("heading", { level: 2, name: "db.connect" })).toBeVisible();
+  await expect(panel.locator("pre.apr-args")).toBeVisible();
+  const surface = await page.evaluate(() => {
+    const parts = [document.body.innerText, document.body.textContent ?? ""];
+    for (const el of document.querySelectorAll("*")) for (const a of el.attributes) parts.push(a.value);
+    return parts.join("\n");
+  });
+  for (const secret of secrets) {
+    expect(surface.includes(secret), "a planted secret is on the page").toBe(false);
+    expect(bodies.join("\n").includes(secret), "a planted secret came over the proxy").toBe(false);
+  }
+  await expect(panel).toContainText(/REDACTED|redact/i);
+  await page.screenshot({ path: `${SHOTS}/real-approval-scrubbed.png` });
+  await axe(page);
+  const { status, code, panel: owner } = await refusal(page, g.owner_only);
+  expect([status, code]).toEqual([403, "APPROVER_ROLE_REQUIRED"]);
+  await expect(owner.getByTestId("decision-error")).toHaveText("Your role cannot decide this request.");
+});
+
+// -------------------------------------------------------------------------------------------- real-stack UI (step 5)
+
+const editor = (page: Page) =>
+  page.getByRole("textbox", { name: /^Policy text( \(read only\))?$/ });
+const POLICIES = () => `/w/${WS}/settings/policies?project=ui`;
+const approvalRows = (page: Page) => page.getByTestId("approval-row");
+
+test("@ui the real validator's line and column messages appear in the editor, and the caret jumps", async () => {
+  const page = await signedIn("admin", POLICIES());
+  const box = editor(page);
+  await expect(box).toHaveValue(/id: gate-push/);
+  const base = await box.inputValue();
+  await box.fill(base.replace("version: 1", "version: 9"));
+  const issues = page.getByTestId("issues");
+  await expect(issues.getByRole("button")).toHaveCount(1);
+  await expect(issues).toContainText("1:10");
+  await expect(issues).toContainText("Only 'version: 1' is supported.");
+  await expect(page.getByRole("button", { name: "Publish" })).toBeDisabled();
+  await page.screenshot({ path: `${SHOTS}/real-policies-issue.png`, fullPage: false });
+  await box.fill(base.replace("decision: deny", "decision: maybe").replace("decision: require_approval", "decision: perhaps"));
+  await expect(issues.getByRole("button").first()).toContainText(/\d+:\d+/);
+  await issues.getByRole("button").first().click();
+  await expect(box).toBeFocused();
+  // restore: nothing was published
+  await box.fill(base);
+  await expect(page.getByTestId("check-status")).toContainText("Unchanged");
+});
+
+test("@ui a real POLICY_VERSION_CONFLICT with two editors in two browser contexts", async () => {
+  const a = await signedIn("admin", POLICIES());
+  const b = await signedIn("owner", POLICIES());
+  for (const page of [a, b]) await expect(editor(page)).toHaveValue(/id: gate-push/);
+  const baseA = await editor(a).inputValue();
+  await editor(a).fill(`${baseA}\n# edited by the admin\n`);
+  await expect(a.getByRole("button", { name: "Publish" })).toBeEnabled();
+  await a.getByLabel("Comment (optional)").fill("The admin got there first.");
+  await a.getByRole("button", { name: "Publish" }).click();
+  await expect(a.getByTestId("published")).toContainText(/Published version \d+\./);
+  const published = Number(/Published version (\d+)\./.exec(await a.getByTestId("published").innerText())?.[1]);
+  // B still holds the version it loaded: its publish is refused by the server, and nothing is stored
+  await editor(b).fill(`${await editor(b).inputValue()}\n# edited by the owner\n`);
+  await b.getByRole("button", { name: "Publish" }).click();
+  const conflict = b.getByTestId("conflict");
+  await expect(conflict).toContainText(`Someone published a newer version (version ${published}).`);
+  await expect(b.getByRole("button", { name: "Publish" })).toBeDisabled();
+  await b.screenshot({ path: `${SHOTS}/real-policies-conflict.png`, fullPage: false });
+  await axe(b);
+  await conflict.getByRole("button", { name: "Reload the latest version" }).click();
+  await expect(b.getByTestId("conflict")).toHaveCount(0);
+  await expect(editor(b)).toHaveValue(/edited by the admin/);
+  await expect(editor(b)).not.toHaveValue(/edited by the owner/);
+  await expect(b.getByTestId("version-row").first()).toContainText("The admin got there first.");
+});
+
+test("@ui real dry-run sample links open the recorded event (?event=)", async () => {
+  const page = await signedIn("admin", POLICIES());
+  await expect(editor(page)).toHaveValue(/id: gate-push/);
+  await page.getByRole("button", { name: "Dry run" }).click();
+  const dry = page.getByTestId("dry-run-result");
+  await expect(dry).toContainText("Nothing was changed.");
+  await expect(dry.getByRole("table", { name: "By rule" })).toBeVisible();
+  const first = dry.getByTestId("dry-sample").first();
+  await expect(first).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/real-policies-dry-run.png`, fullPage: true });
+  const href = await first.getByRole("link").nth(1).getAttribute("href");
+  expect(href).toMatch(/\/runs\/run_\w+\?event=evt_\w+$/);
+  await first.getByRole("link").nth(1).click();
+  await expect(page).toHaveURL(/\?event=evt_/);
+  const event = (href ?? "").split("?event=")[1] ?? "";
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText(event.slice(-8));
+  await axe(page);
+});
+
+test("@ui a run waiting on a live approval shows the real time left; a viewer reads the same words without it", async () => {
+  const ui = shared().ui as Record<string, string>;
+  const page = await signedIn("admin", runUrl(ui.run));
+  await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
+  await expect(page.getByTestId("headline-detail")).toContainText(/\d+ (h|min|s)( \d+ min)? left/);
+  await expect(page.getByTestId("approval-banner")).toContainText(/· \d+ (h|min|s)/);
+  const viewer = await signedIn("viewer", runUrl(ui.run));
+  await expect(viewer.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
+  await expect(viewer.getByTestId("headline-detail")).not.toContainText("left");
+  await expect(viewer.getByTestId("approval-banner")).toContainText(
+    "Someone with approval rights decides this request.",
+  );
+});
+
+test("@ui a developer reads policies (read only) and sees the approvals page; billing sees neither", async () => {
+  const dev = await signedIn("developer", POLICIES());
+  await expect(editor(dev)).toHaveAttribute("readonly", "");
+  await expect(dev.getByTestId("readonly-note")).toContainText("You can read policies but not change them.");
+  await expect(dev.getByRole("button", { name: "Publish" })).toHaveCount(0);
+  await dev.goto(`/w/${WS}/approvals`);
+  await expect(approvalRows(dev).first()).toBeVisible();
+  await expect(dev.getByRole("link", { name: /^Approvals/ }).first()).toBeVisible();
+  const billing = await signedIn("billing", POLICIES());
+  await expect(billing.getByText("Not available for your role")).toBeVisible();
+});
+
+for (const scheme of ["light", "dark"] as const)
+  test(`@ui axe and screenshots, ${scheme}, on Approvals and Policies with real data`, async () => {
+    const ui = shared().ui as Record<string, string>;
+    const page = await signedIn("admin", `/w/${WS}/approvals`, { colorScheme: scheme });
+    await expect(approvalRows(page).first()).toBeVisible();
+    await axe(page);
+    await page.screenshot({ path: `${SHOTS}/real-approvals-list-${scheme}.png`, fullPage: false });
+    await page.goto(`/w/${WS}/approvals?state=decided`);
+    await expect(approvalRows(page).first()).toBeVisible();
+    await axe(page);
+    await page.goto(`/w/${WS}/approvals?approval=${ui.approval}`);
+    await expect(page.getByTestId("approval-detail")).toContainText("github.push");
+    await axe(page);
+    await page.goto(POLICIES());
+    await expect(editor(page)).toHaveValue(/id: gate-push/);
+    await axe(page);
+    await page.screenshot({ path: `${SHOTS}/real-policies-editor-${scheme}.png`, fullPage: false });
+    await page.getByRole("button", { name: "Dry run" }).click();
+    await expect(page.getByTestId("dry-run-result")).toContainText("Nothing was changed.");
+    await page.getByRole("button", { name: /^View version 1/ }).click();
+    await page.getByRole("button", { name: /^Compare with current/ }).click();
+    await expect(page.getByTestId("policy-diff")).toBeVisible();
+    await axe(page);
+    await page.screenshot({ path: `${SHOTS}/real-policies-history-${scheme}.png`, fullPage: false });
+    const phone = await signedIn("admin", `/w/${WS}/approvals`, { colorScheme: scheme, width: 375, height: 812 });
+    await expect(approvalRows(phone).first()).toBeVisible();
+    expect(await noSideScroll(phone)).toBe(true);
+    await axe(phone);
   });

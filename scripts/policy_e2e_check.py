@@ -93,6 +93,12 @@ policies:
     decision: require_approval
     approver_role: owner
     expires_in: 15m
+  - id: gate-secret
+    description: Connecting to a database needs a person.
+    when: {capability: db.connect}
+    decision: require_approval
+    approver_role: admin
+    expires_in: 15m
 """
 
 STARTER = ROOT / "examples" / "coding-agent" / "policies" / "starter.yaml"

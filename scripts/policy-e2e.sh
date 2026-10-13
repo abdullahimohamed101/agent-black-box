@@ -125,7 +125,6 @@ PY
 check() { uv run python "$root/scripts/policy_e2e_check.py" "$@"; }
 sdk_driver() { (cd "$root" && uv run --project packages/sdk-python python scripts/policy_e2e_sdk.py "$@"); }
 web() { (cd "$root/apps/web" && E2E_POLICY_API_URL="$API" E2E_WORKSPACE="$WS" pnpm exec playwright test e2e/policy-real.spec.ts "$@"); }
-export -f web 2>/dev/null || true
 mkdir -p "$root/docs/screenshots/phase-14"
 
 check provision
