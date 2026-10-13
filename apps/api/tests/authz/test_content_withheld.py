@@ -115,6 +115,45 @@ async def test_first_error_facts_are_metadata_and_identical_for_every_role(
     }
 
 
+@pytest.mark.parametrize("actor", ["viewer", "downgraded", *SEES_CONTENT])
+async def test_per_event_cost_is_metadata_and_identical_for_every_role(
+    world: World, actor: str
+) -> None:
+    """`cost_usd` and `cost_unpriced` on events (ADR-121) come from the cost engine's stored lines:
+    a USD figure and a flag, never an attribute value, a payload or a name. Every role gets them,
+    on lists and on the detail, exactly as the owner does."""
+    ids = make_run_ids()
+    llm = {"llm.provider": "example-provider", "llm.model": "m", "cost.estimated_usd": 0.25}
+    events = [
+        wire_event(ids, 1, event_type="run.started", agent_id="ab", span_id=..., attributes={}),
+        wire_event(ids, 2, event_type="llm.request.completed", agent_id="ab", status="success",
+                   attributes=llm),
+        wire_event(ids, 3, event_type="llm.request.completed", agent_id="ab", status="success",
+                   attributes={"llm.provider": "x", "llm.model": "unknown", "llm.input_tokens": 3}),
+        wire_event(ids, 4, event_type="run.completed", agent_id="ab", span_id=..., attributes={}),
+    ]  # fmt: skip
+    assert (await world.api.post_batch(events, token="writer")).status_code == 202
+    await world.api.drain()
+    run_id = ids["run_id"]
+
+    def costs(body: dict) -> list[tuple[str, float | None, bool]]:  # type: ignore[type-arg]
+        return [(e["event_id"], e["cost_usd"], e["cost_unpriced"]) for e in body["items"]]
+
+    seen = (await world.get(f"/v1/runs/{run_id}/events", actor, limit=100)).json()
+    reference = (await world.get(f"/v1/runs/{run_id}/events", "owner", limit=100)).json()
+    assert costs(seen) == costs(reference)
+    assert [c[1:] for c in costs(seen)] == [
+        (None, False),
+        (0.25, False),
+        (0.0, True),
+        (None, False),
+    ]
+    for event_id in (events[1]["event_id"], events[2]["event_id"]):
+        one = (await world.get(f"/v1/runs/{run_id}/events/{event_id}", actor)).json()
+        ref = (await world.get(f"/v1/runs/{run_id}/events/{event_id}", "owner")).json()
+        assert (one["cost_usd"], one["cost_unpriced"]) == (ref["cost_usd"], ref["cost_unpriced"])
+
+
 async def _seeded_event_ids(world: World) -> list[str]:
     listed = await world.get(f"/v1/runs/{world.acme.run_id}/events", "owner", limit=100)
     return [e["event_id"] for e in listed.json()["items"]]

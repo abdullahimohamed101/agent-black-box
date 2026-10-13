@@ -25,6 +25,22 @@ type Extra = Partial<
 };
 
 /**
+ * What the API worker's cost engine stores for a model call and the events list serves as `cost_usd`/`cost_unpriced`
+ * (ADR-121): the provider's figure, else the caller's estimate; the fixtures have no price book. A call with neither is
+ * unpriced (its figure is 0). Other events have no cost line.
+ */
+export function settledCost(
+  eventType: string,
+  attrs: Record<string, unknown>,
+): Pick<EventOut, "cost_usd" | "cost_unpriced"> {
+  if (eventType !== "llm.request.completed") return { cost_usd: null, cost_unpriced: false };
+  const figure = [attrs["cost.provider_usd"], attrs["cost.estimated_usd"]].find(
+    (v): v is number => typeof v === "number",
+  );
+  return { cost_usd: figure ?? 0, cost_unpriced: figure === undefined };
+}
+
+/**
  * Builds one run's events and derives its summary like the API worker does. `build()` puts the events in canonical
  * order (`sortEvents`) and reports the `ordering_mode` that order implies, so a run with events from a remote emitter
  * is time-ordered exactly as the API would serve it.
@@ -86,6 +102,7 @@ export class RunBuilder {
       payload_ref: null,
       has_payload: extra.payload != null,
       payload_withheld: false,
+      ...settledCost(event_type, attributes),
       tags: [],
       sdk: { name: "fixture", version: "0" },
     };
@@ -182,8 +199,9 @@ export class RunBuilder {
         tool_calls: ev.filter((e) => /^tool\.call\.(completed|failed)$/.test(e.event_type)).length,
         input_tokens: sum("llm.request.completed", "llm.input_tokens"),
         output_tokens: sum("llm.request.completed", "llm.output_tokens"),
+        // 9 places, like the worker's `cost_summary` (the replay's sum is rounded the same way)
         estimated_cost_usd: Number(
-          ev.reduce((s, e) => s + Number(e.attributes["cost.estimated_usd"] ?? 0), 0).toFixed(6),
+          ev.reduce((s, e) => s + Number(e.attributes["cost.estimated_usd"] ?? 0), 0).toFixed(9),
         ),
         retry_count: ev.filter((e) => e.event_type === "retry.attempted").length,
         error_count: ev.filter(isErr).length,

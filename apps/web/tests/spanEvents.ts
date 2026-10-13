@@ -37,6 +37,7 @@ export function ev(type: string, span: number, t: number, o: Opts = {}): EventOu
     payload_ref: null,
     has_payload: false,
     payload_withheld: false,
+    cost_unpriced: false,
     tags: [],
     withheld_attributes: o.withheld ?? [],
   } as EventOut;

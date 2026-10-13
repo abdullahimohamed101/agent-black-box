@@ -1,0 +1,185 @@
+/* ---- Phase 12 step 2: the replay transport bar. Tokens only; no animation or transition of any kind (replay updates are
+   instant, so the zero-motion contract in tests/motion-contract.test.ts has nothing to gate here). Red appears once: the
+   first-error mark on the scrub bar, which is a failure marker. ---- */
+.replay {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.replay-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.replay-buttons {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.replay button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 1.875rem;
+  font: 500 var(--fs-body) / 1.2 var(--sans);
+}
+.replay button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.replay-play {
+  min-width: 5rem;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+.replay-play:disabled {
+  background: transparent;
+}
+.replay-icon {
+  min-width: 2rem;
+}
+.replay-speed {
+  display: inline-flex;
+}
+.replay-speed button {
+  font-family: var(--mono);
+  border-radius: 0;
+  margin-left: -1px;
+}
+.replay-speed button:first-child {
+  border-radius: 4px 0 0 4px;
+  margin-left: 0;
+}
+.replay-speed button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.replay-speed button[aria-pressed="true"] {
+  background: var(--sel);
+  border-color: var(--accent);
+  position: relative;
+}
+.replay-track {
+  position: relative;
+  flex: 1 1 10rem;
+  min-width: 8rem;
+  display: flex;
+  align-items: center;
+}
+.replay-scrub {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.replay-fault {
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 1.1rem;
+  transform: translate(-50%, -50%);
+  background: var(--fail);
+  pointer-events: none;
+}
+.replay-time {
+  font: 400 var(--fs-body) / 1.2 var(--mono);
+  color: var(--fg);
+  white-space: nowrap;
+}
+.replay-time-total {
+  color: var(--muted);
+}
+.replay-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font: 400 var(--fs-body) / 1.2 var(--sans);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.replay-menu {
+  position: relative;
+}
+.replay-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 5;
+  display: grid;
+  gap: 0.6rem;
+  min-width: 13rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+.replay-notes {
+  display: grid;
+  gap: 0.15rem;
+}
+.replay-notes p {
+  margin: 0;
+  min-height: 1.1rem;
+  font: 400 var(--fs-small) / 1.1rem var(--mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.replay-notes p:empty {
+  min-height: 0;
+}
+.replay-skew,
+.replay-notice {
+  font-family: var(--sans);
+  color: var(--fg-2);
+}
+.replay-link {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  color: var(--accent);
+  text-decoration: underline;
+}
+/* Phones: 44 px targets, and the row never scrolls sideways. */
+@media (pointer: coarse), (max-width: 40rem) {
+  .replay button,
+  .replay-check {
+    min-height: 2.75rem;
+  }
+  .replay button {
+    min-width: 2.75rem;
+  }
+  .replay-check input {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .replay-scrub {
+    min-height: 2.75rem;
+  }
+}
+@media (max-width: 40rem) {
+  .replay {
+    padding-inline: 1rem;
+  }
+  .replay-play {
+    min-width: 2.75rem;
+  }
+  .replay-play span {
+    display: none;
+  }
+  .replay-track {
+    flex-basis: 100%;
+    order: 5;
+  }
+  .replay-time {
+    margin-left: auto;
+  }
+  .replay-panel {
+    position: fixed;
+    inset-inline: 1rem;
+    top: auto;
+    bottom: 1rem;
+    min-width: 0;
+  }
+}

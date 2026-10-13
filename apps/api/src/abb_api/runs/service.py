@@ -15,6 +15,7 @@ from abb_api.authz.principal import Principal
 from abb_api.authz.service import PermissionDenied, holds
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
+from abb_api.cost.repository import CostRepository, EventCost
 from abb_api.findings.detectors import DETECTORS_VERSION
 from abb_api.findings.repository import Badge, FindingsRepository
 from abb_api.ids import parse_public_id
@@ -61,6 +62,7 @@ def event_out(
     *,
     with_payload: bool,
     reads_content: bool,
+    cost: EventCost | None = None,
 ) -> EventOut:
     """`reads_content`: the caller holds `payload.read`. Without it, command text and file paths
     in the attributes are replaced by a marker (review F3) and, on the detail endpoint, the body is
@@ -74,7 +76,12 @@ def event_out(
     withheld = with_payload and not reads_content
     wire["payload"] = wire.get("payload") if with_payload and reads_content else None
     return EventOut(
-        **wire, has_payload=has_payload, payload_withheld=withheld, withheld_attributes=hidden
+        **wire,
+        has_payload=has_payload,
+        payload_withheld=withheld,
+        withheld_attributes=hidden,
+        cost_usd=float(cost.total) if cost else None,
+        cost_unpriced=cost.unpriced if cost else False,
     )
 
 
@@ -382,7 +389,8 @@ class RunService:
                 limit=limit + 1,
                 after=after,
             )
-        page = found[:limit]
+            page = found[:limit]
+            costs = await self._costs(conn, principal, record.id, [e for e, _ in page])
         next_cursor = None
         if len(found) > limit:
             last = page[-1][0]
@@ -391,7 +399,12 @@ class RunService:
             )
         reads = holds(principal, actions.PAYLOAD_READ)
         return EventPage(
-            items=[event_out(e, has, with_payload=False, reads_content=reads) for e, has in page],
+            items=[
+                event_out(
+                    e, has, with_payload=False, reads_content=reads, cost=costs.get(e.event_id)
+                )
+                for e, has in page
+            ],
             next_cursor=next_cursor,
             ordering_mode=mode,  # type: ignore[arg-type]
         )
@@ -405,6 +418,9 @@ class RunService:
                 if event_uuid
                 else None
             )
+            costs = (
+                await self._costs(conn, principal, record.id, [event]) if event is not None else {}
+            )
         if event is None:
             raise _not_found("EVENT_NOT_FOUND", "Event")
         return event_out(
@@ -412,7 +428,22 @@ class RunService:
             event.payload is not None,
             with_payload=True,
             reads_content=holds(principal, actions.PAYLOAD_READ),
+            cost=costs.get(event.event_id),
         )
+
+    @staticmethod
+    async def _costs(
+        conn: AsyncConnection, principal: Principal, run_id: uuid.UUID, events: list[Event]
+    ) -> dict[str, EventCost]:
+        """Stored cost lines of the model calls among `events`, by public event id: one batched
+        lookup per page, workspace-scoped, the same for every role (metadata only)."""
+        calls = {
+            to_uuid(e.event_id): e.event_id
+            for e in events
+            if e.event_type == "llm.request.completed"
+        }
+        found = await CostRepository(conn, principal.tenant).event_costs(run_id, list(calls))
+        return {calls[u]: cost for u, cost in found.items()}
 
     async def list_spans(
         self, principal: Principal, run_id: str, *, limit: int, cursor: str | None

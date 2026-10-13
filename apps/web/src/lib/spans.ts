@@ -23,6 +23,10 @@ const SPECS: ReadonlyMap<string, Spec> = new Map(
 
 const roleOf = (e: SpanEvent): Role => SPECS.get(e.event_type)?.role ?? "point";
 
+/** The registered span role and kind of an event type ("point" and null for a type the registry does not know). */
+export const spanRoleOf = (eventType: string): { role: Role; kind: string | null } =>
+  SPECS.get(eventType) ?? { role: "point", kind: null };
+
 /** The fields `derive_spans` reads; a structural subset so tests and the golden file can pass plain objects. */
 export type SpanEvent = Pick<
   EventOut,

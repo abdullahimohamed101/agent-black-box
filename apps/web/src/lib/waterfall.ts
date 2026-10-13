@@ -25,7 +25,15 @@ export const MAX_ZOOM = 4096;
 const LABEL_MAX = 80;
 const AGENT_MAX = 64;
 
-export type RunBounds = { startMs: number; endMs: number };
+export type RunBounds = {
+  startMs: number;
+  endMs: number;
+  /**
+   * Replay (Phase 12): where spans that have opened and not closed stop, instead of at the run's end. The axis keeps the
+   * run's full extent (`endMs`), so the bars grow along a fixed scale as the playhead moves.
+   */
+  openEndMs?: number;
+};
 
 export type NodeFlags = {
   /** Its parent span never arrived. */
@@ -148,7 +156,12 @@ export function buildTree(spans: readonly DerivedSpan[], bounds: RunBounds): Tre
   nodes.set(ROOT_ID, root);
   for (const [id, s] of byId) {
     const start = ms(s.startedAt ?? s.firstAt, runStart);
-    const n = blank(id, s, start, spanEnd(s, runEnd));
+    const n = blank(
+      id,
+      s,
+      start,
+      spanEnd(s, bounds.openEndMs === undefined ? runEnd : Math.min(runEnd, bounds.openEndMs)),
+    );
     n.flags.unfinished = s.startedAt !== null && s.endedAt === null;
     n.flags.cycle = cutAt.has(id);
     nodes.set(id, n);
