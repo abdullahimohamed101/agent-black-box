@@ -139,9 +139,9 @@ async def test_a_revoked_or_expired_session_ends_its_stream(live: Live) -> None:
         async with api.engine.begin() as conn:
             await conn.execute(
                 text(
-                    # the session with the later expiry (the other lapses in minutes). Not "expires_at > now() + 1 day":
-                    # sessions are minted on the fake clock, so that compared a fake date with the real one and
-                    # stopped matching once real time caught up with it (2026-10-13)
+                    # Revoke the session with the later expiry (the other lapses in minutes). Not
+                    # "expires_at > now() + 1 day": sessions are minted on the fake clock, so that
+                    # compared a fake date with the real one and stopped matching on 2026-10-13.
                     "UPDATE sessions SET revoked_at = now() WHERE user_id = :u "
                     "AND expires_at = (SELECT max(expires_at) FROM sessions WHERE user_id = :u)"
                 ),
