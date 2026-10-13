@@ -1,6 +1,8 @@
 import type { EventOut, RunOut } from "@/lib/api/types";
 import { formatCost, formatDuration, formatRelative, num } from "./format";
-import { firstErrorFor, isRetry } from "./timeline";
+import { costDisplay } from "./replay/figures";
+import type { ReplayState } from "./replay/project";
+import { firstErrorFor, isError, isRetry } from "./timeline";
 
 /**
  * What the run page's headline says, as plain data (ADR-111, Phase 22 D4). The component only lays it out, so the words
@@ -306,4 +308,44 @@ export function headlineModel(input: {
         detail: join([cancelledBy(events), `${total} total`]),
       };
   }
+}
+
+/**
+ * The headline as of a replay playhead (Phase 12). It must not leak the future: before the first error is reached it
+ * reads as a run in progress ("Running · step 4 · replay"), whatever the run's final status; once reached it names the
+ * first error (a fact about the past by then) and only the figures so far. The run's outcome, "recovered" or "failed",
+ * is never stated, because at that moment nobody knows it yet. `live` supplies the first error's facts; `s` the figures.
+ */
+export function replayHeadline(live: HeadlineModel, s: ReplayState): HeadlineModel {
+  // A figure the replay cannot state exactly says so: "at least $0.42 so far · 3 calls unpriced".
+  const spend = costDisplay(s);
+  const cost = join([`${spend.text} so far`, spend.note]);
+  const retries = s.counts.retries;
+  const f = live.failure;
+  if (s.firstErrorReached && f) {
+    // A blocked run's "first error" can be the policy block itself, which is not an error event (ADR-112): say what it is.
+    const at = s.events[s.firstErrorIndex];
+    const blockedStop = at != null && !isError(at);
+    return {
+      kind: "failed",
+      lead: blockedStop
+        ? `Blocked at${stepText(f.step) || " the blocking event"}${offsetText(f)}: ${subjectLine(f)}`
+        : `First error at${stepText(f.step) || " the first error"}${offsetText(f)}: ${subjectLine(f)}`,
+      detail: join([retriesText(retries), cost]),
+      pending: false,
+      failure: f,
+      live: false,
+    };
+  }
+  // "Running", "Completed", "Waiting for approval": the state's own word, without its ", n errors so far" tail.
+  const word = s.statusText.split(",")[0] ?? "Running";
+  const step = s.current?.sequence ?? (s.index >= 0 ? s.index + 1 : null);
+  return {
+    kind: "running",
+    lead: `${word}${step == null ? "" : ` · step ${step}`} · replay`,
+    detail: join([cost, retries > 0 && pluralise(retries, "retry", "retries")]),
+    pending: false,
+    failure: null,
+    live: false,
+  };
 }

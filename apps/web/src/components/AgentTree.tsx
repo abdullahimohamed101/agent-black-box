@@ -21,11 +21,14 @@ export function AgentTree({
   active,
   onToggle,
   onClear,
+  current = null,
 }: {
   rows: readonly AgentTreeRow[];
   active: ReadonlySet<string> | null;
   onToggle: (agentId: string) => void;
   onClear: () => void;
+  /** Replay (Phase 12): the agent that emitted the event at the playhead. */
+  current?: string | null;
 }) {
   return (
     <section aria-labelledby="agents-h" className="agent-tree" data-testid="agent-tree">
@@ -41,6 +44,8 @@ export function AgentTree({
               <button
                 type="button"
                 aria-pressed={on}
+                aria-current={current === a.agentId ? "true" : undefined}
+                data-current={current === a.agentId || undefined}
                 className="agent-item"
                 title={`${agentChip(a.agentId)}: ${detail}`}
                 data-error={a.errorCount > 0 || a.state === "failed" || undefined}

@@ -20,7 +20,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 9 | Multi-agent distributed tracing + waterfall | §84, §97 | M4 | Complete (merged, CI green; plan: `docs/plans/completed/phase-9-multi-agent-tracing.md`) |
 | 10 | Reliability intelligence | §80-81 | M5 | Complete (merged, CI green; plan: `docs/plans/completed/phase-10-reliability-intelligence.md`) |
 | 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Complete (merged, PR #104; plan: `docs/plans/completed/phase-11-evaluations.md`) |
-| 12 | Visual replay | §87 (level 1) | | Not started |
+| 12 | Visual replay | §87 (level 1) | | Completed (PR #136) |
 | 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Not started |
 | 14 | Policy engine and human approvals | §88-89, §151 | M8 | Not started |
 | 15 | Auth, workspaces, RBAC | §91-92 | | Complete (merged, CI green; plan: `docs/plans/completed/phase-15-auth-rbac.md`) |
@@ -189,6 +189,7 @@ run status.
 Level 1 only (§87): play/pause/step/1x/2x/5x over recorded events, reduced-motion aware, no
 external contact. Levels 2-3 stay deferred. **Acceptance**: a failed run replays event by event
 without network calls to original systems (asserted in test).
+**Status: Completed (merged 2026-10-12, PR #136)** (ADR-120, ADR-121, `docs/plans/completed/phase-12-visual-replay.md`). Next: Phase 13.
 
 ## Phase 13 - Security observability
 Detectors (secret access, `.env` reads, credential-looking output, destructive commands,

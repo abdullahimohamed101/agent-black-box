@@ -1,9 +1,9 @@
 # Project State
 
-Last updated: 2026-10-12 (Phase 22 merged, PR #132; Phase 12 next)
+Last updated: 2026-10-12 (Phases 22 and 12 merged, PRs #132 and #136; Phase 13 next)
 
 ## Current phase
-Phases 0-11, 15, 16, 21 and 22 are merged to `main` (Phase 22, the run-page redesign "Flight recorder trace", is PR #132; plan with closing evidence, modified-test table and review dispositions: `docs/plans/completed/phase-22-run-page-redesign.md`; review: `docs/plans/completed/phase-22-code-review.md`). The MVP gate was accepted on 2026-10-12. Next: Phase 12 (visual replay), planned with the user one question at a time.
+Phases 0-12, 15, 16, 21 and 22 are merged to `main` (Phase 12, visual replay level 1, is PR #136: plan with closing evidence `docs/plans/completed/phase-12-visual-replay.md`, review `docs/plans/completed/phase-12-code-review.md`, ADR-120 and ADR-121; Phase 22, the run-page redesign "Flight recorder trace", is PR #132; plan with closing evidence, modified-test table and review dispositions: `docs/plans/completed/phase-22-run-page-redesign.md`; review: `docs/plans/completed/phase-22-code-review.md`). The MVP gate was accepted on 2026-10-12. Next: Phase 13 (security observability), planned with the user one question at a time.
 
 ## Current milestone
 M0-M3 complete (foundation, ingestion, SDK, web, live streaming, coding-agent demo, cost and analytics). Phase 8 (integrations) is
@@ -53,7 +53,7 @@ here (KI-122). The reviewer did the keyboard walk, 200% zoom and 1024x640; scree
 None for the code. Verification: after the review fixes the full API suite and the API-backed E2E scripts were re-run and pass (see the plan).
 
 ## Next actions (exact)
-1. Phase 12 (visual replay): plan with the user (one question at a time), then build.
+1. Phase 13 (security observability): plan with the user (one question at a time), then build. After deploying Phase 12, run `search-rebuild` is not needed for replay, but events' `cost_usd` appears only for runs summarised since ADR-121 (re-summarise older runs with `rebuild-costs` if replay cost should show for them).
 2. After deploying Phase 22 (and Phase 16): run `python -m abb_api.cli search-rebuild` so runs summarised below `SUMMARY_VERSION` 6 get first-error facts and are searchable (ADR-112, KI-081); until then their rows say "first-error facts not rebuilt yet" and the waste report counts them in `unrebuilt_runs`.
 3. Done 2026-10-12: the real OIDC sign-in with Google (KI-067 resolved). Still open for the user: a compose runtime check of the demo login (`make up && make seed`, sign in as `owner@local.test`, `make smoke && make sdk-e2e`; KI-074).
 4. KI-050 is closed for what the vendors' pages state; the OpenAI deprecations page is due a re-read on 2026-10-23.

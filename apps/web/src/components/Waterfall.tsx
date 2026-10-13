@@ -61,6 +61,11 @@ type Props = {
   landedId?: string | null;
   /** Why the jump landed: the first error (a red outline that fades) or any other evidence (an accent one). */
   landedTone?: "error" | "evidence";
+  /** Replay (Phase 12): the event at the playhead. Its row is marked current; open spans read "in progress". */
+  currentEventId?: string | null;
+  replaying?: boolean;
+  /** Replay: Space plays or pauses instead of opening the selected row (Enter still opens it). */
+  onSpace?: () => void;
 };
 
 /** The event a click on this row selects: the span's opener, or its only event. */
@@ -93,6 +98,9 @@ export function Waterfall({
   onActivate,
   onEscape,
   onJumpToError,
+  currentEventId = null,
+  replaying = false,
+  onSpace,
 }: Props) {
   const [mode, setMode] = useState<Mode>("tree");
   const [view, setView] = useState<View>(FIT);
@@ -120,15 +128,21 @@ export function Waterfall({
     [rows],
   );
 
-  // The row holding the selected event: its span's row, or the aggregate row that swallowed it.
-  const selectedIndex = useMemo(() => {
-    if (!selectedEventId) return -1;
-    let id = spanIdOf(selectedEventId);
-    if (!id) return -1;
+  // The row holding an event: its span's row, or the aggregate row that swallowed it.
+  const rowOfEvent = useMemo(() => {
     const byKey = new Map(rows.map((r, i) => [r.key, i]));
-    while (id && !byKey.has(id)) id = tree.nodes.get(id)?.parentId ?? undefined;
-    return id ? (byKey.get(id) ?? -1) : -1;
-  }, [selectedEventId, spanIdOf, rows, tree]);
+    return (eventId: string | null): number => {
+      if (!eventId) return -1;
+      let id = spanIdOf(eventId);
+      if (!id) return -1;
+      while (id && !byKey.has(id)) id = tree.nodes.get(id)?.parentId ?? undefined;
+      return id ? (byKey.get(id) ?? -1) : -1;
+    };
+  }, [spanIdOf, rows, tree]);
+  const selectedIndex = useMemo(() => rowOfEvent(selectedEventId), [rowOfEvent, selectedEventId]);
+  const currentIndex = useMemo(() => rowOfEvent(currentEventId), [rowOfEvent, currentEventId]);
+  const flagText = (f: keyof NodeFlags) =>
+    replaying && f === "unfinished" ? "in progress" : FLAG_TEXT[f];
   const selectedRow = selectedIndex >= 0 ? rows[selectedIndex] : undefined;
 
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -231,6 +245,10 @@ export function Waterfall({
         break;
       case "Enter":
       case " ": {
+        if (onSpace) {
+          onSpace();
+          break;
+        }
         const id = selectedRow && selectedRow.kind !== "lane" ? eventOf(selectedRow.node) : null;
         if (id) onActivate(id);
         break;
@@ -329,7 +347,8 @@ export function Waterfall({
         <span className="wf-legend muted">
           <span className="wf-swatch wf-swatch-crit" aria-hidden="true" /> Critical path (thick
           edge)
-          <span className="wf-swatch wf-swatch-open" aria-hidden="true" /> No end recorded
+          <span className="wf-swatch wf-swatch-open" aria-hidden="true" />{" "}
+          {replaying ? "In progress" : "No end recorded"}
         </span>
       </div>
       <p className="muted wf-count" aria-live="polite">
@@ -466,7 +485,7 @@ export function Waterfall({
             const text = `${label}${agent ? `, agent ${agentChip(agent)}` : ""}${
               isAgg ? `, ${row.aggregate.count} spans collapsed` : ""
             }, ${durationText}${statusText ? `, ${statusText}` : ""}${
-              flags.length ? `, ${flags.map((f) => FLAG_TEXT[f]).join(", ")}` : ""
+              flags.length ? `, ${flags.map(flagText).join(", ")}` : ""
             }${critical.spanIds.has(n.id) ? ", on the critical path" : ""}`;
             return (
               <div
@@ -476,6 +495,7 @@ export function Waterfall({
                 aria-level={row.level}
                 aria-rowindex={v.index + 1}
                 aria-selected={span ? selected : undefined}
+                aria-current={v.index === currentIndex ? "step" : undefined}
                 aria-expanded={
                   isAgg ? false : row.kind === "span" && row.hasChildren ? true : undefined
                 }
@@ -483,6 +503,7 @@ export function Waterfall({
                 aria-describedby={hover?.id === n.id ? "wf-tip" : undefined}
                 className="wf-row"
                 data-selected={selected || undefined}
+                data-current={v.index === currentIndex || undefined}
                 data-error={err || undefined}
                 data-first-error={
                   (span && firstErrorId && span.head.event_id === firstErrorId) || undefined
@@ -567,7 +588,7 @@ export function Waterfall({
                   )}
                   {flags.map((f) => (
                     <span key={f} className="tag" data-flag={f}>
-                      {FLAG_TEXT[f]}
+                      {flagText(f)}
                     </span>
                   ))}
                   {critical.spanIds.has(n.id) && <span className="tag tag-crit">critical</span>}
