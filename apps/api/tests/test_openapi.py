@@ -52,8 +52,9 @@ def test_every_v1_operation_is_authenticated_and_described() -> None:
             assert has_header == (op["security"] == EITHER), (method, path)
         else:
             assert "security" not in op, (method, path)  # health endpoints are public
-    # main's 37, Phase 11's 15, Phase 22's /v1/analytics/waste and Phase 13's four security routes
-    assert seen == 37 + 15 + 1 + 4
+    # main's 37, Phase 11's 15, Phase 22's /v1/analytics/waste, Phase 13's four security routes and
+    # Phase 14's seven policy routes
+    assert seen == 37 + 15 + 1 + 4 + 7
 
 
 def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
@@ -109,6 +110,13 @@ def test_the_public_surface_is_exactly_what_the_plan_promises() -> None:
         ("GET", "/v1/security/detectors"),
         ("GET", "/v1/projects/{project_id}/security-settings"),
         ("PUT", "/v1/projects/{project_id}/security-settings"),
+        ("GET", "/v1/policies/current"),
+        ("GET", "/v1/policies/versions"),
+        ("GET", "/v1/policies/versions/{version}"),
+        ("GET", "/v1/policies/diff"),
+        ("POST", "/v1/policies/validate"),
+        ("POST", "/v1/policies/publish"),
+        ("POST", "/v1/policies/dry-run"),
         ("GET", "/v1/runs/{run_id}/stream"),
         ("GET", "/v1/pricing"),
         ("GET", "/v1/analytics/summary"),
