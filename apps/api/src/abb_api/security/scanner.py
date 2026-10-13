@@ -10,13 +10,15 @@ for hostile input:
   quadratic on adversarial text; the server cannot assume a friendly client, INV-5).
 - Whitespace runs before a value are possessive, so a "not already redacted" check after them
   cannot be satisfied by giving a space back: scanning redacted text changes nothing.
-- Text is scanned in newline-bounded windows of at most `WINDOW` characters, so one pattern call is
-  never longer than that, and the time budget is checked between windows.
+- Text is scanned in windows of at most `WINDOW` characters cut at a newline or a separator, only
+  where `_seam_is_safe` says no secret straddles the cut, so one pattern call is never longer than
+  that, and the time budget is checked between windows.
 - The whole scan has a size budget and a time budget. Beyond either it raises, and the caller drops
   the payload (fail closed): `ScanTooLarge` or `ScanFailed`.
-- It is a pure function of its input: the same text always yields the same output, and scanning
-  already-redacted text changes nothing and counts nothing (every pattern ignores `[REDACTED...`),
-  which is what makes at-least-once redelivery idempotent.
+- It is deterministic: the same text always yields the same output (unless the time budget runs
+  out, which depends on host load: ADR-130 Amendment 2), and scanning already-redacted text changes
+  nothing and counts nothing (every pattern ignores `[REDACTED...`, bare or quoted), which is what
+  makes at-least-once redelivery idempotent.
 
 It never logs and never returns a secret: results carry the redacted text, a count and kind names.
 Detection is best effort and cannot find every secret (KI-032); it narrows the gap, it does not

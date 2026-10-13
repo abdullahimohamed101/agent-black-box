@@ -7,6 +7,14 @@ and `run_findings` widen (every existing value stays valid). `run_findings.findi
 index serves the workspace Security view. Existing runs have no security findings until they are
 re-analysed (`rebuild-findings`; the detector set version also changed, so they read `outdated`).
 
+Locking: `ADD COLUMN ... DEFAULT 0 NOT NULL` is metadata-only on PostgreSQL 11+ and the two CHECK
+swaps are quick, but the partial index is built inside this migration's transaction, which holds a
+share lock on `findings` (blocking its writes) for the build. `findings` is small today. On a large
+database follow the 0041 precedent (KI-056): create the index `CONCURRENTLY` in an
+`autocommit_block` before upgrading. KI-137 tracks it (Phase 19, operations). The downgrade deletes
+the security rows it cannot represent; they are derived data (INV-2) and `rebuild-findings`
+re-derives them after the next upgrade.
+
 Revision ID: 0091
 Revises: 0090
 Create Date: 2026-10-13

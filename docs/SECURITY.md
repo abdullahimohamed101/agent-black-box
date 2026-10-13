@@ -145,7 +145,10 @@ provider only; a real provider login is an open acceptance check (KI-067). Sessi
 recovery is in the runbook, KI-068). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits are per process. The Python SDK
 redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads); since Phase 13 the server
 redacts again, but detection is best effort, so **clients should still keep secrets out of events**, and a project that needs no payloads should stay
-METADATA_ONLY.
+METADATA_ONLY. Stored text can carry a `[REDACTED:credential]` marker where an assignment looked secret-shaped (a name ending in `token`, `secret` or
+`password` is redacted whatever it holds, KI-135); the stored event is immutable, so it is not repaired. A time-budget drop (`scan_failed`) is the one
+non-deterministic redaction: an identical redelivery that scans in time conflicts with the stored version and the first one wins (ADR-130 Amendment 2).
+The capture mode is read once per batch, so a tightening can miss one batch already in flight (KI-139).
 
 ## Process
 Security-sensitive changes require a `review-change` pass and a note in the phase plan.

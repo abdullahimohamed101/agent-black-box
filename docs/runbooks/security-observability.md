@@ -18,7 +18,9 @@ A stored event records what the server did in `redaction.server_count`, `redacti
 never values) and `redaction.dropped_reason` (`mode_metadata_only`, `mode_disabled`, `scan_failed`, `too_large`). Artifacts carry the same record
 in `artifacts.metadata.redaction`; a dropped body is replaced by a one-line marker. **Fail closed:** a value the scanner errors on, runs
 out of time on, or that is over its budget is dropped and the reason recorded; the event keeps its metadata. Redelivery is idempotent
-(the scan is deterministic).
+(the scan is deterministic for the same budget outcome). The one exception is the time budget: a first delivery that ran out of time because
+the host was loaded stores the event without the value (`scan_failed`), and an identical redelivery that scans in time is a `conflict`: the first
+stored version wins (INV-1) and the client counts the event as rejected. Treat a rising `scan_failed` as a capacity signal (below).
 
 ## The default changed: METADATA_ONLY
 
@@ -48,9 +50,12 @@ A new mode applies to the next accepted batch only. List what is set: Settings, 
 | `ABB_SECURITY_SCAN_ARTIFACT_MAX_SECONDS` | 10 | time one artifact may take to scan (`scan_failed`) |
 | `ABB_SECURITY_REANALYSE_MAX_RUNS` | 200 | a mute or allowlist change re-analyses at most this many of the project's newest runs; 0 turns it off |
 | `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS` | 30 | ...and only runs that started within this many days |
+| `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS` | 60 | at most one re-analysis wave per project per this many seconds: a later change queues its jobs, due when the cooldown ends (0: no limit) |
 
-Watch the logs for `artifact redacted` (counts and kinds only) and, in the database, for `redaction.dropped_reason` values `scan_failed` and
-`too_large`: a steady stream of them means the budget is too small for the traffic, or an SDK is sending huge values.
+Watch the logs for `artifact redacted` (counts and kinds only) and `server redaction applied`, which carries `scan_failed` and `too_large` counts
+apart: `scan_failed` (the time budget, a scanner error) rising means the budget is too small for the load or the API host is starved, and
+redeliveries of those events will conflict; `too_large` is the client's own payload being over the limit. The same values are in the database as
+`redaction.dropped_reason`.
 
 ```sql
 -- what the server dropped or redacted in the last day, by reason
@@ -84,3 +89,13 @@ WHERE received_at > now() - interval '1 day' AND attributes ? 'redaction.dropped
 column and the artifact directory, the three modes, a rebuild, a settings change and a browser as owner, viewer and billing. It never touches the
 shared databases. To check a live deployment by hand: send an event with an AWS-style key (`AKIA` plus 16 capitals) in a command to a `FULL` project
 and read the stored event: the key is `[REDACTED:aws_access_key]` and `redaction.server_count` is 1.
+
+## What the scanner changes in stored text
+
+The scanner only rewrites text that looks like a credential: a provider-shaped token, a `user:password` argument (`curl -u alice:pw`), or an
+assignment whose **name ends in a secret word** (`DB_PASSWORD=`, `apiKey:`, `GH_PAT=`; ADR-130 Amendment 2 lists them). It leaves `python -u main.py`,
+`sort -u`, `PWD=/home/a`, `primary_key: id`, `cache_key = ...` and `"path": "/tmp"` as they are. Because the stored event is immutable, a name that
+ends in `token`, `secret` or `password` is redacted whatever it holds (`next_page_token: abc` shows `[REDACTED:credential]`); KI-135 tracks a
+per-project way to relax that. A line of 64 KiB or more without a newline is cut only where no secret straddles the cut; if no such cut exists
+the value is dropped (`too_large`). A non-ASCII line whose secret shows only after folding zero-width and full-width characters is replaced by
+the markers of what was found.

@@ -129,3 +129,16 @@ person mutes a detector and the finding stays). Decision:
 
 Not changed: `run_findings` still records no settings version, so between the change and the job (seconds) a run reads `current` with the old
 findings; and a run older than the bound needs `rebuild-findings`. These are the residue of KI-133.
+
+## Amendment 2 (Phase 13, review fixes)
+
+- **Rate limit on waves.** The coalescing above only holds while jobs are pending. A wave that follows another mute or allowlist change of the
+  same project within `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS` (default 60; 0 turns it off) is queued with its due time moved to the end of the
+  cooldown, so a script that toggles a mute every few seconds cannot keep the shared worker busy (KI-104 is the same worker). Nothing is dropped:
+  the jobs read the settings when they run, so the last settings win.
+- **Module boundary.** The findings job no longer reads the `artifacts` table: `ArtifactRepository.redaction_kinds(run_id, project_id, kinds,
+  limit)` (tenant scoped) returns the kind names the server recorded per artifact, and `findings/security_inputs.py` calls it (a test fails if a
+  file under `findings/` names `t.artifacts` again). `security_repository.py` still joins `runs` and `projects` to list findings across a
+  project's runs; that is a read-only listing join owned by this module's own findings table and is accepted here rather than moved.
+- **Assignment names.** `sec.credential_in_output` and the other credential findings still rely only on `HIGH_CONFIDENCE_KINDS`; the narrower
+  assignment names of ADR-130 Amendment 2 change what is redacted, not what raises a finding.

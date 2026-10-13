@@ -16,8 +16,9 @@ out is before the event is accepted. INV-5 says sensitive capture is opt-in and 
 
 1. **Redaction happens before persistence, deterministically.** `IngestionService` validates an event, reads the project's capture mode, and runs
    `ServerRedactor.apply(event, mode)` *before* `PgEventStore.ingest`. The stored event, its `content_hash`, and the duplicate/conflict decision
-   are all computed on the redacted event. Redaction is a pure function of the event and the mode, so redelivery of the same event yields the
-   same stored form (duplicate, not conflict). Out-of-order delivery is unaffected. An event the server did not change is returned as the same
+   are all computed on the redacted event. Redaction is deterministic for a given event, mode and budget outcome, so redelivery of the same event
+   yields the same stored form (duplicate, not conflict); it is not a pure function under the time budget (Amendment 2, point 1). Out-of-order
+   delivery is unaffected. An event the server did not change is returned as the same
    object, so a clean event costs only the scan.
 2. **Fail closed.** If a string cannot be scanned (scanner error, over the size budget, over the time budget) it is *dropped*, never stored
    unscanned; the event is kept with its metadata and says why in `redaction.dropped_reason` (`scan_failed` or `too_large`). A dropped attribute
@@ -72,8 +73,8 @@ out is before the event is accepted. INV-5 says sensitive capture is opt-in and 
    projects with `--capture-mode full`). This is the deliberate secure default.
 10. **The scanner** (`abb_api/security/scanner.py`): the SDK's kinds, with patterns rewritten for hostile input. Every quantifier that can be
     followed by a failing token is bounded; whitespace before a value is possessive so the "already redacted" guard cannot be defeated by
-    giving a space back; text is cut into windows of at most 64 KiB at newlines (else at a separator; a window with neither raises
-    `ScanTooLarge`, because a blind cut could split a secret); a private key is found with plain string search across lines (an unterminated key
+    giving a space back; text is cut into windows of at most 64 KiB at newlines (else at a separator; a window with no cut that keeps every
+    secret whole raises `ScanTooLarge`, because a blind cut could split one: Amendment 2, point 5); a private key is found with plain string search across lines (an unterminated key
     is redacted to the end); NUL and terminal escape sequences are removed first (they can split a secret; the SDK does the same); a per-scan
     byte budget and a time budget raise `ScanTooLarge` / `ScanFailed`; an unexpected exception becomes `ScanFailed` carrying only its type. It
     returns `(text, count, kinds)` and never logs or returns a value. `sk-` keys must not be preceded by an alphanumeric (the SDK's pattern
@@ -89,8 +90,9 @@ out is before the event is accepted. INV-5 says sensitive capture is opt-in and 
 - No retroactive scrubbing. Events and artifacts already stored stay as they are (INV-1); the docs say so.
 - Detection is best effort, as in the SDK (KI-032): a secret of unknown shape that no pattern recognises is stored in FULL mode. KI-032 and
   KI-042 stay open until the Phase 13 backstop gate (a run with an SDK that skips redaction, scanned end to end) passes in step 4.
-- Assignment-shaped kinds (`secret_assignment`, `credential` ...) also match ordinary code such as `token_count = len(x)`; the provider-shaped
-  kinds are high confidence. `scanner.HIGH_CONFIDENCE_KINDS` names the latter for the detectors of step 2.
+- Assignment-shaped kinds (`secret_assignment`, `credential` ...) are not high confidence: a name that ends in `token`, `secret` or `password`
+  is redacted whatever it holds (Amendment 2, point 3, says exactly which names). The provider-shaped kinds are high confidence.
+  `scanner.HIGH_CONFIDENCE_KINDS` names the latter for the detectors of step 2.
 - Findings, the API and the UI for settings arrive in steps 2 and 3.
 
 ## Consequences
@@ -115,3 +117,60 @@ logs, with a positive control. KI-032 and KI-042 are resolved; the residue (a se
 Two facts the gate also established, kept as consequences: in METADATA_ONLY and DISABLED the payload is dropped **before it is read**, so a secret inside
 it is neither stored nor counted (`redaction.server_count` is absent), and the credential finding needs the server to have seen the value (FULL) or an SDK
 marker in an attribute; and a credential an SDK redacted into an artifact leaves only a marker there (KI-134).
+
+## Amendment 2 (Phase 13, review fixes)
+
+The adversarial review of the branch (`docs/plans/active/phase-13-code-review.md`) found that the server copy of the SDK's patterns rewrote
+ordinary text in every project and mode, with no opt-out and no way to repair the immutable event. These points correct and extend the decisions
+above; the SDK's patterns were changed in the same commits so the parity test stays true.
+
+1. **Determinism and the time budget (corrects the wording of 1).** Redaction is deterministic given the same budget outcome. The per-event time
+   budget (`ABB_SECURITY_SCAN_EVENT_MAX_SECONDS`, default 1 s from the start of `apply`) depends on host load, so it is the one non-deterministic
+   path. If a first delivery is slow, the value that ran out of time is dropped with `redaction.dropped_reason = scan_failed` and that version is
+   stored. A redelivery of the same event (the SDK retries after a timeout or a 503 that came after the commit) that scans in time produces a
+   different redacted form and is reported as a `conflict`: **the first stored version wins** (INV-1), the SDK counts the event as rejected, and
+   the stored event keeps its metadata but not the payload the client sent. Fail-closed is the right default, so this is accepted. It is made
+   visible instead: the `server redaction applied` log line carries `scan_failed` and `too_large` counts apart (a rising `scan_failed` is a
+   capacity signal, see the runbook), and `redaction.dropped_reason` says which. The budget stays per event (metadata is scanned first, so what
+   runs out is the payload, the bulk), not per value: a per-value budget would let one event spend `values x budget`.
+2. **`-u`, `--user`, `--proxy-user` redact only a `user:password` argument.** The first version redacted the token after any `-u`/`-U`
+   (`python -u main.py`, `pip install -U requests`, `sort -u names.txt`, `docker run -u 1000`), which removed the program name from the stored
+   command and blinded the detectors (`sort -u .env` no longer showed `.env`). Now the value must contain a colon followed by at least one
+   character, and a bare `uid:gid` pair of numbers is not a credential. `docker login -u me -p pw` keeps the user name; the password flag still
+   redacts the password. Residual: `docker run -u root:root` is redacted (KI-135).
+3. **What the assignment patterns match.** A name is a credential only when it ends in a secret word: `secret`, `token`, `password`, `passwd`,
+   `passphrase`, `credential(s)` after any prefix (`dbpassword`, `GITHUB_TOKEN`); `dsn` and `pass` as a whole segment (`SENTRY_DSN`, `DB_PASS`,
+   not `bypass` or `passed`); `pat` and `pwd` as a segment that has a prefix (`GH_PAT`, `ROOT_PWD`); `key` only after `api`, `access`, `private`,
+   `secret`, `auth`, `encryption`, `signing`, `master` or `license` (`AWS_SECRET_ACCESS_KEY`, `apiKey`, `x-api-key`). A segment starts after a
+   non-alphanumeric or at a lower-to-upper case change (`clientSecret`). It follows that these are **not** redacted: `PWD`, `OLDPWD`, `pwd: /tmp`,
+   `MONKEY`, `primary_key`, `cache_key`, `idempotency_key`, `sort_key`, `partition_key`, `foreign_key`, `public_key`, `ssh_key`, `token_count`,
+   `max_tokens`, `token_type`, `password_min_length`, `secret_name`, and JSON keys such as `"path"` or `"author"` (the quoted pattern used to match
+   `pat` and `auth` inside any word). Names that end in a secret word are still redacted whatever they hold (`next_page_token: abc`); that is the
+   price of not knowing the value (KI-135). A bare `pwd` is no longer a credential name. `"auth"`, `"authorization"` and `"cookie"` are credential
+   keys inside quotes only. A comparison literal (`password == "x"`) follows the same names, without the old suffix (`token_type == "bearer"` is
+   kept). `tests/test_security_scanner.py` holds a corpus of names that must stay intact and one of real secrets that must still be redacted; the
+   parity test runs both through the SDK.
+4. **Smaller corrections.** A marker inside quotes (`"password": "[REDACTED]"`) is not redacted again or counted. `url_token_user` needs a
+   token-like userinfo (a digit or underscore, or mixed case), so `https://my-long-service-account@host` is kept.
+5. **A cut never splits a secret.** A line longer than a window is cut after a separator, so a quoted value with spaces, `Bearer ` then its token,
+   `Cookie:` then its value or `-p` then a password could straddle the cut and leave its second half in clear. Each cut is now checked: the
+   4,096 characters either side are scanned whole and in two pieces, and a cut is used only if the two results agree; otherwise the next
+   candidate (up to 64) is tried, and when none is safe the scan raises `ScanTooLarge` and the value is dropped (`too_large`). A hostile line
+   built so that every cut changes the result is refused, not stored. Residual: a match longer than the check (a cookie header over 4 KiB that
+   starts before the seam) is not covered (KI-138).
+6. **Look-alike and zero-width characters.** After the normal pass, a non-ASCII line is folded for **detection only** (zero-width space,
+   joiners, word joiner, BOM and soft hyphen removed, then NFKC), and the patterns run on the folded copy. The fold cannot be mapped back to
+   positions in the original, so when it finds something the whole line is replaced by the markers of the kinds found and counted (the stored
+   text is otherwise never rewritten by the fold, and a line the fold does not change or finds nothing in is stored as sent). Not covered: other
+   confusables (Cyrillic `А` for `A`), URL encoding, base64 and any split across lines (KI-136).
+7. **Mode read and store are two steps.** The project's mode is read on its own connection and the batch is stored afterwards (artifacts
+   likewise). A change that tightens the mode between the two lets one in-flight batch be stored under the old mode. The window is the batch's
+   own processing time (milliseconds); "takes effect on the next batch" in 8 is the contract, and reading the mode inside the ingest transaction
+   would not remove it (a change can commit just after the read either way). Accepted (KI-139).
+8. **Settings-triggered re-analysis is rate limited per project.** Coalescing (one pending job per run) only helps while jobs are pending. A
+   wave that follows another mute or allowlist change of the same project within `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS` (default 60; 0 turns
+   it off) is queued but not due before the cooldown ends, so a script toggling a mute cannot keep the worker busy; nothing is dropped, and the
+   last settings win when the jobs run. The previous change is read from the audit log, within the cooldown window only. A capture mode change
+   is not a wave.
+9. **Allowlist entries** may be as long as a DNS name (253 characters, plus an optional `*.`); the validation message tells a person to write an
+   international name in punycode. The audit row shortens an entry to 100 characters.
