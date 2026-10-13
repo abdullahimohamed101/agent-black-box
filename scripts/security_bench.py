@@ -26,9 +26,19 @@ from typing import Any
 import httpx
 from abb_event_schema.ids import IdKind, new_id
 
-# Bounds asserted with --assert: about 8 times the figures measured on a laptop (see the note), so that a slow shared runner
-# passes and a real regression (a scan that costs milliseconds per event) does not.
-BOUNDS = {"batch_p50_ms": 250.0, "batch_p95_ms": 600.0, "run_ingest_seconds": 60.0, "run_current_seconds": 60.0}
+# Bounds asserted with --assert: 4 to 15 times the figures measured on a laptop (see the note), so that a real regression
+# (a scan that costs milliseconds per event) fails and an ordinary run passes.
+BOUNDS = {"batch_p50_ms": 250.0, "batch_p95_ms": 1000.0, "run_ingest_seconds": 60.0, "run_current_seconds": 60.0}
+# A shared CI runner hosts two APIs, a worker, a fake provider and a web build, so absolute bounds alone can fail without a
+# code change (review P3-9). Before measuring, the script times a trivial authenticated read (the floor: connection,
+# auth, JSON, no ingestion work). On a machine whose floor is above the reference every bound is scaled up in proportion;
+# a faster machine keeps the bounds as written, so a regression is never excused by a fast floor.
+REFERENCE_FLOOR_MS = 5.0
+
+
+def effective_bounds(floor_ms: float) -> dict[str, float]:
+    scale = max(1.0, floor_ms / REFERENCE_FLOOR_MS)
+    return {name: round(bound * scale, 1) for name, bound in BOUNDS.items()}
 
 PROSE = (
     "The quick brown fox jumps over the lazy dog while the build agent reads the output of the unit tests and "
@@ -87,6 +97,16 @@ def event(run: str, trace: str, n: int, kind: str, when: datetime, **extra: Any)
 def percentile(values: list[float], q: float) -> float:
     ordered = sorted(values)
     return ordered[min(len(ordered) - 1, round(q * (len(ordered) - 1)))]
+
+
+def measure_floor(reader: httpx.Client, samples: int = 30) -> float:
+    """Median milliseconds of a trivial authenticated request: how fast this machine answers at all."""
+    times: list[float] = []
+    for _ in range(samples):
+        started = time.perf_counter()
+        reader.get("/v1/runs", params={"limit": 1})
+        times.append((time.perf_counter() - started) * 1000)
+    return statistics.median(times)
 
 
 def measure_batches(writer: Writer, batches: int) -> dict[str, float]:
@@ -149,7 +169,8 @@ def main() -> int:
     writer = Writer(args.api, args.key_file.read_text().strip())
     reader = httpx.Client(base_url=args.api, headers={"Authorization": f"Bearer {args.read_key_file.read_text().strip()}"}, timeout=60)
     writer.post([event(new_id(IdKind.RUN), new_id(IdKind.TRACE), 1, "tool", datetime.now(UTC), payload=payload_1kb(0))])  # warm up
-    result = {"label": args.label, "batch100": measure_batches(writer, args.batches), "run": measure_run(writer, reader, args.run_events)}
+    floor_ms = measure_floor(reader)
+    result = {"label": args.label, "floor_ms": round(floor_ms, 1), "batch100": measure_batches(writer, args.batches), "run": measure_run(writer, reader, args.run_events)}
     print(json.dumps(result, sort_keys=True))
     if args.check:
         measured = {
@@ -158,7 +179,8 @@ def main() -> int:
             "run_ingest_seconds": result["run"]["run_ingest_seconds"],
             "run_current_seconds": result["run"]["run_current_seconds"],
         }
-        over = {k: (measured[k], BOUNDS[k]) for k in BOUNDS if measured[k] > BOUNDS[k]}
+        bounds = effective_bounds(floor_ms)
+        over = {k: (measured[k], bounds[k]) for k in bounds if measured[k] > bounds[k]}
         if over:
             print(f"SECURITY-BENCH FAILED: over the bound (measured, bound): {over}", file=sys.stderr)
             return 1
