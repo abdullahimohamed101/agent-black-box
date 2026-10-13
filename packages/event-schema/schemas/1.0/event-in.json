@@ -743,6 +743,78 @@
       "if": {
         "properties": {
           "event_type": {
+            "const": "approval.consumed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "approval.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "approval.expired"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "approval.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "approval.cancelled"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "approval.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
             "const": "span.started"
           }
         },

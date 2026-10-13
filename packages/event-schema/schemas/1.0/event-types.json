@@ -379,6 +379,36 @@
       "span_role": "point"
     },
     {
+      "class": "approval",
+      "event_type": "approval.consumed",
+      "priority": "P0",
+      "required_attributes": [
+        "approval.id"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "approval",
+      "event_type": "approval.expired",
+      "priority": "P0",
+      "required_attributes": [
+        "approval.id"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "approval",
+      "event_type": "approval.cancelled",
+      "priority": "P0",
+      "required_attributes": [
+        "approval.id"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
       "class": "span",
       "event_type": "span.started",
       "priority": "P1",

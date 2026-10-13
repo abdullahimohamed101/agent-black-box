@@ -283,6 +283,11 @@ _SPECS: tuple[EventTypeSpec, ...] = (
     _spec("approval.requested", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
     _spec("approval.granted", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
     _spec("approval.denied", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
+    # Phase 14 step 2 (ADR-141): the other ways an approval request ends, and its single use.
+    # Written by the server only; metadata attributes (`approval.id`, `approval.state`).
+    _spec("approval.consumed", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
+    _spec("approval.expired", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
+    _spec("approval.cancelled", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
     # generic spans for custom instrumentation (D6)
     _spec("span.started", _C.SPAN, _P1, _OPEN, _K.CUSTOM, ("span.name", "span.kind")),
     _spec("span.completed", _C.SPAN, _P1, _CLOSE, _K.CUSTOM),
