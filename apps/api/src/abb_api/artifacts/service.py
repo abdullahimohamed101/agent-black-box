@@ -162,6 +162,9 @@ class ArtifactService:
                 await PgSecuritySettingsStore(conn, principal.tenant).get(principal.project_id)
             ).capture_mode
         decision = await self._decide(data, mode)
+        if name is not None:
+            # A label is free text too: a client that skips redaction can put a key in it.
+            name = self._redactor.label(name, max_seconds=self._scan_max_seconds)
         stored = decision.body
         digest = hashlib.sha256(stored).digest()
         key = storage_key(principal.workspace_id, artifact_id, digest)

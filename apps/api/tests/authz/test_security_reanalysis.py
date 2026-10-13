@@ -131,7 +131,7 @@ async def test_the_audit_row_and_the_jobs_commit_together(world: World) -> None:
             .select_from(t.audit_log)
             .where(t.audit_log.c.action == "security.settings.update")
         )
-    assert audited >= 1 and await pending_runs(world)
+    assert audited is not None and audited >= 1 and await pending_runs(world)
 
 
 async def make_runs(world: World, count: int, *, age_days: list[int] | None = None) -> list[str]:

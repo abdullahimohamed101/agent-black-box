@@ -61,6 +61,7 @@ _PRECEDENCE = (SCAN_FAILED, TOO_LARGE, MODE_DISABLED, MODE_METADATA_ONLY)
 DROPPED = "[dropped]"  # stands in for a required attribute that could not be kept
 MAX_EVENT_SCAN_CHARS = 2 * 1024 * 1024  # all strings of one event (the event itself is <= 256 KiB)
 MAX_PAYLOAD_NODES = 5000
+MAX_LABEL_CHARS = 1024  # an artifact name is at most 128 characters; a little room for markers
 
 # The SDK's default deny list (blackbox.redaction.DEFAULT_DENY_KEYS): a string under such a key of
 # a structured payload is replaced whatever it looks like.
@@ -267,6 +268,16 @@ class ServerRedactor:
         return value  # numbers, booleans, null cannot carry a credential
 
     # --------------------------------------------------------------- artifacts
+
+    def label(self, text: str, *, max_seconds: float = DEFAULT_MAX_SECONDS) -> str | None:
+        """A short free-text label (an artifact name) with secret shapes replaced; None when it
+        cannot be scanned, in which case the caller stores no label. Deterministic, so a
+        redelivered upload carries the same label."""
+        budget = ScanBudget(MAX_LABEL_CHARS, max_seconds, clock=self._clock)
+        try:
+            return self._scanner.scan_text(text, budget).text
+        except Exception:
+            return None
 
     def artifact_body(
         self, data: bytes, mode: CaptureMode, *, max_bytes: int, max_seconds: float
