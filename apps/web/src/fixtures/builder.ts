@@ -199,8 +199,9 @@ export class RunBuilder {
         tool_calls: ev.filter((e) => /^tool\.call\.(completed|failed)$/.test(e.event_type)).length,
         input_tokens: sum("llm.request.completed", "llm.input_tokens"),
         output_tokens: sum("llm.request.completed", "llm.output_tokens"),
+        // 9 places, like the worker's `cost_summary` (the replay's sum is rounded the same way)
         estimated_cost_usd: Number(
-          ev.reduce((s, e) => s + Number(e.attributes["cost.estimated_usd"] ?? 0), 0).toFixed(6),
+          ev.reduce((s, e) => s + Number(e.attributes["cost.estimated_usd"] ?? 0), 0).toFixed(9),
         ),
         retry_count: ev.filter((e) => e.event_type === "retry.attempted").length,
         error_count: ev.filter(isErr).length,

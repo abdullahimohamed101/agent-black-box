@@ -3,6 +3,7 @@ import { num } from "../format";
 import { sortEvents, type Orderable } from "../ordering";
 import { spanRoleOf } from "../spans";
 import { firstErrorFor, isError, isRetry } from "../timeline";
+import { isWithheld } from "../withheld";
 import { eventTimes } from "./times";
 
 /**
@@ -14,9 +15,13 @@ import { eventTimes } from "./times";
  * timestamps that go backwards. The playhead is an index into that order, and index `k` means events `0..k` have happened.
  *
  * The projection is incremental: moving forward applies only the new events; a jump restores the nearest checkpoint (a
- * snapshot of the accumulators every `checkpointEvery` events) and re-applies from there. Figures use the same rules as
- * the run summary (`RunBuilder.build` in the fixtures, the API worker in production), so at the last event the state
- * equals the header's figures.
+ * snapshot of the accumulators every `checkpointEvery` events) and re-applies from there. A live run's events only
+ * append, and `setEvents` keeps the accumulators and checkpoints across an append (the hook holds one projection per
+ * run page), so a new event costs one `apply`, not a re-walk to the playhead.
+ *
+ * Figures follow the run summary's rules, so at the last event the state equals the header's figures: cost is the cost
+ * engine's settled per-call figure the API serves on each event (`cost_usd`, ADR-121); a viewer's withheld file paths
+ * are counted per event and flagged approximate (the summary's exact count replaces them at the last event).
  */
 
 export const DEFAULT_CHECKPOINT_EVERY = 256;
@@ -30,6 +35,12 @@ export type ReplayCtx = {
   status: string;
   /** The stored first-error event id when the run carries one; otherwise it is found in the events. */
   firstErrorId?: string | null;
+  /**
+   * The finished run's `files_modified`. A role without `payload.read` has its file paths withheld, so the number of
+   * distinct files is unknown until the end; at the last event the exact figure is the summary's. Pass it only when the
+   * summary is current and the run is over (otherwise the last loaded event is not the last event).
+   */
+  filesModified?: number | null;
 };
 
 export type ReplaySpan = {
@@ -62,12 +73,23 @@ export type ReplayState = {
   /** Events so far, in canonical order (the playhead's event included). */
   events: readonly EventOut[];
   counts: ReplayCounts;
-  /** Some file event had no readable path (withheld), so `filesChanged` counts such events individually. */
+  /**
+   * Some file event had a withheld path, so `filesChanged` counts such events individually: an upper bound on the
+   * distinct files (a file changed twice counts twice), exact again at the end of a finished run.
+   */
   filesApproximate: boolean;
-  /** Sum of the events' estimated cost so far, rounded like the summary's. Unpriced model calls add nothing. */
+  /**
+   * What the completed model calls cost so far, rounded like the summary's: the server's settled figure per call
+   * (provider-reported, else price book, else the caller's estimate; ADR-040/121). Unpriced calls add nothing.
+   */
   costUsd: number;
-  /** Completed model calls with no price: the cost above is a floor, not a total. */
+  /** Completed model calls nothing could price: the cost above is a floor, not a total. */
   unpricedCalls: number;
+  /**
+   * Completed model calls the server has not priced yet (a live arrival, a run still being summarised) that were added
+   * from the event's own attributes (`cost.provider_usd`, then `cost.estimated_usd`): the cost above may still change.
+   */
+  unsettledCalls: number;
   inputTokens: number;
   outputTokens: number;
   /** Recorded time from the run's earliest event to the playhead (never decreases, whatever the clocks say). */
@@ -95,10 +117,13 @@ type Acc = {
   filesApprox: boolean;
   cost: number;
   unpriced: number;
+  unsettled: number;
   inTok: number;
   outTok: number;
   maxOffset: number;
   pendingApprovals: number;
+  /** A `policy.action.blocked` event has been applied. */
+  policyBlocked: boolean;
   lastRunType: string | null;
   lastRunStatus: string | null;
   open: Map<string, ReplaySpan>;
@@ -115,10 +140,12 @@ const blank = (): Acc => ({
   filesApprox: false,
   cost: 0,
   unpriced: 0,
+  unsettled: 0,
   inTok: 0,
   outTok: 0,
   maxOffset: 0,
   pendingApprovals: 0,
+  policyBlocked: false,
   lastRunType: null,
   lastRunStatus: null,
   open: new Map(),
@@ -134,7 +161,7 @@ const FILE_CHANGE = new Set(["file.created", "file.modified", "file.deleted"]);
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-function statusText(a: Acc): string {
+function statusText(a: Acc, runStatus: string): string {
   let base: string;
   switch (a.lastRunType) {
     case "run.completed":
@@ -154,7 +181,14 @@ function statusText(a: Acc): string {
       base = "Cancelled";
       break;
     default:
-      base = a.pendingApprovals > 0 ? "Waiting for approval" : "Running";
+      // A run that ends BLOCKED is blocked from its blocking event on, not "Running" until its closing event. A policy
+      // block in a run that carries on (status is not BLOCKED) stays what it was.
+      base =
+        a.policyBlocked && runStatus === "BLOCKED"
+          ? "Blocked"
+          : a.pendingApprovals > 0
+            ? "Waiting for approval"
+            : "Running";
   }
   return a.errors > 0 ? `${base}, ${plural(a.errors, "error", "errors")} so far` : base;
 }
@@ -163,7 +197,10 @@ export class ReplayProjection {
   private events: readonly EventOut[] = [];
   private times: Float64Array = new Float64Array(0);
   private t0 = 0;
+  private maxOffsetMs = 0;
   private ctx: ReplayCtx;
+  /** Bumped when the event list or context changes, so a caller memoising on the projection's state can tell. */
+  version = 0;
   private readonly every: number;
   private acc: Acc = blank();
   /** Snapshots by applied-count (multiples of `every`); contiguous from 0 up to the furthest point reached. */
@@ -183,9 +220,18 @@ export class ReplayProjection {
     ctx: ReplayCtx,
     opts: { checkpointEvery?: number } = {},
   ) {
-    this.every = Math.max(1, Math.floor(opts.checkpointEvery ?? DEFAULT_CHECKPOINT_EVERY));
+    this.every = ReplayProjection.interval(opts.checkpointEvery);
     this.ctx = ctx;
     this.load(events);
+  }
+
+  /** The checkpoint interval an option resolves to. */
+  static interval(requested?: number): number {
+    return Math.max(1, Math.floor(requested ?? DEFAULT_CHECKPOINT_EVERY));
+  }
+
+  get checkpointEvery(): number {
+    return this.every;
   }
 
   private load(events: readonly EventOut[]) {
@@ -194,7 +240,11 @@ export class ReplayProjection {
     let t0 = Infinity;
     for (const t of this.times) if (t < t0) t0 = t;
     this.t0 = Number.isFinite(t0) ? t0 : 0;
+    let max = 0;
+    for (const t of this.times) if (Number.isFinite(t) && t - this.t0 > max) max = t - this.t0;
+    this.maxOffsetMs = max;
     this.firstErr = this.locateFirstError();
+    this.version++;
   }
 
   private locateFirstError(): number {
@@ -213,9 +263,7 @@ export class ReplayProjection {
 
   /** Recorded time from the earliest event to the latest, whatever order they are in (the scrub bar's full length). */
   get durationMs(): number {
-    let max = 0;
-    for (const t of this.times) if (Number.isFinite(t) && t - this.t0 > max) max = t - this.t0;
-    return max;
+    return this.maxOffsetMs;
   }
 
   /**
@@ -232,6 +280,7 @@ export class ReplayProjection {
     this.ctx = ctx;
     if (events === old) {
       this.firstErr = this.locateFirstError();
+      this.version++;
       return true;
     }
     if (!extends_) {
@@ -255,21 +304,33 @@ export class ReplayProjection {
     if (TOOL_CALL.test(type)) a.toolCalls++;
     if (FILE_CHANGE.has(type)) {
       const path = attrs["file.path"];
-      if (typeof path === "string") a.files.add(path);
+      // The API replaces a withheld path by a marker string and lists the key in `withheld_attributes`: that list is the
+      // contract, so every such event counts on its own (the marker would otherwise be one "file" for all of them).
+      if (typeof path === "string" && !isWithheld(e, "file.path")) a.files.add(path);
       else {
         a.files.add(`\u0000${e.event_id}`);
         a.filesApprox = true;
       }
     }
-    const cost = num(attrs["cost.estimated_usd"]);
-    if (cost != null) a.cost += cost;
     if (type === "llm.request.completed") {
-      if (cost == null) a.unpriced++;
+      if (typeof e.cost_usd === "number") {
+        // priced by the server: the engine's effective total for this call
+        a.cost += e.cost_usd;
+        if (e.cost_unpriced) a.unpriced++;
+      } else {
+        // no stored line yet: the engine's own client-side order (ADR-040), shown as approximate
+        const own = num(attrs["cost.provider_usd"]) ?? num(attrs["cost.estimated_usd"]);
+        if (own != null) {
+          a.cost += own;
+          a.unsettled++;
+        } else a.unpriced++;
+      }
       a.inTok += num(attrs["llm.input_tokens"]) ?? 0;
       a.outTok += num(attrs["llm.output_tokens"]) ?? 0;
     }
     const t = this.times[i]!;
     if (Number.isFinite(t)) a.maxOffset = Math.max(a.maxOffset, t - this.t0);
+    if (type === "policy.action.blocked") a.policyBlocked = true;
     if (type === "approval.requested") a.pendingApprovals++;
     else if (type === "approval.granted" || type === "approval.denied")
       a.pendingApprovals = Math.max(0, a.pendingApprovals - 1);
@@ -342,6 +403,11 @@ export class ReplayProjection {
     const a = this.acc;
     const index = a.applied - 1;
     const so = this.events.slice(0, a.applied);
+    // A viewer's per-event file count is replaced by the summary's exact one once the whole finished run has played.
+    const exactFiles =
+      a.filesApprox && a.applied === this.events.length && this.ctx.filesModified != null
+        ? this.ctx.filesModified
+        : null;
     return {
       index: this.events.length === 0 ? -1 : index,
       total: this.events.length,
@@ -353,17 +419,18 @@ export class ReplayProjection {
         retries: a.retries,
         modelCalls: a.modelCalls,
         toolCalls: a.toolCalls,
-        filesChanged: a.files.size,
+        filesChanged: exactFiles ?? a.files.size,
       },
-      filesApproximate: a.filesApprox,
-      costUsd: Number(a.cost.toFixed(6)),
+      filesApproximate: a.filesApprox && exactFiles == null,
+      costUsd: Number(a.cost.toFixed(9)),
       unpricedCalls: a.unpriced,
+      unsettledCalls: a.unsettled,
       inputTokens: a.inTok,
       outputTokens: a.outTok,
       elapsedMs: a.maxOffset,
       firstErrorIndex: this.firstErr,
       firstErrorReached: this.firstErr >= 0 && index >= this.firstErr,
-      statusText: statusText(a),
+      statusText: statusText(a, this.ctx.status),
       currentAgent: so[index]?.agent_id ?? null,
       openSpans: [...a.open.values()],
       finishedSpans: this.log.slice(0, a.finishedLen),

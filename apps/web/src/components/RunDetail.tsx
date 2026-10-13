@@ -9,7 +9,13 @@ import { liveStatus } from "@/lib/liveStatus";
 import { useEventDetail, useRun, useRunEvents, useRunFindings } from "@/lib/queries";
 import { useTimers } from "@/lib/useTimers";
 import { headlineKind, headlineModel, replayHeadline } from "@/lib/runHeadline";
-import { STATUS_AS_OF, replayClockSkewed, useReplay } from "@/lib/replay";
+import {
+  STATUS_AS_OF,
+  costDisplay,
+  filesDisplay,
+  replayClockSkewed,
+  useReplay,
+} from "@/lib/replay";
 import { useMedia } from "@/lib/useMedia";
 import { evidenceRows } from "@/lib/evidence";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
@@ -45,11 +51,29 @@ import "../app/run-context.css";
 import "../app/run-motion.css";
 import "../app/run-replay.css";
 
-function Metric({ label, value, tone }: { label: string; value: string; tone?: "warn" | "bad" }) {
+function Metric({
+  label,
+  value,
+  tone,
+  note,
+  hint,
+}: {
+  label: string;
+  value: string;
+  tone?: "warn" | "bad";
+  /** Why the value is not exact (replay: "3 calls unpriced"); shown under it. */
+  note?: string | null;
+  /** The same caveat for a figure with no room for a line: a tooltip and text for screen readers. */
+  hint?: string | null;
+}) {
   return (
     <div className="stat" data-tone={tone}>
       <dt>{label}</dt>
-      <dd>{value}</dd>
+      <dd title={hint ?? undefined}>
+        {value}
+        {hint && <span className="sr-only"> ({hint})</span>}
+        {note && <small>{note}</small>}
+      </dd>
     </div>
   );
 }
@@ -305,11 +329,20 @@ export function RunDetail({
 
   // ---- Replay (Phase 12): one playhead, one projection. `rs` is the state as of the playhead (null outside replay, or
   // while no event has loaded); every panel below reads it, so nothing keeps its own copy of "the state so far". ----
+  // A finished run's exact file count, for the viewer whose per-event paths are withheld (it replaces the per-event count
+  // at the last event). Not while the run is live or its summary is catching up: the last loaded event is not the last.
+  const filesModified =
+    run.data && !active && run.data.summary_state === "current"
+      ? num(run.data.summary["files_modified"])
+      : null;
+  // The inspector counts as open for Esc only while it is on screen: in replay it is hidden while the playhead has not
+  // reached its event, and a hidden dialog must not swallow Esc. Read at key time, from the render that follows.
+  const inspectorShown = useRef(false);
   const replay = useReplay({
     events,
-    ctx: { status: runStatus, firstErrorId },
+    ctx: { status: runStatus, firstErrorId, filesModified },
     eventsComplete: restComplete,
-    inspectorOpen: drawerEventId !== null || leaving !== null,
+    inspectorOpen: () => inspectorShown.current,
   });
   const rs = replay.mode && replay.state && replay.state.total > 0 ? replay.state : null;
   const shown = rs ? rs.events : events;
@@ -329,6 +362,8 @@ export function RunDetail({
   );
   const filtered = useMemo(() => filterEvents(shown, filters), [shown, filters]);
   const rows = useMemo(() => buildRows(filtered, collapsed), [filtered, collapsed]);
+  // The playhead's event is the last of the events so far; a filter that removes it leaves no row to mark.
+  const playheadHidden = !!rs && !!rs.current && filtered.at(-1)?.event_id !== rs.current.event_id;
   const agents = useMemo(() => {
     const listed = run.data ? summaryAgents(run.data.summary) : null;
     return agentTreeRows(listed ?? agentsFromEvents(events));
@@ -366,6 +401,9 @@ export function RunDetail({
   const remoteDrawer = useEventDetail(runId, drawerId && !loadedDrawerEvent ? drawerId : null);
   const drawerEvent = loadedDrawerEvent ?? remoteDrawer.data;
   const inspected = drawerEvent ?? leaving;
+  useEffect(() => {
+    inspectorShown.current = inspected != null || drawerId != null;
+  });
   const contextClosed =
     contextPref === "closed" || (contextPref === "open" && !!inspected && squeezedWindow);
   const toggleContext = () =>
@@ -470,7 +508,7 @@ export function RunDetail({
   // Esc closes the inspector first; with nothing to close it leaves replay (the transport's own Leave button, `r` and Esc
   // all end up in `replay.leave`).
   const onEscape = () => {
-    if (inspected || !replay.escape()) closeDrawer();
+    if (inspected || drawerId || !replay.escape()) closeDrawer();
   };
   // Focus: entering replay leaves focus on the Replay button (the transport is the next tab stop). Leaving by the
   // transport's Leave button unmounts the focused control, so focus returns to the Replay button instead of <body>.
@@ -607,7 +645,11 @@ export function RunDetail({
               value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))}
             />
           )}
-          <Metric label="Cost" value={formatCost(rs ? rs.costUsd : num(s["estimated_cost_usd"]))} />
+          <Metric
+            label="Cost"
+            value={rs ? costDisplay(rs).text : formatCost(num(s["estimated_cost_usd"]))}
+            note={rs ? costDisplay(rs).note : null}
+          />
           <Metric
             label="Tokens"
             value={
@@ -633,7 +675,8 @@ export function RunDetail({
           {multiAgent && <Metric label="Agents" value={formatInt(agentsSoFar ?? agents.length)} />}
           <Metric
             label="Files changed"
-            value={formatInt(rs ? rs.counts.filesChanged : num(s["files_modified"]))}
+            value={rs ? filesDisplay(rs).text : formatInt(num(s["files_modified"]))}
+            hint={rs ? filesDisplay(rs).note : null}
           />
         </dl>
       </header>
@@ -775,7 +818,7 @@ export function RunDetail({
               </button>
             </div>
           )}
-          {drawerEventId && !loadedDrawerEvent && (
+          {drawerId && !loadedDrawerEvent && (
             <p
               role={remoteDrawer.isError ? "alert" : "status"}
               className="notice"
@@ -864,7 +907,7 @@ export function RunDetail({
                     ? rs
                       ? `${formatInt(shown.length)} of ${formatInt(events.length)} events in ${formatInt(spans.length)} spans, replay`
                       : `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
-                    : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown${rs ? ", replay" : ""}`}
+                    : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown${rs ? ", replay" : ""}${playheadHidden ? ", the event at the playhead is hidden by the filters" : ""}`}
               {ev.isError && " (some events failed to load)"}
             </p>
             {view !== "evidence" && (

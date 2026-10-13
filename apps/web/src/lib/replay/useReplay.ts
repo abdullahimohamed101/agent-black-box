@@ -41,9 +41,16 @@ export type UseReplayOptions = {
   ctx: ReplayCtx;
   /** Every page of events has loaded: only then can an id in the URL be called unknown. */
   eventsComplete?: boolean;
-  /** The inspector is open: Esc closes it first (it handles its own Esc), so replay's Esc does nothing. */
-  inspectorOpen?: boolean;
-  /** Start playing when replay is entered. Reduced motion always opens paused. */
+  /**
+   * The inspector is on screen: Esc closes it first (it handles its own Esc), so replay's Esc does nothing. A function
+   * is read when the key is pressed, for a caller that learns the answer only after this hook has run (the run page hides
+   * the inspector while the playhead has not reached its event, and a hidden one must not swallow Esc).
+   */
+  inspectorOpen?: boolean | (() => boolean);
+  /**
+   * Start playing when replay is entered (default off: replay always opens paused). The run page does not set it;
+   * reduced motion is honoured here for any caller that does: it always opens paused.
+   */
   autoplay?: boolean;
   /** Attach the document keyboard map (default true). */
   keys?: boolean;
@@ -146,7 +153,7 @@ function writeUrl(id: string | null) {
 }
 
 export function useReplay(opts: UseReplayOptions): ReplayApi {
-  const { events, ctx, eventsComplete = true, inspectorOpen = false, autoplay = false } = opts;
+  const { events, ctx, eventsComplete = true, autoplay = false } = opts;
   const keys = opts.keys ?? true;
   const params = useSearchParams();
   const tParam = params?.get("t") || null;
@@ -206,11 +213,19 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
   // ctx's fields, not its identity: a caller building the object inline must not rebuild the projection each render.
   const { status } = ctx;
   const firstErrorId = ctx.firstErrorId ?? null;
+  const filesModified = ctx.filesModified ?? null;
   const checkpointEvery = opts.checkpointEvery;
-  const projection = useMemo(
-    () => new ReplayProjection(events, { status, firstErrorId }, { checkpointEvery }),
-    [events, status, firstErrorId, checkpointEvery],
+  // One projection per run page. A live run's events array is a new object on every arrival but only ever appends, and
+  // `setEvents` keeps the accumulators and checkpoints across an append, so an arrival costs one `apply` rather than a
+  // re-walk from the first event to the playhead. Anything that is not an append starts over inside `setEvents`.
+  const [projection] = useState(
+    () =>
+      new ReplayProjection(events, { status, firstErrorId, filesModified }, { checkpointEvery }),
   );
+  const projectionVersion = useMemo(() => {
+    projection.setEvents(events, { status, firstErrorId, filesModified });
+    return projection.version;
+  }, [projection, events, status, firstErrorId, filesModified]);
   const pacer = useMemo(() => new ReplayPacer(events), [events]);
   const stops: readonly Stop[] = useMemo(
     () => groupStops(events, s.groupSteps),
@@ -218,7 +233,9 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
   );
   const state = useMemo(
     () => (s.mode ? projection.advance(index) : null),
-    [s.mode, projection, index],
+    // the version: the same projection object holds new events after a live append
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [s.mode, projection, projectionVersion, index],
   );
   const firstErrorIndex = projection.firstErrorIndex;
   const durationMs = projection.durationMs;
@@ -244,10 +261,15 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
   );
 
   // Latest values for handlers that run outside render (timers, key events).
-  const live = useRef({ s, index, n, events, stops, firstErrorIndex });
+  const inspectorOpenOpt = opts.inspectorOpen;
+  const live = useRef({ s, index, n, events, stops, firstErrorIndex, inspectorOpenOpt });
   useEffect(() => {
-    live.current = { s, index, n, events, stops, firstErrorIndex };
+    live.current = { s, index, n, events, stops, firstErrorIndex, inspectorOpenOpt };
   });
+  const inspectorIsOpen = () => {
+    const v = live.current.inspectorOpenOpt;
+    return typeof v === "function" ? v() : v === true;
+  };
 
   const idAt = (i: number) => live.current.events[i]?.event_id ?? null;
 
@@ -272,7 +294,8 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
 
   const enter = useCallback(() => {
     const { n: total, events: evs, s: cur } = live.current;
-    if (cur.mode) return;
+    // Nothing to replay: the Replay button is disabled for an empty run, and the `r` key agrees with it.
+    if (cur.mode || total === 0) return;
     const reduced =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -359,15 +382,31 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
   }, []);
 
   const escape = useCallback((): boolean => {
-    if (!live.current.s.mode || inspectorOpen) return false;
+    if (!live.current.s.mode || inspectorIsOpen()) return false;
     leave();
     return true;
-  }, [inspectorOpen, leave]);
+    // `inspectorIsOpen` reads the live ref only
+  }, [leave]);
 
   // ---- playback: one chained timer per tick ----
+  // What part of the current gap has already been waited out, so that anything that restarts this effect mid-gap (a speed
+  // change, a live event arriving) keeps the wait it has done rather than starting the gap over.
+  const gapRef = useRef<{ index: number; at: number; doneBefore: number; full: number } | null>(
+    null,
+  );
   useEffect(() => {
-    if (!s.mode || !s.playing) return;
+    if (!s.mode || !s.playing) {
+      gapRef.current = null;
+      return;
+    }
     if (index >= n - 1) return; // the end; the transition below turns `playing` off
+    const full = pacer.delayBefore(index + 1, s.speed);
+    const now = Date.now();
+    const prev = gapRef.current;
+    let done = 0;
+    if (prev && prev.index === index && prev.full > 0)
+      done = Math.min(1, prev.doneBefore + (now - prev.at) / prev.full);
+    gapRef.current = { index, at: now, doneBefore: done, full };
     const id = window.setTimeout(
       () => {
         const next = index + 1;
@@ -382,7 +421,7 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
         }));
         if (atFirstError || atEnd) flushUrl(live.current.events[next]?.event_id ?? null);
       },
-      pacer.delayBefore(index + 1, s.speed),
+      full * (1 - done),
     );
     return () => window.clearTimeout(id);
   }, [s.mode, s.playing, s.speed, index, n, pacer, flushUrl]);
@@ -436,7 +475,7 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
           bumpSpeed(1);
           break;
         case "Escape":
-          if (inspectorOpen || e.repeat) return;
+          if (inspectorIsOpen() || e.repeat) return;
           leave();
           break;
       }
@@ -444,7 +483,8 @@ export function useReplay(opts: UseReplayOptions): ReplayApi {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [keys, inspectorOpen, enter, leave, togglePlay, stepBck, stepFwd, bumpSpeed]);
+    // `inspectorIsOpen` reads the live ref only
+  }, [keys, enter, leave, togglePlay, stepBck, stepFwd, bumpSpeed]);
 
   return {
     mode: s.mode,

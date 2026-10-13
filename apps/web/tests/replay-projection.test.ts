@@ -39,7 +39,7 @@ function naive(f: FixtureRun, k: number) {
         .filter((e) => /^file\.(created|modified|deleted)$/.test(e.event_type))
         .map((e) => String(e.attributes["file.path"])),
     ).size,
-    cost: Number(priced.reduce((s: number, c) => s + Number(c), 0).toFixed(6)),
+    cost: Number(priced.reduce((s: number, c) => s + Number(c), 0).toFixed(9)),
     unpriced: completed.filter((e) => e.attributes["cost.estimated_usd"] == null).length,
     inTok: completed.reduce((s, e) => s + Number(e.attributes["llm.input_tokens"] ?? 0), 0),
     outTok: completed.reduce((s, e) => s + Number(e.attributes["llm.output_tokens"] ?? 0), 0),

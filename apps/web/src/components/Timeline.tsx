@@ -228,6 +228,10 @@ export function Timeline({
               transform: `translateY(${v.start}px)`,
             };
             if (row.kind === "group") {
+              // A collapsed group stands for the events inside it, so it carries the playhead when the playhead is one of
+              // them (an expanded group's own rows are marked instead).
+              const groupHoldsCurrent =
+                currentId != null && row.collapsed && row.eventIds.includes(currentId);
               return (
                 <div
                   key={row.key}
@@ -238,6 +242,8 @@ export function Timeline({
                   aria-posinset={v.index + 1}
                   aria-setsize={rows.length}
                   className="tl-row tl-group"
+                  aria-current={groupHoldsCurrent ? "step" : undefined}
+                  data-current={groupHoldsCurrent || undefined}
                   data-selected={selected || undefined}
                   data-error={row.hasError || undefined}
                   data-after-fault={(faultIndex >= 0 && v.index > faultIndex) || undefined}

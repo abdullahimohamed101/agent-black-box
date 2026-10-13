@@ -1,7 +1,8 @@
 import type { EventOut, RunOut } from "@/lib/api/types";
 import { formatCost, formatDuration, formatRelative, num } from "./format";
+import { costDisplay } from "./replay/figures";
 import type { ReplayState } from "./replay/project";
-import { firstErrorFor, isRetry } from "./timeline";
+import { firstErrorFor, isError, isRetry } from "./timeline";
 
 /**
  * What the run page's headline says, as plain data (ADR-111, Phase 22 D4). The component only lays it out, so the words
@@ -316,13 +317,20 @@ export function headlineModel(input: {
  * is never stated, because at that moment nobody knows it yet. `live` supplies the first error's facts; `s` the figures.
  */
 export function replayHeadline(live: HeadlineModel, s: ReplayState): HeadlineModel {
-  const cost = `${formatCost(s.costUsd)} so far`;
+  // A figure the replay cannot state exactly says so: "at least $0.42 so far · 3 calls unpriced".
+  const spend = costDisplay(s);
+  const cost = join([`${spend.text} so far`, spend.note]);
   const retries = s.counts.retries;
   const f = live.failure;
   if (s.firstErrorReached && f) {
+    // A blocked run's "first error" can be the policy block itself, which is not an error event (ADR-112): say what it is.
+    const at = s.events[s.firstErrorIndex];
+    const blockedStop = at != null && !isError(at);
     return {
       kind: "failed",
-      lead: `First error at${stepText(f.step) || " the first error"}${offsetText(f)}: ${subjectLine(f)}`,
+      lead: blockedStop
+        ? `Blocked at${stepText(f.step) || " the blocking event"}${offsetText(f)}: ${subjectLine(f)}`
+        : `First error at${stepText(f.step) || " the first error"}${offsetText(f)}: ${subjectLine(f)}`,
       detail: join([retriesText(retries), cost]),
       pending: false,
       failure: f,
