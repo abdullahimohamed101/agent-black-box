@@ -25,7 +25,7 @@ export function DetectorsOn({ projectId, label }: { projectId: string | null; la
       onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
     >
       <summary>{label ?? "What was checked"}</summary>
-      {q.isPending ? (
+      {!open ? null : q.isPending ? (
         <Loading label="Loading detectors" />
       ) : q.isError ? (
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />

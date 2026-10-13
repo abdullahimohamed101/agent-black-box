@@ -115,6 +115,7 @@ describe("security on the run page (Phase 13 D5)", () => {
     const box = await screen.findByTestId("security-clean");
     expect(box).toHaveTextContent("Nothing suspicious found");
     expect(calls.some((c) => c.includes("/security/detectors"))).toBe(false); // fetched only when opened
+    expect(box.querySelector(".spinner")).toBeNull(); // a closed disclosure must not leave a spinner running
     await user.click(within(box).getByText("Detectors that are on"));
     expect(await within(box).findByText("Secret file read")).toBeInTheDocument();
   });
