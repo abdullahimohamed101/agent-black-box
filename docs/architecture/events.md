@@ -90,8 +90,15 @@ events. Metadata for every role: closed vocabularies, ids and the policy author'
 | `policy.decision` | string | `allow`, `deny` or `require_approval` (required on `policy.decision`) |
 | `policy.capability` | string | the capability that was asked about, such as `filesystem.read` or `tool.github` |
 | `policy.reason` | string | fixed text: the matching rule's description, `Matched rule <id>.`, or one of two constant sentences; never built from the action |
-| `approval.id`, `approval.capability` | string | the approval request (Phase 14 step 2) |
+| `approval.id`, `approval.capability` | string | the approval request (`apr_...`) and the capability it concerns |
 | `approval.state` | string | `REQUESTED`, `APPROVED`, `DENIED`, `EXPIRED` or `CANCELLED` |
+
+**Who writes them.** `policy.decision`, `policy.action.blocked` and every `approval.*` event of a decision are written by the **server** (ADR-141), in the
+transaction of the state change they record, with `sdk.name = "abb-policy-service"` (a name ingestion refuses from clients) and no `sequence` (the server is a
+second emitter of the run, ADR-070, so such a run is ordered by time). Their ids are derived from the approval and the transition, so a redelivery is an
+idempotent duplicate and each transition has one event. An SDK may still send its own events of these types; nothing trusts them for a decision, and the run
+page shows who wrote an event. `approval.consumed` is the approval being spent for exactly one action; `approval.expired` and `approval.cancelled` end a request
+by time or by the agent's withdrawal (a run leaves "waiting for approval" on any of `granted`, `denied`, `expired` or `cancelled`).
 
 ## Event families
 
@@ -108,7 +115,7 @@ events. Metadata for every role: closed vocabularies, ids and the policy author'
 | network | `http.request` `http.response` |
 | reliability | `retry.attempted` `timeout.occurred` `loop.detected` `rate_limit.hit` |
 | security | `policy.warning` `policy.action.blocked` `policy.decision` (requires `policy.decision`) `secret.detected` |
-| approval | `approval.requested` `.granted` `.denied` (require `approval.id`) |
+| approval | `approval.requested` `.granted` `.denied` `.consumed` `.expired` `.cancelled` (require `approval.id`; the last three are Phase 14 step 2, ADR-141) |
 | span | `span.started` `.completed` `.failed` for custom spans (`span.name`, `span.kind`) |
 | custom | `custom.<name>`: anything an application wants to record |
 

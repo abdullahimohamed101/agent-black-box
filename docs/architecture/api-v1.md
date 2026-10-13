@@ -15,10 +15,10 @@ an optional project:
 
 | Scope | Allows |
 | --- | --- |
-| `events:write` | `POST /v1/events`, `POST /v1/events/batch`, `POST /v1/runs` (needs a project-bound key) |
+| `events:write` | `POST /v1/events`, `POST /v1/events/batch`, `POST /v1/runs` (needs a project-bound key); also the agent-side policy routes below |
 | `runs:read` | every run, artifact, analytics and pricing `GET` (it implies the `payload.read` and `artifact.read` actions, so artifact content stays readable) |
 | `artifacts:write` | `PUT /v1/artifacts/{id}` |
-| `policy:check` | reserved (Phase 14) |
+| `policy:check` | the agent-side policy routes only (ask, wait, consume, withdraw, fail-mode table; a project-bound key); `events:write` grants the same, so an SDK key needs no change |
 
 Every key also reads its own workspace row and its project(s). Keys never receive member, invitation, key-management or audit actions. A
 **project-bound** key only ever sees its own project. A **workspace-wide** key (no project) can read every project of its workspace but cannot
@@ -110,6 +110,13 @@ Every non-2xx response, from every route, has this shape and an `X-Request-ID` h
 | `QUERY_INVALID` | 422 | the search text `q` could not be parsed (`details.position`, `details.reason`) |
 | `SEARCH_BUSY` / `SEARCH_TIMEOUT` | 503 | all search permits of this process are in use / the search exceeded its time budget; retryable |
 | `RATE_LIMITED` | 429 | retryable; honour `Retry-After` |
+| `TOO_MANY_WAITERS` / `TOO_MANY_OPEN_APPROVALS` | 429 | too many long polls (workspace or process) / too many requests waiting for a decision; retryable (Phase 14) |
+| `APPROVAL_NOT_FOUND` | 404 | absent, malformed, or not visible to this credential (another workspace, project or key): one body for all |
+| `APPROVAL_NOT_APPROVED`, `APPROVAL_EXPIRED`, `APPROVAL_CONSUMED`, `APPROVAL_INTENT_MISMATCH` | 409 | consuming an approval; fixed codes that echo nothing |
+| `APPROVAL_NOT_REQUESTED` | 409 | the approval is no longer waiting (`details.state`) |
+| `APPROVER_ROLE_REQUIRED`, `SELF_APPROVAL_FORBIDDEN` | 403 | the member's role does not satisfy the rule; the request was made with their own key |
+| `INTENT_INVALID` | 422 | the action intent cannot be canonicalised (`details.reason`) |
+| `POLICY_UNAVAILABLE` | 503 | the stored policy cannot be read; retryable |
 | `DEPENDENCY_UNAVAILABLE` | 503 | database trouble; retryable; `Retry-After: 2` |
 | `INTERNAL_ERROR` | 500 | a bug; no internals are exposed, the stack trace is in the server log |
 
@@ -268,6 +275,44 @@ cookie write needs the web app's `Origin`.
   ADR-140 (`shell.execute`, `filesystem.read`, `filesystem.write`, `github.push`, `tool.<name>`). `504 POLICY_DRY_RUN_TIMEOUT` if the read exceeds 8 s.
 - Limits per workspace and API process: 30 publishes, 120 validations and 20 dry runs a minute (`ABB_POLICY_WRITES_PER_MINUTE`, `ABB_POLICY_VALIDATIONS_PER_MINUTE`,
   `ABB_POLICY_DRY_RUNS_PER_MINUTE`); `429 RATE_LIMITED` with `Retry-After`.
+
+### Decisions and approvals (Phase 14 step 2, ADR-141)
+
+An agent asks the policy service whether an action may happen; if a rule needs a person, an **approval** is created, a signed-in approver decides, and the agent spends the
+approval for exactly that action once. Enforcement is cooperative (it governs agents that ask). Two kinds of caller, never mixed: **agent routes** need an API key bound to a
+project with scope `policy:check` or `events:write` (a session is 403; a workspace-wide key is `PROJECT_KEY_REQUIRED`); **person routes** need a session whose role holds
+`approval.read` / `approval.decide` (owner, admin, developer, security; no key scope grants them; viewer and billing are 403). Agent routes only ever see the approvals **their own key**
+asked for: any other id is the same `404 APPROVAL_NOT_FOUND`. Request bodies are JSON, at most 64 KiB, unknown fields are refused, and a validation error never echoes a value.
+
+**Agent routes**
+
+- `POST /v1/policy/decide` `{run_id, agent_id, capability, resource?, risk_class? (R0-R4), arguments? (object), trace_id?, idempotency_key?}` -> `200 {decision, policy_id, policy_version,
+  reason, on_error, approval_id?, approval_state?, expires_at?, on_expiry?}`. `decision` is `allow`, `deny` or `require_approval`; `policy_id` is the matching rule (null: the default); `reason` is the
+  policy author's own text; `on_error` is `open` or `closed` (the rule's, else `closed` for R3/R4 and `open` for R0-R2 and unclassified). `arguments` hold JSON strings, integers, booleans, null, lists and
+  objects (8 deep, 512 values, strings 4,096 characters, 24 KiB canonical); a float is `422 INTENT_INVALID` (`details.reason`: `float_not_allowed`, `too_deep`, `string_too_long`, ...). Top-level scalar
+  arguments are the attributes a rule's `attributes` match. `trace_id` and `idempotency_key` are not part of the intent hash. The server writes the `policy.decision`, `policy.action.blocked` and
+  `approval.requested` events itself. The same intent asked again while its approval is open returns that approval (no duplicate). There is no hash in any response.
+- `GET /v1/approvals/{id}/wait[?timeout=0..25]` -> `{approval_id, state, expires_at, on_expiry, policy_id, policy_version, consumed}`. A long poll: at once if the state is no longer `REQUESTED`, else at the first change or after
+  `timeout` seconds. `429 TOO_MANY_WAITERS` beyond 20 waiters per workspace or 200 per process (`ABB_APPROVAL_WAITERS_PER_WORKSPACE`, `..._PER_PROCESS`); no database connection is held while waiting.
+- `POST /v1/approvals/{id}/consume` `{intent: <the intent as sent to decide>}` -> `200 {approval_id, consumed_at}` once. Refusals (all 409 but the first, none echoes the intent): `404 APPROVAL_NOT_FOUND`,
+  `APPROVAL_NOT_APPROVED`, `APPROVAL_EXPIRED`, `APPROVAL_CONSUMED`, `APPROVAL_INTENT_MISMATCH`. A lost response cannot be retried (the second call is `APPROVAL_CONSUMED`).
+- `DELETE /v1/approvals/{id}` -> `204`: withdraw a request that is still waiting (`409 APPROVAL_NOT_REQUESTED` otherwise).
+- `GET /v1/policies/fail-modes[?project_id=]` (also `policy.read` roles) -> `{project_id, source, policy_version, rules[{rule_id, capability, resource, risk_classes, has_attribute_conditions, on_error}], defaults}`:
+  the rules that set `on_error` explicitly, plus `R0`..`R4` and `unclassified` defaults, for an SDK to cache at startup. Approximate by design (ADR-141 point 9).
+
+**Person routes** (`X-ABB-Workspace`; a cookie write needs the web app's `Origin`)
+
+- `GET /v1/approvals[?state=pending|decided|all&project_id=&limit=1..100&cursor=]` -> `{items[], next_cursor}`; `GET /v1/approvals/pending-count` -> `{count}`; `GET /v1/approvals/{id}` -> the detail
+  (`approval.read`). An item is `{id, state, project_id, run_id, agent_id, capability, resource, risk_class, policy_id, policy_version, approver_role, requested_at, expires_at, seconds_left, decided_at, decided_by, consumed}`;
+  the detail adds `arguments`, `content_withheld`, `redactions`, `allow_self_approval`, `on_expiry`, `comment`, `closed_at`, `consumed_at`. `resource` and `arguments` are secret-scrubbed (null when the scanner could not clear them); there is no hash.
+- `POST /v1/approvals/{id}/decision` `{decision: "approve"|"deny", comment? (<= 1000 characters)}` (`approval.decide`) -> the detail. `403 APPROVER_ROLE_REQUIRED` when the role does not satisfy the rule's `approver_role`
+  (unset: owner or admin; `owner`: owner; `admin`: owner, admin; `security`: owner, admin, security; `developer`: owner, admin, security, developer); `403 SELF_APPROVAL_FORBIDDEN` for the person whose key made the request unless
+  the rule has `allow_self_approval`; `409 APPROVAL_NOT_REQUESTED` (`details.state`) for the loser of any race and for an approval already decided, withdrawn or expired. One transaction holds the transition, the
+  `approval.granted`/`approval.denied` event and the audit row `approval.decide` (`details`: `approval_id`, `decision`, `approver_role`, `policy_id`).
+
+Every state change is an event and an audit row: `approval.consume` and `approval.cancel` (actor: the key), `approval.expire` (actor kind `system`). Plain allow decisions are events only. Decision calls (decide, wait start, consume,
+withdraw) share a per-key and a per-workspace budget (`ABB_POLICY_DECIDE_PER_MINUTE_KEY`=1200, `..._WORKSPACE`=6000; `429 RATE_LIMITED` with `Retry-After`); at most 100 requests per key and 1,000 per workspace may be waiting
+(`429 TOO_MANY_OPEN_APPROVALS`).
 
 ### Search (`GET /v1/runs?q=`)
 

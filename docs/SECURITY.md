@@ -66,7 +66,16 @@ ingestion edge | control plane | database/object storage | human approvers.
   `ABB_STREAM_REAUTH_SECONDS` (30): a revoked or expired key, a revoked session or a removed or demoted member ends it with `STREAM_UNAUTHORIZED`
   (KI-033, tested over a real socket and in the browser); the cap of 10 is per person (`user:<id>`) or key, not per web server.
 - Rendering: payloads displayed as text; sanitize any markup; no `dangerouslySetInnerHTML` on trace data.
-- Approvals bound to the exact action hash, single use, atomic consume. (Phase 14)
+- Approvals (implemented, Phase 14 step 2, ADR-141): an approval authorizes one intent, once. The intent hash is SHA-256 over a canonical, domain-separated JSON of
+  workspace, project, run, agent, capability, resource, risk class and arguments as the SDK sent them (NFC, sorted, integers only; golden vectors shared with the SDK), recomputed from the presented
+  intent at consume, compared in constant time and again in the `UPDATE`; it is never returned, logged or put in an event. Only scrubbed forms are stored or shown, and content that cannot be
+  scanned is dropped, not stored. The state machine (`REQUESTED` to `APPROVED`/`DENIED`/`EXPIRED`/`CANCELLED`; an unspent `APPROVED` may be spent once or expire) is enforced by CHECKs and a trigger as
+  well as by single-statement transitions, so races have one winner and the application role cannot rewrite, un-spend, delete or truncate an approval; the trigger guards integrity, not
+  authorization (a holder of the runtime credential can make a legal transition by hand: each is an event and an audit row). Only a signed-in person whose role satisfies the rule's
+  `approver_role` and who holds `payload.read` decides; no API key can; the person whose key made the request cannot decide it unless the rule allows. Approvals are bound to the asking key, project
+  and workspace; every other id is one 404. The server writes the decision events and reserves its emitter name. Decisions, waits and open requests are rate-limited and capped. Tests attack replay
+  (other command/resource/argument/agent/run/risk class, second use, expiry, before approval, cross-workspace), 50-way races, direct SQL as the runtime role, role/self-approval matrices, content leaks and floods
+  (`apps/api/tests/approvals/`, `tests/authz/`). Known limits: KI-142 to KI-147.
 - Rate limits, size limits, bounded queues against telemetry flooding. (Phases 2, 19)
 - Dependencies: lockfiles, scheduled vulnerability scans, minimal SDK deps.
 - Database roles (KI-020, INV-1): migrations run as the database owner; the API, worker and CLI run as `abb_runtime`
