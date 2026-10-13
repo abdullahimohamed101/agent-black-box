@@ -1,5 +1,8 @@
 """Expiry: the timer job, the lazy sweeps and what an expired approval is (gate 4)."""
 
+from datetime import UTC, datetime
+
+import pytest
 from sqlalchemy import text
 
 from tests.api_fixtures import Api
@@ -67,6 +70,33 @@ async def test_the_timer_expires_waiting_and_unused_approved_requests_only(api: 
     for run in (waiting_body["run_id"], unused_body["run_id"]):
         assert len(await events_of(api, run, "approval.expired")) == 1
     assert await events_of(api, spent_body["run_id"], "approval.expired") == []
+
+
+async def test_the_timer_stamps_the_application_clock_not_the_databases(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found by `policy-e2e`: the job read `now()` from the database, which in a VM or container
+    runs ahead of the host. The approval was then closed (and `approval.expired` stamped) by a
+    clock the agent and the API do not share, so it could sort after the end of the agent's run."""
+    await publish(api)
+    body, approval_id = await ask(api)
+    stamp = datetime(2031, 3, 4, 5, 6, 7, tzinfo=UTC)  # nothing like the database's own time
+    monkeypatch.setattr("abb_api.approvals.job.system_clock", lambda: stamp, raising=False)
+    await fire_the_timers(api)
+    row = await approval_row(api, approval_id)
+    assert row["state"] == "EXPIRED" and row["closed_at"] == stamp
+    assert len(await events_of(api, body["run_id"], "approval.expired")) == 1
+    async with api.engine.connect() as conn:
+        stamped = (
+            (
+                await conn.execute(
+                    text("SELECT occurred_at FROM events WHERE event_type = 'approval.expired'")
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert stamped == [stamp]
 
 
 async def test_running_the_timer_twice_changes_nothing(api: Api) -> None:
