@@ -123,6 +123,14 @@ async def test_append_only_tables_are_exactly_the_declared_ones_and_the_rest_are
         assert (row.can_update, row.can_delete, row.can_truncate) == (False, False, False), name
         assert (row.can_select, row.can_insert) == (True, True), name
     deletes_blocked = {"runs", "agents", "projects", "workspaces"}  # parents of events (0008)
+    # Approvals (0093) are updated only through their guard trigger, and never deleted or
+    # truncated by the application; tests/approvals/test_state_machine_db.py exercises the trigger.
+    approvals = privileges.pop("approvals")
+    assert (approvals.can_update, approvals.can_delete, approvals.can_truncate) == (
+        True,
+        False,
+        False,
+    )
     for name, row in privileges.items():
         assert row.can_update and row.can_delete == (name not in deletes_blocked), name
 

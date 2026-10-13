@@ -204,7 +204,9 @@ audit_log = Table(
     Column("request_id", Text),
     _ts("occurred_at", nullable=False, default_now=True),
     PrimaryKeyConstraint("workspace_id", "id"),
-    CheckConstraint("actor_kind IN ('user', 'api_key', 'cli')", name="ck_audit_actor_kind"),
+    CheckConstraint(
+        "actor_kind IN ('user', 'api_key', 'cli', 'system')", name="ck_audit_actor_kind"
+    ),
     CheckConstraint("outcome IN ('allowed', 'denied')", name="ck_audit_outcome"),
     CheckConstraint("jsonb_typeof(details) = 'object'", name="ck_audit_details_object"),
     CheckConstraint("pg_column_size(details) < 8192", name="ck_audit_details_size"),
@@ -1063,4 +1065,111 @@ policy_versions = Table(
         unique=True,
         postgresql_where=text("project_id IS NOT NULL"),
     ),
+)
+
+
+# Approvals (Phase 14 step 2, ADR-141, migration 0093). The requested intent is immutable and the
+# state machine is enforced by CHECKs and a BEFORE UPDATE trigger (`approvals_guard`, in the
+# migration); the runtime role cannot DELETE or TRUNCATE. `*_scrubbed` columns hold only text that
+# passed the Phase 13 scanner; `intent_hash` is SHA-256 of the unscrubbed canonical intent and is
+# never returned or logged.
+APPROVAL_STATES = ("REQUESTED", "APPROVED", "DENIED", "EXPIRED", "CANCELLED")
+_OPEN = "state = 'REQUESTED' OR (state = 'APPROVED' AND consumed_at IS NULL)"
+approvals = Table(
+    "approvals",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("agent_id", Text, nullable=False),
+    Column("capability", Text, nullable=False),
+    Column("resource_scrubbed", Text),
+    Column("risk_class", Text),
+    Column("arguments_scrubbed", JSONB(none_as_null=True)),
+    Column("scrub_dropped", Boolean, nullable=False, server_default=text("false")),
+    Column("scrub_count", Integer, nullable=False, server_default=text("0")),
+    Column("intent_hash", Text, nullable=False),
+    Column("policy_rule_id", Text, nullable=False),
+    Column("policy_version", Integer, nullable=False),
+    Column("approver_role", Text),
+    Column("allow_self_approval", Boolean, nullable=False),
+    Column("on_expiry", Text, nullable=False),
+    _ts("requested_at", nullable=False),
+    _ts("expires_at", nullable=False),
+    Column("requested_by_key_id", Text, nullable=False),
+    Column("requested_by_user_id", UUID(as_uuid=True), ForeignKey("users.id")),
+    Column("state", Text, nullable=False),
+    Column("decided_by_user_id", UUID(as_uuid=True), ForeignKey("users.id")),
+    _ts("decided_at"),
+    _ts("closed_at"),
+    Column("decision_comment", Text),
+    _ts("consumed_at"),
+    Column("consumed_run_id", UUID(as_uuid=True)),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="RESTRICT",
+    ),
+    CheckConstraint(_in("state", APPROVAL_STATES), name="ck_approvals_state"),
+    CheckConstraint(
+        "(state = 'REQUESTED' AND decided_at IS NULL AND decided_by_user_id IS NULL "
+        "AND closed_at IS NULL AND consumed_at IS NULL) "
+        "OR (state IN ('APPROVED', 'DENIED') AND decided_at IS NOT NULL "
+        "AND decided_by_user_id IS NOT NULL AND closed_at IS NULL) "
+        "OR (state = 'CANCELLED' AND closed_at IS NOT NULL AND decided_at IS NULL "
+        "AND decided_by_user_id IS NULL AND consumed_at IS NULL) "
+        "OR (state = 'EXPIRED' AND closed_at IS NOT NULL "
+        "AND (decided_at IS NULL) = (decided_by_user_id IS NULL) AND consumed_at IS NULL)",
+        name="ck_approvals_shape",
+    ),
+    CheckConstraint(
+        "(consumed_at IS NULL) = (consumed_run_id IS NULL) "
+        "AND (consumed_at IS NULL OR state = 'APPROVED')",
+        name="ck_approvals_consumed",
+    ),
+    CheckConstraint("intent_hash ~ '^[0-9a-f]{64}$'", name="ck_approvals_intent_hash"),
+    CheckConstraint("expires_at > requested_at", name="ck_approvals_expiry"),
+    CheckConstraint(
+        "approver_role IS NULL OR approver_role IN ('OWNER', 'ADMIN', 'DEVELOPER', 'SECURITY')",
+        name="ck_approvals_approver_role",
+    ),
+    CheckConstraint("on_expiry IN ('deny', 'allow')", name="ck_approvals_on_expiry"),
+    CheckConstraint(
+        "risk_class IS NULL OR risk_class IN ('R0', 'R1', 'R2', 'R3', 'R4')",
+        name="ck_approvals_risk_class",
+    ),
+    CheckConstraint(
+        "char_length(capability) <= 128 AND char_length(agent_id) <= 64 "
+        "AND char_length(policy_rule_id) <= 64 AND char_length(requested_by_key_id) <= 128 "
+        "AND (resource_scrubbed IS NULL OR char_length(resource_scrubbed) <= 4096) "
+        "AND (decision_comment IS NULL OR char_length(decision_comment) <= 1000)",
+        name="ck_approvals_text_sizes",
+    ),
+    CheckConstraint(
+        "arguments_scrubbed IS NULL OR (jsonb_typeof(arguments_scrubbed) = 'object' "
+        "AND pg_column_size(arguments_scrubbed) < 65536)",
+        name="ck_approvals_arguments",
+    ),
+    CheckConstraint("scrub_count >= 0 AND policy_version >= 0", name="ck_approvals_counts"),
+    Index(
+        "ix_approvals_pending",
+        "workspace_id",
+        "requested_at",
+        "id",
+        postgresql_where=text("state = 'REQUESTED'"),
+    ),
+    Index("ix_approvals_listing", "workspace_id", text("requested_at DESC"), text("id DESC")),
+    Index("ix_approvals_expiry", "workspace_id", "expires_at", postgresql_where=text(_OPEN)),
+    Index(
+        "uq_approvals_open_intent",
+        "workspace_id",
+        "run_id",
+        "requested_by_key_id",
+        "intent_hash",
+        unique=True,
+        postgresql_where=text(_OPEN),
+    ),
+    Index("ix_approvals_run", "workspace_id", "run_id"),
 )

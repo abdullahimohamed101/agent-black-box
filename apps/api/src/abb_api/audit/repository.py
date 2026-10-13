@@ -22,7 +22,7 @@ from abb_api.tenancy import TenantContext
 
 logger = logging.getLogger(__name__)
 
-ActorKind = Literal["user", "api_key", "cli"]
+ActorKind = Literal["user", "api_key", "cli", "system"]
 Outcome = Literal["allowed", "denied"]
 
 MAX_DETAIL_VALUE_LENGTH = 200
