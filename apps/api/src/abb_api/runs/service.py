@@ -33,6 +33,7 @@ from abb_api.runs.schemas import (
     RunFindingsBadge,
     RunOut,
     RunPage,
+    RunSecurityBadge,
     SpanOut,
     SpanPage,
 )
@@ -95,6 +96,16 @@ def _badge(badge: Badge | None) -> RunFindingsBadge:
     )
 
 
+def _security_badge(badge: Badge | None) -> RunSecurityBadge:
+    if badge is None:
+        return RunSecurityBadge(count=0, max_severity=None, state="none")
+    return RunSecurityBadge(
+        count=badge.security_count,
+        max_severity=badge.security_max_severity,  # type: ignore[arg-type]
+        state="outdated" if badge.detectors_version < DETECTORS_VERSION else "current",
+    )
+
+
 def _first_error(summary: dict[str, Any]) -> FirstErrorOut | None:
     event_id = summary.get("first_error_event_id")
     if not isinstance(event_id, str):
@@ -113,6 +124,7 @@ def _run_out(
     record: RunRecord,
     state: str,
     badge: RunFindingsBadge | None = None,
+    security: RunSecurityBadge | None = None,
     *,
     with_agents: bool = True,
     search: CompiledSearch | None = None,
@@ -140,6 +152,7 @@ def _run_out(
         created_at=record.created_at,
         updated_at=record.updated_at,
         findings=badge,
+        security_findings=security,
         first_error=_first_error(summary),
         matched=matched_out(search, record.search) if search is not None else None,
     )
@@ -326,7 +339,12 @@ class RunService:
         return RunPage(
             items=[
                 _run_out(
-                    r, states[r.id], _badge(badges.get(r.id)), with_agents=False, search=compiled
+                    r,
+                    states[r.id],
+                    _badge(badges.get(r.id)),
+                    _security_badge(badges.get(r.id)),
+                    with_agents=False,
+                    search=compiled,
                 )
                 for r in page
             ],
@@ -362,7 +380,12 @@ class RunService:
                 [record.id]
             )
             badges = await FindingsRepository(conn, principal.tenant).badges([record.id])
-        return _run_out(record, states[record.id], _badge(badges.get(record.id)))
+        return _run_out(
+            record,
+            states[record.id],
+            _badge(badges.get(record.id)),
+            _security_badge(badges.get(record.id)),
+        )
 
     async def list_events(
         self,

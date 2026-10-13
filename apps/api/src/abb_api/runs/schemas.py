@@ -56,6 +56,17 @@ class RunFindingsBadge(BaseModel):
     )
 
 
+class RunSecurityBadge(BaseModel):
+    """Security findings of the run (Phase 13): a count and the worst severity, nothing about what
+    they are about. The full list is `GET .../findings` (category `security`)."""
+
+    count: int
+    max_severity: Literal["info", "warning", "medium", "high", "critical"] | None
+    state: Literal["none", "current", "outdated"] = Field(
+        description="`none`: not analysed yet; `outdated`: detector rules changed since."
+    )
+
+
 class FirstErrorOut(BaseModel):
     """What the run's first error cost it (ADR-112). Metadata only: ids, counts, seconds, USD.
 
@@ -109,6 +120,10 @@ class RunOut(BaseModel):
         description=(
             "Null when the run has no first error or its summary predates `summary_version` 6."
         ),
+    )
+    security_findings: RunSecurityBadge | None = Field(
+        default=None,
+        description="Security findings summary (Phase 13); null when the response omits it.",
     )
     # Appended after the existing fields (Phase 16). After Phase 10's `findings`.
     matched: MatchedOut | None = Field(

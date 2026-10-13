@@ -173,6 +173,19 @@ def _create_project(side: Side, overrides: dict[str, str]) -> RequestSpec:
 JSON = {"content-type": "application/json"}
 
 
+def _security_settings(method: str) -> Builder:
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        project = overrides.get("project_id", side.project_id)
+        content = json.dumps({"muted_detectors": ["sec.risky_git"]}).encode()
+        return RequestSpec(
+            method, f"/v1/projects/{project}/security-settings",
+            content=content if method == "PUT" else None,
+            headers=JSON if method == "PUT" else {},
+        )  # fmt: skip
+
+    return build
+
+
 def _target(
     method: str, prefix: str, param: str, kind: str, body: dict[str, str] | None
 ) -> Builder:
@@ -306,6 +319,22 @@ CASES: dict[tuple[str, str], RouteCase] = {
         RouteCase(
             "GET", "/v1/runs/{run_id}/stream", actions.RUN_READ,
             _get("/v1/runs/{run_id}/stream"), 200, ("run_id",), transport="socket",
+        ),
+        RouteCase(
+            "GET", "/v1/security/findings", actions.RUN_READ, _get("/v1/security/findings"), 200,
+            ("project_id",),
+        ),
+        RouteCase(
+            "GET", "/v1/security/detectors", actions.RUN_READ, _get("/v1/security/detectors"), 200,
+            ("project_id",),
+        ),
+        RouteCase(
+            "GET", "/v1/projects/{project_id}/security-settings", actions.PROJECT_WRITE,
+            _security_settings("GET"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "PUT", "/v1/projects/{project_id}/security-settings", actions.PROJECT_WRITE,
+            _security_settings("PUT"), 200, ("project_id",), probe_actors=ADMINS,
         ),
         RouteCase("GET", "/v1/projects", actions.PROJECT_READ, _list_projects, 200),
         RouteCase("POST", "/v1/projects", actions.PROJECT_WRITE, _create_project, 201),

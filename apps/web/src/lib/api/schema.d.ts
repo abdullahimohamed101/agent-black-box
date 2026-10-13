@@ -721,6 +721,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/security-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a project's security settings
+         * @description Capture mode, muted detectors and destination allowlist. Owners and admins only.
+         */
+        get: operations["get_security_settings_v1_projects__project_id__security_settings_get"];
+        /**
+         * Change a project's security settings
+         * @description Fields left out stay as they are; a list given replaces the stored list. Owners and admins only. Every change is audit-logged (`security.settings.update`). Mutes and allowlist entries apply to a run when it is next analysed (`rebuild-findings`); the capture mode applies to the next accepted batch.
+         */
+        put: operations["put_security_settings_v1_projects__project_id__security_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runs": {
         parameters: {
             query?: never;
@@ -931,6 +955,46 @@ export interface paths {
          * @description A person's verdict against a `human` evaluator: terminal at insert, never edited (a correction is a newer row). The label must be one of the evaluator's `allowed_labels`. At most 50 verdicts per run. Audited without the explanation.
          */
         post: operations["record_verdict_v1_runs__run_id__verdicts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/security/detectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the security detectors
+         * @description Id, title, fixed description, severities and rule version of each detector. With `project_id`, also whether it is muted and whether it can report for that project (the destination detector needs an allowlist).
+         */
+        get: operations["list_security_detectors_v1_security_detectors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/security/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List security findings across the workspace
+         * @description Newest run first (`run_started_at`), keyset-paged. Every role that may read runs sees the same rows: a finding states a category, severity, count and event links, never a path, command, host or secret. Filters combine with AND; `facets` count under the other filters. A project-bound key sees only its project.
+         */
+        get: operations["list_security_findings_v1_security_findings_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1400,6 +1464,46 @@ export interface components {
              * @description Shown once. Store it now; the server keeps only a hash.
              */
             token: string;
+        };
+        /** DetectorList */
+        DetectorList: {
+            /** Items */
+            items: components["schemas"]["DetectorOut"][];
+        };
+        /** DetectorOut */
+        DetectorOut: {
+            /**
+             * Active
+             * @description Whether it can report for the project: not muted and, for the destination detector, an allowlist exists. Null when no project was named and it depends on one.
+             */
+            active: boolean | null;
+            /**
+             * Description
+             * @description What the detector looks for, in fixed words.
+             */
+            description: string;
+            /**
+             * Id
+             * @description `sec.<name>`: the id a project can mute.
+             */
+            id: string;
+            /**
+             * Muted
+             * @description Muted for the project asked about (false without one).
+             */
+            muted: boolean;
+            /**
+             * Severities
+             * @description Severities it reports, ascending.
+             */
+            severities: ("info" | "warning" | "medium" | "high" | "critical")[];
+            /** Title */
+            title: string;
+            /**
+             * Version
+             * @description The rule version (`x.y.z`) findings record.
+             */
+            version: string;
         };
         /** DimensionOut */
         DimensionOut: {
@@ -1957,6 +2061,18 @@ export interface components {
             /** Variant Count */
             variant_count: number;
         };
+        /** FacetValue */
+        FacetValue: {
+            /** Count */
+            count: number;
+            /**
+             * Label
+             * @description A project's name; null for severities and detectors.
+             */
+            label: string | null;
+            /** Value */
+            value: string;
+        };
         /** FacetValueOut */
         FacetValueOut: {
             /** Count */
@@ -2052,6 +2168,12 @@ export interface components {
         };
         /** FindingOut */
         FindingOut: {
+            /**
+             * Category
+             * @description `security` for the Phase 13 detectors (ids `sec.*`: fixed wording, `evidence.rule` states the rule that matched, no captured content); `reliability` otherwise.
+             * @enum {string}
+             */
+            category: "reliability" | "security";
             /** Confidence */
             confidence: number;
             /**
@@ -2096,7 +2218,7 @@ export interface components {
              * Severity
              * @enum {string}
              */
-            severity: "info" | "warning" | "critical";
+            severity: "info" | "warning" | "medium" | "high" | "critical";
             /** Start Event Id */
             start_event_id: string | null;
             /**
@@ -2764,6 +2886,8 @@ export interface components {
             ordering_mode: "sequence" | "time";
             /** Project Id */
             project_id: string;
+            /** @description Security findings summary (Phase 13); null when the response omits it. */
+            security_findings?: components["schemas"]["RunSecurityBadge"] | null;
             /**
              * Started At
              * Format: date-time
@@ -2811,12 +2935,151 @@ export interface components {
             next_cursor: string | null;
             query?: components["schemas"]["QueryOut"] | null;
         };
+        /**
+         * RunSecurityBadge
+         * @description Security findings of the run (Phase 13): a count and the worst severity, nothing about what
+         *     they are about. The full list is `GET .../findings` (category `security`).
+         */
+        RunSecurityBadge: {
+            /** Count */
+            count: number;
+            /** Max Severity */
+            max_severity: ("info" | "warning" | "medium" | "high" | "critical") | null;
+            /**
+             * State
+             * @description `none`: not analysed yet; `outdated`: detector rules changed since.
+             * @enum {string}
+             */
+            state: "none" | "current" | "outdated";
+        };
         /** ScoreOut */
         ScoreOut: {
             /** Label */
             label: string | null;
             /** Score */
             score: number | null;
+        };
+        /** SecurityFacets */
+        SecurityFacets: {
+            /** Detector */
+            detector: components["schemas"]["FacetValue"][];
+            /** Project */
+            project: components["schemas"]["FacetValue"][];
+            /** Severity */
+            severity: components["schemas"]["FacetValue"][];
+        };
+        /** SecurityFindingOut */
+        SecurityFindingOut: {
+            /**
+             * Count
+             * @description Events (and artifacts) that matched.
+             */
+            count: number | null;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Detector */
+            detector: string;
+            /** Detector Version */
+            detector_version: string;
+            /** Evidence Event Ids */
+            evidence_event_ids: string[];
+            /** Finding Type */
+            finding_type: string;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "probable";
+            /**
+             * Message
+             * @description The detector's fixed sentence; never any captured content.
+             */
+            message: string;
+            /** Project Id */
+            project_id: string;
+            /** Project Name */
+            project_name: string;
+            /** Project Slug */
+            project_slug: string;
+            /**
+             * Rule
+             * @description The rule that matched, in words.
+             */
+            rule: string | null;
+            /** Run Id */
+            run_id: string;
+            /** Run Name */
+            run_name: string | null;
+            /**
+             * Run Started At
+             * Format: date-time
+             */
+            run_started_at: string;
+            /** Run Status */
+            run_status: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "medium" | "high" | "critical";
+            /** Start Event Id */
+            start_event_id: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SecurityFindingPage */
+        SecurityFindingPage: {
+            /** @description Counts under the other filters, so a chosen value keeps its siblings. */
+            facets: components["schemas"]["SecurityFacets"];
+            /** Items */
+            items: components["schemas"]["SecurityFindingOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * SecuritySettingsIn
+         * @description Fields left out stay as they are; a given list replaces the stored list.
+         */
+        SecuritySettingsIn: {
+            /** Capture Mode */
+            capture_mode?: ("FULL" | "METADATA_ONLY" | "DISABLED") | null;
+            /** Destination Allowlist */
+            destination_allowlist?: string[] | null;
+            /** Muted Detectors */
+            muted_detectors?: string[] | null;
+        };
+        /** SecuritySettingsOut */
+        SecuritySettingsOut: {
+            /**
+             * Capture Mode
+             * @enum {string}
+             */
+            capture_mode: "FULL" | "METADATA_ONLY" | "DISABLED";
+            /** Destination Allowlist */
+            destination_allowlist: string[];
+            /** Detectors */
+            detectors: components["schemas"]["DetectorOut"][];
+            /** Muted Detectors */
+            muted_detectors: string[];
+            /** Project Id */
+            project_id: string;
+            /**
+             * Updated At
+             * @description Null while the project has no stored row.
+             */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
         };
         /** SideOut */
         SideOut: {
@@ -6537,6 +6800,168 @@ export interface operations {
             };
         };
     };
+    get_security_settings_v1_projects__project_id__security_settings_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecuritySettingsOut"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter or the body is invalid; the message never repeats a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    put_security_settings_v1_projects__project_id__security_settings_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecuritySettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecuritySettingsOut"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter or the body is invalid; the message never repeats a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_runs_v1_runs_get: {
         parameters: {
             query?: {
@@ -7460,6 +7885,173 @@ export interface operations {
                 };
             };
             /** @description The request is invalid, or the evaluator does not fit the run or the call. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_security_detectors_v1_security_detectors_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectorList"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter or the body is invalid; the message never repeats a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_security_findings_v1_security_findings_get: {
+        parameters: {
+            query?: {
+                severity?: string[] | null;
+                detector?: string[] | null;
+                project_id?: string | null;
+                run_status?: ("QUEUED" | "RUNNING" | "WAITING" | "WAITING_FOR_APPROVAL" | "SUCCESS" | "FAILED" | "CANCELLED" | "TIMED_OUT" | "BLOCKED")[] | null;
+                /** @description Runs started at or after. */
+                since?: string | null;
+                /** @description Runs started at or before. */
+                until?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecurityFindingPage"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A parameter or the body is invalid; the message never repeats a value. */
             422: {
                 headers: {
                     [name: string]: unknown;
