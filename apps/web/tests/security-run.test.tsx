@@ -132,9 +132,12 @@ describe("security on the run page (Phase 13 D5)", () => {
       return el!;
     });
     expect(marked.getAttribute("data-finding-id")).toBe(target.id);
-    expect(screen.getByRole("button", { name: /^Context/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    // The column opens on the render after the finding is marked: wait for it instead of racing it (a flake under load).
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: /^Context/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
     );
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
