@@ -390,6 +390,27 @@ def test_keyboard_interrupt_cancels_the_approval_and_propagates(
     bb.shutdown()
 
 
+def test_an_interrupt_during_consume_does_not_withdraw_the_spent_approval(
+    srv: PolicyServer, fast: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once the approval is being spent a DELETE is pointless (and a request for nothing)."""
+    srv.queue("decide", require())
+    srv.queue("wait", state("APPROVED"))
+    bb = client(srv)
+    real = policy_transport.PolicyTransport.request
+
+    def interrupted(self: Any, method: str, path: str, *args: Any, **kwargs: Any) -> Any:
+        if path.endswith("/consume"):
+            raise KeyboardInterrupt
+        return real(self, method, path, *args, **kwargs)
+
+    monkeypatch.setattr(policy_transport.PolicyTransport, "request", interrupted)
+    with bb.run("t"), pytest.raises(KeyboardInterrupt):
+        bb.guard("github.push", "origin main")
+    assert srv.of("cancel") == []
+    bb.shutdown()
+
+
 def test_system_exit_is_propagated_unchanged(
     srv: PolicyServer, fast: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

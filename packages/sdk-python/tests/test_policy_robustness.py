@@ -22,7 +22,7 @@ from blackbox import (
 )
 from blackbox import policy as policy_module
 from blackbox.policy import WARNING_REASONS, PolicyGuard
-from tests.policy_server import PolicyServer, deny, make_client, require, state
+from tests.policy_server import PolicyServer, deny, make_client, require, state, warnings_of
 
 SRC = Path(blackbox.__file__).parent
 SENTINEL = "SENTINEL-sk-live-0123456789abcdef"
@@ -207,6 +207,24 @@ def test_fuzz_only_the_documented_exceptions_escape(srv: PolicyServer, scenario:
         monkeypatch.undo()
         bb.shutdown()
     assert sum(outcomes.values()) == 120  # every call ended in a Decision or a policy exception
+
+
+def test_a_malformed_capability_never_reaches_the_warning_or_the_exception(
+    srv: PolicyServer,
+) -> None:
+    bb = client(srv)
+    hostile = f"cap {SENTINEL} with spaces"
+    with bb.run("t"):
+        assert bb.guard(hostile, "r", "R0").via == "fail_open"
+        with pytest.raises(PolicyUnavailable) as info:
+            bb.guard(hostile, "r", "R3")
+    assert SENTINEL not in str(info.value) and info.value.capability == ""
+    found = warnings_of(srv, bb)
+    assert [w["attributes"] for w in found] == [
+        {"policy.capability": "invalid", "policy.reason": "invalid_intent"}
+    ] * 2
+    assert SENTINEL not in str(srv.events()) and srv.of("decide") == []
+    bb.shutdown()
 
 
 def test_a_bug_in_the_fail_path_itself_is_still_contained(

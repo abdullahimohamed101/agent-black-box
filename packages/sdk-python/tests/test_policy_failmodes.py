@@ -50,6 +50,11 @@ def outage_reply() -> list[tuple[str, R, str]]:
         ("bad-decision", R(200, {"decision": "maybe", "policy_version": 1}), "policy_error"),
         ("no-version", R(200, {"decision": "allow"}), "policy_error"),
         ("huge", R(200, b"x" * (300 * 1024)), "policy_error"),
+        (  # valid JSON padded past the cap: the bound is on size, not on whether it parses
+            "padded",
+            R(200, b'{"decision":"allow","policy_version":1}' + b" " * (100 * 1024)),
+            "policy_error",
+        ),
         (
             "approval-without-id",
             R(200, {"decision": "require_approval", "policy_version": 1}),
