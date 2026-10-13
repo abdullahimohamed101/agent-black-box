@@ -95,7 +95,13 @@ class _DeadlineSocket:
         return io.BufferedReader(_Raw(self._sock, self._deadline, self._clock))
 
     def close(self) -> None:
-        self._sock.close()
+        # `http.client` calls this as soon as it has the headers of a `Connection: close` reply
+        # and expects the file object from `makefile()` to keep the socket alive until the body is
+        # read (a real socket counts its file objects). Ours does not, so closing here read the
+        # body from a closed socket (EBADF) whenever it was not already buffered: a spent approval
+        # reported as an outage. `PolicyTransport.request` closes the real socket, once, in
+        # `finally`.
+        return None
 
     def settimeout(self, _value: float | None) -> None:
         return None
