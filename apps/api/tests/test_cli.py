@@ -151,3 +151,89 @@ async def test_operators_can_list_and_requeue_dead_letters(
         row = (await conn.execute(select(t.outbox_jobs).where(t.outbox_jobs.c.id == dead))).one()
     assert row.status == "pending" and row.attempt_count == 0
     assert (await invoke(settings, "jobs-list"))[1] == ""
+
+
+async def test_capture_mode_is_set_at_project_creation_and_later_and_audited(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    from sqlalchemy import select
+
+    from abb_api.db import tables as t
+    from abb_api.security.settings import CaptureMode, PgSecuritySettingsStore
+
+    settings = make_settings(database_url)
+    await invoke(settings, "create-workspace", "--name", "Acme", "--slug", "acme")
+    await invoke(settings, "create-project", "--workspace", "acme", "--name", "A", "--slug", "a")
+    code, _, err = await invoke(
+        settings, "create-project", "--workspace", "acme", "--name", "B", "--slug", "b",
+        "--capture-mode", "full",
+    )  # fmt: skip
+    assert code == 0 and "capture mode of 'b': full" in err
+
+    async def mode(slug: str) -> CaptureMode:
+        async with engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    select(t.projects.c.workspace_id, t.projects.c.id).where(
+                        t.projects.c.slug == slug
+                    )
+                )
+            ).one()
+            got = await PgSecuritySettingsStore(conn, TenantContext(row.workspace_id)).get(row.id)
+        return got.capture_mode
+
+    assert await mode("a") is CaptureMode.METADATA_ONLY  # the default needs no row
+    assert await mode("b") is CaptureMode.FULL
+    code, _, err = await invoke(
+        settings, "set-capture-mode", "--workspace", "acme", "--project", "a", "--mode", "disabled"
+    )
+    assert code == 0 and await mode("a") is CaptureMode.DISABLED
+    code, _, err = await invoke(
+        settings, "set-capture-mode", "--workspace", "acme", "--project", "nope", "--mode", "full"
+    )
+    assert code == 1 and "not found" in err
+    async with engine.connect() as conn:
+        actions = [
+            (r.action, r.actor_kind, r.details.get("capture_mode_to"))
+            for r in (await conn.execute(select(t.audit_log).order_by(t.audit_log.c.id))).all()
+            if r.action.startswith("security.")
+        ]
+    assert actions == [
+        ("security.settings.update", "cli", "FULL"),
+        ("security.settings.update", "cli", "DISABLED"),
+    ]
+
+
+async def test_seed_makes_the_dev_project_capture_full_payloads_once(
+    engine: AsyncEngine, database_url: str, tmp_path: Path
+) -> None:
+    from abb_api.security.settings import CaptureMode, PgSecuritySettingsStore
+
+    settings = make_settings(database_url)
+    key_file = tmp_path / "key"
+    await invoke(settings, "seed", "--key-file", str(key_file))
+    async with engine.connect() as conn:
+        workspace = await WorkspaceProvisioning(conn).get_by_slug("local")
+        assert workspace is not None
+        tenant = TenantContext(workspace.id)
+        project = await ProjectRepository(conn, tenant).get_by_slug("demo")
+        assert project is not None
+        assert (
+            await PgSecuritySettingsStore(conn, tenant).get(project.id)
+        ).capture_mode is CaptureMode.FULL
+    # an explicit choice made later is not overwritten by another seed
+    await invoke(
+        settings,
+        "set-capture-mode",
+        "--workspace",
+        "local",
+        "--project",
+        "demo",
+        "--mode",
+        "metadata_only",
+    )
+    await invoke(settings, "seed", "--key-file", str(key_file))
+    async with engine.connect() as conn:
+        assert (
+            await PgSecuritySettingsStore(conn, tenant).get(project.id)
+        ).capture_mode is CaptureMode.METADATA_ONLY

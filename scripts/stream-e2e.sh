@@ -43,7 +43,7 @@ step "provision a workspace, a project, a write key and a script-only read key (
 suffix="$(date +%s)$RANDOM"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Stream E2E" --slug "stream-e2e-$suffix" >/dev/null
-cli create-project --workspace "stream-e2e-$suffix" --name Demo --slug demo >/dev/null
+cli create-project --workspace "stream-e2e-$suffix" --name Demo --slug demo --capture-mode full >/dev/null
 WRITE_KEY="$(cli create-key --workspace "stream-e2e-$suffix" --project demo --scopes events:write runs:read --name stream-write)"
 READ_KEY="$(cli create-key --workspace "stream-e2e-$suffix" --scopes runs:read --name stream-script-read)"
 [[ "$WRITE_KEY" == abb_live_* && "$READ_KEY" == abb_live_* ]] || fail "key creation"

@@ -44,7 +44,7 @@ step "provision a workspace, a project, a write key, a script-only read key, and
 suffix="$(date +%s)$RANDOM"; WS="multiagent-e2e-$suffix"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Multi-agent E2E" --slug "$WS" >/dev/null
-cli create-project --workspace "$WS" --name Demo --slug demo >/dev/null
+cli create-project --workspace "$WS" --name Demo --slug demo --capture-mode full >/dev/null
 WRITE_KEY="$(cli create-key --workspace "$WS" --project demo --scopes events:write --name multiagent-write)"
 READ_KEY="$(cli create-key --workspace "$WS" --scopes runs:read --name multiagent-script-read)"
 [[ "$WRITE_KEY" == abb_live_* && "$READ_KEY" == abb_live_* ]] || fail "key creation"

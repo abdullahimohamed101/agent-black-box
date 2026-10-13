@@ -957,3 +957,41 @@ run_search = Table(
     Index("ix_run_search_event_types", "event_types", postgresql_using="gin"),
     Index("ix_run_search_tools", "tools", postgresql_using="gin"),
 )
+
+# ---------------------------------------------------------------- security settings (ADR-130)
+
+CAPTURE_MODES = ("FULL", "METADATA_ONLY", "DISABLED")
+
+# Per-project security configuration: how much the server stores (capture mode), which detectors a
+# workspace owner muted and which destinations are expected (used by the Phase 13 detectors). A
+# project without a row uses the defaults (METADATA_ONLY, no mutes, no allowlist), so the safe
+# behaviour needs no backfill. Plain DML for the runtime role: this is configuration, not history;
+# every change is recorded in `audit_log`.
+project_security_settings = Table(
+    "project_security_settings",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("capture_mode", Text, nullable=False, server_default="METADATA_ONLY"),
+    Column("muted_detectors", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    Column("destination_allowlist", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    _ts("updated_at", nullable=False, default_now=True),
+    Column("updated_by", Text, nullable=False),
+    PrimaryKeyConstraint("workspace_id", "project_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="CASCADE",
+    ),
+    CheckConstraint(_in("capture_mode", CAPTURE_MODES), name="ck_security_capture_mode"),
+    CheckConstraint(
+        "jsonb_typeof(muted_detectors) = 'array' AND jsonb_array_length(muted_detectors) <= 64",
+        name="ck_security_muted_detectors",
+    ),
+    CheckConstraint(
+        "jsonb_typeof(destination_allowlist) = 'array' "
+        "AND jsonb_array_length(destination_allowlist) <= 256",
+        name="ck_security_destination_allowlist",
+    ),
+    CheckConstraint("char_length(updated_by) <= 128", name="ck_security_updated_by"),
+)

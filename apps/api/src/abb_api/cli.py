@@ -1,7 +1,9 @@
 """Provisioning CLI: workspaces, projects and API keys (dashboard sign-up arrives in Phase 15).
 
     python -m abb_api.cli create-workspace --name Acme --slug acme
-    python -m abb_api.cli create-project --workspace acme --name Agent --slug coding-agent
+    python -m abb_api.cli create-project --workspace acme --name Agent --slug coding-agent \
+        [--capture-mode full|metadata_only|disabled]   # default metadata_only (ADR-130)
+    python -m abb_api.cli set-capture-mode --workspace acme --project coding-agent --mode full
     python -m abb_api.cli create-key --workspace acme --project coding-agent \
         --scopes events:write runs:read
     python -m abb_api.cli revoke-key --workspace acme --key-id <key_id>
@@ -65,6 +67,12 @@ from abb_api.projects.repository import ProjectRepository
 from abb_api.runs.repository import RunRepository
 from abb_api.runs.summary import SUMMARY_VERSION
 from abb_api.search.repository import RunSearchRepository
+from abb_api.security.settings import (
+    Actor,
+    CaptureMode,
+    PgSecuritySettingsStore,
+    update_settings,
+)
 from abb_api.tenancy import TenantContext
 from abb_api.workspaces import Workspace, WorkspaceProvisioning
 from abb_api.workspaces.members import MAX_MEMBERS, Email
@@ -124,6 +132,20 @@ def build_parser() -> argparse.ArgumentParser:
     project.add_argument("--workspace", required=True, help="workspace slug")
     project.add_argument("--name", required=True)
     project.add_argument("--slug", required=True)
+    project.add_argument(
+        "--capture-mode",
+        choices=[m.value.lower() for m in CaptureMode],
+        help="what the server stores (default metadata_only; scripts that need payloads use full)",
+    )
+
+    capture = sub.add_parser(
+        "set-capture-mode", help="set what the server stores for a project (audited)"
+    )
+    capture.add_argument("--workspace", required=True, help="workspace slug")
+    capture.add_argument("--project", required=True, help="project slug")
+    capture.add_argument(
+        "--mode", required=True, choices=[m.value.lower() for m in CaptureMode], help="capture mode"
+    )
 
     key = sub.add_parser("create-key")
     key.add_argument("--workspace", required=True, help="workspace slug")
@@ -295,6 +317,19 @@ async def _audit(
     )
 
 
+async def _set_capture_mode(
+    conn: AsyncConnection, workspace: Workspace, project_id: uuid.UUID, mode: str
+) -> None:
+    """Change a project's capture mode; the settings module writes the audit row itself."""
+    await update_settings(
+        conn,
+        TenantContext(workspace.id),
+        project_id,
+        Actor("cli", _operator()),
+        capture_mode=CaptureMode(mode.upper()),
+    )
+
+
 def _email(text: str) -> str:
     try:
         return TypeAdapter(Email).validate_python(text)
@@ -434,6 +469,11 @@ async def _seed(
             resource_id=public_id(IdKind.PROJECT, project.id), slug=project.slug,
         )  # fmt: skip
 
+    # The local demo agents send full payloads: the dev project captures them (a fresh project
+    # would otherwise default to METADATA_ONLY). An explicit choice already made is kept.
+    if (await PgSecuritySettingsStore(conn, tenant).get(project.id)).updated_at is None:
+        await _set_capture_mode(conn, workspace, project.id, "full")
+
     if settings.dev_sessions_enabled:
         await _seed_dev_owner(conn, workspace, err)
 
@@ -501,6 +541,14 @@ async def run(
                     slug=project.slug,
                 )  # fmt: skip
                 print(f"created project '{project.slug}' ({project.id})", file=err)
+                if args.capture_mode:
+                    await _set_capture_mode(conn, ws, project.id, args.capture_mode)
+                    print(f"capture mode of '{project.slug}': {args.capture_mode}", file=err)
+            elif args.command == "set-capture-mode":
+                ws = await _workspace(conn, args.workspace)
+                project_id = await _project_id(conn, ws, args.project)
+                await _set_capture_mode(conn, ws, project_id, args.mode)
+                print(f"capture mode of '{args.project}': {args.mode}", file=err)
             elif args.command == "create-key":
                 ws = await _workspace(conn, args.workspace)
                 project_id = await _project_id(conn, ws, args.project) if args.project else None

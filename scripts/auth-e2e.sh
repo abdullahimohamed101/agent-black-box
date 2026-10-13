@@ -58,7 +58,7 @@ SEARCH_OWNER="searcher-$suffix@auth.test"; SEARCH_VIEWER="viewer-$suffix@auth.te
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Auth Alpha" --slug "$A" >/dev/null
 cli create-workspace --name "Auth Beta" --slug "$B" >/dev/null
-cli create-project --workspace "$A" --name Demo --slug demo >/dev/null
+cli create-project --workspace "$A" --name Demo --slug demo --capture-mode full >/dev/null
 cli add-member --workspace "$A" --email "$OWNER" --role OWNER >/dev/null
 cli add-member --workspace "$B" --email "$OWNER" --role OWNER >/dev/null
 cli add-member --workspace "$A" --email "$STREAMER" --role DEVELOPER >/dev/null

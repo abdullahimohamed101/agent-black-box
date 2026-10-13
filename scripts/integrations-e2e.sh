@@ -42,7 +42,7 @@ step "provision a workspace, project and key (secret never printed)"
 suffix="$(date +%s)$RANDOM"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Integrations E2E" --slug "int-e2e-$suffix" >/dev/null
-cli create-project --workspace "int-e2e-$suffix" --name Demo --slug demo >/dev/null
+cli create-project --workspace "int-e2e-$suffix" --name Demo --slug demo --capture-mode full >/dev/null
 KEY="$(cli create-key --workspace "int-e2e-$suffix" --project demo --scopes events:write runs:read --name int-e2e)"
 [[ "$KEY" == abb_live_* ]] || fail "key creation"
 

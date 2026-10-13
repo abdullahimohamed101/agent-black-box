@@ -49,7 +49,7 @@ suffix="$(date +%s)$RANDOM"
 WS="eval-e2e-$suffix"; OWNER="owner-$suffix@eval.test"; VIEWER="viewer-$suffix@eval.test"
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Eval E2E" --slug "$WS" >/dev/null
-cli create-project --workspace "$WS" --name Demo --slug demo >/dev/null
+cli create-project --workspace "$WS" --name Demo --slug demo --capture-mode full >/dev/null
 WRITE_KEY="$(cli create-key --workspace "$WS" --project demo --scopes events:write artifacts:write --name eval-write)"
 [[ "$WRITE_KEY" == abb_live_* ]] || fail "key creation"
 cli add-member --workspace "$WS" --email "$OWNER" --role OWNER >/dev/null
