@@ -194,6 +194,7 @@ def create_app(
                 max_runs=settings.security_reanalyse_max_runs,
                 max_age_days=settings.security_reanalyse_max_age_days,
                 delay_seconds=settings.findings_delay_seconds,
+                cooldown_seconds=settings.security_reanalyse_cooldown_seconds,
             ),
             clock,
         )

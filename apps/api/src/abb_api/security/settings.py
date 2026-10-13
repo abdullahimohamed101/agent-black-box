@@ -34,6 +34,8 @@ MAX_MUTED_DETECTORS = 64
 MAX_ALLOWLIST_ENTRIES = 256
 MAX_HOST_PATTERN_LENGTH = 253  # a DNS name is at most 253 characters (RFC 1035); `*.` is extra
 AUDIT_LIST_ITEMS = 4  # entries named in an audit row; the counts always say how many changed
+SETTINGS_AUDIT_ACTION = "security.settings.update"
+REANALYSED_FIELDS = ("muted_detectors", "destination_allowlist")  # changes that queue a wave
 AUDIT_ENTRY_LENGTH = 100  # an entry is shortened to this in an audit row (audit.repository limits)
 
 # Detector ids are `sec.<name>` (plan, "Contract between the parts"). Whether an id names a real
@@ -54,6 +56,11 @@ class ReanalysisPolicy:
     max_runs: int = 200
     max_age_days: int = 30
     delay_seconds: float = 5.0  # the findings debounce: a burst of edits coalesces into one pass
+    # At most one wave per project per this many seconds: a wave that would start sooner after the
+    # previous change is deferred until the cooldown ends (still one job per run, never dropped).
+    # Coalescing only helps while jobs are pending; without this, a script toggling a mute every
+    # few seconds would queue a full wave after each pass. 0 turns the limit off.
+    cooldown_seconds: float = 60.0
 
 
 DEFAULT_REANALYSIS = ReanalysisPolicy()
@@ -314,18 +321,31 @@ async def update_settings(
         muted_detectors=wanted.muted_detectors,
         destination_allowlist=wanted.destination_allowlist,
     )
-    await AuditRepository(conn, tenant).append(
+    audit = AuditRepository(conn, tenant)
+    resource_id = public_id(IdKind.PROJECT, project_id)
+    previous_change = None
+    if reanalysis.cooldown_seconds > 0:  # read before this change's own audit row is written
+        previous_change = await audit.latest_at(
+            action=SETTINGS_AUDIT_ACTION,
+            resource_kind="project",
+            resource_id=resource_id,
+            details_contain_any=[{"fields": [f]} for f in REANALYSED_FIELDS],
+            since=(now or datetime.now(UTC)) - timedelta(seconds=reanalysis.cooldown_seconds),
+        )
+    await audit.append(
         AuditEntry(
             actor_kind=actor.kind,
             actor_id=actor.id,
-            action="security.settings.update",
+            action=SETTINGS_AUDIT_ACTION,
             resource_kind="project",
-            resource_id=public_id(IdKind.PROJECT, project_id),
+            resource_id=resource_id,
             details=details,
         )
     )
     if "muted_detectors" in details["fields"] or "destination_allowlist" in details["fields"]:
-        await _queue_reanalysis(conn, tenant, project_id, reanalysis, now or datetime.now(UTC))
+        await _queue_reanalysis(
+            conn, tenant, project_id, reanalysis, now or datetime.now(UTC), previous_change
+        )
     return after
 
 
@@ -335,9 +355,11 @@ async def _queue_reanalysis(
     project_id: uuid.UUID,
     policy: ReanalysisPolicy,
     now: datetime,
+    previous_change: datetime | None = None,
 ) -> int:
     """Queue `detect_findings` for the project's recent runs. Idempotent: a run that already has a
-    pending job is not queued twice, so repeated edits cost one pass."""
+    pending job is not queued twice, so repeated edits cost one pass. A wave that follows another
+    change within the cooldown is not due before the cooldown ends."""
     if policy.max_runs <= 0:
         return 0
     since = now - timedelta(days=policy.max_age_days)
@@ -346,6 +368,9 @@ async def _queue_reanalysis(
     )
     outbox = OutboxRepository(conn, tenant)
     base = timedelta(seconds=policy.delay_seconds)
+    if previous_change is not None:
+        remaining = timedelta(seconds=policy.cooldown_seconds) - (now - previous_change)
+        base = max(base, remaining)
     queued = 0
     for position, run_id in enumerate(run_ids):  # newest first
         delay = base - _STAGGER * (len(run_ids) - position)

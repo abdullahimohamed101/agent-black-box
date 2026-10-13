@@ -19,6 +19,7 @@ DB_NAME="${SECURITY_E2E_DB_NAME:-abb_security_e2e}"
 export ABB_DATABASE_URL="${ABB_DATABASE_URL%/*}/$DB_NAME"
 export ABB_SUMMARY_DEBOUNCE_SECONDS=1
 export ABB_FINDINGS_DELAY_SECONDS=1
+export ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS=0   # the check changes one project's settings several times in a row
 export ABB_RATE_LIMIT_EVENTS_PER_SECOND=1000000     # the benchmark measures the pipeline, not the default throttle
 PORT="${SECURITY_E2E_API_PORT:-8190}"; API="http://localhost:$PORT"
 STRICT_PORT="${SECURITY_E2E_STRICT_PORT:-8192}"; STRICT_API="http://localhost:$STRICT_PORT"

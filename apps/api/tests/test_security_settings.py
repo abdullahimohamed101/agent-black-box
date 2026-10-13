@@ -3,15 +3,18 @@
 import asyncio
 import json
 import uuid
+from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from abb_api.audit.repository import AuditRepository, AuditRow
 from abb_api.core.domain import NotFoundError
+from abb_api.db import tables as t
+from abb_api.jobs.outbox import DETECT_FINDINGS
 from abb_api.security.settings import (
     DEFAULT_CAPTURE_MODE,
     MAX_ALLOWLIST_ENTRIES,
@@ -19,6 +22,7 @@ from abb_api.security.settings import (
     CaptureMode,
     InvalidSettingsError,
     PgSecuritySettingsStore,
+    ReanalysisPolicy,
     SecuritySettings,
     SecuritySettingsService,
     audit_details,
@@ -26,6 +30,7 @@ from abb_api.security.settings import (
     normalize_host_patterns,
 )
 from tests.conftest import runtime_url
+from tests.factories import make_run
 from tests.ingest_helpers import Tenant, make_tenant
 
 OWNER = Actor("user", "user:usr_owner")
@@ -386,3 +391,94 @@ def test_the_audit_row_of_long_allowlist_entries_stays_within_the_audit_limits()
     clean_details(
         audit_details(after, SecuritySettings(before.project_id, muted_detectors=("sec.a",)))
     )
+
+
+# ----------------------------------------------- re-analysis waves are rate limited (review P3-4)
+
+
+async def seconds_until_pending_job(engine: AsyncEngine, run_id: uuid.UUID) -> float | None:
+    async with engine.connect() as conn:
+        due = await conn.scalar(
+            select(func.extract("epoch", t.outbox_jobs.c.available_at - func.now())).where(
+                t.outbox_jobs.c.job_type == DETECT_FINDINGS,
+                t.outbox_jobs.c.status == "pending",
+                t.outbox_jobs.c.payload["run_id"].astext == str(run_id),
+            )
+        )
+    return None if due is None else float(due)
+
+
+async def finish_jobs(engine: AsyncEngine) -> None:
+    async with engine.begin() as conn:  # what the worker does once it has run them
+        await conn.execute(update(t.outbox_jobs).values(status="done"))
+
+
+async def project_with_a_run(engine: AsyncEngine, slug: str) -> tuple[Tenant, uuid.UUID, uuid.UUID]:
+    a = await make_tenant(engine, slug, projects=("alpha", "beta"), capture_mode=None)
+    project = a.project_uuids["alpha"]
+    async with engine.begin() as conn:
+        run = await make_run(conn, a.context.workspace_id, project, started_at=datetime.now(UTC))
+    return a, project, run
+
+
+async def test_a_second_wave_within_the_cooldown_is_deferred_not_dropped(
+    engine: AsyncEngine,
+) -> None:
+    """A scripted admin toggling a mute cannot keep the worker busy: after the first wave ran, the
+    next one is queued, but not due until the cooldown after the previous change has passed."""
+    a, project, run = await project_with_a_run(engine, "acme")
+    service = SecuritySettingsService(
+        engine, ReanalysisPolicy(delay_seconds=1.0, cooldown_seconds=3600.0)
+    )
+    await service.update(a.context, project, OWNER, muted_detectors=["sec.risky_git"])
+    first = await seconds_until_pending_job(engine, run)
+    assert first is not None and first <= 1.5  # the first wave is due after the debounce only
+    await finish_jobs(engine)  # the worker ran it
+
+    await service.update(a.context, project, OWNER, muted_detectors=[])
+    second = await seconds_until_pending_job(engine, run)
+    assert second is not None and 3000 < second <= 3601  # queued, due when the cooldown ends
+
+    # edits while a job is pending coalesce into it: still one pending job
+    await service.update(a.context, project, OWNER, muted_detectors=["sec.risky_git"])
+    async with engine.connect() as conn:
+        pending = await conn.scalar(
+            select(func.count())
+            .select_from(t.outbox_jobs)
+            .where(t.outbox_jobs.c.status == "pending")
+        )
+    assert pending == 1
+
+
+async def test_the_cooldown_is_per_project_and_a_mode_change_does_not_start_it(
+    engine: AsyncEngine,
+) -> None:
+    a, project, run = await project_with_a_run(engine, "acme")
+    other = a.project_uuids["beta"]
+    async with engine.begin() as conn:
+        other_run = await make_run(
+            conn, a.context.workspace_id, other, started_at=datetime.now(UTC)
+        )
+    service = SecuritySettingsService(
+        engine, ReanalysisPolicy(delay_seconds=1.0, cooldown_seconds=3600.0)
+    )
+    await service.update(a.context, project, OWNER, capture_mode=CaptureMode.FULL)  # no wave
+    await service.update(a.context, project, OWNER, muted_detectors=["sec.risky_git"])
+    first = await seconds_until_pending_job(engine, run)
+    assert first is not None and first <= 1.5  # the mode change did not start a cooldown
+    await finish_jobs(engine)
+    await service.update(a.context, other, OWNER, muted_detectors=["sec.risky_git"])
+    sibling = await seconds_until_pending_job(engine, other_run)
+    assert sibling is not None and sibling <= 1.5  # another project is not held back
+
+
+async def test_a_zero_cooldown_switches_the_rate_limit_off(engine: AsyncEngine) -> None:
+    a, project, run = await project_with_a_run(engine, "acme")
+    service = SecuritySettingsService(
+        engine, ReanalysisPolicy(delay_seconds=1.0, cooldown_seconds=0.0)
+    )
+    await service.update(a.context, project, OWNER, muted_detectors=["sec.risky_git"])
+    await finish_jobs(engine)
+    await service.update(a.context, project, OWNER, muted_detectors=[])
+    again = await seconds_until_pending_job(engine, run)
+    assert again is not None and again <= 1.5

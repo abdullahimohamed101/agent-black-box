@@ -175,12 +175,14 @@ async def test_the_run_count_and_the_age_are_bounds_and_the_newest_come_first(
     seeded = await pending_runs(world)
     assert seeded == set()
     engine = world.api.engine
-    await apply(engine, world, ReanalysisPolicy(max_runs=2, max_age_days=30, delay_seconds=0),
-                muted_detectors=["sec.risky_git"])  # fmt: skip
+    newest_two = ReanalysisPolicy(max_runs=2, max_age_days=30, delay_seconds=0, cooldown_seconds=0)
+    await apply(engine, world, newest_two, muted_detectors=["sec.risky_git"])
     assert await pending_runs(world) == {str(to_uuid(i)) for i in ids[-2:]}  # newest two
     await world.api.drain()
-    await apply(engine, world, ReanalysisPolicy(max_runs=100, max_age_days=30, delay_seconds=0),
-                muted_detectors=[])  # fmt: skip
+    all_recent = ReanalysisPolicy(
+        max_runs=100, max_age_days=30, delay_seconds=0, cooldown_seconds=0
+    )
+    await apply(engine, world, all_recent, muted_detectors=[])
     queued = await pending_runs(world)
     assert str(to_uuid(ids[0])) not in queued  # 40 days old: outside the age bound
     assert {str(to_uuid(i)) for i in ids[1:]} <= queued
