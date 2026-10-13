@@ -322,6 +322,16 @@
     },
     {
       "class": "security",
+      "event_type": "policy.decision",
+      "priority": "P1",
+      "required_attributes": [
+        "policy.decision"
+      ],
+      "span_kind": null,
+      "span_role": "point"
+    },
+    {
+      "class": "security",
       "event_type": "policy.action.blocked",
       "priority": "P0",
       "required_attributes": [

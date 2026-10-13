@@ -39,6 +39,12 @@ REVIEWED_METADATA = frozenset(
         "db.system", "db.operation", "http.method", "retry.reason", "retry.of_event_id",
         "timeout.operation", "loop.pattern", "policy.id", "policy.capability", "policy.reason",
         "secret.kind", "approval.id", "approval.capability",
+        # Phase 14 (ADR-140): labels the policy service writes. `policy.decision` and
+        # `approval.state` are closed vocabularies; `policy.reason` is built by the server only
+        # from the matching rule's own description or id (tests/policies/test_evaluator.py plants
+        # a sentinel in every intent field and checks it never reaches a reason), so it holds
+        # the policy author's words and no captured content.
+        "policy.decision", "approval.state",
         # Written by the server at ingestion (ADR-130): kind names and a reason, never a value.
         "redaction.server_kinds", "redaction.dropped_reason",
     }

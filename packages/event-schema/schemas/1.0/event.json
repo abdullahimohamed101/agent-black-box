@@ -623,6 +623,30 @@
       "if": {
         "properties": {
           "event_type": {
+            "const": "policy.decision"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "policy.decision"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
             "const": "policy.action.blocked"
           }
         },
@@ -864,6 +888,10 @@
           "maxLength": 4096,
           "type": "string"
         },
+        "approval.state": {
+          "maxLength": 4096,
+          "type": "string"
+        },
         "cost.estimated_usd": {
           "minimum": 0,
           "type": "number"
@@ -1056,6 +1084,10 @@
           "maxLength": 4096,
           "type": "string"
         },
+        "policy.decision": {
+          "maxLength": 4096,
+          "type": "string"
+        },
         "policy.id": {
           "maxLength": 4096,
           "type": "string"
@@ -1063,6 +1095,10 @@
         "policy.reason": {
           "maxLength": 4096,
           "type": "string"
+        },
+        "policy.version": {
+          "minimum": 0,
+          "type": "integer"
         },
         "rate_limit.retry_after_ms": {
           "minimum": 0,

@@ -13,6 +13,7 @@ export type Event = {
     "agent.state"?: string;
     "approval.capability"?: string;
     "approval.id"?: string;
+    "approval.state"?: string;
     "cost.estimated_usd"?: number;
     "cost.pricing_version"?: string;
     "cost.provider_usd"?: number;
@@ -63,8 +64,10 @@ export type Event = {
     "loop.pattern"?: string[];
     "loop.repetitions"?: number;
     "policy.capability"?: string;
+    "policy.decision"?: string;
     "policy.id"?: string;
     "policy.reason"?: string;
+    "policy.version"?: number;
     "rate_limit.retry_after_ms"?: number;
     "redaction.dropped_reason"?: string;
     "redaction.server_count"?: number;

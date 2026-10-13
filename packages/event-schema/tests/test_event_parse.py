@@ -106,6 +106,7 @@ def test_canonical_event_requires_server_fields() -> None:
         ("retry.attempted", {}, "retry.attempt"),
         ("approval.requested", {}, "approval.id"),
         ("policy.action.blocked", {}, "policy.id"),
+        ("policy.decision", {}, "policy.decision"),
         ("span.started", {"span.kind": "custom"}, "span.name"),
     ],
 )
