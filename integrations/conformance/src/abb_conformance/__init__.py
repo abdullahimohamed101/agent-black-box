@@ -7,6 +7,7 @@ adapter is held to the same canonical events for equivalent operations.
 
 from abb_conformance.golden import assert_golden, normalize
 from abb_conformance.harness import capture, validate_events
+from abb_conformance.policy import PolicyStub, check_guarded_tool, policy_stub
 from abb_conformance.scenarios import (
     LLM_CACHED,
     LLM_INPUT,
@@ -27,10 +28,13 @@ __all__ = [
     "SECRET",
     "TOOL_NAME",
     "Driver",
+    "PolicyStub",
     "ScenarioError",
     "assert_golden",
     "capture",
+    "check_guarded_tool",
     "check_scenario",
     "normalize",
+    "policy_stub",
     "validate_events",
 ]

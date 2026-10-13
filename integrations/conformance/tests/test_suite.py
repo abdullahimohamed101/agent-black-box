@@ -1,5 +1,7 @@
 """The suite must itself catch broken adapters: a reference driver passes, mutants fail."""
 
+from typing import Any
+
 import pytest
 from blackbox import BlackBox
 
@@ -148,3 +150,34 @@ def test_billing_modifier_attributes_satisfy_the_event_contract() -> None:
     validate_events(events)
     done = next(e for e in events if e["event_type"] == "llm.request.completed")["attributes"]
     assert done["llm.cache_write_tokens"] == 10 and done["llm.service_tier"] == "batch"
+
+
+# -- policy (Phase 14, D5) --------------------------------------------------------------------
+
+
+def test_the_guarded_tool_contract_passes_for_a_correct_adapter() -> None:
+    from abb_conformance import check_guarded_tool
+
+    def build(decorate: Any, ran: list[str], bb: BlackBox) -> Any:
+        @decorate
+        def lookup(q: str) -> str:
+            ran.append("ran")
+            return q
+
+        return lookup
+
+    check_guarded_tool(build)
+
+
+def test_the_guarded_tool_contract_catches_a_tool_that_ignores_the_decorator() -> None:
+    from abb_conformance import check_guarded_tool
+
+    def build(decorate: Any, ran: list[str], bb: BlackBox) -> Any:
+        def lookup(q: str) -> str:  # never decorated: a denied call would still run
+            ran.append("ran")
+            return q
+
+        return lookup
+
+    with pytest.raises(AssertionError):
+        check_guarded_tool(build)

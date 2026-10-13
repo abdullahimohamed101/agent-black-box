@@ -215,3 +215,186 @@ def test_nothing_is_emitted_after_the_run_ended() -> None:
     assert [e["event_type"] for e in events][-1] == "run.completed"
     assert len(of(events, "tool.call.started")) == 2
     assert not of(events, "tool.call.completed") and not of(events, "tool.call.failed")
+
+
+# -- policy (Phase 14, D5): tool calls are guarded as `tool.<name>` ---------------------------
+
+
+def guarded_session(
+    stub: Any, session: Any = None, **options: Any
+) -> tuple[BlackBox, Any, FakeSession]:
+    bb = stub.client(**options)
+    fake = session or FakeSession()
+    return bb, instrument(fake, bb), fake
+
+
+def test_policy_asks_before_each_call_with_the_dry_run_intent() -> None:
+    from abb_conformance import policy_stub
+
+    with policy_stub() as stub:
+        bb, session, fake = guarded_session(stub)
+
+        async def go() -> None:
+            async with bb.run("r"):
+                await session.call_tool("search issues!", {"q": "SECRET-ARG"})
+
+        asyncio.run(go())
+        bb.shutdown(1)
+        assert len(stub.intents) == 1 and len(fake.calls) == 1
+        asked = stub.intents[0]
+        assert asked["capability"] == "tool.search_issues_" and asked["resource"] == "mcp.call_tool"
+        assert asked["arguments"] == {} and asked["risk_class"] is None
+        assert "SECRET-ARG" not in str(stub.intents)
+
+
+def test_a_denied_call_is_not_made_and_returns_an_mcp_error_result() -> None:
+    from abb_conformance import policy_stub
+
+    with policy_stub({"tool.delete_all": "Deleting is not allowed."}) as stub:
+        bb, session, fake = guarded_session(stub)
+        results: list[Any] = []
+
+        async def go() -> None:
+            async with bb.run("r"):
+                results.append(await session.call_tool("delete_all", {"confirm": True}))
+                results.append(await session.call_tool("search", {}))
+
+        asyncio.run(go())
+        bb.shutdown(1)
+        assert [c[0] for c in fake.calls] == ["search"]  # the denied tool never ran
+        blocked = results[0]
+        assert (blocked.is_error if hasattr(blocked, "is_error") else blocked.isError) is True
+        text = blocked.content[0].text
+        assert "Blocked by policy (stub-rule v1): Deleting is not allowed." in text
+        assert "confirm" not in text
+        assert results[1].is_error is False
+        started = [e for e in stub.events if e["event_type"] == "tool.call.started"]
+        assert [e["attributes"]["tool.name"] for e in started] == ["search"]
+
+
+def test_a_closed_fail_mode_blocks_the_call_without_raising() -> None:
+    with_stub_down = BlackBox(
+        api_key="k.s", mode="offline", policy_mode="enforce", policy_fail_modes={"tool.*": "closed"}
+    )
+    fake = FakeSession()
+    session = instrument(fake, with_stub_down)
+
+    async def go() -> Any:
+        async with with_stub_down.run("r"):
+            return await session.call_tool("anything", {})
+
+    result = asyncio.run(go())
+    assert result.is_error is True and "could not be asked" in result.content[0].text
+    assert fake.calls == []
+
+
+def test_an_open_fail_mode_lets_the_call_through() -> None:
+    bb = BlackBox(api_key="k.s", mode="offline", policy_mode="enforce")
+    fake = FakeSession()
+    session = instrument(fake, bb)
+
+    async def go() -> Any:
+        async with bb.run("r"):
+            return await session.call_tool("anything", {})
+
+    assert asyncio.run(go()).is_error is False and len(fake.calls) == 1
+
+
+def test_policy_off_and_no_run_do_not_ask() -> None:
+    from abb_conformance import policy_stub
+
+    with policy_stub({"tool.x": "no"}) as stub:
+        off = BlackBox(api_key="k.s", endpoint=stub.url, mode="http")  # policy_mode defaults off
+        fake = FakeSession()
+        session = instrument(fake, off)
+        on, session_on, fake_on = guarded_session(stub)
+
+        async def go() -> None:
+            async with off.run("r"):
+                await session.call_tool("x", {})
+            await session_on.call_tool("x", {})  # enforcing, but no run to bind a decision to
+
+        asyncio.run(go())
+        assert stub.intents == [] and len(fake.calls) == 1 and len(fake_on.calls) == 1
+        off.shutdown(1)
+        on.shutdown(1)
+
+
+def test_a_sync_session_is_guarded_too() -> None:
+    from abb_conformance import policy_stub
+
+    class SyncSession:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def call_tool(self, name: str, arguments: Any = None) -> Any:
+            self.calls.append(name)
+            return SimpleNamespace(content=[], is_error=False)
+
+    with policy_stub({"tool.rm": "no"}) as stub:
+        bb = stub.client()
+        sync = SyncSession()
+        session = instrument(sync, bb)
+        with bb.run("r"):
+            blocked = session.call_tool("rm", {})
+            fine = session.call_tool("ls", {})
+        bb.shutdown(1)
+        assert sync.calls == ["ls"] and blocked.is_error is True and fine.is_error is False
+
+
+def test_a_hostile_tool_name_cannot_break_the_guard() -> None:
+    from abb_conformance import policy_stub
+
+    with policy_stub() as stub:
+        bb, session, fake = guarded_session(stub)
+
+        async def go() -> None:
+            async with bb.run("r"):
+                for name in (None, 123, ["x"], "", "   ", "x" * 5000, "a b\nc\x00d", "..."):
+                    await session.call_tool(name, {})
+
+        asyncio.run(go())
+        bb.shutdown(1)
+        assert len(fake.calls) == 8
+        capabilities = [i["capability"] for i in stub.intents]
+        # names that cannot make a valid capability (`tool.` + 5,000 characters, `...`) are never
+        # sent: the fail mode applies (open for an unclassified tool call) and the call is made
+        assert capabilities.count("tool.unknown") == 5 and "tool.a_b_c_d" in capabilities
+        assert all(len(c) <= 128 for c in capabilities)
+
+
+def test_the_guard_is_cooperative_only_instrumented_sessions_are_asked() -> None:
+    from abb_conformance import policy_stub
+
+    with policy_stub({"tool.x": "no"}) as stub:
+        bb = stub.client()
+        raw = FakeSession()
+
+        async def go() -> None:
+            async with bb.run("r"):
+                await raw.call_tool("x", {})  # not instrumented: nothing asks
+
+        asyncio.run(go())
+        assert stub.intents == [] and len(raw.calls) == 1
+        bb.shutdown(1)
+
+
+def test_the_error_result_falls_back_when_the_mcp_package_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sys
+
+    from abb_conformance import policy_stub
+
+    monkeypatch.setitem(sys.modules, "mcp.types", None)  # `from mcp.types import ...` fails
+    with policy_stub({"tool.x": "no"}) as stub:
+        bb, session, _fake = guarded_session(stub)
+
+        async def go() -> Any:
+            async with bb.run("r"):
+                return await session.call_tool("x", {})
+
+        result = asyncio.run(go())
+        bb.shutdown(1)
+    assert result.is_error is True and result.isError is True
+    assert result.content[0].type == "text" and "Blocked by policy" in result.content[0].text
