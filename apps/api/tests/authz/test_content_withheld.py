@@ -39,6 +39,8 @@ REVIEWED_METADATA = frozenset(
         "db.system", "db.operation", "http.method", "retry.reason", "retry.of_event_id",
         "timeout.operation", "loop.pattern", "policy.id", "policy.capability", "policy.reason",
         "secret.kind", "approval.id", "approval.capability",
+        # Written by the server at ingestion (ADR-130): kind names and a reason, never a value.
+        "redaction.server_kinds", "redaction.dropped_reason",
     }
 )  # fmt: skip
 

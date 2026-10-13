@@ -66,6 +66,12 @@ export type EventIn = {
     "policy.id"?: string;
     "policy.reason"?: string;
     "rate_limit.retry_after_ms"?: number;
+    "redaction.dropped_reason"?: string;
+    "redaction.server_count"?: number;
+    /**
+     * @maxItems 64
+     */
+    "redaction.server_kinds"?: string[];
     "retry.attempt"?: number;
     "retry.delay_ms"?: number;
     "retry.of_event_id"?: string;
