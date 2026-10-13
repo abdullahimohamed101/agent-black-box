@@ -289,10 +289,15 @@ def test_hostile_input_of_a_megabyte_scans_in_bounded_time(
 ) -> None:
     text = build()
     started = time.perf_counter()
-    result = scan(text)
+    try:
+        result = scan(text)
+    except ScanTooLarge:
+        # A line with no cut that keeps every secret whole is refused (fail closed, review P3-1):
+        # the contract here is a bounded answer, either a scan or a refusal.
+        result = None
     elapsed = time.perf_counter() - started
     assert elapsed < 8.0, f"{name}: {elapsed:.1f}s for {len(text)} characters"
-    assert isinstance(result.text, str)
+    assert result is None or isinstance(result.text, str)
 
 
 def test_the_time_budget_stops_a_slow_scan_instead_of_hanging() -> None:
@@ -509,3 +514,45 @@ def test_a_quoted_marker_is_not_redacted_again_or_counted(text: str) -> None:
     result = scan(text)
     assert result.text == text
     assert result.count == 0 and result.kinds == ()
+
+
+# ------------------------------------------------- a window cut never splits a secret (review P3-1)
+
+
+def _line_cut_after(prefix: str, rest: str) -> str:
+    """One line (no newline) whose first window ends right after `prefix`."""
+    room = WINDOW - len(prefix)
+    return "word " * (room // 5) + " " * (room % 5) + prefix + rest + " tail" * 20
+
+
+@pytest.mark.parametrize(
+    ("prefix", "rest", "secrets"),
+    [
+        ('password = "abc ', 'def ghi" end', ("abc", "def", "ghi")),
+        ("DB_PASSWORD='one ", "two three' end", ("one", "two", "three")),
+        ("Authorization: Bearer ", "abcdefghij0123456789 end", ("abcdefghij0123456789",)),
+        ("mysql -u root -p", "hunter2secret db", ("hunter2secret",)),
+        ("Cookie: a=b; ", "session=zz9plural; c=d", ("zz9plural",)),
+    ],
+)
+def test_a_secret_that_straddles_a_window_cut_is_still_redacted(
+    prefix: str, rest: str, secrets: tuple[str, ...]
+) -> None:
+    result = scan(_line_cut_after(prefix, rest))
+    for secret in secrets:
+        assert secret not in result.text
+
+
+def test_a_cut_that_cannot_be_made_safe_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("abb_api.security.scanner._seam_is_safe", lambda text, cut: False)
+    with pytest.raises(ScanTooLarge):
+        scan("word " * (WINDOW // 5 + 1000))
+
+
+def test_a_cut_is_moved_to_the_nearest_safe_break() -> None:
+    from abb_api.security.scanner import _seam_is_safe
+
+    text = 'password = "abc def ghi" ' + "x " * 10
+    cut_inside = text.index("def")  # between `abc ` and `def`
+    assert not _seam_is_safe(text, cut_inside)
+    assert _seam_is_safe(text, text.index("x"))

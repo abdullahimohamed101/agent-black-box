@@ -363,11 +363,27 @@ def _scan_window(window: str, tally: _Tally, *, gated: bool = True) -> str:
     return window
 
 
-def _windows(text: str) -> Iterator[str]:
+_SEAM = 4096  # characters either side of a cut that are compared with and without the cut
+_CUT_TRIES = 64  # candidate cuts examined before the line is refused
+
+
+def _seam_is_safe(text: str, cut: int) -> bool:
+    """Would scanning `text` in two pieces at `cut` redact exactly what one piece would?
+
+    A match that straddles the cut (a quoted value with spaces, `Bearer ` then the token, `Cookie:`
+    then its value) would leave its second half stored in clear. The two ends of the seam are cut
+    at the same places in both runs, so any difference is caused by the cut itself.
+    """
+    left, right = text[max(0, cut - _SEAM) : cut], text[cut : cut + _SEAM]
+    whole = _scan_window(left + right, _Tally())
+    return whole == _scan_window(left, _Tally()) + _scan_window(right, _Tally())
+
+
+def _windows(text: str, budget: "ScanBudget | None" = None) -> Iterator[str]:
     """Pieces of at most WINDOW characters, cut after a newline, else after a separator.
 
-    A piece that has neither raises ScanTooLarge: a secret may straddle a blind cut, and storing
-    the text unscanned is the only alternative.
+    A cut is only made where `_seam_is_safe` says no secret straddles it. A piece without such a
+    cut raises ScanTooLarge: storing the text unscanned is the only alternative.
     """
     size = len(text)
     start = 0
@@ -375,16 +391,31 @@ def _windows(text: str) -> Iterator[str]:
     while start < size:
         end = min(start + WINDOW, size)
         if end < size:
-            newline = text.rfind("\n", start, end)
-            if newline > start:
-                end = newline + 1
-            else:
-                cut = next((i for i in range(end, start + floor, -1) if text[i - 1] in _BREAKS), 0)
-                if not cut:
-                    raise ScanTooLarge("a line is too long to scan safely")
-                end = cut
+            end = _safe_cut(text, start, end, floor, budget)
         yield text[start:end]
         start = end
+
+
+def _safe_cut(text: str, start: int, end: int, floor: int, budget: "ScanBudget | None") -> int:
+    tries = 0
+    newline = text.rfind("\n", start, end)
+    while newline > start and tries < _CUT_TRIES:
+        if budget is not None:
+            budget.check_time()
+        if _seam_is_safe(text, newline + 1):
+            return newline + 1
+        newline = text.rfind("\n", start, newline)
+        tries += 1
+    for i in range(end, start + floor, -1):
+        if text[i - 1] in _BREAKS:
+            if budget is not None:
+                budget.check_time()
+            if _seam_is_safe(text, i):
+                return i
+            tries += 1
+            if tries >= _CUT_TRIES:
+                break
+    raise ScanTooLarge("a line is too long to scan safely")
 
 
 class SecretScanner:
@@ -426,7 +457,7 @@ class SecretScanner:
         tally = _Tally()
         text = _redact_private_keys(normalize(text), tally)
         out: list[str] = []
-        for window in _windows(text):
+        for window in _windows(text, budget):
             budget.check_time()
             out.append(_scan_window(window, tally))
         return ScanResult("".join(out), tally.count, tuple(sorted(tally.kinds)))
