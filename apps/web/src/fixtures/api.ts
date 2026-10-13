@@ -8,6 +8,7 @@ import {
   type Viewer,
 } from "./evaluations";
 import { fixtureRuns } from "./index";
+import { fixturePolicyReply } from "./policies";
 import { fixtureSecurityDetectors, fixtureSecurityList, fixtureSecuritySettings } from "./security";
 import { withholdEvent, withholdSpan } from "./withhold";
 import { FixtureForbiddenError, FixtureQueryError, fixtureSearch } from "./search";
@@ -63,6 +64,8 @@ export function fixtureReply(
   viewer: Viewer = { content: true },
 ): Reply {
   const [v1, runs, runId, sub, eventId] = segments;
+  const policy = fixturePolicyReply(segments, q, viewer);
+  if (policy) return policy;
   if (v1 === "v1" && segments.length === 2) {
     const body = fixtureSettings(runs ?? "");
     if (body) return { status: 200, body };

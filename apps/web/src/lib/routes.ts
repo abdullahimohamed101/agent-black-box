@@ -13,3 +13,7 @@ export const comparePath = (b: Base, leftRunId: string, rightRunId: string) =>
 export const experimentsPath = (b: Base) => `${projectPath(b)}/experiments`;
 export const experimentPath = (b: Base, experimentId: string) =>
   `${experimentsPath(b)}/${experimentId}`;
+
+// Phase 14. Approvals are a workspace page; the policies editor is a settings page.
+export const approvalsPath = (workspace: string) => `/w/${workspace}/approvals`;
+export const policiesPath = (workspace: string) => `/w/${workspace}/settings/policies`;

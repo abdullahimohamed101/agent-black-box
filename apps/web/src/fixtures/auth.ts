@@ -12,7 +12,7 @@ const OWNER_PERMISSIONS = [
   "billing.read", "invite.read", "invite.write", "member.read", "member.write", "member.write_owner",
   "payload.read", "pricing.read", "pricing.write", "project.read", "project.write", "run.read",
   "workspace.read", "evaluation.read", "evaluation.run", "evaluation.label", "evaluator.write",
-  "experiment.read", "experiment.write",
+  "experiment.read", "experiment.write", "approval.read", "approval.decide", "policy.read", "policy.write",
 ]; // prettier-ignore
 const VIEWER_PERMISSIONS = [
   "analytics.read", "member.read", "pricing.read", "project.read", "run.read", "workspace.read",
