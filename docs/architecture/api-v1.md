@@ -237,6 +237,38 @@ All metadata: no route accepts or returns captured content, and each returns the
   a request that changes nothing writes no audit row. `422 SETTINGS_INVALID` (fixed message, never the value), `404 PROJECT_NOT_FOUND`. A new capture mode applies
   to the next accepted batch; a change to the mutes or the allowlist queues the project's recent runs for re-analysis in the same transaction (at most `ABB_SECURITY_REANALYSE_MAX_RUNS`=200 started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS`=30, newest first, coalesced per run, and a wave within `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS`=60 of the project's previous mute or allowlist change is queued but not due until the cooldown ends; older runs: `python -m abb_api.cli rebuild-findings`), a capture mode change does not. An allowlist entry is a host name of at most 253 characters (punycode for an international name).
 
+### Policies (Phase 14, ADR-140)
+
+Policy management. Enforcement is cooperative: a policy governs agents that ask the policy service through the SDK, and says nothing about one that does not.
+The document is the §151 YAML (`version: 1`, optional `default`, ordered `policies`; first match wins; ADR-140 lists every key and limit: 64 KiB, 200 rules,
+256-character globs). Scopes: the workspace base (omit `project_id`) or one project, whose policy replaces the base for that project. The current policy of a
+scope is its highest version; versions are immutable, numbered 1, 2, 3 per scope and never reused. People only: no API key scope grants these actions, and a
+cookie write needs the web app's `Origin`.
+
+- `GET /v1/policies/current[?project_id=]` (`policy.read`: owner, admin, developer, security): `{project_id, source, policy}`. `source` is `project`, `workspace`
+  or `default` (nothing published: every action is allowed; `policy` is null). `policy` is a version with its text: `{scope, project_id, version, document_sha256,
+  rule_count, created_at, created_by, comment, document}`.
+- `GET /v1/policies/versions[?project_id=&limit=&before_version=]` (`policy.read`): `{items, next_before_version}`, newest first, `limit` 1-100 (default 50), items
+  without `document`. With a project only that project's own versions are listed.
+- `GET /v1/policies/versions/{version}[?project_id=]` (`policy.read`): one version with its text; `404 POLICY_VERSION_NOT_FOUND`.
+- `GET /v1/policies/diff?from_version=&to_version=[&project_id=]` (`policy.read`): `{project_id, from_version, to_version, diff, truncated}`; `diff` is unified diff
+  text of at most 64 KiB (`truncated` says if it was cut); versions over 2,000 lines are `422 POLICY_TOO_LARGE_TO_DIFF`.
+- `POST /v1/policies/validate` (`policy.write`: owner, admin) `{document}`: `{valid, issues[], rule_count}`; always 200, no side effects, no audit row.
+  An issue is `{line, column, code, message}` (1-based; `code` is one of the 33 in `policies/parser.ISSUE_CODES`; the message is a fixed sentence that may name a key
+  and never a value).
+- `POST /v1/policies/publish` (`policy.write`) `{document, project_id?, comment?, base_version?}`: `201` with the new version (including `document`). An invalid
+  document is `422 POLICY_INVALID` with `error.details.issues` (the same issue objects) and stores nothing, audit row included. `base_version` is the version the
+  editor started from (0: none); if the scope's current version differs it is `409 POLICY_VERSION_CONFLICT` with `details.current_version`. One transaction writes the
+  version and the audit row `policy.publish` (`details`: `scope`, `version`, `sha256`, `rules`; never the text or the comment). Unknown or foreign `project_id`: `404 PROJECT_NOT_FOUND`.
+- `POST /v1/policies/dry-run` (`policy.write`) `{project_id, document}`: replays the project's newest runs through the draft and returns `{runs_considered,
+  events_evaluated, events_skipped, truncated, by_decision, by_rule[], samples[], limits}`. `by_decision` is `{allow, deny, require_approval}`; `by_rule` items are
+  `{rule_id (null: the default applied), decision, count}`, most frequent first; `samples` (at most 25, in run then time order, only denied or approval-gated
+  actions) are `{run_id, event_id, capability, risk_class, decision, rule_id}`: ids and labels only, never a command, path or argument. `truncated` is null,
+  `runs` (more than 100 runs), `events` (more than 20,000 mapped events) or `time_budget` (5 s); the counts then cover a prefix. Events map to intents as in
+  ADR-140 (`shell.execute`, `filesystem.read`, `filesystem.write`, `github.push`, `tool.<name>`). `504 POLICY_DRY_RUN_TIMEOUT` if the read exceeds 8 s.
+- Limits per workspace and API process: 30 publishes, 120 validations and 20 dry runs a minute (`ABB_POLICY_WRITES_PER_MINUTE`, `ABB_POLICY_VALIDATIONS_PER_MINUTE`,
+  `ABB_POLICY_DRY_RUNS_PER_MINUTE`); `429 RATE_LIMITED` with `Retry-After`.
+
 ### Search (`GET /v1/runs?q=`)
 
 `q` is a flat conjunction of terms separated by whitespace, parsed on the server into a typed AST (spec §152; the web app sends the text and renders what the server parsed):

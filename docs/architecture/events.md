@@ -78,6 +78,21 @@ payloads after redaction; `METADATA_ONLY` (the default) drops `payload`, `payloa
 Secret-shaped text becomes `[REDACTED:<label>]`. A value that cannot be scanned is dropped (a required attribute becomes `[dropped]`).
 Events already stored are never rewritten.
 
+### Policy decision attributes (Phase 14, ADR-140)
+
+Labels the policy service writes on `policy.decision` (an allowed or approval-gated decision), `policy.action.blocked` (a denial) and the `approval.*`
+events. Metadata for every role: closed vocabularies, ids and the policy author's own words, never anything the agent did.
+
+| Attribute | Type | Meaning |
+| --- | --- | --- |
+| `policy.id` | string | the id of the rule that decided (empty when the policy default applied) |
+| `policy.version` | integer >= 0 | the stored version of the policy that decided; 0 when no policy was published |
+| `policy.decision` | string | `allow`, `deny` or `require_approval` (required on `policy.decision`) |
+| `policy.capability` | string | the capability that was asked about, such as `filesystem.read` or `tool.github` |
+| `policy.reason` | string | fixed text: the matching rule's description, `Matched rule <id>.`, or one of two constant sentences; never built from the action |
+| `approval.id`, `approval.capability` | string | the approval request (Phase 14 step 2) |
+| `approval.state` | string | `REQUESTED`, `APPROVED`, `DENIED`, `EXPIRED` or `CANCELLED` |
+
 ## Event families
 
 | Class | Types |
@@ -92,7 +107,7 @@ Events already stored are never rewritten.
 | database | `db.query.started` `.completed` `.failed` |
 | network | `http.request` `http.response` |
 | reliability | `retry.attempted` `timeout.occurred` `loop.detected` `rate_limit.hit` |
-| security | `policy.warning` `policy.action.blocked` `secret.detected` |
+| security | `policy.warning` `policy.action.blocked` `policy.decision` (requires `policy.decision`) `secret.detected` |
 | approval | `approval.requested` `.granted` `.denied` (require `approval.id`) |
 | span | `span.started` `.completed` `.failed` for custom spans (`span.name`, `span.kind`) |
 | custom | `custom.<name>`: anything an application wants to record |

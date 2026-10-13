@@ -137,6 +137,17 @@ Reliability findings (Phase 10, ADR-080): evidence is metadata only by construct
 error text; the `fingerprint` and the `id` derived from it are functions of public metadata only, never of payload bytes, so they cannot be used to test a guessed payload; a reader learns only that the events cited by an `identical_request` finding carried equal payloads), so `GET /v1/runs/{id}/findings` needs only `run.read` and returns the same body to every reader; a detector failure surfaces as a fixed-text job error that cannot quote an
 attribute value; the cost baseline is scoped to the caller's workspace, project and agent.
 
+Policies (Phase 14, ADR-140): a policy is configuration that decides what agents may do, so it is owner/admin-only to change (`policy.write`; no API key scope
+holds it), readable by owner, admin, developer and security (`policy.read`), versioned (immutable rows: the runtime database role cannot UPDATE or DELETE
+`policy_versions`) and audited (`policy.publish` records scope, version, SHA-256 and rule count, never the text or the comment, in the same transaction as the version).
+The document is untrusted input: it is size-checked before parsing, read through PyYAML's event stream only (no object is ever constructed, so no tag can name a class),
+and refuses anchors, aliases, tags, merge keys, control and invisible formatting characters, deep nesting and over 5,000 nodes; errors carry a line, a column and a
+fixed message and never echo a value. Evaluation is a pure function with a linear-time glob matcher (no regular expressions, no backtracking) whose reason text comes
+only from the rule's own description or id, never from the action. The dry run reads recorded events through the event store contract, attributes only, behind
+`policy.write` (held only by roles that also read payloads), and returns counts, rule ids and ids: no command, path or argument. **The guarantee is cooperative**: the
+policy service stops an agent that asks it (through the SDK); it does not stop one that does not, and no screen or document may claim otherwise. Management limits are
+per process (KI-141); the dry run's mapping covers seven event kinds (KI-140).
+
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
 Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop; a real shared limiter,

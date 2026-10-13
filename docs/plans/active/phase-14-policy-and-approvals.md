@@ -63,3 +63,11 @@ Unit and property tests for the DSL parser, validator and evaluator; API tests f
 4. Web: Policies settings with history, diff and dry run; Approvals page and top-bar count; run-page decision rendering and banner.
 5. Verification suite: `policy-e2e.sh` and CI job, replay-rejection and race tests, benchmark, docs and closing evidence.
 6. Review, fixes, push and PR.
+
+## Progress
+
+- Step 1 (policy model, 2026-10-13): built on `feature/phase-14-policy-and-approvals`. DSL reader and validator (`abb_api/policies/parser.py`), pure first-match evaluator
+  with a linear-time glob matcher, append-only `policy_versions` (migration 0092), seven management routes (current, versions, one version, diff, validate, publish,
+  dry-run) with `policy.read`/`policy.write`, the `policy.decision` event and three attributes, ADR-140, KI-140/141. Steps 2-6 open. Contract for step 2: `evaluate(policy,
+  intent) -> Decision{decision, rule_id, policy_version, reason}`, `store.PgPolicyStore.effective(project_id)`, `parser.compile_cached(text)`, action `approval.decide`
+  still reserved.
