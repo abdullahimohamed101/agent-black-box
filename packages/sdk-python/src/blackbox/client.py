@@ -38,6 +38,7 @@ from blackbox.events import (
     without_nul,
 )
 from blackbox.exporter import Exporter, HttpSink, LocalSink, Sink
+from blackbox.policy import DISABLED, Decision, PolicyGuard, _run_guard
 from blackbox.propagation import TraceContext
 from blackbox.redaction import PayloadMode, Redactor
 from blackbox.stats import Stats
@@ -775,6 +776,7 @@ class BlackBox:
         self._start_lock = threading.Lock()
         self._started = False
         self._closed = False
+        self._policy: PolicyGuard | None = None
         if self._enabled:
             atexit.register(_atexit_shutdown, weakref.ref(self))
             _INSTANCES.add(self)
@@ -831,6 +833,67 @@ class BlackBox:
         current = _current_run.get()
         if current is not None:
             current.event(event_type, attributes, payload=payload, status=status)
+
+    def guard(
+        self,
+        capability: str,
+        resource: str | None = None,
+        risk_class: str | None = None,
+        arguments: dict[str, Any] | None = None,
+        *,
+        on_error: str | None = None,
+        run: "Run | None" = None,
+    ) -> Decision:
+        """Ask the policy service whether an action may happen (cooperative enforcement, D1).
+
+        Returns a `Decision` when the action may proceed; raises `PolicyDenied` (or its subclasses
+        `ApprovalDenied`, `ApprovalExpired`) when it must not, and `PolicyUnavailable` when the
+        service cannot be asked and the fail mode is closed. Raises nothing else (INV-4). With
+        `policy_mode="off"` (the default) it returns at once with `via="disabled"` and makes no
+        network call. See `blackbox.policy` for the contract.
+        """
+        if self.config.policy_mode != "enforce":
+            return DISABLED
+        return self._policy_engine().guard(
+            run if run is not None else _current_run.get(),
+            capability,
+            resource,
+            risk_class,
+            arguments,
+            on_error,
+        )
+
+    async def aguard(
+        self,
+        capability: str,
+        resource: str | None = None,
+        risk_class: str | None = None,
+        arguments: dict[str, Any] | None = None,
+        *,
+        on_error: str | None = None,
+        run: "Run | None" = None,
+    ) -> Decision:
+        """`guard` for asyncio: the blocking call runs on a worker thread (`asyncio.to_thread`)."""
+        if self.config.policy_mode != "enforce":
+            return DISABLED
+        return await _run_guard(
+            self._policy_engine(),
+            run if run is not None else _current_run.get(),
+            capability,
+            resource,
+            risk_class,
+            arguments,
+            on_error,
+        )
+
+    def _policy_engine(self) -> PolicyGuard:
+        engine = self._policy
+        if engine is None:
+            with self._start_lock:
+                if self._policy is None:
+                    self._policy = PolicyGuard(self.config, self.stats_)
+                engine = self._policy
+        return engine
 
     @overload
     def observe(self, fn: F) -> F: ...
@@ -1005,6 +1068,7 @@ class BlackBox:
         self._exporter = self._new_exporter()
         self._uploader = ArtifactUploader(self.config, self.stats_)
         self._started = False
+        self._policy = None  # its lock and cached table belong to the parent process
 
     def _emit(
         self,

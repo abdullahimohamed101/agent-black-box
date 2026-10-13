@@ -37,7 +37,8 @@ _P0 = frozenset(
     """run.started run.completed run.failed run.cancelled agent.started agent.completed
     agent.spawned llm.request.failed tool.call.failed shell.command.failed db.query.failed
     retry.attempted timeout.occurred loop.detected policy.warning policy.action.blocked
-    secret.detected approval.requested approval.granted approval.denied span.failed""".split()
+    secret.detected approval.requested approval.granted approval.denied approval.consumed
+    approval.expired approval.cancelled span.failed""".split()
 )
 _P2 = frozenset("agent.state_changed http.request http.response".split())
 

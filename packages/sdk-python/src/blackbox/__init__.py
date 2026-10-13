@@ -9,6 +9,18 @@ bb.shutdown()
 
 from blackbox.client import AgentSpan, BlackBox, LlmCall, Run, Span
 from blackbox.context import bind, current_run, current_span
+from blackbox.policy import (
+    ApprovalDenied,
+    ApprovalExpired,
+    ApprovalPending,
+    Decision,
+    PolicyDenied,
+    PolicyError,
+    PolicyUnavailable,
+    aguard,
+    guard,
+    guarded,
+)
 from blackbox.propagation import (
     TRACE_CONTEXT_ENV,
     TRACE_CONTEXT_HEADER,
@@ -22,15 +34,25 @@ __all__ = [
     "TRACE_CONTEXT_ENV",
     "TRACE_CONTEXT_HEADER",
     "AgentSpan",
+    "ApprovalDenied",
+    "ApprovalExpired",
+    "ApprovalPending",
     "BlackBox",
+    "Decision",
     "LlmCall",
     "PayloadMode",
+    "PolicyDenied",
+    "PolicyError",
+    "PolicyUnavailable",
     "Run",
     "Span",
     "TraceContext",
     "__version__",
+    "aguard",
     "bind",
     "current_run",
     "current_span",
+    "guard",
+    "guarded",
     "trace_context_from_env",
 ]
