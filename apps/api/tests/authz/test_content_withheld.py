@@ -156,6 +156,41 @@ async def test_per_event_cost_is_metadata_and_identical_for_every_role(
         assert (one["cost_usd"], one["cost_unpriced"]) == (ref["cost_usd"], ref["cost_unpriced"])
 
 
+@pytest.mark.parametrize("actor", ["viewer", "downgraded", *SEES_CONTENT])
+async def test_server_redaction_markers_are_metadata_and_identical_for_every_role(
+    world: World, actor: str
+) -> None:
+    """`redaction.*` (ADR-130) say that the server redacted or dropped something, with kind names
+    and a reason; they carry no content, so a viewer sees exactly what the owner sees."""
+    ids = make_run_ids()
+    secret = "AKIAIOSFODNN7EXAMPLE"  # the documented example key
+    events = [
+        wire_event(ids, 1, event_type="run.started", agent_id="ab", span_id=..., attributes={}),
+        wire_event(
+            ids, 2, event_type="shell.command.completed", agent_id="ab", status="success",
+            attributes={"shell.command": f"echo {secret}", "shell.stdout_artifact": "artifact://x"},
+            payload={"out": secret},
+        ),
+        wire_event(ids, 3, event_type="run.completed", agent_id="ab", span_id=..., attributes={}),
+    ]  # fmt: skip
+    assert (await world.api.post_batch(events, token="writer")).status_code == 202
+    await world.api.drain()
+    run_id, event_id = ids["run_id"], events[1]["event_id"]
+
+    one = (await world.get(f"/v1/runs/{run_id}/events/{event_id}", actor)).json()
+    reference = (await world.get(f"/v1/runs/{run_id}/events/{event_id}", "owner")).json()
+    markers = {k: v for k, v in one["attributes"].items() if k.startswith("redaction.")}
+    assert markers == {
+        k: v for k, v in reference["attributes"].items() if k.startswith("redaction.")
+    }
+    assert markers["redaction.server_kinds"] == ["aws_access_key"]
+    assert markers["redaction.server_count"] == 2
+    assert secret not in json.dumps(one) and secret not in json.dumps(reference)
+    listed = (await world.get(f"/v1/runs/{run_id}/events", actor, limit=100)).json()["items"]
+    row = next(e for e in listed if e["event_id"] == event_id)
+    assert row["attributes"].get("redaction.server_count") == 2
+
+
 async def _seeded_event_ids(world: World) -> list[str]:
     listed = await world.get(f"/v1/runs/{world.acme.run_id}/events", "owner", limit=100)
     return [e["event_id"] for e in listed.json()["items"]]

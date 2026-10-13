@@ -1,5 +1,6 @@
 """Artifact use cases: validate, hash, store, and read in bounded chunks (ADR-030)."""
 
+import asyncio
 import hashlib
 import logging
 import uuid
@@ -17,6 +18,8 @@ from abb_api.ids import public_id
 from abb_api.ingestion.ratelimit import RateLimiter
 from abb_api.ingestion.service import project_key_required, rate_limited
 from abb_api.runs.queries import RunQueries
+from abb_api.security.redaction import ArtifactDecision, ServerRedactor
+from abb_api.security.settings import CaptureMode, PgSecuritySettingsStore
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +95,18 @@ class ArtifactService:
         clock: Clock,
         *,
         max_bytes: int,
+        redactor: ServerRedactor | None = None,
+        scan_max_bytes: int = 4 * 1024 * 1024,
+        scan_max_seconds: float = 10.0,
     ) -> None:
         self._engine = engine
         self._store = store
         self._limiter = limiter
         self._clock = clock
         self._max_bytes = max_bytes
+        self._redactor = redactor or ServerRedactor()
+        self._scan_max_bytes = scan_max_bytes
+        self._scan_max_seconds = scan_max_seconds
 
     @property
     def max_bytes(self) -> int:
@@ -118,7 +127,7 @@ class ArtifactService:
         """Store an artifact. Returns the record and whether it was newly created."""
         if principal.project_id is None:
             raise project_key_required()
-        digest = hashlib.sha256(data).digest()
+        raw_digest = digest = hashlib.sha256(data).digest()
         if claimed_sha256 is not None and claimed_sha256.lower() != digest.hex():
             raise AppError(
                 "ARTIFACT_HASH_MISMATCH",
@@ -145,13 +154,19 @@ class ArtifactService:
                 status_code=409,
             )
         if existing is not None:
-            return self._existing(
-                principal, existing, project_id=principal.project_id, digest=digest
-            )
+            return await self._existing(principal, existing, data=data, digest=raw_digest)
 
+        # Redact before storing (ADR-130): what is hashed, sized and written is the stored form.
+        async with self._engine.connect() as conn:
+            mode = (
+                await PgSecuritySettingsStore(conn, principal.tenant).get(principal.project_id)
+            ).capture_mode
+        decision = await self._decide(data, mode)
+        stored = decision.body
+        digest = hashlib.sha256(stored).digest()
         key = storage_key(principal.workspace_id, artifact_id, digest)
         try:
-            await self._store.put(key, data)
+            await self._store.put(key, stored)
         except ArtifactStoreError:
             logger.error("artifact store write failed")
             raise _store_unavailable() from None
@@ -162,10 +177,11 @@ class ArtifactService:
             kind=kind,
             name=name,
             media_type=media_type,
-            size_bytes=len(data),
+            size_bytes=len(stored),
             sha256=digest,
             storage_key=key,
             created_at=self._clock(),
+            redaction=decision.record() if (decision.count or decision.dropped_reason) else None,
         )
         async with self._engine.begin() as conn:
             repo = ArtifactRepository(conn, principal.tenant)
@@ -180,20 +196,46 @@ class ArtifactService:
                 except ArtifactStoreError:
                     logger.warning("could not remove an orphaned artifact file")
             assert winner is not None
-            return self._existing(principal, winner, project_id=principal.project_id, digest=digest)
+            return await self._existing(principal, winner, data=data, digest=raw_digest)
+        if decision.count or decision.dropped_reason:
+            # Counts and kind names only (INV-5): the log never carries a value.
+            logger.info(
+                "artifact redacted",
+                extra={"redactions": decision.count, "dropped_reason": decision.dropped_reason},
+            )
         return artifact_out(record), True
 
-    def _existing(
-        self,
-        principal: Principal,
-        record: ArtifactRecord,
-        *,
-        project_id: uuid.UUID,
-        digest: bytes,
+    async def _decide(self, data: bytes, mode: CaptureMode) -> ArtifactDecision:
+        # Off the event loop: a few MiB of text takes tens of milliseconds to scan.
+        return await asyncio.to_thread(
+            self._redactor.artifact_body,
+            data,
+            mode,
+            max_bytes=self._scan_max_bytes,
+            max_seconds=self._scan_max_seconds,
+        )
+
+    async def _existing(
+        self, principal: Principal, record: ArtifactRecord, *, data: bytes, digest: bytes
     ) -> tuple[ArtifactOut, bool]:
-        if record.project_id != project_id or record.sha256 != digest:
+        """A retry of an upload that was stored: the same id and content is a duplicate.
+
+        The stored bytes are the redacted form, so a retry is compared as it would have been
+        stored: the raw digest, or the FULL-mode redaction of the body (independent of the
+        project's mode today, so a mode change does not turn a retry into a conflict). A body that
+        was dropped has nothing to compare; its retry is a duplicate by id.
+        """
+        if record.project_id != principal.project_id:
             raise _conflict()
-        return artifact_out(record), False
+        if record.sha256 == digest:
+            return artifact_out(record), False
+        if record.redaction and record.redaction.get("dropped_reason"):
+            return artifact_out(record), False
+        if record.redaction:
+            full = await self._decide(data, CaptureMode.FULL)
+            if full.dropped_reason is None and hashlib.sha256(full.body).digest() == record.sha256:
+                return artifact_out(record), False
+        raise _conflict()
 
     async def _visible(self, principal: Principal, artifact_id: uuid.UUID) -> ArtifactRecord:
         async with self._engine.connect() as conn:

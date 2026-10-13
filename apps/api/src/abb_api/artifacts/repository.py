@@ -25,6 +25,8 @@ class ArtifactRecord:
     sha256: bytes
     storage_key: str
     created_at: datetime
+    # Server redaction outcome (ADR-130): counts and kind names, a dropped reason. Never values.
+    redaction: dict[str, Any] | None = None
 
 
 def _record(r: Row[Any]) -> ArtifactRecord:
@@ -39,6 +41,7 @@ def _record(r: Row[Any]) -> ArtifactRecord:
         sha256=bytes(r.content_hash),
         storage_key=r.storage_uri,
         created_at=r.created_at,
+        redaction=(r.metadata or {}).get("redaction"),
     )
 
 
@@ -76,6 +79,7 @@ class ArtifactRepository:
                 size_bytes=record.size_bytes,
                 content_hash=record.sha256,
                 created_at=record.created_at,
+                metadata={"redaction": record.redaction} if record.redaction else {},
             )
             .on_conflict_do_nothing(index_elements=["workspace_id", "id"])
             .returning(t.artifacts.c.id)

@@ -193,7 +193,7 @@ export interface paths {
         get: operations["get_artifact_v1_artifacts__artifact_id__get"];
         /**
          * Upload an artifact
-         * @description Raw body (optionally gzip), at most the configured artifact limit. The client chooses the id (`art_<ULID>`), so retries are idempotent: the same id and content returns `200`, different content `409`. `X-Content-SHA256` (hex) is verified when sent. Needs a project-bound key with `artifacts:write`.
+         * @description Raw body (optionally gzip), at most the configured artifact limit. The client chooses the id (`art_<ULID>`), so retries are idempotent: the same id and content returns `200`, different content `409`. `X-Content-SHA256` (hex) is verified against the body as sent. Needs a project-bound key with `artifacts:write`. The server redacts before storing (ADR-130): secret-shaped text is replaced with `[REDACTED:...]`, and in a project whose capture mode is METADATA_ONLY or DISABLED, or when the body is too large or fails to scan, the artifact is created with a one-line note in place of the body. The returned `sha256` and `size_bytes` describe what is stored, so they can differ from the upload. A retry of a stored upload is a duplicate whatever the project's mode is now.
          */
         put: operations["put_artifact_v1_artifacts__artifact_id__put"];
         post?: never;

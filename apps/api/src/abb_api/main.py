@@ -200,6 +200,8 @@ def create_app(
             limiter,
             clock,
             max_bytes=settings.artifact_max_bytes,
+            scan_max_bytes=settings.security_scan_artifact_max_bytes,
+            scan_max_seconds=settings.security_scan_artifact_max_seconds,
         )
         app.state.analytics = AnalyticsService(
             engine,
