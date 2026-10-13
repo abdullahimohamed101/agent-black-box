@@ -441,6 +441,55 @@ jobs:
           path: apps/web/test-results
           if-no-files-found: ignore
 
+  security-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Security observability (Phase 13): a planted run through the real SDK, an SDK that skips redaction (scanned database and
+    # artifact files), capture modes, rebuild, an ingestion benchmark, and a real browser as owner, viewer and billing: two APIs
+    # (one with a tiny scan budget) + worker + fake OIDC provider + built web server (scripts/security-e2e.sh).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          pnpm install --frozen-lockfile
+          cp .env.example .env
+      - name: Build the web app
+        run: pnpm --filter @abb/web build
+      - name: Security end to end
+        env:
+          SECURITY_E2E_LOG_DIR: ${{ runner.temp }}/security-e2e-logs
+        run: scripts/security-e2e.sh
+      - name: Keep Playwright output and server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-e2e-results
+          path: |
+            apps/web/test-results
+            ${{ runner.temp }}/security-e2e-logs
+          if-no-files-found: ignore
+
   containers:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
