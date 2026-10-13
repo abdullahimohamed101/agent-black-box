@@ -14,4 +14,4 @@ async function handle(request: Request, ctx: Ctx): Promise<Response> {
   });
 }
 
-export { handle as GET, handle as POST, handle as PATCH, handle as DELETE };
+export { handle as GET, handle as POST, handle as PATCH, handle as PUT, handle as DELETE };

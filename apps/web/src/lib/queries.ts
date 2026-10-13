@@ -156,6 +156,61 @@ export function useRunFindings(runId: string, poll: boolean) {
   });
 }
 
+export type SecurityQuery = {
+  severity: readonly string[];
+  detector: readonly string[];
+  projectId: string | null;
+  since?: string;
+  until?: string;
+};
+export const SECURITY_PAGE_SIZE = 25;
+
+/** The workspace's security findings, newest run first, keyset-paged. Counts for the facets come with every page. */
+export function useSecurityFindings(f: SecurityQuery, enabled = true) {
+  return useInfiniteQuery({
+    enabled,
+    queryKey: ["security-findings", f],
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam, signal }) =>
+      unwrap(
+        await api.GET("/v1/security/findings", {
+          signal,
+          params: {
+            query: {
+              limit: SECURITY_PAGE_SIZE,
+              cursor: pageParam,
+              severity: f.severity.length ? [...f.severity] : undefined,
+              detector: f.detector.length ? [...f.detector] : undefined,
+              project_id: f.projectId || undefined,
+              since: f.since,
+              until: f.until,
+            },
+          },
+        }),
+      ),
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+    retry: (count, error) => !(error instanceof ApiRequestError && error.status < 500) && count < 2,
+  });
+}
+
+/** The detector catalogue; with a project it says which are muted or inactive there. Fixed text, cached for a while. */
+export function useSecurityDetectors(projectId: string | null | undefined, enabled = true) {
+  return useQuery({
+    enabled,
+    queryKey: ["security-detectors", projectId ?? null],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/security/detectors", {
+          signal,
+          params: { query: { project_id: projectId || undefined } },
+        }),
+      ).items,
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useEventDetail(runId: string, eventId: string | null) {
   return useQuery({
     enabled: eventId != null,

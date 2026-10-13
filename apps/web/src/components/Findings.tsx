@@ -14,6 +14,7 @@ import {
   summarizeEvidence,
 } from "@/lib/findings";
 import { useRunFindings } from "@/lib/queries";
+import { splitFindings } from "@/lib/security";
 import { ErrorState, Loading } from "./States";
 
 const MAX_SHOWN = 200;
@@ -203,7 +204,7 @@ function FindingsBody({
   onShowEvent: (eventId: string) => void;
 }) {
   const line = stateLine(data.state, runActive);
-  const items = sortFindings(data.items);
+  const items = sortFindings(splitFindings(data.items).reliability);
   const shown = items.slice(0, MAX_SHOWN);
   return (
     <div data-state={data.state.status}>

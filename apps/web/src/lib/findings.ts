@@ -12,7 +12,9 @@ export type DimStatus = DimensionOut["status"];
 export type Tone = "ok" | "bad" | "warn" | "info" | "neutral";
 
 const SEVERITY: Record<Severity, { glyph: string; label: string; tone: Tone; rank: number }> = {
-  critical: { glyph: "✕", label: "Critical", tone: "bad", rank: 2 },
+  critical: { glyph: "✕", label: "Critical", tone: "bad", rank: 4 },
+  high: { glyph: "▲", label: "High", tone: "warn", rank: 3 },
+  medium: { glyph: "▲", label: "Medium", tone: "warn", rank: 2 },
   warning: { glyph: "▲", label: "Warning", tone: "warn", rank: 1 },
   info: { glyph: "ⓘ", label: "Info", tone: "info", rank: 0 },
 };

@@ -40,6 +40,9 @@ import { EventDrawer } from "./EventDrawer";
 import { InspectorResizer } from "./InspectorResizer";
 import { Evaluations } from "./Evaluations";
 import { Findings } from "./Findings";
+import { ShieldGlyph } from "./SecuritySeverity";
+import { SecurityChip, SecurityFindings, useFindingCounts } from "./SecurityFindings";
+import { contextSummary, securityLine } from "@/lib/security";
 import { RunHeadline } from "./RunHeadline";
 import { StatusBadge } from "./StatusBadge";
 import { ReplayTransport } from "./ReplayTransport";
@@ -144,17 +147,23 @@ function ContextStripBody({
   poll: boolean;
   agents: number;
 }) {
-  const findings = useRunFindings(runId, poll).data?.items.length ?? 0;
+  const { reliability: findings, security } = useFindingCounts(runId, poll);
   return (
     <span
       className="strip-body"
-      title={`Run context: ${findings} finding${findings === 1 ? "" : "s"}${agents ? `, ${agents} agents` : ""}`}
+      title={`Run context: ${security ? `${security} security, ` : ""}${findings} finding${findings === 1 ? "" : "s"}${agents ? `, ${agents} agents` : ""}`}
     >
       <svg className="strip-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
         <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" />
         <path d="M6 2.5v11" stroke="currentColor" />
       </svg>
       <span className="strip-label">Context</span>
+      {security > 0 && (
+        <span className="strip-count" data-security="true" aria-hidden="true">
+          <ShieldGlyph />
+          {security}
+        </span>
+      )}
       {findings > 0 && (
         <span className="strip-count" data-tone="warn" aria-hidden="true">
           {findings}
@@ -171,12 +180,12 @@ function ContextStripBody({
 
 /** "Context · 2 findings": the closed column still says there is something in it. */
 function ContextSummary({ runId, poll }: { runId: string; poll: boolean }) {
-  const n = useRunFindings(runId, poll).data?.items.length ?? 0;
-  if (n === 0) return null;
+  const { security, reliability } = useFindingCounts(runId, poll);
+  if (security + reliability === 0) return null;
   return (
     <span className="context-summary" data-testid="context-summary">
       {" · "}
-      {n} finding{n === 1 ? "" : "s"}
+      {contextSummary(security, reliability)}
     </span>
   );
 }
@@ -561,6 +570,49 @@ export function RunDetail({
     if (firstErrorId) jumpTo(firstErrorId, "error");
   };
 
+  // The security chip and a `?finding=` link open the context column on the Security group.
+  const focusSecurity = useRef(false);
+  const openSecurity = () => {
+    if (contextClosed) {
+      focusSecurity.current = true;
+      setContextPref(squeezedWindow && inspected ? "pinned" : "open");
+    } else focusSecurityHeading();
+  };
+  const focusSecurityHeading = () => {
+    const h = document.getElementById("security-h");
+    h?.scrollIntoView?.({ block: "start" });
+    h?.focus();
+  };
+  useEffect(() => {
+    if (!contextClosed && focusSecurity.current) {
+      focusSecurity.current = false;
+      focusSecurityHeading();
+    }
+  });
+  // `?finding=<id>` (a row of the workspace Security page): open the column, mark the finding, show its evidence.
+  const wantedFinding = params?.get("finding") ?? null;
+  const handledFinding = useRef<string | null>(null);
+  const deepFindings = useRunFindings(runId, false).data;
+  const focusId =
+    wantedFinding &&
+    deepFindings?.items.some((f) => f.id === wantedFinding && f.category === "security")
+      ? wantedFinding
+      : null;
+  const jumpRef = useRef(jumpTo);
+  useEffect(() => {
+    jumpRef.current = jumpTo;
+  });
+  useEffect(() => {
+    if (!focusId || handledFinding.current === focusId || !deepFindings) return;
+    handledFinding.current = focusId;
+    const hit = deepFindings.items.find((f) => f.id === focusId)!;
+    const target = securityLine(hit).target;
+    later(() => {
+      setContextPref("pinned");
+      if (target) jumpRef.current(target);
+    }, 0);
+  }, [focusId, deepFindings, later]);
+
   const toggleClass = (c: EventClass) =>
     setFilters((f) => {
       const cur = new Set(f.classes ?? CLASS_ORDER);
@@ -612,6 +664,7 @@ export function RunDetail({
           ) : (
             <StatusBadge status={r.status} />
           )}
+          <SecurityChip badge={r.security_findings} onOpen={openSecurity} />
           <span className="id muted" title={r.id}>
             {r.id.slice(0, 4)}…{r.id.slice(-6)} · {r.agent_id ?? "—"}
             {models.length > 0 && <> · {models.join(", ")}</>} · ordered by{" "}
@@ -759,6 +812,13 @@ export function RunDetail({
                 Findings and agent totals reflect the whole run.
               </p>
             )}
+            <SecurityFindings
+              runId={runId}
+              projectId={r.project_id}
+              poll={active || r.summary_state === "processing"}
+              focusId={focusId}
+              onShowEvent={jumpTo}
+            />
             {/* Findings first: they are why the column is opened (D3). */}
             <Findings
               runId={runId}

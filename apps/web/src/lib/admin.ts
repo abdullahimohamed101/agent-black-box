@@ -46,6 +46,20 @@ export const useAudit = (enabled: boolean) =>
     getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
 
+/** One project's capture mode, detector mutes and destination allowlist (project.write only; the API says 403 to others). */
+export const useSecuritySettings = (projectId: string | null, enabled = true) =>
+  useQuery({
+    enabled: enabled && projectId != null,
+    queryKey: ["security-settings", projectId],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/projects/{project_id}/security-settings", {
+          signal,
+          params: { path: { project_id: projectId! } },
+        }),
+      ),
+  });
+
 /** A write that refreshes the listed queries afterwards. Errors reach the caller as `ApiRequestError`. */
 function useWrite<A, R>(run: (arg: A) => Promise<R>, invalidate: string[]) {
   const client = useQueryClient();
@@ -122,3 +136,27 @@ export const useRebuildCosts = () =>
       unwrap(await api.POST("/v1/cost/rebuild", { body })),
     ["audit"],
   );
+
+/**
+ * Partial update (a list given replaces the stored one; fields left out stay). The settings query is refreshed from
+ * the response by the caller, not guessed: what the screen shows after a save is what the API stored.
+ */
+export const useUpdateSecuritySettings = (projectId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: components["schemas"]["SecuritySettingsIn"]) =>
+      unwrap(
+        await api.PUT("/v1/projects/{project_id}/security-settings", {
+          params: { path: { project_id: projectId } },
+          body,
+        }),
+      ),
+    onSuccess: async (data) => {
+      client.setQueryData(["security-settings", projectId], data);
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["audit"] }),
+        client.invalidateQueries({ queryKey: ["security-detectors"] }),
+      ]);
+    },
+  });
+};

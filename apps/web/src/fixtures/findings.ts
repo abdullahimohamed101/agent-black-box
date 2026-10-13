@@ -7,6 +7,7 @@ import type {
 } from "@/lib/api/types";
 import type { FixtureRun } from "./builder";
 import { fid } from "./ids";
+import { securityFindingsFor } from "./securityRuns";
 
 /**
  * What the findings route returns for the fixture runs. The three pathological runs carry hand-written findings
@@ -26,6 +27,7 @@ type Spec = Omit<
   | "evidence_event_ids"
   | "start_event_id"
   | "end_event_id"
+  | "category"
 > & { start: number; end: number; cited?: number[] };
 
 const THRESHOLDS = {
@@ -40,6 +42,7 @@ function build(f: FixtureRun, specs: Spec[]): FindingOut[] {
   const id = (seq: number) => f.events[seq - 1]!.event_id;
   return specs.map(({ start, end, cited, ...spec }, i) => ({
     ...spec,
+    category: "reliability" as const,
     id: fid("fnd", Number(f.run.id.slice(-6)) * 100 + i + 1),
     run_id: f.run.id,
     start_event_id: id(start),
@@ -178,7 +181,7 @@ function findingsFor(f: FixtureRun): FindingOut[] {
   }
 }
 
-const SEVERITY_RANK = { info: 0, warning: 1, critical: 2 } as const;
+const SEVERITY_RANK = { info: 0, warning: 1, medium: 2, high: 3, critical: 4 } as const;
 
 function health(f: FixtureRun, items: FindingOut[], current: boolean): RunFindingsOut["health"] {
   const s = f.run.summary;
@@ -279,6 +282,7 @@ export function withFindings(f: FixtureRun): FixtureRun {
       : f.run.status === "WAITING_FOR_APPROVAL"
         ? "none"
         : "current";
+  const security = securityFindingsFor(f);
   const items = findingsFor(f);
   const count = items.length;
   const worst = items.reduce<FindingOut["severity"] | null>(
@@ -288,7 +292,7 @@ export function withFindings(f: FixtureRun): FixtureRun {
   const analysed = status === "current";
   const badge: FindingsBadge = {
     count,
-    max_severity: worst,
+    max_severity: worst as FindingsBadge["max_severity"],
     state: analysed ? "current" : "none",
   };
   const findings: RunFindingsOut = {
@@ -302,7 +306,18 @@ export function withFindings(f: FixtureRun): FixtureRun {
       truncated: false,
     },
     health: health(f, items, analysed),
-    items,
+    items: [...items, ...security],
   };
-  return { ...f, run: { ...f.run, findings: badge }, findings };
+  // The reliability badge stays reliability-only; the security count sits beside it (ADR-131).
+  const sevRank = (x: FindingOut["severity"]) => SEVERITY_RANK[x];
+  const secWorst = security.reduce<FindingOut["severity"] | null>(
+    (w, i) => (w == null || sevRank(i.severity) > sevRank(w) ? i.severity : w),
+    null,
+  );
+  const security_findings = {
+    count: security.length,
+    max_severity: secWorst,
+    state: analysed ? ("current" as const) : ("none" as const),
+  };
+  return { ...f, run: { ...f.run, findings: badge, security_findings }, findings };
 }

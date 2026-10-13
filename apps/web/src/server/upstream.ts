@@ -1,5 +1,6 @@
 import { fixtureReply } from "@/fixtures/api";
 import { isFixtureViewerWorkspace } from "@/fixtures/auth";
+import { fixtureSecuritySettings } from "@/fixtures/security";
 import {
   MAX_BODY_BYTES,
   UPSTREAM_TIMEOUT_MS,
@@ -30,7 +31,7 @@ const route = (method: string, pattern: string): Route => ({
 const ROUTES: readonly Route[] = [
   route(
     "GET",
-    `(runs(/${ID}(/(spans|stream|findings|evaluations|compare|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance|waste))`,
+    `(runs(/${ID}(/(spans|stream|findings|evaluations|compare|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance|waste)|security/(findings|detectors)|projects/${ID}/security-settings)`,
   ),
   route("GET", "(me|projects|members|invitations|api-keys|pricing|audit|evaluators|experiments)"),
   route("GET", `experiments/${ID}`),
@@ -41,6 +42,7 @@ const ROUTES: readonly Route[] = [
   // Phase 11 writes: start an evaluator, record a human verdict, shape and evaluate an experiment.
   route("POST", `runs/${ID}/(evaluations|verdicts)`),
   route("POST", `experiments/${ID}/(variants|runs|evaluate)`),
+  route("PUT", `projects/${ID}/security-settings`),
   route("PATCH", `members/${ID}`),
   route("DELETE", `(members|invitations|api-keys|evaluators|experiments)/${ID}`),
   route("DELETE", `experiments/${ID}/runs/${ID}`),
@@ -142,7 +144,7 @@ async function prepare(
   if (lastEventId && LAST_EVENT_ID.test(lastEventId)) headers["last-event-id"] = lastEventId;
 
   let body: string | undefined;
-  if (method === "POST" || method === "PATCH") {
+  if (method === "POST" || method === "PATCH" || method === "PUT") {
     if (!(incoming.get("content-type") ?? "").toLowerCase().startsWith("application/json"))
       return fail(envelope(415, "UNSUPPORTED_MEDIA_TYPE", "A JSON body is required."));
     const text = await readCapped(options.body, incoming.get("content-length"));
@@ -187,7 +189,28 @@ export async function readThrough(
   if (fixturesMode() && !fixturesBlocked() && ROUTES.some((r) => r.re.test(path))) {
     if (STREAM.test(path))
       return envelope(404, "STREAM_NOT_AVAILABLE", "Fixture data has no live stream.");
-    if ((options.method ?? "GET").toUpperCase() !== "GET")
+    const fixtureMethod = (options.method ?? "GET").toUpperCase();
+    const settings = /^v1\/projects\/([A-Za-z0-9_-]{1,64})\/security-settings$/.exec(path);
+    if (fixtureMethod === "PUT" && settings) {
+      // The one fixture write: security settings keep in-memory state so the settings page can be exercised.
+      const text = await readCapped(options.body, options.headers?.get("content-length") ?? null);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text ?? "");
+      } catch {
+        return envelope(422, "SETTINGS_INVALID", "A JSON body is required.");
+      }
+      const r = fixtureSecuritySettings(
+        settings[1]!,
+        parsed ?? {},
+        !isFixtureViewerWorkspace(options.headers?.get("x-abb-workspace")),
+      );
+      return Response.json(r.body, {
+        status: r.status,
+        headers: { ...SAFE, "x-request-id": "req_fixture" },
+      });
+    }
+    if (fixtureMethod !== "GET")
       return envelope(405, "FIXTURE_READ_ONLY", "Fixture data is read-only.");
     if (search.toString().length > MAX_QUERY_CHARS)
       return envelope(414, "QUERY_TOO_LONG", "Query string too long.");
