@@ -146,7 +146,7 @@ come from the key (an event naming another tenant is rejected, never overwritten
   `METADATA_ONLY` by default, `DISABLED`; set with `python -m abb_api.cli set-capture-mode` until the settings API of step 2) and scans every
   string it carries; secret-shaped text becomes `[REDACTED:<label>]`, and the event records `redaction.server_count`, `redaction.server_kinds`
   and `redaction.dropped_reason` ([events](events.md)). An event that cannot be scanned keeps its metadata and loses the value that could not be
-  scanned. An event whose redaction fails outright is rejected with `REDACTION_FAILED`. If the project's settings cannot be read the whole batch
+  scanned. An event whose redaction fails outright is rejected with `REDACTION_FAILED`. An event of a type the server writes (`policy.decision`, `policy.action.blocked`, `approval.requested|granted|denied|consumed|expired|cancelled`) is rejected with `RESERVED_EVENT_TYPE`; the rest of the batch is stored and the SDK does not retry it. If the project's settings cannot be read the whole batch
   is refused with a retryable `503`. Artifacts follow the same modes (see `PUT /v1/artifacts/{id}` in the OpenAPI document): dropped bodies are
   stored as a one-line note and the `sha256`/`size_bytes` returned describe what is stored.
 - Per-project rate limit: 2,000 events/s (burst 10,000) and 10 MiB/s by default, per API process
@@ -295,7 +295,7 @@ asked for: any other id is the same `404 APPROVAL_NOT_FOUND`. Request bodies are
 - `GET /v1/approvals/{id}/wait[?timeout=0..25]` -> `{approval_id, state, expires_at, on_expiry, policy_id, policy_version, consumed}`. A long poll: at once if the state is no longer `REQUESTED`, else at the first change or after
   `timeout` seconds. `429 TOO_MANY_WAITERS` beyond 20 waiters per workspace or 200 per process (`ABB_APPROVAL_WAITERS_PER_WORKSPACE`, `..._PER_PROCESS`); no database connection is held while waiting.
 - `POST /v1/approvals/{id}/consume` `{intent: <the intent as sent to decide>}` -> `200 {approval_id, consumed_at}` once. Refusals (all 409 but the first, none echoes the intent): `404 APPROVAL_NOT_FOUND`,
-  `APPROVAL_NOT_APPROVED`, `APPROVAL_EXPIRED`, `APPROVAL_CONSUMED`, `APPROVAL_INTENT_MISMATCH`. A lost response cannot be retried (the second call is `APPROVAL_CONSUMED`).
+  `APPROVAL_NOT_APPROVED`, `APPROVAL_EXPIRED`, `APPROVAL_CONSUMED`, `APPROVAL_INTENT_MISMATCH`, and `APPROVAL_POLICY_DENIED` (the policy published now denies the action; nothing is spent, the approval is unchanged). A lost response cannot be retried (the second call is `APPROVAL_CONSUMED`).
 - `DELETE /v1/approvals/{id}` -> `204`: withdraw a request that is still waiting (`409 APPROVAL_NOT_REQUESTED` otherwise).
 - `GET /v1/policies/fail-modes[?project_id=]` (also `policy.read` roles) -> `{project_id, source, policy_version, rules[{rule_id, capability, resource, risk_classes, has_attribute_conditions, on_error}], defaults}`:
   the rules that set `on_error` explicitly, plus `R0`..`R4` and `unclassified` defaults, for an SDK to cache at startup. Approximate by design (ADR-141 point 9).
@@ -310,7 +310,7 @@ asked for: any other id is the same `404 APPROVAL_NOT_FOUND`. Request bodies are
   the rule has `allow_self_approval`; `409 APPROVAL_NOT_REQUESTED` (`details.state`) for the loser of any race and for an approval already decided, withdrawn or expired. One transaction holds the transition, the
   `approval.granted`/`approval.denied` event and the audit row `approval.decide` (`details`: `approval_id`, `decision`, `approver_role`, `policy_id`).
 
-Every state change is an event and an audit row: `approval.consume` and `approval.cancel` (actor: the key), `approval.expire` (actor kind `system`). Plain allow decisions are events only. Decision calls (decide, wait start, consume,
+Every state change is an event and an audit row: `approval.consume`, `approval.consume_refused` and `approval.cancel` (actor: the key), `approval.expire` (actor kind `system`). Plain allow decisions are events only. Decision calls (decide, wait start, consume,
 withdraw) share a per-key and a per-workspace budget (`ABB_POLICY_DECIDE_PER_MINUTE_KEY`=1200, `..._WORKSPACE`=6000; `429 RATE_LIMITED` with `Retry-After`); at most 100 requests per key and 1,000 per workspace may be waiting
 (`429 TOO_MANY_OPEN_APPROVALS`).
 

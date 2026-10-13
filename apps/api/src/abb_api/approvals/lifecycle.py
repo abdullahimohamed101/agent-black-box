@@ -62,14 +62,13 @@ async def record(
     actor_id: str,
     consumed: bool = False,
     audit_details: dict[str, object] | None = None,
+    current: tuple[str | None, int] | None = None,
 ) -> None:
     """The event of `approval`'s new state, and (if `audit_action`) its audit row."""
     store = PgApprovalStore(conn, tenant)
     ref = await run_ref(store, approval)
-    await emit(
-        conn, tenant, [transition_event(tenant, ref, approval, now=now, consumed=consumed)],
-        summary_delay,
-    )  # fmt: skip
+    event = transition_event(tenant, ref, approval, now=now, consumed=consumed, current=current)
+    await emit(conn, tenant, [event], summary_delay)
     if audit_action is not None:
         await AuditRepository(conn, tenant).append(
             AuditEntry(

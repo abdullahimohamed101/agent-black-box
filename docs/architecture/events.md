@@ -96,8 +96,7 @@ events. Metadata for every role: closed vocabularies, ids and the policy author'
 **Who writes them.** `policy.decision`, `policy.action.blocked` and every `approval.*` event of a decision are written by the **server** (ADR-141), in the
 transaction of the state change they record, with `sdk.name = "abb-policy-service"` (a name ingestion refuses from clients) and no `sequence` (the server is a
 second emitter of the run, ADR-070, so such a run is ordered by time). Their ids are derived from the approval and the transition, so a redelivery is an
-idempotent duplicate and each transition has one event. An SDK may still send its own events of these types; nothing trusts them for a decision, and the run
-page shows who wrote an event. `approval.consumed` is the approval being spent for exactly one action; `approval.expired` and `approval.cancelled` end a request
+idempotent duplicate and each transition has one event. Ingestion rejects these types from clients, per event, with `RESERVED_EVENT_TYPE` (ADR-141 Amendment 1); `policy.warning` is still client-writable. `approval.consumed` is the approval being spent for exactly one action; `approval.expired` and `approval.cancelled` end a request
 by time or by the agent's withdrawal (a run leaves "waiting for approval" on any of `granted`, `denied`, `expired` or `cancelled`).
 
 ## Event families

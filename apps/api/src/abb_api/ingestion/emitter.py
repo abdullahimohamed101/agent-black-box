@@ -6,3 +6,16 @@ name from clients, so the name on an event says who wrote it and cannot be forge
 
 SERVER_EMITTER = "abb-policy-service"
 EMITTER_RESERVED_CODE = "emitter_reserved"
+RESERVED_TYPE_CODE = "RESERVED_EVENT_TYPE"
+RESERVED_EVENT_TYPES = frozenset(
+    {
+        "policy.decision",
+        "policy.action.blocked",
+        "approval.requested",
+        "approval.granted",
+        "approval.denied",
+        "approval.consumed",
+        "approval.expired",
+        "approval.cancelled",
+    }
+)

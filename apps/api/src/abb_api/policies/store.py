@@ -45,6 +45,8 @@ class StoredPolicy(PolicyVersion):
 class PolicyStore(Protocol):
     async def lock_scope(self, project_id: uuid.UUID | None) -> None: ...
 
+    async def lock_governing_shared(self, project_id: uuid.UUID) -> None: ...
+
     async def latest(self, project_id: uuid.UUID | None) -> StoredPolicy | None: ...
 
     async def get(self, project_id: uuid.UUID | None, version: int) -> StoredPolicy | None: ...
@@ -109,8 +111,23 @@ class PgPolicyStore:
     async def lock_scope(self, project_id: uuid.UUID | None) -> None:
         """Serialise publishers of one scope for the rest of the transaction."""
         await self._require_project(project_id)
+        await self._conn.execute(select(func.pg_advisory_xact_lock(self._lock_key(project_id))))
+
+    def _lock_key(self, project_id: uuid.UUID | None) -> ColumnElement[int]:
         key = f"ws:{self._tenant.workspace_id}:policy:{project_id or 'base'}"
-        await self._conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(key, 0))))
+        return func.hashtextextended(key, 0)
+
+    async def lock_governing_shared(self, project_id: uuid.UUID) -> None:
+        """Hold off publishers of the project's scope and of the workspace base for the rest of
+        the transaction, without blocking other readers. A publisher takes the same key
+        exclusively, so a publish that commits first is seen by the read that follows, and one
+        that starts later waits for this transaction (ADR-141: consume re-evaluates the policy).
+        The base is locked before the project in every caller (a fixed order), and publishers
+        hold one key only, so this cannot deadlock."""
+        for scope in (None, project_id):
+            await self._conn.execute(
+                select(func.pg_advisory_xact_lock_shared(self._lock_key(scope)))
+            )
 
     async def latest(self, project_id: uuid.UUID | None) -> StoredPolicy | None:
         await self._require_project(project_id)

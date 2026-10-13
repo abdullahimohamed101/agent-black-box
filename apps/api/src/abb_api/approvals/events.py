@@ -127,9 +127,19 @@ def decision_event(
 
 
 def transition_event(
-    tenant: TenantContext, ref: RunRef, approval: Approval, *, now: datetime, consumed: bool = False
+    tenant: TenantContext,
+    ref: RunRef,
+    approval: Approval,
+    *,
+    now: datetime,
+    consumed: bool = False,
+    current: tuple[str | None, int] | None = None,
 ) -> Event:
-    """The event of an approval's new state (or its consumption)."""
+    """The event of an approval's new state (or its consumption). `current` is the rule id and
+    version of the policy that was re-evaluated when the approval was spent (ADR-141)."""
+    extra: dict[str, Any] = {}
+    if current is not None:
+        extra = {"policy.current_id": current[0] or "default", "policy.current_version": current[1]}
     identifier = public_id(IdKind.APPROVAL, approval.id)
     event_type = "approval.consumed" if consumed else _EVENT_FOR_STATE[approval.state]
     return _event(
@@ -145,6 +155,7 @@ def transition_event(
             "approval.capability": approval.capability,
             "policy.id": approval.policy_rule_id,
             "policy.version": approval.policy_version,
+            **extra,
         },
         now=now,
     )

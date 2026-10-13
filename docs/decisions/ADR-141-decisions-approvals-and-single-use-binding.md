@@ -84,8 +84,13 @@ ingestion store, so they get the same idempotency on `(workspace_id, event_id)`,
   metadata only: `policy.id` (the rule, or `default`), `policy.version`, `policy.capability`, `policy.decision`, `policy.reason`, `approval.id`, `approval.state`,
   `approval.capability`. No resource, argument, command, path or comment ever enters an event, and no new attribute was needed.
 - Provenance: the events carry `sdk.name = "abb-policy-service"`, and ingestion refuses that name from clients (`emitter_reserved`), so the name says who wrote an
-  event. **Not closed:** an SDK may still send its own `policy.decision` or `approval.*` events (they were allowed before this phase, and some integrations may use them).
-  Nothing in the server trusts them for a decision, but a reader of a run sees them as events; the UI (step 4) must show provenance (KI-143).
+  event. **Reserved event types (Amendment 1, KI-143):** the ingestion endpoints also reject, per event, the types the server writes: `policy.decision`,
+  `policy.action.blocked` and `approval.requested`, `.granted`, `.denied`, `.consumed`, `.expired`, `.cancelled`, with the code `RESERVED_EVENT_TYPE` (issue code
+  `event_type_reserved`). The check reads the raw `event_type` before validation, so the answer does not depend on which attributes the forger sent. It follows the
+  `REDACTION_FAILED` pattern: the batch is still `202`, the other events are stored, nothing of the rejected event is stored, and the SDK counts it as rejected and does
+  not retry. The single-event endpoint answers `422 EVENT_INVALID`. The policy service writes its own events through `PgEventStore` directly and never through
+  ingestion, so it needs no bypass. `policy.warning` stays client-writable (the SDK writes it when the policy service is unreachable). Events of these types stored
+  before this change remain (INV-1); the UI still shows provenance (step 4).
 - Ordering: the events carry no `sequence`, because the server is a second emitter of the run (ADR-070). A run with a decision therefore sorts by time, like a
   multi-process run, and a skew between the server and the host's clock can misplace a decision against the action (KI-142). The summary treats
   `approval.expired` and `approval.cancelled` like `granted` and `denied`: the run leaves `WAITING_FOR_APPROVAL`.
@@ -145,6 +150,25 @@ Anything else is a distinct fixed code that echoes nothing:
 | `APPROVAL_EXPIRED` | 409 | expired (marked or not yet) |
 | `APPROVAL_CONSUMED` | 409 | already spent (also: the second of two simultaneous calls) |
 | `APPROVAL_INTENT_MISMATCH` | 409 | approved, live and unspent, but for a different intent (command, resource, argument, agent, risk class, capability or run) |
+| `APPROVAL_POLICY_DENIED` | 409 | everything above holds, but the policy published now denies the presented intent (Amendment 1) |
+
+**Amendment 1: consume re-evaluates the current policy (KI-144).** After the intent checks and before spending, consume reads the policy that governs the project now and
+runs the pure evaluator on the presented intent. If the decision is `deny` (a rule, or the policy default), consume answers `APPROVAL_POLICY_DENIED` and spends
+nothing: the approval stays `APPROVED` and unspent (it expires on its own), so publishing an allow again, or a rule that no longer matches, makes it usable
+again. The refusal is committed with a `policy.action.blocked` event (rule id and version of the policy that denied; one event per approval and policy version, so
+retries do not repeat it) and the audit row `approval.consume_refused` (reason code, rule, version; no intent). If the decision is `allow` or `require_approval` the
+consume proceeds: a granted approval satisfies a rule that still requires approval, and a policy that changed from `require_approval` to `allow` also proceeds
+(the approval is simply unnecessary, not harmful). The successful `approval.consumed` event carries `policy.current_id` and `policy.current_version` (the policy
+re-evaluated) beside `policy.id`/`policy.version` (the version that required the approval), and the `approval.consume` audit row carries `current_policy_rule` and
+`current_policy_version`. An unreadable stored policy is `POLICY_UNAVAILABLE` (503, retryable), as for decide.
+
+*Atomicity guarantee (honest form).* The consume transaction takes shared advisory locks on the workspace-base and project policy scopes before reading the policy;
+publishers hold the same keys exclusively until they commit (`lock_scope`). Therefore every consume is ordered against every publish of a scope that governs it: a
+deny whose publish commits before the consume's policy read is always honoured, because the read happens after the lock and sees committed data (READ COMMITTED);
+a publish that starts while a consume holds the lock waits for that consume to commit, so the consume spends under the older policy and the deny is honoured from the
+next attempt. What this does not give: a deny published after the consume committed cannot recall an action already authorised, and the action itself runs
+outside the server, so a deny published between the consume and the action does not stop it. Locks are shared, so concurrent consumes do not block each other; the
+cost to a publisher is waiting for in-flight consumes (milliseconds).
 
 The caller learns which step failed and nothing about the values. Success appends `approval.consumed` and the audit row `approval.consume` (actor: the key) in the same
 transaction. Fifty simultaneous consumes give one 200 and 49 `APPROVAL_CONSUMED`. **A lost response cannot be retried**: the second call is `APPROVAL_CONSUMED`. An idempotent
@@ -219,7 +243,7 @@ and per workspace (1000): `429 TOO_MANY_OPEN_APPROVALS`, so a runaway agent cann
 | A person approving their own agent's action | `requested_by_user_id` compared with the decider | `test_decision.py` |
 | Cross-workspace, cross-project, cross-key | every statement carries the workspace, agents also project and key; one `APPROVAL_NOT_FOUND` for all | cross-workspace probes in `tests/authz`, `test_consume.py` |
 | Race between deciders / cancel / expiry | single-statement transitions with a state predicate | `test_decision.py` race tests count events and audit rows |
-| A hostile SDK forging the policy record | the server writes the events; its emitter name is reserved | `test_decide.py`; but see KI-143 |
+| A hostile SDK forging the policy record | the server writes the events; its emitter name is reserved | `test_decide.py`, `test_reserved_events.py` (reserved emitter and reserved types; KI-143 resolved) |
 | Content leaking from an approval | scrubbed before storage (fail closed), never in events/audit/logs/agent responses; the hash never leaves | `test_content.py` plants sentinels and secrets |
 | A flood of asks, waits or requests | per-key and per-workspace budgets, waiter caps, open-request caps, body limits | `test_flood.py`, `test_wait.py` |
 | Rewriting history with the app credential | CHECKs + guard trigger, no DELETE/TRUNCATE | `test_state_machine_db.py` (limit: legal transitions by a holder of the credential remain possible) |
@@ -241,7 +265,7 @@ and per workspace (1000): `429 TOO_MANY_OPEN_APPROVALS`, so a runaway agent cann
   (`policy.decide`, `approval.use`, `approval.read`, `approval.decide`, `policy.fail_modes`; `approval.decide` is no longer reserved), three event types, audit actor kind `system`, the intent hash in `event-schema`.
 - Step 3 (SDK): `guard()` posts the intent, sends the same intent to consume, treats a refused consume as a denial, treats `TOO_MANY_*`, 429 and 503 as service failures, and reproduces the vectors.
 - Step 4 (web): the approvals page uses `GET /v1/approvals`; show `approval.*` provenance; the run page can show `seconds_left`.
-- Open (filed in KNOWN_ISSUES): KI-142 (server events put a run into time order), KI-143 (client-sent `policy.*` events are still accepted), KI-144 (an approved action is not re-evaluated against a policy
+- Open (filed in KNOWN_ISSUES): KI-142 (server events put a run into time order), KI-143 (resolved by Amendment 1), KI-144 (resolved by Amendment 1: re-evaluated against a policy
   published after the approval), KI-145 (a lost consume response is not retryable), KI-146 (the fail-mode table is approximate), KI-147 (per-process limits).
 - Existing tests changed (also in the step report): `test_matrix_data.py` (new grants; `approval.decide` no longer reserved), `test_role_matrix.py` and `registry.py`/`world.py` (nine routes, a seeded gate and approval),
   `test_registry_is_complete.py` (the operation count), `test_runtime_role.py` (`approvals` is update-only through its trigger), `test_migrations.py` (0093), `test_run_summary.py` (additions), `conftest.make_settings`

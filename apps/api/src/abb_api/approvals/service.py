@@ -31,6 +31,7 @@ from abb_api.approvals.lifecycle import (
     emit,
     expire_one,
     record,
+    run_ref,
     run_rejected,
     sweep_expired,
 )
@@ -38,6 +39,7 @@ from abb_api.approvals.model import Approval, NewApproval
 from abb_api.approvals.roles import may_decide
 from abb_api.approvals.store import PgApprovalStore
 from abb_api.approvals.waiters import WaiterGate
+from abb_api.audit.repository import AuditEntry, AuditRepository
 from abb_api.auth.repository import ApiKeyLookup
 from abb_api.authz import actions
 from abb_api.authz.principal import Principal
@@ -53,6 +55,7 @@ from abb_api.policies.evaluator import evaluate
 from abb_api.policies.model import (
     DEFAULT_EXPIRES_SECONDS,
     EMPTY_POLICY,
+    Decision,
     DecisionKind,
     Intent,
     Rule,
@@ -210,6 +213,19 @@ class ApprovalService:
         async with self._engine.begin() as conn:
             await sweep_expired(conn, tenant, self._clock(), summary_delay=self._summary_delay)
 
+    @staticmethod
+    async def _governing(
+        conn: AsyncConnection, tenant: TenantContext, project_id: uuid.UUID
+    ) -> Any:
+        """The compiled policy that governs a project now (the empty policy if none)."""
+        found = await PgPolicyStore(conn, tenant).for_decision(project_id)
+        if found is None:
+            return EMPTY_POLICY
+        compiled = compile_cached(found[1])
+        if compiled is None:
+            raise policy_unavailable()
+        return compiled.with_version(found[0])
+
     def _scrub_text(self, value: str) -> str | None:
         scrubbed = self._redactor.scrub_json(value)
         return scrubbed.value if scrubbed and isinstance(scrubbed.value, str) else None
@@ -231,14 +247,7 @@ class ApprovalService:
             trace_id = traced[1] if traced else self._trace_for(body, run_id)
             ref = RunRef(project_id, run_id, trace_id, body.agent_id)
 
-            found = await PgPolicyStore(conn, tenant).for_decision(project_id)
-            if found is None:
-                policy = EMPTY_POLICY
-            else:
-                compiled = compile_cached(found[1])
-                if compiled is None:
-                    raise policy_unavailable()
-                policy = compiled.with_version(found[0])
+            policy = await self._governing(conn, tenant, project_id)
             decision = evaluate(
                 policy,
                 Intent(body.capability, body.resource, body.risk_class, attributes_of(body)),
@@ -496,12 +505,14 @@ class ApprovalService:
         tenant = principal.tenant
         await self._sweep_one(tenant, identifier)
         now = self._clock()
+        refusal: AppError | None = None
         async with self._engine.begin() as conn:
             store = PgApprovalStore(conn, tenant)
             approval = await store.get(identifier, project_id=project_id, key_id=key_id)
             if approval is None:
                 raise not_found()
             spent: Approval | None = None
+            current: tuple[str | None, int] | None = None
             if (
                 approval.state == m.APPROVED
                 and approval.consumed_at is None
@@ -513,24 +524,101 @@ class ApprovalService:
                     raise self._rejected(
                         m.INTENT_MISMATCH, "The approval is for a different action."
                     )
-                spent = await store.consume(
-                    identifier,
-                    project_id=project_id,
-                    key_id=key_id,
-                    intent_hash=digest,
-                    run_id=run_id,
-                    now=now,
+                # A grant is not a licence to ignore a policy published since: re-read what
+                # governs the project now, holding off publishers until this transaction ends.
+                await PgPolicyStore(conn, tenant).lock_governing_shared(project_id)
+                policy = await self._governing(conn, tenant, project_id)
+                decision = evaluate(
+                    policy,
+                    Intent(
+                        body.intent.capability,
+                        body.intent.resource,
+                        body.intent.risk_class,
+                        attributes_of(body.intent),
+                    ),
                 )
-            if spent is None:
-                # Not consumable, or another caller spent it first: say why, from a fresh read.
-                current = await store.get(identifier, project_id=project_id, key_id=key_id)
-                raise self._consume_refusal(current or approval, now)
-            await record(
-                conn, tenant, spent, now=now, summary_delay=self._summary_delay,
-                audit_action="approval.consume", actor_kind="api_key",
-                actor_id=principal.actor_id, consumed=True,
-            )  # fmt: skip
+                current = (decision.rule_id, decision.policy_version)
+                if decision.decision is DecisionKind.DENY:
+                    # Committed (event and audit row), then refused; the approval is unchanged.
+                    await self._record_policy_refusal(
+                        conn, tenant, store, approval, decision, principal, now
+                    )
+                    refusal = self._rejected(
+                        m.POLICY_DENIED, "The current policy denies this action."
+                    )
+                else:
+                    spent = await store.consume(
+                        identifier,
+                        project_id=project_id,
+                        key_id=key_id,
+                        intent_hash=digest,
+                        run_id=run_id,
+                        now=now,
+                    )
+            if refusal is None:
+                if spent is None:
+                    # Not consumable, or another caller spent it first: say why, from a fresh
+                    # read.
+                    cur = await store.get(identifier, project_id=project_id, key_id=key_id)
+                    raise self._consume_refusal(cur or approval, now)
+                await record(
+                    conn, tenant, spent, now=now, summary_delay=self._summary_delay,
+                    audit_action="approval.consume", actor_kind="api_key",
+                    actor_id=principal.actor_id, consumed=True, current=current,
+                    audit_details={
+                        "current_policy_rule": (current[0] if current else None) or "default",
+                        "current_policy_version": current[1] if current else None,
+                    },
+                )  # fmt: skip
+        if refusal is not None:
+            raise refusal
         return s.ConsumeOut(approval_id=approval_id, consumed_at=now)
+
+    async def _record_policy_refusal(
+        self,
+        conn: AsyncConnection,
+        tenant: TenantContext,
+        store: PgApprovalStore,
+        approval: Approval,
+        decision: Decision,
+        principal: Principal,
+        now: datetime,
+    ) -> None:
+        """A granted approval was refused because the policy now denies the action: one
+        `policy.action.blocked` event per (approval, policy version), and an audit row."""
+        ref = await run_ref(store, approval)
+        identifier = public_id(IdKind.APPROVAL, approval.id)
+        reason = self._scrub_text(decision.reason) or REASON_FALLBACK
+        await self._emit(
+            conn,
+            tenant,
+            [
+                decision_event(
+                    tenant, ref, kind="deny", rule_id=decision.rule_id,
+                    policy_version=decision.policy_version, capability=approval.capability,
+                    reason=reason, now=now, approval_id=approval.id,
+                    event_id=derived_event_id(
+                        tenant.workspace_id, "approval", identifier, "policy-denied",
+                        str(decision.policy_version),
+                    ),
+                )
+            ],
+        )  # fmt: skip
+        await AuditRepository(conn, tenant).append(
+            AuditEntry(
+                actor_kind="api_key",
+                actor_id=principal.actor_id,
+                action="approval.consume_refused",
+                resource_kind="approval",
+                resource_id=identifier,
+                details={
+                    "approval_id": identifier,
+                    "reason": m.POLICY_DENIED,
+                    "policy_rule": decision.rule_id or "default",
+                    "policy_version": decision.policy_version,
+                },
+            )
+        )
 
     @staticmethod
     def _rejected(code: str, message: str) -> AppError:

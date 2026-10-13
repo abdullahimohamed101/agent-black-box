@@ -160,7 +160,11 @@ async def test_consuming_is_audited_by_the_key_without_the_intent(api: Api) -> N
     await consume(api, approval_id, body)
     entry = next(r for r in await rows(api) if r.action == "approval.consume")
     assert entry.actor_kind == "api_key" and entry.actor_id.startswith("key:")
-    assert entry.details == {"approval_id": approval_id}
+    assert entry.details == {
+        "approval_id": approval_id,
+        "current_policy_rule": "gate-push",
+        "current_policy_version": 1,
+    }
     assert "main" not in str(entry.details)
 
 

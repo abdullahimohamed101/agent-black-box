@@ -80,3 +80,7 @@ Unit and property tests for the DSL parser, validator and evaluator; API tests f
   the hash; no hash is ever returned), the decide response is `{decision, policy_id, policy_version, reason, on_error, approval_id?, approval_state?, expires_at?, on_expiry?}`, and
   approvals belong to the asking key. Gates 2, 4 (server side), 5 and 6 are evidenced by `apps/api/tests/approvals/` and `apps/api/tests/authz/`; gate 8's decision latency is in
   `docs/benchmarks/phase-14-decide.md`. Steps 3-6 open.
+- Step 2b (security gaps, 2026-10-13): KI-144 and KI-143 closed (ADR-141 Amendment 1). Consume re-evaluates the current policy under shared advisory locks on the policy
+  scopes (a deny published before the consume's read is honoured; `APPROVAL_POLICY_DENIED`, approval unchanged, `policy.action.blocked` event and `approval.consume_refused` audit
+  row). Ingestion rejects the eight server-written event types per event (`RESERVED_EVENT_TYPE`); `policy.warning` stays client-writable. Tests:
+  `apps/api/tests/approvals/test_policy_recheck.py`, `test_reserved_events.py`. SDK step 3 note: a consume answered `APPROVAL_POLICY_DENIED` is a denial.

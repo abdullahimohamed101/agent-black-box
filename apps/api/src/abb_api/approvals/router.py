@@ -163,7 +163,9 @@ async def wait(
         "only if it is approved, unexpired, unspent, the caller's own and bound to this very "
         "intent, in one atomic statement. Refusals are `APPROVAL_NOT_FOUND` (404), "
         "`APPROVAL_NOT_APPROVED`, `APPROVAL_EXPIRED`, `APPROVAL_CONSUMED` and "
-        "`APPROVAL_INTENT_MISMATCH` (409); none echoes the intent. A lost response cannot be "
+        "`APPROVAL_INTENT_MISMATCH` (409), and `APPROVAL_POLICY_DENIED` (409) when the policy "
+        "published now denies the action (the approval is left as it was); none echoes the "
+        "intent. A lost response cannot be "
         "retried: the second call is `APPROVAL_CONSUMED`."
     ),
     openapi_extra=_body_schema(s.ConsumeIn),

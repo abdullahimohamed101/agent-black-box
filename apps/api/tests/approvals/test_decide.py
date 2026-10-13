@@ -155,7 +155,7 @@ async def test_a_hostile_nesting_depth_is_refused_without_an_error(api: Api) -> 
 async def test_clients_cannot_use_the_servers_emitter_name(api: Api) -> None:
     ids = make_run_ids()
     forged = wire_event(
-        ids, 1, event_type="policy.decision", attributes={"policy.decision": "allow"},
+        ids, 1, event_type="policy.warning", attributes={"policy.id": "p"},
         sdk={"name": "abb-policy-service", "version": "1"},
     )  # fmt: skip
     honest = wire_event(ids, 2, event_type="tool.call.completed", attributes={"tool.name": "t"})

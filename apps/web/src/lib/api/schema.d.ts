@@ -257,7 +257,7 @@ export interface paths {
         put?: never;
         /**
          * Spend an approval for exactly this action, once
-         * @description Present the whole intent again. The server recomputes its hash and spends the approval only if it is approved, unexpired, unspent, the caller's own and bound to this very intent, in one atomic statement. Refusals are `APPROVAL_NOT_FOUND` (404), `APPROVAL_NOT_APPROVED`, `APPROVAL_EXPIRED`, `APPROVAL_CONSUMED` and `APPROVAL_INTENT_MISMATCH` (409); none echoes the intent. A lost response cannot be retried: the second call is `APPROVAL_CONSUMED`.
+         * @description Present the whole intent again. The server recomputes its hash and spends the approval only if it is approved, unexpired, unspent, the caller's own and bound to this very intent, in one atomic statement. Refusals are `APPROVAL_NOT_FOUND` (404), `APPROVAL_NOT_APPROVED`, `APPROVAL_EXPIRED`, `APPROVAL_CONSUMED` and `APPROVAL_INTENT_MISMATCH` (409), and `APPROVAL_POLICY_DENIED` (409) when the policy published now denies the action (the approval is left as it was); none echoes the intent. A lost response cannot be retried: the second call is `APPROVAL_CONSUMED`.
          */
         post: operations["consume_v1_approvals__approval_id__consume_post"];
         delete?: never;
