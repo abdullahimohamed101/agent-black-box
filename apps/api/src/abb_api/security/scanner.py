@@ -33,7 +33,33 @@ MAX_UNIT_CHARS = 256 * 1024  # one string handed to `scan_text`
 DEFAULT_MAX_SECONDS = 2.0
 
 _Q = 2048  # longest quoted value a pattern will look for before giving up on the quote
-_NAME = 64  # longest identifier part before/after a keyword in an assignment
+_NAME = 64  # longest identifier part before a keyword in an assignment
+
+# What names an assignment as a credential (review P2-1). The old patterns matched the keyword
+# anywhere in a name (`MONKEY`, `primary_key`, `PWD`, `"path"` contains `pat`), which rewrote
+# ordinary text in every project with no opt-out. A name is secret-shaped when it ENDS with:
+#   - secret, token, password, passwd, passphrase, credential(s), after any prefix (`dbpassword`);
+#   - dsn, pass, as a whole name segment (`SENTRY_DSN`, `DB_PASS`, but not `bypass`, `passed`);
+#   - pat, pwd, as a segment that has a prefix (`GH_PAT`, `ROOT_PWD`; a bare `PWD` is the shell's
+#     working directory);
+#   - key, only after api/access/private/secret/auth/encryption/signing/master/license
+#     (`AWS_SECRET_ACCESS_KEY`, `apiKey`; not `primary_key`, `cache_key`, `MONKEY`).
+# A segment starts after a non-alphanumeric or at a lower-to-upper case change (`clientSecret`).
+# The segment assertions use scoped case-sensitive groups inside the case-insensitive pattern.
+_SEG = r"(?:(?<![A-Za-z0-9])|(?-i:(?<=[a-z0-9])(?=[A-Z])))"
+_PREFIXED = r"(?:(?<=[A-Za-z0-9][_-])|(?-i:(?<=[a-z0-9])(?=[A-Z])))"
+_QUALIFIER = r"(?:api|access|private|secret|auth|encryption|signing|master|license)"
+_STRONG = rf"[A-Za-z0-9_]{{0,{_NAME}}}(?:secret|token|password|passwd|passphrase|credentials?)"
+_N_ASSIGN = rf"(?:\b{_STRONG}|{_SEG}dsn|{_SEG}{_QUALIFIER}[_-]?key)"
+_N_SHORT = rf"(?:{_SEG}pass|{_PREFIXED}(?:pat|pwd))"
+# The same names inside quotes (JSON, YAML, Python dicts): the closing quote ends the name, and
+# a few more whole-word keys are credentials there (`"auth"`, `"cookie"`).
+_N_QUOTED = (
+    rf"[A-Za-z0-9_.-]{{0,{_NAME}}}(?:(?:secret|token|password|passwd|passphrase|credentials?)"
+    rf"|{_SEG}(?:dsn|pass|auth|authorization|cookie)|{_SEG}{_QUALIFIER}[_-]?key"
+    rf"|{_PREFIXED}(?:pat|pwd))"
+)
+_NOT_MARKED = r"(?![\"']?\[REDACTED)"  # an SDK or earlier marker, bare or inside quotes
 
 
 class ScanError(Exception):
@@ -84,21 +110,22 @@ _PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
         ("basic_auth", r"(?i)\b(basic\s++)[A-Za-z0-9+/]{12,}={0,2}", r"\g<1>[REDACTED:basic_auth]"),
         (
             "cli_user",
-            r"(?i)((?:^|\s)(?:-u|--user|--proxy-user)(?:\s++|=)[\"']?)(?!\[REDACTED)[^\s\"']+",
+            # Only a `user:password` argument (curl -u alice:pw). `python -u`, `sort -u`,
+            # `pip install -U`, `docker run -u 1000` and uid:gid pairs are ordinary (review P1-1).
+            rf"(?i)((?:^|\s)(?:-u|--user|--proxy-user)(?:\s++|=)[\"']?)"
+            rf"(?!\[REDACTED|\d{{1,10}}:\d{{1,10}}(?![^\s\"']))[^\s\"':]{{0,{_NAME}}}+:[^\s\"']+",
             r"\g<1>[REDACTED:cli_user]",
         ),
         (
             "cli_secret_flag",
             r"(?i)(\s--(?:password|passwd|pass|token|secret|api[-_]?key|access[-_]?key|"
-            r"client[-_]secret|auth[-_]?token|private[-_]?key)(?:\s++|=))(?!\[REDACTED)"
+            rf"client[-_]secret|auth[-_]?token|private[-_]?key)(?:\s++|=)){_NOT_MARKED}"
             rf"(?:\"[^\"]{{0,{_Q}}}\"|'[^']{{0,{_Q}}}'|[^\s]+)",
             r"\g<1>[REDACTED:cli_secret]",
         ),
         (
             "quoted_key_value",  # "password": "x", 'api_key': 'x' (JSON, YAML, Python dicts)
-            rf"(?i)([\"'][A-Za-z0-9_.-]{{0,{_NAME}}}(?:secret|token|key|password|passwd|passphrase|"
-            rf"credentials?|dsn|auth|cookie|pwd|pat|pass)[A-Za-z0-9_.-]{{0,{_NAME}}}[\"']\s*+"
-            r"(?::|=>)\s*+)(?!\[REDACTED)"
+            rf"(?i)([\"']{_N_QUOTED}[\"']\s*+(?::|=>)\s*+){_NOT_MARKED}"
             rf"(?:\"[^\"]{{0,{_Q}}}\"|'[^']{{0,{_Q}}}'|[^\s,}}\]]+)",
             r"\g<1>[REDACTED:credential]",
         ),
@@ -133,32 +160,39 @@ _PATTERNS: tuple[tuple[str, "re.Pattern[str]", str], ...] = tuple(
             r"(://)[^/\s:@]*:[^/\s@]+@",
             r"\g<1>[REDACTED:url_credentials]@",
         ),
-        ("url_token_user", r"(://)[A-Za-z0-9_.%-]{16,}@", r"\g<1>[REDACTED:url_credentials]@"),
+        (
+            # A long userinfo is only a token when it looks like one: a long user name
+            # (`my-long-service-account@host`) is lower-case words joined by hyphens (review P3-7).
+            "url_token_user",
+            r"(://)(?=[A-Za-z0-9_%-]*[0-9_]|(?=[A-Za-z0-9_%-]*[a-z])[A-Za-z0-9_%-]*[A-Z])"
+            r"[A-Za-z0-9_%-]{16,}@",
+            r"\g<1>[REDACTED:url_credentials]@",
+        ),
         (
             "secret_assignment",  # NAME=value, NAME ending in a secret word (AWS_SECRET_ACCESS_KEY)
-            rf"(?i)(\b[A-Za-z0-9_]{{0,{_NAME}}}(?:secret|token|key|password|passwd|passphrase|"
-            rf"credentials?|dsn)(?:_[A-Za-z0-9_]{{0,{_NAME}}})?\s*+(?::=|[=:](?![=>~]))\s*+)"
-            rf"(?!\[REDACTED)(?:\"[^\"]{{0,{_Q}}}\"|'[^']{{0,{_Q}}}'|[^\s,;&]+)",
+            rf"(?i)({_N_ASSIGN}\s*+(?::=|[=:](?![=>~]))\s*+){_NOT_MARKED}"
+            rf"(?:\"[^\"]{{0,{_Q}}}\"|'[^']{{0,{_Q}}}'|[^\s,;&]+)",
             r"\g<1>[REDACTED:credential]",
         ),
         (
-            "secret_assignment_short",  # GH_PAT=, DB_PASS=, ROOT_PWD=: a whole name part
-            rf"(?i)(\b(?:[A-Za-z0-9]{{1,32}}_){{0,16}}(?:pat|pass|pwd)(?:_[A-Za-z0-9_]{{0,{_NAME}}})?"
-            r"\s*+(?::=|[=:](?![=>~]))\s*+)(?!\[REDACTED)"
+            "secret_assignment_short",  # GH_PAT=, DB_PASS=, ROOT_PWD=: a whole name segment
+            rf"(?i)({_N_SHORT}\s*+(?::=|[=:](?![=>~]))\s*+){_NOT_MARKED}"
             rf"(?:\"[^\"]{{0,{_Q}}}\"|'[^']{{0,{_Q}}}'|[^\s,;&]+)",
             r"\g<1>[REDACTED:credential]",
         ),
         (
             "secret_comparison_literal",  # `password == "x"`: keep the code, hide the literal
-            rf"(?i)(\b(?:[A-Za-z0-9_]{{0,{_NAME}}}(?:secret|token|password|passwd|passphrase|"
-            rf"api[_-]?key)[A-Za-z0-9_]{{0,{_NAME}}})\s*+===?\s*+)(?!\[REDACTED)"
+            rf"(?i)(\b(?:[A-Za-z0-9_]{{0,{_NAME}}}(?:secret|token|password|passwd|passphrase)"
+            rf"|{_SEG}{_QUALIFIER}[_-]?key)\s*+===?\s*+){_NOT_MARKED}"
             rf"(?:\"[^\"]{{1,{_Q}}}\"|'[^']{{1,{_Q}}}')",
             r"\g<1>[REDACTED:credential]",
         ),
         (
+            # Bare names; the earlier assignment patterns catch these first, and a bare `pwd` is
+            # the shell's working directory, so it is not a credential name.
             "credential",
-            r"(?i)(\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
-            r"\s*+(?::=|[=:](?![=>~]))\s*+)(?!\[REDACTED)"
+            r"(?i)(\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
+            rf"\s*+(?::=|[=:](?![=>~]))\s*+){_NOT_MARKED}"
             rf"(?:\"[^\"]{{0,{_Q}}}\"|'[^']{{0,{_Q}}}'|[^\s,;&]+)",
             r"\g<1>[REDACTED:credential]",
         ),

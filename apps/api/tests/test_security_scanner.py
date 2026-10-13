@@ -330,3 +330,182 @@ def test_high_confidence_kinds_are_real_kinds_found_by_their_own_sample() -> Non
     for kind, text, _ in CASES:
         if kind in HIGH_CONFIDENCE_KINDS:
             assert scan(text).kinds == (kind,)  # nothing else fires on a provider-shaped token
+
+
+# ---------------------------------- ordinary content is stored verbatim (review P1-1, P2-1)
+
+# `-u` / `-U` is a flag of most programs and only a credential for a few: ordinary commands are
+# the text an engineer reads back in the run page, so the scanner must not rewrite them.
+ORDINARY_COMMANDS = [
+    "python -u main.py",
+    "python3 -u -m pytest tests/",
+    "pip install -U requests",
+    "pip install --upgrade -U pip",
+    "sort -u names.txt",
+    "sort -u .env",
+    "uniq -u words.txt",
+    "head -u file",
+    "docker run -u 1000 image",
+    "docker run --user 1000:1000 image",
+    "docker run --user root image",
+    "useradd -u 1000 bob",
+    "psql -U postgres -d app",
+    "git push -u origin feature/x",
+    "sudo -u deploy ./restart.sh",
+    "ssh -l alice host",
+]
+
+
+@pytest.mark.parametrize("command", ORDINARY_COMMANDS)
+def test_ordinary_commands_with_a_u_flag_are_stored_verbatim(command: str) -> None:
+    result = scan(command)
+    assert result.text == command
+    assert result.count == 0 and result.kinds == ()
+
+
+@pytest.mark.parametrize(
+    ("command", "secret"),
+    [
+        ("curl -u alice:s3cret https://x.example", "s3cret"),
+        ("curl -u 'alice:s3cret pw' https://x.example", "s3cret"),
+        ("curl --user alice:s3cret https://x.example", "s3cret"),
+        ("curl --user=alice:s3cret https://x.example", "s3cret"),
+        ("curl --proxy-user proxy:s3cret https://x.example", "s3cret"),
+        ("curl -U alice:s3cret https://x.example", "s3cret"),
+        ("wget -u user:pass https://x.example", "user:pass"),
+        ("docker login -u me -p s3cret registry.example.com", "s3cret"),
+        ("mysql -u root -phunter2 db", "hunter2"),
+        ("mysql -u root -p'hunter2' db", "hunter2"),
+    ],
+)
+def test_a_user_password_credential_argument_is_still_redacted(command: str, secret: str) -> None:
+    result = scan(command)
+    assert secret not in result.text
+    assert "[REDACTED" in result.text
+
+
+def test_a_u_flag_does_not_blind_the_secret_file_detector() -> None:
+    """`sort -u .env` must reach the detectors with the file name intact."""
+    from abb_api.security import rules
+
+    command = scan("sort -u .env").text
+    assert command == "sort -u .env"
+    assert rules.reads_secret_file(command)
+
+
+BENIGN_ASSIGNMENTS = [
+    "PWD=/home/alice",
+    "OLDPWD=/home/alice/work",
+    "pwd: /tmp/x",
+    "cd $PWD && ls",
+    "MONKEY=banana",
+    "primary_key: id",
+    "primaryKey = 1",
+    "cache_key = f'{a}:{b}'",
+    "idempotency_key: abc-123",
+    "sort_key=name",
+    "partition_key: user_id",
+    "foreign_key=owner_id",
+    "ssh_key: ~/.ssh/id_rsa",
+    "public_key: ssh-ed25519-example",
+    "token_count=5",
+    "max_tokens=4096",
+    "token_type == 'bearer'",
+    "password_min_length: 12",
+    "secret_name: db-creds",
+    "passed=5 failed=0",
+    "bypass=1 compass=north",
+    "keyboard: us",
+    "author: Ada Lovelace",
+    '{"path": "/tmp/x", "author": "bob", "primary_key": "id", "passed": true}',
+    "{'monkey': 'banana', 'cache_key': 'k1'}",
+    "https://my-long-service-account@git.example.com/repo",
+    "ssh://deployment-automation-bot@host.example.com/repo",
+]
+
+
+@pytest.mark.parametrize("text", BENIGN_ASSIGNMENTS)
+def test_assignments_that_are_not_credentials_are_stored_verbatim(text: str) -> None:
+    result = scan(text)
+    assert result.text == text
+    assert result.count == 0 and result.kinds == ()
+
+
+# (text, the secret value that must be gone). The key's last name segment is a secret word, or a
+# qualified `key` (api/access/private/secret/auth/... `_key`).
+REAL_ASSIGNMENTS = [
+    ("DB_PASSWORD='p4ss w0rd'", "p4ss w0rd"),
+    ("MYSQL_ROOT_PASSWORD=toor1234", "toor1234"),
+    ("password: hunter2", "hunter2"),
+    ("passwd = hunter2", "hunter2"),
+    ("dbpassword=hunter2", "hunter2"),
+    ("AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI", "wJalrXUtnFEMI"),
+    ("STRIPE_SECRET_KEY=zzTOP1234", "zzTOP1234"),
+    ("SECRET_KEY=django-insecure-abc", "django-insecure-abc"),
+    ("OPENAI_API_KEY=zzTOP1234", "zzTOP1234"),
+    ("apiKey: zzTOP1234", "zzTOP1234"),
+    ("api-key = zzTOP1234", "zzTOP1234"),
+    ("x-api-key: zzTOP1234", "zzTOP1234"),
+    ("ACCESS_KEY=zzTOP1234", "zzTOP1234"),
+    ("private_key = zzTOP1234", "zzTOP1234"),
+    ("ENCRYPTION_KEY=zzTOP1234", "zzTOP1234"),
+    ("clientSecret = 'zzTOP1234'", "zzTOP1234"),
+    ("client_secret=zzTOP1234", "zzTOP1234"),
+    ("GITHUB_TOKEN=zzTOP1234", "zzTOP1234"),
+    ("accessToken: zzTOP1234", "zzTOP1234"),
+    ("token: zzTOP1234", "zzTOP1234"),
+    ("SENTRY_DSN=https://abc@o1.ingest.example/1", "https://abc@o1.ingest.example/1"),
+    ("DB_PASS=hunter2", "hunter2"),
+    ("pass=hunter2", "hunter2"),
+    ("GH_PAT=zzTOP1234", "zzTOP1234"),
+    ("ROOT_PWD=toor1234", "toor1234"),
+    ("ghPat: zzTOP1234", "zzTOP1234"),
+    ("AWS_CREDENTIALS=zzTOP1234", "zzTOP1234"),
+    ('if password == "swordfish99":', "swordfish99"),
+    ("if (clientSecret === 'swordfish99')", "swordfish99"),
+    ('{"password": "x y z"}', "x y z"),
+    ('{"client_secret": "zzTOP1234"}', "zzTOP1234"),
+    ('{"apiKey": "zzTOP1234"}', "zzTOP1234"),
+    ('{"access_token": "zzTOP1234"}', "zzTOP1234"),
+    ('{"private_key": "zzTOP1234"}', "zzTOP1234"),
+    ('{"auth": "zzTOP1234"}', "zzTOP1234"),
+    ('{"Authorization": "Custom zzTOP1234"}', "zzTOP1234"),
+    ('{"cookie": "sid=zzTOP1234"}', "zzTOP1234"),
+    ("{'db_password': 'zzTOP1234'}", "zzTOP1234"),
+    ('{"gh_pat": "zzTOP1234"}', "zzTOP1234"),
+]
+
+
+@pytest.mark.parametrize(("text", "secret"), REAL_ASSIGNMENTS)
+def test_assignments_of_real_secrets_are_still_redacted(text: str, secret: str) -> None:
+    result = scan(text)
+    assert secret not in result.text
+    assert "[REDACTED" in result.text
+    assert result.count >= 1
+
+
+def test_a_long_username_without_a_password_is_not_a_credential() -> None:
+    for text in (
+        "https://my-long-service-account@git.example.com/repo",
+        "git clone https://first.last.engineer@bitbucket.example.com/r.git",
+    ):
+        assert scan(text).text == text
+
+
+def test_a_long_token_shaped_user_is_still_redacted() -> None:
+    result = scan("https://ghp0123456789abcdefXYZ@github.com/o/r")
+    assert "ghp0123456789abcdefXYZ" not in result.text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"password": "[REDACTED]"}',
+        "password=\"[REDACTED]\" api_key='[REDACTED:credential]'",
+        'DB_PASSWORD="[REDACTED:credential]"',
+    ],
+)
+def test_a_quoted_marker_is_not_redacted_again_or_counted(text: str) -> None:
+    result = scan(text)
+    assert result.text == text
+    assert result.count == 0 and result.kinds == ()

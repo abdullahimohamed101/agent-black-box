@@ -21,6 +21,7 @@ from abb_api.security.redaction import DENY_KEYS, ServerRedactor
 from abb_api.security.scanner import PATTERN_KINDS, ScanBudget, SecretScanner
 from abb_api.security.settings import CaptureMode
 from tests.ingest_helpers import RECEIVED, make_run_ids, wire_event
+from tests.test_security_scanner import BENIGN_ASSIGNMENTS, ORDINARY_COMMANDS, REAL_ASSIGNMENTS
 
 SDK_SRC = Path(__file__).resolve().parents[3] / "packages" / "sdk-python" / "src"
 
@@ -65,6 +66,14 @@ CORPUS = [
     "plain prose, nothing to see: the quick brown fox.",
     "total_tokens=1500 max_tokens=4096 passed=12 failed=0",
     "ran 12 tests in 0.5s\nOK\n",
+    # Review P1-1 / P2-1: the ordinary and the secret-shaped corpora of the scanner tests mean the
+    # same to both sides, so the server never rewrites what the SDK keeps (and the reverse).
+    *ORDINARY_COMMANDS,
+    *BENIGN_ASSIGNMENTS,
+    *(text for text, _ in REAL_ASSIGNMENTS),
+    "curl -u alice:s3cret https://x.example",
+    "docker run --user 1000:1000 image",
+    '{"password": "[REDACTED]"}',
 ]
 
 

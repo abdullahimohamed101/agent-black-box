@@ -287,3 +287,57 @@ def test_more_secret_shapes(text: str, secret: str) -> None:
 )
 def test_names_that_merely_contain_pat_or_pass_are_left_alone(text: str) -> None:
     assert Redactor().redact_text(text) == text
+
+
+# -- ordinary text is not rewritten (Phase 13 review P1-1, P2-1) ------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "python -u main.py",
+        "pip install -U requests",
+        "sort -u names.txt",
+        "sort -u .env",
+        "uniq -u words.txt",
+        "docker run -u 1000 image",
+        "docker run --user 1000:1000 image",
+        "psql -U postgres -d app",
+        "git push -u origin feature/x",
+        "PWD=/home/alice",
+        "pwd: /tmp/x",
+        "MONKEY=banana",
+        "primary_key: id",
+        "cache_key = f'{a}:{b}'",
+        "idempotency_key: abc-123",
+        "token_count=5 token_type == 'bearer'",
+        '{"path": "/tmp/x", "author": "bob", "primary_key": "id", "passed": true}',
+        "https://my-long-service-account@git.example.com/repo",
+    ],
+)
+def test_ordinary_commands_and_assignments_are_left_alone(text: str) -> None:
+    assert Redactor().redact_text(text) == text
+
+
+@pytest.mark.parametrize(
+    ("text", "secret"),
+    [
+        ("curl -u alice:s3cretvalue https://x.example", "s3cretvalue"),
+        ("curl -U alice:s3cretvalue https://x.example", "s3cretvalue"),
+        ("curl --user=alice:s3cretvalue https://x.example", "s3cretvalue"),
+        ("STRIPE_SECRET_KEY=zzTOP1234", "zzTOP1234"),
+        ("apiKey: zzTOP1234", "zzTOP1234"),
+        ("clientSecret = 'zzTOP1234'", "zzTOP1234"),
+        ("ghPat: zzTOP1234", "zzTOP1234"),
+        ('{"apiKey": "zzTOP1234", "gh_pat": "zzTOP1234"}', "zzTOP1234"),
+        ('{"Authorization": "Custom zzTOP1234"}', "zzTOP1234"),
+    ],
+)
+def test_credential_shaped_names_are_still_redacted(text: str, secret: str) -> None:
+    out = Redactor().redact_text(text)
+    assert secret not in out and "[REDACTED" in out
+
+
+def test_a_quoted_marker_is_not_redacted_again() -> None:
+    text = '{"password": "[REDACTED]"} DB_PASSWORD="[REDACTED:credential]"'
+    assert Redactor().redact_text(text) == text
