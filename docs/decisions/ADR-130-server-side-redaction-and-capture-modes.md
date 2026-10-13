@@ -120,7 +120,7 @@ marker in an attribute; and a credential an SDK redacted into an artifact leaves
 
 ## Amendment 2 (Phase 13, review fixes)
 
-The adversarial review of the branch (`docs/plans/active/phase-13-code-review.md`) found that the server copy of the SDK's patterns rewrote
+The adversarial review of the branch (`docs/plans/completed/phase-13-code-review.md`) found that the server copy of the SDK's patterns rewrote
 ordinary text in every project and mode, with no opt-out and no way to repair the immutable event. These points correct and extend the decisions
 above; the SDK's patterns were changed in the same commits so the parity test stays true.
 
