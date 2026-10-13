@@ -134,3 +134,93 @@ def test_each_capture_mode_keeps_what_the_sdk_mode_keeps(
     assert survivors(
         sdk_out["attributes"], sdk_out.get("payload"), sdk_out.get("payload_ref")
     ) == survivors(server_out.attributes, server_out.payload, server_out.payload_ref)
+
+
+# ---------------------------------------------- every attribute, not four (review P3-10)
+
+
+def _sample(spec: Any) -> Any:
+    from abb_event_schema.registry import AttrType
+
+    return {
+        AttrType.STRING: "value",
+        AttrType.INTEGER: int(spec.minimum or 1),
+        AttrType.NUMBER: float(spec.minimum or 1.5),
+        AttrType.BOOLEAN: True,
+        AttrType.STRING_LIST: ["value"],
+    }[spec.type]
+
+
+def every_attribute() -> dict[str, Any]:
+    """Each attribute the schema knows, with a valid value, plus keys it does not know (they are
+    preserved untouched) and run metadata. A change to which attributes the SDK's `apply` treats
+    specially, or one the server does not mirror, fails here, whichever attribute it is."""
+    from abb_event_schema.registry import KNOWN_ATTRIBUTES
+
+    attributes = {key: _sample(spec) for key, spec in KNOWN_ATTRIBUTES.items()}
+    attributes.update(
+        {
+            "error.message": "boom",
+            "metadata.owner": "alice",
+            "metadata.ticket.id": "T-1",
+            "metadata": "bare",  # the prefix itself is not run metadata
+            "custom.note": "free text",
+            "x.error.message": "not the error message",
+        }
+    )
+    return attributes
+
+
+def attribute_chunks(size: int = 40) -> list[dict[str, Any]]:
+    items = sorted(every_attribute().items())
+    # `tool.name` is required by the event type the chunks are sent as, so every chunk has it
+    return [{**dict(items[i : i + size]), "tool.name": "t"} for i in range(0, len(items), size)]
+
+
+@pytest.mark.parametrize(
+    ("sdk_mode", "mode"),
+    [("FULL", CaptureMode.FULL), ("METADATA_ONLY", CaptureMode.METADATA_ONLY),
+     ("DISABLED", CaptureMode.DISABLED)],
+)  # fmt: skip
+def test_every_attribute_is_kept_or_dropped_as_the_sdk_does(
+    sdk: ModuleType, sdk_mode: str, mode: CaptureMode
+) -> None:
+    from abb_event_schema.registry import (
+        PAYLOAD_REFERENCE_ATTRIBUTES,
+        SERVER_REDACTION_ATTRIBUTES,
+    )
+
+    seen: set[str] = set()
+    for chunk in attribute_chunks():
+        raw = wire_event(make_run_ids(), 1, attributes=dict(chunk))
+        sdk_out = sdk.Redactor(payload_mode=sdk.PayloadMode[sdk_mode]).apply(
+            {k: (dict(v) if isinstance(v, dict) else v) for k, v in raw.items()}
+        )
+        server_out = ServerRedactor().apply(server_event(raw), mode)
+        # `redaction.*` is the server's: it discards a client's, so those keys are not compared
+        sdk_kept = set(sdk_out["attributes"]) - SERVER_REDACTION_ATTRIBUTES
+        server_kept = set(server_out.attributes) - SERVER_REDACTION_ATTRIBUTES
+        # The one deliberate difference (ADR-130 §3): outside FULL the server also drops the
+        # attributes that point at a stored artifact, which the SDK leaves to its own artifact path.
+        pointers = set(chunk) & PAYLOAD_REFERENCE_ATTRIBUTES
+        if mode is not CaptureMode.FULL:
+            assert not (server_kept & pointers)
+            server_kept |= pointers & sdk_kept
+        assert server_kept == sdk_kept, sorted(server_kept ^ sdk_kept)
+        seen |= set(chunk)
+    assert seen == set(every_attribute()) | {"tool.name"}  # the chunks lose nothing
+
+
+def test_the_free_text_the_disabled_mode_drops_is_exactly_what_the_sdk_drops(
+    sdk: ModuleType,
+) -> None:
+    """Names the list: `error.message` and `metadata.*`, nothing else (tags, run.name, span.name ...
+    stay in every mode, as in the SDK; KI-078)."""
+    dropped: set[str] = set()
+    for chunk in attribute_chunks():
+        raw = wire_event(make_run_ids(), 1, attributes=dict(chunk))
+        out = sdk.Redactor(payload_mode=sdk.PayloadMode.DISABLED).apply(
+            {k: (dict(v) if isinstance(v, dict) else v) for k, v in raw.items()}
+        )
+        dropped |= set(chunk) - set(out["attributes"])
+    assert dropped == {"error.message", "metadata.owner", "metadata.ticket.id"}
