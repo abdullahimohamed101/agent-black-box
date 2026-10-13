@@ -235,7 +235,7 @@ All metadata: no route accepts or returns captured content, and each returns the
   destination_allowlist, updated_at, updated_by, detectors[]}`. `PUT` takes any of `capture_mode` (`FULL | METADATA_ONLY | DISABLED`), `muted_detectors`
   (`sec.*` ids; at most 64) and `destination_allowlist` (host names or `*.suffix`; at most 256); a list given replaces the stored list, omitted fields stay,
   a request that changes nothing writes no audit row. `422 SETTINGS_INVALID` (fixed message, never the value), `404 PROJECT_NOT_FOUND`. A new capture mode applies
-  to the next accepted batch; a change to the mutes or the allowlist queues the project's recent runs for re-analysis in the same transaction (at most `ABB_SECURITY_REANALYSE_MAX_RUNS`=200 started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS`=30, newest first, coalesced per run; older runs: `python -m abb_api.cli rebuild-findings`), a capture mode change does not.
+  to the next accepted batch; a change to the mutes or the allowlist queues the project's recent runs for re-analysis in the same transaction (at most `ABB_SECURITY_REANALYSE_MAX_RUNS`=200 started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS`=30, newest first, coalesced per run, and a wave within `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS`=60 of the project's previous mute or allowlist change is queued but not due until the cooldown ends; older runs: `python -m abb_api.cli rebuild-findings`), a capture mode change does not. An allowlist entry is a host name of at most 253 characters (punycode for an international name).
 
 ### Search (`GET /v1/runs?q=`)
 

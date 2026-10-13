@@ -128,7 +128,9 @@ async def get_security_settings(
         "mutes or the allowlist queues the project's recent runs (at most "
         "`ABB_SECURITY_REANALYSE_MAX_RUNS` started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS`, "
         "newest first) for re-analysis in the background; older runs change with "
-        "`rebuild-findings`. The capture mode applies to the next accepted batch only."
+        "`rebuild-findings`. A wave within `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS` of the "
+        "project's previous mute or allowlist change is queued but not due until the cooldown "
+        "ends. The capture mode applies to the next accepted batch only."
     ),
 )
 async def put_security_settings(
