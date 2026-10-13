@@ -132,5 +132,5 @@ mkdir -p "$root/docs/screenshots/phase-15" "$root/docs/screenshots/phase-16"
 E2E_AUTH_API_URL="$API" E2E_WORKSPACE="$A" E2E_WORKSPACE_B="$B" E2E_STREAMER_SESSION="$STREAMER_SESSION" E2E_OWNER_EMAIL="$OWNER" E2E_INVITEE_EMAIL="$INVITEE" E2E_STREAMER_EMAIL="$STREAMER" \
   E2E_SEARCH_OWNER_SESSION="$SEARCH_OWNER_SESSION" E2E_SEARCH_VIEWER_SESSION="$SEARCH_VIEWER_SESSION" \
   E2E_RUN_PAYLOAD="$E2E_RUN_PAYLOAD" E2E_RUN_LIVE="$E2E_RUN_LIVE" E2E_PAYLOAD_TEXT="$PAYLOAD_TEXT" E2E_COMMAND_TEXT="$COMMAND_TEXT" E2E_PATH_TEXT="$PATH_TEXT" \
-  pnpm exec playwright test e2e/auth.spec.ts e2e/search.spec.ts
+  pnpm exec playwright test e2e/auth.spec.ts e2e/search.spec.ts e2e/replay-viewer-real.spec.ts
 printf '\nAUTH-E2E PASSED\n'
