@@ -7,6 +7,7 @@ metadata by construction (ADR-080), so a viewer and an owner read the same sente
 from typing import Any, Protocol
 
 from abb_api.findings.model import Kind, label
+from abb_api.findings.security_words import BY_FINDING_TYPE, KIND_WORDS
 
 CATEGORY_WORDS = {
     "command_failure": "a command failed",
@@ -135,4 +136,22 @@ def _words(finding_type: str, e: dict[str, Any]) -> tuple[str, str]:
             f"The integration reported {_pattern(e.get('pattern'))}"
             f" repeated {_times(e.get('repetitions'))}.",
         )
+    security = BY_FINDING_TYPE.get(finding_type)
+    if security is not None:
+        # Fixed sentences (ADR-131). The only variable part is a credential kind, looked up in a
+        # closed vocabulary: evidence text itself is never repeated.
+        message = security.message
+        if finding_type == "credential_in_output":
+            kinds = e.get("kinds")
+            named = (
+                sorted(KIND_WORDS[k] for k in kinds if k in KIND_WORDS)
+                if isinstance(kinds, list)
+                else []
+            )
+            if named:
+                message = (
+                    f"Captured text contained a credential ({', '.join(named)}); "
+                    "it was redacted before it was stored."
+                )
+        return security.title, message
     return "finding", "A detector reported something."

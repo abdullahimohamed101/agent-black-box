@@ -78,7 +78,7 @@ JOB_STATUSES = ("pending", "running", "done", "dead_letter")
 POLICY_ACTIONS = ("allow", "deny", "require_approval")
 COST_SOURCES = ("provider_reported", "estimated", "client_estimate", "unpriced")
 FINDING_KINDS = ("deterministic", "probable")
-FINDING_SEVERITIES = ("info", "warning", "critical")
+FINDING_SEVERITIES = ("info", "warning", "medium", "high", "critical")
 
 # ---------------------------------------------------------------- tenancy and identity
 
@@ -881,6 +881,14 @@ findings = Table(
     ),
     Index("ix_findings_run", "workspace_id", "run_id"),
     Index("ix_findings_project_started", "workspace_id", "project_id", "run_started_at"),
+    # The workspace Security view lists only security findings, newest run first (ADR-131).
+    Index(
+        "ix_findings_security",
+        "workspace_id",
+        "run_started_at",
+        "id",
+        postgresql_where=text("detector LIKE 'sec.%'"),
+    ),
 )
 
 # One row per analysed run: what the analysis looked at, so findings can be marked outdated or
@@ -897,8 +905,11 @@ run_findings = Table(
     _ts("computed_at", nullable=False),
     Column("event_count_seen", Integer, nullable=False),
     Column("truncated", Boolean, nullable=False),
+    # Reliability findings only: the run list's badge predates the security category (ADR-131).
     Column("finding_count", Integer, nullable=False),
     Column("max_severity", Text),
+    Column("security_count", Integer, nullable=False, server_default=text("0")),
+    Column("security_max_severity", Text),
     PrimaryKeyConstraint("workspace_id", "run_id"),
     ForeignKeyConstraint(
         ["workspace_id", "run_id"], ["runs.workspace_id", "runs.id"], ondelete="CASCADE"
@@ -908,6 +919,11 @@ run_findings = Table(
         "max_severity IS NULL OR " + _in("max_severity", FINDING_SEVERITIES),
         name="ck_run_findings_severity",
     ),
+    CheckConstraint(
+        "security_max_severity IS NULL OR " + _in("security_max_severity", FINDING_SEVERITIES),
+        name="ck_run_findings_security_severity",
+    ),
+    CheckConstraint("security_count >= 0", name="ck_run_findings_security_count"),
 )
 
 # ---------------------------------------------------------------- search (ADR-100, ADR-101)

@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
-from abb_api.findings.model import Finding, Severity, finding_uuid
+from abb_api.findings.model import SECURITY_PREFIX, Finding, Severity, finding_uuid
 from abb_api.tenancy import TenantContext
 
 ROW_CHUNK = 100  # 19 columns per finding; far below the bind-parameter limit
@@ -72,13 +72,18 @@ class FindingRecord:
 
 @dataclass(frozen=True)
 class Badge:
+    """`count` and `max_severity` are the reliability findings (the run list's badge predates the
+    security category); `security_*` are the security findings, counted apart (ADR-131)."""
+
     count: int
     max_severity: str | None
     detectors_version: int
+    security_count: int = 0
+    security_max_severity: str | None = None
 
 
 _RANK = case(
-    {"critical": 2, "warning": 1},
+    {"critical": 4, "high": 3, "medium": 2, "warning": 1},
     value=t.findings.c.severity,
     else_=0,
 )
@@ -166,7 +171,10 @@ class FindingsRepository:
             stale = stale.where(t.findings.c.fingerprint.notin_(keep))
         await self._conn.execute(stale)
 
-        top = max((f.severity for f in findings), key=lambda s: s.rank, default=None)
+        reliability = [f for f in findings if not f.detector.startswith(SECURITY_PREFIX)]
+        security = [f for f in findings if f.detector.startswith(SECURITY_PREFIX)]
+        top = max((f.severity for f in reliability), key=lambda s: s.rank, default=None)
+        security_top = max((f.severity for f in security), key=lambda s: s.rank, default=None)
         values = {
             "workspace_id": ws,
             "run_id": run_id,
@@ -177,8 +185,12 @@ class FindingsRepository:
             "computed_at": state.computed_at if state.computed_at is not None else func.now(),
             "event_count_seen": state.event_count_seen,
             "truncated": state.truncated,
-            "finding_count": len(rows),
+            "finding_count": len(reliability),
             "max_severity": top.value if isinstance(top, Severity) else None,
+            "security_count": len(security),
+            "security_max_severity": (
+                security_top.value if isinstance(security_top, Severity) else None
+            ),
         }
         upsert = insert(t.run_findings).values(**values)
         await self._conn.execute(
@@ -243,9 +255,20 @@ class FindingsRepository:
                 t.run_findings.c.finding_count,
                 t.run_findings.c.max_severity,
                 t.run_findings.c.detectors_version,
+                t.run_findings.c.security_count,
+                t.run_findings.c.security_max_severity,
             ).where(
                 t.run_findings.c.workspace_id == self._tenant.workspace_id,
                 t.run_findings.c.run_id.in_(list(run_ids)),
             )
         )
-        return {r.run_id: Badge(r.finding_count, r.max_severity, r.detectors_version) for r in rows}
+        return {
+            r.run_id: Badge(
+                r.finding_count,
+                r.max_severity,
+                r.detectors_version,
+                r.security_count,
+                r.security_max_severity,
+            )
+            for r in rows
+        }

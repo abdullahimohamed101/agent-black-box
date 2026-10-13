@@ -36,8 +36,13 @@ FINDING_NAMESPACE = uuid.UUID("5d1c0e2a-7b64-5f0e-9a3c-0b1ab10c4b0b")
 
 
 class Severity(StrEnum):
+    """`info`, `warning` and `critical` are the reliability scale; the security detectors added
+    `medium` and `high` (ADR-131): info < warning < medium < high < critical."""
+
     INFO = "info"
     WARNING = "warning"
+    MEDIUM = "medium"
+    HIGH = "high"
     CRITICAL = "critical"
 
     @property
@@ -45,7 +50,13 @@ class Severity(StrEnum):
         return _SEVERITY_RANK[self]
 
 
-_SEVERITY_RANK = {Severity.INFO: 0, Severity.WARNING: 1, Severity.CRITICAL: 2}
+_SEVERITY_RANK = {
+    Severity.INFO: 0,
+    Severity.WARNING: 1,
+    Severity.MEDIUM: 2,
+    Severity.HIGH: 3,
+    Severity.CRITICAL: 4,
+}
 
 
 class Kind(StrEnum):
@@ -127,6 +138,18 @@ class CostBaseline:
 
 
 @dataclass(frozen=True)
+class SecurityInputs:
+    """What the security detectors need beyond the events (ADR-131): the project's settings and
+    the redaction records of the run's artifacts. All of it is configuration or metadata; none of
+    it is captured content."""
+
+    muted: frozenset[str] = frozenset()  # detector ids (`sec.*`) that produce no findings
+    destination_allowlist: tuple[str, ...] = ()  # host patterns; empty = report no destinations
+    # Artifact public id (`art_...`) -> credential kinds its server-side redaction record names.
+    artifact_kinds: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class DetectorContext:
     events: tuple[Event, ...]  # canonical order, once
     spans: Mapping[str, Span]
@@ -135,6 +158,7 @@ class DetectorContext:
     baseline: CostBaseline | None = None
     event_ids: frozenset[str] = field(default_factory=frozenset)
     position: Mapping[str, int] = field(default_factory=dict)
+    security: "SecurityInputs" = field(default_factory=lambda: SecurityInputs())
 
 
 @dataclass(frozen=True)
@@ -153,6 +177,16 @@ class Finding:
 
 
 # --------------------------------------------------------------------------- evidence allowlists
+
+SECURITY_PREFIX = "sec."
+SECURITY_FINDING_TYPES = (
+    "secret_file_read",
+    "credential_in_output",
+    "destructive_command",
+    "risky_git",
+    "privileged_db",
+    "unexpected_destination",
+)
 
 EVIDENCE_KEYS: dict[str, frozenset[str]] = {
     "possible_loop": frozenset(
@@ -224,6 +258,12 @@ EVIDENCE_KEYS: dict[str, frozenset[str]] = {
     ),
     "probable_cause": frozenset({"cause", "event_ids", "tool_name", "model"}),
     "reported_loop": frozenset({"pattern", "repetitions", "event_id"}),
+    # Security (ADR-131): fixed rule words, counts, event/artifact ids and credential kind names
+    # from a closed vocabulary. Never a path, command, host or value.
+    **{
+        name: frozenset({"rule", "rules", "count", "event_ids", "artifact_ids", "kinds"})
+        for name in SECURITY_FINDING_TYPES
+    },
 }
 
 # Keys of the objects nested inside evidence lists or dicts (also an allowlist).
