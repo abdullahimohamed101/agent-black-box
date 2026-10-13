@@ -30,9 +30,90 @@ bb.shutdown()          # optional: an atexit hook flushes too
 | `run.event(type, attributes, payload=, status=)` / `bb.event(...)` | point event (`custom.<name>` if no dot). |
 | `@bb.observe(kind=, name=)` | sync or async functions; untraced outside a run; arguments/results are never captured. |
 | `bb.flush(timeout)`, `bb.shutdown(timeout)`, `bb.stats()` | bounded, idempotent, never raise. `stats()` holds every drop counter. |
+| `bb.guard(...)`, `@guarded(...)` | cooperative policy checks, off by default: see **Policy** below. |
 | `blackbox.bind(fn)` | threads do not inherit context: wrap callables you hand to a thread/pool. asyncio tasks inherit it. |
 
 User exceptions inside `with` blocks always propagate unchanged.
+
+## Policy: `guard()` and `@guarded` (Phase 14, ADR-140/141)
+
+Cooperative enforcement (D1): before a sensitive action the SDK asks the policy service, which answers allow, deny, or "wait for a person".
+It stops an agent that goes through the SDK; it does not stop one that bypasses it, and no part of the product claims otherwise.
+**Off by default**: with `policy_mode="off"` every call returns at once (`via="disabled"`) and makes no network call, so nothing changes for an
+existing user. Turn it on with `BlackBox(policy_mode="enforce")` or `BLACKBOX_POLICY=enforce`. The API key must be bound to a project and hold the
+scope `policy:check` or `events:write` (an existing SDK key already does); a workspace-wide key or a missing scope is `unauthorised`.
+
+```python
+bb = BlackBox(policy_mode="enforce")
+with bb.run("deploy") as run:
+    try:
+        decision = bb.guard("github.push", "origin main", arguments={"branch": "main"})   # waits if a person must approve
+    except blackbox.PolicyDenied as denied:     # also ApprovalDenied, ApprovalExpired
+        print(denied.policy_id, denied.policy_version, denied.reason)
+    except blackbox.PolicyUnavailable:          # the service could not be asked and the fail mode is closed
+        ...
+```
+
+| Call | Notes |
+| --- | --- |
+| `bb.guard(capability, resource=None, risk_class=None, arguments=None, *, on_error=None, run=None) -> Decision` | `blackbox.guard(...)` uses the current run's client (no run and no client: `via="disabled"`). `Decision(decision, policy_id, policy_version, reason, approval_id, via)`; `via` is `policy`, `approval`, `fail_open`, `expiry_allow` or `disabled`. A deny raises `PolicyDenied(policy_id, policy_version, reason)`; a denied approval `ApprovalDenied`; an expired or cancelled one `ApprovalExpired` (both subclasses of `PolicyDenied`); an unreachable service under a closed fail mode `PolicyUnavailable(reason)`. All derive from `PolicyError`. Nothing else is ever raised (INV-4). |
+| `await bb.aguard(...)` / `await blackbox.aguard(...)` | the same on a worker thread of the SDK's own 64-thread pool (not the loop's default executor, which a few pending approvals would exhaust). Cancelling the task withdraws a pending approval at the next long-poll round (at most 5 s). |
+| `@guarded(capability, resource=None, risk_class=None, arguments=None, *, on_error=None, client=None)` | decorator for functions, methods and coroutine functions. `resource` and `arguments` are values or callables receiving the wrapped function's own call arguments (`self` first for a method). A denial raises before the function runs. A callable that raises is `invalid_intent` and follows the fail mode. Outside a run, or with policy off, the function simply runs. It is the integration path for LangGraph, OpenAI and Anthropic tool functions. |
+
+Options (also `BLACKBOX_*`): `policy_mode` (`off`\|`enforce`, env `BLACKBOX_POLICY`), `policy_timeout` (2.0 s, one decide, consume or cancel call), `policy_wait_max`
+(86,400 s, absolute cap on one approval wait), `policy_wait_round` (25 s, one long-poll round), `policy_fail_modes` (`{"shell.execute": "closed"}`, env
+`BLACKBOX_POLICY_FAIL_MODES="shell.execute=closed,tool.*=open"`), `policy_on_approval` (a callback `fn(ApprovalPending)` called once when a person has to
+approve, with the approval id; it runs on the calling thread, so it must return quickly; its exceptions are swallowed).
+
+**Flow.** `POST /v1/policy/decide` with the intent (`run_id`, `agent_id`, `capability`, `resource`, `risk_class`, `arguments`, `trace_id`, `idempotency_key`; the key is stable
+for one logical call, so a retry after a 429 is safe). `allow` returns; `deny` raises. `require_approval` long-polls `GET /v1/approvals/{id}/wait?timeout=<=25` in bounded rounds
+until the state is not `REQUESTED`, then: `APPROVED` -> `POST /v1/approvals/{id}/consume` with the **whole intent again** (the server recomputes the hash; the SDK never computes
+or sees one) and returns `via="approval"`; `DENIED` -> `ApprovalDenied`; `EXPIRED`/`CANCELLED` -> the rule's `on_expiry`: `deny` (default) raises `ApprovalExpired`, `allow`
+proceeds with `via="expiry_allow"` and a `policy.warning`.
+
+**Arguments** are JSON: strings, integers, booleans, null, lists and objects. **Floats are converted to strings** (the server refuses floats; there is no portable shortest-float
+form), tuples to lists; anything else is `invalid_intent`. Limits (checked before sending, ADR-141 point 1): depth 8, 512 values, strings 4,096 characters, keys 256, resource 2,048,
+capability 128, canonical size 24 KiB. An intent over a limit is **never sent**: the fail mode applies with reason `intent_too_large` or `invalid_intent`. Only top-level scalar
+arguments are what a rule's `attributes` can match; the integrations send only the attributes the dry-run mapping names, never command text or file content.
+
+**Bounds** (nothing waits forever): a decision call ends by `policy_timeout` (the whole exchange, not each socket operation; name resolution is the one step the OS bounds), after at
+most one pause of <= 2 s on a 429 with a short `Retry-After`; an approval wait ends at the approval's `expires_at` plus 5 s or `policy_wait_max`, whichever is first (then the
+request is withdrawn and `ApprovalExpired` raised); each long-poll round has its own timeout; transient wait errors back off with jitter and five consecutive failures abandon the wait
+as `PolicyUnavailable` (**closed whatever the fail mode**: a rule that asked for a person never falls open on a network blip). `KeyboardInterrupt` or `SystemExit` during an approval
+wait withdraws the request (`DELETE`, one second) and is re-raised unchanged. `guard()` runs on the calling thread; no background thread is started for it.
+
+**Consume is one attempt.** A consume that did not finish (a network error, a timeout, a 5xx, any 409 `NOT_APPROVED`/`EXPIRED`/`CONSUMED`/`INTENT_MISMATCH`/`POLICY_DENIED`) is a
+`PolicyDenied`: the server may have spent the approval and lost the response, and an idempotent consume would be a replay window (ADR-141 point 6, KI-145). The action waits for a
+fresh approval.
+
+### Fail modes (the service cannot be asked)
+
+Applies when the decide call fails: connection refused, DNS, timeout, 5xx, 429 beyond the retry, 401/403 (`unauthorised`: a misconfiguration, still follows the fail mode), a malformed or
+over-64 KiB response, an intent that cannot be sent, no active run, or a bug in the SDK. Authority, first hit wins: the `on_error=` argument; the operator's `policy_fail_modes`
+(exact capability beats `prefix.*`, longest prefix wins); the server's fail-mode table cached **before** the outage (`GET /v1/policies/fail-modes`, fetched after the first
+successful decision, refreshed at most every 5 minutes or when the policy version moves, with a 1 s bound, never blocking a decision longer; a rule-level `on_error` is only known if the
+table was cached before the outage, and a rule with attribute conditions is believed only when it says `closed`); then the risk class: **R0-R2 and unclassified open, R3-R4 closed**.
+
+| Mode | Result | Recorded |
+| --- | --- | --- |
+| open | `Decision(decision="allow", via="fail_open")`, the action proceeds | `policy.warning` |
+| closed | `PolicyUnavailable(reason)` | `policy.warning` |
+
+`policy.warning` carries only `policy.capability` and `policy.reason`, one of a closed vocabulary: `policy_service_unreachable`, `policy_timeout`, `policy_error`, `unauthorised`,
+`intent_too_large`, `invalid_intent`, `internal_error`, `approval_consume_failed`, `approval_expired_allowed`. Never content, never error text. Arguments, resources and server error
+bodies are never logged.
+
+### What is enforced where (D1/D5)
+
+| Integration | Behaviour |
+| --- | --- |
+| `CodingRecorder` | with `policy_mode="enforce"`, `read_file` (`filesystem.read`, resource the path), `write_file`/`delete_file` (`filesystem.write`, resource the path, argument `operation`), `run_command` and every `git_*` helper that runs a command (`shell.execute`, resource the executable name, `risk_class` from the classifier, argument `category`) and `git_push` (`github.push`, resource `<remote> <branch>`, argument `branch`, then its shell command) ask first. A denied action does not happen and records no step of its own (the server records `policy.action.blocked`). `guard_command/read/write/push` are the same checks for a host that acts itself. The three-line git metadata probes the recorder runs for attributes are not actions the agent chose and are not guarded. |
+| `blackbox_mcp.instrument` | `call_tool` is guarded as `tool.<name>`, resource `mcp.call_tool`; a denied call returns an MCP error result and is not made. |
+| LangGraph, OpenAI, Anthropic adapters | not hooked: they do not execute tools. Put `@guarded` on the tool function. |
+| Anything that bypasses the SDK | not stopped. |
+
+The capability, resource and attributes of every helper follow `apps/api/src/abb_api/policies/mapping.py`, so a dry run of a draft policy predicts what enforcement does; a test
+executes that file and compares.
 
 ## Multi-agent and other processes
 
