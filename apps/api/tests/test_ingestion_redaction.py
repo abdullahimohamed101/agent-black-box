@@ -289,6 +289,21 @@ async def test_an_oversized_value_is_marked_too_large(api: Api, broken_scanner: 
     assert await find_in_database(api.engine, SECRETS) == {}
 
 
+async def test_the_log_line_counts_time_budget_and_size_drops_apart(
+    api: Api, broken_scanner: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`scan_failed` (time budget, scanner error) is a capacity signal; `too_large` is the client's
+    payload. The log line carries both counts, never a value (review P2-3)."""
+    failed, huge, clean = sdk_event(1), sdk_event(2), sdk_event(3)
+    failed["payload"]["x"] = "BREAK"
+    huge["payload"]["x"] = "HUGE"
+    with caplog.at_level("INFO", logger="abb_api.ingestion.service"):
+        assert (await api.post_batch([failed, huge, clean])).json()["accepted"] == 3
+    (record,) = [r for r in caplog.records if r.getMessage() == "server redaction applied"]
+    assert record.__dict__["scan_failed"] == 1 and record.__dict__["too_large"] == 1
+    assert "BREAK" not in caplog.text and "HUGE" not in caplog.text
+
+
 async def test_a_required_attribute_that_cannot_be_scanned_stays_as_a_marker(
     api: Api, broken_scanner: None
 ) -> None:

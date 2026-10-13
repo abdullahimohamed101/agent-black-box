@@ -28,7 +28,13 @@ from abb_api.ingestion.body import batch_invalid
 from abb_api.ingestion.ratelimit import RateLimiter, retry_after_seconds
 from abb_api.ingestion.schemas import BatchResponse, EventErrorOut, IssueOut
 from abb_api.ingestion.store import PgEventStore
-from abb_api.security.redaction import RedactionError, ServerRedactor
+from abb_api.security.redaction import (
+    REASON,
+    SCAN_FAILED,
+    TOO_LARGE,
+    RedactionError,
+    ServerRedactor,
+)
 from abb_api.security.settings import CaptureMode, PgSecuritySettingsStore
 
 logger = logging.getLogger(__name__)
@@ -212,7 +218,17 @@ class IngestionService:
         original = {event.event_id: event for _, event in valid}
         changed = sum(1 for _, event in redacted if event is not original[event.event_id])
         if changed:
-            logger.info("server redaction applied", extra={"events_changed": changed})
+            # `scan_failed` (time budget, scanner error) is a capacity signal an operator watches;
+            # `too_large` is the client's payload. Counts only, never a value.
+            failures = [e.attributes.get(REASON) for _, e in redacted]
+            logger.info(
+                "server redaction applied",
+                extra={
+                    "events_changed": changed,
+                    "scan_failed": failures.count(SCAN_FAILED),
+                    "too_large": failures.count(TOO_LARGE),
+                },
+            )
         return redacted
 
     def _redact_batch(
