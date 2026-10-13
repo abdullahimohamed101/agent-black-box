@@ -1011,3 +1011,56 @@ project_security_settings = Table(
     ),
     CheckConstraint("char_length(updated_by) <= 128", name="ck_security_updated_by"),
 )
+
+# ---------------------------------------------------------------- policies (ADR-140)
+
+# Append-only history of policy documents (migration 0092 revokes UPDATE/DELETE from the runtime
+# role). `project_id IS NULL` is the workspace-wide base policy. The current policy of a scope is
+# its highest version. The document text is stored as published; nothing derived is stored.
+policy_versions = Table(
+    "policy_versions",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("version", Integer, nullable=False),
+    Column("document_text", Text, nullable=False),
+    Column("document_sha256", Text, nullable=False),
+    Column("rule_count", Integer, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+    Column("created_by", Text, nullable=False),
+    Column("comment", Text),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="RESTRICT",
+    ),
+    CheckConstraint("version >= 1", name="ck_policy_versions_version"),
+    CheckConstraint(
+        "octet_length(document_text) <= 65536", name="ck_policy_versions_document_size"
+    ),
+    CheckConstraint(
+        "document_sha256 ~ '^[0-9a-f]{64}$'", name="ck_policy_versions_document_sha256"
+    ),
+    CheckConstraint("rule_count BETWEEN 0 AND 200", name="ck_policy_versions_rule_count"),
+    CheckConstraint("char_length(created_by) <= 128", name="ck_policy_versions_created_by"),
+    CheckConstraint(
+        "comment IS NULL OR char_length(comment) <= 500", name="ck_policy_versions_comment"
+    ),
+    Index(
+        "uq_policy_versions_workspace",
+        "workspace_id",
+        "version",
+        unique=True,
+        postgresql_where=text("project_id IS NULL"),
+    ),
+    Index(
+        "uq_policy_versions_project",
+        "workspace_id",
+        "project_id",
+        "version",
+        unique=True,
+        postgresql_where=text("project_id IS NOT NULL"),
+    ),
+)

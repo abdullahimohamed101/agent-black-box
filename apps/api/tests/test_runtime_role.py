@@ -19,13 +19,16 @@ from tests.test_event_store import ingest
 
 
 def _append_only_tables() -> tuple[str, ...]:
-    """Declared by the migration that made the latest table append-only (not by the test)."""
-    path = next((API_DIR / "migrations" / "versions").glob("0047_*.py"))
-    spec = importlib.util.spec_from_file_location("migration_0047", path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return tuple(module.APPEND_ONLY_TABLES)
+    """Declared by the migrations that made a table append-only (not by the test)."""
+    declared: list[str] = []
+    for prefix in ("0047", "0092"):
+        path = next((API_DIR / "migrations" / "versions").glob(f"{prefix}_*.py"))
+        spec = importlib.util.spec_from_file_location(f"migration_{prefix}", path)
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        declared.extend(module.APPEND_ONLY_TABLES)
+    return tuple(declared)
 
 
 APPEND_ONLY_TABLES = _append_only_tables()
@@ -114,7 +117,7 @@ async def test_append_only_tables_are_exactly_the_declared_ones_and_the_rest_are
             )
         )
         privileges = {r.relname: r for r in rows}
-    assert set(APPEND_ONLY_TABLES) == {"events", "audit_log"}
+    assert set(APPEND_ONLY_TABLES) == {"events", "audit_log", "policy_versions"}
     for name in APPEND_ONLY_TABLES:
         row = privileges.pop(name)
         assert (row.can_update, row.can_delete, row.can_truncate) == (False, False, False), name

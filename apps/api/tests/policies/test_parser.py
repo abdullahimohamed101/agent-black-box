@@ -367,3 +367,30 @@ def test_a_key_name_is_echoed_but_cut_short() -> None:
 
 def test_parsing_is_deterministic() -> None:
     assert parse_policy(SECTION_151).policy == parse_policy(SECTION_151).policy
+
+
+RULE = "  - id: x\n    when: {capability: a}\n    decision: deny\n"
+HOSTILE_64K = {
+    "dashes": "a: " + "- " * 32000,
+    "brackets": "[" * 65000,
+    "braces": "{" * 65000,
+    "complex_keys": "? " * 32000,
+    "anchors": "&a " * 16000,
+    "duplicate_keys": "a: 1\n" * 13000,
+    "many_keys": "".join(f"k{i}: 1\n" for i in range(8000)),
+    "many_rules": "version: 1\npolicies:\n" + RULE * 1300,
+    "long_scalar": "version: 1\ndefault: " + "x" * 60000,
+    "colons": "a:" + " a:" * 20000,
+    "quotes": "'" * 65000,
+    "backslashes": '"' + "\\" * 60000,
+    "block_scalar": "a: |\n" + "  x\n" * 20000,
+    "deep_map": "".join("  " * i + "a:\n" for i in range(300)),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("name", sorted(HOSTILE_64K))
+def test_hostile_documents_are_refused_quickly(name: str) -> None:
+    started = time.perf_counter()
+    result = parse_policy(HOSTILE_64K[name])
+    assert time.perf_counter() - started < 1.0
+    assert result.policy is None and result.issues

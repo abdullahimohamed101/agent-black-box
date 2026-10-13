@@ -87,6 +87,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0071",
         "0090",
         "0091",
+        "0092",
     ]
 
 
@@ -222,3 +223,31 @@ def test_0091_widens_severities_and_adds_the_security_badge_and_back() -> None:
         alembic(url, "downgrade", "0090")
         assert asyncio.run(column_names(url, "run_findings")) == before
         assert "ix_findings_security" not in asyncio.run(index_names(url, "findings"))
+
+
+def test_0092_creates_the_policy_versions_table_and_drops_it_again() -> None:
+    """Phase 14: one additive append-only table; the previous head upgrades to it and back, and a
+    fresh database reaches the same schema."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0091")
+        before = asyncio.run(table_names(url))
+        assert "policy_versions" not in before
+        alembic(url, "upgrade", "0092")
+        assert asyncio.run(table_names(url)) - before == {"policy_versions"}
+        assert asyncio.run(column_names(url, "policy_versions")) == {
+            "workspace_id",
+            "id",
+            "project_id",
+            "version",
+            "document_text",
+            "document_sha256",
+            "rule_count",
+            "created_at",
+            "created_by",
+            "comment",
+        }
+        assert {"uq_policy_versions_workspace", "uq_policy_versions_project"} <= asyncio.run(
+            index_names(url, "policy_versions")
+        )
+        alembic(url, "downgrade", "0091")
+        assert asyncio.run(table_names(url)) == before
