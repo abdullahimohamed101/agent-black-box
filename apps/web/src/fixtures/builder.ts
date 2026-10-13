@@ -25,6 +25,22 @@ type Extra = Partial<
 };
 
 /**
+ * What the API worker's cost engine stores for a model call and the events list serves as `cost_usd`/`cost_unpriced`
+ * (ADR-121): the provider's figure, else the caller's estimate; the fixtures have no price book. A call with neither is
+ * unpriced (its figure is 0). Other events have no cost line.
+ */
+export function settledCost(
+  eventType: string,
+  attrs: Record<string, unknown>,
+): Pick<EventOut, "cost_usd" | "cost_unpriced"> {
+  if (eventType !== "llm.request.completed") return { cost_usd: null, cost_unpriced: false };
+  const figure = [attrs["cost.provider_usd"], attrs["cost.estimated_usd"]].find(
+    (v): v is number => typeof v === "number",
+  );
+  return { cost_usd: figure ?? 0, cost_unpriced: figure === undefined };
+}
+
+/**
  * Builds one run's events and derives its summary like the API worker does. `build()` puts the events in canonical
  * order (`sortEvents`) and reports the `ordering_mode` that order implies, so a run with events from a remote emitter
  * is time-ordered exactly as the API would serve it.
@@ -86,6 +102,7 @@ export class RunBuilder {
       payload_ref: null,
       has_payload: extra.payload != null,
       payload_withheld: false,
+      ...settledCost(event_type, attributes),
       tags: [],
       sdk: { name: "fixture", version: "0" },
     };

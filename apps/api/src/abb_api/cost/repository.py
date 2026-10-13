@@ -21,6 +21,15 @@ LINE_CHUNK = 1000  # 25 bind parameters per line; one statement allows at most 3
 
 
 @dataclass(frozen=True)
+class EventCost:
+    """What the cost engine settled for one model call: the effective total, and whether the call
+    had no price at all (then `total` is zero and the run's figure is a floor)."""
+
+    total: Decimal
+    unpriced: bool
+
+
+@dataclass(frozen=True)
 class OverrideRecord:
     id: uuid.UUID
     project_id: uuid.UUID | None
@@ -99,6 +108,26 @@ class CostRepository:
                 )
             ).scalar_one()
         )
+
+    async def event_costs(
+        self, run_id: uuid.UUID, event_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, EventCost]:
+        """The stored cost line of each of these events of one run (events without one are absent).
+
+        One statement for a whole page of events, on the primary key (workspace_id, event_id):
+        read-only and derived (INV-2), so it can lag the events while a run is being summarised.
+        """
+        if not event_ids:
+            return {}
+        c = t.cost_calculations.c
+        rows = await self._conn.execute(
+            select(c.event_id, c.total, c.source).where(
+                c.workspace_id == self._tenant.workspace_id,
+                c.run_id == run_id,
+                c.event_id.in_(list(event_ids)),
+            )
+        )
+        return {r.event_id: EventCost(r.total, r.source == "unpriced") for r in rows}
 
     async def lock_for_create(self) -> None:
         """Serialise override creation per workspace, so the bound cannot be raced past."""

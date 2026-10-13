@@ -257,6 +257,19 @@ class EventOut(BaseModel):
         "lacks `payload.read` (shell command text, file paths and similar content). Empty for "
         "actors that hold it.",
     )
+    # Appended after the existing fields (Phase 12, ADR-121). Metadata, identical for every role.
+    cost_usd: float | None = Field(
+        default=None,
+        description="What this model call cost, as the cost engine settled it (provider-reported, "
+        "else price book, else the caller's estimate, ADR-040): the figure `estimated_cost_usd` "
+        "adds up. Null when the event has no stored cost line (not a completed model call, or "
+        "the run's cost lines are not derived yet) and on live stream frames.",
+    )
+    cost_unpriced: bool = Field(
+        default=False,
+        description="True when the call has a stored cost line but nothing could price it: "
+        "`cost_usd` is then 0 and the run's total is a floor.",
+    )
 
 
 class EventPage(BaseModel):

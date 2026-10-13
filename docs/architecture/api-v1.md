@@ -388,6 +388,9 @@ client that stopped reading. Late events after `run_end` appear on a new connect
 Payloads are **not** in lists (`has_payload` says whether one exists); `GET /v1/runs/{id}/events/{event_id}`
 returns the full event with its inline payload (or `payload: null`, `payload_withheld: true` to an actor without `payload.read`; their `attributes`
 also omit command text and file paths, see `withheld_attributes` under Authorization).
+Events (lists and detail) also carry `cost_usd` and `cost_unpriced` (ADR-121): the figure the cost engine settled for a completed model call
+(provider-reported, else price book, else the caller's estimate), so the events of a run add up to the summary's `estimated_cost_usd`. They are
+`null`/`false` for every other event, for a run whose cost lines are not derived yet, and on stream frames. Metadata for every role.
 
 `GET /v1/runs/{id}/spans` returns derived spans (`parent_span_id`, `kind`, `status`, timings, `event_count`)
 by start time (spans that never saw a start event come last), `limit` 1-2000 (default 500). It is empty until
