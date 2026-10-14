@@ -56,6 +56,18 @@ declare global {
   }
 }
 
+/** Under a loaded machine a page can still be replacing itself (a client redirect) when we look: retry once it settles. */
+async function retryAfterNavigation<T>(page: Page, run: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt >= 3 || !/context was destroyed|navigation/i.test(String(error))) throw error;
+      await page.waitForLoadState("networkidle");
+    }
+  }
+}
+
 async function watch(page: Page) {
   const problems: string[] = [];
   page.on("console", (m) => m.type() === "error" && problems.push(`console: ${m.text()}`));
@@ -121,19 +133,21 @@ for (const [width, height] of [
         expect(headers["cross-origin-resource-policy"]).toBe("same-origin");
         expect(headers["strict-transport-security"]).toBeUndefined(); // http: no HTTPS claim
 
-        const state = await page.evaluate(async () => {
-          await document.fonts.ready;
-          const inline = [...document.scripts].filter((s) => !s.src);
-          return {
-            violations: window.__violations ?? [],
-            inlineScripts: inline.length,
-            unnoncedInline: inline.filter((s) => !s.nonce).length,
-            fontsLoaded: [...document.fonts].filter((f) => f.status === "loaded").length,
-            // The stylesheet applied: the body is not the browser default (Times, margin 8px, white).
-            bodyFont: getComputedStyle(document.body).fontFamily,
-            bodyMargin: getComputedStyle(document.body).marginTop,
-          };
-        });
+        const state = await retryAfterNavigation(page, () =>
+          page.evaluate(async () => {
+            await document.fonts.ready;
+            const inline = [...document.scripts].filter((s) => !s.src);
+            return {
+              violations: window.__violations ?? [],
+              inlineScripts: inline.length,
+              unnoncedInline: inline.filter((s) => !s.nonce).length,
+              fontsLoaded: [...document.fonts].filter((f) => f.status === "loaded").length,
+              // The stylesheet applied: the body is not the browser default (Times, margin 8px, white).
+              bodyFont: getComputedStyle(document.body).fontFamily,
+              bodyMargin: getComputedStyle(document.body).marginTop,
+            };
+          }),
+        );
         expect(state.violations).toEqual([]);
         expect(state.inlineScripts).toBeGreaterThan(0); // Next's bootstrap: present, and every one carries the nonce
         expect(state.unnoncedInline).toBe(0);
