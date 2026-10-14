@@ -35,7 +35,21 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_EVAL_TIMEOUT_SECONDS`, `_MAX_EVENTS`, `_STALE_SECONDS`, `_BATCH_DELAY_SECONDS` | 25, 50000, 3600, 5 | evaluator time budget (must be below half `ABB_WORKER_LEASE_SECONDS`), events read per evaluation, age after which a pending row reads as failed, delay of evaluate-all jobs; see `runbooks/evaluations.md` |
 | `ABB_COMPARE_MAX_EVENTS`, `_MAX_STEPS`, `_MAX_EDITS` | 20000, 2000, 600 | run comparison: events read per run, steps per side, edit budget before the answer is `partial` |
 | `ABB_JUDGE_PROVIDER`, `ABB_JUDGE_ALLOW_FAKE`, `ABB_JUDGE_COOLDOWN_SECONDS` | none, 0, 300 | `none` or the deterministic `fake` (development/test only unless allowed); pause after a judge reply exceeded `max_cost_usd` |
+| `ABB_SMTP_HOST`, `_PORT`, `_STARTTLS`, `_USERNAME`, `_PASSWORD`, `_FROM` | unset, 587, true, unset, unset, unset | the SMTP relay for **email alert destinations** (Phase 17). Without `ABB_SMTP_HOST` an email destination cannot be created (`422 EMAIL_NOT_CONFIGURED`); the host needs `ABB_SMTP_FROM`; the username and password go together and are read from the environment only (never stored, logged or returned) |
+| `ABB_ALERTS_MAX_RULES_PER_WORKSPACE`, `_MAX_DESTINATIONS_PER_WORKSPACE`, `_MAX_DESTINATIONS_PER_RULE` | 100, 50, 10 | alerting configuration limits (409 `ALERT_LIMIT_REACHED` beyond) |
+| `ABB_ALERTS_WRITES_PER_MINUTE` | 30 | alert destination and rule changes per workspace per minute, per API process (429 with `Retry-After`) |
+| `ABB_ALERTS_SWEEP_INTERVAL_SECONDS` | 60 | how often the scheduled alert checks (approval about to expire, daily spend over a threshold) run per workspace that has such a rule |
+| `ABB_ALERTS_SKIPPED_PER_WINDOW`, `ABB_ALERTS_PREVIEW_TIMEOUT_SECONDS` | 25, 5 | at most this many `skipped` history rows per rule and destination per cooldown window (the rest are only counted in the log); time budget of a rule preview |
 | `ABB_WORKER_POLL_INTERVAL_SECONDS`, `_BATCH_SIZE`, `_LEASE_SECONDS`, `_MAX_ATTEMPTS`, `_BACKOFF_BASE_SECONDS`, `_BACKOFF_MAX_SECONDS` | 0.5, 10, 60, 5, 5, 300 | job processing |
+
+### Alert secrets and their key (Phase 17, ADR-150)
+
+Alert destination targets and webhook signing secrets are stored as AES-256-GCM ciphertext under a key kept in the append-only `server_secrets` table (name `alerts-encryption`),
+created on first use. **Back that table up with the database**: without its row the secrets sealed under it cannot be read (the destinations then fail closed). **Rotation** (planned or after a
+suspected leak of a database read): as the database owner role run
+`INSERT INTO server_secrets (name, secret) VALUES ('alerts-encryption', decode('<64 hex characters from openssl rand -hex 32>', 'hex'));` and restart the API and worker processes (they cache the
+current key). New and re-saved destinations use the new key; existing ones keep opening with their own, so nothing needs re-encrypting; to retire the old key, replace each destination's target (`PATCH` with the `target`; the stored URL is never
+returned, so the owner supplies it again) and rotate webhook signing secrets (`rotate_signing_secret`). Which key sealed a destination: `SELECT id, name, key_id FROM alert_destinations`. Alerts carry no captured content; a destination's masked form is the only display of its target.
 
 ## What to watch
 

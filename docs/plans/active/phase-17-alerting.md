@@ -52,3 +52,14 @@ Unit and property tests for rule matching, dedupe and cooldown; API tests for CR
 3. Web: Alerts page (Rules, Destinations, History), forms, preview, guided empty state, notes on Approvals and run pages.
 4. Verification suite: `alerts-e2e.sh` with receivers and a CI job, SSRF and secrets scans, benchmarks, docs and closing evidence.
 5. Review, fixes, push and PR.
+
+## Progress
+
+- Step 1 (model and evaluation, 2026-10-13): migration 0095 (`alert_destinations`, `alert_rules`, `alert_rule_destinations`, `alert_notifications`, CHECKs, unique dedupe key), `abb_api/alerts/`
+  (`sealed.py` AES-256-GCM under a `server_secrets` key bound to row, workspace and purpose; `targets.py` early target guard and masking; `service.py`/`router.py`/`schemas.py` the 12 management routes;
+  `evaluate.py`, `jobs.py`, `payload.py`, `subjects.py`, `spend.py` evaluation, the `evaluate_alerts` and `alert_sweep` outbox jobs and the content-free payload), producer hooks in
+  `jobs/handlers.py` (`summarize_run`), `findings/job.py` and `approvals/service.py`, actions `alert.read`/`alert.write`/`alert.destination.read`, ADR-150, `cryptography` made a direct dependency,
+  SMTP and alert settings, KI-160/161. Notification rows are written as `pending`; step 2 delivers them. Contract for step 2: `alert_notifications.payload_json` is the body (relative `link_path`, made
+  absolute from `ABB_WEB_ORIGIN`; escape project, agent and rule names per channel); decrypt with `sealed.open_sealed(engine, blob, purpose="config"|"signing", workspace_id, destination_id)`;
+  `alert_destinations.state/consecutive_failures/paused_reason` are the health fields; `DestinationRow` (repository.py) carries the ciphertext; `skipped` rows are never sent. Steps 2-5 open.
+

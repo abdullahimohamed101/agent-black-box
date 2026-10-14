@@ -261,7 +261,7 @@ run held no `approval.granted` or `approval.consumed`. Fixed in three parts.
    32-byte installation secret in the append-only table `server_secrets` (migration 0094; the runtime role can SELECT and INSERT, not UPDATE, DELETE or TRUNCATE), created on first use under an
    advisory lock and cached per process, so every API process and worker shares it, it survives restarts, and nothing in code or configuration holds it. Allow and deny decision events with an
    `idempotency_key` mix the HMAC and the intent hash (the client's key alone no longer names the event; the same key for another intent is its own event).
-   **Rotation:** an operator inserts a new row as the owner role (`INSERT INTO server_secrets (name, secret) VALUES ('event-id', gen_random_bytes(32))`) and restarts the processes; the newest row
+   **Rotation:** an operator inserts a new row as the owner role (`INSERT INTO server_secrets (name, secret) VALUES ('event-id', decode('<64 hex characters from openssl rand -hex 32>', 'hex'))`; `gen_random_bytes` needs the `pgcrypto` extension, which the stock image does not load: corrected by ADR-150) and restarts the processes; the newest row
    wins. Rotation changes the ids of future events only; stored events are never rewritten (INV-1), and a transition retried across a rotation simply writes a new event under the new key.
    Anyone who can read the table (the owner role, a database administrator) can compute the ids; the secret protects against agent keys, not against the database.
 2. *Atomicity.* `emit` accepts a `conflict` in exactly one case, a retry of the server's own write: the stored event has the reserved emitter, the same type and the same approval id (the

@@ -314,6 +314,42 @@ Every state change is an event and an audit row: `approval.consume`, `approval.c
 withdraw) share a per-key and a per-workspace budget (`ABB_POLICY_DECIDE_PER_MINUTE_KEY`=1200, `..._WORKSPACE`=6000; `429 RATE_LIMITED` with `Retry-After`); at most 100 requests per key and 1,000 per workspace may be waiting
 (`429 TOO_MANY_OPEN_APPROVALS`).
 
+### Alerts (Phase 17, ADR-150)
+
+Destinations are where an alert goes, rules say what to watch; both are configured by signed-in people only (no API key scope grants an alert action; a key is `403 INSUFFICIENT_SCOPE`). This step stores and evaluates; **delivery is step 2**:
+every matched event writes a notification row with status `pending`. Request bodies refuse unknown fields; a validation error names the field or a fixed reason and never echoes a value. Writes share a per-workspace budget (`ABB_ALERTS_WRITES_PER_MINUTE`, 30; `429 RATE_LIMITED` with `Retry-After`).
+Foreign and unknown ids (path, query or body) are the same `404` (`ALERT_DESTINATION_NOT_FOUND`, `ALERT_RULE_NOT_FOUND`, `PROJECT_NOT_FOUND`).
+
+**Roles.** `alert.read` (rules, preview, history): owner, admin, developer, viewer, security. `alert.write` (every change) and `alert.destination.read` (destinations): owner and admin. A rule read without `alert.destination.read` has `destinations: []` and `destination_count`;
+a history row shows `destination: {id: null, name: null, type}`; `approval_id` is `null` without `approval.read`; the `destination_id` history filter is `403 PERMISSION_DENIED` (`required_permission: alert.destination.read`).
+
+**Destinations**
+
+- `POST /v1/alerts/destinations` `{name (1-80), type: webhook|slack|email, target: {url} | {recipients[1..10]}}` -> `201 {id: dst_..., name, type, masked_target, state, consecutive_failures, paused_reason, rule_count, created_by, created_at, updated_by, updated_at, signing_secret}`.
+  `signing_secret` (`whsec_...`, webhook only, else null) is **returned only here and by a rotation**. Errors: `422 DESTINATION_TARGET_INVALID` (`details.reason`: `url_required`, `url_too_long`, `url_malformed`, `not_https`, `credentials_in_url`, `host_invalid`, `host_internal`, `ip_not_public`, `ip_literal_form`, `port_invalid`, `fragment_not_allowed`, `recipients_required`, `too_many_recipients`, `recipient_invalid`, `target_shape`),
+  `422 EMAIL_NOT_CONFIGURED` (no `ABB_SMTP_HOST`), `409 ALERT_NAME_TAKEN`, `409 ALERT_LIMIT_REACHED` (50 per workspace). Audit `alert.destination.create` (`details`: `type`).
+- `GET /v1/alerts/destinations` -> `{items[], email_configured}`; `GET /v1/alerts/destinations/{id}` -> the destination (masked; never a URL, recipient or secret).
+- `PATCH /v1/alerts/destinations/{id}` `{name?, target?, state?: active|paused, rotate_signing_secret?}` -> the destination with `signing_secret` set only when rotated. A new target is re-validated, resets the failure count and moves `failing` to `active`;
+  `state: paused` sets `paused_reason: manual`, `active` resumes and clears failures; rotation on a non-webhook is `422 DESTINATION_INVALID` (`reason: no_signing_secret`). Audit rows `alert.destination.update` (`changed`: `["name","target"]`), `.pause`, `.resume`, `.rotate_secret`.
+- `DELETE /v1/alerts/destinations/{id}` -> `204`. Waiting notifications become `skipped` (`destination_deleted`), history keeps its rows (destination cleared), rules left with no destination are switched off. Audit `alert.destination.delete` (`type`, `rules_disabled`).
+
+**Rules**
+
+- `POST /v1/alerts/rules` `{name, trigger, project_id?, filters, destination_ids[1..10], cooldown_seconds? (0..604800, default 0), enabled? (default true)}` -> `201` rule `{id: rul_..., name, trigger, project_id, filters, cooldown_seconds, enabled, last_fired_at, destination_count, destinations[{id, name, type, state}], created_*/updated_*}`.
+  Triggers and their `filters` (a field outside the trigger's set is `422 RULE_INVALID` with `details: {field, reason: not_applicable|required|unknown_agent|too_small}`): `approval_requested` (`agent`); `approval_expiring` (`agent`, `expiring_lead_seconds` 60..86400, required);
+  `security_finding` (`agent`, `min_severity`: info|warning|medium|high|critical, required); `run_failed` (`agent`, `run_statuses` subset of FAILED, TIMED_OUT, BLOCKED, default all three); `spend_over` (`agent`, `threshold_usd` > 0 and <= 1,000,000, required, `period: day`).
+  `agent` is an agent slug that exists (in the project, or any project when `project_id` is null). `project_id: null` means every project of the workspace. `409 ALERT_NAME_TAKEN`, `409 ALERT_LIMIT_REACHED` (100 rules, 10 destinations per rule). Audit `alert.rule.create` (`trigger`, `destinations`).
+- `GET /v1/alerts/rules`, `GET /v1/alerts/rules/{id}`. `PATCH /v1/alerts/rules/{id}` (any of `name`, `project_id` (null clears), `filters` (replaces), `destination_ids` (replaces), `cooldown_seconds`, `enabled` (false mutes); the trigger cannot change). Audit `alert.rule.update` (`changed`: field names). `DELETE /v1/alerts/rules/{id}` -> `204` (waiting notifications become `skipped`, `rule_deleted`; audit `alert.rule.delete`).
+- `GET /v1/alerts/rules/{id}/preview?days=1..30` (default 7) -> `{days, count, daily[{day, count}]}`: how many times the rule would have fired, from recorded findings, approvals, runs and daily spend, before cooldown; counts only; `504 ALERT_PREVIEW_TIMEOUT` past 5 s.
+
+**History**
+
+- `GET /v1/alerts/notifications[?rule_id=&destination_id=&status=pending|delivered|failed|dead|skipped&trigger=&since=&until=&limit=1..200&cursor=]` -> `{items[], next_cursor}`, newest first. An item is `{id: alt_... (the stable alert_id receivers dedupe on), rule: {id, name}|null, destination: {id, name, type}|null, trigger, severity, status, skip_reason (cooldown|destination_paused|destination_deleted|rule_deleted), attempts, error_code (a fixed code), project_id, run_id, finding_id, approval_id, agent_slug, created_at, delivered_at, next_attempt_at}`.
+  There is no payload and no response body in the history; the payload (stored in `alert_notifications.payload_json`) is content-free and is read only by the sender.
+
+**What produces notifications.** A run summarised as FAILED, TIMED_OUT or BLOCKED; a security finding that is new or worse than the stored one; an approval requested; (every 60 s, per workspace with such a rule) an approval whose time to expiry has fallen to the rule's lead, and a UTC day whose spend for the rule's project and agent is strictly over the threshold.
+Dedupe keys (one notification per rule, destination and key): `run_id:STATUS`, `finding_id:detector_version:severity`, `approval_id:requested`, `approval_id:expiring`, `rule_id:YYYY-MM-DD`. A cooldown suppresses new notifications for the same rule and destination as `skipped` rows (`cooldown`).
+
 ### Search (`GET /v1/runs?q=`)
 
 `q` is a flat conjunction of terms separated by whitespace, parsed on the server into a typed AST (spec §152; the web app sends the text and renders what the server parsed):
