@@ -54,6 +54,14 @@ APPROVAL_READ: Final = "approval.read"
 APPROVAL_DECIDE: Final = "approval.decide"
 POLICY_FAIL_MODES: Final = "policy.fail_modes"
 
+# Alerting (Phase 17, ADR-150). `alert.read` lets anyone who may read runs see the rules and the
+# delivery history (ids, names, trigger, status; never a target or a secret). `alert.write` manages
+# rules and destinations and `alert.destination.read` reads destinations (masked target and health):
+# owners and admins only. No API key holds any of them: alerting is configured by signed-in people.
+ALERT_READ: Final = "alert.read"
+ALERT_WRITE: Final = "alert.write"
+ALERT_DESTINATION_READ: Final = "alert.destination.read"
+
 # Reserved for later phases (19: retention). Granted to nobody, so the names exist in one place and
 # a future phase only has to add grants.
 RETENTION_WRITE: Final = "retention.write"
@@ -68,7 +76,7 @@ ALL_ACTIONS: Final = frozenset(
         API_KEY_REVOKE, AUDIT_READ, BILLING_READ, EVALUATION_READ, EVALUATION_RUN,
         EVALUATION_LABEL, EVALUATOR_WRITE, EXPERIMENT_READ, EXPERIMENT_WRITE, POLICY_READ,
         POLICY_WRITE, POLICY_DECIDE, APPROVAL_USE, APPROVAL_READ, APPROVAL_DECIDE,
-        POLICY_FAIL_MODES,
+        POLICY_FAIL_MODES, ALERT_READ, ALERT_WRITE, ALERT_DESTINATION_READ,
     }
 ) | RESERVED_ACTIONS  # fmt: skip
 

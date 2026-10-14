@@ -25,6 +25,7 @@ from abb_api.ids import new_uuid, parse_public_id, public_id
 from abb_api.policies.service import publish_policy
 from abb_api.security.settings import Actor
 from abb_api.workspaces.repository import InvitationRepository
+from tests.alerts_helpers import seed_destination, seed_rule
 from tests.api_fixtures import NOW, Api
 from tests.auth_helpers import add_member, mint_session, remove_member, set_role
 from tests.authz.registry import RequestSpec, RouteCase, Side, matrix_intent
@@ -90,6 +91,17 @@ class World:
                     created_by=None,
                 )  # fmt: skip
             return public_id(IdKind.EVALUATOR, created_evaluator.id)
+        if kind in ("alert_destination", "alert_rule"):
+            tenant = self.api.tenant.context
+            destination = await seed_destination(
+                self.api.engine, tenant, name=f"fresh-{uuid.uuid4().hex[:10]}"
+            )
+            if kind == "alert_destination":
+                return public_id(IdKind.DESTINATION, destination)
+            rule = await seed_rule(
+                self.api.engine, tenant, [destination], name=f"fresh-{uuid.uuid4().hex[:10]}"
+            )
+            return public_id(IdKind.ALERT_RULE, rule)
         if kind == "member":
             user = await add_member(
                 self.api.engine, workspace, f"target-{uuid.uuid4().hex[:10]}@acme.test", "DEVELOPER"
@@ -432,6 +444,13 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
         seeded = await _seed_evaluations(
             api, tenant, "alpha" if name == "acme" else "p", run_ids, label
         )
+        # An alert destination and a rule per tenant; the canary sits in the free-text names.
+        alert_destination = await seed_destination(
+            api.engine, tenant.context, name=f"{label} pager"
+        )
+        alert_rule = await seed_rule(
+            api.engine, tenant.context, [alert_destination], name=f"{label} failures"
+        )
         sides[name] = Side(
             name=name,
             workspace_id=tenant.workspace_id,
@@ -450,9 +469,13 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             human_evaluator_id=seeded[5],
             approval_id=approval_id,
             agent_slug=tag,
+            destination_id=public_id(IdKind.DESTINATION, alert_destination),
+            rule_id=public_id(IdKind.ALERT_RULE, alert_rule),
             every_id=frozenset(
                 {
                     approval_id,
+                    public_id(IdKind.DESTINATION, alert_destination),
+                    public_id(IdKind.ALERT_RULE, alert_rule),
                     *seeded,
                     tenant.workspace_id,
                     public_project,
