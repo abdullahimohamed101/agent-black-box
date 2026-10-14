@@ -204,6 +204,17 @@ class FindingsRepository:
             )
         )
 
+    async def security_severities(self, run_id: uuid.UUID) -> dict[uuid.UUID, int]:
+        """The stored security findings of a run as `{id: severity rank}` (before a rewrite)."""
+        rows = await self._conn.execute(
+            select(t.findings.c.id, t.findings.c.severity).where(
+                t.findings.c.workspace_id == self._tenant.workspace_id,
+                t.findings.c.run_id == run_id,
+                t.findings.c.detector.like(f"{SECURITY_PREFIX}%"),
+            )
+        )
+        return {r.id: Severity(r.severity).rank for r in rows}
+
     async def for_run(
         self, run_id: uuid.UUID
     ) -> tuple[RunFindingsState | None, list[FindingRecord]]:

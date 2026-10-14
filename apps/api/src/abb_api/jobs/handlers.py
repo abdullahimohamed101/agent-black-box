@@ -8,6 +8,8 @@ from datetime import date, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from abb_api.alerts.jobs import alert_sweep, enqueue_event, evaluate_alerts
+from abb_api.alerts.model import RUN_FAIL_STATUSES, RUN_FAILED
 from abb_api.analytics.rollup import refresh_day
 from abb_api.approvals.job import expire_approval
 from abb_api.cost.engine import CostEngine
@@ -17,7 +19,9 @@ from abb_api.findings.job import detect_delay, detect_run
 from abb_api.ingestion.store import PgEventStore
 from abb_api.jobs.context import job_settings
 from abb_api.jobs.outbox import (
+    ALERT_SWEEP,
     DETECT_FINDINGS,
+    EVALUATE_ALERTS,
     EVALUATE_RUN,
     EXPIRE_APPROVAL,
     REFRESH_ANALYTICS_DAY,
@@ -100,6 +104,9 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
                 extra={"run_id": str(run_id), "skipped": skipped},
             )
         await _enqueue_detect(outbox, tenant, run_id, len(events))
+        if derived.status.value in RUN_FAIL_STATUSES:
+            # One small INSERT; the alert rules are matched by the `evaluate_alerts` job (ADR-150).
+            await enqueue_event(outbox, RUN_FAILED, run_id)
 
 
 async def _enqueue_detect(
@@ -158,4 +165,6 @@ HANDLERS: dict[str, Callable[[Job, AsyncConnection], Awaitable[None]]] = {
     DETECT_FINDINGS: detect_findings,
     EVALUATE_RUN: evaluate_run,
     EXPIRE_APPROVAL: expire_approval,
+    EVALUATE_ALERTS: evaluate_alerts,
+    ALERT_SWEEP: alert_sweep,
 }

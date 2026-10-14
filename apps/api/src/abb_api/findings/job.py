@@ -9,6 +9,7 @@ and the baseline come from outside the event set.
 import logging
 import time
 import uuid
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import timedelta
 from typing import Literal
@@ -17,14 +18,23 @@ from abb_event_schema.ordering import sort_events
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from abb_api.alerts.jobs import enqueue_event
+from abb_api.alerts.model import SECURITY_FINDING
 from abb_api.core.config import Settings
 from abb_api.findings.build import build_context, make_baseline
 from abb_api.findings.detectors import DETECTORS_VERSION, run_all
 from abb_api.findings.detectors.cost_spike import FINISHED
-from abb_api.findings.model import DetectorConfig, DetectorError
+from abb_api.findings.model import (
+    SECURITY_PREFIX,
+    DetectorConfig,
+    DetectorError,
+    Finding,
+    finding_uuid,
+)
 from abb_api.findings.repository import AnalysisState, FindingsRepository
 from abb_api.findings.security_inputs import load_security_inputs
 from abb_api.ingestion.store import PgEventStore
+from abb_api.jobs.outbox import OutboxRepository
 from abb_api.runs.queries import RunQueries
 from abb_api.tenancy import TenantContext
 
@@ -69,6 +79,32 @@ async def try_lock_run(conn: AsyncConnection, tenant: TenantContext, run_id: uui
     return bool(
         await conn.scalar(select(func.pg_try_advisory_xact_lock(func.hashtextextended(key, 0))))
     )
+
+
+def _has_security(findings: Sequence[Finding]) -> bool:
+    return any(f.detector.startswith(SECURITY_PREFIX) for f in findings)
+
+
+async def _announce_security(
+    conn: AsyncConnection,
+    tenant: TenantContext,
+    run_id: uuid.UUID,
+    findings: Sequence[Finding],
+    previous: dict[uuid.UUID, int],
+) -> None:
+    """One small job per new or raised security finding; no matching happens here."""
+    outbox = OutboxRepository(conn, tenant)
+    seen: dict[uuid.UUID, Finding] = {}
+    for f in findings:
+        if f.detector.startswith(SECURITY_PREFIX):
+            fid = finding_uuid(tenant.workspace_id, run_id, f.fingerprint)
+            kept = seen.get(fid)
+            if kept is None or f.severity.rank > kept.severity.rank:
+                seen[fid] = f
+    for fid in sorted(seen, key=lambda i: i.bytes):
+        before = previous.get(fid)
+        if before is None or seen[fid].severity.rank > before:
+            await enqueue_event(outbox, SECURITY_FINDING, fid)
 
 
 async def detect_run(
@@ -138,7 +174,12 @@ async def _detect_run(
         # Whatever it was, its message may quote attribute values: the job fails with fixed text.
         raise DetectorError("analysis", len(events)) from None
 
-    await FindingsRepository(conn, tenant).replace_run(
+    repository = FindingsRepository(conn, tenant)
+    # Security findings that are new or got worse are announced to the alert rules (ADR-150). The
+    # comparison is with what was stored before this pass, so an unchanged finding that a rebuild
+    # rewrites is not announced again; the alert's own dedupe key backs that up.
+    previous = await repository.security_severities(run_id) if _has_security(findings) else {}
+    await repository.replace_run(
         run_id,
         project_id=row.project_id,
         agent_slug=row.agent_slug,
@@ -152,6 +193,7 @@ async def _detect_run(
             truncated=truncated,
         ),
     )
+    await _announce_security(conn, tenant, run_id, findings, previous)
     logger.info(
         "findings computed",
         extra={
