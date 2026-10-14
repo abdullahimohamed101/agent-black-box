@@ -10,10 +10,17 @@ from abb_api.core.request_context import new_request_id, sanitize_inbound, set_r
 
 logger = logging.getLogger("abb_api.request")
 
+# A JSON API renders nothing: no sources at all, never framed, no base or form targets (ADR-155).
+API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+# Only the development/staging docs pages (Swagger UI from a CDN, inline script) are exempt.
+_DOCS_PATHS = frozenset({"/docs", "/docs/oauth2-redirect", "/redoc"})
+HSTS = "max-age=31536000; includeSubDomains"
+
 
 class RequestContextMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, *, hsts: bool = False) -> None:
         self.app = app
+        self.hsts = hsts  # only when the deployment says it is served over HTTPS
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -34,6 +41,13 @@ class RequestContextMiddleware:
                 # API responses carry tenant data: never sniffed as HTML, never cached by proxies.
                 headers["X-Content-Type-Options"] = "nosniff"
                 headers["Cache-Control"] = "no-store"
+                headers["X-Frame-Options"] = "DENY"
+                headers["Referrer-Policy"] = "no-referrer"
+                headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+                if scope.get("path") not in _DOCS_PATHS:
+                    headers["Content-Security-Policy"] = API_CSP
+                if self.hsts:
+                    headers["Strict-Transport-Security"] = HSTS
             await send(message)
 
         try:

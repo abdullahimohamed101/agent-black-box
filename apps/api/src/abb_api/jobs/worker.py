@@ -21,6 +21,7 @@ from abb_api.clock import Clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.logging import configure_logging
 from abb_api.db import create_engine
+from abb_api.db.role_check import PrivilegedDatabaseRole, enforce_role
 from abb_api.jobs.context import reset_job_settings, set_job_settings
 from abb_api.jobs.handlers import HANDLERS
 from abb_api.jobs.outbox import Job, JobQueue, backoff_seconds
@@ -190,6 +191,11 @@ async def _main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level, service="abb-worker")
     engine = create_engine(settings.database_url)
+    try:
+        await enforce_role(engine, settings, service="worker")  # KI-031: may refuse to start
+    except PrivilegedDatabaseRole:
+        await engine.dispose()
+        raise
     worker = Worker(engine, HANDLERS, settings)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -202,7 +208,10 @@ async def _main() -> None:
 
 
 def main() -> None:
-    asyncio.run(_main())
+    try:
+        asyncio.run(_main())
+    except PrivilegedDatabaseRole as refusal:
+        raise SystemExit(str(refusal)) from None  # the fixed message, no traceback
 
 
 if __name__ == "__main__":

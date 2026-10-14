@@ -22,6 +22,7 @@ from abb_api.artifacts.router import router as artifacts_router
 from abb_api.artifacts.service import ArtifactService
 from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
 from abb_api.audit.router import router as audit_router
+from abb_api.auth.cookies import is_secure
 from abb_api.auth.keys_router import router as api_keys_router
 from abb_api.auth.login import LoginService
 from abb_api.auth.oidc import OidcClient
@@ -31,6 +32,7 @@ from abb_api.authz.audit import new_denial_limiter
 from abb_api.clock import Clock, system_clock
 from abb_api.comparison.router import router as comparison_router
 from abb_api.comparison.service import ComparisonService
+from abb_api.core.body_budget import BodyBudget, BodyBudgetMiddleware
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.errors import install_error_handlers
 from abb_api.core.logging import configure_logging
@@ -38,6 +40,7 @@ from abb_api.core.middleware import RequestContextMiddleware
 from abb_api.cost.router import rebuild_router
 from abb_api.cost.router import router as pricing_router
 from abb_api.db import create_engine
+from abb_api.db.role_check import PrivilegedDatabaseRole, enforce_role
 from abb_api.evaluations.router import router as evaluators_router
 from abb_api.evaluations.run_router import router as run_evaluations_router
 from abb_api.evaluations.runs import RunEvaluationService
@@ -203,6 +206,11 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = create_engine(settings.database_url)
         app.state.engine = engine
+        try:
+            await enforce_role(engine, settings, service="api")  # KI-031: may refuse to start
+        except PrivilegedDatabaseRole:
+            await engine.dispose()
+            raise
         counters = build_counters(engine, settings)
         app.state.shared_counters = counters
         ingest_guard = ingest_limiter(
@@ -301,11 +309,31 @@ def create_app(
             if settings.dev_sessions_enabled
             else "It is ignored because ABB_ENVIRONMENT is not development or test.",
         )
-    app = FastAPI(title="Agent Black Box API", version=__version__, lifespan=lifespan)
+    # The interactive docs and the schema route are a deliberate choice per environment (KI-023).
+    # `python -m abb_api.openapi` and the web client's generator call `app.openapi()` directly, so
+    # they work with the routes off.
+    docs = settings.docs_enabled
+    app = FastAPI(
+        title="Agent Black Box API",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
+        openapi_url="/openapi.json" if docs else None,
+    )
     app.state.settings = settings
     app.state.clock = clock
     app.state.denial_limiter = new_denial_limiter(settings.audit_denials_per_minute)
     install_error_handlers(app)
+    # Innermost (added first): a body refused for the byte budget (503) is still a CORS-readable,
+    # request-ID'd response (ADR-155).
+    app.state.body_budget = BodyBudget(settings.max_body_bytes_in_flight)
+    app.add_middleware(
+        BodyBudgetMiddleware,
+        budget=app.state.body_budget,
+        ceiling_bytes=settings.body_ceiling_bytes,
+        read_timeout_seconds=settings.body_read_timeout_seconds,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -314,7 +342,7 @@ def create_app(
         expose_headers=["X-Request-ID"],
     )
     # Added last so it is outermost: request IDs exist before CORS or handlers run.
-    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(RequestContextMiddleware, hsts=is_secure(settings))
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(ingestion_router)

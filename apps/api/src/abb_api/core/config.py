@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Ingestion limits (spec §71.4). Per-event size comes from the event contract itself.
     ingest_max_body_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
     ingest_max_batch_events: int = Field(default=1000, ge=1)
+    # Request bodies held in memory at once by this process (Phase 19a, ADR-155, KI-026): a request
+    # whose body would pass this is answered 503 BUSY with Retry-After. It must hold the largest
+    # single body (validated below). A body not fully received within the read timeout is dropped.
+    max_body_bytes_in_flight: int = Field(default=64 * 1024 * 1024, ge=1024 * 1024)
+    body_read_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
     # Artifacts (ADR-030): local filesystem store, per-artifact size cap.
     artifact_dir: str = ".artifacts"
     artifact_max_bytes: int = Field(default=8 * 1024 * 1024, ge=1024)
@@ -244,6 +249,13 @@ class Settings(BaseSettings):
     smtp_from: str | None = None
     # Lets the CLI mint sessions without an identity provider. Honoured only in development/test.
     allow_dev_sessions: bool = False
+    # /docs, /redoc and /openapi.json (KI-023). Unset: served in development, test and staging,
+    # not in production. true/false overrides the environment.
+    api_docs_enabled: bool | None = None
+    # The API and worker refuse to start in production when their database role can alter stored
+    # events (superuser, owner of the tables, ...; KI-031). 1 accepts that knowingly; a log line
+    # records it on every start.
+    allow_privileged_db_role: bool = False
 
     @model_validator(mode="after")
     def _sign_in_is_configured_safely(self) -> "Settings":
@@ -354,6 +366,26 @@ class Settings(BaseSettings):
         if self.rate_limit_burst_bytes < self.artifact_max_bytes:
             raise ValueError("rate_limit_burst_bytes must be >= artifact_max_bytes")
         return self
+
+    @model_validator(mode="after")
+    def _the_body_budget_holds_the_largest_body(self) -> "Settings":
+        if self.max_body_bytes_in_flight < self.body_ceiling_bytes:
+            raise ValueError(
+                "max_body_bytes_in_flight must be >= the largest body "
+                "(ingest_max_body_bytes, artifact_max_bytes)"
+            )
+        return self
+
+    @property
+    def body_ceiling_bytes(self) -> int:
+        """No request body may be larger than this, whatever the route."""
+        return max(self.ingest_max_body_bytes, self.artifact_max_bytes)
+
+    @property
+    def docs_enabled(self) -> bool:
+        if self.api_docs_enabled is not None:
+            return self.api_docs_enabled
+        return self.environment != "production"
 
     @property
     def cors_origin_list(self) -> list[str]:
