@@ -38,6 +38,9 @@ class IdKind(str, Enum):
     EVALUATOR = "evr"  # evaluator definitions (Phase 11)
     EXPERIMENT = "exp"
     VARIANT = "var"  # an experiment's variant
+    DESTINATION = "dst"  # an alert destination (Phase 17); never appears in events
+    ALERT_RULE = "rul"  # an alert rule (Phase 17)
+    ALERT = "alt"  # one alert notification: the stable `alert_id` receivers dedupe on
 
 
 def id_pattern(kind: IdKind) -> str:

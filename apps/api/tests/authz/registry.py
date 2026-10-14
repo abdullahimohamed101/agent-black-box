@@ -69,6 +69,8 @@ class Side:
     human_evaluator_id: str  # a `human` evaluator (the target of a verdict)
     approval_id: str  # a waiting approval requested by the tenant's project key (Phase 14)
     agent_slug: str  # the agent the tenant's seeded run belongs to
+    destination_id: str  # an alert destination of the tenant (Phase 17)
+    rule_id: str  # an alert rule of the tenant (Phase 17)
     every_id: frozenset[str]  # every id the tenant owns (for leak scans)
 
 
@@ -118,6 +120,8 @@ def _ids(side: Side, overrides: dict[str, str]) -> dict[str, str]:
         "with_run_id": side.with_run_id,
         "human_evaluator_id": side.human_evaluator_id,
         "approval_id": side.approval_id,
+        "destination_id": side.destination_id,
+        "rule_id": side.rule_id,
         **overrides,
     }
 
@@ -286,6 +290,8 @@ def _post_invitation(side: Side, overrides: dict[str, str]) -> RequestSpec:
 
 
 ADMINS = ("owner", "dual")  # people who can reach the route and are members of both workspaces
+# People who read alert rules (alert.read) and are members of both workspaces.
+ALERT_READERS = ("owner", "dual", "developer")
 
 
 def _post_key(side: Side, overrides: dict[str, str]) -> RequestSpec:
@@ -364,6 +370,69 @@ def _variant_body(ids: dict[str, str]) -> dict[str, object]:
 
 def _attach_body(ids: dict[str, str]) -> dict[str, object]:
     return {"run_id": ids["with_run_id"], "variant_id": ids["variant_id"]}
+
+
+def _alert_destination(method: str, *, fresh: str | None = None) -> Builder:
+    """POST creates a destination; the others act on the seeded one (DELETE: a fresh one)."""
+
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        ident = overrides.get("destination_id")
+        if method == "POST":
+            hook = f"https://hooks.slack.com/services/T0/B0/{uuid.uuid4().hex}"
+            body = {
+                "name": f"probe-{uuid.uuid4().hex[:8]}",
+                "type": "slack",
+                "target": {"url": hook},
+            }
+            return RequestSpec(
+                "POST", "/v1/alerts/destinations", content=json.dumps(body).encode(), headers=JSON
+            )
+        if method == "LIST":
+            return RequestSpec("GET", "/v1/alerts/destinations")
+        path = f"/v1/alerts/destinations/{ident or side.destination_id}"
+        if method == "TEST":
+            return RequestSpec("POST", path + "/test")
+        if method == "DELETE" and ident is None:
+            path = "/v1/alerts/destinations/FRESH"
+        content = (
+            json.dumps({"name": f"renamed-{uuid.uuid4().hex[:8]}"}).encode()
+            if method == "PATCH"
+            else None
+        )
+        return RequestSpec(
+            "GET" if method == "LIST" else method, path, content=content,
+            headers=JSON if content else {},
+            fresh=fresh if (method == "DELETE" and ident is None) else None,
+        )  # fmt: skip
+
+    return build
+
+
+def _alert_rule(method: str, *, fresh: str | None = None) -> Builder:
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        ident = overrides.get("rule_id")
+        if method == "POST":
+            target = overrides.get("destination_id", side.destination_id)
+            body = {"name": f"probe-{uuid.uuid4().hex[:8]}", "trigger": "run_failed",
+                    "destination_ids": [target]}  # fmt: skip
+            return RequestSpec(
+                "POST", "/v1/alerts/rules", content=json.dumps(body).encode(), headers=JSON
+            )
+        if method == "LIST":
+            return RequestSpec("GET", "/v1/alerts/rules")
+        path = f"/v1/alerts/rules/{ident or side.rule_id}"
+        if method == "DELETE" and ident is None:
+            path = "/v1/alerts/rules/FRESH"
+        if method == "PREVIEW":
+            path += "/preview"
+        content = json.dumps({"cooldown_seconds": 60}).encode() if method == "PATCH" else None
+        return RequestSpec(
+            "GET" if method in ("LIST", "PREVIEW") else method, path, content=content,
+            headers=JSON if content else {},
+            fresh=fresh if (method == "DELETE" and ident is None) else None,
+        )  # fmt: skip
+
+    return build
 
 
 _ANALYTICS = ("summary", "cost", "reliability", "performance", "waste")
@@ -483,6 +552,57 @@ CASES: dict[tuple[str, str], RouteCase] = {
             "POST", "/v1/approvals/{approval_id}/decision", actions.APPROVAL_DECIDE,
             _approval("POST", "/decision", fresh="approval", body="decision"), 200,
             ("approval_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/alerts/destinations", actions.ALERT_WRITE, _alert_destination("POST"),
+            201,
+        ),
+        RouteCase(
+            "GET", "/v1/alerts/destinations", actions.ALERT_DESTINATION_READ,
+            _alert_destination("LIST"), 200,
+        ),
+        RouteCase(
+            "GET", "/v1/alerts/destinations/{destination_id}", actions.ALERT_DESTINATION_READ,
+            _alert_destination("GET"), 200, ("destination_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "PATCH", "/v1/alerts/destinations/{destination_id}", actions.ALERT_WRITE,
+            _alert_destination("PATCH"), 200, ("destination_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/alerts/destinations/{destination_id}/test", actions.ALERT_WRITE,
+            _alert_destination("TEST"), 200, ("destination_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "DELETE", "/v1/alerts/destinations/{destination_id}", actions.ALERT_WRITE,
+            _alert_destination("DELETE", fresh="alert_destination"), 204, ("destination_id",),
+            probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/alerts/rules", actions.ALERT_WRITE, _alert_rule("POST"), 201,
+            ("destination_id",), probe_actors=ADMINS,
+        ),
+        RouteCase("GET", "/v1/alerts/rules", actions.ALERT_READ, _alert_rule("LIST"), 200),
+        RouteCase(
+            "GET", "/v1/alerts/rules/{rule_id}", actions.ALERT_READ, _alert_rule("GET"),
+            200, ("rule_id",), probe_actors=ALERT_READERS,
+        ),
+        RouteCase(
+            "PATCH", "/v1/alerts/rules/{rule_id}", actions.ALERT_WRITE,
+            _alert_rule("PATCH"), 200, ("rule_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "DELETE", "/v1/alerts/rules/{rule_id}", actions.ALERT_WRITE,
+            _alert_rule("DELETE", fresh="alert_rule"), 204, ("rule_id",),
+            probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/alerts/rules/{rule_id}/preview", actions.ALERT_READ,
+            _alert_rule("PREVIEW"), 200, ("rule_id",), probe_actors=ALERT_READERS,
+        ),
+        RouteCase(
+            "GET", "/v1/alerts/notifications", actions.ALERT_READ,
+            _get("/v1/alerts/notifications"), 200,
         ),
         RouteCase("GET", "/v1/projects", actions.PROJECT_READ, _list_projects, 200),
         RouteCase("POST", "/v1/projects", actions.PROJECT_WRITE, _create_project, 201),

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { securityPath } from "@/lib/security";
 import {
   analyticsPath,
+  alertsPath,
   approvalsPath,
   experimentsPath,
   projectPath,
@@ -37,6 +38,7 @@ export function AppShell({ base, children }: { base: Base; children: React.React
   const securityBase = `/w/${base.workspace}/security`;
   const security = securityPath(base.workspace, base.project === "all" ? null : base.project);
   const approvals = approvalsPath(base.workspace);
+  const alerts = alertsPath(base.workspace).split("?")[0]!;
   const cur = (href: string, exact: boolean) =>
     (exact ? path === href : path === href || path.startsWith(`${href}/`)) ? "page" : undefined;
   return (
@@ -66,6 +68,11 @@ export function AppShell({ base, children }: { base: Base; children: React.React
             <Link href={approvals} aria-current={cur(approvals, false)}>
               Approvals
               <ApprovalsRailCount />
+            </Link>
+          )}
+          {ws?.permissions.includes("alert.read") && (
+            <Link href={alerts} aria-current={cur(alerts, false)}>
+              Alerts
             </Link>
           )}
           <Link href={analytics} aria-current={cur(analytics, false)}>

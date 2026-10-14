@@ -125,6 +125,14 @@ class RunRepository:
         ).first()
         return row.started_at if row else None
 
+    async def status(self, run_id: uuid.UUID) -> str | None:
+        """The run's stored status (before a derivation overwrites it), None if it is gone."""
+        return await self._conn.scalar(
+            select(t.runs.c.status).where(
+                t.runs.c.workspace_id == self._tenant.workspace_id, t.runs.c.id == run_id
+            )
+        )
+
     async def lock(self, run_id: uuid.UUID) -> bool:
         """Take the run's row lock; False if the run does not exist.
 

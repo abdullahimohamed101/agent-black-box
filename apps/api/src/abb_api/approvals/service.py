@@ -23,6 +23,8 @@ from typing import Any
 from abb_event_schema.ids import IdKind
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from abb_api.alerts.jobs import enqueue_event
+from abb_api.alerts.model import APPROVAL_REQUESTED
 from abb_api.approvals import model as m
 from abb_api.approvals import schemas as s
 from abb_api.approvals.events import RunRef, decision_event, derived_event_id, transition_event
@@ -432,6 +434,8 @@ class ApprovalService:
             payload={"approval_id": str(approval.id)},
             delay=approval.expires_at - now,
         )
+        # One small INSERT; the alert rules are matched off this path by `evaluate_alerts`.
+        await enqueue_event(OutboxRepository(conn, tenant), APPROVAL_REQUESTED, approval.id)
         return approval, True
 
     # ------------------------------------------------------------------ waiting

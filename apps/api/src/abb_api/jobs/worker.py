@@ -64,9 +64,34 @@ class Worker:
                 now=self._now(),
                 max_attempts=self._settings.worker_max_attempts,
             )
-        for job in jobs:
-            await self._process(job)
+        # The batch runs one job after another, and `_process` extends only the running job's lease.
+        # Until its turn comes, a claimed job's lease is kept alive here, or a slow job ahead of it
+        # (an alert delivery tick) would let it expire and run again on another worker.
+        waiting = {job.id: job for job in jobs}
+        keeper = asyncio.create_task(self._keep_waiting_leases(waiting))
+        try:
+            for job in jobs:
+                waiting.pop(job.id, None)  # from here on its own heartbeat covers it
+                await self._process(job)
+        finally:
+            keeper.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await keeper
         return len(jobs)
+
+    async def _keep_waiting_leases(self, waiting: dict[uuid.UUID, Job]) -> None:
+        lease = timedelta(seconds=self._settings.worker_lease_seconds)
+        while True:
+            await asyncio.sleep(lease.total_seconds() / 3)
+            for job in list(waiting.values()):
+                try:
+                    async with self._engine.begin() as conn:
+                        if not await JobQueue(conn).extend_lease(job, lease, self._now()):
+                            waiting.pop(job.id, None)  # someone else owns it now
+                except Exception:  # the next beat retries; a hiccup must not end the keeper
+                    logger.warning(
+                        "lease heartbeat failed", extra={"job_id": str(job.id)}, exc_info=True
+                    )
 
     async def run_forever(self, stop: asyncio.Event) -> None:
         logger.info("worker started", extra={"owner": self.owner})

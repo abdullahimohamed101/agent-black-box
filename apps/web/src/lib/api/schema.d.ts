@@ -38,6 +38,164 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/alerts/destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List alert destinations
+         * @description Masked targets and health, never a URL, a recipient or a secret. Owners and admins.
+         */
+        get: operations["list_destinations_v1_alerts_destinations_get"];
+        put?: never;
+        /**
+         * Create an alert destination
+         * @description A named target of type `webhook`, `slack` or `email`. The target is validated (https only, no credentials in the URL, no private or internal address literals, no internal host names; nothing is resolved now, delivery re-checks the address) and stored encrypted. A webhook's `signing_secret` is returned in this response only. `email` needs the operator to configure SMTP (`EMAIL_NOT_CONFIGURED` otherwise). Audit: `alert.destination.create`.
+         */
+        post: operations["create_destination_v1_alerts_destinations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerts/destinations/{destination_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read an alert destination */
+        get: operations["get_destination_v1_alerts_destinations__destination_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an alert destination
+         * @description Alerts still waiting for it are closed as skipped (`destination_deleted`); history rows keep their place with the destination cleared; rules left with no destination are switched off. Audit: `alert.destination.delete`.
+         */
+        delete: operations["delete_destination_v1_alerts_destinations__destination_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change an alert destination
+         * @description Rename, replace the target (re-validated), pause or resume, or rotate the signing secret (returned once, in `signing_secret`). Audit: `alert.destination.update`, `.pause`, `.resume`, `.rotate_secret`.
+         */
+        patch: operations["patch_destination_v1_alerts_destinations__destination_id__patch"];
+        trace?: never;
+    };
+    "/v1/alerts/destinations/{destination_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test alert to a destination
+         * @description Sends a fixed test alert (`kind: test`, no project, agent or captured content) through the same SSRF-safe sender as real alerts, synchronously with the short delivery timeout, and returns `{ok, error_code}`; the response never carries what the target answered. A test does not change the destination's failure count or state and is not listed in the history. Owners and admins; rate limited. Audit: `alert.destination.test` (ok and the fixed code only).
+         */
+        post: operations["test_destination_v1_alerts_destinations__destination_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerts/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the alert history
+         * @description Newest first, keyset-paged. Each row is one alert for one destination: ids, rule and destination names, trigger, severity, status, attempts and a fixed error code; never a payload body or a response body. Filtering by `destination_id` and the destination's id and name are for owners and admins; other roles see the destination type only.
+         */
+        get: operations["list_notifications_v1_alerts_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerts/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List alert rules
+         * @description Every role that reads runs sees the rules. `destinations` is filled for owners and admins only; others get `destination_count`.
+         */
+        get: operations["list_rules_v1_alerts_rules_get"];
+        put?: never;
+        /**
+         * Create an alert rule
+         * @description One trigger, its filters, 1 to 10 destinations and a cooldown. Filters allowed per trigger: `approval_requested` (agent); `approval_expiring` (agent, `expiring_lead_seconds` 60..86400, required); `security_finding` (agent, `min_severity`, required); `run_failed` (agent, `run_statuses`); `spend_over` (agent, `threshold_usd` > 0, required; fires once per rule per UTC day when the day's spend exceeds it). A project or destination that is not the workspace's is a 404. Audit: `alert.rule.create`.
+         */
+        post: operations["create_rule_v1_alerts_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerts/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read an alert rule */
+        get: operations["get_rule_v1_alerts_rules__rule_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an alert rule
+         * @description Waiting alerts of the rule are closed as skipped (`rule_deleted`); history stays.
+         */
+        delete: operations["delete_rule_v1_alerts_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Change or mute an alert rule
+         * @description Fields left out stay as they are; `filters` and `destination_ids` replace the stored values. `enabled: false` mutes the rule. The trigger cannot change. Audit: `alert.rule.update` with the names of the changed fields.
+         */
+        patch: operations["patch_rule_v1_alerts_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/v1/alerts/rules/{rule_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How often the rule would have fired
+         * @description Counts only, over the last `days` (1 to 30), computed from recorded findings, approvals, runs and daily spend before cooldown. Nothing is delivered or stored.
+         */
+        get: operations["preview_rule_v1_alerts_rules__rule_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/analytics/cost": {
         parameters: {
             query?: never;
@@ -2007,6 +2165,160 @@ export interface components {
              */
             decision: "approve" | "deny";
         };
+        /** DestinationCreate */
+        DestinationCreate: {
+            /** Name */
+            name: string;
+            target: components["schemas"]["DestinationTarget"];
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "webhook" | "slack" | "email";
+        };
+        /** DestinationCreated */
+        DestinationCreated: {
+            /** Consecutive Failures */
+            consecutive_failures: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Id */
+            id: string;
+            /**
+             * Masked Target
+             * @description A safe display form computed when the target was saved.
+             */
+            masked_target: string;
+            /** Name */
+            name: string;
+            /** Paused Reason */
+            paused_reason: ("manual" | "failures") | null;
+            /** Rule Count */
+            rule_count: number;
+            /**
+             * Signing Secret
+             * @description Webhook only: the HMAC signing secret. Shown here once and never again; rotate it to get a new one.
+             */
+            signing_secret: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "paused" | "failing";
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "webhook" | "slack" | "email";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string;
+        };
+        /** DestinationList */
+        DestinationList: {
+            /**
+             * Email Configured
+             * @description Whether the operator configured SMTP; email destinations need it.
+             */
+            email_configured: boolean;
+            /** Items */
+            items: components["schemas"]["DestinationOut"][];
+        };
+        /** DestinationOut */
+        DestinationOut: {
+            /** Consecutive Failures */
+            consecutive_failures: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Id */
+            id: string;
+            /**
+             * Masked Target
+             * @description A safe display form computed when the target was saved.
+             */
+            masked_target: string;
+            /** Name */
+            name: string;
+            /** Paused Reason */
+            paused_reason: ("manual" | "failures") | null;
+            /** Rule Count */
+            rule_count: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "paused" | "failing";
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "webhook" | "slack" | "email";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string;
+        };
+        /** DestinationPatch */
+        DestinationPatch: {
+            /** Name */
+            name?: string | null;
+            /**
+             * Rotate Signing Secret
+             * @description Webhook only: issue a new signing secret (returned once).
+             * @default false
+             */
+            rotate_signing_secret: boolean;
+            /**
+             * State
+             * @description `paused` stops delivery; `active` resumes and clears the failure count.
+             */
+            state?: ("active" | "paused") | null;
+            /** @description Replaces the target (same shape as at creation). */
+            target?: components["schemas"]["DestinationTarget"] | null;
+        };
+        /** DestinationTarget */
+        DestinationTarget: {
+            /**
+             * Recipients
+             * @description Email: 1 to 10 addresses. Stored encrypted; only a masked form is returned.
+             */
+            recipients?: string[] | null;
+            /**
+             * Url
+             * @description Webhook and Slack: an https URL. Stored encrypted; never returned.
+             */
+            url?: string | null;
+        };
+        /** DestinationTestResult */
+        DestinationTestResult: {
+            /**
+             * Error Code
+             * @description A fixed code when it did not: `timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`. Never a response body.
+             */
+            error_code: string | null;
+            /**
+             * Ok
+             * @description True when the destination accepted the test alert.
+             */
+            ok: boolean;
+        };
         /** DetectorList */
         DetectorList: {
             /** Items */
@@ -3118,6 +3430,96 @@ export interface components {
             /** Right */
             right: number | null;
         };
+        /** NotificationDestination */
+        NotificationDestination: {
+            /**
+             * Id
+             * @description Null for roles that may not read destinations.
+             */
+            id: string | null;
+            /**
+             * Name
+             * @description Null for roles that may not read destinations.
+             */
+            name: string | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "webhook" | "slack" | "email";
+        };
+        /** NotificationOut */
+        NotificationOut: {
+            /** Agent Slug */
+            agent_slug: string | null;
+            /**
+             * Approval Id
+             * @description Null for roles that may not read approvals.
+             */
+            approval_id: string | null;
+            /** Attempts */
+            attempts: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Delivered At */
+            delivered_at: string | null;
+            /** @description Null once the destination was deleted. */
+            destination: components["schemas"]["NotificationDestination"] | null;
+            /**
+             * Error Code
+             * @description A fixed failure code; never a response body.
+             */
+            error_code: string | null;
+            /** Finding Id */
+            finding_id: string | null;
+            /**
+             * Id
+             * @description The stable `alert_id` receivers dedupe on.
+             */
+            id: string;
+            /** Next Attempt At */
+            next_attempt_at: string | null;
+            /** Project Id */
+            project_id: string | null;
+            /** @description Null once the rule was deleted. */
+            rule: components["schemas"]["NotificationRule"] | null;
+            /** Run Id */
+            run_id: string | null;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "medium" | "high" | "critical";
+            /** Skip Reason */
+            skip_reason: ("cooldown" | "destination_paused" | "destination_deleted" | "rule_deleted" | "rate_limited" | "daily_cap") | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "delivered" | "failed" | "dead" | "skipped";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "approval_requested" | "approval_expiring" | "security_finding" | "run_failed" | "spend_over";
+        };
+        /** NotificationPage */
+        NotificationPage: {
+            /** Items */
+            items: components["schemas"]["NotificationOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** NotificationRule */
+        NotificationRule: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /**
          * OtherBucket
          * @description Everything beyond the top-N groups: response size does not depend on how many names exist.
@@ -3241,6 +3643,16 @@ export interface components {
              * @description 1, 2, 3 ... per scope; never reused.
              */
             version: number;
+        };
+        /** PreviewDay */
+        PreviewDay: {
+            /** Count */
+            count: number;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
         };
         /** PriceOut */
         PriceOut: {
@@ -3592,6 +4004,165 @@ export interface components {
              */
             relation: "equal" | "changed" | "left_only" | "right_only";
             right: components["schemas"]["StepOut"] | null;
+        };
+        /** RuleCreate */
+        RuleCreate: {
+            /**
+             * Cooldown Seconds
+             * @description Per destination: further alerts within this time are recorded as skipped.
+             * @default 0
+             */
+            cooldown_seconds: number;
+            /** Destination Ids */
+            destination_ids: string[];
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            filters?: components["schemas"]["RuleFilters"];
+            /** Name */
+            name: string;
+            /**
+             * Project Id
+             * @description Null: every project of the workspace.
+             */
+            project_id?: string | null;
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "approval_requested" | "approval_expiring" | "security_finding" | "run_failed" | "spend_over";
+        };
+        /** RuleDestinationRef */
+        RuleDestinationRef: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "paused" | "failing";
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "webhook" | "slack" | "email";
+        };
+        /**
+         * RuleFilters
+         * @description Per-trigger filters. A field that does not belong to the rule's trigger is a 422.
+         */
+        RuleFilters: {
+            /**
+             * Agent
+             * @description Only this agent (its slug).
+             */
+            agent?: string | null;
+            /**
+             * Expiring Lead Seconds
+             * @description `approval_expiring` (required): alert this long before the approval expires.
+             */
+            expiring_lead_seconds?: number | null;
+            /**
+             * Min Severity
+             * @description `security_finding` (required): this severity or worse.
+             */
+            min_severity?: ("info" | "warning" | "medium" | "high" | "critical") | null;
+            /** Period */
+            period?: "day" | null;
+            /**
+             * Run Statuses
+             * @description `run_failed`: default all three.
+             */
+            run_statuses?: ("FAILED" | "TIMED_OUT" | "BLOCKED")[] | null;
+            /**
+             * Threshold Usd
+             * @description `spend_over` (required): alert once a UTC day's spend exceeds this.
+             */
+            threshold_usd?: number | null;
+        };
+        /** RuleList */
+        RuleList: {
+            /** Items */
+            items: components["schemas"]["RuleOut"][];
+        };
+        /** RuleOut */
+        RuleOut: {
+            /** Cooldown Seconds */
+            cooldown_seconds: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Destination Count */
+            destination_count: number;
+            /**
+             * Destinations
+             * @description Owners and admins only; empty for other roles.
+             */
+            destinations: components["schemas"]["RuleDestinationRef"][];
+            /** Enabled */
+            enabled: boolean;
+            filters: components["schemas"]["RuleFilters"];
+            /** Id */
+            id: string;
+            /** Last Fired At */
+            last_fired_at: string | null;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id: string | null;
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "approval_requested" | "approval_expiring" | "security_finding" | "run_failed" | "spend_over";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string;
+        };
+        /**
+         * RulePatch
+         * @description Fields left out stay as they are. The trigger cannot change: make a new rule.
+         */
+        RulePatch: {
+            /** Cooldown Seconds */
+            cooldown_seconds?: number | null;
+            /** Destination Ids */
+            destination_ids?: string[] | null;
+            /**
+             * Enabled
+             * @description False mutes the rule.
+             */
+            enabled?: boolean | null;
+            /** @description Replaces all filters. */
+            filters?: components["schemas"]["RuleFilters"] | null;
+            /** Name */
+            name?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+        };
+        /** RulePreview */
+        RulePreview: {
+            /**
+             * Count
+             * @description How many times the rule would have fired in the window, from recorded metadata, before cooldown and without delivering anything.
+             */
+            count: number;
+            /** Daily */
+            daily: components["schemas"]["PreviewDay"][];
+            /** Days */
+            days: number;
         };
         /** RunCounts */
         RunCounts: {
@@ -4389,6 +4960,1282 @@ export interface operations {
             };
             /** @description The database is unreachable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_destinations_v1_alerts_destinations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DestinationList"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_destination_v1_alerts_destinations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DestinationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DestinationCreated"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_destination_v1_alerts_destinations__destination_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                destination_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DestinationOut"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_destination_v1_alerts_destinations__destination_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                destination_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patch_destination_v1_alerts_destinations__destination_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                destination_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DestinationPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DestinationCreated"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    test_destination_v1_alerts_destinations__destination_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                destination_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DestinationTestResult"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_notifications_v1_alerts_notifications_get: {
+        parameters: {
+            query?: {
+                rule_id?: string | null;
+                destination_id?: string | null;
+                status?: ("pending" | "delivered" | "failed" | "dead" | "skipped") | null;
+                trigger?: ("approval_requested" | "approval_expiring" | "security_finding" | "run_failed" | "spend_over") | null;
+                /** @description Created at or after. */
+                since?: string | null;
+                /** @description Created at or before. */
+                until?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPage"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_rules_v1_alerts_rules_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleList"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_rule_v1_alerts_rules_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_rule_v1_alerts_rules__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    delete_rule_v1_alerts_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patch_rule_v1_alerts_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RulePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    preview_rule_v1_alerts_rules__rule_id__preview_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RulePreview"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

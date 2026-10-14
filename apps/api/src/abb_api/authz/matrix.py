@@ -39,6 +39,11 @@ _POLICY_READ = frozenset({a.POLICY_READ, a.POLICY_FAIL_MODES})
 # the rule's `approver_role` and the requester check narrow who may decide a particular one.
 _APPROVALS = frozenset({a.APPROVAL_READ, a.APPROVAL_DECIDE})
 
+# Alert rules and the delivery history are metadata: everyone who reads runs may see them.
+# Destinations (masked targets, health) and all changes are for owners and admins (ADR-150).
+_ALERTS_READ = frozenset({a.ALERT_READ})
+_ALERTS_MANAGE = frozenset({a.ALERT_WRITE, a.ALERT_DESTINATION_READ})
+
 ROLE_GRANTS: Final[Mapping[str, frozenset[str | Own]]] = {
     OWNER: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
     | {
@@ -46,20 +51,20 @@ ROLE_GRANTS: Final[Mapping[str, frozenset[str | Own]]] = {
         a.MEMBER_WRITE, a.MEMBER_WRITE_OWNER, a.INVITE_READ, a.INVITE_WRITE, a.PRICING_WRITE,
         a.AUDIT_READ, a.BILLING_READ, a.POLICY_READ, a.POLICY_WRITE, a.POLICY_FAIL_MODES,
     }
-    | _APPROVALS,
+    | _APPROVALS | _ALERTS_READ | _ALERTS_MANAGE,
     ADMIN: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
     | {
         a.ANALYTICS_READ, a.PROJECT_WRITE, a.API_KEY_READ, a.API_KEY_CREATE, a.API_KEY_REVOKE,
         a.MEMBER_WRITE, a.INVITE_READ, a.INVITE_WRITE, a.PRICING_WRITE, a.AUDIT_READ,
         a.BILLING_READ, a.POLICY_READ, a.POLICY_WRITE, a.POLICY_FAIL_MODES,
     }
-    | _APPROVALS,
+    | _APPROVALS | _ALERTS_READ | _ALERTS_MANAGE,
     DEVELOPER: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
-    | _POLICY_READ | _APPROVALS
+    | _POLICY_READ | _APPROVALS | _ALERTS_READ
     | {a.ANALYTICS_READ, a.API_KEY_READ, a.API_KEY_CREATE, Own(a.API_KEY_REVOKE)},
     # Metadata only: captured content needs payload.read (decision 3).
-    VIEWER: _EVERYONE | _READ_RUNS | {a.ANALYTICS_READ},
-    SECURITY: _EVERYONE | _READ_RUNS | _CONTENT | _POLICY_READ | _APPROVALS
+    VIEWER: _EVERYONE | _READ_RUNS | _ALERTS_READ | {a.ANALYTICS_READ},
+    SECURITY: _EVERYONE | _READ_RUNS | _CONTENT | _POLICY_READ | _APPROVALS | _ALERTS_READ
     | {a.ANALYTICS_READ, a.API_KEY_READ, a.API_KEY_REVOKE, a.AUDIT_READ},
     # Money only: analytics and prices, never runs or payloads (decision 4).
     BILLING: _EVERYONE | {a.ANALYTICS_READ, a.PRICING_WRITE, a.BILLING_READ},

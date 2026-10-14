@@ -63,7 +63,25 @@ FAIL_MODES = "allow deny  allow deny   allow  allow deny  deny  allow 401 401 40
 # the rule's approver_role narrows who may decide a given approval (tests/approvals).
 U_APPROVALS = U_CONTENT
 
+# Phase 17 (ADR-150). alert.read (rules, preview, history): everyone who reads runs; billing never.
+# alert.write and alert.destination.read: owner and admin only. No key holds any alert action.
+U_ALERT_READ = U_RUNS
+U_ALERT_MANAGE = U_PROJECT_ADMIN
+
 EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
+    ("POST", "/v1/alerts/destinations"): (NO_KEY, U_ALERT_MANAGE),
+    ("GET", "/v1/alerts/destinations"): (NO_KEY, U_ALERT_MANAGE),
+    ("GET", "/v1/alerts/destinations/{destination_id}"): (NO_KEY, U_ALERT_MANAGE),
+    ("PATCH", "/v1/alerts/destinations/{destination_id}"): (NO_KEY, U_ALERT_MANAGE),
+    ("POST", "/v1/alerts/destinations/{destination_id}/test"): (NO_KEY, U_ALERT_MANAGE),
+    ("DELETE", "/v1/alerts/destinations/{destination_id}"): (NO_KEY, U_ALERT_MANAGE),
+    ("POST", "/v1/alerts/rules"): (NO_KEY, U_ALERT_MANAGE),
+    ("GET", "/v1/alerts/rules"): (NO_KEY, U_ALERT_READ),
+    ("GET", "/v1/alerts/rules/{rule_id}"): (NO_KEY, U_ALERT_READ),
+    ("PATCH", "/v1/alerts/rules/{rule_id}"): (NO_KEY, U_ALERT_MANAGE),
+    ("DELETE", "/v1/alerts/rules/{rule_id}"): (NO_KEY, U_ALERT_MANAGE),
+    ("GET", "/v1/alerts/rules/{rule_id}/preview"): (NO_KEY, U_ALERT_READ),
+    ("GET", "/v1/alerts/notifications"): (NO_KEY, U_ALERT_READ),
     ("POST", "/v1/policy/decide"): (ASK, U_NEVER),
     ("GET", "/v1/policies/fail-modes"): (FAIL_MODES, U_POLICY_READ),
     ("GET", "/v1/approvals/{approval_id}/wait"): (USE_OWN, U_NEVER),
@@ -162,6 +180,7 @@ def allowed_codes(actor: str, want: str) -> set[str]:
         return {
             "RUN_NOT_FOUND", "ARTIFACT_NOT_FOUND", "EVALUATOR_NOT_FOUND", "EVALUATION_NOT_FOUND",
             "EXPERIMENT_NOT_FOUND", "VARIANT_NOT_FOUND", "APPROVAL_NOT_FOUND",
+            "ALERT_DESTINATION_NOT_FOUND", "ALERT_RULE_NOT_FOUND",
         }  # fmt: skip
     return {"WORKSPACE_REQUIRED"}
 

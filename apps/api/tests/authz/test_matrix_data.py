@@ -17,6 +17,9 @@ KEY_BASE = {"workspace.read", "project.read"}
 # Phase 14 step 2: what an agent's key may do with the policy service.
 ASK = {"policy.decide", "approval.use", "policy.fail_modes"}
 APPROVALS = {"approval.read", "approval.decide"}
+# Phase 17: alert.read for everyone who reads runs; the management pair for owner and admin.
+ALERT_READ = {"alert.read"}
+ALERT_MANAGE = {"alert.write", "alert.destination.read"}
 
 # Literal expected grants. Deliberately not imported from the code under test.
 EXPECTED_SCOPE_ACTIONS: dict[str, set[str]] = {
@@ -42,23 +45,24 @@ _EVAL_WRITE = {"evaluation.run", "evaluation.label", "evaluator.write", "experim
 _POLICY_READ = {"policy.read", "policy.fail_modes"}
 EXPECTED_ROLE_ACTIONS: dict[str, set[str]] = {
     "OWNER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE | _POLICY_READ | {"policy.write"}
-    | APPROVALS
+    | APPROVALS | ALERT_READ | ALERT_MANAGE
     | {
         "run.read", "analytics.read", "project.write", "api_key.read", "api_key.create",
         "api_key.revoke", "member.write", "member.write_owner", "invite.read", "invite.write",
         "pricing.write", "audit.read", "billing.read",
     },
     "ADMIN": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE | _POLICY_READ | {"policy.write"}
-    | APPROVALS
+    | APPROVALS | ALERT_READ | ALERT_MANAGE
     | {
         "run.read", "analytics.read", "project.write", "api_key.read", "api_key.create",
         "api_key.revoke", "member.write", "invite.read", "invite.write", "pricing.write",
         "audit.read", "billing.read",
     },
     "DEVELOPER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE | _POLICY_READ | APPROVALS
+    | ALERT_READ
     | {"run.read", "analytics.read", "api_key.read", "api_key.create"},
-    "VIEWER": _EVERYONE | _EVAL_READ | {"run.read", "analytics.read"},
-    "SECURITY": _EVERYONE | _CONTENT | _EVAL_READ | _POLICY_READ | APPROVALS
+    "VIEWER": _EVERYONE | _EVAL_READ | ALERT_READ | {"run.read", "analytics.read"},
+    "SECURITY": _EVERYONE | _CONTENT | _EVAL_READ | _POLICY_READ | APPROVALS | ALERT_READ
     | {"run.read", "analytics.read", "api_key.read", "api_key.revoke", "audit.read"},
     "BILLING": _EVERYONE | {"analytics.read", "pricing.write", "billing.read"},
 }  # fmt: skip
@@ -68,7 +72,7 @@ ADMIN_ACTIONS = {
     "project.write", "member.read", "member.write", "member.write_owner", "invite.read",
     "invite.write", "api_key.read", "api_key.create", "api_key.revoke", "pricing.write",
     "audit.read", "billing.read", "policy.read", "policy.write", "approval.read",
-    "approval.decide",
+    "approval.decide", "alert.write", "alert.destination.read",
 }  # fmt: skip
 
 
@@ -180,3 +184,21 @@ def test_asking_and_using_approvals_is_for_keys_and_never_for_people() -> None:
         assert not agent_only & role_actions(role), role
     holders = {scope for scope, granted in SCOPE_ACTIONS.items() if agent_only <= set(granted)}
     assert holders == {"events:write", "policy:check"}
+
+
+def test_alerting_is_read_by_those_who_read_runs_managed_by_owner_and_admin_and_never_by_keys() -> (
+    None
+):
+    """Phase 17 (ADR-150): rules and history are metadata; destinations and every change are for
+    owners and admins; no API key scope grants any alert action."""
+    for role in ALL_ROLES:
+        granted = role_actions(role)
+        assert ("alert.read" in granted) == (
+            role in ("OWNER", "ADMIN", "DEVELOPER", "VIEWER", "SECURITY")
+        ), role
+        managers = role in ("OWNER", "ADMIN")
+        assert ("alert.write" in granted) == managers, role
+        assert ("alert.destination.read" in granted) == managers, role
+        if "alert.read" in granted:
+            assert "run.read" in granted, role
+    assert not any((ALERT_READ | ALERT_MANAGE) & set(v) for v in SCOPE_ACTIONS.values())

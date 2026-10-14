@@ -1,6 +1,7 @@
 """Typed settings, validated once at startup (spec §108: fail fast)."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -150,6 +151,56 @@ class Settings(BaseSettings):
     # agent cannot bury the approvers. The decision endpoint refuses more with a 429.
     approval_max_open_per_key: int = Field(default=100, ge=1)
     approval_max_open_per_workspace: int = Field(default=1000, ge=1)
+    # Alerting (Phase 17, ADR-150). Limits keep a workspace's configuration and write rate bounded.
+    alerts_max_rules_per_workspace: int = Field(default=100, ge=1)
+    alerts_max_destinations_per_workspace: int = Field(default=50, ge=1)
+    alerts_max_destinations_per_rule: int = Field(default=10, ge=1)
+    alerts_writes_per_minute: int = Field(default=30, ge=1)
+    # How often the scheduled checks (approval about to expire, daily spend) run per workspace.
+    alerts_sweep_interval_seconds: float = Field(default=60.0, gt=0)
+    # At most this many `skipped` history rows per rule and destination per cooldown window; past
+    # it a suppressed notification is only counted in the log, so a flood cannot fill the table.
+    alerts_skipped_per_window: int = Field(default=25, ge=0)
+    alerts_preview_timeout_seconds: float = Field(default=5.0, gt=0)
+    # An alert write (a destination or rule change) waits at most this long for a row lock that a
+    # delivery tick holds, then fails with `409 ALERT_BUSY` instead of hanging (review P2-1).
+    alerts_lock_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
+    # Delivery (ADR-151). Every loop, queue and timeout below is bounded. Off: notifications stay
+    # `pending` (an operator hold; tests that do not exercise delivery use it).
+    alerts_delivery_enabled: bool = True
+    alerts_request_timeout_seconds: float = Field(default=5.0, gt=0, le=30)  # webhook/Slack total
+    alerts_smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    alerts_max_attempts: int = Field(default=5, ge=1, le=20)  # then the alert is `dead`
+    alerts_backoff_base_seconds: float = Field(default=30.0, ge=0)
+    alerts_backoff_max_seconds: float = Field(default=1800.0, ge=0)
+    # Claimed per tick and workspace. The tick runs the batch one row after another inside one job,
+    # so its wall time is at most batch x (request timeout, or SMTP timeout for email); five keeps
+    # a tick near a minute even when every row times out, and the next tick follows at once.
+    alerts_deliver_batch: int = Field(default=5, ge=1, le=200)
+    # State of a destination: `failing` after this many consecutive failed attempts, `paused`
+    # (reason `failures`) after the second number; one success resets it.
+    alerts_failing_after: int = Field(default=3, ge=1)
+    alerts_pause_after_failures: int = Field(default=10, ge=1)
+    alerts_rate_per_minute: int = Field(default=20, ge=1)  # deliveries per destination
+    alerts_daily_cap: int = Field(default=500, ge=1)  # deliveries per destination per 24 h
+    alerts_tests_per_minute: int = Field(default=10, ge=1)  # "send test" per workspace
+    # Delivery-log retention: terminal rows (delivered, dead, skipped, failed) older than this go.
+    alerts_retention_days: int = Field(default=30, ge=1, le=3650)
+    alerts_prune_interval_seconds: float = Field(default=6 * 3600.0, gt=0)
+    alerts_prune_batch: int = Field(default=2000, ge=1)
+    # TEST ONLY (scripts/alerts-e2e.sh): a JSON file that replaces DNS and the TLS trust store of
+    # the alert sender so local receivers can stand in for public hosts (alerts/testnet.py). Unset
+    # by default and refused outside development and test.
+    alerts_test_network_file: Path | None = None
+    # Email delivery needs an operator-provided SMTP relay (no mail credentials in the database).
+    # Without `smtp_host`, email destinations cannot be created. The password is read from the
+    # environment only and is never logged or returned.
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_starttls: bool = True
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from: str | None = None
     # Lets the CLI mint sessions without an identity provider. Honoured only in development/test.
     allow_dev_sessions: bool = False
 
@@ -172,6 +223,20 @@ class Settings(BaseSettings):
         ):
             raise ValueError("an http web_origin is only for localhost in development or test")
         return self
+
+    @model_validator(mode="after")
+    def _smtp_is_complete(self) -> "Settings":
+        if self.smtp_host is not None and not self.smtp_host.strip():
+            self.smtp_host = None  # an empty ABB_SMTP_HOST means "not configured"
+        if self.smtp_host is not None and not self.smtp_from:
+            raise ValueError("smtp_host needs smtp_from (the sender address)")
+        if (self.smtp_username is None) != (self.smtp_password is None):
+            raise ValueError("smtp_username and smtp_password go together")
+        return self
+
+    @property
+    def smtp_configured(self) -> bool:
+        return self.smtp_host is not None
 
     @property
     def web_origin_normalised(self) -> str | None:
@@ -202,6 +267,32 @@ class Settings(BaseSettings):
             raise ValueError(
                 "judge_provider=fake is only for development or test (or set judge_allow_fake)"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _the_test_network_never_runs_in_production(self) -> "Settings":
+        if self.alerts_test_network_file is not None and self.environment not in (
+            "development",
+            "test",
+        ):
+            raise ValueError("alerts_test_network_file is only for development or test")
+        return self
+
+    @model_validator(mode="after")
+    def _history_outlives_the_longest_cooldown(self) -> "Settings":
+        # The cooldown looks at stored notifications; pruning them sooner than a cooldown can last
+        # would end the cooldown early (review P3-4).
+        longest_days = 7  # alerts.model.MAX_COOLDOWN_SECONDS
+        if self.alerts_retention_days < longest_days:
+            raise ValueError(
+                f"alerts_retention_days must be >= {longest_days} (the longest rule cooldown)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _failing_comes_before_paused(self) -> "Settings":
+        if self.alerts_failing_after > self.alerts_pause_after_failures:
+            raise ValueError("alerts_failing_after must be <= alerts_pause_after_failures")
         return self
 
     @model_validator(mode="after")

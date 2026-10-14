@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from abb_api import __version__
+from abb_api.alerts.router import router as alerts_router
+from abb_api.alerts.service import AlertsService
 from abb_api.analytics.postgres import PostgresAnalyticsStore
 from abb_api.analytics.router import router as analytics_router
 from abb_api.analytics.service import AnalyticsService
@@ -212,6 +214,7 @@ def create_app(
             validations_per_minute=settings.policy_validations_per_minute,
             dry_runs_per_minute=settings.policy_dry_runs_per_minute,
         )
+        app.state.alerts = AlertsService(engine, settings, clock)
         hub = StreamHub(settings.database_url)
         app.state.hub = hub
         app.state.approvals = ApprovalService(engine, settings, clock, hub)
@@ -278,6 +281,7 @@ def create_app(
     app.include_router(security_router)
     app.include_router(policies_router)
     app.include_router(approvals_router)
+    app.include_router(alerts_router)
     app.include_router(artifacts_router)
     app.include_router(streams_router)
     app.include_router(pricing_router)

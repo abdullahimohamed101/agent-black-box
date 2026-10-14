@@ -25,6 +25,10 @@ REFRESH_ANALYTICS_DAY = "refresh_analytics_day"
 DETECT_FINDINGS = "detect_findings"
 EVALUATE_RUN = "evaluate_run"
 EXPIRE_APPROVAL = "expire_approval"
+EVALUATE_ALERTS = "evaluate_alerts"
+ALERT_SWEEP = "alert_sweep"
+DELIVER_ALERTS = "deliver_alerts"
+ALERT_PRUNE = "alert_prune"
 MAX_ERROR_LENGTH = 2000
 
 

@@ -43,6 +43,8 @@ export function Crumbs({ base }: { base: Base }) {
     trail = [{ label: "Security" }];
   } else if (path === `/w/${base.workspace}/approvals`) {
     trail = [{ label: "Approvals" }];
+  } else if (path === `/w/${base.workspace}/alerts`) {
+    trail = [{ label: "Alerts" }];
   } else if (path.startsWith(settings)) {
     const leaf = SETTINGS[path.slice(settings.length + 1).split("/")[0] ?? ""];
     trail = [{ label: "Settings" }, ...(leaf ? [{ label: leaf }] : [])];

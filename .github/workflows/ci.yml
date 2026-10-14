@@ -541,6 +541,57 @@ jobs:
             ${{ runner.temp }}/policy-e2e-logs
           if-no-files-found: ignore
 
+  alerts-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Alerting (Phase 17): every trigger fired exactly once to a signed webhook receiver, a Slack-shaped receiver and an SMTP sink through the
+    # real API and worker (the real SDK plants the security finding), bounded retries, dead letter, auto-pause and a retry storm, outbound
+    # safety (private, loopback, link-local, metadata, IPv6, HTTP, a name that rebinds, redirects), content-free and secret-free alerts,
+    # authorization and tenancy, dedupe / cooldown / rate limit / daily cap, ingestion cost with and without rules, and a real browser:
+    # API + worker + local receivers + fake OIDC provider + built web server (scripts/alerts-e2e.sh). About four minutes.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          pnpm install --frozen-lockfile
+          cp .env.example .env
+      - name: Build the web app
+        run: pnpm --filter @abb/web build
+      - name: Alerts end to end
+        env:
+          ALERTS_E2E_LOG_DIR: ${{ runner.temp }}/alerts-e2e-logs
+        run: scripts/alerts-e2e.sh
+      - name: Keep Playwright output and server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alerts-e2e-results
+          path: |
+            apps/web/test-results
+            ${{ runner.temp }}/alerts-e2e-logs
+          if-no-files-found: ignore
+
   containers:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
