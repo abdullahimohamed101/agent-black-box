@@ -1,6 +1,6 @@
 # Phase 17: Alerting and integrations
 
-Status: Planned (2026-10-13). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
+Status: Completed (merged 2026-10-14, PR #171; steps 1-5 built and evidenced below, the adversarial review `phase-17-code-review.md` (no P0, P1 1, P2 6, P3 9) is fixed or dispositioned, see Progress step 5). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
 Owner: api + web. Branch: `feature/phase-17-alerting` (from `main` after PR #170).
 Depends on: Phase 10/13 (findings, security findings), Phase 14 (approvals, expiry, `server_secrets` pattern), Phase 7 (cost rollups), Phase 15 (roles, audit), Phase 22 (UI grammar).
 Spec refs: §35 (alerts), §72 (processors idempotent and retryable; dead-letter), §73 (tables incl. `alerts`), §62 invariants (INV-2, INV-3, INV-4 style bounds on every queue and retry, INV-5), §90 threat model.
@@ -92,3 +92,23 @@ Unit and property tests for rule matching, dedupe and cooldown; API tests for CR
   P3-2 midnight, P3-3 expiring batch anti-join, P3-4 retention >= 7 days, P3-5 one write token per send test, P3-8 mutation `gcTime: 0`, P3-9 provisioning fails loudly; P3-6 and P3-7 noted in the ADRs. KI-167..171 filed;
   KI-160/162/163/166 updated. Tests: `test_alerts_review_fixes.py`, `test_alerts_sweep_chain.py`, additions to `test_alerts_evaluation.py`, `test_outbox_worker.py`, `test_alerts_targets.py`, `test_alerts_outbound.py`, `tests/alerts-page.test.tsx`.
 
+## Closing evidence (2026-10-14, final tree)
+
+**VERIFIED** = a command was run here and its output observed; the numbers below are the ones recorded at merge. Not re-run for this close-out (a docs-only change).
+
+| Gate | Evidence (stage of `scripts/alerts-e2e.sh`, `make alerts-e2e`) | Status |
+| --- | --- | --- |
+| 1. Each trigger fires exactly once, end to end | stage 1 (`gate1`, 20 checks): approval requested, approval about to expire, security finding (planted by the real Python SDK), failed/timed-out/blocked run and spend over the threshold, each once to a signed webhook, a Slack-shaped receiver and an SMTP sink, through the real API and worker; receiver alert ids equal the history's; a successful run, a decided approval and a far-off approval alert nothing more. Detail: `docs/TESTING.md` "Alerts end to end". | VERIFIED |
+| 2. Delivery is reliable | stage 2 (`gate2`, 10 checks): receiver down, backoff, delivered once with the same `alert_id`; a 500-ing receiver gets 4 requests then `dead`, auto-pause with a system audit row, resume; 30 alerts to one failing destination make 6 requests; a slow receiver is cut off at the deadline. | VERIFIED |
+| 3. Outbound safety | stage 3 (`gate3`, 23 checks): fourteen unsafe targets refused at save; a name that is public at save and private, metadata or `::1` at delivery refused with no connection made; a redirect never followed; send-test likewise. Unit level: `tests/test_alerts_outbound.py`, `tests/test_alerts_targets.py`, `tests/test_alerts_testnet.py` (the test-only network file cannot weaken the sender). | VERIFIED |
+| 4. Alerts are content-free | stage 4 (`gate4`, 15 checks): a planted sentinel in a path, command, host, argument and error text is in no payload, email, history row (five roles), audit row, alert table, job payload or log, with positive controls. | VERIFIED |
+| 5. Secrets are protected | stage 5 (`gate5`, 14 checks): a scan of every text, jsonb and bytea column finds no destination URL, signing secret or recipient; masked in API, history, audit and logs; shown once; rotation gives a new secret once and the verifying receiver rejects the stale one. | VERIFIED |
+| 6. Authorization and tenancy | stage 6 (`gate6`, 22 checks): role matrix over the API, history withholds destination and approval ids, API keys get 403, a second workspace gets 404 for every foreign id, every kind of change is in the audit log; `tests/authz` and the route registry updated and green. | VERIFIED |
+| 7. Noise control | stage 7 (`gate7`, 4 checks): re-sent batch, late event and second terminal event re-summarise without a second alert; cooldown, rate limit and daily cap recorded as skipped with their reasons. | VERIFIED |
+| 8. System cost | stage 8 (`gate8`, 1 check, bound asserted) and `docs/benchmarks/phase-17-alerts-e2e.md`: three interleaved runs on a loaded laptop, six enabled rules versus muted, median batch -16 %, +5 %, +24 % and p95 -7 %, +2 %, +21 %, every run inside the stated bound; the step-1 harness `tests/test_alerts_overhead.py` measured p50/p95 35.1/58.1 ms off and 33.1/36.6 ms on. A regression baseline on one laptop, not a capacity claim. | VERIFIED |
+
+- `make alerts-e2e`: **PASSED** (provision 3, gate1 20, gate2 10, gate3 23, gate4 15, gate5 14, gate6 22, gate7 4, gate8 1, ui 2, suite 1), including the real-browser Playwright spec `apps/web/e2e/alerts-real.spec.ts` (OIDC sign-in, secret shown once, axe and console clean).
+- API: full suite 3,390 passed and 1 failed; the failure is the pre-existing flaky `tests/test_runs_api.py::test_a_dead_lettered_summary_is_reported_as_failed_until_it_recovers` (KI-172, also seen on `main`), not an alerting test. Migrations 0095 and 0096; ADR-150 (model, evaluation) and ADR-151 (delivery) with amendments from the review.
+- Web: `tsc`, eslint and prettier clean; vitest 84 files, 1,399 tests; fixtures Playwright 322 passed, 97 skipped (the API-backed specs, which `alerts-e2e` and the other `*-e2e` scripts cover).
+- Known issues filed from this phase: KI-160..KI-172 (issues #172-#184).
+- Not verified here: CI results are not reproduced in this document; the Approvals and run page notes were not built (KI-168); a deployment with real SMTP, Slack or a public receiver (only local receivers and a stub resolver, by design).
