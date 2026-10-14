@@ -8,6 +8,8 @@ and never read back.
 
 import logging
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -155,6 +157,16 @@ def _rate_limited(wait: float) -> AppError:
     )
 
 
+def busy() -> AppError:
+    return AppError(
+        "ALERT_BUSY",
+        "Alerts are being delivered right now; try again in a moment.",
+        category=ErrorCategory.CONFLICT,
+        status_code=409,
+        retryable=True,
+    )
+
+
 def preview_timeout() -> AppError:
     return AppError(
         "ALERT_PREVIEW_TIMEOUT",
@@ -224,6 +236,20 @@ class AlertsService:
         self._test_limiter = InMemoryRateLimiter(
             events_per_second=tests / 60, burst_events=tests, bytes_per_second=1.0, burst_bytes=1
         )
+
+    @asynccontextmanager
+    async def _write(self) -> AsyncIterator[AsyncConnection]:
+        """A write transaction that fails fast, with a fixed code, when a row lock it needs is held
+        (a delivery tick holds its batch across the network waits) instead of hanging behind it."""
+        try:
+            async with self._engine.begin() as conn:
+                timeout_ms = max(int(self._settings.alerts_lock_timeout_seconds * 1000), 1)
+                await conn.execute(text(f"SET LOCAL lock_timeout = {timeout_ms}"))
+                yield conn
+        except DBAPIError as exc:
+            if getattr(exc.orig, "sqlstate", None) == "55P03" or "lock timeout" in str(exc.orig):
+                raise busy() from None
+            raise
 
     def _throttle(
         self, principal: Principal, *, preview: bool = False, send_test: bool = False
@@ -337,7 +363,7 @@ class AlertsService:
                 destination_id=destination_id,
             )
         who = _who(principal)
-        async with self._engine.begin() as conn:
+        async with self._write() as conn:
             repository = DestinationRepository(conn, principal.tenant)
             if await repository.count() >= self._settings.alerts_max_destinations_per_workspace:
                 raise limit_reached("destinations")
@@ -430,7 +456,7 @@ class AlertsService:
         if changed:
             audit_kinds.insert(0, "update")
         who = _who(principal)
-        async with self._engine.begin() as conn:
+        async with self._write() as conn:
             repository = DestinationRepository(conn, principal.tenant)
             if values:
                 try:
@@ -459,8 +485,7 @@ class AlertsService:
         the failure counter, the state and the history are not touched (a person debugging a URL
         must not pause it, and a test must not hide a real outage by resetting the counter).
         The database connection is released before the network wait."""
-        self._throttle(principal)
-        self._throttle(principal, send_test=True)
+        self._throttle(principal, send_test=True)  # one write token and one test token
         destination_id = parse_public_id(IdKind.DESTINATION, raw_id)
         if destination_id is None:
             raise destination_not_found()
@@ -497,7 +522,7 @@ class AlertsService:
                 ),
             )
             ok, code = result.ok, result.error_code
-        async with self._engine.begin() as conn:
+        async with self._write() as conn:
             await self._audit(
                 conn,
                 principal,
@@ -515,7 +540,7 @@ class AlertsService:
         destination_id = parse_public_id(IdKind.DESTINATION, raw_id)
         if destination_id is None:
             raise destination_not_found()
-        async with self._engine.begin() as conn:
+        async with self._write() as conn:
             destinations = DestinationRepository(conn, principal.tenant)
             row = await destinations.get(destination_id)
             if row is None:
@@ -643,7 +668,7 @@ class AlertsService:
                 raise project_missing()
         rule_id = new_uuid(IdKind.ALERT_RULE)
         who = _who(principal)
-        async with self._engine.begin() as conn:
+        async with self._write() as conn:
             rules = RuleRepository(conn, principal.tenant)
             if await rules.count() >= self._settings.alerts_max_rules_per_workspace:
                 raise limit_reached("rules")
@@ -687,7 +712,7 @@ class AlertsService:
             raise rule_not_found()
         given = body.model_fields_set
         who = _who(principal)
-        async with self._engine.begin() as conn:
+        async with self._write() as conn:
             rules = RuleRepository(conn, principal.tenant)
             current = await rules.get(rule_id)
             if current is None:
@@ -756,7 +781,7 @@ class AlertsService:
         rule_id = parse_public_id(IdKind.ALERT_RULE, raw_id)
         if rule_id is None:
             raise rule_not_found()
-        async with self._engine.begin() as conn:
+        async with self._write() as conn:
             rules = RuleRepository(conn, principal.tenant)
             current = await rules.get(rule_id)
             if current is None:

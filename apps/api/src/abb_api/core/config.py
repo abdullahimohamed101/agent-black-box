@@ -162,6 +162,9 @@ class Settings(BaseSettings):
     # it a suppressed notification is only counted in the log, so a flood cannot fill the table.
     alerts_skipped_per_window: int = Field(default=25, ge=0)
     alerts_preview_timeout_seconds: float = Field(default=5.0, gt=0)
+    # An alert write (a destination or rule change) waits at most this long for a row lock that a
+    # delivery tick holds, then fails with `409 ALERT_BUSY` instead of hanging (review P2-1).
+    alerts_lock_timeout_seconds: float = Field(default=3.0, gt=0, le=30)
     # Delivery (ADR-151). Every loop, queue and timeout below is bounded. Off: notifications stay
     # `pending` (an operator hold; tests that do not exercise delivery use it).
     alerts_delivery_enabled: bool = True
@@ -170,7 +173,10 @@ class Settings(BaseSettings):
     alerts_max_attempts: int = Field(default=5, ge=1, le=20)  # then the alert is `dead`
     alerts_backoff_base_seconds: float = Field(default=30.0, ge=0)
     alerts_backoff_max_seconds: float = Field(default=1800.0, ge=0)
-    alerts_deliver_batch: int = Field(default=20, ge=1, le=200)  # claimed per tick and workspace
+    # Claimed per tick and workspace. The tick runs the batch one row after another inside one job,
+    # so its wall time is at most batch x (request timeout, or SMTP timeout for email); five keeps
+    # a tick near a minute even when every row times out, and the next tick follows at once.
+    alerts_deliver_batch: int = Field(default=5, ge=1, le=200)
     # State of a destination: `failing` after this many consecutive failed attempts, `paused`
     # (reason `failures`) after the second number; one success resets it.
     alerts_failing_after: int = Field(default=3, ge=1)
@@ -270,6 +276,17 @@ class Settings(BaseSettings):
             "test",
         ):
             raise ValueError("alerts_test_network_file is only for development or test")
+        return self
+
+    @model_validator(mode="after")
+    def _history_outlives_the_longest_cooldown(self) -> "Settings":
+        # The cooldown looks at stored notifications; pruning them sooner than a cooldown can last
+        # would end the cooldown early (review P3-4).
+        longest_days = 7  # alerts.model.MAX_COOLDOWN_SECONDS
+        if self.alerts_retention_days < longest_days:
+            raise ValueError(
+                f"alerts_retention_days must be >= {longest_days} (the longest rule cooldown)"
+            )
         return self
 
     @model_validator(mode="after")

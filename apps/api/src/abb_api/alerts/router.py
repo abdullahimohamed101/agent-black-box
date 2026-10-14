@@ -36,7 +36,10 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
         401: "Missing or invalid credential.",
         403: "The caller's role may not use this route (API keys never may).",
         404: "Not found, or not visible to this caller (never reveals other workspaces).",
-        409: "A name is taken or a workspace limit is reached.",
+        409: (
+            "A name is taken, a workspace limit is reached, or a delivery holds the rows the "
+            "change needs (`ALERT_BUSY`; retry)."
+        ),
         422: "The body is invalid; `details` names the field or reason, never a value.",
         429: "Too many alert changes; see `Retry-After`.",
         504: "The preview took too long.",

@@ -456,21 +456,26 @@ class NotificationRepository:
         return result.first() is not None
 
     async def skip_pending_of_destination(self, destination_id: uuid.UUID, reason: str) -> int:
-        result = await self._conn.execute(
-            update(t.alert_notifications)
-            .where(
-                _N.workspace_id == self._ws,
-                _N.destination_id == destination_id,
-                _N.status == "pending",
-            )
-            .values(status="skipped", skip_reason=reason)
-        )
-        return int(result.rowcount)
+        return await self._close_pending(_N.destination_id == destination_id, reason)
 
     async def skip_pending_of_rule(self, rule_id: uuid.UUID, reason: str) -> int:
+        return await self._close_pending(_N.rule_id == rule_id, reason)
+
+    async def _close_pending(self, wanted: Any, reason: str) -> int:
+        """Close the waiting rows that match. `SKIP LOCKED`: a delivery tick holds its batch with
+        `FOR UPDATE` across its network waits, and an owner's delete must not queue behind that.
+        A row the tick holds is not closed here; the tick re-checks the destination and the rule
+        before it sends, so it closes the row itself. (Deleting the destination or rule still has to
+        clear the reference on such a row, and that waits for the tick, bounded by the write
+        transaction's lock timeout.)"""
+        taken = (
+            select(_N.id)
+            .where(_N.workspace_id == self._ws, wanted, _N.status == "pending")
+            .with_for_update(skip_locked=True)
+        )
         result = await self._conn.execute(
             update(t.alert_notifications)
-            .where(_N.workspace_id == self._ws, _N.rule_id == rule_id, _N.status == "pending")
+            .where(_N.workspace_id == self._ws, _N.id.in_(taken))
             .values(status="skipped", skip_reason=reason)
         )
         return int(result.rowcount)

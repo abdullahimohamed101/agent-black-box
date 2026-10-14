@@ -9240,7 +9240,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -9369,7 +9369,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -9492,7 +9492,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -9619,7 +9619,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -9757,7 +9757,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -9887,7 +9887,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -10155,7 +10155,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -10276,7 +10276,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -10405,7 +10405,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -10528,7 +10528,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -10655,7 +10655,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -10793,7 +10793,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {
@@ -10935,7 +10935,7 @@
                 }
               }
             },
-            "description": "A name is taken or a workspace limit is reached."
+            "description": "A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry)."
           },
           "422": {
             "content": {

@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from abb_api.alerts import jobs
+from abb_api.alerts import evaluate, jobs
 from abb_api.alerts import model as m
 from abb_api.alerts.jobs import ensure_sweep
 from abb_api.alerts.repository import RuleRepository
@@ -74,7 +74,7 @@ async def test_a_sweep_and_an_edit_of_the_same_rule_cannot_deadlock(
     await ask(api)  # waiting at NOW, valid for 15 minutes: the sweep will want the rule's lock
     monkeypatch.setattr(jobs, "system_clock", lambda: NOW + timedelta(minutes=2))
     sweep_started, edit_holds = asyncio.Event(), asyncio.Event()
-    real_sweep = jobs.sweep
+    real_sweep = evaluate.sweep
 
     async def sweep_after_the_edit_took_its_lock(*args: Any, **kwargs: Any) -> Any:
         sweep_started.set()
@@ -82,7 +82,7 @@ async def test_a_sweep_and_an_edit_of_the_same_rule_cannot_deadlock(
         await asyncio.sleep(0.3)  # the edit is about to insert the sweep key
         return await real_sweep(*args, **kwargs)
 
-    monkeypatch.setattr(jobs, "sweep", sweep_after_the_edit_took_its_lock)
+    monkeypatch.setattr("abb_api.alerts.jobs.sweep", sweep_after_the_edit_took_its_lock)
     settings = make_settings("postgresql+asyncpg://unused")
     job = Job(
         id=uuid.uuid4(), job_type=ALERT_SWEEP, workspace_id=api.tenant.context.workspace_id,
@@ -113,5 +113,5 @@ async def test_a_sweep_and_an_edit_of_the_same_rule_cannot_deadlock(
     )
     deadlocks = [r for r in results if isinstance(r, DBAPIError)]
     assert not deadlocks, deadlocks
-    assert results == [None, None]
+    assert list(results) == [None, None]
     assert await pending_sweeps(api) == 1  # the edit's job; the sweep's successor coalesced
