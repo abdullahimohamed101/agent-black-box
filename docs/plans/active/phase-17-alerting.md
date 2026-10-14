@@ -1,0 +1,54 @@
+# Phase 17: Alerting and integrations
+
+Status: Planned (2026-10-13). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
+Owner: api + web. Branch: `feature/phase-17-alerting` (from `main` after PR #170).
+Depends on: Phase 10/13 (findings, security findings), Phase 14 (approvals, expiry, `server_secrets` pattern), Phase 7 (cost rollups), Phase 15 (roles, audit), Phase 22 (UI grammar).
+Spec refs: §35 (alerts), §72 (processors idempotent and retryable; dead-letter), §73 (tables incl. `alerts`), §62 invariants (INV-2, INV-3, INV-4 style bounds on every queue and retry, INV-5), §90 threat model.
+
+## Outcome
+
+A person who is not watching the dashboard is told when something needs them, through a destination they control (signed webhook, Slack, email), with a link back to the app. Alerts point at one checkable thing, carry no content, and cannot be used to probe the internal network.
+
+## Non-goals
+
+- No rate-based or anomaly alerts (failure-rate percentages, retry spikes, latency percentiles, version regressions): they need baselines and tuning.
+- No native PagerDuty or Teams; no runtime plugin loading (an in-repo `Notifier` contract only).
+- No in-app notification centre, per-user preferences, on-call schedules, escalation or acknowledgement workflow.
+- No two-way Slack interactivity (for example approving from Slack).
+
+## Decisions (settled with the user)
+
+- D1 Triggers (four, all computed from what the product already stores, metadata only): (1) an approval is requested, and once more a set time before it expires; (2) a security finding at or above a chosen severity; (3) a run failed, timed out or was blocked, optionally filtered by project and agent; (4) spend over a threshold per project or agent per day, from the existing cost rollups, firing once per rule per day. Every alert points at one checkable thing (an approval, finding, run or day's spend) with a link.
+- D2 Model: destinations and rules are separate objects. A destination is a named target of type webhook, Slack or email and holds the secret part (webhook URL and signing secret, Slack incoming-webhook URL, email recipient list). A rule has one trigger, its filters (project, optional agent, minimum severity or run status, or a daily spend threshold) and a list of destinations; destinations can be shared. Owners and admins create, edit, mute and delete, every change audit-logged; other roles with project access can read the rules list and history but never destinations or secrets. Destination secrets are encrypted at rest with a per-installation key (the Phase 14 `server_secrets` pattern), shown once, and only a masked form is ever returned or logged. Email needs operator SMTP configuration through environment variables (no mail credentials in the database); without it email destinations cannot be created and the UI says why. Webhook payloads are signed with an HMAC using a per-destination secret shown once. Per-rule noise control: a dedupe key (per finding, approval, run or day) and a cooldown.
+- D3 Delivery: at least once with dedupe. Rule evaluation writes a notification row; a worker delivers it through the existing job framework; retries with backoff are bounded, then dead-letter with a fixed error code; receivers dedupe on a stable `alert_id`. Content-free alerts: fixed title, trigger kind, severity, counts, ids, project and agent names, time and a link to the app; never a path, command, host, argument, error text or anything the viewer rules treat as content (the link is where role rules apply). Outbound safety: HTTPS only; hostnames are resolved at delivery time and refused if they resolve to private, loopback, link-local, metadata or other non-public addresses (IPv4 and IPv6), and the connection goes to the resolved address (no DNS rebinding); no redirects; short timeouts (about 5 s); response bodies discarded after a small cap; per-destination rate limit and daily cap. A "Send test" action per destination. A delivery log for owners (time, rule, destination, status, attempts, fixed failure code, never a response body) with retention pruning. A destination that keeps failing is flagged, the owner is told in the app, and it is auto-paused after a bounded number of consecutive failures.
+- D4 Evaluation is event-driven through the existing job system: the code paths that already produce these facts (a finding saved, an approval requested or changing state, a run reaching a terminal status) enqueue a small idempotent, debounced `evaluate_alerts` job that matches the event against the workspace's enabled rules and writes notification rows with a unique key per rule and event. Spend thresholds and approval-about-to-expire are scheduled jobs. The extension interface is an internal contract: a `Notifier` protocol (`send(destination, alert) -> result`) and a registry; webhook, Slack and email are built-in implementations; no third-party code is loaded at runtime. Rules only evaluate metadata the product already stores and never read event payloads.
+- D5 UI: a workspace "Alerts" page in the rail (Phase 22 grammar) with tabs Rules, Destinations, History. Rules: a table (name, trigger, filters in words, destinations, enabled, last fired) and a plain form (trigger, then the filters it needs, destinations, cooldown, mute) with a preview line computed from recorded data ("would have fired 3 times in the last 7 days"). Destinations: masked target, type, health (OK, failing, paused), "Send test"; create shows the URL and signing secret once with a copy button. History: the delivery log with links to the run, finding or approval. A guided empty state ("add a destination, then a rule") with a starter. Owners and admins manage; other roles read rules and history; never destinations or secrets. The Approvals and run pages gain a small note when an alert was sent about that approval or finding. No new colours: severity uses the Phase 13 shields; failing destinations use amber; red stays for run failure.
+- D6 Gates: (1) each trigger fires exactly once per event end to end (approval requested, approval about to expire, finding at or above the severity, failed/timed-out/blocked run, spend over the threshold) to a signed webhook receiver and a Slack-shaped receiver, and email to a local SMTP sink; (2) delivery is reliable (receiver down gets bounded retries with backoff and then the alert once it is back, deduped on `alert_id`; dead-letter after the cap; a failing destination auto-pauses; a retry storm is bounded); (3) outbound safety holds (private, loopback, link-local and metadata addresses, HTTP URLs, redirects and a hostname that rebinds to a private address are refused; IPv6 included; tested with a local receiver and a stub resolver); (4) alerts are content-free (a planted sentinel in a path, command, host, argument or error text never appears in any payload, email, history row, log or audit entry, for any role); (5) secrets are protected (a database scan finds no plaintext destination URL or signing secret; masked in API, UI, logs and audit; shown once; the HMAC verifies at the receiver); (6) authorization and tenancy (only owners and admins manage; others never see destinations; nothing crosses workspaces; every change audited); (7) noise control (dedupe and cooldown work; a flood of one event type does not flood a destination: rate limit and daily cap); (8) system cost (ingestion latency does not regress beyond a stated bound; evaluation reads only metadata).
+
+## Known issues considered
+
+KI-071 (no email delivery of invitations) stays out: this phase builds the email Notifier but invitation email is a separate change (the Notifier makes it cheap later). KI-090 (findings not in rollups) is untouched. KI-018/KI-019 (S1, Phase 19) are unaffected, but the new write endpoints are rate limited like the others and the outbound sender is bounded.
+
+## Acceptance criteria
+
+The eight gates of D6, each evidenced with a command and its observed output, plus: no existing test weakened (modified tests listed with reasons); authz matrix, route registry and withheld-content classification updated and green; `scripts/quality.sh full` green in CI; adversarial review with a security pass and no open P0/P1.
+
+## Verification plan
+
+Unit and property tests for rule matching, dedupe and cooldown; API tests for CRUD, authz, encryption, masking, audit; delivery tests against local receivers (signed webhook, Slack-shaped, SMTP sink) with scripted failures; SSRF tests with a stub resolver; sentinel no-content tests; web component tests and fixtures Playwright; an API-backed `alerts-e2e.sh` (real API, worker, receivers, browser) with a CI job; my own gate run; then a Fable review with a security pass.
+
+## Risks
+
+- The sender is an outbound-request cannon pointed where an owner says: SSRF defence, timeouts, caps and rate limits are part of the feature and tested adversarially.
+- Secrets in the database: encryption with a per-installation key, never returned, never logged, never audited; rotation behaviour documented.
+- Alert storms and retry storms: dedupe, cooldown, rate limits, daily caps, bounded retries, auto-pause.
+- Evaluation hooks sit on hot paths (ingestion, summaries): they only enqueue; measured overhead.
+- Overclaiming: alerts are best-effort notifications with at-least-once delivery, not a paging system with guarantees; docs say so.
+
+## Ordered steps (one commit unit each)
+
+1. Model and evaluation: tables and migration, secret encryption, destinations and rules CRUD API with authz and audit, notification rows with dedupe and cooldown, event hooks and `evaluate_alerts`, scheduled spend and approval-expiry checks, ADR.
+2. Delivery: `Notifier` protocol and registry, SSRF-safe HTTP sender, webhook (HMAC), Slack, email (SMTP), retries, dead-letter, auto-pause, rate limits and caps, send-test endpoint, delivery log and pruning, ADR.
+3. Web: Alerts page (Rules, Destinations, History), forms, preview, guided empty state, notes on Approvals and run pages.
+4. Verification suite: `alerts-e2e.sh` with receivers and a CI job, SSRF and secrets scans, benchmarks, docs and closing evidence.
+5. Review, fixes, push and PR.
