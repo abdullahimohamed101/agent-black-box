@@ -84,3 +84,11 @@ Unit and property tests for rule matching, dedupe and cooldown; API tests for CR
   Closing evidence commands: `make alerts-e2e` (or `pnpm --filter @abb/web build && scripts/alerts-e2e.sh`); `cd apps/api && uv run --offline pytest tests/test_alerts_testnet.py tests/test_alerts_outbound.py tests/test_alerts_delivery.py tests/test_alerts_notifiers.py -q`;
   `cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run --offline mypy && uv run python -m abb_api.openapi --check`; `pnpm --filter @abb/web lint && pnpm --filter @abb/web format:check && pnpm --filter @abb/web typecheck`;
   gate 8 numbers: `docs/benchmarks/phase-17-alerts-e2e.md`; operator runbook: `docs/runbooks/alerting.md`. Steps 5 (review, fixes, push, PR) open.
+
+- Step 5 (adversarial review fixes, 2026-10-14): P1-1 a failed run is announced only on the transition into the status and never when it ended before the retention window (a pruned dedupe row plus a cost rebuild
+  re-alerted every old run); P2-1 owner writes fail fast with `409 ALERT_BUSY` (`SET LOCAL lock_timeout`, 3 s) and `SKIP LOCKED` closing, one email send bounded by one SMTP timeout; P2-2 default batch 5 and the worker keeps
+  the leases of jobs queued behind a slow one; P2-3 a requested approval is announced whatever state it reached (`details.approval_state`) and is back in the e2e exact-once set; P2-4 alert jobs re-arm the sweep and the
+  sweep queues its successor last (a deadlock with a rule edit, reproduced and fixed); P2-5 destination health applied in id order (deadlock between overlapping ticks, reproduced and fixed); P2-6 wording; P3-1 `::/96`,
+  P3-2 midnight, P3-3 expiring batch anti-join, P3-4 retention >= 7 days, P3-5 one write token per send test, P3-8 mutation `gcTime: 0`, P3-9 provisioning fails loudly; P3-6 and P3-7 noted in the ADRs. KI-167..171 filed;
+  KI-160/162/163/166 updated. Tests: `test_alerts_review_fixes.py`, `test_alerts_sweep_chain.py`, additions to `test_alerts_evaluation.py`, `test_outbox_worker.py`, `test_alerts_targets.py`, `test_alerts_outbound.py`, `tests/alerts-page.test.tsx`.
+
