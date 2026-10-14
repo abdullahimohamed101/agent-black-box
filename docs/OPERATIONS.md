@@ -41,10 +41,11 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_ALERTS_SWEEP_INTERVAL_SECONDS` | 60 | how often the scheduled alert checks (approval about to expire, daily spend over a threshold) run per workspace that has such a rule |
 | `ABB_ALERTS_SKIPPED_PER_WINDOW`, `ABB_ALERTS_PREVIEW_TIMEOUT_SECONDS` | 25, 5 | at most this many `skipped` history rows per rule and destination per cooldown window (the rest are only counted in the log); time budget of a rule preview |
 | `ABB_ALERTS_DELIVERY_ENABLED` | true | `false` holds delivery: notifications stay `pending` and are sent when it is switched back on and a delivery tick runs (the next alert of that workspace queues a tick that sends the whole due backlog; there is no separate flush command) |
-| `ABB_ALERTS_REQUEST_TIMEOUT_SECONDS`, `ABB_ALERTS_SMTP_TIMEOUT_SECONDS` | 5, 10 | total deadline of one webhook/Slack request (resolve, connect, TLS, write, status line); socket timeout of one SMTP exchange step |
+| `ABB_ALERTS_REQUEST_TIMEOUT_SECONDS`, `ABB_ALERTS_SMTP_TIMEOUT_SECONDS` | 5, 10 | total deadline of one webhook/Slack request (resolve, connect, TLS, write, status line); total deadline of one email send (the SMTP session as a whole; each socket step also times out at this value) |
 | `ABB_ALERTS_TEST_NETWORK_FILE` | unset | **test only** (`scripts/alerts-e2e.sh`): a JSON file that replaces the alert sender's DNS, connect address and TLS trust so local receivers can stand in for public hosts. Refused unless `ABB_ENVIRONMENT` is `development` or `test`; never set it where real alerts are sent (ADR-151 addendum) |
 | `ABB_ALERTS_MAX_ATTEMPTS`, `_BACKOFF_BASE_SECONDS`, `_BACKOFF_MAX_SECONDS` | 5, 30, 1800 | delivery attempts per alert before it is `dead`; backoff is base x 2^(attempt-1), capped, +-25 % jitter |
-| `ABB_ALERTS_DELIVER_BATCH` | 20 | alerts claimed per delivery tick per workspace (the retry-storm bound) |
+| `ABB_ALERTS_DELIVER_BATCH` | 5 | alerts claimed per delivery tick per workspace (the retry-storm bound). A tick sends its rows one after another in one job: at most 5 x 5 s for webhook/Slack, 5 x 10 s if every row is an email that times out, and it holds a worker for that long and its rows locked (KI-163, KI-169). Raise it only with more workers |
+| `ABB_ALERTS_LOCK_TIMEOUT_SECONDS` | 3 | how long an alert write (destination or rule change) waits for a row lock a delivery tick holds before it answers `409 ALERT_BUSY` (retry) |
 | `ABB_ALERTS_FAILING_AFTER`, `ABB_ALERTS_PAUSE_AFTER_FAILURES` | 3, 10 | consecutive failed attempts that mark a destination `failing`, then pause it (`paused_reason: failures`, audited as `alert.destination.auto_pause`); a success resets the count, a person resumes a pause |
 | `ABB_ALERTS_RATE_PER_MINUTE`, `ABB_ALERTS_DAILY_CAP` | 20, 500 | deliveries per destination per minute and per 24 h; the excess is recorded as `skipped` (`rate_limited`, `daily_cap`), not queued |
 | `ABB_ALERTS_TESTS_PER_MINUTE` | 10 | "Send test" calls per workspace per minute, per API process (on top of the write budget) |
@@ -71,7 +72,7 @@ the `alerts-encryption` key row is missing or the row was altered; re-save the t
 `SELECT d.name, d.state, d.consecutive_failures, d.paused_reason FROM alert_destinations d WHERE d.state <> 'active';`. A destination paused for `failures` stays paused until a person resumes it
 (`PATCH state: active`, which clears the count); alerts that arrive while it is paused are recorded as `skipped (destination_paused)`. A dead alert is not retried again: fix the target, then use "Send test".
 Delivery is **at-least-once**: a receiver that sees `X-ABB-Alert-Id` twice must ignore the second. Delivery ticks and pruning are `deliver_alerts` and `alert_prune` outbox jobs (`SELECT ... FROM outbox_jobs
-WHERE job_type IN ('deliver_alerts', 'alert_prune')`); `lease lost while running` for them means a tick outlived its lease (many slow receivers: lower `ABB_ALERTS_DELIVER_BATCH` or raise `ABB_WORKER_LEASE_SECONDS`).
+WHERE job_type IN ('deliver_alerts', 'alert_prune')`); `lease lost while running` for them means a tick outlived its lease (many slow receivers: lower `ABB_ALERTS_DELIVER_BATCH` or raise `ABB_WORKER_LEASE_SECONDS`; jobs claimed behind a slow tick have their leases extended while they wait, but a worker still serves its batch one job at a time, so run more than one worker where tick times are long). `ABB_ALERTS_RETENTION_DAYS` must be at least 7, the longest rule cooldown.
 
 ## What to watch
 

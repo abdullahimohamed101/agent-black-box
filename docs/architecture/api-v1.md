@@ -334,6 +334,7 @@ a history row shows `destination: {id: null, name: null, type}`; `approval_id` i
   synchronously within the 5 s delivery deadline (email: the SMTP timeout). `error_code` is one of the fixed delivery codes (`timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`);
   what the target answered is never returned. The HTTP status is `200` whether or not the target accepted it. A test does not change `state` or `consecutive_failures` and creates no history row; it works on a paused destination. `404 ALERT_DESTINATION_NOT_FOUND`
   (foreign and unknown ids alike), `403` for other roles and API keys, `429 RATE_LIMITED` (10 a minute per workspace per process, plus the write budget). Audit `alert.destination.test` (`type`, `ok`, `error_code`).
+- Every alert write (create, change, pause, rotate, delete of a destination or rule; send test's audit) fails fast with `409 ALERT_BUSY` (`retryable`) when a row lock it needs is held by a running delivery tick for longer than `ABB_ALERTS_LOCK_TIMEOUT_SECONDS` (3 s); nothing is changed and the same request can be repeated.
 - `DELETE /v1/alerts/destinations/{id}` -> `204`. Waiting notifications become `skipped` (`destination_deleted`), history keeps its rows (destination cleared), rules left with no destination are switched off. Audit `alert.destination.delete` (`type`, `rules_disabled`).
 
 **Rules**

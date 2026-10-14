@@ -428,6 +428,23 @@ def log_text() -> str:
     return "\n".join(parts)
 
 
+def worker_log_lines(*needles: str) -> list[str]:
+    """Lines of the worker's log that contain any of the needles (the worker is where the alert jobs run)."""
+    path = Path(os.environ["E2E_WORK"]) / "worker.log"
+    if not path.exists():
+        return []
+    return [line.strip()[:300] for line in path.read_text(errors="replace").splitlines() if any(n in line for n in needles)]
+
+
+def sweep_jobs() -> list[dict[str, Any]]:
+    """The alert_sweep rows of the outbox (every status): the timer chain, for diagnosing a missing scheduled alert."""
+    rows = db(
+        "select status, attempt_count, available_at, updated_at, left(coalesce(last_error, ''), 120) as last_error, "
+        "workspace_id::text as workspace from outbox_jobs where job_type = 'alert_sweep' order by created_at"
+    )
+    return [dict(r) for r in rows]
+
+
 def audit_rows(limit_pages: int = 20) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     cursor = None

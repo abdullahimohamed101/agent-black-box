@@ -30,8 +30,8 @@ and a body that must stay content-free, so the decisions below are about what it
    delivery** through an injectable resolver; **every** returned address must be public (private, loopback, link-local including 169.254.169.254, CGNAT, multicast, reserved, IPv6 unique-local, and IPv4-mapped, 6to4, Teredo and
    NAT64 forms judged by the IPv4 they carry), otherwise `blocked_address` and no connection is made (one bad answer poisons the set); an IP-literal URL is judged the same way. The connection is made to the checked
    address (**pinned**) with the original hostname as TLS SNI and as the name the certificate must match, so the name is resolved once and a rebinding answer can never be used. **No redirect is followed** (`http_3xx`).
-   One total deadline (`ABB_ALERTS_REQUEST_TIMEOUT_SECONDS`, 5 s) covers resolve, connect, TLS, write and the status line; the response is read only up to a complete status line within 16 KiB and the body is never read,
-   stored or logged. Nothing logs a URL, header or response.
+   One total deadline (`ABB_ALERTS_REQUEST_TIMEOUT_SECONDS`, 5 s) covers resolve, connect, TLS, write and the status line; the response is read in 2 KiB chunks only until the first newline (a status line is
+   required within 16 KiB, else `bad_response`), so the first bytes of the response, up to the end of the chunk that holds the status line, are read and then discarded; nothing after that is read, and nothing is stored or logged. Nothing logs a URL, header or response.
    *Why hand-written HTTP.* `httpx` (already a dependency) cannot pin the connection address while keeping SNI, `Host` and certificate verification on the hostname without a custom transport that reimplements
    the same connect step; the stdlib `asyncio.open_connection(ip, port, ssl=ctx, server_hostname=host)` does exactly this. The request is one `POST` with `Connection: close`, header names and values are rejected if
    they contain a control character, the path is percent-encoded, and the code is ~100 lines with a test matrix (IPv4, IPv6, mixed answers, rebinding, redirects, stalls, endless heads, wrong or untrusted
@@ -40,8 +40,8 @@ and a body that must stay content-free, so the decisions below are about what it
    *Residual:* an owner can point a destination at any public host and port, so the server can be used for blind requests to public services at the rate limits below; the answer is never shown.
 5. **Delivery is a job tick per workspace in the outbox framework.** `deliver_alerts` is enqueued, coalesced per workspace, in the transaction that writes a `pending` row; a tick that leaves rows waiting for a retry
    schedules a second job under another key (`<workspace>:retry`) at the earliest due time (an existing one is only ever moved earlier), so a retry delay never holds back a fresh alert. A tick claims at most
-   `ABB_ALERTS_DELIVER_BATCH` (20) due rows with `FOR UPDATE SKIP LOCKED` (concurrent ticks never take the same row), asks for another tick if rows are still due, and runs sequentially inside the job's
-   transaction (the lease heartbeat covers batch x request timeout). A worker that dies mid-tick rolls back and the rows are sent again: **at-least-once**, receivers dedupe on `alert_id`. `ABB_ALERTS_DELIVERY_ENABLED=false`
+   `ABB_ALERTS_DELIVER_BATCH` (5; 20 before the review, see Amendment 1) due rows with `FOR UPDATE SKIP LOCKED` (concurrent ticks never take the same row), asks for another tick if rows are still due, and runs sequentially
+   inside the job's transaction (the lease heartbeat covers it). A worker that dies mid-tick rolls back and the rows are sent again: **at-least-once**, receivers dedupe on `alert_id`. `ABB_ALERTS_DELIVERY_ENABLED=false`
    is an operator hold: rows stay `pending` and are sent when it is lifted (tests use it by default so nothing leaves the process).
 6. **Retries and the dead letter.** A retryable failure (`timeout`, `connect_failed`, `dns_failed`, `http_5xx`, HTTP 408, 425 and 429, an SMTP 4xx, `internal_error`) is retried with exponential backoff
    (30 s, 60 s, ... capped at 30 min, +-25 % jitter), up to `ABB_ALERTS_MAX_ATTEMPTS` (5), then the row is `dead` with its last fixed code. A failure no retry will fix (`blocked_address`, `tls_failed`,
@@ -69,13 +69,13 @@ and a body that must stay content-free, so the decisions below are about what it
 
 No push-style health notice (the in-app indicator is step 3; the API already returns `state`, `consecutive_failures` and `paused_reason`). No per-receiver adaptive limits. No webhook secret overlap on rotation (the
 old secret stops signing at once). Email has no receiver-side dedupe beyond the `Message-ID`; duplicates are possible on a retry after a lost acknowledgement (at-least-once). Delivery holds a transaction
-open across the network wait (bounded by batch x timeout); a send-heavy installation should run several workers. IPv6-only environments are untested. The retention job and the sweep share KI-160's
+open across the network wait (bounded by batch x timeout, Amendment 1); a send-heavy installation should run several workers. IPv6-only environments are untested. The retention job and the sweep share KI-160's
 "no external watchdog" limitation.
 
 ## Consequences
 
 Secrets are decrypted for the length of one request and appear in no log, audit row, history row or response. The hot ingestion path is untouched. A misconfigured or malicious target costs at most one bounded
-request per attempt per row, at most 20 rows per tick, and the destination is paused after ten consecutive failures. The price of at-least-once with dedupe on the receiver is that a receiver which ignores
+request per attempt per row, at most 5 rows per tick, and the destination is paused after ten consecutive failures. The price of at-least-once with dedupe on the receiver is that a receiver which ignores
 `alert_id` may see an alert twice.
 
 ## Addendum 1 (Phase 17 step 4): a test-only network for the end-to-end suite
@@ -94,3 +94,27 @@ name that does not resolve to a public address. Rather than weaken the sender, t
 - **Residual.** A development-environment installation (the default `ABB_ENVIRONMENT` is `development`) that sets this variable on purpose can aim the sender at loopback ports; that is the same trust level as
   `ABB_ALLOW_DEV_SESSIONS` and the fake OIDC provider, and the variable is documented as test-only in OPERATIONS and SECURITY.
 
+## Amendment 1 (Phase 17 adversarial review)
+
+- **The real bounds of a tick (P2-1, P2-2).** A tick runs its claimed rows one after another inside one job transaction. One HTTPS row takes at most `ABB_ALERTS_REQUEST_TIMEOUT_SECONDS` (5 s: the deadline
+  covers resolve, connect, TLS, write and the status line). One email row now takes at most `ABB_ALERTS_SMTP_TIMEOUT_SECONDS` (10 s) for the **whole** send; it was `2 x` that (20 s) and the first version of
+  this ADR said "5 s" for every row. The default batch is **5** (it was 20), so a tick is at most **25 s of HTTPS waits, 50 s if every row is an email** that times out (it was 100 s and 400 s), plus database time.
+  The tick's `FOR UPDATE` row locks and its connection are held for that long (KI-163).
+- **Owner writes do not queue behind a tick (P2-1).** Closing waiting alerts when a destination or rule is deleted uses `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED)`: rows a tick holds are left
+  to the tick, whose send-time re-check (decision 10) closes them. The delete itself must still clear the reference on those rows (the `ON DELETE SET NULL` foreign key updates them), which waits for the tick, so
+  every alert write transaction runs with `SET LOCAL lock_timeout` (`ABB_ALERTS_LOCK_TIMEOUT_SECONDS`, 3 s) and a lock that is not granted in time answers **`409 ALERT_BUSY`** (`retryable: true`) with nothing
+  changed, instead of hanging for up to a tick. The Alerts page words it as "Alerts are being sent right now; try again in a moment".
+- **The worker keeps queued jobs alive (P2-2).** A worker runs its claimed batch sequentially and the heartbeat covered only the running job, so a job claimed behind a slow tick could lose its lease and run
+  twice on another worker. `Worker.run_once` now extends the lease of every claimed job that has not started yet. What remains: one worker is still busy for a whole tick (up to 25 s, 50 s with email) before it
+  reaches the jobs behind it; run more than one worker, or lower the batch (KI-169). The job framework is not redesigned.
+- **Destination health is applied in id order (P2-5).** The tick of `<workspace>` and the tick of `<workspace>:retry` may overlap; each locks the destinations it touched one by one (`apply_health`, `FOR UPDATE`),
+  and in first-seen order two ticks that touched A, B and B, A deadlocked (reproduced by `tests/test_alerts_review_fixes.py`). They are now applied sorted by id. Two overlapping ticks claim disjoint rows but
+  each counts what was delivered **before it started**, so the per-destination rate limit and daily cap can be overshot by up to one batch (5) per overlapping tick; this is accepted (the caps are protection against
+  floods, not a quota) and bounded by the claim size.
+- **Wording corrected (P2-6).** The sender reads the first bytes of the response up to the status line (2 KiB at a time, at most 16 KiB) and discards them; it does not read a body. The 5 s figure is the HTTPS
+  deadline, not every channel's.
+- **IPv4-compatible IPv6 (`::/96`) is never a target (P3-1)**, whatever IPv4 it carries (`targets.is_public_ip`, tests in the SSRF matrix).
+- **Blocked resolver threads (P3-6, noted, not fixed).** `system_resolver` uses `loop.getaddrinfo`, which runs `getaddrinfo` in the event loop's default thread pool. The request deadline cancels the *await*, not the
+  thread, so a resolver that hangs (an unreachable DNS server) keeps one pool thread busy until the OS gives up (typically 5 to 30 s). A flood of destinations with a black-hole name could occupy the pool
+  (default `min(32, cpus + 4)` threads) for that long; the per-destination limits, the attempt cap and auto-pause bound how many such rows exist. A dedicated bounded executor with a queue limit is the fix if it is
+  ever seen; the other users of the default pool in the worker are SMTP sends and the file artifact store.

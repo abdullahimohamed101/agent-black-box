@@ -115,7 +115,13 @@ suffix="$(date +%s)$RANDOM"
 WS="alerts-e2e-$suffix"; WS2="alerts-other-$suffix"
 OWNER="owner-$suffix@alerts.test"; ADMIN="admin-$suffix@alerts.test"; DEV="developer-$suffix@alerts.test"
 VIEWER="viewer-$suffix@alerts.test"; SEC="security-$suffix@alerts.test"; BILLING="billing-$suffix@alerts.test"; ADMIN2="admin2-$suffix@other.test"
-cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
+# Every provisioning command must succeed: a failure stops the run with the command's own stderr (never its
+# stdout, which can hold a session token) instead of surfacing later as a confusing 401 or missing project.
+cli() {
+  local out
+  out="$(uv run python -m abb_api.cli "$@" 2>"$WORK/cli.err")" || fail "cli $1 failed: $(tail -3 "$WORK/cli.err")"
+  printf '%s' "$out"
+}
 cli create-workspace --name "Alerts E2E" --slug "$WS" >/dev/null
 cli create-workspace --name "Alerts Other" --slug "$WS2" >/dev/null
 PROJECTS="trig spend rel safety noise authz bench ui"

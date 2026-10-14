@@ -218,10 +218,13 @@ def gate1_finish() -> None:
                 k = f"{r['status']}/{r['error_code'] or r['skip_reason'] or '-'}"
                 tally[k] = tally.get(k, 0) + 1
             out[t] = tally
+        out["sweep_jobs"] = L.sweep_jobs()
+        out["worker_log_failures"] = L.worker_log_lines("job failed", "alert check failed")[-5:]
         return out
 
     L.wait_until("every alert delivered to every destination", all_in, 150 + wait_for, diag=where)
     L.settle(4)  # then prove nothing more arrives
+    info(sweep_jobs=L.sweep_jobs(), worker_log_failures=L.worker_log_lines("job failed", "alert check failed")[-5:])
     for trigger, rid in g["rules"].items():
         rows = history(rule_id=rid)
         subjects: dict[str, list[Any]] = {}
@@ -848,14 +851,21 @@ def gate5() -> None:
 # ------------------------------------------------------------------------------------------------ summary
 
 
+# Worker log lines that are expected somewhere in the suite (none today: a failed job or a failed scheduled check is a bug).
+ALLOWED_WORKER_FAILURES: tuple[str, ...] = ()
+
+
 def summary() -> None:
+    gate("suite")
+    bad_lines = [ln for ln in L.worker_log_lines("job failed", "alert check failed") if not any(a in ln for a in ALLOWED_WORKER_FAILURES)]
+    check(not bad_lines, "the worker log has no 'job failed' or 'alert check failed' line", lines=bad_lines[:5], count=len(bad_lines))
     rows = [json.loads(line) for line in open(os.environ["E2E_RESULTS"]) if line.strip()]
     by_gate: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
         by_gate.setdefault(r["gate"], []).append(r)
     print("\nALERTS-E2E RESULTS")
     bad = 0
-    for name in ("provision", "gate1", "gate2", "gate3", "gate4", "gate5", "gate6", "gate7", "gate8", "ui"):
+    for name in ("provision", "gate1", "gate2", "gate3", "gate4", "gate5", "gate6", "gate7", "gate8", "ui", "suite"):
         group = by_gate.get(name, [])
         if not group:
             continue

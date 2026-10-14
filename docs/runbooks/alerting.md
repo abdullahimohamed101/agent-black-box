@@ -19,7 +19,7 @@ times and a link back to the app. **It never carries captured content**: no path
 - **Once per event.** Each rule fires once per event and destination (a run per status, a finding per detector version and severity, an approval once as requested and once as about to expire, spend once
   per UTC day). Re-summarising, re-ingesting or rebuilding does not alert again while the history row exists, and a run that ended before the retention window (`ABB_ALERTS_RETENTION_DAYS`, 30 days) is never announced, so pruning history cannot make a rebuild re-alert old runs. A cooldown on the rule records further events as `skipped (cooldown)`; they are not sent later.
 - **Limits protect the destination**: 20 deliveries a minute and 500 a day per destination by default (`ABB_ALERTS_RATE_PER_MINUTE`, `ABB_ALERTS_DAILY_CAP`); the excess is recorded as `skipped (rate_limited)`
-  or `skipped (daily_cap)`, never queued. Up to 5 attempts with exponential backoff (30 s, 60 s, ... capped at 30 min), then `dead`. After 3 consecutive failed attempts a destination shows as failing and
+  or `skipped (daily_cap)`, never queued. Up to 5 attempts with exponential backoff (30 s, 60 s, ... capped at 30 min), then `dead`. Two delivery ticks that overlap in time can each send up to one batch (5) past the minute or daily limit; the limits are protection against floods, not a quota. After 3 consecutive failed attempts a destination shows as failing and
   after 10 it is paused (an audit row by the system actor; a person resumes it).
 
 ## Setting it up
@@ -88,6 +88,7 @@ History is pruned after `ABB_ALERTS_RETENTION_DAYS` (30).
 - **Nothing arrives.** Run Send test. Then History: `skipped (destination_paused)` means auto-pause (look for the audit row `alert.destination.auto_pause`); `rate_limited`/`daily_cap` means the limits
   held; no row at all means no rule matched (check the project, agent and severity filters, and that the rule is on) or the worker is not running (`deliver_alerts` and `evaluate_alerts` are outbox jobs;
   see `docs/runbooks/worker-lag.md`). The scheduled triggers (about to expire, spend) are checked every `ABB_ALERTS_SWEEP_INTERVAL_SECONDS` (60) by a chain that restarts when a scheduled rule is saved.
+- **A change answers "Alerts are being sent right now" (`409 ALERT_BUSY`).** A delivery tick is holding the rows the change touches (deleting a destination or rule that has waiting alerts); nothing was changed. Repeat it in a few seconds; a tick lasts at most about 25 s (50 s if every alert is an email that times out).
 - **A flood.** Per destination the limits above hold; the history shows what was dropped. Mute the rule, fix the cause, resume.
 - **A suspected misuse of the sender.** Anyone who can create destinations can aim the server at any **public** host and port, rate limited; private, loopback and link-local addresses, plain HTTP and
   redirects are refused. Restrict who is an owner or admin; every destination change is in the audit log (`alert.destination.*`) with the actor and never the target.

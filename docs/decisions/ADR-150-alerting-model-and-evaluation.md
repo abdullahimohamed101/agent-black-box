@@ -102,3 +102,9 @@ credential. The hot paths pay one INSERT (or, in the findings job, one indexed S
   rule: **row locks (rules, destinations, runs) are taken before any outbox insert, and outbox keys are inserted in the order delivery, prune, sweep** in every alert path (evaluation: rules, then delivery, prune, sweep;
   the delivery tick: destinations, then delivery or retry, then sweep; the sweep: rules, delivery, prune, then its successor; the API: row, then sweep). With one global order no cycle exists.
   The checks now run before the successor is queued, so the interval is measured from the end of the checks (two bounded queries per rule type), not their start.
+- **Spend near midnight (P3-2).** The sweep checks today's UTC day and, for two sweep intervals after 00:00 UTC, the day that just ended too, so a crossing in the last interval before midnight is still announced
+  (once: the dedupe key carries the day).
+- **History outlives the longest cooldown (P3-4).** The cooldown reads stored notifications; `ABB_ALERTS_RETENTION_DAYS` below 7 (the longest cooldown, 7 days) would let pruning end a cooldown early, so
+  settings validation refuses it.
+- **Caps are count-then-insert (P3-7, noted).** The per-workspace caps on rules, destinations and destinations per rule count rows and then insert in separate statements, so concurrent creates can exceed a cap
+  by the number of requests in flight; the write budget bounds that and nothing depends on the exact number.
