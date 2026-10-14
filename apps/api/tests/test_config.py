@@ -37,3 +37,25 @@ def test_a_fake_judge_is_refused_in_production_unless_allowed() -> None:
     assert allowed.judge_provider == "fake"
     assert Settings(database_url="x", environment="production").judge_provider == "none"
     assert Settings(database_url="x", environment="test", judge_provider="fake")
+
+
+def test_quota_defaults_and_their_environment_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR-154: the documented defaults, read from ABB_QUOTA_*, bounded like the overrides."""
+    for name in (
+        "ABB_QUOTAS_ENABLED",
+        "ABB_QUOTA_AGENTS",
+        "ABB_QUOTA_RUNS_PER_DAY",
+        "ABB_QUOTA_EVENTS_PER_DAY",
+        "ABB_QUOTA_ARTIFACT_BYTES",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    s = Settings(database_url="x")
+    assert (s.quotas_enabled, s.quota_agents, s.quota_runs_per_day) == (True, 500, 50_000)
+    assert (s.quota_events_per_day, s.quota_artifact_bytes) == (5_000_000, 5 * 1024**3)
+    monkeypatch.setenv("ABB_QUOTA_AGENTS", "7")
+    monkeypatch.setenv("ABB_QUOTAS_ENABLED", "false")
+    s = Settings(database_url="x")
+    assert (s.quota_agents, s.quotas_enabled) == (7, False)
+    monkeypatch.setenv("ABB_QUOTA_AGENTS", "0")
+    with pytest.raises(ValidationError, match="quota_agents"):
+        Settings(database_url="x")

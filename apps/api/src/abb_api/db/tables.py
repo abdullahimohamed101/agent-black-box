@@ -1430,3 +1430,71 @@ rate_limit_counters = Table(
     CheckConstraint("count >= 0", name="ck_rate_limit_counters_count"),
     Index("ix_rate_limit_counters_expires", "expires_at"),
 )
+
+
+# ------------------------------------------------------------ project quotas (Phase 19a, ADR-154)
+
+# Per-project overrides of the environment's quota defaults (migration 0098). A NULL column means
+# "use the default"; a row exists only for a project an owner or admin has changed.
+project_quota_overrides = Table(
+    "project_quota_overrides",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("max_agents", Integer),
+    Column("max_runs_per_day", Integer),
+    Column("max_events_per_day", BigInteger),
+    Column("max_artifact_bytes", BigInteger),
+    _ts("updated_at", nullable=False, default_now=True),
+    Column("updated_by", Text, nullable=False),
+    PrimaryKeyConstraint("workspace_id", "project_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="CASCADE",
+    ),
+    CheckConstraint("max_agents BETWEEN 1 AND 1000000", name="ck_quota_overrides_agents"),
+    CheckConstraint("max_runs_per_day BETWEEN 1 AND 100000000", name="ck_quota_overrides_runs"),
+    CheckConstraint(
+        "max_events_per_day BETWEEN 1 AND 100000000000", name="ck_quota_overrides_events"
+    ),
+    CheckConstraint(
+        "max_artifact_bytes BETWEEN 1 AND 1125899906842624", name="ck_quota_overrides_artifacts"
+    ),
+    CheckConstraint("char_length(updated_by) <= 128", name="ck_quota_overrides_updated_by"),
+)
+
+# What a project has used on one UTC day, maintained in the transaction that stores the data
+# (so it is exactly what committed, never more). One row per active project per day.
+project_usage_daily = Table(
+    "project_usage_daily",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("day", Date, nullable=False),
+    Column("runs_created", BigInteger, nullable=False, server_default="0"),
+    Column("events_accepted", BigInteger, nullable=False, server_default="0"),
+    PrimaryKeyConstraint("workspace_id", "project_id", "day"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="CASCADE",
+    ),
+    CheckConstraint("runs_created >= 0 AND events_accepted >= 0", name="ck_usage_daily_counts"),
+)
+
+# Total stored artifact bytes of a project, kept in the transaction that records the artifact.
+project_artifact_usage = Table(
+    "project_artifact_usage",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("bytes_stored", BigInteger, nullable=False, server_default="0"),
+    PrimaryKeyConstraint("workspace_id", "project_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="CASCADE",
+    ),
+    CheckConstraint("bytes_stored >= 0", name="ck_artifact_usage_bytes"),
+)

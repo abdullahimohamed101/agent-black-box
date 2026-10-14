@@ -14,12 +14,14 @@ from abb_api.authz.audit import authorize_audited
 from abb_api.authz.principal import Principal
 from abb_api.authz.service import PermissionDenied, holds
 from abb_api.clock import Clock
-from abb_api.core.errors import AppError, ErrorCategory
+from abb_api.core.errors import AppError, ErrorCategory, dependency_unavailable
 from abb_api.cost.repository import CostRepository, EventCost
 from abb_api.findings.detectors import DETECTORS_VERSION
 from abb_api.findings.repository import Badge, FindingsRepository
 from abb_api.ids import parse_public_id
 from abb_api.projects.access import authorise_project
+from abb_api.quotas.model import Quota, QuotaLimits, quota_exceeded
+from abb_api.quotas.repository import DEFAULT_LOCK_TIMEOUT_MS, QuotaRepository, is_lock_timeout
 from abb_api.runs import cursors
 from abb_api.runs.content import span_name_is_content, withhold_attributes
 from abb_api.runs.event_queries import EventQueries
@@ -201,9 +203,17 @@ def _aware(value: datetime | None, name: str) -> datetime | None:
 
 
 class RunService:
-    def __init__(self, engine: AsyncEngine, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: AsyncEngine,
+        clock: Clock,
+        quota_defaults: QuotaLimits | None = None,
+        quota_lock_timeout_ms: int = DEFAULT_LOCK_TIMEOUT_MS,
+    ) -> None:
         self._engine = engine
         self._clock = clock
+        self._quota_defaults = quota_defaults  # None: quotas are off
+        self._quota_lock_timeout_ms = quota_lock_timeout_ms
 
     # ---------------------------------------------------------------- writes
 
@@ -213,24 +223,46 @@ class RunService:
         assert principal.project_id is not None
         run_id = to_uuid(request.run_id or new_id(IdKind.RUN))
         trace_id = to_uuid(request.trace_id or new_id(IdKind.TRACE))
-        async with self._engine.begin() as conn:
-            created, owner = await RunRepository(conn, principal.tenant).create_queued(
-                run_id=run_id,
-                project_id=principal.project_id,
-                trace_id=trace_id,
-                name=request.name,
-                agent_slug=request.agent_id,
-                metadata=request.metadata,
-                now=self._clock(),
-            )
-            if owner != principal.project_id:
-                raise AppError(
-                    "RUN_PROJECT_MISMATCH",
-                    "That run id belongs to another project.",
-                    category=ErrorCategory.CONFLICT,
-                    status_code=409,
+        now = self._clock()
+        try:
+            async with self._engine.begin() as conn:
+                quotas = QuotaRepository(
+                    conn, principal.tenant, lock_timeout_ms=self._quota_lock_timeout_ms
                 )
-            record = await RunQueries(conn, principal.tenant, principal.project_id).get(run_id)
+                day = now.astimezone(UTC).date()
+                if self._quota_defaults is not None:
+                    # Same lock and same counter as batch ingestion: a run made here counts there.
+                    state = await quotas.state(principal.project_id, day, lock=True)
+                    known = await RunRepository(conn, principal.tenant).owners([run_id])
+                    if state is not None and run_id not in known:
+                        limit = state.limits(self._quota_defaults).runs_per_day
+                        if state.runs_today >= limit:
+                            raise quota_exceeded(
+                                Quota.RUNS_PER_DAY, limit=limit, used=state.runs_today
+                            )
+                created, owner = await RunRepository(conn, principal.tenant).create_queued(
+                    run_id=run_id,
+                    project_id=principal.project_id,
+                    trace_id=trace_id,
+                    name=request.name,
+                    agent_slug=request.agent_id,
+                    metadata=request.metadata,
+                    now=now,
+                )
+                if created and self._quota_defaults is not None:
+                    await quotas.add_usage(principal.project_id, day, runs=1, events=0)
+                if owner != principal.project_id:
+                    raise AppError(
+                        "RUN_PROJECT_MISMATCH",
+                        "That run id belongs to another project.",
+                        category=ErrorCategory.CONFLICT,
+                        status_code=409,
+                    )
+                record = await RunQueries(conn, principal.tenant, principal.project_id).get(run_id)
+        except Exception as exc:
+            if is_lock_timeout(exc):  # the project is busy: retryable, like a batch (ADR-154)
+                raise dependency_unavailable() from exc
+            raise
         assert record is not None
         return _run_out(record, "current"), created
 

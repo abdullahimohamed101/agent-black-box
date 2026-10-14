@@ -59,6 +59,9 @@ from abb_api.limits.factory import (
 )
 from abb_api.policies.api_service import PolicyApiService
 from abb_api.policies.router import router as policies_router
+from abb_api.quotas.router import router as quotas_router
+from abb_api.quotas.service import QuotaApiService
+from abb_api.quotas.settings import default_limits
 from abb_api.runs.router import router as runs_router
 from abb_api.runs.service import RunService
 from abb_api.security.api_service import SecurityApiService
@@ -225,7 +228,12 @@ def create_app(
         )
         app.state.auth_throttle = AuthThrottle(settings, counters, engine)
         app.state.ingestion = IngestionService(engine, ingest_guard, settings, clock)
-        app.state.runs = RunService(engine, clock)
+        app.state.runs = RunService(
+            engine,
+            clock,
+            default_limits(settings) if settings.quotas_enabled else None,
+            int(settings.quota_lock_timeout_seconds * 1000),
+        )
         app.state.findings = FindingsService(engine, app.state.runs)
         app.state.security = SecurityApiService(
             engine,
@@ -236,6 +244,9 @@ def create_app(
                 cooldown_seconds=settings.security_reanalyse_cooldown_seconds,
             ),
             clock,
+        )
+        app.state.quotas = QuotaApiService(
+            engine, default_limits(settings), clock, enforced=settings.quotas_enabled
         )
         app.state.policies = PolicyApiService(
             engine,
@@ -266,6 +277,7 @@ def create_app(
             max_bytes=settings.artifact_max_bytes,
             scan_max_bytes=settings.security_scan_artifact_max_bytes,
             scan_max_seconds=settings.security_scan_artifact_max_seconds,
+            quota_defaults=default_limits(settings) if settings.quotas_enabled else None,
         )
         app.state.analytics = AnalyticsService(
             engine,
@@ -309,6 +321,7 @@ def create_app(
     app.include_router(runs_router)
     app.include_router(findings_router)
     app.include_router(security_router)
+    app.include_router(quotas_router)
     app.include_router(policies_router)
     app.include_router(approvals_router)
     app.include_router(alerts_router)

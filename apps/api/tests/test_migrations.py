@@ -5,6 +5,7 @@ inside a test event loop.
 """
 
 import asyncio
+import uuid
 
 import pytest
 from alembic.autogenerate import compare_metadata
@@ -93,6 +94,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0095",
         "0096",
         "0097",
+        "0098",
     ]
 
 
@@ -337,3 +339,65 @@ def test_0097_creates_the_rate_limit_counters_and_drops_them_again() -> None:
         )
         alembic(url, "downgrade", "0096")
         assert asyncio.run(table_names(url)) == before
+
+
+def test_0098_creates_the_quota_tables_backfills_artifact_bytes_and_drops_them_again() -> None:
+    """Phase 19a step 3: three additive tables; existing artifacts count from the first request."""
+    created = {"project_quota_overrides", "project_usage_daily", "project_artifact_usage"}
+    workspace, alpha, beta = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+    async def seed(url: str) -> None:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("INSERT INTO workspaces (id, name, slug) VALUES (:w, 'w', 'w')"),
+                {"w": workspace},
+            )
+            for project, slug in ((alpha, "alpha"), (beta, "beta")):
+                await conn.execute(
+                    text(
+                        "INSERT INTO projects (workspace_id, id, name, slug) "
+                        "VALUES (:w, :p, :s, :s)"
+                    ),
+                    {"w": workspace, "p": project, "s": slug},
+                )
+            # alpha: 100 + 250 bytes and one artifact of unknown size; beta: none
+            for size in (100, 250, None):
+                await conn.execute(
+                    text(
+                        "INSERT INTO artifacts (workspace_id, id, run_id, project_id, "
+                        "artifact_type, storage_uri, size_bytes) "
+                        "VALUES (:w, :a, :r, :p, 'stdout', 'k', :size)"
+                    ),
+                    {
+                        "w": workspace,
+                        "a": uuid.uuid4(),
+                        "r": uuid.uuid4(),
+                        "p": alpha,
+                        "size": size,
+                    },
+                )
+        await engine.dispose()
+
+    async def backfilled(url: str) -> dict[uuid.UUID, int]:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT project_id, bytes_stored FROM project_artifact_usage")
+            )
+            found = {r[0]: int(r[1]) for r in rows}
+        await engine.dispose()
+        return found
+
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0097")
+        before = asyncio.run(table_names(url))
+        assert not created & before
+        asyncio.run(seed(url))
+        alembic(url, "upgrade", "0098")
+        assert asyncio.run(table_names(url)) - before == created
+        assert asyncio.run(backfilled(url)) == {alpha: 350}  # beta has no artifacts: no row
+        alembic(url, "downgrade", "0097")
+        assert asyncio.run(table_names(url)) == before
+        alembic(url, "upgrade", "head")  # and the data survives the round trip
+        assert asyncio.run(backfilled(url)) == {alpha: 350}

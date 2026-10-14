@@ -193,6 +193,19 @@ def _security_settings(method: str) -> Builder:
     return build
 
 
+def _quotas(method: str) -> Builder:
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        project = overrides.get("project_id", side.project_id)
+        content = json.dumps({"events_per_day": 4_000_000}).encode()
+        return RequestSpec(
+            method, f"/v1/projects/{project}/quotas",
+            content=content if method == "PUT" else None,
+            headers=JSON if method == "PUT" else {},
+        )  # fmt: skip
+
+    return build
+
+
 POLICY_DOC = (
     "version: 1\npolicies:\n  - id: deny-env\n    description: Do not read dotenv files.\n"
     "    when: {capability: filesystem.read, resource: '**/.env*'}\n    decision: deny\n"
@@ -483,6 +496,14 @@ CASES: dict[tuple[str, str], RouteCase] = {
         RouteCase(
             "PUT", "/v1/projects/{project_id}/security-settings", actions.PROJECT_WRITE,
             _security_settings("PUT"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/projects/{project_id}/quotas", actions.PROJECT_READ,
+            _quotas("GET"), 200, ("project_id",),
+        ),
+        RouteCase(
+            "PUT", "/v1/projects/{project_id}/quotas", actions.PROJECT_WRITE,
+            _quotas("PUT"), 200, ("project_id",), probe_actors=ADMINS,
         ),
         RouteCase(
             "GET", "/v1/policies/current", actions.POLICY_READ, _policy_get("/v1/policies/current"),

@@ -28,6 +28,18 @@ class Settings(BaseSettings):
     # Artifacts (ADR-030): local filesystem store, per-artifact size cap.
     artifact_dir: str = ".artifacts"
     artifact_max_bytes: int = Field(default=8 * 1024 * 1024, ge=1024)
+    # Per-project quotas (Phase 19a, ADR-154). These are the defaults; an owner or admin may
+    # override each one for a project. A project at a quota has the excess refused loudly
+    # (`QUOTA_EXCEEDED`); what it already stored keeps working. `quotas_enabled=false` is an
+    # emergency switch (and the benchmark's baseline): nothing is checked or counted while off.
+    quotas_enabled: bool = True
+    quota_agents: int = Field(default=500, ge=1, le=1_000_000)
+    quota_runs_per_day: int = Field(default=50_000, ge=1, le=100_000_000)
+    quota_events_per_day: int = Field(default=5_000_000, ge=1, le=100_000_000_000)
+    quota_artifact_bytes: int = Field(default=5 * 1024**3, ge=1024, le=1024**5)
+    # Counted data of one project is written one batch at a time (a per-project row lock); a batch
+    # that cannot get it within this long is answered 503 and retried by the SDK.
+    quota_lock_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
     # Server-side secret scan (ADR-130). An event whose strings exceed the size or time budget has
     # the offending values dropped; an artifact beyond its budget has its body dropped. Fail closed.
     security_scan_event_max_seconds: float = Field(default=1.0, gt=0)
