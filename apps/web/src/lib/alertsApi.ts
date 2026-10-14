@@ -67,6 +67,9 @@ function useWrite<A, R>(run: (arg: A) => Promise<R>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: run,
+    // A destination's variables hold its target URL (a secret in itself, for a Slack hook): drop the
+    // mutation from the cache as soon as nothing observes it instead of keeping it for minutes.
+    gcTime: 0,
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["alerts"] });
     },
@@ -136,6 +139,7 @@ export const useDeleteDestination = () =>
 /** Sends the fixed test alert. It changes nothing stored, so no list is refreshed. */
 export const useTestDestination = () =>
   useMutation({
+    gcTime: 0,
     mutationFn: async (id: string) =>
       unwrap(
         await api.POST("/v1/alerts/destinations/{destination_id}/test", {

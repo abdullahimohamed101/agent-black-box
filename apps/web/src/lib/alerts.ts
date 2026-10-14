@@ -424,6 +424,12 @@ export function problemFrom(error: unknown, kind: "rule" | "destination"): Probl
       };
     case "ALERT_RULE_NOT_FOUND":
       return { fields: {}, banner: "This rule was deleted in the meantime. Reload the list." };
+    case "ALERT_BUSY":
+      return {
+        fields: {},
+        banner:
+          "Alerts are being sent right now, so this change could not be made. Try again in a moment.",
+      };
     case "RATE_LIMITED":
       return {
         fields: {},

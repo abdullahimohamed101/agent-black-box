@@ -227,6 +227,11 @@ describe("the rule form", () => {
     );
   });
 
+  it("words the busy answer of a write that waited for a delivery", () => {
+    const busy = problemFrom(new ApiRequestError("x", 409, "ALERT_BUSY", null, true, {}), "rule");
+    expect(busy.banner).toMatch(/being sent right now/);
+  });
+
   it("editing keeps the trigger fixed and previews the saved rule; a timeout is worded gently", async () => {
     stubAlertApi(true, (c) =>
       c.path.endsWith("/preview") ? errorBody("ALERT_PREVIEW_TIMEOUT", 504) : undefined,
@@ -326,6 +331,30 @@ describe("destinations", () => {
     await user.click(done);
     expect(screen.queryByTestId("secret-panel")).toBeNull();
     expect(document.body.textContent).not.toContain(secret);
+  });
+
+  it("the mutation cache does not keep the target URL a destination was saved with", async () => {
+    stubAlertApi(true);
+    tab("destinations");
+    const user = userEvent.setup();
+    const { client } = mount(<AlertsPage />, MANAGE);
+    await user.click(await screen.findByRole("button", { name: "Add a destination" }));
+    const form = within(screen.getByRole("form", { name: "New destination" }));
+    await user.type(form.getByLabelText("Name"), "Pager");
+    await user.type(form.getByLabelText(/^Webhook URL/), "https://pager.example.com/hook/abc123");
+    await user.click(form.getByRole("button", { name: "Add destination" }));
+    await screen.findByTestId("secret-panel");
+    // gcTime 0: the mutation (and the variables, which hold the URL) leaves the cache once done
+    await waitFor(() =>
+      expect(
+        JSON.stringify(
+          client
+            .getMutationCache()
+            .getAll()
+            .map((m) => m.state.variables),
+        ),
+      ).not.toContain("hook/abc123"),
+    );
   });
 
   it("rotate asks first and shows the new secret in the same panel", async () => {

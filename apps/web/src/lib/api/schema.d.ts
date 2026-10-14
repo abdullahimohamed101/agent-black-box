@@ -5026,7 +5026,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5125,7 +5125,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5222,7 +5222,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5317,7 +5317,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5418,7 +5418,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5515,7 +5515,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5621,7 +5621,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5716,7 +5716,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5815,7 +5815,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5912,7 +5912,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6007,7 +6007,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6108,7 +6108,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6207,7 +6207,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A name is taken or a workspace limit is reached. */
+            /** @description A name is taken, a workspace limit is reached, or a delivery holds the rows the change needs (`ALERT_BUSY`; retry). */
             409: {
                 headers: {
                     [name: string]: unknown;
