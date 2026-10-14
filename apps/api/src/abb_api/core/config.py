@@ -139,6 +139,22 @@ class Settings(BaseSettings):
     # Units are reserved from the database in blocks of limit / divisor (fewer writes, up to
     # N * (block - 1) early refusals across N processes); 1 means every request writes.
     limits_block_divisor: int = Field(default=20, ge=1, le=1000)
+    # Failed API-key authentication (Phase 19a, ADR-153). Only failures are counted, in fixed
+    # windows shared by every API process; exceeding any of the three answers 429 AUTH_THROTTLED.
+    # A valid request never spends a budget. The address budget needs `trust_proxy`.
+    auth_fail_enabled: bool = True
+    auth_fail_window_seconds: int = Field(default=60, ge=1, le=3600)
+    auth_fail_per_address: int = Field(default=30, ge=1)
+    auth_fail_per_credential: int = Field(default=10, ge=1)
+    auth_fail_global: int = Field(default=600, ge=1)
+    # Keys seen invalid are refused from memory for this long (no database lookup); a key seen
+    # valid is exempt from the throttle gate (never from authentication) for this long.
+    auth_fail_negative_seconds: float = Field(default=30.0, ge=0, le=3600)
+    auth_fail_known_valid_seconds: float = Field(default=300.0, ge=0, le=3600)
+    auth_fail_cache_entries: int = Field(default=10_000, ge=10, le=1_000_000)
+    # True only when a reverse proxy that you run sets `X-Forwarded-For` (its last entry is the
+    # client) and is the only way to reach the API; otherwise the header is ignored.
+    trust_proxy: bool = False
     # Window of the ingestion and artifact budgets, whose rates are per second (the minute
     # budgets use a 60 s window).
     limits_ingest_window_seconds: int = Field(default=10, ge=1, le=60)

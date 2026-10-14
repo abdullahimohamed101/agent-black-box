@@ -26,6 +26,7 @@ from abb_api.auth.keys_router import router as api_keys_router
 from abb_api.auth.login import LoginService
 from abb_api.auth.oidc import OidcClient
 from abb_api.auth.router import router as auth_router
+from abb_api.auth.throttle import AuthThrottle
 from abb_api.authz.audit import new_denial_limiter
 from abb_api.clock import Clock, system_clock
 from abb_api.comparison.router import router as comparison_router
@@ -222,6 +223,7 @@ def create_app(
             block_divisor=settings.limits_block_divisor,
             local=login_bucket,
         )
+        app.state.auth_throttle = AuthThrottle(settings, counters, engine)
         app.state.ingestion = IngestionService(engine, ingest_guard, settings, clock)
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)

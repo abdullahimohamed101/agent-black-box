@@ -61,6 +61,11 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
     # stay `pending`. The delivery tests (tests/test_alerts_delivery*.py) turn it on and deliver to
     # local receivers through `use_registry`.
     overrides.setdefault("alerts_delivery_enabled", False)
+    # The authorization matrix presents revoked, expired and unknown keys hundreds of times a
+    # minute from one place; the failed-auth throttle (ADR-153) has its own tests with real numbers.
+    overrides.setdefault("auth_fail_per_credential", 1_000_000)
+    overrides.setdefault("auth_fail_per_address", 1_000_000)
+    overrides.setdefault("auth_fail_global", 1_000_000)
     return Settings(
         environment="test",
         log_level="WARNING",

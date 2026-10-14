@@ -26,10 +26,27 @@ class Scope(StrEnum):
     ALERT_WRITE = "alert_write"
     ALERT_PREVIEW = "alert_preview"
     ALERT_TEST = "alert_test"
+    # Failed API-key authentication (ADR-153). Counted before any tenant is known, so these are
+    # global scopes keyed by a pseudonymous client address, a presented key id, or one fixed key.
+    AUTH_FAIL_ADDRESS = "auth_fail_address"
+    AUTH_FAIL_CREDENTIAL = "auth_fail_credential"
+    AUTH_FAIL_GLOBAL = "auth_fail_global"
+    # At most one "throttled" audit row per workspace per window; tenant-scoped.
+    AUTH_THROTTLE_AUDIT = "auth_throttle_audit"
 
     @property
     def is_global(self) -> bool:
-        return self is Scope.LOGIN_START
+        return self in _GLOBAL_SCOPES
+
+
+_GLOBAL_SCOPES = frozenset(
+    {
+        Scope.LOGIN_START,
+        Scope.AUTH_FAIL_ADDRESS,
+        Scope.AUTH_FAIL_CREDENTIAL,
+        Scope.AUTH_FAIL_GLOBAL,
+    }
+)
 
 
 def workspace_for(scope: Scope, workspace_id: uuid.UUID | None) -> uuid.UUID:
