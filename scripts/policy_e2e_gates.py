@@ -701,6 +701,9 @@ def indep_intent(event_type: str, a: dict[str, Any]) -> tuple[str, str, str | No
         exe = words[0].rsplit("/", 1)[-1][:128] if words else ""
         risk = a.get("shell.risk_class")
         attrs = {"category": a["shell.category"]} if a.get("shell.category") else {}
+        command = str(a.get("shell.command", ""))
+        if command and len(command) <= 4096:  # the SDK sends the exact command too (review P2-3)
+            attrs["command"] = command
         return "shell.execute", exe, risk if risk in ("R0", "R1", "R2", "R3", "R4") else None, attrs
     if event_type == "file.read":
         return "filesystem.read", str(a.get("file.path", "")), None, {}

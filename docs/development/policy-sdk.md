@@ -72,6 +72,8 @@ Capabilities are dotted words (`shell.execute`, `filesystem.read`, `github.push`
 Pick the resource and the attributes the policy author will write rules on; do not put content you would not want an approver to see (an approver sees the secret-scrubbed resource and arguments).
 The integrations send only the attributes the dry-run table names (`apps/api/src/abb_api/policies/mapping.py`), so a dry run predicts what enforcement does.
 
+`shell.execute` intents carry the **exact command** as `arguments["command"]` (beside `category`), so an approval covers that command and no other of the same shape and the approver sees it (scrubbed). A command over 4,096 characters cannot be shown or bound and fails closed whatever its risk class. A rule can match at most 64 top-level scalar arguments (and strings up to 4,096 characters); an intent with more is refused (`invalid_intent`, closed for R3/R4), never truncated. A reply the SDK cannot interpret (an unknown decision, a require-approval without an approval) fails closed at every risk class; a malformed `deny` is still a deny; a cancelled approval is always a denial.
+
 ## 5. Tests
 
 `packages/sdk-python/tests/policy_server.py` is a threaded fake of the endpoints (scriptable replies, delays, drops, junk) used by `test_policy_*.py`. Adapters use

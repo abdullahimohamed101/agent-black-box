@@ -54,7 +54,7 @@ workspace is the same `RUN_NOT_FOUND` as an unknown one.
 The server resolves the effective policy (the project's latest version, else the workspace base, else the empty policy: ADR-140), runs the pure evaluator, and
 returns `{decision, policy_id, policy_version, reason, on_error, approval_id?, approval_state?, expires_at?, on_expiry?}`. `policy_id` is the matching rule's id
 (null when the policy default applied); `reason` is the rule's own description, scanned for secrets, never built from the action. The rule's `attributes` match
-the **top-level scalar arguments** (strings up to 1,024 characters, integers, booleans; at most 32), so `arguments: {"force": true}` satisfies
+the **top-level scalar arguments** (strings, integers, booleans; at most 64, each string at most 4,096 characters, and an intent beyond either bound is refused: Amendment 2), so `arguments: {"force": true}` satisfies
 `attributes: {force: true}` and the dry-run mapping of ADR-140 and enforcement agree. The response has **no `intent_hash`**: consumption recomputes it from the intent
 (point 6), so the client never needs it and it never leaves the server.
 
@@ -76,9 +76,10 @@ A decision is the server's statement, so the **server** appends the events, in t
 `policy.reason`, and a transaction that rolls back takes its event with it. The events are accepted events (INV-1; new rows only) written through the
 ingestion store, so they get the same idempotency on `(workspace_id, event_id)`, the outbox job that re-derives the run, and the NOTIFY that wakes live streams.
 
-- Event ids are derived: SHA-256 over a domain string, the workspace, the approval id and the transition (`REQUESTED`, `APPROVED`, ..., `consumed`) for approval events
-  and over the run and `idempotency_key` for allow and deny. A redelivery or a second attempt at the same transition is an idempotent duplicate; a transition happens at
-  most once, so exactly one event per transition. Allow and deny without an `idempotency_key` get random ids (two identical actions in a run are two decisions).
+- Event ids are derived with an **HMAC under a server-only secret** (Amendment 2; the first version hashed public inputs only and an agent could pre-claim them): over the
+  workspace, the approval id and the transition (`REQUESTED`, `APPROVED`, ..., `consumed`) for approval events, and over the run, the `idempotency_key` and the intent hash for
+  allow and deny. A redelivery or a second attempt at the same transition is an idempotent duplicate; a transition happens at most once, so exactly one event per transition.
+  Allow and deny without an `idempotency_key` get random ids (two identical actions in a run are two decisions).
 - Event types: the existing `policy.decision`, `policy.action.blocked`, `approval.requested`, `.granted`, `.denied`, and three new ones registered here per the
   add-event-type checklist: `approval.consumed`, `approval.expired`, `approval.cancelled` (category approval, priority P0, require `approval.id`). Attributes are
   metadata only: `policy.id` (the rule, or `default`), `policy.version`, `policy.capability`, `policy.decision`, `policy.reason`, `approval.id`, `approval.state`,
@@ -243,10 +244,50 @@ and per workspace (1000): `429 TOO_MANY_OPEN_APPROVALS`, so a runaway agent cann
 | A person approving their own agent's action | `requested_by_user_id` compared with the decider | `test_decision.py` |
 | Cross-workspace, cross-project, cross-key | every statement carries the workspace, agents also project and key; one `APPROVAL_NOT_FOUND` for all | cross-workspace probes in `tests/authz`, `test_consume.py` |
 | Race between deciders / cancel / expiry | single-statement transitions with a state predicate | `test_decision.py` race tests count events and audit rows |
-| A hostile SDK forging the policy record | the server writes the events; its emitter name is reserved | `test_decide.py`, `test_reserved_events.py` (reserved emitter and reserved types; KI-143 resolved) |
+| A hostile SDK forging the policy record | the server writes the events; its emitter name and types are reserved | `test_decide.py`, `test_reserved_events.py` (reserved emitter and reserved types; KI-143 resolved) |
+| A hostile SDK **pre-claiming** the server's event ids so its insert is swallowed (review P1-1) | event ids are an HMAC under a server-only secret; a conflict on a server write is never swallowed: it aborts the transition | `test_event_ids.py` (the reviewer's probe as a test; a taken id fails the transition loudly) |
+| Approving what the approver could not see (review P2-3, P2-4) | a shell intent carries its exact command, shown scrubbed; an approval whose content the scanner withheld cannot be approved (`APPROVAL_CONTENT_UNAVAILABLE`), only denied | `test_shell_binding.py`, `test_content.py` |
 | Content leaking from an approval | scrubbed before storage (fail closed), never in events/audit/logs/agent responses; the hash never leaves | `test_content.py` plants sentinels and secrets |
 | A flood of asks, waits or requests | per-key and per-workspace budgets, waiter caps, open-request caps, body limits | `test_flood.py`, `test_wait.py` |
 | Rewriting history with the app credential | CHECKs + guard trigger, no DELETE/TRUNCATE | `test_state_machine_db.py` (limit: legal transitions by a holder of the credential remain possible) |
+
+### Amendment 2 (Phase 14 review, 2026-10-13)
+
+**P1-1: server event ids are unforgeable, and a conflict is loud.** The review showed an agent key could ingest innocuous events at the ids the server would derive
+(public inputs), after which the server's `INSERT ... ON CONFLICT DO NOTHING` reported a `conflict` that `lifecycle.emit` swallowed: the approval was granted and spent and the
+run held no `approval.granted` or `approval.consumed`. Fixed in three parts.
+
+1. *Ids.* `derived_event_id(key, workspace, *parts)` is `HMAC-SHA256(key, "abb.server-event.v2" || workspace || length-prefixed parts)`, truncated to a ULID-shaped `evt_` id. `key` is a random
+   32-byte installation secret in the append-only table `server_secrets` (migration 0094; the runtime role can SELECT and INSERT, not UPDATE, DELETE or TRUNCATE), created on first use under an
+   advisory lock and cached per process, so every API process and worker shares it, it survives restarts, and nothing in code or configuration holds it. Allow and deny decision events with an
+   `idempotency_key` mix the HMAC and the intent hash (the client's key alone no longer names the event; the same key for another intent is its own event).
+   **Rotation:** an operator inserts a new row as the owner role (`INSERT INTO server_secrets (name, secret) VALUES ('event-id', gen_random_bytes(32))`) and restarts the processes; the newest row
+   wins. Rotation changes the ids of future events only; stored events are never rewritten (INV-1), and a transition retried across a rotation simply writes a new event under the new key.
+   Anyone who can read the table (the owner role, a database administrator) can compute the ids; the secret protects against agent keys, not against the database.
+2. *Atomicity.* `emit` accepts a `conflict` in exactly one case, a retry of the server's own write: the stored event has the reserved emitter, the same type and the same approval id (the
+   retry has a different `occurred_at`, hence a different body). Anything else logs the fixed code `SERVER_EVENT_ID_CONFLICT` (no content) and raises `500 EVENT_RECORD_FAILED`.
+   Because the transition, its event and its audit row share one transaction, the whole transition rolls back: **a decision never takes effect without its record.** An agent that somehow
+   occupied an id causes a refused approval, not a silent one. (A person's approve then fails with a 500 until the cause is found; the cost is a stuck approval, the alternative was an
+   unrecorded spend.)
+3. *Tests* (`apps/api/tests/approvals/test_event_ids.py`): the reviewer's probe (ask, ingest innocuous events at the formerly derivable ids, approve, consume: the run shows `approval.granted` and
+   `approval.consumed`); the same for an `idempotency_key`; a client event at an id computed with the key is accepted as the client's own and the server's transition is refused and rolled back;
+   a retry of the server's own write is accepted; the key is created once and stable.
+
+**P2-2: attribute limits.** A rule matches every top-level scalar argument; there are at most 64 and each string is at most 4,096 characters (the canonical string limit). More is refused
+(`422 INTENT_INVALID`, `too_many_attributes` or `attribute_too_long`) instead of silently ignored, in the server and in the SDK's pre-send check, which share
+`packages/event-schema/tests/data/attribute-limit-vectors.json`. A refusal in the SDK follows the fail mode with `invalid_intent` (closed for R3/R4).
+
+**P2-3: shell intents carry the command.** `shell.execute` intents carry `arguments.command`, the exact command (at most 4,096 characters), beside `category`; the resource stays the executable name
+for matching. The approval therefore binds to the exact command, and the approver sees it, scrubbed, in the Approvals detail (replay test: approve `git push origin main`, present `git push --force origin main`:
+`APPROVAL_INTENT_MISMATCH`). A longer command cannot be shown or bound and fails closed in the SDK whatever its risk class. The canonical form is unchanged. The dry-run mapping adds the same `command` attribute.
+
+**P2-4: withheld content cannot be approved.** An approval whose resource or arguments the scanner withheld (`scrub_dropped`: too large, out of time, scan error) answers an approve with `409 APPROVAL_CONTENT_UNAVAILABLE`
+(the request stays open; deny stays possible). The panel says the content could not be shown, not that the role hides it.
+
+**Smaller fixes.** Consume refusals for a different intent are audited (`approval.consume_refused`, reason code only), at most one per approval per minute per process (P3-8). The expiry job re-arms itself when it
+fired before the approval was due by the application clock (P3-2). The waiter slot is released if the subscription fails (P3-3). A key with only `policy:check` cannot create a run by asking about an unknown one
+(`RUN_NOT_FOUND`; P3-4). The open-request caps are checked under a per-workspace advisory lock (P3-5). **Recorded, not changed:** P3-1: a grant stays valid after a rule's `approver_role` is tightened (consume
+re-evaluates the *decision*, not the approver's seniority); publishing a deny stops it, and it expires on its own (KI to file).
 
 ## Alternatives considered
 

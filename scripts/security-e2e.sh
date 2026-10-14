@@ -35,7 +35,10 @@ kill_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c";
 cleanup() {
   for p in "${pids[@]:-}"; do [ -n "$p" ] && kill_tree "$p"; done
   # SECURITY_E2E_LOG_DIR keeps the server logs of a failed run (they hold no payload bodies or secrets, INV-5).
-  if [ -n "${SECURITY_E2E_LOG_DIR:-}" ]; then mkdir -p "$SECURITY_E2E_LOG_DIR" && cp "$WORK"/*.log "$SECURITY_E2E_LOG_DIR"/ 2>/dev/null || true; fi
+  # `oidc.log` is not kept: the development-only fake provider's log can hold authorization codes and id tokens.
+  if [ -n "${SECURITY_E2E_LOG_DIR:-}" ]; then
+    mkdir -p "$SECURITY_E2E_LOG_DIR" && for f in "$WORK"/*.log; do [ "$(basename "$f")" = "oidc.log" ] || cp "$f" "$SECURITY_E2E_LOG_DIR"/ 2>/dev/null || true; done
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT

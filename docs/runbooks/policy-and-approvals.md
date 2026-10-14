@@ -4,6 +4,21 @@ For operators of a deployment and for the people who write policies and approve 
 approvals and single-use binding, with Amendment 1), ADR-142 (the SDK guard contract), `docs/development/policy-sdk.md` (how a developer wires an agent),
 `docs/SECURITY.md`. End-to-end evidence: `scripts/policy-e2e.sh` (`make policy-e2e`) and the plan `docs/plans/completed/phase-14-policy-and-approvals.md` once it is closed.
 
+## Read this first: what happens during a policy outage
+
+**With the policy service unreachable, every R0-R2 action and every unclassified action goes ahead, and every MCP tool call is unclassified.** Only R3/R4 actions and rules or capabilities you set
+closed are refused (and a wait for a person that breaks is always closed). The trace is a `policy.warning` per fallen-back call, which the SDK holds in a bounded in-memory spool (1,000) and re-sends
+when the API answers again or at flush/shutdown (KI-152 resolved); a process that exits during the outage loses its spool. If that is not acceptable for a capability, close it:
+
+- per capability, set by the operator (not changeable by the agent's code): `BLACKBOX_POLICY_FAIL_MODES="tool.*=closed,shell.execute=closed,github.*=closed,database.*=closed,filesystem.write=closed"` or `BlackBox(policy_fail_modes={...})`;
+- per call: `guard(..., on_error="closed")` or `@guarded(on_error="closed")`;
+- per rule: `on_error: closed` (honoured only by an SDK that cached the server's fail-mode table before the outage, so it complements, not replaces, the operator setting).
+
+Recommended for a sensitive deployment: `tool.*`, `shell.execute`, `github.*`, `database.*` and `filesystem.write` closed; `on_error: closed` on every rule that guards secrets, production or money; alert on
+`policy_fail_open` in `bb.stats()` and on `policy.warning` events. The price is that a policy outage then stops those agents, which is the point. Also: ask-only keys (`policy:check`) cannot create runs, but any key
+with `events:write` can, by ingesting; and the ids of the server's own events come from a secret in the append-only `server_secrets` table (rotation: insert a new `event-id` row as the owner role, restart API
+and worker; stored events are unaffected).
+
 ## What this is, and what it is not
 
 An agent that goes through the Python SDK asks the server before a sensitive action (`guard()`, the coding helpers, the MCP adapter, `@guarded`). The server
@@ -56,7 +71,7 @@ is now denied."); the API codes are `APPROVER_ROLE_REQUIRED`, `SELF_APPROVAL_FOR
 machine is enforced by the database); a refused or lost decision is audit-logged (`approval.decide`, outcome `denied`) and changes nothing.
 
 An approval is **bound to the exact action**: workspace, project, run, agent, capability, resource, risk class and canonical arguments (a SHA-256 the server keeps and never returns,
-logs or records). The SDK presents the whole action again to spend it; a different command, resource, argument, risk class, agent or run is `APPROVAL_INTENT_MISMATCH`, a second use is
+logs or records). The SDK presents the whole action again to spend it; a different command, resource, argument, risk class, agent or run is `APPROVAL_INTENT_MISMATCH` (a shell approval covers the exact command string: `git push origin main` does not cover `git push --force origin main`; replays are audited as `approval.consume_refused`, at most one per approval per minute), a second use is
 `APPROVAL_CONSUMED`, after expiry `APPROVAL_EXPIRED`, before a decision or after a denial `APPROVAL_NOT_APPROVED`, and a deny rule published after the approval was granted wins
 (`APPROVAL_POLICY_DENIED`; the approval stays usable if the deny is removed before it expires). Asking again for the same action after it was used creates a **new** request: the push needs a person again.
 
@@ -66,8 +81,8 @@ Decided in the SDK, in this order: the `on_error=` argument of the call; the ope
 fail-mode table **cached before the outage** (a rule's `on_error`, refreshed at most every five minutes or when the policy version moves); then the risk class: **R0-R2 and unclassified fail open,
 R3 and R4 fail closed**. Open means the action proceeds and a `policy.warning` with a fixed reason (`policy_service_unreachable`, `policy_timeout`, ...) is recorded; closed raises `PolicyUnavailable`.
 A decision call ends after `policy_timeout` (2 s by default) for the whole exchange. A wait for an approval that breaks (five consecutive failed rounds, a few seconds) is
-**always closed** whatever the mode: a rule that asked for a person never falls open on a network blip. The warning is delivered with the SDK's other events, so it survives only an outage shorter than the SDK's
-bounded retry window (five attempts, about eight seconds, by default); a longer outage still follows the fail mode and counts in `bb.stats()` (`policy_fail_open`, `policy_fail_closed`) but the warning is dropped with the other telemetry (KI-152).
+**always closed** whatever the mode: a rule that asked for a person never falls open on a network blip. The warning is an ordinary event, but one the exporter drops after its bounded retry window (five attempts, about eight seconds) is kept in a bounded spool and re-sent when the API answers (KI-152 resolved); the
+counters in `bb.stats()` (`policy_fail_open`, `policy_fail_closed`, `policy_warnings_lost`) are always there. A malformed `deny` is a deny, and an unknown decision or a require-approval without an approval fails closed whatever the risk class; a `429` on a wait is pacing, not failure.
 
 ## Expiry, waiting and limits
 
@@ -93,4 +108,5 @@ key cannot be used by the new key** (an approval belongs to the key that asked):
 - Stuck "waiting" runs: confirm the worker is running (`docs/runbooks/worker-lag.md`): the run state follows the server-written events through the summariser; a request that was never decided becomes `EXPIRED` at its expiry regardless of the agent.
 - A fail-open warning on a run means the agent acted without an answer from the policy service: check the API's health and the time of the warning against an outage.
 - Database: the runtime role cannot delete or truncate `approvals`, and a trigger refuses every update that is not a legal transition or that touches the bound intent. A holder of the runtime credential can still make a legal transition by hand (approve a waiting request): protect that credential, and rely on the audit trail and events to notice.
-- Deploy notes: migrations 0092 (policy versions) and 0093 (approvals) apply with `alembic upgrade head`; SDK 0.4.0 and MCP adapter 0.2.0 are needed on agents that enforce; the default is `policy_mode` off, so a deploy changes nothing by itself.
+- An approval whose content the scanner withheld (too large, out of time, a scan error) shows "could not be shown" and cannot be approved (`APPROVAL_CONTENT_UNAVAILABLE`); it can be denied, and the agent asks again with smaller arguments. Open-request caps are enforced per workspace under a lock.
+- Deploy notes: migrations 0092 (policy versions), 0093 (approvals) and 0094 (server secrets) apply with `alembic upgrade head`; SDK 0.4.0 and MCP adapter 0.2.0 are needed on agents that enforce; the default is `policy_mode` off, so a deploy changes nothing by itself.

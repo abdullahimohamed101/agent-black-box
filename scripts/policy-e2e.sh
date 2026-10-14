@@ -42,7 +42,10 @@ cleanup() {
   # and anything still recorded in $WORK/spawned.pids is a process group this run created.
   if [ -f "$WORK/spawned.pids" ]; then while read -r g; do [ -n "$g" ] && kill -TERM -- "-$g" 2>/dev/null || true; done <"$WORK/spawned.pids"; fi
   # POLICY_E2E_LOG_DIR keeps the server logs of a failed run (they hold no payload bodies, secrets or key tokens: INV-5).
-  if [ -n "${POLICY_E2E_LOG_DIR:-}" ]; then mkdir -p "$POLICY_E2E_LOG_DIR" && cp "$WORK"/*.log "$POLICY_E2E_LOG_DIR"/ 2>/dev/null || true; fi
+  # `oidc.log` is NOT kept: the development-only fake provider's log can hold authorization codes and id tokens.
+  if [ -n "${POLICY_E2E_LOG_DIR:-}" ]; then
+    mkdir -p "$POLICY_E2E_LOG_DIR" && for f in "$WORK"/*.log; do [ "$(basename "$f")" = "oidc.log" ] || cp "$f" "$POLICY_E2E_LOG_DIR"/ 2>/dev/null || true; done
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT

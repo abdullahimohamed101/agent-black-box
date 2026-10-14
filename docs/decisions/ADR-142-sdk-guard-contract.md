@@ -39,7 +39,7 @@ hostile server, a lost response or a bug in the SDK must never turn into a hang,
    `policy_timeout`, `policy_error`, `unauthorised`, `intent_too_large`, `invalid_intent` (the six of the plan) plus `internal_error`, `approval_consume_failed`, `approval_expired_allowed`. Arguments, resources and server error
    text are never logged or recorded; a test plants a sentinel in every intent field and searches logs, events and exception messages.
 9. **Enforcement scope is stated per integration (D1/D5).** The coding recorder asks before `read_file` (`filesystem.read`), `write_file`/`delete_file` (`filesystem.write`, argument `operation`), `run_command` and every
-   `git_*` helper that runs a command (`shell.execute`, resource the executable name, the classifier's risk class, argument `category`) and `git_push` (`github.push`, resource `<remote> <branch>`, argument `branch`, then its shell
+   `git_*` helper that runs a command (`shell.execute`, resource the executable name, the classifier's risk class, arguments `category` and `command`, the exact command: Amendment 1) and `git_push` (`github.push`, resource `<remote> <branch>`, argument `branch`, then its shell
    command, which a dry run also counts as two events). A denied action does not happen and records no step of its own (the server records `policy.action.blocked`; a `shell.command.started` for a command that never ran would be
    false). `guard_command/read/write/push` are the same checks for a host that acts itself; every recorder method performs its action, so none is record-only. The MCP adapter asks as `tool.<name>`, resource `mcp.call_tool` (the
    `tool.operation` it records), and returns an MCP error result instead of making a denied call. The LangGraph, OpenAI and Anthropic adapters do not run tools and are not hooked: `@guarded` on the tool function is the path
@@ -51,6 +51,24 @@ hostile server, a lost response or a bug in the SDK must never turn into a hang,
     the approval id" possible, because `guard()` blocks until the decision.
 12. **Version 0.4.0.** The surface is new public API (ADR-013's rule for minor versions); the MCP adapter now requires `agent-black-box>=0.4.0`. The SDK still has no runtime dependency; a test parses the policy modules' imports and
     fails on anything outside the standard library.
+
+### Amendment 1 (Phase 14 review, 2026-10-13)
+
+- **A verdict is read decision-first (P2-1).** `deny` raises `PolicyDenied` whatever else in the body is malformed (wrong types, missing fields, huge integers, extras). A 2xx reply whose `decision` is not
+  `allow`, `deny` or `require_approval`, or a `require_approval` without a usable `approval_id` and `expires_at`, fails **closed** with `PolicyUnavailable(policy_error)` at every risk class: a person was
+  asked for, or the server said something this client cannot interpret. A malformed `allow` (no integer `policy_version`) and a body that is not an object remain failed exchanges and follow the fail mode
+  (point 6); only transport and server errors use the risk-class mode.
+- **Cancelled is not expired (P2-5).** Only `EXPIRED` follows `on_expiry`; `CANCELLED` raises `ApprovalExpired` (a `PolicyDenied`) always: the requester withdrew, time did not run out.
+- **Attribute limits (P2-2).** The pre-send check refuses an intent with more than 64 top-level scalar arguments (`too_many_attributes`, reason `invalid_intent`); the strings limit stays 4,096. Shared vectors with the server.
+- **Shell commands are arguments (P2-3).** `guard_command` sends `arguments.command` (the exact string) so the approval binds to it and the approver sees it. A command over 4,096 characters is passed with `on_error="closed"`
+  and fails closed with `intent_too_large` whatever its risk class: it can be neither shown nor bound.
+- **Wait budget (P3-6, P3-7).** A `429` on the wait is the server pacing a busy key (many `aguard` waits share one key's 1,200/minute): it pauses for `Retry-After` and is not a failed round, so it never cancels a live
+  approval; the approval's own deadline still bounds it. The server `Date` is believed only within 10 minutes of the local clock; past that the local clock sets the wait budget, so a skewed server cannot cancel a live approval.
+- **`guard()` outside a run (P3-9).** With no current run there is nothing to bind a decision to, so the service is **not asked**: the fail mode applies with `invalid_intent` (R3/R4 refuse with `PolicyUnavailable`; R0-R2 and
+  unclassified proceed, and with no run there is no event to hold a `policy.warning`). The module-level `blackbox.guard` returns `via="disabled"` only when there is no client at all. The MCP README says the same: calls outside a run pass through.
+- **`policy.warning` survives an outage (KI-152).** The exporter hands warnings it drops (retries exhausted) to a bounded in-memory spool (1,000; oldest dropped and counted in `policy_warnings_lost`). They are put back in the
+  buffer, with their original ids (a copy that did arrive is a duplicate, not a second event), on the next successful batch, the next successful policy decision, `flush()` and `shutdown()`. What the bound lost is reported once
+  as one `policy.warning` with reason `policy_warnings_dropped` and the count in `policy.warnings_dropped` (a new registered integer attribute). It is memory only: a process that dies during an outage still loses them.
 
 ## Alternatives considered
 

@@ -85,7 +85,7 @@ be shown later. The policy text is also security-sensitive input written by a pe
 
    | Event | Capability | Resource | Risk class | Attributes |
    | --- | --- | --- | --- | --- |
-   | `shell.command.started` | `shell.execute` | the executable name (first word after `NAME=value` and `sudo`/`env`/`nohup`/`time`/`nice`, last path segment) | `shell.risk_class` | `category` |
+   | `shell.command.started` | `shell.execute` | the executable name (first word after `NAME=value` and `sudo`/`env`/`nohup`/`time`/`nice`, last path segment) | `shell.risk_class` | `category`, `command` (the exact command, only when it is at most 4,096 characters; Phase 14 review P2-3) |
    | `file.read` | `filesystem.read` | `file.path` | none | none |
    | `file.created`, `.modified`, `.deleted` | `filesystem.write` | `file.path` | none | `operation` |
    | `git.push` | `github.push` | `git.push_target` | none | `branch` |
