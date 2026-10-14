@@ -89,7 +89,13 @@ async def alert_sweep(job: Job, conn: AsyncConnection) -> None:
     if not await RuleRepository(conn, tenant).has_enabled(m.SCHEDULED_TRIGGERS):
         return  # nothing to watch; the next scheduled rule written starts the timer again
     # `sweep` itself never raises on a failing check, which would roll this back and end the chain.
-    await sweep(conn, tenant, now=system_clock(), skipped_cap=settings.alerts_skipped_per_window)
+    await sweep(
+        conn,
+        tenant,
+        now=system_clock(),
+        skipped_cap=settings.alerts_skipped_per_window,
+        grace=timedelta(seconds=2 * settings.alerts_sweep_interval_seconds),
+    )
     # The successor goes LAST (review P2-4): every writer takes its rule locks before it inserts
     # outbox rows, and this job must too. Inserting the successor first and locking rules in the
     # checks after it could deadlock with an API rule edit, which holds the rule's row and then

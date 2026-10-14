@@ -509,6 +509,30 @@ async def test_a_spend_rule_fires_once_per_day_at_the_crossing_and_not_before(ap
     assert beta != rule_id and by_agent != rule_id
 
 
+async def test_spend_that_crossed_in_the_last_sweep_interval_of_a_day_is_still_announced(
+    api: Api,
+) -> None:
+    """Review P3-2: the sweep before midnight saw less than the threshold; the next one runs after
+    midnight and used to look only at the new day."""
+    d = await destination(api)
+    rule_id = await rule(
+        api, [d], trigger=m.SPEND_OVER, filters={"threshold_usd": 10.0, "period": "day"}
+    )
+    await post_run(api, "SUCCESS", cost=11.0)  # started on 2026-10-07
+    await api.drain()
+
+    async def check(at: Any) -> int:
+        async with api.engine.begin() as conn:
+            return (await spend_check(conn, api.tenant.context, now=at, skipped_cap=CAP)).created
+
+    assert await check(utc(2026, 10, 8, 0, 5)) == 0  # well after midnight: yesterday is history
+    assert await check(utc(2026, 10, 8, 0, 0) + timedelta(seconds=30)) == 1
+    assert await check(utc(2026, 10, 8, 0, 1)) == 0  # once
+    (only,) = await rows(api)
+    assert only.dedupe_key == f"{rule_id}:2026-10-07"
+    assert only.payload_json["details"]["day"] == "2026-10-07"
+
+
 async def test_spend_numbers_are_the_ones_the_cost_page_shows(api: Api) -> None:
     from abb_api.alerts.spend import SpendReader
 

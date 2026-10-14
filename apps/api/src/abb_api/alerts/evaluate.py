@@ -25,8 +25,9 @@ cannot both pass the cooldown check.
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from functools import partial
 
 from abb_event_schema.ids import IdKind
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -44,6 +45,8 @@ from abb_api.tenancy import TenantContext
 logger = logging.getLogger(__name__)
 
 EXPIRING_BATCH = 500
+# How long after midnight UTC the sweep still looks at the day that just ended (two intervals).
+DEFAULT_GRACE = timedelta(seconds=120)
 
 
 @dataclass
@@ -205,13 +208,22 @@ async def evaluate_event(
 
 
 async def sweep(
-    conn: AsyncConnection, tenant: TenantContext, *, now: datetime, skipped_cap: int
+    conn: AsyncConnection,
+    tenant: TenantContext,
+    *,
+    now: datetime,
+    skipped_cap: int,
+    grace: timedelta = DEFAULT_GRACE,
 ) -> Outcome:
     """The scheduled checks of one workspace. Each check runs in a savepoint: one failing never
     stops the other, and the caller (the sweep job) must not fail on it, because a failed job
     would end the chain of timers."""
     total = Outcome()
-    for name, check in (("expiring", expiring_check), ("spend", spend_check)):
+    checks = (
+        ("expiring", expiring_check),
+        ("spend", partial(spend_check, grace=grace)),
+    )
+    for name, check in checks:
         try:
             async with conn.begin_nested():
                 part = await check(conn, tenant, now=now, skipped_cap=skipped_cap)
@@ -255,12 +267,34 @@ async def expiring_check(
 
 
 async def spend_check(
-    conn: AsyncConnection, tenant: TenantContext, *, now: datetime, skipped_cap: int
+    conn: AsyncConnection,
+    tenant: TenantContext,
+    *,
+    now: datetime,
+    skipped_cap: int,
+    grace: timedelta = DEFAULT_GRACE,
+) -> Outcome:
+    """Fire the spend rules for today's UTC day and, for `grace` after midnight, yesterday's too:
+    a run priced in the last moments of a day is seen by a sweep that only runs after midnight."""
+    total = Outcome()
+    today = now.astimezone(UTC).date()
+    days = [today]
+    if now.astimezone(UTC) - datetime(today.year, today.month, today.day, tzinfo=UTC) < grace:
+        days.insert(0, today - timedelta(days=1))
+    for day in days:
+        part = await _spend_day(conn, tenant, day, now=now, skipped_cap=skipped_cap)
+        total.created += part.created
+        total.skipped += part.skipped
+        total.dropped += part.dropped
+    return total
+
+
+async def _spend_day(
+    conn: AsyncConnection, tenant: TenantContext, day: date, *, now: datetime, skipped_cap: int
 ) -> Outcome:
     targets = await RuleRepository(conn, tenant).enabled_targets(m.SPEND_OVER)
     if not targets:
         return Outcome()
-    day = now.astimezone(UTC).date()
     loader = SubjectLoader(conn, tenant)
     slug = await loader.workspace_slug()
     reader = SpendReader(conn, tenant)
