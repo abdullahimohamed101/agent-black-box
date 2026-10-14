@@ -1,6 +1,6 @@
 """Expiry: the timer job, the lazy sweeps and what an expired approval is (gate 4)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import text
@@ -152,3 +152,27 @@ async def test_after_expiry_the_same_intent_gets_a_fresh_request(api: Api) -> No
     second = (await decide(api, body)).json()
     assert second["approval_id"] != first and second["approval_state"] == "REQUESTED"
     assert (await approval_row(api, first))["state"] == "EXPIRED"
+
+
+async def test_a_timer_fired_early_by_the_database_clock_is_re_armed(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review P3-2: the queue's clock ran ahead of the application's, the job found nothing due
+    and completed, and the expiry would then wait for a read. It now re-arms for the due time."""
+    await publish(api)
+    body, approval_id = await ask(api)
+    row = await approval_row(api, approval_id)
+    early = row["expires_at"] - timedelta(minutes=10)
+    monkeypatch.setattr("abb_api.approvals.job.system_clock", lambda: early)
+    await fire_the_timers(api)
+    assert (await approval_row(api, approval_id))["state"] == "REQUESTED"
+    (job,) = await pending_jobs(api)
+    delta = job["available_at"] - job["db_now"]  # type: ignore[operator]
+    assert 9 * 60 <= delta.total_seconds() <= 10 * 60 + 5
+    monkeypatch.setattr(
+        "abb_api.approvals.job.system_clock",
+        lambda: row["expires_at"] + timedelta(seconds=2),
+    )
+    await fire_the_timers(api)
+    assert (await approval_row(api, approval_id))["state"] == "EXPIRED"
+    assert len(await events_of(api, body["run_id"], "approval.expired")) == 1

@@ -66,6 +66,11 @@ _POLICY_WRAPPERS = frozenset({"sudo", "env", "nohup", "time", "nice"})
 MAX_EXECUTABLE = 128
 
 
+# The longest command a policy intent can carry (the intent's string limit): longer ones fail
+# closed rather than be approved unseen.
+MAX_COMMAND_CHARS = 4096
+
+
 def executable_of(command: str) -> str:
     """The policy resource of a shell command: the executable name (dry-run mapping, ADR-140).
 
@@ -1227,6 +1232,7 @@ class CodingRecorder:
         resource: str,
         risk_class: str | None = None,
         arguments: dict[str, object] | None = None,
+        on_error: str | None = None,
     ) -> None:
         if self.bb.config.policy_mode != "enforce":
             return
@@ -1235,21 +1241,29 @@ class CodingRecorder:
             resource,
             risk_class,
             arguments,
+            on_error=on_error,
             run=self.run,
         )
 
     def guard_command(self, command: str) -> None:
-        """Ask before a shell command runs: `shell.execute`, resource the executable name,
-        the classifier's risk class, argument `category`. Raises the policy exceptions; returns
-        None when the command may run. `run_command` calls this; call it yourself before running
-        a command outside the recorder."""
+        """Ask before a shell command runs: `shell.execute`, resource the executable name (what a
+        rule matches), the classifier's risk class, arguments `category` and `command`, the exact
+        command string, so an approver sees it (scrubbed by the server) and an approval binds to
+        that command and no other of the same shape. A command over `MAX_COMMAND_CHARS` cannot be
+        bound or shown: it is refused, failing closed whatever its risk class. Raises the policy
+        exceptions; returns None when the command may run. `run_command` calls this; call it
+        yourself before running a command outside the recorder."""
         verdict = self.classify(command)
         risk = verdict.risk_class if verdict.risk_class in RISK_CLASSES else None
+        arguments: dict[str, object] = {"command": command}
+        if verdict.category:
+            arguments["category"] = verdict.category
         self._guard(
             "shell.execute",
             executable_of(command),
             risk,
-            {"category": verdict.category} if verdict.category else None,
+            arguments,
+            on_error="closed" if len(command) > MAX_COMMAND_CHARS else None,
         )
 
     def guard_read(self, path: str) -> None:

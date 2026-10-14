@@ -16,6 +16,7 @@ from tests.approvals.helpers import (
     ask,
     consume,
     decide,
+    decision,
     events_of,
     intent,
     member,
@@ -70,9 +71,12 @@ async def test_a_scan_failure_drops_the_content_instead_of_storing_it_raw(api: A
     detail = (await api.client.get(f"/v1/approvals/{out['approval_id']}", headers=owner)).json()
     assert detail["content_withheld"] is True and detail["arguments"] is None
     assert SENTINEL not in str(detail) and TOKEN not in str(detail)
-    # The approval still works: it is bound to the unscrubbed hash, not to what is shown.
-    assert (await approve(api, out["approval_id"])).status_code == 200
-    assert (await consume(api, out["approval_id"], body)).status_code == 200
+    # Review P2-4: what could not be shown cannot be approved (fail closed); denying still works.
+    refused = await approve(api, out["approval_id"])
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "APPROVAL_CONTENT_UNAVAILABLE"
+    assert (await approval_row(api, out["approval_id"]))["state"] == "REQUESTED"
+    assert (await decision(api, owner, out["approval_id"], "deny")).status_code == 200
 
 
 async def test_a_planted_sentinel_appears_in_no_response_event_audit_row_or_log(

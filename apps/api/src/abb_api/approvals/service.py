@@ -74,6 +74,8 @@ logger = logging.getLogger(__name__)
 MAX_LIST_PAGE = 100
 MAX_SCRUBBED_JSON_BYTES = 60_000
 MIN_POLL_GAP_SECONDS = 0.25
+MISMATCH_AUDIT_SECONDS = 60.0
+MISMATCH_AUDIT_TRACKED = 10_000
 REASON_FALLBACK = "The policy author's reason is not available."
 CLOSED_CLASSES = frozenset({"R3", "R4"})
 
@@ -175,6 +177,7 @@ class ApprovalService:
         self._summary_delay = timedelta(seconds=settings.summary_debounce_seconds)
         self._key_limiter = _bucket(settings.policy_decide_per_minute_key)
         self._workspace_limiter = _bucket(settings.policy_decide_per_minute_workspace)
+        self._mismatch_audited: dict[uuid.UUID, float] = {}
         self.waiters = WaiterGate(
             settings.approval_waiters_per_workspace, settings.approval_waiters_per_process
         )
@@ -246,6 +249,10 @@ class ApprovalService:
             traced = await store.run_trace(run_id)
             if traced is not None and traced[0] != project_id:
                 raise run_rejected()  # a run of another project: the same 404 as no run
+            if traced is None and not holds(principal, actions.EVENT_WRITE):
+                # A key that may only ask (`policy:check`) cannot create runs by asking about
+                # ones that do not exist (review P3-4); a key that may ingest can anyway.
+                raise run_rejected()
             trace_id = traced[1] if traced else self._trace_for(body, run_id)
             ref = RunRef(project_id, run_id, trace_id, body.agent_id)
 
@@ -469,11 +476,15 @@ class ApprovalService:
         approval = await self._view(principal, project_id, key_id, identifier)
         if approval.state != m.REQUESTED or seconds <= 0:
             return self._wait_out(approval)
-        self.waiters.enter(principal.workspace_id)
-        subscription = (
-            self._hub.subscribe((principal.workspace_id, approval.run_id)) if self._hub else None
-        )
+        subscription = None
+        entered = False
         try:
+            # Everything that can fail is inside the try, so the slot is always given back
+            # (review P3-3: a failing subscribe used to leak one for the process lifetime).
+            self.waiters.enter(principal.workspace_id)
+            entered = True
+            if self._hub:
+                subscription = self._hub.subscribe((principal.workspace_id, approval.run_id))
             loop = asyncio.get_running_loop()
             deadline = loop.time() + seconds
             poll = self._settings.approval_wait_poll_seconds
@@ -496,7 +507,8 @@ class ApprovalService:
         finally:
             if subscription is not None:
                 subscription.close()
-            self.waiters.leave(principal.workspace_id)
+            if entered:
+                self.waiters.leave(principal.workspace_id)
 
     # ------------------------------------------------------------------ spending
 
@@ -505,6 +517,43 @@ class ApprovalService:
     ) -> s.ConsumeOut:
         """Spend the approval for exactly this intent. The server recomputes the hash from the
         presented intent; every refusal is one of five fixed codes and echoes nothing."""
+        try:
+            return await self._consume(principal, approval_id, body)
+        except AppError as error:
+            if error.code == m.INTENT_MISMATCH:
+                await self._audit_mismatch(principal, approval_id)
+            raise
+
+    async def _audit_mismatch(self, principal: Principal, approval_id: str) -> None:
+        """A different action presented under an approval is the replay attempt this phase exists
+        to catch: leave an audit row (reason code only), at most one per approval per minute so a
+        retry loop cannot flood the log (review P3-8). Best effort: never changes the answer."""
+        identifier = self._parse(approval_id)
+        now = self._clock().timestamp()
+        last = self._mismatch_audited.get(identifier)
+        if last is not None and now - last < MISMATCH_AUDIT_SECONDS:
+            return
+        if len(self._mismatch_audited) >= MISMATCH_AUDIT_TRACKED:
+            self._mismatch_audited.clear()  # bounded: forgetting only allows one extra row
+        self._mismatch_audited[identifier] = now
+        try:
+            async with self._engine.begin() as conn:
+                await AuditRepository(conn, principal.tenant).append(
+                    AuditEntry(
+                        actor_kind="api_key",
+                        actor_id=principal.actor_id,
+                        action="approval.consume_refused",
+                        resource_kind="approval",
+                        resource_id=approval_id,
+                        details={"approval_id": approval_id, "reason": m.INTENT_MISMATCH},
+                    )
+                )
+        except Exception:
+            logger.warning("approval audit failed", extra={"reason": "consume_refused"})
+
+    async def _consume(
+        self, principal: Principal, approval_id: str, body: s.ConsumeIn
+    ) -> s.ConsumeOut:
         project_id, key_id = self._agent(principal)
         identifier = self._parse(approval_id)
         digest = hash_of(principal, body.intent)
@@ -802,6 +851,15 @@ class ApprovalService:
                     "Your role may not decide this approval.",
                     category=ErrorCategory.AUTHORIZATION,
                     status_code=403,
+                )
+            if target == m.APPROVED and approval.scrub_dropped:
+                # The scanner withheld part of what is being approved (too large, out of time,
+                # a scan error): an approver must never approve what they cannot inspect.
+                # Denying stays possible. Fails closed (review P2-4).
+                raise approval_error(
+                    m.CONTENT_UNAVAILABLE,
+                    409,
+                    "The content of this request could not be shown, so it cannot be approved.",
                 )
             if (
                 approval.requested_by_user_id == principal.user_id

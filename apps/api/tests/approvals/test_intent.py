@@ -65,7 +65,7 @@ def test_the_hash_binds_the_workspace_and_the_project_of_the_key() -> None:
         assert hash_of(principal(changed), body(case["intent"])) != case["sha256"]
 
 
-# -- attribute limits shared with the SDK (review P2-2) ---------------------------------------------
+# -- attribute limits shared with the SDK (review P2-2) ---------------------------------------
 
 ATTRIBUTE_VECTORS = json.loads(
     (

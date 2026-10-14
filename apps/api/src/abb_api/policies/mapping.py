@@ -14,9 +14,10 @@ The events carry what happened, so each relevant event is turned into the intent
 Only `*.started` is mapped for commands and tool calls, so a call is counted once, not again when
 it completes. The risk class is `shell.risk_class` for commands and absent for everything else (a
 rule with `risk_class` never matches an intent without one). Attributes a rule may match:
-`shell.execute` has `category` (`shell.category`); `filesystem.write` has `operation`
-(`created`, `modified`, `deleted`); `github.push` has `branch` (`git.branch`); a tool call has
-none. There is no `github.merge` mapping because no event type records a merge: a merge appears
+`shell.execute` has `category` (`shell.category`) and `command` (`shell.command`, the exact
+command, omitted past 4,096 characters, where the SDK refuses to ask at all);
+`filesystem.write` has `operation` (`created`, `modified`, `deleted`); `github.push` has
+`branch` (`git.branch`); a tool call has none. There is no `github.merge` mapping because no event type records a merge: a merge appears
 as `shell.execute` (`gh pr merge`, `git merge`) and a rule on it matches the executable name.
 
 The executable name is the first word of the command after leading `NAME=value` assignments and
@@ -46,6 +47,7 @@ _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 _WRAPPERS = frozenset({"sudo", "env", "nohup", "time", "nice"})
 _UNSAFE_TOOL_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
 MAX_EXECUTABLE = 128
+MAX_COMMAND = 4096
 MAX_TOOL_CAPABILITY = 120
 
 
@@ -70,9 +72,12 @@ def intent_for(event_type: str, attributes: Mapping[str, Any]) -> Intent | None:
         category = _text(attributes, "shell.category")
         if category:
             extra["category"] = category
+        command = _text(attributes, "shell.command") or ""
+        if command and len(command) <= MAX_COMMAND:
+            extra["command"] = command  # the SDK sends the exact command too (review P2-3)
         return Intent(
             "shell.execute",
-            executable_of(_text(attributes, "shell.command") or ""),
+            executable_of(command),
             risk if risk in RISK_CLASSES else None,
             extra,
         )

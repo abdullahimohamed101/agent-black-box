@@ -158,16 +158,32 @@ def test_the_dry_run_table_has_no_capability_the_sdk_does_not_send() -> None:
     }  # fmt: skip
 
 
-def test_arguments_carry_only_the_mapped_attributes_never_content(
+def test_arguments_carry_only_the_mapped_attributes_never_file_content(
+    srv: PolicyServer, tmp_path: Path
+) -> None:
+    """The exact shell command is an argument by design (review P2-3: the approver must see what
+    they approve and the approval binds to it); file content is never one."""
+    bb, rec = recorder(srv, tmp_path)
+    with rec.run:
+        rec.run_command("echo hi > out.txt")
+        rec.write_file("w.txt", "SENTINEL-TOKEN-123")
+    bodies = decided(srv)
+    for body in bodies:
+        assert "SENTINEL" not in str(body)
+        assert set(body["arguments"]) <= {"category", "command", "operation", "branch"}
+    shell = [b for b in bodies if b["capability"] == "shell.execute"]
+    assert [b["arguments"]["command"] for b in shell] == ["echo hi > out.txt"]
+    bb.shutdown()
+
+
+def test_a_command_over_the_limit_fails_closed_whatever_its_risk(
     srv: PolicyServer, tmp_path: Path
 ) -> None:
     bb, rec = recorder(srv, tmp_path)
-    with rec.run:
-        rec.run_command("echo SENTINEL-TOKEN-123 > out.txt")
-        rec.write_file("w.txt", "SENTINEL-TOKEN-123")
-    for body in decided(srv):
-        assert "SENTINEL" not in str(body)
-        assert set(body["arguments"]) <= {"category", "operation", "branch"}
+    with rec.run, pytest.raises(PolicyUnavailable) as info:
+        rec.run_command("echo " + "a" * 5000)  # R0, yet it cannot be shown or bound
+    assert info.value.reason == "intent_too_large"
+    assert decided(srv) == []
     bb.shutdown()
 
 
@@ -287,7 +303,7 @@ def test_hosts_can_ask_before_acting_themselves(srv: PolicyServer, tmp_path: Pat
         "shell.execute", "filesystem.read", "filesystem.write", "filesystem.write", "github.push",
     ]  # fmt: skip
     assert bodies[0]["resource"] == "rm" and bodies[0]["risk_class"] == "R3"
-    assert bodies[0]["arguments"] == {"category": "DESTRUCTIVE"}
+    assert bodies[0]["arguments"] == {"category": "DESTRUCTIVE", "command": "rm -rf build"}
     assert bodies[2]["arguments"] == {"operation": "created"}
     bb.shutdown()
 

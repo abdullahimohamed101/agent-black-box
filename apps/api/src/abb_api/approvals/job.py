@@ -6,14 +6,16 @@ firing also closes any other approval that is due, and a missed or late job is h
 sweep lazily too. Idempotent, as every handler must be: a row that is no longer open is skipped.
 """
 
+import uuid
 from datetime import timedelta
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.approvals.lifecycle import sweep_expired
+from abb_api.approvals.store import PgApprovalStore
 from abb_api.clock import system_clock
 from abb_api.jobs.context import job_settings
-from abb_api.jobs.outbox import Job
+from abb_api.jobs.outbox import EXPIRE_APPROVAL, Job, OutboxRepository
 from abb_api.tenancy import TenantContext
 
 SWEEP_LIMIT = 200
@@ -29,3 +31,20 @@ async def expire_approval(job: Job, conn: AsyncConnection) -> None:
     now = system_clock()
     delay = timedelta(seconds=job_settings().summary_debounce_seconds)
     await sweep_expired(conn, tenant, now, summary_delay=delay, limit=SWEEP_LIMIT)
+    # The queue fires by the database clock, which may run ahead of the application's: if this
+    # approval is still open and not yet due by OUR clock, the job came early. Re-arm it for the
+    # moment it is due, or its `approval.expired` and audit row would wait for someone to read
+    # (review P3-2). A one-second margin keeps a rounding difference from looping.
+    raw = job.payload.get("approval_id") if isinstance(job.payload, dict) else None
+    try:
+        approval_id = uuid.UUID(str(raw))
+    except ValueError:
+        return
+    approval = await PgApprovalStore(conn, tenant).get(approval_id)
+    if approval is not None and approval.is_open and approval.expires_at > now:
+        await OutboxRepository(conn, tenant).enqueue(
+            job_type=EXPIRE_APPROVAL,
+            dedupe_key=str(approval.id),
+            payload={"approval_id": str(approval.id)},
+            delay=approval.expires_at - now + timedelta(seconds=1),
+        )

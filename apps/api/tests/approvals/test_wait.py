@@ -4,6 +4,7 @@ import asyncio
 import time
 
 import httpx
+import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.api_fixtures import Api
@@ -166,3 +167,21 @@ async def test_the_wake_up_is_the_notification_not_the_poll(
         assert (await approve(api, approval_id)).status_code == 200
         assert (await asyncio.wait_for(waiter, 8))["state"] == "APPROVED"
         assert time.monotonic() - decided < 3
+
+
+async def test_a_failing_subscribe_gives_the_waiter_slot_back(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review P3-3: the slot was taken before the subscription and leaked if that raised."""
+    await publish(api)
+    _body, approval_id = await ask(api)
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("subscribe failed")
+
+    monkeypatch.setattr(api.app.state.hub, "subscribe", boom)
+    response = await api.client.get(
+        f"/v1/approvals/{approval_id}/wait?timeout=1", headers=api.headers("writer")
+    )
+    assert response.status_code == 500
+    assert api.app.state.approvals.waiters.open_waits == 0

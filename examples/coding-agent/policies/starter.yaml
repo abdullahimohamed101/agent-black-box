@@ -7,7 +7,8 @@
 # Capabilities and resources follow the SDK's coding helpers:
 #   filesystem.read   resource: the file path (relative to the workspace)
 #   github.push       resource: "<remote> <branch>"; attribute `branch`
-#   shell.execute     resource: the executable name; risk_class R0-R4; attribute `category`
+#   shell.execute     resource: the executable name; risk_class R0-R4; attributes `category` and
+#                     `command` (the exact command, which an approval binds to)
 version: 1
 policies:
   - id: deny-env-read
