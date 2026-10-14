@@ -1188,3 +1188,208 @@ server_secrets = Table(
     CheckConstraint("name ~ '^[a-z][a-z0-9-]{0,63}$'", name="ck_server_secrets_name"),
     Index("ix_server_secrets_name", "name", "id"),
 )
+
+
+# ---------------------------------------------------------------- alerting (Phase 17, ADR-150)
+
+ALERT_TRIGGERS = (
+    "approval_requested",
+    "approval_expiring",
+    "security_finding",
+    "run_failed",
+    "spend_over",
+)
+ALERT_DESTINATION_TYPES = ("webhook", "slack", "email")
+ALERT_DESTINATION_STATES = ("active", "paused", "failing")
+ALERT_NOTIFICATION_STATUSES = ("pending", "delivered", "failed", "dead", "skipped")
+ALERT_SKIP_REASONS = ("cooldown", "destination_paused", "destination_deleted", "rule_deleted")
+
+# Where an alert goes. The target (URL or recipients) and the signing secret exist only as AES-GCM
+# ciphertext (`alerts/secrets.py`); `key_id` is the `server_secrets` row whose key sealed them.
+# `masked_target` is a safe display form computed once, when the target is saved.
+alert_destinations = Table(
+    "alert_destinations",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("type", Text, nullable=False),
+    Column("config_encrypted", LargeBinary, nullable=False),
+    Column("signing_secret_encrypted", LargeBinary),
+    Column("key_id", BigInteger, ForeignKey("server_secrets.id"), nullable=False),
+    Column("masked_target", Text, nullable=False),
+    Column("state", Text, nullable=False, server_default="active"),
+    Column("consecutive_failures", Integer, nullable=False, server_default=text("0")),
+    Column("paused_reason", Text),
+    Column("created_by", Text, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+    Column("updated_by", Text, nullable=False),
+    _ts("updated_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    UniqueConstraint("workspace_id", "name", name="uq_alert_destinations_name"),
+    CheckConstraint(_in("type", ALERT_DESTINATION_TYPES), name="ck_alert_destinations_type"),
+    CheckConstraint(_in("state", ALERT_DESTINATION_STATES), name="ck_alert_destinations_state"),
+    CheckConstraint(
+        "(type = 'webhook') = (signing_secret_encrypted IS NOT NULL)",
+        name="ck_alert_destinations_signing",
+    ),
+    CheckConstraint(
+        "octet_length(config_encrypted) BETWEEN 29 AND 8192",
+        name="ck_alert_destinations_config_size",
+    ),
+    CheckConstraint("consecutive_failures >= 0", name="ck_alert_destinations_failures"),
+    CheckConstraint(
+        "char_length(name) BETWEEN 1 AND 80 AND char_length(masked_target) <= 400 "
+        "AND char_length(created_by) <= 128 AND char_length(updated_by) <= 128",
+        name="ck_alert_destinations_text_sizes",
+    ),
+    CheckConstraint(
+        "paused_reason IS NULL OR paused_reason IN ('manual', 'failures')",
+        name="ck_alert_destinations_paused_reason",
+    ),
+)
+
+# What to watch and where to send it. `project_id IS NULL` means every project of the workspace.
+# `filters` holds only the closed set of per-trigger fields the API validates.
+alert_rules = Table(
+    "alert_rules",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("name", Text, nullable=False),
+    Column("trigger", Text, nullable=False),
+    Column("filters", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("cooldown_seconds", Integer, nullable=False, server_default=text("0")),
+    Column("enabled", Boolean, nullable=False, server_default=text("true")),
+    _ts("last_fired_at"),
+    Column("created_by", Text, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+    Column("updated_by", Text, nullable=False),
+    _ts("updated_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="RESTRICT",
+    ),
+    UniqueConstraint("workspace_id", "name", name="uq_alert_rules_name"),
+    CheckConstraint(_in("trigger", ALERT_TRIGGERS), name="ck_alert_rules_trigger"),
+    CheckConstraint("jsonb_typeof(filters) = 'object'", name="ck_alert_rules_filters_object"),
+    CheckConstraint("pg_column_size(filters) < 2048", name="ck_alert_rules_filters_size"),
+    CheckConstraint("cooldown_seconds BETWEEN 0 AND 604800", name="ck_alert_rules_cooldown"),
+    CheckConstraint(
+        "char_length(name) BETWEEN 1 AND 80 AND char_length(created_by) <= 128 "
+        "AND char_length(updated_by) <= 128",
+        name="ck_alert_rules_text_sizes",
+    ),
+    Index("ix_alert_rules_trigger", "workspace_id", "trigger", postgresql_where=text("enabled")),
+)
+
+alert_rule_destinations = Table(
+    "alert_rule_destinations",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("rule_id", UUID(as_uuid=True), nullable=False),
+    Column("destination_id", UUID(as_uuid=True), nullable=False),
+    PrimaryKeyConstraint("workspace_id", "rule_id", "destination_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "rule_id"],
+        ["alert_rules.workspace_id", "alert_rules.id"],
+        ondelete="CASCADE",
+    ),
+    ForeignKeyConstraint(
+        ["workspace_id", "destination_id"],
+        ["alert_destinations.workspace_id", "alert_destinations.id"],
+        ondelete="CASCADE",
+    ),
+    Index("ix_alert_rule_destinations_destination", "workspace_id", "destination_id"),
+)
+
+# One row per (rule, destination, event). `id` is the `alert_id` receivers dedupe on. The payload
+# holds only the closed, content-free fields built in `alerts/payload.py`. A deleted rule or
+# destination leaves its history with the reference cleared (nothing else about the row changes).
+alert_notifications = Table(
+    "alert_notifications",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False),
+    Column("id", UUID(as_uuid=True), nullable=False),
+    Column("rule_id", UUID(as_uuid=True)),
+    Column("destination_id", UUID(as_uuid=True)),
+    Column("trigger", Text, nullable=False),
+    Column("dedupe_key", Text, nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("run_id", UUID(as_uuid=True)),
+    Column("finding_id", UUID(as_uuid=True)),
+    Column("approval_id", UUID(as_uuid=True)),
+    Column("agent_slug", Text),
+    Column("severity", Text, nullable=False),
+    Column("payload_json", JSONB, nullable=False),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("skip_reason", Text),
+    Column("attempts", Integer, nullable=False, server_default=text("0")),
+    _ts("next_attempt_at", nullable=False, default_now=True),
+    Column("last_error_code", Text),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("delivered_at"),
+    PrimaryKeyConstraint("workspace_id", "id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "rule_id"],
+        ["alert_rules.workspace_id", "alert_rules.id"],
+        ondelete="SET NULL (rule_id)",
+    ),
+    ForeignKeyConstraint(
+        ["workspace_id", "destination_id"],
+        ["alert_destinations.workspace_id", "alert_destinations.id"],
+        ondelete="SET NULL (destination_id)",
+    ),
+    UniqueConstraint(
+        "workspace_id", "rule_id", "destination_id", "dedupe_key", name="uq_alert_notifications_key"
+    ),
+    CheckConstraint(_in("trigger", ALERT_TRIGGERS), name="ck_alert_notifications_trigger"),
+    CheckConstraint(
+        _in("status", ALERT_NOTIFICATION_STATUSES), name="ck_alert_notifications_status"
+    ),
+    CheckConstraint(_in("severity", FINDING_SEVERITIES), name="ck_alert_notifications_severity"),
+    CheckConstraint(
+        "jsonb_typeof(payload_json) = 'object' AND pg_column_size(payload_json) < 4096",
+        name="ck_alert_notifications_payload",
+    ),
+    CheckConstraint(
+        "(status = 'skipped') = (skip_reason IS NOT NULL)", name="ck_alert_notifications_skip"
+    ),
+    CheckConstraint(
+        "skip_reason IS NULL OR " + _in("skip_reason", ALERT_SKIP_REASONS),
+        name="ck_alert_notifications_skip_reason",
+    ),
+    CheckConstraint(
+        "(status = 'delivered') = (delivered_at IS NOT NULL)",
+        name="ck_alert_notifications_delivered",
+    ),
+    CheckConstraint("attempts >= 0", name="ck_alert_notifications_attempts"),
+    CheckConstraint(
+        "last_error_code IS NULL OR last_error_code ~ '^[a-z][a-z0-9_]{0,47}$'",
+        name="ck_alert_notifications_error_code",
+    ),
+    CheckConstraint(
+        "char_length(dedupe_key) <= 200 AND (agent_slug IS NULL OR char_length(agent_slug) <= 200)",
+        name="ck_alert_notifications_text_sizes",
+    ),
+    # The delivery worker (step 2) claims due rows across workspaces.
+    Index(
+        "ix_alert_notifications_due",
+        "next_attempt_at",
+        postgresql_where=text("status = 'pending'"),
+    ),
+    Index(
+        "ix_alert_notifications_history", "workspace_id", text("created_at DESC"), text("id DESC")
+    ),
+    # Cooldown: "was a notification made for this rule and destination recently?"
+    Index(
+        "ix_alert_notifications_cooldown",
+        "workspace_id",
+        "rule_id",
+        "destination_id",
+        text("created_at DESC"),
+    ),
+)

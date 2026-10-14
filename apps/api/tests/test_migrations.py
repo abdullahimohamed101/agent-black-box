@@ -90,6 +90,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0092",
         "0093",
         "0094",
+        "0095",
     ]
 
 
@@ -297,4 +298,25 @@ def test_0094_creates_the_append_only_server_secrets_table_and_drops_it_again() 
         alembic(url, "upgrade", "0094")
         assert asyncio.run(table_names(url)) - before == {"server_secrets"}
         alembic(url, "downgrade", "0093")
+        assert asyncio.run(table_names(url)) == before
+
+
+def test_0095_creates_the_alerting_tables_and_drops_them_again() -> None:
+    """Phase 17 step 1: four additive tables; the previous head upgrades to it and back."""
+    created = {
+        "alert_destinations",
+        "alert_rules",
+        "alert_rule_destinations",
+        "alert_notifications",
+    }
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0094")
+        before = asyncio.run(table_names(url))
+        assert not created & before
+        alembic(url, "upgrade", "0095")
+        assert asyncio.run(table_names(url)) - before == created
+        assert {"ix_alert_notifications_due", "ix_alert_notifications_history"} <= asyncio.run(
+            index_names(url, "alert_notifications")
+        )
+        alembic(url, "downgrade", "0094")
         assert asyncio.run(table_names(url)) == before

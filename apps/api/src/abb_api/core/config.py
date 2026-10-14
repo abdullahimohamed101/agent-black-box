@@ -150,6 +150,26 @@ class Settings(BaseSettings):
     # agent cannot bury the approvers. The decision endpoint refuses more with a 429.
     approval_max_open_per_key: int = Field(default=100, ge=1)
     approval_max_open_per_workspace: int = Field(default=1000, ge=1)
+    # Alerting (Phase 17, ADR-150). Limits keep a workspace's configuration and write rate bounded.
+    alerts_max_rules_per_workspace: int = Field(default=100, ge=1)
+    alerts_max_destinations_per_workspace: int = Field(default=50, ge=1)
+    alerts_max_destinations_per_rule: int = Field(default=10, ge=1)
+    alerts_writes_per_minute: int = Field(default=30, ge=1)
+    # How often the scheduled checks (approval about to expire, daily spend) run per workspace.
+    alerts_sweep_interval_seconds: float = Field(default=60.0, gt=0)
+    # At most this many `skipped` history rows per rule and destination per cooldown window; past
+    # it a suppressed notification is only counted in the log, so a flood cannot fill the table.
+    alerts_skipped_per_window: int = Field(default=25, ge=0)
+    alerts_preview_timeout_seconds: float = Field(default=5.0, gt=0)
+    # Email delivery needs an operator-provided SMTP relay (no mail credentials in the database).
+    # Without `smtp_host`, email destinations cannot be created. The password is read from the
+    # environment only and is never logged or returned.
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_starttls: bool = True
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from: str | None = None
     # Lets the CLI mint sessions without an identity provider. Honoured only in development/test.
     allow_dev_sessions: bool = False
 
@@ -172,6 +192,20 @@ class Settings(BaseSettings):
         ):
             raise ValueError("an http web_origin is only for localhost in development or test")
         return self
+
+    @model_validator(mode="after")
+    def _smtp_is_complete(self) -> "Settings":
+        if self.smtp_host is not None and not self.smtp_host.strip():
+            self.smtp_host = None  # an empty ABB_SMTP_HOST means "not configured"
+        if self.smtp_host is not None and not self.smtp_from:
+            raise ValueError("smtp_host needs smtp_from (the sender address)")
+        if (self.smtp_username is None) != (self.smtp_password is None):
+            raise ValueError("smtp_username and smtp_password go together")
+        return self
+
+    @property
+    def smtp_configured(self) -> bool:
+        return self.smtp_host is not None
 
     @property
     def web_origin_normalised(self) -> str | None:
