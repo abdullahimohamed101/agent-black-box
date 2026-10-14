@@ -14,6 +14,7 @@ a decision is ordered by time. That is the documented cost of server-written dec
 """
 
 import hashlib
+import hmac
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -59,11 +60,16 @@ class RunRef:
     agent_id: str
 
 
-def derived_event_id(workspace_id: uuid.UUID, *parts: str) -> str:
-    """A deterministic `evt_` id: the same inputs always name the same event."""
-    material = b"\0".join(p.encode("utf-8") for p in parts)
-    digest = hashlib.sha256(b"abb.server-event.v1\0" + workspace_id.bytes + b"\0" + material)
-    return public_id(IdKind.EVENT, uuid.UUID(bytes=digest.digest()[:16]))
+def derived_event_id(key: bytes, workspace_id: uuid.UUID, *parts: str) -> str:
+    """A deterministic `evt_` id the server alone can compute: the same inputs and key always
+    name the same event (idempotent redelivery), but without `key` (the installation's
+    server-only secret, `serverkey.py`) nobody can predict it, so a client cannot pre-claim it
+    (ADR-141 amendment 2). The parts are length-prefixed so no two inputs share a message."""
+    material = b"".join(len(p.encode()).to_bytes(4, "big") + p.encode("utf-8") for p in parts)
+    digest = hmac.new(
+        key, b"abb.server-event.v2\0" + workspace_id.bytes + material, hashlib.sha256
+    ).digest()
+    return public_id(IdKind.EVENT, uuid.UUID(bytes=digest[:16]))
 
 
 def _event(
@@ -132,6 +138,7 @@ def transition_event(
     approval: Approval,
     *,
     now: datetime,
+    key: bytes,
     consumed: bool = False,
     current: tuple[str | None, int] | None = None,
 ) -> Event:
@@ -146,7 +153,11 @@ def transition_event(
         tenant,
         ref,
         event_id=derived_event_id(
-            tenant.workspace_id, "approval", identifier, CONSUMED if consumed else approval.state
+            key,
+            tenant.workspace_id,
+            "approval",
+            identifier,
+            CONSUMED if consumed else approval.state,
         ),
         event_type=event_type,
         attributes={

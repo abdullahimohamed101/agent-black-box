@@ -7,11 +7,13 @@ transition that lost its race calls nothing, so each transition leaves exactly o
 audit row. Nothing here receives or writes the intent, a resource, an argument or a comment.
 """
 
+import logging
 import uuid
 from datetime import datetime, timedelta
 
 from abb_event_schema.event import Event
 from abb_event_schema.ids import IdKind
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.approvals.events import RunRef, transition_event
@@ -19,10 +21,14 @@ from abb_api.approvals.model import Approval
 from abb_api.approvals.store import PgApprovalStore
 from abb_api.audit.repository import ActorKind, AuditEntry, AuditRepository
 from abb_api.core.errors import AppError, ErrorCategory
-from abb_api.ids import public_id
+from abb_api.approvals.serverkey import event_id_key
+from abb_api.ids import parse_public_id, public_id
+from abb_api.ingestion.emitter import SERVER_EMITTER
 from abb_api.ingestion.store import PgEventStore
 from abb_api.tenancy import TenantContext
 
+logger = logging.getLogger(__name__)
+CONFLICT_CODE = "SERVER_EVENT_ID_CONFLICT"
 SYSTEM_ACTOR = "system:approval-expiry"
 EXPIRY_BATCH = 50
 
@@ -33,15 +39,62 @@ def run_rejected() -> AppError:
     )
 
 
+def event_record_failed() -> AppError:
+    return AppError(
+        "EVENT_RECORD_FAILED",
+        "The decision could not be recorded; nothing was changed.",
+        category=ErrorCategory.INTERNAL,
+        status_code=500,
+    )
+
+
 async def emit(
     conn: AsyncConnection, tenant: TenantContext, events: list[Event], summary_delay: timedelta
 ) -> None:
-    """Append server-written events on the caller's transaction (idempotent by event id)."""
+    """Append server-written events on the caller's transaction (idempotent by event id).
+
+    The transition and its event commit together, so a write that cannot be recorded aborts the
+    whole transaction: a decision never takes effect without its record (ADR-141 amendment 2).
+    A `conflict` (the id exists with a different body) is acceptable in exactly one case, a retry
+    of the server's own write (same emitter, type and approval); anything else means something
+    else holds an id only the server should be able to compute, and is refused loudly with a
+    fixed code and no content."""
     outcome = await PgEventStore(conn, tenant, summary_delay=summary_delay).ingest(events)
     if outcome.rejected:
         # The only rejection is a run that belongs to another project: callers check first, so
         # this is a race with a hostile client; refuse the whole request.
         raise run_rejected()
+    by_id = {e.event_id: e for e in events}
+    for result in outcome.results:
+        if result.status != "conflict":
+            continue
+        wanted = by_id[result.event_id]
+        if not await _is_server_retry(conn, tenant, wanted):
+            logger.error("server event id conflict", extra={"reason": CONFLICT_CODE})
+            raise event_record_failed()
+
+
+async def _is_server_retry(conn: AsyncConnection, tenant: TenantContext, event: Event) -> bool:
+    row = (
+        await conn.execute(
+            text(
+                "SELECT event_type, sdk ->> 'name' AS emitter, "
+                "attributes ->> 'approval.id' AS approval FROM events "
+                "WHERE workspace_id = :w AND event_id = :e"
+            ),
+            {"w": tenant.workspace_id, "e": parse_public_id(IdKind.EVENT, event.event_id)},
+        )
+    ).first()
+    return (
+        row is not None
+        and row.emitter == SERVER_EMITTER
+        and row.event_type == event.event_type
+        and row.approval == event.attributes.get("approval.id")
+    )
+
+
+async def key_of(conn: AsyncConnection) -> bytes:
+    return await event_id_key(conn.engine)
 
 
 async def run_ref(store: PgApprovalStore, approval: Approval) -> RunRef:
@@ -67,7 +120,9 @@ async def record(
     """The event of `approval`'s new state, and (if `audit_action`) its audit row."""
     store = PgApprovalStore(conn, tenant)
     ref = await run_ref(store, approval)
-    event = transition_event(tenant, ref, approval, now=now, consumed=consumed, current=current)
+    event = transition_event(
+        tenant, ref, approval, now=now, key=await key_of(conn), consumed=consumed, current=current
+    )
     await emit(conn, tenant, [event], summary_delay)
     if audit_action is not None:
         await AuditRepository(conn, tenant).append(

@@ -226,29 +226,40 @@ class _Verdict:
     on_expiry: str
 
 
+MAX_CLOCK_SKEW = 600.0  # seconds of server/client clock difference the wait budget believes
+MAX_COUNTER = 2**53  # a version beyond this is not a version
+INVALID = "invalid"  # a 2xx reply whose decision cannot be acted on
+
+
 def _parse_verdict(body: dict[str, Any] | None) -> _Verdict | None:
-    if body is None:
+    """Read `decision` FIRST. A deny is a deny whatever else is malformed; a decision that is
+    unknown, or a require_approval without a usable approval, is `INVALID` and the caller fails
+    CLOSED for any risk class (a person was asked for, or the server said something this client
+    cannot interpret). Only a body that is not an object at all is a transport-class failure."""
+    if not isinstance(body, dict):
         return None
     decision = body.get("decision")
     version = _int(body.get("policy_version"))
     policy_id = body.get("policy_id")
-    if decision not in ("allow", "deny", "require_approval") or version is None:
-        return None
-    if policy_id is not None and not isinstance(policy_id, str):
-        return None
+    if version is None or version > MAX_COUNTER:
+        version = 0
+    safe_id = _short(policy_id, 128) if isinstance(policy_id, str) else None
+    reason = _short(body.get("reason"))
+    if decision not in ("allow", "deny", "require_approval"):
+        return _Verdict(INVALID, None, 0, "", None, None, "deny")
+    if decision != "require_approval":
+        return _Verdict(decision, safe_id, version, reason, None, None, "deny")
     on_expiry = body.get("on_expiry")
     approval_id = body.get("approval_id")
+    expires_at = parse_timestamp(body.get("expires_at"))
+    if not (isinstance(approval_id, str) and _APPROVAL_ID.fullmatch(approval_id)) or (
+        expires_at is None
+    ):
+        return _Verdict(INVALID, safe_id, version, reason, None, None, "deny")
     return _Verdict(
-        decision,
-        _short(policy_id, 128) if policy_id is not None else None,
-        version,
-        _short(body.get("reason")),
-        approval_id
-        if isinstance(approval_id, str) and _APPROVAL_ID.fullmatch(approval_id)
-        else None,
-        parse_timestamp(body.get("expires_at")),
+        decision, safe_id, version, reason, approval_id, expires_at,
         on_expiry if on_expiry in ("deny", "allow") else "deny",
-    )
+    )  # fmt: skip
 
 
 def _reason_of_status(status: int) -> str:
@@ -395,6 +406,11 @@ class PolicyGuard:
         verdict = _parse_verdict(reply.body)
         if verdict is None:
             return self._fail(run, capability, resource, risk_class, on_error, REASON_ERROR)
+        if verdict.decision == INVALID:
+            name = capability if isinstance(capability, str) else ""
+            self._warn(run, name, REASON_ERROR)
+            self._stats.add("policy_fail_closed")
+            raise PolicyUnavailable(REASON_ERROR, name if _safe_name(name) else "")
         self._stats.add("policy_checks")
         self._refresh_table(verdict.policy_version)
         if verdict.decision == "allow":
@@ -402,8 +418,6 @@ class PolicyGuard:
         if verdict.decision == "deny":
             self._stats.add("policy_denied")
             raise PolicyDenied(verdict.policy_id, verdict.policy_version, verdict.reason)
-        if verdict.approval_id is None or verdict.expires_at is None:
-            return self._fail(run, capability, resource, risk_class, on_error, REASON_ERROR)
         progress.approval_id = verdict.approval_id
         self._stats.add("policy_approvals")
         return self._await_approval(run, intent, verdict, reply, cancel, progress)
@@ -447,7 +461,12 @@ class PolicyGuard:
         assert verdict.approval_id is not None and verdict.expires_at is not None
         approval = verdict.approval_id
         capability = intent["capability"]
-        server_now = decided.server_time if decided.server_time is not None else self._wall()
+        local_now = self._wall()
+        server_now = decided.server_time if decided.server_time is not None else local_now
+        if abs(server_now - local_now) > MAX_CLOCK_SKEW:
+            # A server Date far from ours must not shrink a live approval's wait budget (and so
+            # cancel it): past the bound, trust our own clock.
+            server_now = local_now
         left_on_approval = max(0.0, verdict.expires_at - server_now)
         budget = min(left_on_approval + WAIT_MARGIN, self._c.policy_wait_max)
         deadline = self._clock() + budget
@@ -559,6 +578,12 @@ class PolicyGuard:
         if state == "DENIED":
             self._stats.add("policy_denied")
             raise ApprovalDenied(verdict.policy_id, verdict.policy_version, verdict.reason)
+        if state == "CANCELLED":
+            # "The requester withdrew" is never "time ran out": on_expiry does not apply.
+            self._stats.add("policy_denied")
+            raise ApprovalDenied(
+                verdict.policy_id, verdict.policy_version, "The approval was cancelled."
+            )
         on_expiry = body.get("on_expiry") if body.get("on_expiry") in ("deny", "allow") else None
         if (on_expiry or verdict.on_expiry) == "allow":
             self._warn(run, capability, REASON_EXPIRY_ALLOWED)

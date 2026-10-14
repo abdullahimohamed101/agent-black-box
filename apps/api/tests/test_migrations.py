@@ -89,6 +89,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0091",
         "0092",
         "0093",
+        "0094",
     ]
 
 
@@ -285,3 +286,15 @@ async def trigger_names(url: str) -> set[str]:
         names = {r[0] for r in rows}
     await engine.dispose()
     return names
+
+
+def test_0094_creates_the_append_only_server_secrets_table_and_drops_it_again() -> None:
+    """Phase 14 review fix P1-1: one additive table; the previous head upgrades to it and back."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0093")
+        before = asyncio.run(table_names(url))
+        assert "server_secrets" not in before
+        alembic(url, "upgrade", "0094")
+        assert asyncio.run(table_names(url)) - before == {"server_secrets"}
+        alembic(url, "downgrade", "0093")
+        assert asyncio.run(table_names(url)) == before

@@ -37,6 +37,7 @@ from abb_api.approvals.lifecycle import (
 )
 from abb_api.approvals.model import Approval, NewApproval
 from abb_api.approvals.roles import may_decide
+from abb_api.approvals.serverkey import event_id_key
 from abb_api.approvals.store import PgApprovalStore
 from abb_api.approvals.waiters import WaiterGate
 from abb_api.audit.repository import AuditEntry, AuditRepository
@@ -238,6 +239,7 @@ class ApprovalService:
         run_id = run_uuid(body)
         tenant = principal.tenant
         now = self._clock()
+        key = await event_id_key(self._engine)
 
         async with self._engine.begin() as conn:
             store = PgApprovalStore(conn, tenant)
@@ -289,6 +291,7 @@ class ApprovalService:
                                 now=now,
                                 approval_id=approval.id,
                                 event_id=derived_event_id(
+                                    key,
                                     tenant.workspace_id,
                                     "approval",
                                     public_id(IdKind.APPROVAL, approval.id),
@@ -297,7 +300,7 @@ class ApprovalService:
                             ),
                             # One microsecond later, so the request sorts after its decision.
                             transition_event(
-                                tenant, ref, approval, now=now + timedelta(microseconds=1)
+                                tenant, ref, approval, now=now + timedelta(microseconds=1), key=key
                             ),
                         ],
                     )
@@ -312,7 +315,11 @@ class ApprovalService:
 
             # allow (or a default deny): an event, no approval row, no audit row.
             event_id = (
-                derived_event_id(tenant.workspace_id, "decide", body.run_id, body.idempotency_key)
+                # The client's key alone never names the event: the server secret and the intent
+                # are mixed in, so another intent under the same key is its own event.
+                derived_event_id(
+                    key, tenant.workspace_id, "decide", body.run_id, body.idempotency_key, digest
+                )
                 if body.idempotency_key
                 else None
             )
@@ -598,6 +605,7 @@ class ApprovalService:
                     policy_version=decision.policy_version, capability=approval.capability,
                     reason=reason, now=now, approval_id=approval.id,
                     event_id=derived_event_id(
+                        await event_id_key(self._engine),
                         tenant.workspace_id, "approval", identifier, "policy-denied",
                         str(decision.policy_version),
                     ),

@@ -1173,3 +1173,18 @@ approvals = Table(
     ),
     Index("ix_approvals_run", "workspace_id", "run_id"),
 )
+
+
+# Install-level secrets (migration 0094; append-only for the runtime role). The newest row of a
+# name is current. Used for the key that derives server-written event ids (ADR-141 amendment 2).
+server_secrets = Table(
+    "server_secrets",
+    metadata,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("secret", LargeBinary, nullable=False),
+    _ts("created_at", nullable=False, default_now=True),
+    CheckConstraint("octet_length(secret) >= 32", name="ck_server_secrets_length"),
+    CheckConstraint("name ~ '^[a-z][a-z0-9-]{0,63}$'", name="ck_server_secrets_name"),
+    Index("ix_server_secrets_name", "name", "id"),
+)

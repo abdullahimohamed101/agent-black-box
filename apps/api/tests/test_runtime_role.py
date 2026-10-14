@@ -21,7 +21,7 @@ from tests.test_event_store import ingest
 def _append_only_tables() -> tuple[str, ...]:
     """Declared by the migrations that made a table append-only (not by the test)."""
     declared: list[str] = []
-    for prefix in ("0047", "0092"):
+    for prefix in ("0047", "0092", "0094"):
         path = next((API_DIR / "migrations" / "versions").glob(f"{prefix}_*.py"))
         spec = importlib.util.spec_from_file_location(f"migration_{prefix}", path)
         assert spec and spec.loader
@@ -117,7 +117,7 @@ async def test_append_only_tables_are_exactly_the_declared_ones_and_the_rest_are
             )
         )
         privileges = {r.relname: r for r in rows}
-    assert set(APPEND_ONLY_TABLES) == {"events", "audit_log", "policy_versions"}
+    assert set(APPEND_ONLY_TABLES) == {"events", "audit_log", "policy_versions", "server_secrets"}
     for name in APPEND_ONLY_TABLES:
         row = privileges.pop(name)
         assert (row.can_update, row.can_delete, row.can_truncate) == (False, False, False), name
