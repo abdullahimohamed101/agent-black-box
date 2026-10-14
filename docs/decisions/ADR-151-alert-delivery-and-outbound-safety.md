@@ -77,3 +77,20 @@ open across the network wait (bounded by batch x timeout); a send-heavy installa
 Secrets are decrypted for the length of one request and appear in no log, audit row, history row or response. The hot ingestion path is untouched. A misconfigured or malicious target costs at most one bounded
 request per attempt per row, at most 20 rows per tick, and the destination is paused after ten consecutive failures. The price of at-least-once with dedupe on the receiver is that a receiver which ignores
 `alert_id` may see an alert twice.
+
+## Addendum 1 (Phase 17 step 4): a test-only network for the end-to-end suite
+
+The end-to-end suite (`scripts/alerts-e2e.sh`) must run the **real** API and worker against receivers on the same machine, but destinations must be HTTPS and the sender refuses loopback and any
+name that does not resolve to a public address. Rather than weaken the sender, the resolver, the connect step and the trust store are made replaceable from one file, in one place:
+
+- **`ABB_ALERTS_TEST_NETWORK_FILE`** (`Settings.alerts_test_network_file`, default **unset**). When set, `build_registry` builds its sender with `alerts/testnet.py`: names resolve from the file's `hosts` table
+  (read on every resolution, so a test can make a name answer publicly when saved and privately when delivered; every other name fails with `dns_failed`, the system resolver is never consulted), the connect
+  step opens `127.0.0.1:<port of the URL>` but only for an address some table entry hands out, and TLS trusts only the file's `ca_pem` (still verified against the hostname).
+- **Guarded.** A settings validator refuses the value unless `ABB_ENVIRONMENT` is `development` or `test` (`staging` and `production` fail at startup with "only for development or test"); the default is unset, so a
+  production-default configuration cannot reach it, and the sender logs a warning when it is active. Proven by `tests/test_alerts_testnet.py` (off by default; refused in `staging` and `production`; the default
+  registry keeps the system resolver; with the file, a public stub works and a private, loopback or IPv6-loopback answer is still `blocked_address` with no connection).
+- **What it does not change.** Everything between resolver and opener is the production code path: the address check on every answer, pinning, SNI, certificate verification, no redirects, the deadline,
+  the status-line cap. A private answer from the table is refused exactly as in production, which is how the suite proves a rebinding name is refused at delivery.
+- **Residual.** A development-environment installation (the default `ABB_ENVIRONMENT` is `development`) that sets this variable on purpose can aim the sender at loopback ports; that is the same trust level as
+  `ABB_ALLOW_DEV_SESSIONS` and the fake OIDC provider, and the variable is documented as test-only in OPERATIONS and SECURITY.
+

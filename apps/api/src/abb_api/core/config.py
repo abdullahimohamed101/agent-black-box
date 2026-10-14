@@ -1,6 +1,7 @@
 """Typed settings, validated once at startup (spec §108: fail fast)."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -181,6 +182,10 @@ class Settings(BaseSettings):
     alerts_retention_days: int = Field(default=30, ge=1, le=3650)
     alerts_prune_interval_seconds: float = Field(default=6 * 3600.0, gt=0)
     alerts_prune_batch: int = Field(default=2000, ge=1)
+    # TEST ONLY (scripts/alerts-e2e.sh): a JSON file that replaces DNS and the TLS trust store of
+    # the alert sender so local receivers can stand in for public hosts (alerts/testnet.py). Unset
+    # by default and refused outside development and test.
+    alerts_test_network_file: Path | None = None
     # Email delivery needs an operator-provided SMTP relay (no mail credentials in the database).
     # Without `smtp_host`, email destinations cannot be created. The password is read from the
     # environment only and is never logged or returned.
@@ -256,6 +261,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "judge_provider=fake is only for development or test (or set judge_allow_fake)"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _the_test_network_never_runs_in_production(self) -> "Settings":
+        if self.alerts_test_network_file is not None and self.environment not in (
+            "development",
+            "test",
+        ):
+            raise ValueError("alerts_test_network_file is only for development or test")
         return self
 
     @model_validator(mode="after")

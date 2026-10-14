@@ -186,6 +186,10 @@ auto-pause after ten consecutive failures, and the answer is never shown; a host
 operator configuration, trusted as such, and email is plain text over the relay's own security (STARTTLS fail-closed by default); the signing secret is shared with the receiver and a leaked one lets anyone forge
 alerts to that receiver until it is rotated (`rotate_signing_secret`, no overlap window).
 
+Alert end-to-end test network (Phase 17 step 4, ADR-151 addendum). `ABB_ALERTS_TEST_NETWORK_FILE` replaces the sender's DNS, connect address and TLS trust with a local file so the end-to-end suite can use receivers on this
+machine. It is **unset by default**, **refused at startup unless `ABB_ENVIRONMENT` is `development` or `test`**, logs a warning when active, and changes nothing between the address check and the connection
+(a private or loopback answer is still refused). Never set it on a deployment that receives real alerts; `tests/test_alerts_testnet.py` proves the default and the refusal.
+
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
 Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop; a real shared limiter,

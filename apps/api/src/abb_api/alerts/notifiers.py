@@ -342,13 +342,24 @@ class EmailNotifier:
 # ---------------------------------------------------------------- registry
 
 
+def _default_sender(settings: Settings) -> o.SafeHttpsSender:
+    if settings.alerts_test_network_file is not None:  # development/test only; see testnet.py
+        from abb_api.alerts.testnet import sender_from_file
+
+        return sender_from_file(
+            settings.alerts_test_network_file,
+            timeout_seconds=settings.alerts_request_timeout_seconds,
+        )
+    return o.SafeHttpsSender(timeout_seconds=settings.alerts_request_timeout_seconds)
+
+
 def build_registry(
     settings: Settings,
     http: o.SafeHttpsSender | None = None,
     *,
     smtp_tls_context: ssl.SSLContext | None = None,
 ) -> Registry:
-    sender = http or o.SafeHttpsSender(timeout_seconds=settings.alerts_request_timeout_seconds)
+    sender = http or _default_sender(settings)
     return {
         m.WEBHOOK: WebhookNotifier(sender),
         m.SLACK: SlackNotifier(sender),
