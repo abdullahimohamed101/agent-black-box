@@ -74,6 +74,7 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
         project_id = await costs.run_project(run_id)
         assert project_id is not None  # the run row is locked, so it exists
         before = await runs.started_at(run_id)
+        status_before = await runs.status(run_id)
         engine = CostEngine(await costs.price_book(project_id))
         derived = derive_run(events, engine)
         skipped = await runs.apply_derivation(run_id, derived, project_id)
@@ -112,8 +113,10 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
                 extra={"run_id": str(run_id), "skipped": skipped},
             )
         await _enqueue_detect(outbox, tenant, run_id, len(events))
-        if derived.status.value in RUN_FAIL_STATUSES:
+        if derived.status.value in RUN_FAIL_STATUSES and derived.status.value != status_before:
             # One small INSERT; the alert rules are matched by the `evaluate_alerts` job (ADR-150).
+            # Only the transition into a failed status asks: a summary that repeats the status
+            # (a late event, a cost rebuild) must not re-alert a run whose dedupe row was pruned.
             await enqueue_event(outbox, RUN_FAILED, run_id)
 
 

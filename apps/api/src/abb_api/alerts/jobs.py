@@ -76,6 +76,7 @@ async def evaluate_alerts(job: Job, conn: AsyncConnection) -> None:
         subject_id,
         now=system_clock(),
         skipped_cap=settings.alerts_skipped_per_window,
+        max_age=timedelta(days=settings.alerts_retention_days),
     )
 
 

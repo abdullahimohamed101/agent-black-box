@@ -17,7 +17,7 @@ times and a link back to the app. **It never carries captured content**: no path
   about a second may or may not be reported as requested (it depends on which comes first); a run that recovered or a finding that was deleted in that moment is not alerted. An approval that has been decided
   is never reported as about to expire.
 - **Once per event.** Each rule fires once per event and destination (a run per status, a finding per detector version and severity, an approval once as requested and once as about to expire, spend once
-  per UTC day). Re-summarising, re-ingesting or rebuilding never alerts again. A cooldown on the rule records further events as `skipped (cooldown)`; they are not sent later.
+  per UTC day). Re-summarising, re-ingesting or rebuilding does not alert again while the history row exists, and a run that ended before the retention window (`ABB_ALERTS_RETENTION_DAYS`, 30 days) is never announced, so pruning history cannot make a rebuild re-alert old runs. A cooldown on the rule records further events as `skipped (cooldown)`; they are not sent later.
 - **Limits protect the destination**: 20 deliveries a minute and 500 a day per destination by default (`ABB_ALERTS_RATE_PER_MINUTE`, `ABB_ALERTS_DAILY_CAP`); the excess is recorded as `skipped (rate_limited)`
   or `skipped (daily_cap)`, never queued. Up to 5 attempts with exponential backoff (30 s, 60 s, ... capped at 30 min), then `dead`. After 3 consecutive failed attempts a destination shows as failing and
   after 10 it is paused (an audit row by the system actor; a person resumes it).

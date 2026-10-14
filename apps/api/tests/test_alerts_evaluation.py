@@ -92,6 +92,53 @@ async def test_resummarising_and_late_events_do_not_alert_twice(api: Api) -> Non
     assert len(await rows(api)) == 1
 
 
+async def test_a_pruned_dedupe_row_does_not_let_a_resummary_or_rebuild_alert_again(
+    api: Api,
+) -> None:
+    """Phase 17 review P1-1: the dedupe row is pruned after the retention window; a cost rebuild
+    re-summarises every run, and a summary that merely repeats a failed status must not ask for an
+    alert again (only the transition into a failed status does)."""
+    await rule(api, [await destination(api)], trigger=m.RUN_FAILED)
+    run_id = await post_run(api, "FAILED")
+    await api.drain()
+    assert len(await rows(api)) == 1
+    async with api.engine.begin() as conn:
+        await conn.execute(text("DELETE FROM alert_notifications"))  # what alert_prune does
+        await OutboxRepository(conn, api.tenant.context).enqueue_summarize([to_uuid(run_id)])
+    await api.drain()
+    assert await rows(api) == []
+    # The rebuild entry point (POST /v1/cost/rebuild and the CLI both call enqueue_summarize).
+    async with api.engine.begin() as conn:
+        await OutboxRepository(conn, api.tenant.context).enqueue_summarize([to_uuid(run_id)])
+    await api.drain()
+    assert await rows(api) == []
+
+
+async def test_a_run_that_ended_before_the_retention_window_is_never_announced(api: Api) -> None:
+    await rule(api, [await destination(api)], trigger=m.RUN_FAILED)
+    run_id = await post_run(api, "FAILED")
+    await api.drain()
+    async with api.engine.begin() as conn:
+        await conn.execute(text("DELETE FROM alert_notifications"))
+        completed = (
+            await conn.execute(
+                text("SELECT coalesce(completed_at, started_at) FROM runs WHERE id = :i"),
+                {"i": to_uuid(run_id)},
+            )
+        ).scalar_one()
+        recent = await evaluate_event(
+            conn, api.tenant.context, m.RUN_FAILED, to_uuid(run_id),
+            now=completed + timedelta(days=29), skipped_cap=CAP, max_age=timedelta(days=30),
+        )  # fmt: skip
+        assert recent.created == 1
+        await conn.execute(text("DELETE FROM alert_notifications"))
+        old = await evaluate_event(
+            conn, api.tenant.context, m.RUN_FAILED, to_uuid(run_id),
+            now=completed + timedelta(days=31), skipped_cap=CAP, max_age=timedelta(days=30),
+        )  # fmt: skip
+        assert (old.created, old.skipped) == (0, 0)
+
+
 async def api_trace(api: Api, run_id: str) -> str:
     from abb_api.ids import public_id
 

@@ -181,14 +181,18 @@ async def evaluate_event(
     *,
     now: datetime,
     skipped_cap: int,
+    max_age: timedelta | None = None,
 ) -> Outcome:
     """The `evaluate_alerts` job: load the fact as it is NOW (a run that recovered, a finding that
-    was deleted or an approval that was decided in the meantime is simply not alerted) and match."""
+    was deleted or an approval that was decided in the meantime is simply not alerted) and match.
+    A failed run that ended more than `max_age` ago (the history retention) is not announced."""
     loader = SubjectLoader(conn, tenant)
     slug = await loader.workspace_slug()
     subject: m.Subject | None
     if trigger == m.RUN_FAILED:
-        subject = await loader.run_failed(subject_id, slug)
+        subject = await loader.run_failed(
+            subject_id, slug, not_before=now - max_age if max_age is not None else None
+        )
     elif trigger == m.SECURITY_FINDING:
         subject = await loader.security_finding(subject_id, slug)
     elif trigger == m.APPROVAL_REQUESTED:

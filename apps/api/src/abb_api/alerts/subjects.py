@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.alerts import model as m
@@ -31,7 +31,11 @@ class SubjectLoader:
         )
         return str(slug) if slug is not None else ""
 
-    async def run_failed(self, run_id: uuid.UUID, workspace_slug: str) -> m.Subject | None:
+    async def run_failed(
+        self, run_id: uuid.UUID, workspace_slug: str, *, not_before: datetime | None = None
+    ) -> m.Subject | None:
+        """A failed run. A run that ended before `not_before` is history, not news: the dedupe row
+        of such a run may have been pruned, and a rebuild must not announce it again."""
         row = (
             await self._conn.execute(
                 select(
@@ -39,6 +43,7 @@ class SubjectLoader:
                     _R.status,
                     _R.project_id,
                     _R.agent_slug,
+                    func.coalesce(_R.completed_at, _R.started_at).label("ended_at"),
                     _P.slug.label("project_slug"),
                     _P.name.label("project_name"),
                     _A.name.label("agent_name"),
@@ -59,6 +64,8 @@ class SubjectLoader:
             )
         ).first()
         if row is None or row.status not in m.RUN_FAIL_STATUSES:
+            return None
+        if not_before is not None and row.ended_at is not None and row.ended_at < not_before:
             return None
         return m.Subject(
             trigger=m.RUN_FAILED,
