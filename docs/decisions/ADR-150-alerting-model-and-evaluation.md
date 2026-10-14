@@ -56,8 +56,8 @@ event becomes a notification row. Nothing is sent yet: rows are written with sta
    message and run name and scans notification rows, jobs, audit rows and logs.
 7. **Evaluation rides the outbox.** The producers only enqueue one small `evaluate_alerts` job keyed by (trigger, subject id), in their own transaction: `summarize_run` when the derived status is `FAILED`,
    `TIMED_OUT` or `BLOCKED`; the findings job for each security finding that is **new or worse than what was stored before the pass** (it reads the run's stored security severities first, so an unchanged finding
-   rewritten by a rebuild enqueues nothing); the approval service when it creates an approval. No matching runs on those paths. The job loads the fact as it is *now* (a recovered run, a deleted finding or a decided
-   approval alerts nobody), selects the workspace's enabled rules of that trigger, applies project, agent, minimum severity and run-status filters, locks each rule row, and inserts notification rows.
+   rewritten by a rebuild enqueues nothing); the approval service when it creates an approval. No matching runs on those paths. The job loads the fact as it is *now* (a recovered run or a deleted finding alerts nobody; a
+   *requested* approval is announced whatever state it has reached, see below), selects the workspace's enabled rules of that trigger, applies project, agent, minimum severity and run-status filters, locks each rule row, and inserts notification rows.
 8. **Dedupe and cooldown.** The unique key is `(workspace, rule, destination, dedupe_key)` and every insert is `ON CONFLICT DO NOTHING`, so redelivered jobs, rebuilds and re-summaries add nothing. Keys: run
    `run_id:STATUS`; finding `finding_id:detector_version:severity` (a raised severity is a new alert, an unchanged finding after a rebuild is not); approval `approval_id:requested` and `approval_id:expiring`; spend
    `rule_id:YYYY-MM-DD` (UTC). **Cooldown is per rule and destination**: while a real (non-skipped) notification for that pair was created within the last `cooldown_seconds`, a new event is recorded as `skipped` with
@@ -84,3 +84,10 @@ Rotation is manual SQL plus a restart; there is no key-age report. A per-workspa
 
 Secrets are unreadable in the database and in backups without the `server_secrets` row, and a database reader who has both can read them, as with the event-id key: protect database read access as you protect the runtime
 credential. The hot paths pay one INSERT (or, in the findings job, one indexed SELECT plus an INSERT per new or worse security finding). History is honest about suppression without being unbounded.
+
+## Amendment 1 (Phase 17 adversarial review)
+
+- **Approval requested is a fact about the request (P2-3).** The first version loaded the approval only if it was still `REQUESTED` when the job ran, so a request decided within a second was announced or not
+  depending on which came first. Now the `approval_requested` evaluation loads the row in any state and adds `details.approval_state` (the current `approvals.state`: `REQUESTED`, `APPROVED`, `DENIED`, `EXPIRED`
+  or `CANCELLED`; a closed key in `DETAIL_KEYS`), so a receiver reads "requested, already approved". The `approval_expiring` alert still requires `REQUESTED`. The state in the details is the one the job saw, so it
+  can still differ between runs of the same race; the alert's existence cannot.

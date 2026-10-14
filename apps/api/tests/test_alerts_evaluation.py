@@ -27,7 +27,7 @@ from tests.alerts_helpers import (
     utc,
 )
 from tests.api_fixtures import NOW, Api
-from tests.approvals.helpers import ask, publish
+from tests.approvals.helpers import approve, ask, publish
 from tests.ingest_helpers import wire_event
 from tests.security_helpers import PLANT, planted_run
 
@@ -357,6 +357,25 @@ async def test_an_approval_request_alerts_once_per_rule_and_destination(api: Api
     await ask(api, arguments={"remote": "origin", "force": True})
     await api.drain()
     assert len(await rows(api)) == 4
+
+
+async def test_a_requested_approval_is_announced_however_fast_it_was_decided(web: Api) -> None:
+    """Review P2-3: the alert must not depend on whether the job ran before or after the decision;
+    the current state travels in the details."""
+    await publish(web)
+    await rule(web, [await destination(web)], trigger=m.APPROVAL_REQUESTED)
+    _, waiting = await ask(web)
+    await web.drain()
+    _, quick = await ask(web)
+    assert quick != waiting
+    decided = await approve(web, quick)  # decided before the job runs
+    assert decided.status_code == 200, decided.text
+    await web.drain()
+    found = {public(IdKind.APPROVAL, r.approval_id): r for r in await rows(web)}
+    assert set(found) == {waiting, quick}
+    assert found[waiting].payload_json["details"]["approval_state"] == "REQUESTED"
+    assert found[quick].payload_json["details"]["approval_state"] == "APPROVED"
+    assert set(found[quick].payload_json["details"]) <= DETAIL_KEYS
 
 
 async def test_an_expiring_approval_alerts_once_when_the_lead_time_is_reached(api: Api) -> None:

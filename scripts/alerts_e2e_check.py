@@ -195,7 +195,8 @@ def gate1_finish() -> None:
     wanted = {f["id"] for f in findings if SEVERITY.get(f["severity"], -1) >= SEVERITY["medium"]}
     check(len(wanted) >= 2, "the planted run has security findings at or above medium", total=len(findings), at_or_above=len(wanted))
     expected = {
-        "approval_requested": {g["approvals"]["expiring"], g["approvals"]["long"]},
+        # the decided one is announced too: the alert is about the request, whenever the job ran (review P2-3)
+        "approval_requested": {g["approvals"]["expiring"], g["approvals"]["long"], g["approvals"]["decided"]},
         "approval_expiring": {g["approvals"]["expiring"]},
         "security_finding": wanted,
         "run_failed": {g["runs"]["FAILED"], g["runs"]["TIMED_OUT"], g["runs"]["BLOCKED"]},
@@ -222,9 +223,7 @@ def gate1_finish() -> None:
     L.wait_until("every alert delivered to every destination", all_in, 150 + wait_for, diag=where)
     L.settle(4)  # then prove nothing more arrives
     for trigger, rid in g["rules"].items():
-        # an approval decided within a second of being asked may or may not be reported as requested (the job reads the fact as it is
-        # when it runs: a race), so it is left out of the requested set and checked separately below
-        rows = [r for r in history(rule_id=rid) if r.get("approval_id") != g["approvals"]["decided"]]
+        rows = history(rule_id=rid)
         subjects: dict[str, list[Any]] = {}
         for r in rows:
             subject = r.get({"security_finding": "finding_id", "run_failed": "run_id"}.get(trigger, "approval_id" if trigger.startswith("approval") else "_none"))
@@ -247,10 +246,8 @@ def gate1_finish() -> None:
     check(len(spend_rows) == 3, "spend over the threshold fires once per day per destination (a second costly run adds none)", rows=len(spend_rows))
 
     # the receivers' side
-    # the quickly decided approval may have been reported as requested (a race between the job and the decision): leave its alerts out
-    racy = {r["id"] for r in history() if r.get("approval_id") == g["approvals"]["decided"]}
-    hook_rows = {r["id"]: r for r in history(destination_id=dest_ids["hook"]) if r["id"] not in racy}
-    bodies = [b for b in recv_requests(key=g["hook_key"]) if b["alert_id"] not in racy]
+    hook_rows = {r["id"]: r for r in history(destination_id=dest_ids["hook"])}
+    bodies = recv_requests(key=g["hook_key"])
     alert_ids = [b["alert_id"] for b in bodies]
     extra = [(json.loads(b["body"])["kind"], json.loads(b["body"])["subject"], json.loads(b["body"])["details"], json.loads(b["body"])["created_at"]) for b in bodies
              if b["alert_id"] not in hook_rows]
@@ -262,9 +259,12 @@ def gate1_finish() -> None:
           valid=sum(b["signature_ok"] is True for b in bodies))
     parsed = [json.loads(b["body"]) for b in bodies]
     check({p["kind"] for p in parsed} == set(TRIGGER_RULES), "webhook bodies cover all five triggers", kinds=sorted({p["kind"] for p in parsed}))
+    states = {p["subject"].get("approval_id"): p["details"].get("approval_state") for p in parsed if p["kind"] == "approval_requested"}
+    check(states.get(g["approvals"]["decided"]) in ("REQUESTED", "APPROVED", "DENIED", "EXPIRED", "CANCELLED") and states.get(g["approvals"]["long"]) == "REQUESTED",
+          "the quickly decided approval is announced as requested, with the state the job saw in the details (a race decides which)", states=states)
     check(all((p.get("link") or "").startswith(os.environ["E2E_ORIGIN"]) for p in parsed), "every webhook body links back to the app", sample=parsed[0]["link"])
-    slack_rows = [r for r in history(destination_id=dest_ids["slack"]) if r["id"] not in racy]
-    slack_requests = [r for r in recv_requests(key=g["slack_key"], listener="slack") if r["alert_id"] not in racy]
+    slack_rows = history(destination_id=dest_ids["slack"])
+    slack_requests = recv_requests(key=g["slack_key"], listener="slack")
     slack_ids = [r["alert_id"] for r in slack_requests]
     repeated = {a: [(r["attempt"], round(r["at"], 2)) for r in slack_requests if r["alert_id"] == a] for a in set(slack_ids) if slack_ids.count(a) > 1}
     check(len(slack_requests) == len(slack_rows) == total and set(slack_ids) == {r["id"] for r in slack_rows},
@@ -272,8 +272,8 @@ def gate1_finish() -> None:
           not_in_history=[(r["alert_id"], r["attempt"], r["path"][:14], r["body"][:60]) for r in slack_requests if r["alert_id"] not in {x["id"] for x in slack_rows}],
           history_statuses=sorted({x["status"] for x in slack_rows}))
     check(all("text" in json.loads(r["body"]) for r in slack_requests), "Slack bodies are Slack-shaped (text)")
-    mail_rows = [r for r in history(destination_id=dest_ids["mail"]) if r["id"] not in racy]
-    mail = [m for m in recv_mail() if g["recipient"] in " ".join(m["to"]) and m["alert_id"] not in racy]
+    mail_rows = history(destination_id=dest_ids["mail"])
+    mail = [m for m in recv_mail() if g["recipient"] in " ".join(m["to"])]
     check(len(mail) == len(mail_rows) == total and {m["alert_id"] for m in mail} == {r["id"] for r in mail_rows},
           "the SMTP sink got one email per alert, X-ABB-Alert-Id equal to the history ids", messages=len(mail))
     check(all(os.environ["E2E_ORIGIN"] in m["raw"] for m in mail), "every email links back to the app")

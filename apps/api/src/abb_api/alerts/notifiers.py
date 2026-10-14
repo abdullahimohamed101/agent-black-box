@@ -140,7 +140,11 @@ def _lines(payload: Mapping[str, Any]) -> list[tuple[str, str]]:
     facts.append(("Rule", _name_of(payload, "rule")))
     details = payload.get("details")
     if isinstance(details, dict):
-        for key, label in (("run_status", "Run status"), ("finding_severity", "Finding severity")):
+        for key, label in (
+            ("run_status", "Run status"),
+            ("finding_severity", "Finding severity"),
+            ("approval_state", "Approval state"),
+        ):
             if isinstance(details.get(key), str):
                 facts.append((label, clean_text(details[key], 40)))
         if isinstance(details.get("spend_usd"), int | float):

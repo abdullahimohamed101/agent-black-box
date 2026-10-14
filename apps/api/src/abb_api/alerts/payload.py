@@ -36,7 +36,7 @@ TOP_LEVEL_KEYS: Final = frozenset(
 DETAIL_KEYS: Final = frozenset(
     {
         "run_status", "detector", "finding_severity", "expires_at", "seconds_to_expiry", "day",
-        "spend_usd", "threshold_usd", "period",
+        "spend_usd", "threshold_usd", "period", "approval_state",
     }
 )  # fmt: skip
 MAX_NAME: Final = 80

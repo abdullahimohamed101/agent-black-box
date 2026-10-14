@@ -139,11 +139,15 @@ class SubjectLoader:
     async def approval(
         self, approval_id: uuid.UUID, workspace_slug: str, *, expiring_now: datetime | None = None
     ) -> m.Subject | None:
-        """A waiting approval. With `expiring_now`, the subject of the "about to expire" alert."""
+        """An approval. With `expiring_now`, the subject of the "about to expire" alert, which only
+        a still waiting approval has. Without it, the "requested" alert: it is a fact about the
+        request, true however fast it was decided, so the row is loaded in whatever state it is
+        now and the state travels in the details (a receiver reads "requested, already approved")
+        instead of the alert depending on whether the job ran before or after the decision."""
         row = (
             await self._conn.execute(self._approvals_select().where(_AP.id == approval_id))
         ).first()
-        if row is None or row.state != "REQUESTED":
+        if row is None or (expiring_now is not None and row.state != "REQUESTED"):
             return None
         return self._approval_subject(row, workspace_slug, expiring_now)
 
@@ -191,6 +195,8 @@ class SubjectLoader:
     ) -> m.Subject:
         expiring = expiring_now is not None
         details: dict[str, Any] = {"expires_at": row.expires_at.isoformat()}
+        if not expiring:
+            details["approval_state"] = row.state
         seconds: float | None = None
         if expiring_now is not None:
             seconds = max((row.expires_at - expiring_now).total_seconds(), 0.0)

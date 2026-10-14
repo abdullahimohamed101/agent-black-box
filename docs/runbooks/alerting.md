@@ -13,9 +13,9 @@ times and a link back to the app. **It never carries captured content**: no path
 - **Best effort, at least once.** An alert can arrive twice (a worker that dies after sending and before recording sends again) and, if every attempt fails, not at all (a dead letter, visible in
   History). Receivers must dedupe on the alert id (`X-ABB-Alert-Id`, also `alert_id` in the body). This is a notification feature, not a paging system with guarantees; do not use it as the only
   control for something that must never be missed.
-- **The fact is read when the job runs.** Evaluation happens a moment after the event, off the request path, and reads the approval, run or finding as it is *then*. An approval that a person decides within
-  about a second may or may not be reported as requested (it depends on which comes first); a run that recovered or a finding that was deleted in that moment is not alerted. An approval that has been decided
-  is never reported as about to expire.
+- **The fact is read when the job runs.** Evaluation happens a moment after the event, off the request path, and reads the run, approval or finding as it is *then*. A run that recovered or a finding that was
+  deleted in that moment is not alerted. A requested approval is always announced, even when it was decided within a second; the alert's `details.approval_state` says what state it had reached when the job ran
+  (`REQUESTED`, or already `APPROVED`, `DENIED`, `EXPIRED`, `CANCELLED`). An approval that has been decided is never reported as about to expire.
 - **Once per event.** Each rule fires once per event and destination (a run per status, a finding per detector version and severity, an approval once as requested and once as about to expire, spend once
   per UTC day). Re-summarising, re-ingesting or rebuilding does not alert again while the history row exists, and a run that ended before the retention window (`ABB_ALERTS_RETENTION_DAYS`, 30 days) is never announced, so pruning history cannot make a rebuild re-alert old runs. A cooldown on the rule records further events as `skipped (cooldown)`; they are not sent later.
 - **Limits protect the destination**: 20 deliveries a minute and 500 a day per destination by default (`ABB_ALERTS_RATE_PER_MINUTE`, `ABB_ALERTS_DAILY_CAP`); the excess is recorded as `skipped (rate_limited)`
