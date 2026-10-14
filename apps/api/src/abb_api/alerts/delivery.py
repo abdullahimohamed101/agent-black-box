@@ -214,7 +214,9 @@ async def deliver_due(
             )
 
     audit = AuditRepository(conn, tenant)
-    for destination_id, stats in health.items():
+    # In one global order (by id): the tick of `<ws>` and the tick of `<ws>:retry` can overlap, and
+    # each takes a row lock per destination here; first-seen order would let two ticks deadlock.
+    for destination_id, stats in sorted(health.items(), key=lambda item: item[0].bytes):
         applied = await destinations.apply_health(
             destination_id,
             reset=stats.reset,
