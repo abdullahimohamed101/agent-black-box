@@ -21,6 +21,8 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_DATABASE_URL` | required | `postgresql+asyncpg://...`; startup fails naming the field if missing |
 | `ABB_ENVIRONMENT`, `ABB_LOG_LEVEL`, `ABB_CORS_ORIGINS` | development, INFO, localhost:3000 | |
 | `ABB_INGEST_MAX_BODY_BYTES` / `ABB_INGEST_MAX_BATCH_EVENTS` | 5 MiB / 1000 | request limits (compressed and decompressed) |
+| `ABB_QUOTAS_ENABLED` | true | per-project quotas (Phase 19a, ADR-154). `false` is an emergency switch: nothing is checked or counted (the usage figures then go stale) |
+| `ABB_QUOTA_AGENTS` / `_RUNS_PER_DAY` / `_EVENTS_PER_DAY` / `_ARTIFACT_BYTES` | 500 / 50000 / 5000000 / 5368709120 (5 GiB) | the default quota of every project: distinct agents, runs created per UTC day, events accepted per UTC day, total stored artifact bytes. Owners and admins override each per project (Quotas settings page, `PUT /v1/projects/{id}/quotas`). The per-run event cap and the per-artifact size cap (`ABB_ARTIFACT_MAX_BYTES`) are separate and unchanged |
 | `ABB_RATE_LIMIT_EVENTS_PER_SECOND` / `_BURST_EVENTS` | 2000 / 10000 | per project: each API process's local bucket, and (shared limiter, below) at most `max(rate x window, burst)` events per window across all processes |
 | `ABB_RATE_LIMIT_BYTES_PER_SECOND` / `_BURST_BYTES` | 10 MiB / 50 MiB | bursts must fit one maximal batch (checked at startup) |
 | `ABB_LIMITS_SHARED_ENABLED` | true | the shared limiter (Phase 19a, ADR-152): the budgets are also counted per fixed window in PostgreSQL (`rate_limit_counters`) so they hold across API processes. `false` is the old per-process behaviour |
@@ -101,6 +103,34 @@ SELECT count(*) FILTER (WHERE expires_at < now()) AS expired, count(*) AS total 
 Reset one budget (an operator unblocking a workspace): `DELETE FROM rate_limit_counters WHERE scope = 'policy_write' AND workspace_id = '<uuid>';` (a process that already holds reserved credit keeps it until its window ends, at most one window).
 
 Logs: `shared limiter unavailable; failing open to the local limiter` (at most once per 30 s per process, field `error_class` only) means the budgets are per process again until the database answers; it is also the sign that the database is in trouble. The bench numbers and the Redis trigger are in `docs/benchmarks/phase-19a-limiter.md` and ADR-152.
+
+### Project quotas (Phase 19a step 3, ADR-154)
+
+A project at a quota has the excess refused with `QUOTA_EXCEEDED` (per event inside a `202` on `POST /v1/events/batch`; `413` on `POST /v1/events`, `POST /v1/runs` and `PUT /v1/artifacts/{id}`). Nothing the project already holds is refused or removed:
+events of existing runs and agents and replays are accepted at any usage. In the product: Settings > Quotas shows each quota with use, percentage and a status in words (amber from 80 percent "Near limit", "Limit reached" when refusing); owners and admins change limits there.
+
+Raise or lower a limit for one project (audited, applies to the next request): `PUT /v1/projects/<project id>/quotas` with `{"events_per_day": 20000000}` (`null` removes the override). The same through the Quotas page.
+Raise the default for every project: set `ABB_QUOTA_*` and restart the API processes. Switch quotas off entirely: `ABB_QUOTAS_ENABLED=false` (counters stop being updated; switching back on resumes from stale figures, so the first day over-allows).
+
+Inspect (read-only SQL; the counters are derived operational state, never edit them):
+
+```sql
+-- today's use per project (UTC day), biggest first
+SELECT p.slug, u.day, u.runs_created, u.events_accepted
+FROM project_usage_daily u JOIN projects p USING (workspace_id) WHERE p.id = u.project_id AND u.day = (now() AT TIME ZONE 'UTC')::date
+ORDER BY u.events_accepted DESC LIMIT 20;
+-- stored artifact bytes per project, and overrides
+SELECT p.slug, a.bytes_stored FROM project_artifact_usage a JOIN projects p ON p.workspace_id = a.workspace_id AND p.id = a.project_id ORDER BY a.bytes_stored DESC;
+SELECT p.slug, o.* FROM project_quota_overrides o JOIN projects p ON p.workspace_id = o.workspace_id AND p.id = o.project_id;
+-- distinct agents per project
+SELECT project_id, count(*) FROM agents GROUP BY 1 ORDER BY 2 DESC LIMIT 20;
+-- who changed a limit
+SELECT occurred_at, actor_id, resource_id, details FROM audit_log WHERE action = 'project.quota.update' ORDER BY id DESC LIMIT 20;
+```
+
+The counters equal what committed: they are updated in the transaction that stores the data. If `project_artifact_usage` and the real sum ever disagree (an out-of-band delete), recompute: `UPDATE project_artifact_usage u SET bytes_stored = (SELECT coalesce(sum(size_bytes),0) FROM artifacts a WHERE a.workspace_id = u.workspace_id AND a.project_id = u.project_id);`.
+The per-day rows are one per active project per day and are not pruned yet (retention, Phase 19b). Ingestion of one project is serialised on its project row for the length of one batch transaction; the measured cost is in `docs/benchmarks/phase-19a-quotas.md`.
+Counting began at the migration (0098): activity before it is not in the first day's figures; existing artifacts were counted from the start.
 
 ## What to watch
 

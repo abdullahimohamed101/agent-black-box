@@ -59,7 +59,7 @@ ingestion edge | control plane | database/object storage | human approvers.
 - Denial of service (partly implemented): per-project token buckets in front of a PostgreSQL-backed shared limiter (Phase 19a step 1, ADR-152: the
   ingestion, artifact, sign-in-start, policy, approval-decision and alert budgets hold across API processes; it fails open to the per-process
   bucket when the database cannot answer, so a database outage is also a limiter outage), bounded batches, bounded cursors and page sizes,
-  bounded metadata; quotas are the rest of Phase 19a. These are abuse rails, not a WAF: put a reverse proxy with
+  bounded metadata, and per-project quotas that refuse loudly (Phase 19a step 3, ADR-154: distinct agents, runs and events per UTC day, total artifact bytes). These are abuse rails, not a WAF: put a reverse proxy with
   address limits in front of any exposed deployment.
 - Live streams (implemented, Phase 5): the stream endpoint uses the same authentication, `runs:read` scope and tenant/project visibility as
   the other reads (another tenant's or project's run is a 404, tested over a real socket). Payloads are never streamed, only `has_payload`.
@@ -209,9 +209,24 @@ Anyone sharing a trusted address with an attacker shares that address budget. In
 The throttle fails open (a counter outage falls back to the local budget; any throttle error leaves the normal 401). One `auth.throttled` audit row per workspace per window is written for key ids that
 belong to a workspace; others are logged by scope name only (KI-177). Failed session cookies and sign-in starts are not covered (KI-176, KI-073).
 
+### Project quotas (Phase 19a step 3, ADR-154)
+
+Threats and answers. *A runaway agent or a hostile key inventing data* (agent slugs, run ids, events, artifacts): each project has four
+quotas, with environment defaults (`ABB_QUOTA_*`) and per-project overrides. At a limit the excess is **refused loudly**, never folded or silently dropped:
+the batch answer names the refused event, the fixed code `QUOTA_EXCEEDED` and the closed quota name (`agents`, `runs_per_day`, `events_per_day`,
+`artifact_bytes`); the other endpoints answer `413 QUOTA_EXCEEDED` with the same name. Data the project already has is never refused: events of runs
+and agents it already holds, and replays of events it already stored, are accepted at any usage. The counters are written in the same transaction as the data
+(so they equal what committed) under one per-project lock, so a race cannot pass a limit, for any quota (tested with concurrent batches and uploads).
+*Isolation*: every counter, override and lookup carries the workspace and project; one project's use never counts against another, in the
+same workspace or another (tested). *Who may raise a limit*: only owners and admins (`project.write`), every change is an audit entry naming the quota and its old
+and new value, and a person without the role (or a key) gets 403, a project of another workspace 404. A raised limit is a lever on the operator's disk and database; the
+defaults are generous abuse rails, not sizing advice. *What a refusal reveals*: the quota name and, on the non-batch endpoints, the limit and current use of the caller's own project;
+never another tenant's data. *Limits of the control* (stated plainly): it does not stop a single project from using its allowance, there is no alert on usage yet, server-written decision and
+approval events are not counted, and the day boundary follows the API process clock (UTC). See ADR-154.
+
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
-Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); quotas are the rest of Phase 19a; failed API-key authentication is throttled (ADR-153) (KI-018, KI-019). The identity provider integration was exercised against the fake
+Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); failed API-key authentication is throttled (ADR-153) (KI-019) and projects have quotas (ADR-154) (KI-018, KI-040). The identity provider integration was exercised against the fake
 provider only; a real provider login is an open acceptance check (KI-067). Session listing and "log out everywhere" are not in the UI (SQL/CLI
 recovery is in the runbook, KI-068). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits hold across API processes while the database answers and are per process when it does not (the shared limiter fails open, ADR-152). The Python SDK
 redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads); since Phase 13 the server
