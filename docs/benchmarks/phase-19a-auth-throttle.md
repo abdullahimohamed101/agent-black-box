@@ -48,8 +48,8 @@ A stream of valid 100-event batches (4 clients) with a flood of bad keys running
 Stated honestly: **no valid request was ever refused or failed (non-202 = 0 in every case)** and the key kept authenticating (it is in the
 known-valid cache, so the throttle gate is skipped while authentication still runs). Latency is **not** unaffected on this setup: a flood at
 1,000 to 1,800 requests/s competes with the valid stream for the same CPU, event loop and connection pool, and the load generator is
-in the same process as the valid stream. With the throttle on, valid p95 during a flood was 1.5x to 3x its flood-free value in these
-runs (220 to 470 ms against 148 to 323 ms); with it off, 1.2x to 5x, and the worst case was twice as bad (771 ms versus 452 ms). Part of the remaining
+in the same process as the valid stream. With the throttle on, valid p95 during a flood ranged from 0.7x to 3x its flood-free value within a round
+(220 to 470 ms against 148 to 323 ms); with it off, 1.6x to 5x, and the worst case was worse (771 ms versus 452 ms). Part of the remaining
 inflation is the cost of answering 429s at 1,000+/s, which a real flood would meet at the proxy (OPERATIONS.md). The figures do not support a claim
 of "no effect on latency"; they support "never refused, and database load bounded".
 
