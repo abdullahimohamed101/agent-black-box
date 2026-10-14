@@ -59,7 +59,7 @@ ingestion edge | control plane | database/object storage | human approvers.
 - Denial of service (partly implemented): per-project token buckets in front of a PostgreSQL-backed shared limiter (Phase 19a step 1, ADR-152: the
   ingestion, artifact, sign-in-start, policy, approval-decision and alert budgets hold across API processes; it fails open to the per-process
   bucket when the database cannot answer, so a database outage is also a limiter outage), bounded batches, bounded cursors and page sizes,
-  bounded metadata; quotas and failed-authentication throttling are the rest of Phase 19a. These are abuse rails, not a WAF: put a reverse proxy with
+  bounded metadata; quotas are the rest of Phase 19a. These are abuse rails, not a WAF: put a reverse proxy with
   address limits in front of any exposed deployment.
 - Live streams (implemented, Phase 5): the stream endpoint uses the same authentication, `runs:read` scope and tenant/project visibility as
   the other reads (another tenant's or project's run is a 404, tested over a real socket). Payloads are never streamed, only `has_payload`.
@@ -193,9 +193,25 @@ Alert end-to-end test network (Phase 17 step 4, ADR-151 addendum). `ABB_ALERTS_T
 machine. It is **unset by default**, **refused at startup unless `ABB_ENVIRONMENT` is `development` or `test`**, logs a warning when active, and changes nothing between the address check and the connection
 (a private or loopback answer is still refused). Never set it on a deployment that receives real alerts; `tests/test_alerts_testnet.py` proves the default and the refusal.
 
+### Failed-authentication throttling (Phase 19a step 2, ADR-153)
+
+Threats and answers. *Credential stuffing and key guessing*: a key is `abb_live_<12-char id>.<256-bit secret>`, so guessing a secret is not
+feasible; the risk is load. Failures (not successes) are counted per client address, per presented key id and globally, in fixed windows shared by every API process;
+beyond a budget the answer is `429 AUTH_THROTTLED` with `Retry-After`, identical for an existing and an unknown key id. *Flood amplification*:
+a refused request is answered from memory (no lookup, no counter write); an invalid token seen moments ago is answered from memory; the global
+ceiling bounds the lookups per window. The database-load figures are in `docs/benchmarks/phase-19a-auth-throttle.md`.
+*Header spoofing*: the client address is read only when `ABB_TRUST_PROXY=1`, from the last `X-Forwarded-For` entry (the one the proxy appended); otherwise the header is ignored, so it cannot be
+used to evade a bucket or to frame another address. Set it only when the proxy is the only route to the API. The stored counter key is a salted digest prefix of the address,
+kept at most a window plus 60 s; addresses and secrets are never logged or audited.
+*Throttle as a denial-of-service lever* (the tradeoff, stated plainly): a caller who knows a key id (ids are visible to project members, secrets are not) can close that key id's window for up to a minute with ten bad
+secrets. A key this process has recently authenticated keeps working (the cache only skips the gate, authentication still runs, so revocation is immediate); a key it has not seen waits out the window (KI-175).
+Anyone sharing a trusted address with an attacker shares that address budget. Ingestion with a valid, recently used key, people's sessions, and sign-in starts and callbacks are never refused by it.
+The throttle fails open (a counter outage falls back to the local budget; any throttle error leaves the normal 401). One `auth.throttled` audit row per workspace per window is written for key ids that
+belong to a workspace; others are logged by scope name only (KI-177). Failed session cookies and sign-in starts are not covered (KI-176, KI-073).
+
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
-Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); quotas and failed-authentication throttling are the rest of Phase 19a (KI-018, KI-019). The identity provider integration was exercised against the fake
+Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); quotas are the rest of Phase 19a; failed API-key authentication is throttled (ADR-153) (KI-018, KI-019). The identity provider integration was exercised against the fake
 provider only; a real provider login is an open acceptance check (KI-067). Session listing and "log out everywhere" are not in the UI (SQL/CLI
 recovery is in the runbook, KI-068). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits hold across API processes while the database answers and are per process when it does not (the shared limiter fails open, ADR-152). The Python SDK
 redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads); since Phase 13 the server
