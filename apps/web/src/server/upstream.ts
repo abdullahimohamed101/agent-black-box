@@ -2,6 +2,7 @@ import { fixtureReply } from "@/fixtures/api";
 import { isFixtureViewerWorkspace } from "@/fixtures/auth";
 import { fixtureAlertWrite } from "@/fixtures/alerts";
 import { fixturePolicyWrite } from "@/fixtures/policies";
+import { fixtureQuotas } from "@/fixtures/quotas";
 import { fixtureSecuritySettings } from "@/fixtures/security";
 import {
   MAX_BODY_BYTES,
@@ -33,7 +34,7 @@ const route = (method: string, pattern: string): Route => ({
 const ROUTES: readonly Route[] = [
   route(
     "GET",
-    `(runs(/${ID}(/(spans|stream|findings|evaluations|compare|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance|waste)|security/(findings|detectors)|projects/${ID}/security-settings)`,
+    `(runs(/${ID}(/(spans|stream|findings|evaluations|compare|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance|waste)|security/(findings|detectors)|projects/${ID}/(security-settings|quotas))`,
   ),
   route("GET", "(me|projects|members|invitations|api-keys|pricing|audit|evaluators|experiments)"),
   route("GET", `experiments/${ID}`),
@@ -59,7 +60,7 @@ const ROUTES: readonly Route[] = [
   route("POST", `alerts/destinations/${ID}/test`),
   route("PATCH", `alerts/(destinations|rules)/${ID}`),
   route("DELETE", `alerts/(destinations|rules)/${ID}`),
-  route("PUT", `projects/${ID}/security-settings`),
+  route("PUT", `projects/${ID}/(security-settings|quotas)`),
   route("PATCH", `members/${ID}`),
   route("DELETE", `(members|invitations|api-keys|evaluators|experiments)/${ID}`),
   route("DELETE", `experiments/${ID}/runs/${ID}`),
@@ -208,8 +209,28 @@ export async function readThrough(
       return envelope(404, "STREAM_NOT_AVAILABLE", "Fixture data has no live stream.");
     const fixtureMethod = (options.method ?? "GET").toUpperCase();
     const settings = /^v1\/projects\/([A-Za-z0-9_-]{1,64})\/security-settings$/.exec(path);
+    const quotas = /^v1\/projects\/([A-Za-z0-9_-]{1,64})\/quotas$/.exec(path);
+    if (fixtureMethod === "PUT" && quotas) {
+      // Quota overrides keep in-memory state too, so the Quotas page can be exercised without an API.
+      const text = await readCapped(options.body, options.headers?.get("content-length") ?? null);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text ?? "");
+      } catch {
+        return envelope(422, "REQUEST_INVALID", "A JSON body is required.");
+      }
+      const r = fixtureQuotas(
+        quotas[1]!,
+        parsed ?? {},
+        !isFixtureViewerWorkspace(options.headers?.get("x-abb-workspace")),
+      );
+      return Response.json(r.body, {
+        status: r.status,
+        headers: { ...SAFE, "x-request-id": "req_fixture" },
+      });
+    }
     if (fixtureMethod === "PUT" && settings) {
-      // The one fixture write: security settings keep in-memory state so the settings page can be exercised.
+      // A fixture write: security settings keep in-memory state so the settings page can be exercised.
       const text = await readCapped(options.body, options.headers?.get("content-length") ?? null);
       let parsed: unknown;
       try {
