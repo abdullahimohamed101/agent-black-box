@@ -133,6 +133,10 @@ function Body({
     a.arguments && Object.keys(a.arguments).length > 0
       ? JSON.stringify(a.arguments, null, 2)
       : null;
+  const command =
+    a.capability === "shell.execute" && typeof a.arguments?.["command"] === "string"
+      ? a.arguments["command"]
+      : null;
   return (
     <>
       <p className="apr-state">
@@ -191,10 +195,29 @@ function Body({
           </>
         )}
       </dl>
+      {command && (
+        <section aria-labelledby={`${a.id}-cmd`}>
+          <h3 id={`${a.id}-cmd`}>Command</h3>
+          {/* The exact command an approval is bound to, after the server's scrubbing; text only. */}
+          <pre
+            tabIndex={0}
+            aria-label="Command"
+            className="apr-args"
+            data-testid="approval-command"
+          >
+            {command.length > ARG_CHARS ? command.slice(0, ARG_CHARS) : command}
+          </pre>
+          <p className="muted">Approving covers exactly this command, once.</p>
+        </section>
+      )}
       <section aria-labelledby={`${a.id}-args`}>
         <h3 id={`${a.id}-args`}>Arguments</h3>
         {a.content_withheld ? (
-          <p className="muted">Content hidden by your role.</p>
+          <p className="muted" data-testid="content-unavailable">
+            {a.state === "REQUESTED"
+              ? "The content of this request could not be shown (it was withheld when the request was made), so it cannot be approved. You can deny it."
+              : "The content of this request could not be shown: it was withheld when the request was made."}
+          </p>
         ) : json ? (
           <>
             {/* Captured arguments are untrusted: rendered as text only, after the server's scrubbing. */}
@@ -240,7 +263,7 @@ function Body({
       )}
       {a.state === "REQUESTED" &&
         (canDecide ? (
-          <DecideForm id={a.id} onOutcome={setOutcome} />
+          <DecideForm id={a.id} onOutcome={setOutcome} canApprove={!a.content_withheld} />
         ) : (
           <p className="muted apr-note" role="note">
             Your role can read this request but not decide it.
@@ -253,8 +276,10 @@ function Body({
 function DecideForm({
   id,
   onOutcome,
+  canApprove,
 }: {
   id: string;
+  canApprove: boolean;
   onOutcome: (
     o: { kind: "ok"; text: string } | { kind: "error"; error: ApiRequestError } | null,
   ) => void;
@@ -341,7 +366,11 @@ function DecideForm({
         </div>
       ) : (
         <div className="apr-actions">
-          <button type="button" onClick={() => setConfirming("approve")} disabled={tooLong}>
+          <button
+            type="button"
+            onClick={() => setConfirming("approve")}
+            disabled={tooLong || !canApprove}
+          >
             Approve
           </button>{" "}
           <button type="button" onClick={() => setConfirming("deny")} disabled={tooLong}>

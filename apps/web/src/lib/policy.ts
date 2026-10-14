@@ -155,6 +155,8 @@ export function decisionErrorText(code: string, status: number, state?: unknown)
       return "You cannot decide a request made with your own API key.";
     case "APPROVAL_NOT_REQUESTED":
       return `Someone else decided first${typeof state === "string" ? `: it is now ${state.toLowerCase()}` : ""}.`;
+    case "APPROVAL_CONTENT_UNAVAILABLE":
+      return "The content of this request could not be shown, so it cannot be approved. You can deny it.";
     case "APPROVAL_NOT_FOUND":
       return "This approval was not found.";
     default:

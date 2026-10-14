@@ -56,7 +56,7 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const CAPS: { capability: string; resource: string; risk: string | null; args: object }[] = [
   { capability: "github.push", resource: "origin main", risk: "R3", args: { branch: "main", force: false } },
-  { capability: "shell.execute", resource: "rm", risk: "R3", args: { argv: ["rm", "-r", "build/"] } },
+  { capability: "shell.execute", resource: "rm", risk: "R3", args: { category: "DESTRUCTIVE", command: "rm -r build/" } },
   { capability: "database.execute", resource: "orders", risk: "R3", args: { statement: "ALTER TABLE orders ADD COLUMN note text" } },
   { capability: "filesystem.write", resource: "deploy/prod.yaml", risk: null, args: { operation: "modify" } },
   { capability: "github.merge", resource: "release/2026.10", risk: "R3", args: { method: "squash" } },
@@ -125,7 +125,7 @@ function seed(): Map<string, Rec> {
       resource: "kubectl",
       risk_class: "R3",
       policy_id: "approve-risky-shell",
-      arguments: { argv: ["kubectl", "apply", "-f", "deploy/staging.yaml"] },
+      arguments: { category: "PRIVILEGED", command: "kubectl apply -f deploy/staging.yaml" },
     }),
   );
   put(
@@ -166,7 +166,7 @@ function seed(): Map<string, Rec> {
       resource: "terraform",
       risk_class: "R3",
       policy_id: "approve-risky-shell",
-      arguments: { argv: ["terraform", "apply"] },
+      arguments: { category: "PRIVILEGED", command: "terraform apply" },
     }),
   );
   // Decided, in the order they happened
@@ -196,7 +196,7 @@ function seed(): Map<string, Rec> {
     resource: "chmod",
     risk_class: "R3",
     policy_id: "approve-risky-shell",
-    arguments: { argv: ["chmod", "-R", "777", "/srv"] },
+    arguments: { category: "DESTRUCTIVE", command: "chmod -R 777 /srv" },
     comment: "Not on a shared host.",
   });
   decided(13, "EXPIRED", {
@@ -339,6 +339,13 @@ function decideApproval(id: string, body: unknown): Reply {
         state: "DENIED",
       });
     }
+    if (b.decision === "approve" && rec.content_withheld)
+      return err(
+        409,
+        "APPROVAL_CONTENT_UNAVAILABLE",
+        "The content of this request could not be shown, so it cannot be approved.",
+        "CONFLICT",
+      );
     rec.state = b.decision === "approve" ? "APPROVED" : "DENIED";
     rec.decided_at = new Date().toISOString();
     rec.decided_by = FIXTURE_USER.id;
