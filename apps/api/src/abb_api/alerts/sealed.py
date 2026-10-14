@@ -19,15 +19,18 @@ the application role (migration 0094), so a lost row means lost secrets, never s
 Binding. The associated data is `(purpose, workspace_id, destination_id)`: a ciphertext copied to
 another row, another workspace or another purpose (config <-> signing secret) fails to open.
 
-Format: `0x01 || nonce(12) || ciphertext||tag`. A fresh random 96-bit nonce per seal; with the
-number of seals this table can ever see, collisions are negligible (NIST SP 800-38D limit 2^32).
+Format: `0x01 || key_id(8, big-endian) || nonce(12) || ciphertext||tag`. Every blob names its own
+key, so the config and the signing secret of one destination may sit under different keys (a target
+replaced after a rotation re-seals only the config) and neither needs decrypting to be moved. The
+`key_id` column of `alert_destinations` records the config blob's key for operators. A fresh random
+96-bit nonce per seal; with the number of seals this table can ever see, collisions are negligible
+(NIST SP 800-38D limit 2^32).
 """
 
 import json
 import secrets
 import uuid
 import weakref
-from dataclasses import dataclass
 from typing import Any, Final, Literal
 
 from cryptography.exceptions import InvalidTag
@@ -41,7 +44,9 @@ NAME: Final = "alerts-encryption"
 _LOCK: Final = "abb.server-secret.alerts-encryption"
 _INFO: Final = b"abb-api/alerts/destination-secrets/v1"
 _VERSION: Final = b"\x01"
+_KEY_ID_BYTES: Final = 8
 _NONCE_BYTES: Final = 12
+_HEADER: Final = 1 + _KEY_ID_BYTES + _NONCE_BYTES
 Purpose = Literal["config", "signing"]
 
 SIGNING_SECRET_PREFIX: Final = "whsec_"  # noqa: S105 - a format prefix, not a secret
@@ -52,12 +57,6 @@ class SealError(Exception):
 
     def __init__(self) -> None:
         super().__init__("a destination secret could not be decrypted")
-
-
-@dataclass(frozen=True)
-class Sealed:
-    key_id: int
-    ciphertext: bytes
 
 
 class _Keys:
@@ -130,6 +129,13 @@ def _aad(purpose: Purpose, workspace_id: uuid.UUID, destination_id: uuid.UUID) -
     return b"abb-alert|" + purpose.encode() + b"|" + workspace_id.bytes + destination_id.bytes
 
 
+def key_id_of(blob: bytes) -> int:
+    """The `server_secrets` row that sealed this blob."""
+    if len(blob) < _HEADER + 16 or blob[:1] != _VERSION:
+        raise SealError
+    return int.from_bytes(blob[1 : 1 + _KEY_ID_BYTES], "big")
+
+
 async def seal(
     engine: AsyncEngine,
     plaintext: bytes,
@@ -137,16 +143,16 @@ async def seal(
     purpose: Purpose,
     workspace_id: uuid.UUID,
     destination_id: uuid.UUID,
-) -> Sealed:
+) -> bytes:
     key_id, aead = await _current(engine)
     nonce = secrets.token_bytes(_NONCE_BYTES)
     body = aead.encrypt(nonce, plaintext, _aad(purpose, workspace_id, destination_id))
-    return Sealed(key_id, _VERSION + nonce + body)
+    return _VERSION + key_id.to_bytes(_KEY_ID_BYTES, "big") + nonce + body
 
 
 async def open_sealed(
     engine: AsyncEngine,
-    sealed: Sealed,
+    blob: bytes,
     *,
     purpose: Purpose,
     workspace_id: uuid.UUID,
@@ -154,14 +160,11 @@ async def open_sealed(
 ) -> bytes:
     """The plaintext, or `SealError` (wrong row, wrong workspace, wrong purpose, tampering, a key
     that no longer exists). Callers must not log or return the result."""
-    blob = sealed.ciphertext
-    if len(blob) < 1 + _NONCE_BYTES + 16 or blob[:1] != _VERSION:
-        raise SealError
-    aead = await _by_id(engine, sealed.key_id)
+    aead = await _by_id(engine, key_id_of(blob))
     try:
         return aead.decrypt(
-            blob[1 : 1 + _NONCE_BYTES],
-            blob[1 + _NONCE_BYTES :],
+            blob[1 + _KEY_ID_BYTES : _HEADER],
+            blob[_HEADER:],
             _aad(purpose, workspace_id, destination_id),
         )
     except InvalidTag:

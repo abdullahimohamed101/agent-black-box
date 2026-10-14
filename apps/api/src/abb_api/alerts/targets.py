@@ -26,6 +26,7 @@ _INTERNAL_SUFFIXES: Final = (
     ".localhost", ".local", ".internal", ".localdomain", ".lan", ".home", ".corp", ".intranet",
     ".private", ".home.arpa", ".test", ".example", ".invalid",
 )  # fmt: skip
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")  # RFC 6052: carries an IPv4 address in its low bits
 _LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 _ALL_DIGITS = re.compile(r"^[0-9]+$")
 _HEX_FORM = re.compile(r"^0x[0-9a-f]*$")
@@ -62,6 +63,8 @@ def _is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
         embedded = ip.ipv4_mapped or ip.sixtofour
         if embedded is not None:
             return _is_public(embedded)
+        if ip in _NAT64:
+            return _is_public(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF))
         if ip.teredo is not None:
             return all(_is_public(part) for part in ip.teredo)
     return bool(ip.is_global) and not ip.is_multicast
