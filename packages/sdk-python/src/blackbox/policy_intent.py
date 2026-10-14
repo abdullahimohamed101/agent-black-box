@@ -22,6 +22,7 @@ MAX_KEY_CHARS = 256
 MAX_CAPABILITY_CHARS = 128
 MAX_RESOURCE_CHARS = 2048
 MAX_CANONICAL_BYTES = 24 * 1024
+MAX_ATTRIBUTES = 64  # top-level scalar arguments a rule can match; more is refused, never cut
 RISK_CLASSES = ("R0", "R1", "R2", "R3", "R4")
 CAPABILITY_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}(?:\.[A-Za-z0-9_-]{1,64}){0,5}$")
 # Stand-ins with the length of the real ids (a 3 or 4 letter prefix and a 26 character ULID), so
@@ -197,6 +198,10 @@ def build_intent(
     if not isinstance(arguments, dict):
         raise IntentRejected("arguments_not_object")
     cleaned = _clean(arguments, 0, [MAX_NODES])
+    # The server matches rules against every top-level scalar and refuses an intent with more
+    # than it will look at (review P2-2): the SDK refuses the same way, before sending.
+    if sum(1 for v in cleaned.values() if isinstance(v, (bool, int, str))) > MAX_ATTRIBUTES:
+        raise IntentRejected("too_many_attributes")
     intent = {
         "run_id": run_id,
         "agent_id": agent_id,

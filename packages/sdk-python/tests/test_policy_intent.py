@@ -184,3 +184,36 @@ def test_glob_agrees_with_the_servers_on_many_patterns() -> None:
         ("src/**", "src/a/b", True),
     ]:
         assert compile_glob(pattern).matches(text) is expected
+
+
+# -- attribute limits shared with the server (review P2-2) -----------------------------------------
+
+_ATTRIBUTE_VECTORS = json.loads(
+    (ROOT / "packages/event-schema/tests/data/attribute-limit-vectors.json").read_text("utf-8")
+)
+
+
+def _arguments_of(case: dict[str, Any]) -> dict[str, Any]:
+    arguments: dict[str, Any] = {f"a{i:03d}": i for i in range(case["scalars"])}
+    arguments.update({f"l{i:03d}": [i] for i in range(case["lists"])})
+    if case["long_text"]:
+        arguments["a000"] = "x" * case["long_text"]
+    return arguments
+
+
+@pytest.mark.parametrize("case", _ATTRIBUTE_VECTORS["cases"], ids=lambda c: c["name"])
+def test_attribute_limits_match_the_server_vectors(case: dict[str, Any]) -> None:
+    kwargs: dict[str, Any] = {
+        "run_id": "run_" + "0" * 26,
+        "agent_id": "a",
+        "capability": "x.y",
+        "resource": "",
+        "risk_class": "R3",
+        "arguments": _arguments_of(case),
+    }
+    if case["ok"]:
+        build_intent(**kwargs)
+    else:
+        with pytest.raises(IntentRejected) as info:
+            build_intent(**kwargs)
+        assert info.value.code == case["reason"]

@@ -20,8 +20,10 @@ from abb_api.policies.model import AttributeValue
 
 CAPABILITY_PATTERN = r"^[A-Za-z0-9_-]{1,64}(?:\.[A-Za-z0-9_-]{1,64}){0,5}$"
 AGENT_PATTERN = r"^[a-z0-9][a-z0-9._-]{0,63}$"
-MAX_ATTRIBUTES = 32
-MAX_ATTRIBUTE_TEXT = 1024
+# A rule can match any top-level scalar argument, so none may be silently left out: past these
+# bounds the intent is refused (422), never truncated (review P2-2). The SDK checks the same two.
+MAX_ATTRIBUTES = 64
+MAX_ATTRIBUTE_TEXT = 4096
 
 RiskClass = Literal["R0", "R1", "R2", "R3", "R4"]
 
@@ -102,14 +104,16 @@ def run_uuid(body: IntentIn) -> uuid.UUID:
 
 def attributes_of(body: IntentIn) -> dict[str, AttributeValue]:
     """The top-level scalar arguments, which a policy rule's `attributes` can match. Lists and
-    objects are never matched; text is bounded so a rule comparison is cheap."""
+    objects are never matched. Every scalar is presented to the matcher: more than
+    `MAX_ATTRIBUTES` of them, or a text over `MAX_ATTRIBUTE_TEXT`, refuses the intent
+    (`INTENT_INVALID`, reason `too_many_attributes` / `attribute_too_long`)."""
     found: dict[str, AttributeValue] = {}
     for key in sorted(body.arguments):
         value = body.arguments[key]
-        if isinstance(value, bool | int) or (
-            isinstance(value, str) and len(value) <= MAX_ATTRIBUTE_TEXT
-        ):
+        if isinstance(value, str) and len(value) > MAX_ATTRIBUTE_TEXT:
+            raise invalid_intent("attribute_too_long")
+        if isinstance(value, bool | int | str):
             found[key] = value
-        if len(found) >= MAX_ATTRIBUTES:
-            break
+        if len(found) > MAX_ATTRIBUTES:
+            raise invalid_intent("too_many_attributes")
     return found

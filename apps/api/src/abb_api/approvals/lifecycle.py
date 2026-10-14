@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.approvals.events import RunRef, transition_event
 from abb_api.approvals.model import Approval
+from abb_api.approvals.serverkey import event_id_key
 from abb_api.approvals.store import PgApprovalStore
 from abb_api.audit.repository import ActorKind, AuditEntry, AuditRepository
 from abb_api.core.errors import AppError, ErrorCategory
-from abb_api.approvals.serverkey import event_id_key
 from abb_api.ids import parse_public_id, public_id
 from abb_api.ingestion.emitter import SERVER_EMITTER
 from abb_api.ingestion.store import PgEventStore
