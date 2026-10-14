@@ -62,4 +62,8 @@ Unit and property tests for rule matching, dedupe and cooldown; API tests for CR
   SMTP and alert settings, KI-160/161. Notification rows are written as `pending`; step 2 delivers them. Contract for step 2: `alert_notifications.payload_json` is the body (relative `link_path`, made
   absolute from `ABB_WEB_ORIGIN`; escape project, agent and rule names per channel); decrypt with `sealed.open_sealed(engine, blob, purpose="config"|"signing", workspace_id, destination_id)`;
   `alert_destinations.state/consecutive_failures/paused_reason` are the health fields; `DestinationRow` (repository.py) carries the ciphertext; `skipped` rows are never sent. Steps 2-5 open.
+  Gate 8 evidence (step 1, `apps/api/tests/test_alerts_overhead.py -s`, 30 failing runs of 101 events, local PostgreSQL, idle machine): ingestion batch p50/p95 35.1/58.1 ms
+  without rules and 33.1/36.6 ms with six enabled rules (the ingestion path does not touch alerting); worker time per run (summarise, findings, analytics and alert jobs) p50/p95
+  142.8/160.3 ms without rules and 144.0/158.5 ms with them (a second run: 127.6/143.0 and 140.0/176.2). Verified (step 1): ruff check and format, `mypy`, full API suite 3198 passed
+  (`tests/authz` 229 passed), `python -m abb_api.openapi --check`, `pnpm gen:api:check`, web typecheck/lint/prettier/vitest (1354 passed), `make schema-check`.
 
