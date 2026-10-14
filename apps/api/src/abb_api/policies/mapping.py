@@ -17,8 +17,9 @@ rule with `risk_class` never matches an intent without one). Attributes a rule m
 `shell.execute` has `category` (`shell.category`) and `command` (`shell.command`, the exact
 command, omitted past 4,096 characters, where the SDK refuses to ask at all);
 `filesystem.write` has `operation` (`created`, `modified`, `deleted`); `github.push` has
-`branch` (`git.branch`); a tool call has none. There is no `github.merge` mapping because no event type records a merge: a merge appears
-as `shell.execute` (`gh pr merge`, `git merge`) and a rule on it matches the executable name.
+`branch` (`git.branch`); a tool call has none. There is no `github.merge` mapping because no
+event type records a merge: a merge appears as
+`shell.execute` (`gh pr merge`, `git merge`) and a rule on it matches the executable name.
 
 The executable name is the first word of the command after leading `NAME=value` assignments and
 the wrappers `sudo`, `env`, `nohup`, `time`, `nice`, reduced to its last path segment and cut to
