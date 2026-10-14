@@ -161,6 +161,26 @@ class Settings(BaseSettings):
     # it a suppressed notification is only counted in the log, so a flood cannot fill the table.
     alerts_skipped_per_window: int = Field(default=25, ge=0)
     alerts_preview_timeout_seconds: float = Field(default=5.0, gt=0)
+    # Delivery (ADR-151). Every loop, queue and timeout below is bounded. Off: notifications stay
+    # `pending` (an operator hold; tests that do not exercise delivery use it).
+    alerts_delivery_enabled: bool = True
+    alerts_request_timeout_seconds: float = Field(default=5.0, gt=0, le=30)  # webhook/Slack total
+    alerts_smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    alerts_max_attempts: int = Field(default=5, ge=1, le=20)  # then the alert is `dead`
+    alerts_backoff_base_seconds: float = Field(default=30.0, ge=0)
+    alerts_backoff_max_seconds: float = Field(default=1800.0, ge=0)
+    alerts_deliver_batch: int = Field(default=20, ge=1, le=200)  # claimed per tick and workspace
+    # State of a destination: `failing` after this many consecutive failed attempts, `paused`
+    # (reason `failures`) after the second number; one success resets it.
+    alerts_failing_after: int = Field(default=3, ge=1)
+    alerts_pause_after_failures: int = Field(default=10, ge=1)
+    alerts_rate_per_minute: int = Field(default=20, ge=1)  # deliveries per destination
+    alerts_daily_cap: int = Field(default=500, ge=1)  # deliveries per destination per 24 h
+    alerts_tests_per_minute: int = Field(default=10, ge=1)  # "send test" per workspace
+    # Delivery-log retention: terminal rows (delivered, dead, skipped, failed) older than this go.
+    alerts_retention_days: int = Field(default=30, ge=1, le=3650)
+    alerts_prune_interval_seconds: float = Field(default=6 * 3600.0, gt=0)
+    alerts_prune_batch: int = Field(default=2000, ge=1)
     # Email delivery needs an operator-provided SMTP relay (no mail credentials in the database).
     # Without `smtp_host`, email destinations cannot be created. The password is read from the
     # environment only and is never logged or returned.
@@ -236,6 +256,12 @@ class Settings(BaseSettings):
             raise ValueError(
                 "judge_provider=fake is only for development or test (or set judge_allow_fake)"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _failing_comes_before_paused(self) -> "Settings":
+        if self.alerts_failing_after > self.alerts_pause_after_failures:
+            raise ValueError("alerts_failing_after must be <= alerts_pause_after_failures")
         return self
 
     @model_validator(mode="after")

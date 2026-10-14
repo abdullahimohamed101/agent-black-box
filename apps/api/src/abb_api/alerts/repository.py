@@ -7,13 +7,14 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, delete, func, select, tuple_, update
+from sqlalchemy import ColumnElement, and_, delete, func, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.alerts.model import (
     DestinationRow,
+    DueNotification,
     NotificationRow,
     RuleRow,
     RuleTarget,
@@ -137,6 +138,57 @@ class DestinationRepository:
             delete(t.alert_destinations).where(_D.workspace_id == self._ws, _D.id == destination_id)
         )
         return bool(result.rowcount)
+
+    async def get_many(self, ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, DestinationRow]:
+        if not ids:
+            return {}
+        rows = await self._conn.execute(
+            select(t.alert_destinations).where(_D.workspace_id == self._ws, _D.id.in_(list(ids)))
+        )
+        return {r.id: _destination(r) for r in rows}
+
+    async def apply_health(
+        self,
+        destination_id: uuid.UUID,
+        *,
+        reset: bool,
+        failures: int,
+        failing_after: int,
+        pause_after: int,
+    ) -> tuple[str, str, int] | None:
+        """Fold a tick's delivery results into the destination's health in one locked step.
+
+        `reset` (a success) zeroes the counter first, then `failures` more are added. A paused
+        destination stays paused (only a person resumes it). Returns
+        `(previous state, new state, consecutive failures)`, or None when the destination is gone.
+        """
+        row = (
+            await self._conn.execute(
+                select(_D.state, _D.consecutive_failures)
+                .where(_D.workspace_id == self._ws, _D.id == destination_id)
+                .with_for_update()
+            )
+        ).first()
+        if row is None:
+            return None
+        count = (0 if reset else int(row.consecutive_failures)) + failures
+        state, reason = str(row.state), None
+        if state != "paused":
+            if count >= pause_after:
+                state, reason = "paused", "failures"
+            elif count >= failing_after:
+                state = "failing"
+            else:
+                state = "active"
+        values: dict[str, Any] = {"consecutive_failures": count, "state": state}
+        if reason is not None:
+            values["paused_reason"] = reason
+        await self._conn.execute(
+            update(t.alert_destinations)
+            .where(_D.workspace_id == self._ws, _D.id == destination_id)
+            .values(**values)
+        )
+        return str(row.state), state, count
 
     async def rule_ids_of(self, destination_id: uuid.UUID) -> list[uuid.UUID]:
         rows = await self._conn.execute(
@@ -310,6 +362,14 @@ class RuleRepository:
             for r in rules
         ]
 
+    async def existing_ids(self, ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:
+        if not ids:
+            return set()
+        rows = await self._conn.execute(
+            select(_R.id).where(_R.workspace_id == self._ws, _R.id.in_(list(ids)))
+        )
+        return {r.id for r in rows}
+
     async def has_enabled(self, triggers: Sequence[str]) -> bool:
         found = await self._conn.scalar(
             select(1)
@@ -414,6 +474,106 @@ class NotificationRepository:
             .values(status="skipped", skip_reason=reason)
         )
         return int(result.rowcount)
+
+    async def claim_due(self, now: datetime, limit: int) -> list[DueNotification]:
+        """Lock up to `limit` due `pending` rows of this workspace for the rest of the transaction.
+        `SKIP LOCKED`: a concurrent tick takes other rows, never the same one."""
+        rows = await self._conn.execute(
+            select(_N.id, _N.rule_id, _N.destination_id, _N.trigger, _N.payload_json, _N.attempts)
+            .where(_N.workspace_id == self._ws, _N.status == "pending", _N.next_attempt_at <= now)
+            .order_by(_N.next_attempt_at, _N.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return [
+            DueNotification(
+                id=r.id,
+                rule_id=r.rule_id,
+                destination_id=r.destination_id,
+                trigger=r.trigger,
+                payload=dict(r.payload_json),
+                attempts=r.attempts,
+            )
+            for r in rows
+        ]
+
+    async def next_pending_at(self) -> datetime | None:
+        value = await self._conn.scalar(
+            select(func.min(_N.next_attempt_at)).where(
+                _N.workspace_id == self._ws, _N.status == "pending"
+            )
+        )
+        return value  # type: ignore[no-any-return]
+
+    async def delivered_since(self, destination_id: uuid.UUID, since: datetime) -> int:
+        return int(
+            await self._conn.scalar(
+                select(func.count()).where(
+                    _N.workspace_id == self._ws,
+                    _N.destination_id == destination_id,
+                    _N.status == "delivered",
+                    _N.delivered_at > since,
+                )
+            )
+            or 0
+        )
+
+    async def _set(self, notification_id: uuid.UUID, **values: Any) -> None:
+        await self._conn.execute(
+            update(t.alert_notifications)
+            .where(_N.workspace_id == self._ws, _N.id == notification_id, _N.status == "pending")
+            .values(**values)
+        )
+
+    async def mark_delivered(self, notification_id: uuid.UUID, attempts: int, at: datetime) -> None:
+        await self._set(
+            notification_id,
+            status="delivered",
+            attempts=attempts,
+            delivered_at=at,
+            last_error_code=None,
+        )
+
+    async def mark_retry(
+        self, notification_id: uuid.UUID, attempts: int, code: str, next_at: datetime
+    ) -> None:
+        await self._set(
+            notification_id, attempts=attempts, last_error_code=code, next_attempt_at=next_at
+        )
+
+    async def mark_dead(self, notification_id: uuid.UUID, attempts: int, code: str) -> None:
+        await self._set(notification_id, status="dead", attempts=attempts, last_error_code=code)
+
+    async def mark_skipped(self, notification_id: uuid.UUID, reason: str) -> None:
+        await self._set(notification_id, status="skipped", skip_reason=reason)
+
+    async def defer(self, notification_id: uuid.UUID, next_at: datetime) -> None:
+        """Try again later without spending an attempt (the destination just failed this tick)."""
+        await self._set(notification_id, next_attempt_at=next_at)
+
+    async def prune(self, cutoff: datetime, limit: int) -> int:
+        """Delete at most `limit` finished rows created before `cutoff`. Pending rows are never
+        touched, whatever their age."""
+        result = await self._conn.execute(
+            text(
+                """
+                DELETE FROM alert_notifications WHERE ctid IN (
+                    SELECT ctid FROM alert_notifications
+                    WHERE workspace_id = :ws AND created_at < :cutoff
+                      AND status IN ('delivered', 'dead', 'skipped', 'failed')
+                    ORDER BY created_at
+                    LIMIT :limit
+                )
+                AND workspace_id = :ws
+                """
+            ),
+            {"ws": self._ws, "cutoff": cutoff, "limit": limit},
+        )
+        return int(result.rowcount)
+
+    async def any_left(self) -> bool:
+        found = await self._conn.scalar(select(1).where(_N.workspace_id == self._ws).limit(1))
+        return found is not None
 
     async def page(
         self,

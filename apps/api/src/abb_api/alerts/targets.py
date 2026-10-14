@@ -57,16 +57,16 @@ class WebTarget:
     masked: str
 
 
-def _is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+def is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if isinstance(ip, ipaddress.IPv6Address):
         # An IPv4 address wrapped in IPv6 is judged as the IPv4 address it carries.
         embedded = ip.ipv4_mapped or ip.sixtofour
         if embedded is not None:
-            return _is_public(embedded)
+            return is_public_ip(embedded)
         if ip in _NAT64:
-            return _is_public(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF))
+            return is_public_ip(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF))
         if ip.teredo is not None:
-            return all(_is_public(part) for part in ip.teredo)
+            return all(is_public_ip(part) for part in ip.teredo)
     return bool(ip.is_global) and not ip.is_multicast
 
 
@@ -111,7 +111,7 @@ def validate_web_url(value: object) -> WebTarget:
     except ValueError:
         literal = None
     if literal is not None:
-        if not _is_public(literal):
+        if not is_public_ip(literal):
             raise TargetInvalid("ip_not_public")
     else:
         labels = host.split(".")

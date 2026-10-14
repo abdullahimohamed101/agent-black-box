@@ -135,3 +135,15 @@ class Subject:
     finding_severity: str | None = None
     seconds_to_expiry: float | None = None
     details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DueNotification:
+    """A pending notification claimed for delivery (the stored, content-free payload)."""
+
+    id: uuid.UUID
+    rule_id: uuid.UUID | None
+    destination_id: uuid.UUID | None
+    trigger: str
+    payload: dict[str, Any]
+    attempts: int

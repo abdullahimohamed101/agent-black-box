@@ -1202,7 +1202,14 @@ ALERT_TRIGGERS = (
 ALERT_DESTINATION_TYPES = ("webhook", "slack", "email")
 ALERT_DESTINATION_STATES = ("active", "paused", "failing")
 ALERT_NOTIFICATION_STATUSES = ("pending", "delivered", "failed", "dead", "skipped")
-ALERT_SKIP_REASONS = ("cooldown", "destination_paused", "destination_deleted", "rule_deleted")
+ALERT_SKIP_REASONS = (
+    "cooldown",
+    "destination_paused",
+    "destination_deleted",
+    "rule_deleted",
+    "rate_limited",
+    "daily_cap",
+)
 
 # Where an alert goes. The target (URL or recipients) and the signing secret exist only as AES-GCM
 # ciphertext (`alerts/secrets.py`); `key_id` is the `server_secrets` row whose key sealed them.
@@ -1383,6 +1390,14 @@ alert_notifications = Table(
     ),
     Index(
         "ix_alert_notifications_history", "workspace_id", text("created_at DESC"), text("id DESC")
+    ),
+    # The destination's rate limit and daily cap count what it was sent lately (ADR-151).
+    Index(
+        "ix_alert_notifications_delivered",
+        "workspace_id",
+        "destination_id",
+        "delivered_at",
+        postgresql_where=text("status = 'delivered'"),
     ),
     # Cooldown: "was a notification made for this rule and destination recently?"
     Index(

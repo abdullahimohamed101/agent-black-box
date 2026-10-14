@@ -224,7 +224,15 @@ class NotificationOut(BaseModel):
     severity: SeverityName
     status: NotificationStatusName
     skip_reason: (
-        Literal["cooldown", "destination_paused", "destination_deleted", "rule_deleted"] | None
+        Literal[
+            "cooldown",
+            "destination_paused",
+            "destination_deleted",
+            "rule_deleted",
+            "rate_limited",
+            "daily_cap",
+        ]
+        | None
     )
     attempts: int
     error_code: str | None = Field(description="A fixed failure code; never a response body.")

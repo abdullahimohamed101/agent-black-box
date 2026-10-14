@@ -34,9 +34,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from abb_api.alerts import model as m
 from abb_api.alerts.payload import build_payload
 from abb_api.alerts.repository import NotificationRepository, RuleRepository
+from abb_api.alerts.schedule import ensure_prune, request_delivery
 from abb_api.alerts.spend import SpendReader
 from abb_api.alerts.subjects import SubjectLoader
 from abb_api.ids import new_uuid
+from abb_api.jobs.outbox import OutboxRepository
 from abb_api.tenancy import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -145,6 +147,11 @@ async def record(
                 fired = True
         if fired:
             await rules.mark_fired(rule.id, now)
+    if outcome.created or outcome.skipped:
+        outbox = OutboxRepository(conn, tenant)
+        if outcome.created:
+            await request_delivery(outbox, tenant)
+        await ensure_prune(outbox, tenant)
     return outcome
 
 

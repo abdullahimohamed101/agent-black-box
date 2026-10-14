@@ -22,6 +22,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from abb_api.alerts.delivery import use_registry
+from abb_api.alerts.notifiers import SendResult
 from abb_api.core.config import Settings
 from abb_api.db.tables import metadata
 from abb_api.main import create_app
@@ -54,6 +56,10 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
     # The authorization matrix changes alert destinations and rules hundreds of times in a minute;
     # the limit has its own test (tests/test_alerts_api.py) with a real number.
     overrides.setdefault("alerts_writes_per_minute", 1_000_000)
+    # Tests that are not about delivery must never send anything (Phase 17 step 2): notifications
+    # stay `pending`. The delivery tests (tests/test_alerts_delivery*.py) turn it on and deliver to
+    # local receivers through `use_registry`.
+    overrides.setdefault("alerts_delivery_enabled", False)
     return Settings(
         environment="test",
         log_level="WARNING",
@@ -97,6 +103,20 @@ def temporary_database(*, migrate: bool) -> Iterator[str]:
         yield url
     finally:
         asyncio.run(_admin(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+
+
+class _NoNetwork:
+    """The registry every test starts with: an alert can never leave the test process by accident.
+    Delivery tests install their own notifiers with `use_registry`."""
+
+    async def send(self, destination: object, alert: object) -> SendResult:
+        return SendResult(False, "internal_error")
+
+
+@pytest.fixture(autouse=True)
+def _alerts_never_leave_the_process() -> Iterator[None]:
+    with use_registry({"webhook": _NoNetwork(), "slack": _NoNetwork(), "email": _NoNetwork()}):
+        yield
 
 
 @pytest.fixture(scope="session")

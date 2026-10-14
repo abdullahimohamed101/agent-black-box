@@ -8,7 +8,13 @@ from datetime import date, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from abb_api.alerts.jobs import alert_sweep, enqueue_event, evaluate_alerts
+from abb_api.alerts.jobs import (
+    alert_prune,
+    alert_sweep,
+    deliver_alerts,
+    enqueue_event,
+    evaluate_alerts,
+)
 from abb_api.alerts.model import RUN_FAIL_STATUSES, RUN_FAILED
 from abb_api.analytics.rollup import refresh_day
 from abb_api.approvals.job import expire_approval
@@ -19,7 +25,9 @@ from abb_api.findings.job import detect_delay, detect_run
 from abb_api.ingestion.store import PgEventStore
 from abb_api.jobs.context import job_settings
 from abb_api.jobs.outbox import (
+    ALERT_PRUNE,
     ALERT_SWEEP,
+    DELIVER_ALERTS,
     DETECT_FINDINGS,
     EVALUATE_ALERTS,
     EVALUATE_RUN,
@@ -167,4 +175,6 @@ HANDLERS: dict[str, Callable[[Job, AsyncConnection], Awaitable[None]]] = {
     EXPIRE_APPROVAL: expire_approval,
     EVALUATE_ALERTS: evaluate_alerts,
     ALERT_SWEEP: alert_sweep,
+    DELIVER_ALERTS: deliver_alerts,
+    ALERT_PRUNE: alert_prune,
 }

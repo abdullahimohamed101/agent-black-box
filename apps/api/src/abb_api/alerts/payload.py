@@ -104,3 +104,23 @@ def build_payload(
         "created_at": created_at.isoformat(),
     }
     return payload
+
+
+def test_payload(
+    *, workspace_id: uuid.UUID, alert_id: uuid.UUID, workspace_slug: str, created_at: datetime
+) -> dict[str, Any]:
+    """The fixed payload of "send test": kind `test`, no project, agent or subject. Never stored."""
+    return {
+        "alert_id": from_uuid(IdKind.ALERT, alert_id),
+        "kind": "test",
+        "severity": "info",
+        "title": "Test alert from Agent Black Box",
+        "workspace_id": from_uuid(IdKind.WORKSPACE, workspace_id),
+        "project": None,
+        "agent": None,
+        "rule": None,
+        "subject": {},
+        "details": {},
+        "link_path": f"/w/{quote(workspace_slug, safe='')}/alerts",
+        "created_at": created_at.isoformat(),
+    }
