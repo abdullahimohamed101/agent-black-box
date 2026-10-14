@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.auth.keys import generate_key
 from abb_api.auth.repository import ApiKeyLookup
-from abb_api.auth.throttle import AuthThrottle
+from abb_api.auth.throttle import AuthThrottle, _LocalWindow
 from abb_api.core.client_address import client_address
 from abb_api.core.errors import AppError
 from abb_api.limits import SharedCounters
@@ -229,6 +229,42 @@ async def test_bad_keys_spread_over_many_key_ids_hit_the_global_ceiling(
         # The database was asked about at most the ceiling, however many requests came.
         # (the request that used up the last unit was looked up too, hence ceiling + 1)
         assert len(lookups) - base <= 26
+
+
+async def test_a_closed_window_stays_closed_for_the_rest_of_the_window(
+    database_url: str, engine: AsyncEngine, lookups: list[str]
+) -> None:
+    """Regression: a refusal from a refilling local bucket reported "retry in 0.1 s", so the gate
+    reopened ten times a second and a long flood kept costing lookups and counter writes."""
+    import asyncio
+
+    settings = throttle_settings(database_url, auth_fail_global=20)
+    async for api in build_api(database_url, engine, settings=settings):
+        await room_in_window(engine, 60, minimum=10.0)
+        base = len(lookups)
+        counters = api.app.state.shared_counters
+        for i in range(60):
+            await probe(api, unknown_key(), f"198.51.100.{i}")
+        calls = counters.database_calls
+        for round_ in range(8):  # two seconds of continued flooding
+            await asyncio.sleep(0.25)
+            for i in range(25):
+                assert (
+                    await probe(api, unknown_key(), f"192.0.2.{round_ * 25 + i}")
+                ).status_code == 429
+        assert len(lookups) - base <= 21
+        assert counters.database_calls == calls
+
+
+def test_the_local_window_reports_the_time_left_in_its_window() -> None:
+    now = [1000.5]
+    window = _LocalWindow(2, 60, 10, wall=lambda: now[0])
+    assert window.acquire("k", events=1, bytes_=0) is None
+    assert window.acquire("k", events=1, bytes_=0) is None
+    wait = window.acquire("k", events=1, bytes_=0)
+    assert wait is not None and 19 < wait < 20  # window 960..1020, now 1000.5
+    now[0] = 1020.0
+    assert window.acquire("k", events=1, bytes_=0) is None  # next window, fresh budget
 
 
 async def test_a_flood_never_refuses_a_valid_key_or_a_session(

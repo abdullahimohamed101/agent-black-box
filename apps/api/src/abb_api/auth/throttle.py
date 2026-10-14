@@ -39,7 +39,7 @@ from abb_api.auth.keys import parse_key
 from abb_api.core.client_address import address_counter_key
 from abb_api.core.config import Settings
 from abb_api.core.errors import AppError, ErrorCategory
-from abb_api.ingestion.ratelimit import InMemoryRateLimiter, retry_after_seconds
+from abb_api.ingestion.ratelimit import retry_after_seconds
 from abb_api.limits import Dimension, GuardedLimiter, Scope, SharedCounters
 
 logger = logging.getLogger(__name__)
@@ -116,6 +116,38 @@ class _Expiring:
         return len(self._items)
 
 
+class _LocalWindow:
+    """The per-process budget behind the shared one: the same fixed windows, aligned to the wall
+    clock like the database's, so a refusal reports the time left in the window. (A token bucket
+    here would say "retry in 0.1 s" once empty and the gate would reopen ten times a second.)
+    It is what bounds a key id or an address while the database is down (ADR-152 fail-open)."""
+
+    def __init__(
+        self, limit: int, window: int, max_keys: int, wall: Callable[[], float] = time.time
+    ) -> None:
+        self._limit = limit
+        self._window = window
+        self._max = max_keys
+        self._wall = wall
+        self._counts: dict[str, tuple[float, int]] = {}
+
+    def acquire(self, key: str, *, events: int, bytes_: int) -> float | None:
+        now = self._wall()
+        start = now - now % self._window
+        seen = self._counts.get(key)
+        used = seen[1] if seen is not None and seen[0] == start else 0
+        if used + events > self._limit:
+            return max(start + self._window - now, 0.001)
+        if seen is None and len(self._counts) >= self._max:
+            live = {k: v for k, v in self._counts.items() if v[0] == start}
+            self._counts = live
+            if len(self._counts) >= self._max:
+                for stale in list(self._counts)[: max(1, self._max // 10)]:
+                    del self._counts[stale]
+        self._counts[key] = (start, used + events)
+        return None
+
+
 class AuthThrottle:
     def __init__(
         self,
@@ -124,7 +156,9 @@ class AuthThrottle:
         engine: AsyncEngine,
         *,
         monotonic: Callable[[], float] = time.monotonic,
+        wall: Callable[[], float] = time.time,
     ) -> None:
+        self._wall = wall
         self._enabled = settings.auth_fail_enabled
         self._window = settings.auth_fail_window_seconds
         self._engine = engine
@@ -149,15 +183,9 @@ class AuthThrottle:
 
     def _limiter(self, settings: Settings, scope: Scope, limit: int, keys: int) -> GuardedLimiter:
         window = settings.auth_fail_window_seconds
-        # The local bucket is the fallback when the database is down: the same budget, refilled
-        # evenly. With the database up the shared counter is the authority (ADR-152).
-        local = InMemoryRateLimiter(
-            events_per_second=limit / window,
-            burst_events=limit,
-            bytes_per_second=1.0,
-            burst_bytes=1,
-            max_keys=keys,
-        )
+        # The local budget is the fallback when the database is down: the same limit per window.
+        # With the database up the shared counter is the authority (ADR-152).
+        local = _LocalWindow(limit, window, keys, self._wall)
         return GuardedLimiter(
             local,
             self._counters,
