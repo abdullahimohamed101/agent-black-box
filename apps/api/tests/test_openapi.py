@@ -60,8 +60,8 @@ def test_every_v1_operation_is_authenticated_and_described() -> None:
     # main's 37, Phase 11's 15, Phase 22's /v1/analytics/waste, Phase 13's four security routes and
     # Phase 14's seven policy routes, and step 2's nine (decide, fail-modes, wait, consume, cancel,
     # list, pending count, detail, decision), and Phase 17's thirteen alerting routes (step 1's
-    # twelve, step 2's send-test)
-    assert seen == 37 + 15 + 1 + 4 + 7 + 9 + 13
+    # twelve, step 2's send-test), and Phase 19a step 3's two project quota routes
+    assert seen == 37 + 15 + 1 + 4 + 7 + 9 + 13 + 2
 
 
 def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
@@ -117,6 +117,8 @@ def test_the_public_surface_is_exactly_what_the_plan_promises() -> None:
         ("GET", "/v1/security/detectors"),
         ("GET", "/v1/projects/{project_id}/security-settings"),
         ("PUT", "/v1/projects/{project_id}/security-settings"),
+        ("GET", "/v1/projects/{project_id}/quotas"),
+        ("PUT", "/v1/projects/{project_id}/quotas"),
         ("GET", "/v1/policies/current"),
         ("GET", "/v1/policies/versions"),
         ("GET", "/v1/policies/versions/{version}"),
