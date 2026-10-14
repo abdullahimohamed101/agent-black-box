@@ -91,3 +91,5 @@ credential. The hot paths pay one INSERT (or, in the findings job, one indexed S
   depending on which came first. Now the `approval_requested` evaluation loads the row in any state and adds `details.approval_state` (the current `approvals.state`: `REQUESTED`, `APPROVED`, `DENIED`, `EXPIRED`
   or `CANCELLED`; a closed key in `DETAIL_KEYS`), so a receiver reads "requested, already approved". The `approval_expiring` alert still requires `REQUESTED`. The state in the details is the one the job saw, so it
   can still differ between runs of the same race; the alert's existence cannot.
+- **The expiring batch skips what is already announced (P3-3).** The sweep reads the 500 waiting approvals nearest to expiry; ones whose "about to expire" rows already exist for every destination of every rule that
+  wants them are excluded in SQL (a per-rule, per-destination anti-join on the dedupe key), so a long queue of announced approvals cannot starve later ones, while a second rule with a shorter lead still sees them.

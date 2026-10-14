@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import Float, Text, and_, cast, exists, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.alerts import model as m
@@ -154,9 +154,51 @@ class SubjectLoader:
     async def expiring_approvals(
         self, workspace_slug: str, *, now: datetime, until: datetime, limit: int
     ) -> list[m.Subject]:
+        """Waiting approvals that expire within `until` and still lack their "about to expire"
+        alert for some (rule, destination) that wants it. Approvals whose alerts all exist are left
+        out in SQL, so a long queue of announced ones cannot fill the batch and starve the rest."""
+        rule, link = t.alert_rules.c, t.alert_rule_destinations.c
+        note = t.alert_notifications.c
+        lead = func.make_interval(
+            0, 0, 0, 0, 0, 0, rule.filters["expiring_lead_seconds"].astext.cast(Float)
+        )
+        agent = rule.filters["agent"].astext
+        owed = (
+            select(literal(1))
+            .select_from(
+                t.alert_rules.join(
+                    t.alert_rule_destinations,
+                    and_(link.workspace_id == rule.workspace_id, link.rule_id == rule.id),
+                )
+            )
+            .where(
+                rule.workspace_id == self._ws,
+                rule.trigger == m.APPROVAL_EXPIRING,
+                rule.enabled,
+                or_(rule.project_id.is_(None), rule.project_id == _AP.project_id),
+                or_(agent.is_(None), agent == _AP.agent_id),
+                _AP.expires_at <= now + lead,
+                ~exists()
+                .where(
+                    note.workspace_id == self._ws,
+                    note.rule_id == rule.id,
+                    note.destination_id == link.destination_id,
+                    note.dedupe_key == func.concat(cast(_AP.id, Text), ":expiring"),
+                )
+                # auto-correlation reaches one level only: say which tables belong to the outer
+                # queries, or this one would join its own copy of `approvals`.
+                .correlate(t.approvals, t.alert_rules, t.alert_rule_destinations),
+            )
+            .correlate(t.approvals)
+        )
         rows = await self._conn.execute(
             self._approvals_select()
-            .where(_AP.state == "REQUESTED", _AP.expires_at > now, _AP.expires_at <= until)
+            .where(
+                _AP.state == "REQUESTED",
+                _AP.expires_at > now,
+                _AP.expires_at <= until,
+                exists(owed),
+            )
             .order_by(_AP.expires_at, _AP.id)
             .limit(limit)
         )

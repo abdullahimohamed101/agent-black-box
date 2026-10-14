@@ -407,6 +407,30 @@ async def test_an_expiring_approval_alerts_once_when_the_lead_time_is_reached(ap
     assert late.created == 0
 
 
+async def test_approvals_already_announced_do_not_starve_later_ones_of_the_batch(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review P3-3: the sweep reads at most EXPIRING_BATCH approvals nearest to expiry; ones that
+    already have their alert must not keep taking the places of the ones that do not."""
+    from abb_api.alerts import evaluate
+
+    monkeypatch.setattr(evaluate, "EXPIRING_BATCH", 2)
+    await publish(api)
+    await rule(
+        api, [await destination(api)], trigger=m.APPROVAL_EXPIRING,
+        filters={"expiring_lead_seconds": 900},
+    )  # fmt: skip
+    asked = [(await ask(api, arguments={"n": n}))[1] for n in range(4)]
+    seen: set[str] = set()
+    for minute in range(1, 5):  # four sweeps, two approvals at most each
+        async with api.engine.begin() as conn:
+            await sweep(
+                conn, api.tenant.context, now=NOW + timedelta(minutes=minute), skipped_cap=CAP
+            )
+        seen = {public(IdKind.APPROVAL, r.approval_id) for r in await rows(api)}
+    assert seen == set(asked)
+
+
 async def test_a_decided_approval_is_not_warned_about(api: Api) -> None:
     await publish(api)
     await rule(
