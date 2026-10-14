@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -157,6 +157,11 @@ security-e2e:
 # API, the state machine under concurrency, authorization by role, SDK safety, a dry run against an independent evaluation, and latency.
 policy-e2e:
 	pnpm --filter @abb/web build && scripts/policy-e2e.sh
+
+# Alerting (Phase 17): every trigger fired exactly once to a signed webhook, a Slack-shaped receiver and an SMTP sink through the real API and worker,
+# bounded retries / dead letter / auto-pause, outbound safety, content-free and secret-free, authorization, noise control, ingestion cost, and a browser.
+alerts-e2e:
+	pnpm --filter @abb/web build && scripts/alerts-e2e.sh
 
 # Evaluations, comparison and experiments: the coding agent twice (baseline, wrong-fix), owner and viewer in a real browser (Phase 11).
 eval-e2e:
