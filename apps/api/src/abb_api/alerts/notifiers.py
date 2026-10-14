@@ -314,7 +314,7 @@ class EmailNotifier:
         try:
             await asyncio.wait_for(
                 asyncio.to_thread(self._deliver, message, list(recipients)),
-                timeout=s.alerts_smtp_timeout_seconds * 2,
+                timeout=s.alerts_smtp_timeout_seconds,  # the whole send, not one socket operation
             )
         except TimeoutError:
             return SendResult(False, o.TIMEOUT, retryable=True)

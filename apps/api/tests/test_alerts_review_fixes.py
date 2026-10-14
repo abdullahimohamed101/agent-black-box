@@ -186,3 +186,41 @@ def test_history_must_outlive_the_longest_cooldown() -> None:
 
 def test_a_tick_is_a_small_batch_by_default() -> None:
     assert Settings(database_url="postgresql+asyncpg://x:y@localhost/z").alerts_deliver_batch == 5
+
+
+# ---------------------------------------------------------------- P2-1 email wait
+
+
+async def test_one_email_never_holds_a_tick_longer_than_the_smtp_timeout() -> None:
+    """A relay that keeps trickling bytes never trips the socket timeout; the whole send is bounded
+    by one SMTP timeout (it used to be two), like the HTTPS channels' single deadline."""
+    from abb_api.alerts import notifiers as n
+    from tests.test_alerts_notifiers import alert, email_destination
+
+    async def trickle(_: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            while True:
+                writer.write(b"2")  # a banner that never ends
+                await writer.drain()
+                await asyncio.sleep(0.2)
+        except (ConnectionError, asyncio.CancelledError):
+            pass
+
+    server = await asyncio.start_server(trickle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    settings = make_settings(
+        "postgresql+asyncpg://x:y@localhost/z",
+        smtp_host="127.0.0.1",
+        smtp_port=port,
+        smtp_from="abb@example.com",
+        smtp_starttls=False,
+        alerts_smtp_timeout_seconds=1,
+    )
+    try:
+        started = time.monotonic()
+        result = await n.EmailNotifier(settings).send(email_destination(), alert())
+        waited = time.monotonic() - started
+    finally:
+        server.close()
+    assert (result.ok, result.error_code) == (False, "timeout")
+    assert 0.8 < waited < 1.6, waited
