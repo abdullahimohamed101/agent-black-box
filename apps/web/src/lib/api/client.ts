@@ -55,6 +55,8 @@ export class ApiRequestError extends Error {
     readonly requestId: string | null,
     readonly retryable: boolean,
     readonly details: Record<string, unknown> = {},
+    /** Seconds from `Retry-After` (a 429 carries it); null when absent or not a number. */
+    readonly retryAfter: number | null = null,
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -71,6 +73,11 @@ type Envelope = {
   };
 };
 
+function retryAfterSeconds(header: string | null): number | null {
+  const n = header === null ? NaN : Number(header);
+  return Number.isFinite(n) && n >= 0 && n <= 86_400 ? Math.ceil(n) : null;
+}
+
 /** Turns an openapi-fetch result into data or a typed error; never leaks a raw body into the UI. */
 export function unwrap<T>(result: { data?: T; error?: unknown; response: Response }): T {
   if (result.data !== undefined && result.response.ok) return result.data;
@@ -83,6 +90,7 @@ export function unwrap<T>(result: { data?: T; error?: unknown; response: Respons
     env.error?.request_id ?? result.response.headers.get("x-request-id"),
     env.error?.retryable ?? status >= 500,
     env.error?.details ?? {},
+    retryAfterSeconds(result.response.headers.get("retry-after")),
   );
 }
 

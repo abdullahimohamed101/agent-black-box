@@ -1,5 +1,6 @@
 import { fixtureReply } from "@/fixtures/api";
 import { isFixtureViewerWorkspace } from "@/fixtures/auth";
+import { fixtureAlertWrite } from "@/fixtures/alerts";
 import { fixturePolicyWrite } from "@/fixtures/policies";
 import { fixtureSecuritySettings } from "@/fixtures/security";
 import {
@@ -51,6 +52,13 @@ const ROUTES: readonly Route[] = [
   // Phase 14 writes: check a draft, publish it, dry-run it, and decide an approval.
   route("POST", "policies/(validate|publish|dry-run)"),
   route("POST", `approvals/${ID}/decision`),
+  // Phase 17: alerts. Reads (rules, destinations, history, the preview), then the writes the Alerts page makes.
+  route("GET", `alerts/(destinations|rules|notifications)`),
+  route("GET", `alerts/rules/${ID}/preview`),
+  route("POST", "alerts/(destinations|rules)"),
+  route("POST", `alerts/destinations/${ID}/test`),
+  route("PATCH", `alerts/(destinations|rules)/${ID}`),
+  route("DELETE", `alerts/(destinations|rules)/${ID}`),
   route("PUT", `projects/${ID}/security-settings`),
   route("PATCH", `members/${ID}`),
   route("DELETE", `(members|invitations|api-keys|evaluators|experiments)/${ID}`),
@@ -218,6 +226,33 @@ export async function readThrough(
         status: r.status,
         headers: { ...SAFE, "x-request-id": "req_fixture" },
       });
+    }
+    if (fixtureMethod !== "GET" && /^v1\/alerts\//.test(path)) {
+      // Alert writes keep in-memory state (like the policy fixtures); a JSON body is required for POST and PATCH.
+      let parsed: unknown = {};
+      if (fixtureMethod === "POST" || fixtureMethod === "PATCH") {
+        if (
+          !(options.headers?.get("content-type") ?? "").toLowerCase().startsWith("application/json")
+        )
+          return envelope(415, "UNSUPPORTED_MEDIA_TYPE", "A JSON body is required.");
+        const text = await readCapped(options.body, options.headers?.get("content-length") ?? null);
+        if (text === null) return envelope(413, "BODY_TOO_LARGE", "Request body too large.");
+        try {
+          parsed = text ? JSON.parse(text) : {};
+        } catch {
+          return envelope(422, "VALIDATION_ERROR", "A JSON body is required.");
+        }
+      }
+      const r = fixtureAlertWrite(fixtureMethod, segments, parsed, {
+        manage: !isFixtureViewerWorkspace(options.headers?.get("x-abb-workspace")),
+      });
+      if (r)
+        return r.status === 204
+          ? new Response(null, { status: 204, headers: { ...SAFE, "x-request-id": "req_fixture" } })
+          : Response.json(r.body, {
+              status: r.status,
+              headers: { ...SAFE, "x-request-id": "req_fixture" },
+            });
     }
     if (fixtureMethod === "POST" && /^v1\/(policies|approvals)\//.test(path)) {
       // The same rules as the real path: a JSON body, capped. (The fixture server holds no session, so no origin check.)

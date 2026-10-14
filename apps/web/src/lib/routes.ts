@@ -17,3 +17,7 @@ export const experimentPath = (b: Base, experimentId: string) =>
 // Phase 14. Approvals are a workspace page; the policies editor is a settings page.
 export const approvalsPath = (workspace: string) => `/w/${workspace}/approvals`;
 export const policiesPath = (workspace: string) => `/w/${workspace}/settings/policies`;
+
+// Phase 17. Alerts are a workspace page; the tab is the URL's `?tab=`.
+export const alertsPath = (workspace: string, tab?: "rules" | "destinations" | "history") =>
+  `/w/${workspace}/alerts${tab && tab !== "rules" ? `?tab=${tab}` : ""}`;

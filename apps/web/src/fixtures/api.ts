@@ -8,6 +8,7 @@ import {
   type Viewer,
 } from "./evaluations";
 import { fixtureRuns } from "./index";
+import { fixtureAlertReply } from "./alerts";
 import { fixturePolicyReply } from "./policies";
 import { fixtureSecurityDetectors, fixtureSecurityList, fixtureSecuritySettings } from "./security";
 import { withholdEvent, withholdSpan } from "./withhold";
@@ -64,6 +65,8 @@ export function fixtureReply(
   viewer: Viewer = { content: true },
 ): Reply {
   const [v1, runs, runId, sub, eventId] = segments;
+  const alerts = fixtureAlertReply(segments, q, { manage: viewer.content });
+  if (alerts) return alerts;
   const policy = fixturePolicyReply(segments, q, viewer);
   if (policy) return policy;
   if (v1 === "v1" && segments.length === 2) {
