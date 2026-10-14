@@ -23,6 +23,7 @@ def reason_of(url: object) -> str:
     [
         "https://hooks.slack.com/services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX",
         "https://example.com/hook",
+        "https://receiver.alerts-e2e.test/hook",  # a test name that a stub resolver may map
         "HTTPS://Example.COM:8443/a/b?x=1",
         "https://203.0.113.9/x".replace("203.0.113.9", "93.184.216.34"),
         "https://[2606:4700:4700::1111]/x",

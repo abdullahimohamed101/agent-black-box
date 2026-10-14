@@ -24,7 +24,7 @@ MAX_HOST_LENGTH: Final = 253
 # private address; the sender's resolution check is what stops that.
 _INTERNAL_SUFFIXES: Final = (
     ".localhost", ".local", ".internal", ".localdomain", ".lan", ".home", ".corp", ".intranet",
-    ".private", ".home.arpa", ".test", ".example", ".invalid",
+    ".private", ".home.arpa",
 )  # fmt: skip
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")  # RFC 6052: carries an IPv4 address in its low bits
 _LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
