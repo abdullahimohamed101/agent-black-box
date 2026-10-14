@@ -372,6 +372,7 @@ class ApprovalService:
             return existing, False
         # A runaway or hostile agent must not bury the approvers: bounded open requests per key
         # and per workspace (the SDK treats the refusal as an unavailable service: its fail mode).
+        await store.lock_caps()  # count and insert are one step per workspace
         per_key, per_workspace = await store.open_counts(key_id, now)
         if (
             per_key >= self._settings.approval_max_open_per_key

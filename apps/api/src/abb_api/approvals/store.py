@@ -42,6 +42,8 @@ def _open() -> Any:
 class ApprovalStore(Protocol):
     async def lock_intent(self, run_id: uuid.UUID, key_id: str, intent_hash: str) -> None: ...
 
+    async def lock_caps(self) -> None: ...
+
     async def find_open(
         self, run_id: uuid.UUID, key_id: str, intent_hash: str, now: datetime
     ) -> Approval | None: ...
@@ -116,6 +118,13 @@ class PgApprovalStore:
         """Serialise creators of the same open approval for the rest of the transaction (the
         partial unique index is the backstop)."""
         name = f"ws:{self._tenant.workspace_id}:approval:{run_id}:{key_id}:{intent_hash}"
+        await self._conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(name, 0))))
+
+    async def lock_caps(self) -> None:
+        """Serialise the count-then-insert of the open-request caps within a workspace for the
+        rest of the transaction, so concurrent distinct asks cannot overshoot them (review P3-5).
+        Creating an approval is rare and the lock is held for one insert."""
+        name = f"ws:{self._tenant.workspace_id}:approval-caps"
         await self._conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(name, 0))))
 
     async def find_open(

@@ -183,3 +183,22 @@ async def test_open_requests_are_capped_per_key(
         assert again.status_code == 429
         # Another key has its own allowance; withdrawing one frees a slot.
         assert (await decide(api, intent(arguments={"i": 1}), "ingest_only")).status_code == 200
+
+
+async def test_concurrent_distinct_asks_cannot_overshoot_the_open_cap(
+    database_url: str, runtime_database_url: str, engine: AsyncEngine
+) -> None:
+    """Review P3-5: count-then-insert under the per-intent lock only let N concurrent asks with
+    different intents overshoot the cap by up to N."""
+    import asyncio
+
+    settings = make_settings(
+        database_url, web_origin="http://localhost:3000", approval_max_open_per_key=5
+    )
+    async for api in build_api(database_url, engine, settings=settings):
+        await publish(api)
+        replies = await asyncio.gather(
+            *(decide(api, intent(arguments={"i": i})) for i in range(25))
+        )
+        codes = sorted(r.status_code for r in replies)
+        assert codes.count(200) == 5 and codes.count(429) == 20, codes
