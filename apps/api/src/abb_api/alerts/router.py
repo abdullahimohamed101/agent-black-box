@@ -112,6 +112,26 @@ async def patch_destination(
     return await _service(request).update_destination(principal, destination_id, body)
 
 
+@router.post(
+    "/v1/alerts/destinations/{destination_id}/test",
+    response_model=s.DestinationTestResult,
+    responses=_ERRORS,
+    summary="Send a test alert to a destination",
+    description=(
+        "Sends a fixed test alert (`kind: test`, no project, agent or captured content) through "
+        "the same SSRF-safe sender as real alerts, synchronously with the short delivery "
+        "timeout, and returns `{ok, error_code}`; the response never carries what the target "
+        "answered. A test does not change the destination's failure count or state and is not "
+        "listed in the history. Owners and admins; rate limited. Audit: "
+        "`alert.destination.test` (ok and the fixed code only)."
+    ),
+)
+async def test_destination(
+    destination_id: str, request: Request, principal: Writer
+) -> s.DestinationTestResult:
+    return await _service(request).test_destination(principal, destination_id)
+
+
 @router.delete(
     "/v1/alerts/destinations/{destination_id}",
     status_code=204,

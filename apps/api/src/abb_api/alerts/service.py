@@ -20,7 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from abb_api.alerts import model as m
 from abb_api.alerts import schemas as s
 from abb_api.alerts import sealed
+from abb_api.alerts.delivery import open_destination, registry_for, send_opened
 from abb_api.alerts.jobs import ensure_sweep
+from abb_api.alerts.notifiers import Alert
+from abb_api.alerts.payload import build_test_payload
 from abb_api.alerts.repository import (
     DestinationRepository,
     NameTakenError,
@@ -28,6 +31,7 @@ from abb_api.alerts.repository import (
     RuleRepository,
 )
 from abb_api.alerts.spend import SpendReader
+from abb_api.alerts.subjects import SubjectLoader
 from abb_api.alerts.targets import (
     TargetInvalid,
     mask_recipients,
@@ -216,9 +220,19 @@ class AlertsService:
         self._preview_limiter = InMemoryRateLimiter(
             events_per_second=20 / 60, burst_events=20, bytes_per_second=1.0, burst_bytes=1
         )
+        tests = settings.alerts_tests_per_minute
+        self._test_limiter = InMemoryRateLimiter(
+            events_per_second=tests / 60, burst_events=tests, bytes_per_second=1.0, burst_bytes=1
+        )
 
-    def _throttle(self, principal: Principal, *, preview: bool = False) -> None:
+    def _throttle(
+        self, principal: Principal, *, preview: bool = False, send_test: bool = False
+    ) -> None:
         limiter = self._preview_limiter if preview else self._write_limiter
+        if send_test:
+            wait = self._test_limiter.acquire(str(principal.workspace_id), events=1, bytes_=0)
+            if wait is not None:
+                raise _rate_limited(wait)
         wait = limiter.acquire(str(principal.workspace_id), events=1, bytes_=0)
         if wait is not None:
             raise _rate_limited(wait)
@@ -438,6 +452,63 @@ class AlertsService:
         if row is None:
             raise destination_not_found()  # deleted by a concurrent request
         return s.DestinationCreated(**self._out(row).model_dump(), signing_secret=new_secret)
+
+    async def test_destination(self, principal: Principal, raw_id: str) -> s.DestinationTestResult:
+        """Send a fixed test alert through the same sender as real deliveries, now, and say how it
+        went. A "send test" proves the target works; it changes nothing about the destination:
+        the failure counter, the state and the history are not touched (a person debugging a URL
+        must not pause it, and a test must not hide a real outage by resetting the counter).
+        The database connection is released before the network wait."""
+        self._throttle(principal)
+        self._throttle(principal, send_test=True)
+        destination_id = parse_public_id(IdKind.DESTINATION, raw_id)
+        if destination_id is None:
+            raise destination_not_found()
+        async with self._engine.connect() as conn:
+            row = await DestinationRepository(conn, principal.tenant).get(destination_id)
+            if row is None:
+                raise destination_not_found()
+            slug = await SubjectLoader(conn, principal.tenant).workspace_slug()
+            try:
+                opened = await open_destination(conn, principal.workspace_id, row)
+            except (sealed.SealError, ValueError):
+                opened = None
+        ok: bool
+        code: str | None
+        if opened is None:
+            ok, code = False, "config_unreadable"
+        else:
+            now = self._clock().astimezone(UTC)
+            alert_id = new_uuid(IdKind.ALERT)
+            result = await send_opened(
+                registry_for(self._settings),
+                opened,
+                Alert(
+                    alert_id=public_id(IdKind.ALERT, alert_id),
+                    payload=build_test_payload(
+                        workspace_id=principal.workspace_id,
+                        alert_id=alert_id,
+                        workspace_slug=slug,
+                        created_at=now,
+                    ),
+                    attempt=1,
+                    web_origin=self._settings.web_origin_normalised,
+                    test=True,
+                ),
+            )
+            ok, code = result.ok, result.error_code
+        async with self._engine.begin() as conn:
+            await self._audit(
+                conn,
+                principal,
+                "alert.destination.test",
+                "alert_destination",
+                public_id(IdKind.DESTINATION, destination_id),
+                type=row.type,
+                ok=ok,
+                **({"error_code": code} if code else {}),
+            )
+        return s.DestinationTestResult(ok=ok, error_code=code)
 
     async def delete_destination(self, principal: Principal, raw_id: str) -> None:
         self._throttle(principal)

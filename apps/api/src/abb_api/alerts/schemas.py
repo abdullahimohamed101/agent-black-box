@@ -79,6 +79,17 @@ class DestinationOut(BaseModel):
     updated_at: datetime
 
 
+class DestinationTestResult(BaseModel):
+    ok: bool = Field(description="True when the destination accepted the test alert.")
+    error_code: str | None = Field(
+        description=(
+            "A fixed code when it did not: `timeout`, `connect_failed`, `dns_failed`, "
+            "`tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, "
+            "`smtp_failed`, `config_unreadable`, `internal_error`. Never a response body."
+        )
+    )
+
+
 class DestinationCreated(DestinationOut):
     signing_secret: str | None = Field(
         description=(

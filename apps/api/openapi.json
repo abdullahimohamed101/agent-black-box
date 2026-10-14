@@ -2304,6 +2304,33 @@
         "title": "DestinationTarget",
         "type": "object"
       },
+      "DestinationTestResult": {
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A fixed code when it did not: `timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`. Never a response body.",
+            "title": "Error Code"
+          },
+          "ok": {
+            "description": "True when the destination accepted the test alert.",
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "error_code"
+        ],
+        "title": "DestinationTestResult",
+        "type": "object"
+      },
       "DetectorList": {
         "properties": {
           "items": {
@@ -5290,7 +5317,9 @@
                   "cooldown",
                   "destination_paused",
                   "destination_deleted",
-                  "rule_deleted"
+                  "rule_deleted",
+                  "rate_limited",
+                  "daily_cap"
                 ],
                 "type": "string"
               },
@@ -9770,6 +9799,136 @@
           }
         ],
         "summary": "Change an alert destination",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/v1/alerts/destinations/{destination_id}/test": {
+      "post": {
+        "description": "Sends a fixed test alert (`kind: test`, no project, agent or captured content) through the same SSRF-safe sender as real alerts, synchronously with the short delivery timeout, and returns `{ok, error_code}`; the response never carries what the target answered. A test does not change the destination's failure count or state and is not listed in the history. Owners and admins; rate limited. Audit: `alert.destination.test` (ok and the fixed code only).",
+        "operationId": "test_destination_v1_alerts_destinations__destination_id__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "destination_id",
+            "required": true,
+            "schema": {
+              "title": "Destination Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DestinationTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor is not valid."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role may not use this route (API keys never may)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other workspaces)."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A name is taken or a workspace limit is reached."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The body is invalid; `details` names the field or reason, never a value."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many alert changes; see `Retry-After`."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The preview took too long."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Send a test alert to a destination",
         "tags": [
           "alerts"
         ]

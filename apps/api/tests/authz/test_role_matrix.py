@@ -73,6 +73,7 @@ EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/v1/alerts/destinations"): (NO_KEY, U_ALERT_MANAGE),
     ("GET", "/v1/alerts/destinations/{destination_id}"): (NO_KEY, U_ALERT_MANAGE),
     ("PATCH", "/v1/alerts/destinations/{destination_id}"): (NO_KEY, U_ALERT_MANAGE),
+    ("POST", "/v1/alerts/destinations/{destination_id}/test"): (NO_KEY, U_ALERT_MANAGE),
     ("DELETE", "/v1/alerts/destinations/{destination_id}"): (NO_KEY, U_ALERT_MANAGE),
     ("POST", "/v1/alerts/rules"): (NO_KEY, U_ALERT_MANAGE),
     ("GET", "/v1/alerts/rules"): (NO_KEY, U_ALERT_READ),

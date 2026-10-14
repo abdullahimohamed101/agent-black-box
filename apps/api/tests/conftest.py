@@ -56,6 +56,7 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
     # The authorization matrix changes alert destinations and rules hundreds of times in a minute;
     # the limit has its own test (tests/test_alerts_api.py) with a real number.
     overrides.setdefault("alerts_writes_per_minute", 1_000_000)
+    overrides.setdefault("alerts_tests_per_minute", 1_000_000)
     # Tests that are not about delivery must never send anything (Phase 17 step 2): notifications
     # stay `pending`. The delivery tests (tests/test_alerts_delivery*.py) turn it on and deliver to
     # local receivers through `use_registry`.

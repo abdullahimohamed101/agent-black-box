@@ -107,16 +107,18 @@ async def deliver_alerts(job: Job, conn: AsyncConnection) -> None:
     result = await deliver_due(
         conn, tenant, now=now, settings=settings, registry=registry_for(settings)
     )
-    if result.claimed == 0:
-        return
     outbox = OutboxRepository(conn, tenant)
     next_at = await NotificationRepository(conn, tenant).next_pending_at()
     if next_at is None:
         return
-    if next_at <= now:
+    if next_at <= now and result.claimed >= settings.alerts_deliver_batch:
         await request_delivery(outbox, tenant)  # the batch was full: carry on in the next tick
-    else:
-        await schedule_retry(conn, tenant, next_at + timedelta(seconds=1))
+        return
+    # Otherwise wake up when the earliest row is due: it is waiting for a retry, or we were woken
+    # early by a clock difference, or another tick holds the rows we could not take (look again
+    # in a few seconds, not in a loop).
+    quick = next_at > now or result.claimed > 0
+    await schedule_retry(conn, tenant, max(next_at, now) + timedelta(seconds=1 if quick else 5))
 
 
 async def alert_prune(job: Job, conn: AsyncConnection) -> None:

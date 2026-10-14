@@ -87,6 +87,26 @@ export interface paths {
         patch: operations["patch_destination_v1_alerts_destinations__destination_id__patch"];
         trace?: never;
     };
+    "/v1/alerts/destinations/{destination_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test alert to a destination
+         * @description Sends a fixed test alert (`kind: test`, no project, agent or captured content) through the same SSRF-safe sender as real alerts, synchronously with the short delivery timeout, and returns `{ok, error_code}`; the response never carries what the target answered. A test does not change the destination's failure count or state and is not listed in the history. Owners and admins; rate limited. Audit: `alert.destination.test` (ok and the fixed code only).
+         */
+        post: operations["test_destination_v1_alerts_destinations__destination_id__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/alerts/notifications": {
         parameters: {
             query?: never;
@@ -2286,6 +2306,19 @@ export interface components {
              */
             url?: string | null;
         };
+        /** DestinationTestResult */
+        DestinationTestResult: {
+            /**
+             * Error Code
+             * @description A fixed code when it did not: `timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`. Never a response body.
+             */
+            error_code: string | null;
+            /**
+             * Ok
+             * @description True when the destination accepted the test alert.
+             */
+            ok: boolean;
+        };
         /** DetectorList */
         DetectorList: {
             /** Items */
@@ -3461,7 +3494,7 @@ export interface components {
              */
             severity: "info" | "warning" | "medium" | "high" | "critical";
             /** Skip Reason */
-            skip_reason: ("cooldown" | "destination_paused" | "destination_deleted" | "rule_deleted") | null;
+            skip_reason: ("cooldown" | "destination_paused" | "destination_deleted" | "rule_deleted" | "rate_limited" | "daily_cap") | null;
             /**
              * Status
              * @enum {string}
@@ -5347,6 +5380,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DestinationCreated"];
+                };
+            };
+            /** @description The cursor is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route (API keys never may). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other workspaces). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is taken or a workspace limit is reached. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is invalid; `details` names the field or reason, never a value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many alert changes; see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    test_destination_v1_alerts_destinations__destination_id__test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                destination_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DestinationTestResult"];
                 };
             };
             /** @description The cursor is not valid. */

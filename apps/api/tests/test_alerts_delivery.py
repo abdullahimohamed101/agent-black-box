@@ -823,3 +823,26 @@ async def test_failure_logs_carry_codes_only_never_urls_secrets_or_bodies(
         SENTINEL_SIGNING, "SECRETPATHTOKEN1234", HOST, RESPONSE_SENTINEL, "x-abb-signature",
     ):  # fmt: skip
         assert forbidden.lower() not in caplog.text.lower(), forbidden
+
+
+async def test_a_tick_woken_before_its_rows_are_due_schedules_itself_instead_of_ending_the_chain(
+    rig_factory: Any,
+) -> None:
+    from abb_api.alerts.delivery import use_registry
+
+    rig: Rig = await rig_factory()
+    later = datetime.now(UTC) + timedelta(minutes=10)
+    await rig.add(at=later)
+    token = set_job_settings(rig.settings)
+    try:
+        job = Job(uuid.uuid4(), DELIVER_ALERTS, rig.tenant.workspace_id, "k", {}, 1, "t")
+        with use_registry(rig.registry):
+            async with rig.api.engine.begin() as conn:
+                await deliver_alerts(job, conn)
+    finally:
+        reset_job_settings(token)
+    async with rig.api.engine.connect() as conn:
+        found = (await conn.execute(text("SELECT dedupe_key, available_at FROM outbox_jobs"))).all()
+    assert [j.dedupe_key for j in found] == [f"{rig.tenant.workspace_id}:retry"]
+    assert abs((found[0].available_at - later).total_seconds() - 1) < 1
+    assert rig.receiver.requests == []

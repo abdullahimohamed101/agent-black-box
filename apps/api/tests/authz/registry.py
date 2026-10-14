@@ -390,6 +390,8 @@ def _alert_destination(method: str, *, fresh: str | None = None) -> Builder:
         if method == "LIST":
             return RequestSpec("GET", "/v1/alerts/destinations")
         path = f"/v1/alerts/destinations/{ident or side.destination_id}"
+        if method == "TEST":
+            return RequestSpec("POST", path + "/test")
         if method == "DELETE" and ident is None:
             path = "/v1/alerts/destinations/FRESH"
         content = (
@@ -566,6 +568,10 @@ CASES: dict[tuple[str, str], RouteCase] = {
         RouteCase(
             "PATCH", "/v1/alerts/destinations/{destination_id}", actions.ALERT_WRITE,
             _alert_destination("PATCH"), 200, ("destination_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/alerts/destinations/{destination_id}/test", actions.ALERT_WRITE,
+            _alert_destination("TEST"), 200, ("destination_id",), probe_actors=ADMINS,
         ),
         RouteCase(
             "DELETE", "/v1/alerts/destinations/{destination_id}", actions.ALERT_WRITE,

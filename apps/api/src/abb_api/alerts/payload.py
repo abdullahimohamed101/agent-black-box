@@ -106,7 +106,7 @@ def build_payload(
     return payload
 
 
-def test_payload(
+def build_test_payload(
     *, workspace_id: uuid.UUID, alert_id: uuid.UUID, workspace_slug: str, created_at: datetime
 ) -> dict[str, Any]:
     """The fixed payload of "send test": kind `test`, no project, agent or subject. Never stored."""
