@@ -3,6 +3,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatOffset, formatDuration } from "@/lib/format";
+import { isPolicyService, policyEventLabel, PROVENANCE_TEXT } from "@/lib/policy";
 import { useTimers } from "@/lib/useTimers";
 import { agentChip } from "@/lib/waterfall";
 import {
@@ -15,6 +16,7 @@ import {
   type Row,
 } from "@/lib/timeline";
 import "../app/run-timeline.css";
+import "../app/policy.css";
 
 const ROW_HEIGHT = 36;
 
@@ -273,6 +275,7 @@ export function Timeline({
             const e = row.event;
             const err = isError(e);
             const cls = eventClass(e.event_type);
+            const pol = policyEventLabel(e);
             return (
               <div
                 key={row.key}
@@ -289,6 +292,7 @@ export function Timeline({
                 data-first-error={e.event_id === firstErrorId || undefined}
                 data-after-fault={(faultIndex >= 0 && v.index > faultIndex) || undefined}
                 data-indented={row.indented || undefined}
+                data-policy={pol ? (pol.tone === "wait" ? "wait" : "outcome") : undefined}
                 data-retry={isRetry(e) || undefined}
                 data-arrived={newIds?.has(e.event_id) || undefined}
                 data-landed={(e.event_id === landedId && landedTone) || undefined}
@@ -307,7 +311,25 @@ export function Timeline({
                   {isRetry(e) && <span className="tag tag-warn">Retry </span>}
                   {showAgent && <span className="tl-agent">{agentChip(e.agent_id)}</span>}
                   <span className="tl-type">{e.event_type}</span>{" "}
-                  <span className="tl-desc">{describe(e)}</span>
+                  {pol ? (
+                    <span className="tl-desc">
+                      <span className="tl-pol" data-tone={pol.tone}>
+                        <span className="pol-glyph" aria-hidden="true">
+                          {pol.glyph}
+                        </span>
+                        <span>{pol.word}</span>
+                      </span>
+                      {isPolicyService(e) && (
+                        <span className="tag tl-prov" title={PROVENANCE_TEXT}>
+                          <span className="sr-only">{PROVENANCE_TEXT}. </span>
+                          <span aria-hidden="true">policy service</span>
+                        </span>
+                      )}
+                      {pol.detail && <span className="tl-pol-why">{pol.detail}</span>}
+                    </span>
+                  ) : (
+                    <span className="tl-desc">{describe(e)}</span>
+                  )}
                 </span>
                 <span className="tl-dur">{formatDuration(e.duration_ms)}</span>
                 <span className="tl-status">

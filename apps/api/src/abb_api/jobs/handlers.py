@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.analytics.rollup import refresh_day
+from abb_api.approvals.job import expire_approval
 from abb_api.cost.engine import CostEngine
 from abb_api.cost.repository import CostRepository
 from abb_api.evaluations.job import evaluate_run as run_evaluations
@@ -18,6 +19,7 @@ from abb_api.jobs.context import job_settings
 from abb_api.jobs.outbox import (
     DETECT_FINDINGS,
     EVALUATE_RUN,
+    EXPIRE_APPROVAL,
     REFRESH_ANALYTICS_DAY,
     SUMMARIZE_RUN,
     Job,
@@ -155,4 +157,5 @@ HANDLERS: dict[str, Callable[[Job, AsyncConnection], Awaitable[None]]] = {
     REFRESH_ANALYTICS_DAY: refresh_analytics_day,
     DETECT_FINDINGS: detect_findings,
     EVALUATE_RUN: evaluate_run,
+    EXPIRE_APPROVAL: expire_approval,
 }

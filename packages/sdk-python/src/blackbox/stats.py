@@ -26,6 +26,12 @@ COUNTERS = (
     "retries",
     "internal_errors",
     "remote_run_end_ignored",  # end() on a continued run: the root run owns the run's end
+    "policy_checks",  # decisions the policy service answered
+    "policy_denied",  # guard() refusals (a deny, a denied approval, an expired approval)
+    "policy_approvals",  # decisions that needed a person
+    "policy_fail_open",  # the service could not be asked and the action went ahead
+    "policy_fail_closed",  # the service could not be asked and the action was refused
+    "policy_warnings_lost",  # policy.warning events pushed out of the spool after an outage
 )
 
 

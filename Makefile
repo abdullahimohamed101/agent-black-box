@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e multiagent-e2e findings-e2e eval-e2e security-e2e
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -152,6 +152,11 @@ findings-e2e:
 # re-analysis, an ingestion benchmark, and a real browser as owner, viewer and billing.
 security-e2e:
 	pnpm --filter @abb/web build && scripts/security-e2e.sh
+
+# Policy engine and approvals (Phase 14): the demo paused for a human in a real browser, a replayed approval, failure modes against a live and a dead
+# API, the state machine under concurrency, authorization by role, SDK safety, a dry run against an independent evaluation, and latency.
+policy-e2e:
+	pnpm --filter @abb/web build && scripts/policy-e2e.sh
 
 # Evaluations, comparison and experiments: the coding agent twice (baseline, wrong-fix), owner and viewer in a real browser (Phase 11).
 eval-e2e:

@@ -43,6 +43,14 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
     overrides.setdefault("summary_debounce_seconds", 0.0)  # tests summarize immediately
     overrides.setdefault("findings_delay_seconds", 0.0)  # and analyse immediately
     overrides.setdefault("security_reanalyse_cooldown_seconds", 0.0)  # tests change settings often
+    # The authorization matrix sends hundreds of policy requests in a minute; the limits have
+    # their own tests (tests/policies) that build the service with real numbers.
+    overrides.setdefault("policy_writes_per_minute", 1_000_000)
+    overrides.setdefault("policy_validations_per_minute", 1_000_000)
+    overrides.setdefault("policy_dry_runs_per_minute", 1_000_000)
+    # Same for the decision endpoint (Phase 14 step 2); the flood tests set real numbers.
+    overrides.setdefault("policy_decide_per_minute_key", 1_000_000)
+    overrides.setdefault("policy_decide_per_minute_workspace", 1_000_000)
     return Settings(
         environment="test",
         log_level="WARNING",

@@ -1,6 +1,7 @@
 import type { FixtureRun } from "./builder";
 import { baselineCodingRun, wrongFixCodingRun } from "./codingRuns";
 import { withFindings } from "./findings";
+import { policyFixtureRuns } from "./policyRuns";
 import { securityFixtureRuns } from "./securityRuns";
 import {
   approvalRun,
@@ -36,6 +37,7 @@ export function fixtureRuns(): FixtureRun[] {
     baselineCodingRun(),
     wrongFixCodingRun(),
     ...securityFixtureRuns(),
+    ...policyFixtureRuns(),
   ]
     .map(withFindings)
     .sort((a, b) => b.run.started_at.localeCompare(a.run.started_at));

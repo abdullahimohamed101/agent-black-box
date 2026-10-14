@@ -14,10 +14,13 @@ from abb_api.db.tables import ROLES
 from tests.authz.registry import CASES
 
 KEY_BASE = {"workspace.read", "project.read"}
+# Phase 14 step 2: what an agent's key may do with the policy service.
+ASK = {"policy.decide", "approval.use", "policy.fail_modes"}
+APPROVALS = {"approval.read", "approval.decide"}
 
 # Literal expected grants. Deliberately not imported from the code under test.
 EXPECTED_SCOPE_ACTIONS: dict[str, set[str]] = {
-    "events:write": KEY_BASE | {"event.write", "run.write"},
+    "events:write": KEY_BASE | {"event.write", "run.write"} | ASK,
     "runs:read": KEY_BASE
     | {
         "run.read",
@@ -29,30 +32,33 @@ EXPECTED_SCOPE_ACTIONS: dict[str, set[str]] = {
         "experiment.read",
     },
     "artifacts:write": KEY_BASE | {"artifact.write"},
-    "policy:check": KEY_BASE,
+    "policy:check": KEY_BASE | ASK,
 }
 
 _EVERYONE = {"workspace.read", "project.read", "member.read", "pricing.read"}
 _CONTENT = {"payload.read", "artifact.read"}
 _EVAL_READ = {"evaluation.read", "experiment.read"}
 _EVAL_WRITE = {"evaluation.run", "evaluation.label", "evaluator.write", "experiment.write"}
+_POLICY_READ = {"policy.read", "policy.fail_modes"}
 EXPECTED_ROLE_ACTIONS: dict[str, set[str]] = {
-    "OWNER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE
+    "OWNER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE | _POLICY_READ | {"policy.write"}
+    | APPROVALS
     | {
         "run.read", "analytics.read", "project.write", "api_key.read", "api_key.create",
         "api_key.revoke", "member.write", "member.write_owner", "invite.read", "invite.write",
         "pricing.write", "audit.read", "billing.read",
     },
-    "ADMIN": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE
+    "ADMIN": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE | _POLICY_READ | {"policy.write"}
+    | APPROVALS
     | {
         "run.read", "analytics.read", "project.write", "api_key.read", "api_key.create",
         "api_key.revoke", "member.write", "invite.read", "invite.write", "pricing.write",
         "audit.read", "billing.read",
     },
-    "DEVELOPER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE
+    "DEVELOPER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE | _POLICY_READ | APPROVALS
     | {"run.read", "analytics.read", "api_key.read", "api_key.create"},
     "VIEWER": _EVERYONE | _EVAL_READ | {"run.read", "analytics.read"},
-    "SECURITY": _EVERYONE | _CONTENT | _EVAL_READ
+    "SECURITY": _EVERYONE | _CONTENT | _EVAL_READ | _POLICY_READ | APPROVALS
     | {"run.read", "analytics.read", "api_key.read", "api_key.revoke", "audit.read"},
     "BILLING": _EVERYONE | {"analytics.read", "pricing.write", "billing.read"},
 }  # fmt: skip
@@ -61,7 +67,8 @@ EXPECTED_ROLE_OWN: dict[str, set[str]] = {"DEVELOPER": {"api_key.revoke"}}
 ADMIN_ACTIONS = {
     "project.write", "member.read", "member.write", "member.write_owner", "invite.read",
     "invite.write", "api_key.read", "api_key.create", "api_key.revoke", "pricing.write",
-    "audit.read", "billing.read",
+    "audit.read", "billing.read", "policy.read", "policy.write", "approval.read",
+    "approval.decide",
 }  # fmt: skip
 
 
@@ -139,3 +146,37 @@ def test_payload_read_separates_content_from_metadata() -> None:
     # Decision 4: BILLING reads prices and analytics but not runs.
     assert {"pricing.read", "analytics.read", "pricing.write"} <= role_actions("BILLING")
     assert "run.read" not in role_actions("BILLING")
+
+
+def test_policy_management_is_for_people_and_writing_implies_reading_content() -> None:
+    """Phase 14: policies are read by owner, admin, developer and security, and changed (with the
+    validation and dry-run endpoints) only by owner and admin. A dry run evaluates recorded content,
+    so everyone who holds policy.write must also hold payload.read. Keys hold neither action."""
+    for role in ALL_ROLES:
+        granted = role_actions(role)
+        assert ("policy.read" in granted) == (role in ("OWNER", "ADMIN", "DEVELOPER", "SECURITY"))
+        assert ("policy.write" in granted) == (role in ("OWNER", "ADMIN"))
+        if "policy.write" in granted:
+            assert {"payload.read", "policy.read"} <= granted
+    assert not any({"policy.read", "policy.write"} & set(v) for v in SCOPE_ACTIONS.values())
+
+
+def test_approvals_are_read_and_decided_by_people_with_payload_read_and_never_by_keys() -> None:
+    """Phase 14 step 2 (ADR-141): the approver must be able to see what they approve."""
+    for role in ALL_ROLES:
+        granted = role_actions(role)
+        readers = {"OWNER", "ADMIN", "DEVELOPER", "SECURITY"}
+        assert ("approval.read" in granted) == (role in readers), role
+        assert ("approval.decide" in granted) == (role in readers), role
+        if "approval.decide" in granted:
+            assert {"payload.read", "approval.read"} <= granted
+    assert not any(APPROVALS & set(v) for v in SCOPE_ACTIONS.values())
+
+
+def test_asking_and_using_approvals_is_for_keys_and_never_for_people() -> None:
+    """A person cannot ask the policy or spend an approval as an agent; only the two scopes can."""
+    agent_only = {"policy.decide", "approval.use"}
+    for role in ALL_ROLES:
+        assert not agent_only & role_actions(role), role
+    holders = {scope for scope, granted in SCOPE_ACTIONS.items() if agent_only <= set(granted)}
+    assert holders == {"events:write", "policy:check"}

@@ -1,5 +1,6 @@
 import type { EventOut, RunOut } from "@/lib/api/types";
 import { formatCost, formatDuration, formatRelative, num } from "./format";
+import { leftText, pendingApproval } from "./policy";
 import { costDisplay } from "./replay/figures";
 import type { ReplayState } from "./replay/project";
 import { firstErrorFor, isError, isRetry } from "./timeline";
@@ -209,6 +210,11 @@ export function headlineModel(input: {
   t0: number;
   eventsComplete: boolean;
   now?: number;
+  /**
+   * What the run is waiting on, when the viewer may read approvals: the real time left (seconds, already aged to now) from
+   * `GET /v1/approvals/{id}`. Without it the headline names the capability from the event but states no time.
+   */
+  approvalLeftSeconds?: number | null;
 }): HeadlineModel {
   const { run, events, t0, eventsComplete } = input;
   const now = input.now ?? Date.now();
@@ -288,16 +294,22 @@ export function headlineModel(input: {
       const ask = [...events].reverse().find((e) => e.event_type === "approval.requested");
       const since = ask ?? last;
       const wait = since ? formatDuration(Math.max(0, now - Date.parse(since.occurred_at))) : null;
-      // Never the approval's action or the last event's content: a viewer reads the same words as an owner.
+      // Never the approval's action or the last event's content: a viewer reads the same words as an owner. The
+      // capability (`github.push`) is event metadata the policy service wrote, so every role may read it.
+      const capability = pendingApproval(events)?.capability ?? null;
       const what =
         run.status === "WAITING_FOR_APPROVAL"
-          ? "Awaiting approval"
+          ? capability
+            ? `Waiting for approval: ${capability}`
+            : "Awaiting approval"
           : `Waiting${last ? ` on ${subjectOf(last)}` : ""}`;
+      const left =
+        run.status === "WAITING_FOR_APPROVAL" ? leftText(input.approvalLeftSeconds ?? null) : null;
       return {
         ...common,
         live: false,
         lead: `${what}${lastStep == null ? "" : ` · step ${lastStep}`}`,
-        detail: join([wait && wait !== "—" && `waiting ${wait}`, `${total} so far`]),
+        detail: join([left, wait && wait !== "—" && `waiting ${wait}`, `${total} so far`]),
       };
     }
     default:

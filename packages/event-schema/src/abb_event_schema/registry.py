@@ -146,7 +146,18 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     # security and approvals
     "policy.id": AttrSpec(AttrType.STRING),
     "policy.capability": AttrSpec(AttrType.STRING),
+    # Phase 14 (ADR-140): what the policy service decided. `policy.version` is the stored version
+    # number (0: no policy was published). `policy.decision` is allow | deny | require_approval.
+    # `policy.reason` is fixed text the server builds from the matching rule's own description or
+    # id, never from the action; `approval.state` is REQUESTED | APPROVED | DENIED | EXPIRED |
+    # CANCELLED. All are labels the server writes, so they are metadata.
+    "policy.version": AttrSpec(AttrType.INTEGER, 0),
+    "policy.decision": AttrSpec(AttrType.STRING),
     "policy.reason": AttrSpec(AttrType.STRING),
+    # How many `policy.warning` events the SDK lost (its bounded spool overflowed during an
+    # outage); written only with the reason `policy_warnings_dropped`. A count, so metadata.
+    "policy.warnings_dropped": AttrSpec(AttrType.INTEGER, 0),
+    "approval.state": AttrSpec(AttrType.STRING),
     "secret.kind": AttrSpec(AttrType.STRING),
     "approval.id": AttrSpec(AttrType.STRING),
     "approval.capability": AttrSpec(AttrType.STRING),
@@ -267,12 +278,19 @@ _SPECS: tuple[EventTypeSpec, ...] = (
     _spec("rate_limit.hit", _C.RELIABILITY, _P1, _POINT),
     # security and policy
     _spec("policy.warning", _C.SECURITY, _P0, _POINT),
+    # An allowed or approval-gated decision (a denial is `policy.action.blocked`). Frequent, so P1.
+    _spec("policy.decision", _C.SECURITY, _P1, _POINT, None, ("policy.decision",)),
     _spec("policy.action.blocked", _C.SECURITY, _P0, _POINT, None, ("policy.id",)),
     _spec("secret.detected", _C.SECURITY, _P0, _POINT),
     # approvals
     _spec("approval.requested", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
     _spec("approval.granted", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
     _spec("approval.denied", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
+    # Phase 14 step 2 (ADR-141): the other ways an approval request ends, and its single use.
+    # Written by the server only; metadata attributes (`approval.id`, `approval.state`).
+    _spec("approval.consumed", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
+    _spec("approval.expired", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
+    _spec("approval.cancelled", _C.APPROVAL, _P0, _POINT, None, ("approval.id",)),
     # generic spans for custom instrumentation (D6)
     _spec("span.started", _C.SPAN, _P1, _OPEN, _K.CUSTOM, ("span.name", "span.kind")),
     _spec("span.completed", _C.SPAN, _P1, _CLOSE, _K.CUSTOM),

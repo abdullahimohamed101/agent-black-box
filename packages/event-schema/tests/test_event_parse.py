@@ -105,7 +105,11 @@ def test_canonical_event_requires_server_fields() -> None:
         ("shell.command.completed", {"shell.exit_code": 0}, "shell.command"),
         ("retry.attempted", {}, "retry.attempt"),
         ("approval.requested", {}, "approval.id"),
+        ("approval.consumed", {}, "approval.id"),
+        ("approval.expired", {}, "approval.id"),
+        ("approval.cancelled", {}, "approval.id"),
         ("policy.action.blocked", {}, "policy.id"),
+        ("policy.decision", {}, "policy.decision"),
         ("span.started", {"span.kind": "custom"}, "span.name"),
     ],
 )

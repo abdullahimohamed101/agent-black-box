@@ -26,3 +26,29 @@ with bb.run("support bot"):
   unchanged; the adapter's own failures are contained.
 
 Span ends that arrive after the run ended (an abandoned stream collected late) are dropped: nothing is recorded after a run's end event.
+
+## Policy: guard the tool function with `@guarded` (Phase 14)
+
+This adapter does not run your tools, so it cannot guard them for you (D5). Put `@guarded` on the tool function; the SDK asks the policy service
+before the body runs (cooperative enforcement: it covers calls that go through the decorated function, not a tool that bypasses it). Needs
+`agent-black-box>=0.4.0`, `BLACKBOX_POLICY=enforce` (or `BlackBox(policy_mode="enforce")`) and a project key with `policy:check` or `events:write`. With policy off the decorator
+changes nothing.
+
+```python
+from blackbox import PolicyDenied, guarded
+
+
+@guarded(
+    "tool.lookup", resource=lambda query: query
+)  # capability tool.<name>, as a dry run reads it
+def lookup(query: str) -> str: ...
+
+
+try:
+    lookup("customers")  # allowed: runs; waits here if a person must approve
+except PolicyDenied as denied:  # also ApprovalDenied, ApprovalExpired
+    result = f"blocked by policy: {denied.reason}"  # hand the model an error result instead
+```
+
+`PolicyUnavailable` is raised when the service cannot be asked and the fail mode is closed (default for risk classes R3 and R4; tool calls are unclassified, so they fail open
+unless you set `policy_fail_modes={"tool.*": "closed"}`). A tested example is in `tests/test_guarded_tool.py`.

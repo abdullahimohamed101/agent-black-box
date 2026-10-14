@@ -67,6 +67,8 @@ class Side:
     variant_id: str
     with_run_id: str
     human_evaluator_id: str  # a `human` evaluator (the target of a verdict)
+    approval_id: str  # a waiting approval requested by the tenant's project key (Phase 14)
+    agent_slug: str  # the agent the tenant's seeded run belongs to
     every_id: frozenset[str]  # every id the tenant owns (for leak scans)
 
 
@@ -115,6 +117,7 @@ def _ids(side: Side, overrides: dict[str, str]) -> dict[str, str]:
         "variant_id": side.variant_id,
         "with_run_id": side.with_run_id,
         "human_evaluator_id": side.human_evaluator_id,
+        "approval_id": side.approval_id,
         **overrides,
     }
 
@@ -181,6 +184,82 @@ def _security_settings(method: str) -> Builder:
             method, f"/v1/projects/{project}/security-settings",
             content=content if method == "PUT" else None,
             headers=JSON if method == "PUT" else {},
+        )  # fmt: skip
+
+    return build
+
+
+POLICY_DOC = (
+    "version: 1\npolicies:\n  - id: deny-env\n    description: Do not read dotenv files.\n"
+    "    when: {capability: filesystem.read, resource: '**/.env*'}\n    decision: deny\n"
+    # The gate the approval routes' cases ask about: a publish by the policy cases must not remove
+    # it (it needs a developer, so owner, admin, security and developer may all decide it).
+    "  - id: matrix-gate\n    description: Gated for the matrix.\n"
+    "    when: {capability: matrix.gate}\n    decision: require_approval\n"
+    "    approver_role: developer\n    expires_in: 1h\n"
+)
+
+
+def _policy_get(template: str, extra: dict[str, str] | None = None) -> Builder:
+    """GET on the policy routes: the workspace base unless the probe names a project."""
+
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        params = {**(extra or {})}
+        if "project_id" in overrides:
+            params["project_id"] = overrides["project_id"]
+        return RequestSpec("GET", template, params)
+
+    return build
+
+
+def _policy_post(path: str, *, project_in_body: bool) -> Builder:
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        body: dict[str, object] = {"document": POLICY_DOC}
+        if project_in_body:
+            body["project_id"] = overrides.get("project_id", side.project_id)
+        elif "project_id" in overrides:
+            body["project_id"] = overrides["project_id"]
+        return RequestSpec("POST", path, content=json.dumps(body).encode(), headers=JSON)
+
+    return build
+
+
+def matrix_intent(side: Side, arguments: dict[str, object] | None = None) -> dict[str, object]:
+    """An action intent in the tenant's seeded run (the gate rule is in the world's policy)."""
+    return {
+        "run_id": side.run_id, "agent_id": side.agent_slug, "capability": "matrix.gate",
+        "resource": "r", "risk_class": "R2", "arguments": arguments or {"k": "v"},
+    }  # fmt: skip
+
+
+def _decide(side: Side, overrides: dict[str, str]) -> RequestSpec:
+    """Ask for an allowed action in a fresh run: valid for every key of any project."""
+    body = {
+        "run_id": new_id(IdKind.RUN), "agent_id": side.agent_slug, "capability": "matrix.ok",
+        "resource": "r", "risk_class": "R0", "arguments": {},
+    }  # fmt: skip
+    return RequestSpec("POST", "/v1/policy/decide", content=json.dumps(body).encode(), headers=JSON)
+
+
+def _approval(method: str, suffix: str = "", *, fresh: str, body: str | None = None) -> Builder:
+    """A call on an approval. With an id (the cross-workspace probes) it targets that id, else the
+    world makes a fresh approval (`fresh`: "approval" waiting, "approved" approved and unspent)
+    and puts its id where the path says FRESH. `body`: "decision" or "consume"."""
+
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        ident = overrides.get("approval_id")
+        content: bytes | None = None
+        if body == "decision":
+            content = json.dumps({"decision": "approve"}).encode()
+        elif body == "consume":
+            # FRESH_INTENT is replaced by the intent the world made the fresh approval for.
+            intent = json.dumps(matrix_intent(side)).encode() if ident else b'"FRESH_INTENT"'
+            content = b'{"intent": ' + intent + b"}"
+        return RequestSpec(
+            method, f"/v1/approvals/{ident or 'FRESH'}{suffix}",
+            params={"timeout": "0"} if suffix == "/wait" else {},
+            content=content, headers=JSON if content else {},
+            fresh=None if ident else fresh,
         )  # fmt: skip
 
     return build
@@ -335,6 +414,75 @@ CASES: dict[tuple[str, str], RouteCase] = {
         RouteCase(
             "PUT", "/v1/projects/{project_id}/security-settings", actions.PROJECT_WRITE,
             _security_settings("PUT"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/policies/current", actions.POLICY_READ, _policy_get("/v1/policies/current"),
+            200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/policies/versions", actions.POLICY_READ,
+            _policy_get("/v1/policies/versions"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/policies/versions/{version}", actions.POLICY_READ,
+            _policy_get("/v1/policies/versions/1"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/policies/diff", actions.POLICY_READ,
+            _policy_get("/v1/policies/diff", {"from_version": "1", "to_version": "2"}), 200,
+            ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/policies/validate", actions.POLICY_WRITE,
+            _policy_post("/v1/policies/validate", project_in_body=False), 200,
+        ),
+        RouteCase(
+            "POST", "/v1/policies/publish", actions.POLICY_WRITE,
+            _policy_post("/v1/policies/publish", project_in_body=False), 201,
+            ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/policies/dry-run", actions.POLICY_WRITE,
+            _policy_post("/v1/policies/dry-run", project_in_body=True), 200,
+            ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase("POST", "/v1/policy/decide", actions.POLICY_DECIDE, _decide, 200),
+        RouteCase(
+            "GET", "/v1/policies/fail-modes", actions.POLICY_FAIL_MODES,
+            _policy_get("/v1/policies/fail-modes"), 200, ("project_id",),
+            probe_actors=("writer", "wide", "owner", "dual", "other"),
+        ),
+        RouteCase(
+            "GET", "/v1/approvals/{approval_id}/wait", actions.APPROVAL_USE,
+            _approval("GET", "/wait", fresh="approval"), 200, ("approval_id",),
+            probe_actors=("writer", "other"),
+        ),
+        RouteCase(
+            "POST", "/v1/approvals/{approval_id}/consume", actions.APPROVAL_USE,
+            _approval("POST", "/consume", fresh="approved", body="consume"), 200,
+            ("approval_id",), probe_actors=("writer", "other"),
+        ),
+        RouteCase(
+            "DELETE", "/v1/approvals/{approval_id}", actions.APPROVAL_USE,
+            _approval("DELETE", fresh="approval"), 204, ("approval_id",),
+            probe_actors=("writer", "other"),
+        ),
+        RouteCase(
+            "GET", "/v1/approvals", actions.APPROVAL_READ, _get("/v1/approvals"), 200,
+            ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/approvals/pending-count", actions.APPROVAL_READ,
+            _get("/v1/approvals/pending-count"), 200,
+        ),
+        RouteCase(
+            "GET", "/v1/approvals/{approval_id}", actions.APPROVAL_READ,
+            _get("/v1/approvals/{approval_id}"), 200, ("approval_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "POST", "/v1/approvals/{approval_id}/decision", actions.APPROVAL_DECIDE,
+            _approval("POST", "/decision", fresh="approval", body="decision"), 200,
+            ("approval_id",), probe_actors=ADMINS,
         ),
         RouteCase("GET", "/v1/projects", actions.PROJECT_READ, _list_projects, 200),
         RouteCase("POST", "/v1/projects", actions.PROJECT_WRITE, _create_project, 201),

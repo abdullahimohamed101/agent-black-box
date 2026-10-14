@@ -20,6 +20,8 @@ type Extra = Partial<
 > & {
   /** A remote emitter (another process): no `sequence`, so the run is time-ordered (D4). */
   sequence?: null;
+  /** The emitter's `sdk` block; the fixtures' policy-service events carry `abb-policy-service` (ADR-141). */
+  sdk?: Record<string, unknown>;
   /** The emitter's clock offset in ms: shifts `occurred_at` only, never `received_at` or the builder's clock. */
   atMs?: number;
 };
@@ -104,7 +106,7 @@ export class RunBuilder {
       payload_withheld: false,
       ...settledCost(event_type, attributes),
       tags: [],
-      sdk: { name: "fixture", version: "0" },
+      sdk: extra.sdk ?? { name: "fixture", version: "0" },
     };
     this.events.push(e);
     return e;

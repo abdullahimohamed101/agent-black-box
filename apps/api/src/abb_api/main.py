@@ -14,6 +14,8 @@ from abb_api import __version__
 from abb_api.analytics.postgres import PostgresAnalyticsStore
 from abb_api.analytics.router import router as analytics_router
 from abb_api.analytics.service import AnalyticsService
+from abb_api.approvals.router import router as approvals_router
+from abb_api.approvals.service import ApprovalService
 from abb_api.artifacts.router import router as artifacts_router
 from abb_api.artifacts.service import ArtifactService
 from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
@@ -45,6 +47,8 @@ from abb_api.health.router import router as health_router
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter, RateLimiter
 from abb_api.ingestion.router import router as ingestion_router
 from abb_api.ingestion.service import IngestionService
+from abb_api.policies.api_service import PolicyApiService
+from abb_api.policies.router import router as policies_router
 from abb_api.runs.router import router as runs_router
 from abb_api.runs.service import RunService
 from abb_api.security.api_service import SecurityApiService
@@ -58,6 +62,10 @@ from abb_api.workspaces.router import router as projects_router
 
 # Which credentials may call an operation (documented, and checked by test_openapi).
 _BEARER_ONLY = {
+    ("post", "/v1/policy/decide"),
+    ("get", "/v1/approvals/{approval_id}/wait"),
+    ("post", "/v1/approvals/{approval_id}/consume"),
+    ("delete", "/v1/approvals/{approval_id}"),
     ("post", "/v1/events"),
     ("post", "/v1/events/batch"),
     ("post", "/v1/runs"),
@@ -198,6 +206,15 @@ def create_app(
             ),
             clock,
         )
+        app.state.policies = PolicyApiService(
+            engine,
+            writes_per_minute=settings.policy_writes_per_minute,
+            validations_per_minute=settings.policy_validations_per_minute,
+            dry_runs_per_minute=settings.policy_dry_runs_per_minute,
+        )
+        hub = StreamHub(settings.database_url)
+        app.state.hub = hub
+        app.state.approvals = ApprovalService(engine, settings, clock, hub)
         app.state.comparison = ComparisonService(engine, settings)
         app.state.experiments = ExperimentService(engine, settings)
         app.state.evaluators = EvaluatorService(engine, settings.judge_provider)
@@ -221,7 +238,6 @@ def create_app(
             PostgresAnalyticsStore(engine, timeout_seconds=settings.analytics_timeout_seconds),
             clock,
         )
-        hub = StreamHub(settings.database_url)
         app.state.streams = StreamService(engine, hub, app.state.runs, settings, clock)
         hub.start()
         try:
@@ -260,6 +276,8 @@ def create_app(
     app.include_router(runs_router)
     app.include_router(findings_router)
     app.include_router(security_router)
+    app.include_router(policies_router)
+    app.include_router(approvals_router)
     app.include_router(artifacts_router)
     app.include_router(streams_router)
     app.include_router(pricing_router)

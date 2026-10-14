@@ -78,6 +78,28 @@ payloads after redaction; `METADATA_ONLY` (the default) drops `payload`, `payloa
 Secret-shaped text becomes `[REDACTED:<label>]`. A value that cannot be scanned is dropped (a required attribute becomes `[dropped]`).
 Events already stored are never rewritten.
 
+### Policy decision attributes (Phase 14, ADR-140)
+
+Labels the policy service writes on `policy.decision` (an allowed or approval-gated decision), `policy.action.blocked` (a denial) and the `approval.*`
+events. Metadata for every role: closed vocabularies, ids and the policy author's own words, never anything the agent did.
+
+| Attribute | Type | Meaning |
+| --- | --- | --- |
+| `policy.id` | string | the id of the rule that decided (empty when the policy default applied) |
+| `policy.version` | integer >= 0 | the stored version of the policy that decided; 0 when no policy was published |
+| `policy.decision` | string | `allow`, `deny` or `require_approval` (required on `policy.decision`) |
+| `policy.capability` | string | the capability that was asked about, such as `filesystem.read` or `tool.github` |
+| `policy.reason` | string | fixed text: the matching rule's description, `Matched rule <id>.`, or one of two constant sentences; never built from the action |
+| `approval.id`, `approval.capability` | string | the approval request (`apr_...`) and the capability it concerns |
+| `policy.warnings_dropped` | integer | with `policy.reason = policy_warnings_dropped`: how many `policy.warning` events the SDK lost to its bounded spool during an outage |
+| `approval.state` | string | `REQUESTED`, `APPROVED`, `DENIED`, `EXPIRED` or `CANCELLED` |
+
+**Who writes them.** `policy.decision`, `policy.action.blocked` and every `approval.*` event of a decision are written by the **server** (ADR-141), in the
+transaction of the state change they record, with `sdk.name = "abb-policy-service"` (a name ingestion refuses from clients) and no `sequence` (the server is a
+second emitter of the run, ADR-070, so such a run is ordered by time). Their ids are derived from the approval and the transition, so a redelivery is an
+idempotent duplicate and each transition has one event. Ingestion rejects these types from clients, per event, with `RESERVED_EVENT_TYPE` (ADR-141 Amendment 1); `policy.warning` is still client-writable. `approval.consumed` is the approval being spent for exactly one action; `approval.expired` and `approval.cancelled` end a request
+by time or by the agent's withdrawal (a run leaves "waiting for approval" on any of `granted`, `denied`, `expired` or `cancelled`).
+
 ## Event families
 
 | Class | Types |
@@ -92,8 +114,8 @@ Events already stored are never rewritten.
 | database | `db.query.started` `.completed` `.failed` |
 | network | `http.request` `http.response` |
 | reliability | `retry.attempted` `timeout.occurred` `loop.detected` `rate_limit.hit` |
-| security | `policy.warning` `policy.action.blocked` `secret.detected` |
-| approval | `approval.requested` `.granted` `.denied` (require `approval.id`) |
+| security | `policy.warning` `policy.action.blocked` `policy.decision` (requires `policy.decision`) `secret.detected` |
+| approval | `approval.requested` `.granted` `.denied` `.consumed` `.expired` `.cancelled` (require `approval.id`; the last three are Phase 14 step 2, ADR-141) |
 | span | `span.started` `.completed` `.failed` for custom spans (`span.name`, `span.kind`) |
 | custom | `custom.<name>`: anything an application wants to record |
 

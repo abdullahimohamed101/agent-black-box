@@ -1,5 +1,6 @@
 import { fixtureReply } from "@/fixtures/api";
 import { isFixtureViewerWorkspace } from "@/fixtures/auth";
+import { fixturePolicyWrite } from "@/fixtures/policies";
 import { fixtureSecuritySettings } from "@/fixtures/security";
 import {
   MAX_BODY_BYTES,
@@ -35,6 +36,11 @@ const ROUTES: readonly Route[] = [
   ),
   route("GET", "(me|projects|members|invitations|api-keys|pricing|audit|evaluators|experiments)"),
   route("GET", `experiments/${ID}`),
+  // Phase 14 reads: approvals (people only) and the policy documents. The agent-facing routes (decide, wait, consume,
+  // fail-modes) are deliberately absent: the browser never calls them, so the proxy does not carry them.
+  route("GET", `approvals(/pending-count|/${ID})?`),
+  route("GET", `policies/(current|versions|diff)`),
+  route("GET", `policies/versions/[0-9]{1,9}`),
   route(
     "POST",
     "(projects|invitations|invitations/accept|api-keys|pricing/overrides|cost/rebuild|evaluators|experiments)",
@@ -42,6 +48,9 @@ const ROUTES: readonly Route[] = [
   // Phase 11 writes: start an evaluator, record a human verdict, shape and evaluate an experiment.
   route("POST", `runs/${ID}/(evaluations|verdicts)`),
   route("POST", `experiments/${ID}/(variants|runs|evaluate)`),
+  // Phase 14 writes: check a draft, publish it, dry-run it, and decide an approval.
+  route("POST", "policies/(validate|publish|dry-run)"),
+  route("POST", `approvals/${ID}/decision`),
   route("PUT", `projects/${ID}/security-settings`),
   route("PATCH", `members/${ID}`),
   route("DELETE", `(members|invitations|api-keys|evaluators|experiments)/${ID}`),
@@ -209,6 +218,29 @@ export async function readThrough(
         status: r.status,
         headers: { ...SAFE, "x-request-id": "req_fixture" },
       });
+    }
+    if (fixtureMethod === "POST" && /^v1\/(policies|approvals)\//.test(path)) {
+      // The same rules as the real path: a JSON body, capped. (The fixture server holds no session, so no origin check.)
+      if (
+        !(options.headers?.get("content-type") ?? "").toLowerCase().startsWith("application/json")
+      )
+        return envelope(415, "UNSUPPORTED_MEDIA_TYPE", "A JSON body is required.");
+      const text = await readCapped(options.body, options.headers?.get("content-length") ?? null);
+      if (text === null) return envelope(413, "BODY_TOO_LARGE", "Request body too large.");
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return envelope(422, "VALIDATION_ERROR", "A JSON body is required.");
+      }
+      const r = fixturePolicyWrite(segments, parsed, {
+        content: !isFixtureViewerWorkspace(options.headers?.get("x-abb-workspace")),
+      });
+      if (r)
+        return Response.json(r.body, {
+          status: r.status,
+          headers: { ...SAFE, "x-request-id": "req_fixture" },
+        });
     }
     if (fixtureMethod !== "GET")
       return envelope(405, "FIXTURE_READ_ONLY", "Fixture data is read-only.");

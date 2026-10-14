@@ -17,6 +17,7 @@ import logging
 import random
 import threading
 import time
+from collections.abc import Callable
 from email.utils import parsedate_to_datetime
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -104,8 +105,15 @@ class LocalSink:
 
 
 class HttpSink:
-    def __init__(self, config: Config, stats: Stats) -> None:
+    def __init__(
+        self,
+        config: Config,
+        stats: Stats,
+        on_drop: Callable[[list[Event]], None] | None = None,
+        on_success: Callable[[], None] | None = None,
+    ) -> None:
         self._c, self._stats = config, stats
+        self._on_drop, self._on_success = on_drop, on_success
         parts = urlsplit(config.endpoint)
         self._https = parts.scheme == "https"
         self._host = parts.hostname or "localhost"
@@ -163,6 +171,7 @@ class HttpSink:
             status, retry_after, body = self._post(parts, batch_id)
             if status is not None and 200 <= status < 300:
                 self._record_success(len(parts), body)
+                self._signal_success()
                 return
             if status == 413 and len(parts) > 1:  # too big: halve and send each half
                 mid = len(parts) // 2
@@ -177,6 +186,7 @@ class HttpSink:
             attempt += 1
             if attempt >= self._c.max_attempts or abort.is_set():
                 self._stats.add("dropped_export_failed", len(parts))
+                self._spill(parts)
                 self._log.warning(
                     "failed", "blackbox: dropping %d events after %d attempts", len(parts), attempt
                 )
@@ -187,7 +197,27 @@ class HttpSink:
                 delay = retry_after  # the server told us when; never retry sooner
             if self._wait(delay, abort):
                 self._stats.add("dropped_export_failed", len(parts))
+                self._spill(parts)
                 return
+
+    def _spill(self, parts: list[bytes]) -> None:
+        """Hand dropped events to the owner (it keeps only `policy.warning`). Never raises."""
+        if self._on_drop is None:
+            return
+        try:
+            events = [json.loads(p) for p in parts if b'"policy.warning"' in p]
+            if events:
+                self._on_drop(events)
+        except Exception:
+            self._stats.add("internal_errors")
+
+    def _signal_success(self) -> None:
+        if self._on_success is None:
+            return
+        try:
+            self._on_success()
+        except Exception:
+            self._stats.add("internal_errors")
 
     def _post(self, parts: list[bytes], batch_id: str) -> tuple[int | None, float | None, bytes]:
         """One HTTP attempt: (status or None on transport failure, Retry-After seconds, body)."""

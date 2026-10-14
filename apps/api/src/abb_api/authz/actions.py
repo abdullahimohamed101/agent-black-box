@@ -36,13 +36,29 @@ EVALUATOR_WRITE: Final = "evaluator.write"
 EXPERIMENT_READ: Final = "experiment.read"
 EXPERIMENT_WRITE: Final = "experiment.write"
 
-# Reserved for later phases (14: policies and approvals, 19: retention). Granted to nobody, so the
-# names exist in one place and a future phase only has to add grants.
+# Policies (Phase 14, ADR-140). Reading a policy needs `policy.read` (people who build and review
+# agents); changing one, validating a draft and the dry run need `policy.write` (owners and
+# admins, who may also read payloads: a dry run evaluates recorded content). API keys hold
+# neither: management is for signed-in people.
+POLICY_READ: Final = "policy.read"
 POLICY_WRITE: Final = "policy.write"
+
+# Decisions and approvals (Phase 14 step 2, ADR-141). An agent's key asks (`policy.decide`) and
+# uses its own approvals (`approval.use`: wait, consume, withdraw); no person holds either. People
+# who can read payloads read and decide approvals (`approval.read`, `approval.decide`; the rule's
+# `approver_role` narrows who may decide a given one); no key holds either. `policy.fail_modes`
+# is the compact table an SDK caches (keys and the people who read policies).
+POLICY_DECIDE: Final = "policy.decide"
+APPROVAL_USE: Final = "approval.use"
+APPROVAL_READ: Final = "approval.read"
 APPROVAL_DECIDE: Final = "approval.decide"
+POLICY_FAIL_MODES: Final = "policy.fail_modes"
+
+# Reserved for later phases (19: retention). Granted to nobody, so the names exist in one place and
+# a future phase only has to add grants.
 RETENTION_WRITE: Final = "retention.write"
 
-RESERVED_ACTIONS: Final = frozenset({POLICY_WRITE, APPROVAL_DECIDE, RETENTION_WRITE})
+RESERVED_ACTIONS: Final = frozenset({RETENTION_WRITE})
 
 ALL_ACTIONS: Final = frozenset(
     {
@@ -50,9 +66,14 @@ ALL_ACTIONS: Final = frozenset(
         INVITE_READ, INVITE_WRITE, RUN_READ, RUN_WRITE, EVENT_WRITE, PAYLOAD_READ, ARTIFACT_READ,
         ARTIFACT_WRITE, ANALYTICS_READ, PRICING_READ, PRICING_WRITE, API_KEY_READ, API_KEY_CREATE,
         API_KEY_REVOKE, AUDIT_READ, BILLING_READ, EVALUATION_READ, EVALUATION_RUN,
-        EVALUATION_LABEL, EVALUATOR_WRITE, EXPERIMENT_READ, EXPERIMENT_WRITE,
+        EVALUATION_LABEL, EVALUATOR_WRITE, EXPERIMENT_READ, EXPERIMENT_WRITE, POLICY_READ,
+        POLICY_WRITE, POLICY_DECIDE, APPROVAL_USE, APPROVAL_READ, APPROVAL_DECIDE,
+        POLICY_FAIL_MODES,
     }
 ) | RESERVED_ACTIONS  # fmt: skip
 
-# Actions that change data. No role holds the ingestion ones: people do not ingest (spec §92).
-INGESTION_ACTIONS: Final = frozenset({EVENT_WRITE, RUN_WRITE, ARTIFACT_WRITE})
+# Actions only an agent's key holds, never a person (spec §92): ingestion, and asking the policy
+# service and using its own approvals. A person may still mint a key with these scopes.
+INGESTION_ACTIONS: Final = frozenset(
+    {EVENT_WRITE, RUN_WRITE, ARTIFACT_WRITE, POLICY_DECIDE, APPROVAL_USE}
+)

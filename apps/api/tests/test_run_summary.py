@@ -74,6 +74,66 @@ def test_approvals_pause_and_resume_the_run() -> None:
     assert derive_run(done).status is RunStatus.FAILED
 
 
+@pytest.mark.parametrize(
+    ("end", "extra", "expected"),
+    [
+        ("run.completed", {}, RunStatus.SUCCESS),
+        ("run.completed", {"status": "blocked"}, RunStatus.BLOCKED),
+        ("run.completed", {"status": "timeout"}, RunStatus.TIMED_OUT),
+        ("run.failed", {}, RunStatus.FAILED),
+        ("run.cancelled", {}, RunStatus.CANCELLED),
+    ],
+)
+@pytest.mark.parametrize("settled", ["approval.expired", "approval.cancelled", "approval.denied"])
+def test_a_run_that_ends_ahead_of_the_servers_late_approval_event_still_ends(
+    end: str, extra: dict[str, Any], expected: RunStatus, settled: str
+) -> None:
+    """Found by `policy-e2e`: the server writes the end of an approval (no `sequence`: KI-142) and
+    the agent writes the end of its run. The agent learns the request is over only after the server
+    has recorded it, but the two clocks differ (a database clock ahead of the host's, or two hosts),
+    so by time the run's end can sort BEFORE the approval's end. The run was then left RUNNING
+    forever: `run.completed` from WAITING_FOR_APPROVAL was an invalid transition and was dropped,
+    and the later `approval.*` event resumed the run."""
+    approval = {"attributes": {"approval.id": "apr_1"}}
+    run = make_run_ids()
+    events = [
+        ev(run, 1, "run.started"),
+        ev(run, 2, "approval.requested", sequence=..., **approval),
+        ev(run, 3, end, **extra),
+        ev(run, 4, settled, sequence=..., **approval),  # stamped later by the server's clock
+    ]
+    derived = derive_run(events)
+    assert derived.status is expected
+    assert derived.completed_at is not None  # and the run has an end time
+
+
+def test_an_approval_that_expires_in_order_still_resumes_then_completes() -> None:
+    approval = {"attributes": {"approval.id": "apr_1"}}
+    run = make_run_ids()
+    events = [
+        ev(run, 1, "run.started"),
+        ev(run, 2, "approval.requested", sequence=..., **approval),
+        ev(run, 3, "approval.expired", sequence=..., **approval),
+        ev(run, 4, "run.completed"),
+    ]
+    assert derive_run(events).status is RunStatus.SUCCESS
+
+
+@pytest.mark.parametrize("ending", ["approval.expired", "approval.cancelled"])
+def test_an_approval_that_expires_or_is_withdrawn_resumes_the_run(ending: str) -> None:
+    """Phase 14 step 2: the server also ends a request by time or by the agent's withdrawal."""
+    approval = {"attributes": {"approval.id": "apr_1"}}
+    events = lifecycle(("run.started", {}), ("approval.requested", approval), (ending, approval))
+    assert derive_run(events).status is RunStatus.RUNNING
+    consumed = lifecycle(
+        ("run.started", {}),
+        ("approval.requested", approval),
+        ("approval.granted", approval),
+        ("approval.consumed", approval),
+    )
+    assert derive_run(consumed).status is RunStatus.RUNNING
+
+
 def test_terminal_status_is_final_so_late_events_cannot_reopen_a_run() -> None:
     late = lifecycle(
         ("run.started", {}),

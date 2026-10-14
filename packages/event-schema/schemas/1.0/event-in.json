@@ -623,6 +623,30 @@
       "if": {
         "properties": {
           "event_type": {
+            "const": "policy.decision"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "policy.decision"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
             "const": "policy.action.blocked"
           }
         },
@@ -696,6 +720,78 @@
         "properties": {
           "event_type": {
             "const": "approval.denied"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "approval.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "approval.consumed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "approval.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "approval.expired"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "required": [
+              "approval.id"
+            ]
+          }
+        },
+        "required": [
+          "attributes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "approval.cancelled"
           }
         },
         "required": [
@@ -861,6 +957,10 @@
           "type": "string"
         },
         "approval.id": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "approval.state": {
           "maxLength": 4096,
           "type": "string"
         },
@@ -1056,6 +1156,10 @@
           "maxLength": 4096,
           "type": "string"
         },
+        "policy.decision": {
+          "maxLength": 4096,
+          "type": "string"
+        },
         "policy.id": {
           "maxLength": 4096,
           "type": "string"
@@ -1063,6 +1167,14 @@
         "policy.reason": {
           "maxLength": 4096,
           "type": "string"
+        },
+        "policy.version": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "policy.warnings_dropped": {
+          "minimum": 0,
+          "type": "integer"
         },
         "rate_limit.retry_after_ms": {
           "minimum": 0,

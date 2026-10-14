@@ -9,11 +9,14 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from blackbox.events import as_strings
+from blackbox.policy_failmodes import MODES as FAIL_MODES
+from blackbox.policy_failmodes import parse_modes
 from blackbox.redaction import DEFAULT_DENY_KEYS, Callback, PayloadMode
 
 log = logging.getLogger("blackbox")
 
 MODES = ("http", "local", "offline", "disabled")
+POLICY_MODES = ("off", "enforce")
 DEFAULT_ENDPOINT = "http://localhost:8000"
 _AGENT_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
@@ -23,6 +26,31 @@ def agent_slug(value: str | None, default: str = "agent") -> str:
     raw = value if isinstance(value, str) else ""
     text = re.sub(r"[^a-z0-9._-]+", "-", raw.strip().lower()).strip("-._")[:64]
     return text if _AGENT_RE.fullmatch(text) else default
+
+
+def _policy_mode(given: Any, env: str | None) -> str:
+    raw = given if given is not None else env
+    if raw is None or raw == "":
+        return "off"
+    mode = raw.strip().lower() if isinstance(raw, str) else ""
+    if mode not in POLICY_MODES:
+        log.warning("blackbox: unknown policy_mode; policy checks stay off")
+        return "off"
+    return mode
+
+
+def _fail_modes(given: Any, env: str | None) -> dict[str, str]:
+    """Per-capability overrides: the environment first, explicit arguments on top of it."""
+    modes = parse_modes(env)
+    if isinstance(given, dict):
+        for name, mode in given.items():
+            if isinstance(name, str) and name and len(name) <= 128 and mode in FAIL_MODES:
+                modes[name] = mode
+            else:
+                log.warning("blackbox: ignoring an invalid policy_fail_modes entry")
+    elif given is not None:
+        log.warning("blackbox: policy_fail_modes must be a dict; ignoring it")
+    return modes
 
 
 def _endpoint_ok(endpoint: str) -> bool:
@@ -80,6 +108,13 @@ class Config:
     allow_keys: tuple[str, ...] = ()
     redactor: Callback | None = None
     tags: tuple[str, ...] = ()
+    # policy (Phase 14, ADR-141): off by default, so nothing changes for an existing user
+    policy_mode: str = "off"
+    policy_timeout: float = 2.0  # one decision call, consume or cancel
+    policy_wait_max: float = 86_400.0  # absolute cap on one approval wait
+    policy_wait_round: float = 25.0  # one long-poll round (the server allows at most 25 s)
+    policy_fail_modes: dict[str, str] = field(default_factory=dict)  # capability -> open|closed
+    policy_on_approval: Callable[[Any], None] | None = field(default=None, repr=False)
     wait: Callable[[float], bool] | None = field(default=None, repr=False)  # tests: backoff sleeper
 
     @classmethod
@@ -140,6 +175,21 @@ class Config:
         callback = given.get("redactor")
         c.redactor = callback if callable(callback) else None
         c.tags = as_strings(given.get("tags"))
+        c.policy_mode = _policy_mode(given.get("policy_mode"), env.get("BLACKBOX_POLICY"))
+        c.policy_timeout = _bounded(
+            "policy_timeout", given.get("policy_timeout", 2.0), 2.0, 0.05, 30
+        )
+        c.policy_wait_max = _bounded(
+            "policy_wait_max", given.get("policy_wait_max", 86_400.0), 86_400.0, 0.1, 7 * 86_400
+        )
+        c.policy_wait_round = _bounded(
+            "policy_wait_round", given.get("policy_wait_round", 25.0), 25.0, 0.01, 25
+        )
+        c.policy_fail_modes = _fail_modes(
+            given.get("policy_fail_modes"), env.get("BLACKBOX_POLICY_FAIL_MODES")
+        )
+        announce = given.get("policy_on_approval")
+        c.policy_on_approval = announce if callable(announce) else None
         waiter = given.get("wait")
         c.wait = waiter if callable(waiter) else None
         if c.mode == "http" and not _endpoint_ok(c.endpoint):

@@ -1,0 +1,13 @@
+{
+  "comment": "Policy attribute matching limits (review P2-2). `scalars` top-level scalar arguments, `lists` extra top-level list arguments (never matched), `long_text` the length of one extra string. The server answers 422 INTENT_INVALID with `reason`, the SDK refuses with the same code and its fail mode; `ok` cases are sent and matched in full.",
+  "max_attributes": 64,
+  "max_attribute_text": 4096,
+  "cases": [
+    {"name": "none", "scalars": 0, "lists": 0, "long_text": 0, "ok": true},
+    {"name": "exactly the maximum", "scalars": 64, "lists": 0, "long_text": 0, "ok": true},
+    {"name": "lists are not counted", "scalars": 64, "lists": 40, "long_text": 0, "ok": true},
+    {"name": "one past the maximum", "scalars": 65, "lists": 0, "long_text": 0, "ok": false, "reason": "too_many_attributes"},
+    {"name": "far past the maximum", "scalars": 200, "lists": 0, "long_text": 0, "ok": false, "reason": "too_many_attributes"},
+    {"name": "text at the maximum", "scalars": 1, "lists": 0, "long_text": 4096, "ok": true}
+  ]
+}

@@ -14,6 +14,7 @@ const SETTINGS: Record<string, string> = {
   pricing: "Pricing",
   audit: "Audit log",
   security: "Security",
+  policies: "Policies",
 };
 
 /**
@@ -40,6 +41,8 @@ export function Crumbs({ base }: { base: Base }) {
   let runId: string | null = null;
   if (path === `/w/${base.workspace}/security`) {
     trail = [{ label: "Security" }];
+  } else if (path === `/w/${base.workspace}/approvals`) {
+    trail = [{ label: "Approvals" }];
   } else if (path.startsWith(settings)) {
     const leaf = SETTINGS[path.slice(settings.length + 1).split("/")[0] ?? ""];
     trail = [{ label: "Settings" }, ...(leaf ? [{ label: leaf }] : [])];

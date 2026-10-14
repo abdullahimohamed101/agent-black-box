@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { securityPath } from "@/lib/security";
-import { analyticsPath, experimentsPath, projectPath, runsPath, type Base } from "@/lib/routes";
+import {
+  analyticsPath,
+  approvalsPath,
+  experimentsPath,
+  projectPath,
+  runsPath,
+  type Base,
+} from "@/lib/routes";
+import { ApprovalsRailCount } from "./ApprovalsRailCount";
 import { SignOutButton } from "./SignOutButton";
 import { useWorkspaceOptional } from "./WorkspaceProvider";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
@@ -28,6 +36,7 @@ export function AppShell({ base, children }: { base: Base; children: React.React
   // In a project the link is the same page pre-filtered to it (the project's Security view).
   const securityBase = `/w/${base.workspace}/security`;
   const security = securityPath(base.workspace, base.project === "all" ? null : base.project);
+  const approvals = approvalsPath(base.workspace);
   const cur = (href: string, exact: boolean) =>
     (exact ? path === href : path === href || path.startsWith(`${href}/`)) ? "page" : undefined;
   return (
@@ -51,6 +60,12 @@ export function AppShell({ base, children }: { base: Base; children: React.React
           {(!ws || ws.permissions.includes("run.read")) && (
             <Link href={security} aria-current={cur(securityBase, false)}>
               Security
+            </Link>
+          )}
+          {ws?.permissions.includes("approval.read") && (
+            <Link href={approvals} aria-current={cur(approvals, false)}>
+              Approvals
+              <ApprovalsRailCount />
             </Link>
           )}
           <Link href={analytics} aria-current={cur(analytics, false)}>

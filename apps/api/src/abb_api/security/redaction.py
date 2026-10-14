@@ -267,6 +267,24 @@ class ServerRedactor:
             return [self._value(v, key, run, budget) for v in value]
         return value  # numbers, booleans, null cannot carry a credential
 
+    # ------------------------------------------------------------- free-form values
+
+    def scrub_json(
+        self, value: Any, *, max_chars: int = 128 * 1024, max_seconds: float = DEFAULT_MAX_SECONDS
+    ) -> "Scrubbed | None":
+        """A JSON value (or a string) with secret shapes and denied-key values replaced, for text
+        the server stores outside an event (an approval's arguments, a decision comment). Same
+        scanner, budget and fail-closed rule as event redaction: `None` when it cannot be scanned
+        (error, too large, out of time), in which case the caller stores nothing of it."""
+        run = _Run(ScanBudget(max_chars, max_seconds, clock=self._clock))
+        try:
+            cleaned = self._value(value, "", run, [MAX_PAYLOAD_NODES])
+        except _Drop:
+            return None
+        except Exception:
+            return None
+        return Scrubbed(cleaned, run.count, tuple(sorted(run.kinds)))
+
     # --------------------------------------------------------------- artifacts
 
     def label(self, text: str, *, max_seconds: float = DEFAULT_MAX_SECONDS) -> str | None:
@@ -299,6 +317,15 @@ class ServerRedactor:
         except Exception:
             return ArtifactDecision.dropped(SCAN_FAILED)
         return ArtifactDecision.kept(result)
+
+
+@dataclass(frozen=True)
+class Scrubbed:
+    """A scrubbed value and what was found: a count and kind names, never a secret."""
+
+    value: Any
+    count: int
+    kinds: tuple[str, ...]
 
 
 class _Drop(Exception):

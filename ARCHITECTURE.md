@@ -37,7 +37,7 @@ Depends on nothing else in the repo. Status: implemented (Phase 1): IDs, envelop
 ### API (`apps/api`) - modular monolith
 Routers -> services -> repositories -> db, with modules `ingestion`, `runs`, `traces`, `jobs`, `auth`, `projects`
 `artifacts`, `analytics`, `authz` (one `authorize()` path, the role/scope matrix as data), `audit` and `workspaces` (members, invitations, projects)
-`findings` (Phase 10: detectors, finding contract, health, `GET /v1/runs/{id}/findings`) (plus `core` and `db`); policies arrive in a later phase. Ingestion and query are separate
+`findings` (Phase 10: detectors, finding contract, health, `GET /v1/runs/{id}/findings`) (plus `core` and `db`); `policies` and `approvals` (Phase 14, below). Ingestion and query are separate
 routers so a slow query never sits on the SDK path. Repositories take a tenant context (INV-3) and tables are keyed
 `(workspace_id, id)` with composite foreign keys (ADR-002). Status: implemented (Phase 2): health, API-key auth, ingestion,
 run/event/span queries, provisioning CLI, OpenAPI contract (`apps/api/openapi.json`); artifacts (Phase 6) and analytics (Phase 7) are implemented.
@@ -48,6 +48,8 @@ column for an actor without `payload.read`, the derived `run_search` document bu
 the runs router carries it as `GET /v1/runs?q=` (ADR-100, ADR-101). `abb_api/content.py` holds the content classification both `runs` and `search` use.
 Phase 11 adds `evaluations` (the evaluator protocol and built-ins, the judge interface with its deterministic fake, repositories, the `evaluate_run` job body), `experiments` (declared variants, the control check, a metrics read-model over `runs` and `evaluations`,
 evaluate-all) and `comparison` (step extraction per projection, a table-driven normaliser, prefix/suffix plus budgeted Myers alignment, computed on read in a thread); the worker gains the `evaluate_run` handler, which writes only to `evaluations` (ADR-090..092).
+
+Phase 14 adds the policy engine and approvals (ADR-140, ADR-141, ADR-142; **implemented, review pending**): a small YAML policy per project (and an optional workspace base) with ordered first-match evaluation, every save an immutable version (`policy_versions`, migration 0092) and every decision recorded with the policy id and version; `POST /v1/policy/decide`, which the SDK's `guard()` calls before a sensitive action; an approval state machine (`approvals`, migration 0093: REQUESTED, then APPROVED, DENIED, EXPIRED or CANCELLED) enforced by CHECK constraints and a guard trigger as well as by single-statement transitions, bound to a hash of the exact action intent and spent once by consume (the server recomputes the hash and never returns it); long-poll waits with caps; an expiry job (the outbox is the timer); server-written `policy.*` and `approval.*` events under a reserved emitter name; and the Policies and Approvals pages. **Enforcement is cooperative**: it stops an agent that asks through the SDK (`guard()`, `@guarded`, the coding recorder, the MCP adapter) and does not stop code that bypasses it. End-to-end evidence: `scripts/policy-e2e.sh`.
 
 
 ### Security (`apps/api/src/abb_api/security`, `findings/detectors/security.py`) - Phase 13
@@ -98,7 +100,7 @@ api modules: routers -> services -> repositories -> db   (no cross-module table 
 - **Tenant boundary**: workspace ID on every record and every repository call. A person selects a workspace per request (`X-ABB-Workspace`); a workspace or id they cannot see is a 404.
 - **Identity**: the API owns sessions and authorization; the web server never holds a credential of its own (ADR-060, ADR-061).
 - **Large payloads**: referenced via `payload_ref` -> `ArtifactStore`, not hot tables.
-- **Live path**: SSE for one-way updates; WebSockets only for approvals/cancel (Phase 14). SSE is built (Phase 5).
+- **Live path**: SSE for one-way updates. Waiting for an approval is **long polling** over plain HTTP, not a WebSocket: the SDK is standard-library only and Python has no built-in WebSocket client (ADR-140 point 11, ADR-141 point 8). SSE is built (Phase 5).
 - **Ingestion vs derived state**: ingestion commits events and a job; everything else about a run is derived
   asynchronously and can lag by about a second (`summary_state` says so).
 - **One clock for scheduling**: job availability, leases and backoff use the database clock only.

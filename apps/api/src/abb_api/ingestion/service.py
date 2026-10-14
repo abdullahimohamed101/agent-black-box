@@ -7,7 +7,7 @@ import re
 from datetime import timedelta
 from typing import Any
 
-from abb_event_schema.errors import ErrorCode, EventValidationError
+from abb_event_schema.errors import ErrorCode, EventValidationError, Issue
 from abb_event_schema.event import Event, finalize
 from abb_event_schema.ids import IdKind
 from abb_event_schema.parse import parse_event_in
@@ -25,6 +25,12 @@ from abb_api.core.errors import (
 from abb_api.core.request_context import get_request_id
 from abb_api.ids import public_id
 from abb_api.ingestion.body import batch_invalid
+from abb_api.ingestion.emitter import (
+    EMITTER_RESERVED_CODE,
+    RESERVED_EVENT_TYPES,
+    RESERVED_TYPE_CODE,
+    SERVER_EMITTER,
+)
 from abb_api.ingestion.ratelimit import RateLimiter, retry_after_seconds
 from abb_api.ingestion.schemas import BatchResponse, EventErrorOut, IssueOut
 from abb_api.ingestion.store import PgEventStore
@@ -105,9 +111,36 @@ class IngestionService:
         errors: list[EventErrorOut] = []
         valid: list[tuple[int, Event]] = []
         for index, raw in enumerate(raw_events):
+            kind = raw.get("event_type") if isinstance(raw, dict) else None
+            if isinstance(kind, str) and kind in RESERVED_EVENT_TYPES:
+                # Decisions and approvals are the server's statements (ADR-141). Rejected for
+                # this event only, like REDACTION_FAILED (the SDK does not retry it), and before
+                # validation so the answer does not depend on which attributes the forger sent.
+                errors.append(
+                    EventErrorOut(
+                        index=index,
+                        event_id=self._event_id_hint(raw),
+                        code=RESERVED_TYPE_CODE,
+                        issues=[
+                            IssueOut(
+                                loc=["event_type"],
+                                code="event_type_reserved",
+                                message="This event type is written by the server.",
+                            )
+                        ],
+                    )
+                )
+                continue
             try:
+                client_event = parse_event_in(raw)
+                if client_event.sdk is not None and client_event.sdk.name == SERVER_EMITTER:
+                    raise EventValidationError(
+                        ErrorCode.EVENT_INVALID,
+                        "The emitter name is reserved for the server.",
+                        [Issue(("sdk", "name"), EMITTER_RESERVED_CODE, "Reserved emitter name.")],
+                    )
                 event = finalize(
-                    parse_event_in(raw),
+                    client_event,
                     workspace_id=workspace,
                     project_id=project,
                     received_at=received_at,

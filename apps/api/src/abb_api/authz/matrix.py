@@ -33,36 +33,48 @@ _READ_RUNS = frozenset({a.RUN_READ, a.EVALUATION_READ, a.EXPERIMENT_READ})
 # People who may start evaluators, record verdicts and shape experiments (Phase 11, decision 1).
 _EVALUATE = frozenset({a.EVALUATION_RUN, a.EVALUATION_LABEL, a.EVALUATOR_WRITE, a.EXPERIMENT_WRITE})
 _CONTENT = frozenset({a.PAYLOAD_READ, a.ARTIFACT_READ})
+# People who read policies: those who build agents and review their safety (Phase 14, ADR-140).
+_POLICY_READ = frozenset({a.POLICY_READ, a.POLICY_FAIL_MODES})
+# People who read payloads read approvals and may be asked to decide them (Phase 14, ADR-141);
+# the rule's `approver_role` and the requester check narrow who may decide a particular one.
+_APPROVALS = frozenset({a.APPROVAL_READ, a.APPROVAL_DECIDE})
 
 ROLE_GRANTS: Final[Mapping[str, frozenset[str | Own]]] = {
     OWNER: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
     | {
         a.ANALYTICS_READ, a.PROJECT_WRITE, a.API_KEY_READ, a.API_KEY_CREATE, a.API_KEY_REVOKE,
         a.MEMBER_WRITE, a.MEMBER_WRITE_OWNER, a.INVITE_READ, a.INVITE_WRITE, a.PRICING_WRITE,
-        a.AUDIT_READ, a.BILLING_READ,
-    },
+        a.AUDIT_READ, a.BILLING_READ, a.POLICY_READ, a.POLICY_WRITE, a.POLICY_FAIL_MODES,
+    }
+    | _APPROVALS,
     ADMIN: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
     | {
         a.ANALYTICS_READ, a.PROJECT_WRITE, a.API_KEY_READ, a.API_KEY_CREATE, a.API_KEY_REVOKE,
         a.MEMBER_WRITE, a.INVITE_READ, a.INVITE_WRITE, a.PRICING_WRITE, a.AUDIT_READ,
-        a.BILLING_READ,
-    },
+        a.BILLING_READ, a.POLICY_READ, a.POLICY_WRITE, a.POLICY_FAIL_MODES,
+    }
+    | _APPROVALS,
     DEVELOPER: _EVERYONE | _READ_RUNS | _CONTENT | _EVALUATE
+    | _POLICY_READ | _APPROVALS
     | {a.ANALYTICS_READ, a.API_KEY_READ, a.API_KEY_CREATE, Own(a.API_KEY_REVOKE)},
     # Metadata only: captured content needs payload.read (decision 3).
     VIEWER: _EVERYONE | _READ_RUNS | {a.ANALYTICS_READ},
-    SECURITY: _EVERYONE | _READ_RUNS | _CONTENT
+    SECURITY: _EVERYONE | _READ_RUNS | _CONTENT | _POLICY_READ | _APPROVALS
     | {a.ANALYTICS_READ, a.API_KEY_READ, a.API_KEY_REVOKE, a.AUDIT_READ},
     # Money only: analytics and prices, never runs or payloads (decision 4).
     BILLING: _EVERYONE | {a.ANALYTICS_READ, a.PRICING_WRITE, a.BILLING_READ},
 }  # fmt: skip
 
 _KEY_BASE = frozenset({a.WORKSPACE_READ, a.PROJECT_READ})
+# What an agent's key may do with the policy service (Phase 14, ADR-141): ask, use its own
+# approvals, read the fail-mode table. Both the ingestion scope and the dedicated `policy:check`
+# scope grant it, so an existing SDK key works and a key that may only ask can be made.
+_ASK = frozenset({a.POLICY_DECIDE, a.APPROVAL_USE, a.POLICY_FAIL_MODES})
 
 # Keys never get member, invitation, key-management or audit actions (spec §92), and
 # `runs:read` keeps implying payload and artifact reads for compatibility.
 SCOPE_ACTIONS: Final[Mapping[str, frozenset[str]]] = {
-    scopes.EVENTS_WRITE: _KEY_BASE | {a.EVENT_WRITE, a.RUN_WRITE},
+    scopes.EVENTS_WRITE: _KEY_BASE | {a.EVENT_WRITE, a.RUN_WRITE} | _ASK,
     scopes.RUNS_READ: _KEY_BASE
     | {
         a.RUN_READ,
@@ -74,7 +86,7 @@ SCOPE_ACTIONS: Final[Mapping[str, frozenset[str]]] = {
         a.EXPERIMENT_READ,
     },
     scopes.ARTIFACTS_WRITE: _KEY_BASE | {a.ARTIFACT_WRITE},
-    scopes.POLICY_CHECK: _KEY_BASE,
+    scopes.POLICY_CHECK: _KEY_BASE | _ASK,
 }
 
 
@@ -106,7 +118,12 @@ def scope_actions(granted: frozenset[str]) -> frozenset[str]:
 
 def scope_for(action: str) -> str | None:
     """The scope that grants `action` (first in a fixed order), for error messages."""
-    for scope in (scopes.EVENTS_WRITE, scopes.RUNS_READ, scopes.ARTIFACTS_WRITE):
+    for scope in (
+        scopes.POLICY_CHECK,
+        scopes.EVENTS_WRITE,
+        scopes.RUNS_READ,
+        scopes.ARTIFACTS_WRITE,
+    ):
         if action in SCOPE_ACTIONS[scope] and action not in _KEY_BASE:
             return scope
     return None

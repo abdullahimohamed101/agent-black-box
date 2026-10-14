@@ -72,8 +72,8 @@ def _status_after(event: Event) -> RunStatus | None:
         return RunStatus.CANCELLED
     if kind == "approval.requested":
         return RunStatus.WAITING_FOR_APPROVAL
-    if kind in ("approval.granted", "approval.denied"):
-        return RunStatus.RUNNING
+    if kind in ("approval.granted", "approval.denied", "approval.expired", "approval.cancelled"):
+        return RunStatus.RUNNING  # the request is over (a decision, its time, or its withdrawal)
     return None
 
 
@@ -299,6 +299,18 @@ def derive_run(events: list[Event], engine: CostEngine | None = None) -> RunDeri
     completed_at: datetime | None = None
     for event in ordered:
         requested = _status_after(event)
+        if (
+            requested is not None
+            and requested.is_terminal
+            and status is RunStatus.WAITING_FOR_APPROVAL
+        ):
+            # The agent ended its run while the server's record still says a request is open.
+            # The agent only learns a request is over after the server recorded it, so the end of
+            # the request was written first; the server's event (no `sequence`: it is a second
+            # emitter, KI-142) can still sort AFTER the run's end when the two clocks differ. The
+            # run ended: treat the request as settled rather than drop the end and wait for an
+            # `approval.*` event that sorts behind it (which resumed the run, forever).
+            status = RunStatus.RUNNING
         # Invalid transitions (for example anything after a terminal state) are ignored: late or
         # contradictory events must not fail the run's derivation.
         if requested is not None and requested is not status and can_transition(status, requested):

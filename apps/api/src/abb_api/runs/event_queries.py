@@ -2,11 +2,13 @@
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from abb_event_schema.event import Event
-from sqlalchemy import ColumnElement, Select, func, literal, select, tuple_
+from sqlalchemy import ARRAY, ColumnElement, Select, func, literal, select, tuple_
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
@@ -23,6 +25,16 @@ def order_columns(mode: str) -> list[ColumnElement[Any]]:
     if mode == "sequence":
         return [_SEQUENCE, t.events.c.occurred_at, t.events.c.received_at, t.events.c.event_id]
     return [t.events.c.occurred_at, _SEQUENCE, t.events.c.received_at, t.events.c.event_id]
+
+
+@dataclass(frozen=True)
+class ScannedEvent:
+    """What a policy dry run needs of an event: ids, type and attributes. No payload."""
+
+    run_id: uuid.UUID
+    event_id: uuid.UUID
+    event_type: str
+    attributes: dict[str, Any]
 
 
 class EventQueries:
@@ -142,3 +154,28 @@ class EventQueries:
             )
         rows = await self._conn.execute(statement.order_by(*columns).limit(limit))
         return [(row_to_event(r), bool(r.has_payload)) for r in rows]
+
+    async def scan(
+        self, run_ids: Sequence[uuid.UUID], event_types: Sequence[str], *, limit: int
+    ) -> list[ScannedEvent]:
+        """Events of the given types in the given runs, in the order of `run_ids` and then by
+        time (so a capped result is a reproducible prefix). Reads attributes only, never a payload.
+        The caller has already resolved `run_ids` inside the tenant; the workspace filter here is
+        the second line of defence (INV-3)."""
+        if not run_ids or not event_types:
+            return []
+        c = t.events.c
+        position = func.array_position(
+            literal(list(run_ids), ARRAY(PG_UUID(as_uuid=True))), c.run_id
+        )
+        rows = await self._conn.execute(
+            select(c.run_id, c.event_id, c.event_type, c.attributes)
+            .where(
+                c.workspace_id == self._tenant.workspace_id,
+                c.run_id.in_(list(run_ids)),
+                c.event_type.in_(list(event_types)),
+            )
+            .order_by(position, c.occurred_at, c.event_id)
+            .limit(limit)
+        )
+        return [ScannedEvent(r.run_id, r.event_id, r.event_type, r.attributes) for r in rows]

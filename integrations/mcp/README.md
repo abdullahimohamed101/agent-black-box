@@ -17,3 +17,17 @@ async with bb.run("triage"):
 - Outside `bb.run(...)` a call is a transparent pass-through. Wrap either the high-level `Client` or its `session`, not both.
 - Arguments and results are not recorded; `capture_payloads=True` attaches bounded previews, gated by `payload_mode` and redacted.
 - Not wrapped: `list_tools`, resources, prompts, sampling (KI-062).
+
+## Policy (Phase 14)
+
+With `policy_mode="enforce"` (or `BLACKBOX_POLICY=enforce`) on the client, `call_tool` asks the policy service before each call inside a run. Needs `agent-black-box>=0.4.0` and a project
+key with `policy:check` or `events:write`.
+
+- Capability `tool.<name>` (characters other than letters, digits, `_`, `.`, `-` become `_`), resource `mcp.call_tool` (the `tool.operation` this adapter records, which is what a dry run
+  reads), no arguments. A policy rule is therefore written `capability: tool.delete_all`.
+- **Denied** (or the service cannot be asked under a closed fail mode): the call is **not made**, no `tool.call.*` event is recorded (the server records `policy.action.blocked`), and the
+  caller gets an MCP error result (`isError=True`, one text block, "Blocked by policy (rule vN): ...") - the shape a failing tool returns, so hosts and models handle it as usual. Nothing is raised.
+- **Needs approval**: the call waits (the SDK's bounded long poll) and then proceeds or is blocked. A host that must not block can run the call in a task.
+- Unclassified tool calls fail open when the service is down; set `policy_fail_modes={"tool.*": "closed"}` for the opposite.
+- Cooperative: only calls through the instrumented session are asked. Outside `bb.run(...)` there is nothing to bind a decision to, so the call passes through. A tool name that cannot make a
+  valid capability (over 64 characters in one segment, for instance) is not sent; the fail mode applies.

@@ -7,6 +7,15 @@ Only `call_tool` is wrapped. Outside a `bb.run(...)` it is a pass-through. A too
 an error (`is_error` or `isError`) is recorded as `tool.call.failed` and still returned;
 exceptions (timeouts, protocol errors) are recorded and re-raised unchanged. Arguments and results
 are never captured unless `capture_payloads=True`.
+
+Policy (Phase 14): with `policy_mode="enforce"` on the client, each call inside a run first asks the
+policy service as capability `tool.<name>` (unsafe characters become `_`), resource `mcp.call_tool`
+(the `tool.operation` this adapter records, which is what a dry run reads), no arguments. A denied
+call (or one the service cannot be asked about under a closed fail mode) is not made and no
+`tool.call.*` event is recorded; the caller gets an MCP error result (`isError=True`) that says so,
+the same shape a failing tool returns, and nothing is raised. Approval waits are bounded by the SDK.
+The guard is cooperative: it covers calls made through the instrumented session. Outside a run there
+is nothing to bind a decision to and the call passes through.
 """
 
 from __future__ import annotations
@@ -15,12 +24,17 @@ import functools
 import inspect
 import json
 import logging
+import re
+from types import SimpleNamespace
 from typing import Any
 
-from blackbox import BlackBox, Span, current_run
+from blackbox import BlackBox, PolicyDenied, PolicyError, Run, Span, current_run
 
 log = logging.getLogger("blackbox.mcp")
 _MARK = "_abb_wrapped"
+_UNSAFE_CAPABILITY_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
+MAX_CAPABILITY_NAME = 120
+POLICY_RESOURCE = "mcp.call_tool"  # the `tool.operation` this adapter records
 PREVIEW_CHARS = 4096
 
 
@@ -72,6 +86,10 @@ class _Settings:
     def contained(self) -> None:
         self.errors += 1
         log.debug("blackbox-mcp: bookkeeping failed and was contained", exc_info=True)
+
+
+def _name_of(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    return args[0] if args else kwargs.get("name")
 
 
 def _begin(s: _Settings, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Span | None:
@@ -138,11 +156,56 @@ def _fail(s: _Settings, span: Span, exc: BaseException) -> None:
         s.contained()
 
 
+def _capability(name: Any) -> str:
+    """`tool.<name>` as the dry-run mapping builds it from the recorded `tool.name`."""
+    text = name if isinstance(name, str) and name.strip() else "unknown"
+    return "tool." + _UNSAFE_CAPABILITY_CHARS.sub("_", text)[:MAX_CAPABILITY_NAME].strip(".")
+
+
+def _policy_run(s: _Settings) -> Run | None:
+    """The run to ask about, or None when calls are not guarded (policy off, no run)."""
+    try:
+        run = current_run()
+        if run is None or run.ended or s.bb.config.policy_mode != "enforce":
+            return None
+        return run
+    except Exception:
+        s.contained()
+        return None
+
+
+def _blocked(error: PolicyError) -> Any:
+    """An MCP error result: what a failing tool returns, so hosts and models handle it as usual."""
+    if isinstance(error, PolicyDenied):
+        rule = f"{error.policy_id or 'default'} v{error.policy_version}"
+        text = f"Blocked by policy ({rule}): {error.reason}"
+    else:
+        text = "Blocked: the policy service could not be asked and the fail mode is closed."
+    text = text[:500]
+    try:
+        from mcp.types import CallToolResult
+
+        # Validated from the wire shape so it holds across mcp versions (`isError` / `is_error`).
+        return CallToolResult.model_validate(
+            {"content": [{"type": "text", "text": text}], "isError": True}
+        )
+    except Exception:  # the mcp package is optional (ADR-050)
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=text)], is_error=True, isError=True
+        )
+
+
 def _wrap(orig: Any, s: _Settings) -> Any:
     if inspect.iscoroutinefunction(orig):
 
         @functools.wraps(orig)
         async def awrapper(*args: Any, **kwargs: Any) -> Any:
+            run = _policy_run(s)
+            if run is not None:
+                try:
+                    await s.bb.aguard(_capability(_name_of(args, kwargs)), POLICY_RESOURCE, run=run)
+                except PolicyError as error:
+                    return _blocked(error)
             span = _begin(s, args, kwargs)
             if span is None:
                 return await orig(*args, **kwargs)
@@ -159,6 +222,12 @@ def _wrap(orig: Any, s: _Settings) -> Any:
 
     @functools.wraps(orig)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        run = _policy_run(s)
+        if run is not None:
+            try:
+                s.bb.guard(_capability(_name_of(args, kwargs)), POLICY_RESOURCE, run=run)
+            except PolicyError as error:
+                return _blocked(error)
         span = _begin(s, args, kwargs)
         if span is None:
             return orig(*args, **kwargs)

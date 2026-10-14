@@ -29,6 +29,11 @@ EXPECTED_SECURITY: dict[tuple[str, str], list[dict[str, list[str]]]] = {
     ("post", "/v1/events/batch"): BEARER,
     ("post", "/v1/runs"): BEARER,
     ("put", "/v1/artifacts/{artifact_id}"): BEARER,
+    # Phase 14 step 2: the agent side of decisions and approvals is for keys only.
+    ("post", "/v1/policy/decide"): BEARER,
+    ("get", "/v1/approvals/{approval_id}/wait"): BEARER,
+    ("post", "/v1/approvals/{approval_id}/consume"): BEARER,
+    ("delete", "/v1/approvals/{approval_id}"): BEARER,
     ("get", "/v1/me"): [{"sessionCookie": []}],
     ("post", "/v1/invitations/accept"): [{"sessionCookie": []}],
     ("get", "/v1/auth/login"): [],
@@ -52,8 +57,10 @@ def test_every_v1_operation_is_authenticated_and_described() -> None:
             assert has_header == (op["security"] == EITHER), (method, path)
         else:
             assert "security" not in op, (method, path)  # health endpoints are public
-    # main's 37, Phase 11's 15, Phase 22's /v1/analytics/waste and Phase 13's four security routes
-    assert seen == 37 + 15 + 1 + 4
+    # main's 37, Phase 11's 15, Phase 22's /v1/analytics/waste, Phase 13's four security routes and
+    # Phase 14's seven policy routes, and step 2's nine (decide, fail-modes, wait, consume, cancel,
+    # list, pending count, detail, decision)
+    assert seen == 37 + 15 + 1 + 4 + 7 + 9
 
 
 def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
@@ -109,6 +116,22 @@ def test_the_public_surface_is_exactly_what_the_plan_promises() -> None:
         ("GET", "/v1/security/detectors"),
         ("GET", "/v1/projects/{project_id}/security-settings"),
         ("PUT", "/v1/projects/{project_id}/security-settings"),
+        ("GET", "/v1/policies/current"),
+        ("GET", "/v1/policies/versions"),
+        ("GET", "/v1/policies/versions/{version}"),
+        ("GET", "/v1/policies/diff"),
+        ("POST", "/v1/policies/validate"),
+        ("POST", "/v1/policies/publish"),
+        ("POST", "/v1/policies/dry-run"),
+        ("GET", "/v1/policies/fail-modes"),
+        ("POST", "/v1/policy/decide"),
+        ("GET", "/v1/approvals"),
+        ("GET", "/v1/approvals/pending-count"),
+        ("GET", "/v1/approvals/{approval_id}"),
+        ("GET", "/v1/approvals/{approval_id}/wait"),
+        ("POST", "/v1/approvals/{approval_id}/consume"),
+        ("POST", "/v1/approvals/{approval_id}/decision"),
+        ("DELETE", "/v1/approvals/{approval_id}"),
         ("GET", "/v1/runs/{run_id}/stream"),
         ("GET", "/v1/pricing"),
         ("GET", "/v1/analytics/summary"),

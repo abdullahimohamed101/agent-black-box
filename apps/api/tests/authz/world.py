@@ -22,10 +22,12 @@ from abb_api.cost.repository import CostRepository
 from abb_api.db import tables as t
 from abb_api.evaluations.repository import EvaluatorRepository
 from abb_api.ids import new_uuid, parse_public_id, public_id
+from abb_api.policies.service import publish_policy
+from abb_api.security.settings import Actor
 from abb_api.workspaces.repository import InvitationRepository
 from tests.api_fixtures import NOW, Api
 from tests.auth_helpers import add_member, mint_session, remove_member, set_role
-from tests.authz.registry import RequestSpec, RouteCase, Side
+from tests.authz.registry import RequestSpec, RouteCase, Side, matrix_intent
 from tests.ingest_helpers import make_run_ids, wire_event
 from tests.stream_fixtures import Live, serve
 
@@ -105,8 +107,38 @@ class World:
             )
         return public_id(IdKind.INVITATION, invitation_id)
 
+    async def _fresh_approval(self, kind: str, actor: str) -> tuple[str, bytes]:
+        """A new approval in acme for the gate rule: waiting, or approved and unspent. It is asked
+        for by the actor's own key when the actor is one of the two keys that may use approvals
+        (so that key can wait, consume and cancel it), else by `writer`. Returns its id and the
+        intent as JSON bytes (arguments are unique, so every call makes a new approval)."""
+        intent = matrix_intent(self.acme, {"nonce": uuid.uuid4().hex})
+        key = actor if actor in ("writer", "ingest_only") else "writer"
+        asked = await self.api.client.post(
+            "/v1/policy/decide", json=intent, headers=self.api.headers(key)
+        )
+        assert asked.status_code == 200 and asked.json()["decision"] == "require_approval", (
+            asked.text
+        )
+        approval_id = str(asked.json()["approval_id"])
+        if kind == "approved":
+            decided = await self.api.client.post(
+                f"/v1/approvals/{approval_id}/decision",
+                json={"decision": "approve"},
+                headers={**self.actors["owner"], "content-type": "application/json"},
+            )
+            assert decided.status_code == 200, decided.text
+            self.api.client.cookies.clear()
+        return approval_id, json.dumps(intent).encode()
+
     async def send(self, case: RouteCase, spec: RequestSpec, actor: str) -> httpx.Response:
         """Send over the case's transport; a stream is read until its headers, then closed."""
+        if spec.fresh in ("approval", "approved"):
+            approval_id, intent = await self._fresh_approval(spec.fresh, actor)
+            content = spec.content.replace(b'"FRESH_INTENT"', intent) if spec.content else None
+            spec = replace(
+                spec, path=spec.path.replace("FRESH", approval_id), content=content, fresh=None
+            )
         if spec.fresh is not None:
             spec = replace(
                 spec, path=spec.path.replace("FRESH", await self._fresh_target(spec.fresh, actor))
@@ -367,6 +399,36 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             )
         artifact_id = await _upload(api, art_token, run_ids[0], f"{label}.txt", f"{label} output")
         public_project = tenant.projects["alpha" if name == "acme" else "p"]
+        # Two published base policies per tenant; the description carries the tenant's canary so a
+        # policy read that crosses workspaces shows up in the leak scans (Phase 14).
+        async with api.engine.begin() as conn:
+            for number in (1, 2):
+                await publish_policy(
+                    conn, tenant.context, None, Actor("cli", "cli:seed"),
+                    f"version: 1\npolicies:\n  - id: seeded-{number}\n"
+                    f"    description: {label} policy {number}\n"
+                    "    when: {capability: filesystem.read}\n    decision: deny\n",
+                )  # fmt: skip
+        # A third version adds the gate the approval routes' matrix cases ask about. It needs a
+        # developer, so owner, admin, security and developer may all decide it.
+        async with api.engine.begin() as conn:
+            await publish_policy(
+                conn, tenant.context, None, Actor("cli", "cli:seed"),
+                "version: 1\npolicies:\n  - id: seeded-gate\n"
+                f"    description: {label} gate\n"
+                "    when: {capability: matrix.gate}\n    decision: require_approval\n"
+                "    approver_role: developer\n    expires_in: 1h\n",
+            )  # fmt: skip
+        seeded_approval = await api.client.post(
+            "/v1/policy/decide",
+            json={
+                "run_id": run_ids[0], "agent_id": tag, "capability": "matrix.gate",
+                "resource": "r", "risk_class": "R2", "arguments": {"k": "v"},
+            },
+            headers=api.headers(token),
+        )  # fmt: skip
+        assert seeded_approval.status_code == 200, seeded_approval.text
+        approval_id = str(seeded_approval.json()["approval_id"])
         seeded = await _seed_evaluations(
             api, tenant, "alpha" if name == "acme" else "p", run_ids, label
         )
@@ -386,8 +448,11 @@ async def build_world(api: Api, runtime_database_url: str) -> AsyncIterator[Worl
             variant_id=seeded[3],
             with_run_id=run_ids[1],
             human_evaluator_id=seeded[5],
+            approval_id=approval_id,
+            agent_slug=tag,
             every_id=frozenset(
                 {
+                    approval_id,
                     *seeded,
                     tenant.workspace_id,
                     public_project,
