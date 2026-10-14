@@ -14,7 +14,7 @@ from blackbox import (
 )
 from blackbox import policy as policy_module
 from blackbox.policy import PolicyGuard
-from tests.policy_server import PolicyServer, R, deny, make_client, require, state, warnings_of
+from tests.policy_server import PolicyServer, R, make_client, require, state, warnings_of
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_a_cancelled_approval_denies_even_with_on_expiry_allow(
     bb = client(srv)
     with bb.run("t"), pytest.raises(PolicyDenied) as info:
         bb.guard("github.push", "origin main")
-    assert isinstance(info.value, ApprovalExpired | ApprovalDenied)
+    assert isinstance(info.value, ApprovalExpired)
     assert srv.of("consume") == [] and warnings_of(srv, bb) == []
     bb.shutdown()
 

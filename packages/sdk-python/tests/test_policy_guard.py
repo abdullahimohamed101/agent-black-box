@@ -216,7 +216,7 @@ def test_expiry_denies_by_default(srv: PolicyServer, fast: None, final: str) -> 
     bb.shutdown()
 
 
-@pytest.mark.parametrize("final", ["EXPIRED", "CANCELLED"])
+@pytest.mark.parametrize("final", ["EXPIRED"])  # CANCELLED never follows on_expiry (P2-5)
 def test_expiry_allow_proceeds_and_records_a_warning(
     srv: PolicyServer, fast: None, final: str
 ) -> None:

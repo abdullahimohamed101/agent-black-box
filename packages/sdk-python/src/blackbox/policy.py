@@ -247,7 +247,15 @@ def _parse_verdict(body: dict[str, Any] | None) -> _Verdict | None:
     reason = _short(body.get("reason"))
     if decision not in ("allow", "deny", "require_approval"):
         return _Verdict(INVALID, None, 0, "", None, None, "deny")
-    if decision != "require_approval":
+    if decision == "deny":
+        return _Verdict(decision, safe_id, version, reason, None, None, "deny")
+    if decision == "allow":
+        # Only a clearly formed allow lets anything proceed on its own say-so; a malformed one is
+        # a failed exchange and follows the fail mode like any other.
+        if _int(body.get("policy_version")) is None or (
+            policy_id is not None and not isinstance(policy_id, str)
+        ):
+            return None
         return _Verdict(decision, safe_id, version, reason, None, None, "deny")
     on_expiry = body.get("on_expiry")
     approval_id = body.get("approval_id")
@@ -581,7 +589,7 @@ class PolicyGuard:
         if state == "CANCELLED":
             # "The requester withdrew" is never "time ran out": on_expiry does not apply.
             self._stats.add("policy_denied")
-            raise ApprovalDenied(
+            raise ApprovalExpired(
                 verdict.policy_id, verdict.policy_version, "The approval was cancelled."
             )
         on_expiry = body.get("on_expiry") if body.get("on_expiry") in ("deny", "allow") else None

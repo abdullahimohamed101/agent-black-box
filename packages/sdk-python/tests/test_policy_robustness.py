@@ -22,7 +22,7 @@ from blackbox import (
 )
 from blackbox import policy as policy_module
 from blackbox.policy import WARNING_REASONS, PolicyGuard
-from tests.policy_server import PolicyServer, deny, make_client, require, state, warnings_of
+from tests.policy_server import PolicyServer, R, deny, make_client, require, state, warnings_of
 
 SRC = Path(blackbox.__file__).parent
 SENTINEL = "SENTINEL-sk-live-0123456789abcdef"
@@ -98,7 +98,9 @@ def test_arguments_and_resources_are_never_logged_or_recorded(
                 bb.guard("a.b", SENTINEL, "R0", secret_args)
             except PolicyError as exc:
                 messages.append(str(exc))
-        srv.default["decide"] = state("junk")  # malformed: fail open, warning
+        srv.default["decide"] = R(
+            200, b"junk"
+        )  # not an object: a failed exchange, fail open, warning
         bb.guard("a.b", SENTINEL, "R0", secret_args)
         try:
             bb.guard("a.b", SENTINEL, "R4", secret_args)

@@ -32,6 +32,8 @@ def client(srv: PolicyServer, **options: Any) -> BlackBox:
     return make_client(srv, **options)
 
 
+# A decision the client cannot interpret (unknown value, require_approval without an approval) is
+# not an outage: it fails closed at every risk class (tests/test_policy_review_fixes.py, P2-1).
 def outage_reply() -> list[tuple[str, R, str]]:
     return [
         ("5xx", R(500, {"error": {"code": "X"}}), "policy_error"),
@@ -47,17 +49,11 @@ def outage_reply() -> list[tuple[str, R, str]]:
         ("garbage", R(200, b"<html>"), "policy_error"),
         ("json-list", R(200, b"[1,2]"), "policy_error"),
         ("empty", R(200, b""), "policy_error"),
-        ("bad-decision", R(200, {"decision": "maybe", "policy_version": 1}), "policy_error"),
         ("no-version", R(200, {"decision": "allow"}), "policy_error"),
         ("huge", R(200, b"x" * (300 * 1024)), "policy_error"),
         (  # valid JSON padded past the cap: the bound is on size, not on whether it parses
             "padded",
             R(200, b'{"decision":"allow","policy_version":1}' + b" " * (100 * 1024)),
-            "policy_error",
-        ),
-        (
-            "approval-without-id",
-            R(200, {"decision": "require_approval", "policy_version": 1}),
             "policy_error",
         ),
     ]  # fmt: skip
