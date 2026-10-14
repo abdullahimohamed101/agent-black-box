@@ -8,6 +8,7 @@ HMAC under a server-only secret, and a conflict is never swallowed (ADR-141 amen
 
 import hashlib
 import uuid
+from typing import Any
 
 from abb_event_schema.ids import IdKind
 from sqlalchemy import text
@@ -36,7 +37,7 @@ def public_derivation(workspace_id: uuid.UUID, *parts: str) -> str:
     return public_id(IdKind.EVENT, uuid.UUID(bytes=digest.digest()[:16]))
 
 
-def innocuous(ids: dict[str, str], n: int, event_id: str) -> dict:
+def innocuous(ids: dict[str, str], n: int, event_id: str) -> dict[str, Any]:
     return wire_event(
         ids, n, event_id=event_id, event_type="tool.call.completed", attributes={"tool.name": "t"}
     )

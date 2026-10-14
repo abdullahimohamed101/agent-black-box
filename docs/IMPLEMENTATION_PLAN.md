@@ -208,7 +208,7 @@ or paused until a human decides; replayed approval rejected.
 Built as: a YAML policy per project with an optional workspace base, immutable versions and a dry run (ADR-140, migration 0092); `POST /v1/policy/decide`, an approval state machine with a
 single-use, intent-bound approval enforced in the database, long-poll waits (not a WebSocket: ADR-140, ADR-141), an expiry job, server-written decision events (ADR-141, migration 0093);
 SDK 0.4.0 `guard()`/`@guarded`, the coding helpers, the MCP adapter and the demo scenario (ADR-142); the Policies and Approvals pages and decisions on the run page. Enforcement is cooperative.
-**Status: Implemented; review pending** (branch `feature/phase-14-policy-and-approvals`; plan with closing evidence for the eight gates: `docs/plans/active/phase-14-policy-and-approvals.md`; `make policy-e2e`;
+**Status: Implemented; review fixed, push pending** (branch `feature/phase-14-policy-and-approvals`; plan with closing evidence for the eight gates: `docs/plans/active/phase-14-policy-and-approvals.md`; `make policy-e2e`;
 `docs/benchmarks/phase-14-decide.md`, `docs/benchmarks/phase-14-policy-e2e.md`; runbook `docs/runbooks/policy-and-approvals.md`). Next: Phase 17 after the merge.
 
 ## Phase 15 - Auth, workspaces, RBAC

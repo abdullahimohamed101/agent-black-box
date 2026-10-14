@@ -1,6 +1,6 @@
 # Phase 14: Policy engine and approvals
 
-Status: Implemented; pending review (2026-10-13; steps 1-5 built and evidenced below, step 6 is the review, fixes, push and PR). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
+Status: Implemented; review fixed (2026-10-13; steps 1-5 built and evidenced below, the adversarial review `phase-14-code-review.md` (P1 1, P2 5, P3 10) is fixed with fail-before tests, see 'Code review dispositions'; the push and PR remain). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
 Owner: api + sdk + integrations + web. Branch: `feature/phase-14-policy-and-approvals` (from `main` `cb4102f`).
 Depends on: Phase 6 (command risk classes), Phase 8 (adapters), Phase 13 (detectors, redaction, audit), Phase 15 (roles, sessions, audit log), Phase 22 (run page), Phase 12 (replay shows decisions as events).
 Spec refs: §33, §88 (policy engine), §89 (approval workflow), §151 (policy DSL), §154 (approval state machine), §62 invariants (INV-3 tenancy, INV-4 SDK failure never crashes the host and every retry/queue is bounded, INV-5 sensitive capture), §90 threat model (approval replay).
@@ -102,6 +102,48 @@ Unit and property tests for the DSL parser, validator and evaluator; API tests f
   they started (:8202), a worker, the dev-only fake OIDC provider and the built web server, builds a world (owner, admin, developer, viewer, billing, a second workspace with its own admin and key, seven projects, agent keys CREATED BY THE OWNER through the
   management API) and drives all eight gates with the real Python SDK, the real API and a real browser (`scripts/policy_e2e_{check,gates,lib,sdk}.py`, `apps/web/e2e/policy-real.spec.ts`; screenshots `docs/screenshots/phase-14/real-*.png`). The real stack
   found three defects in code that all its unit tests passed (below), each fixed with a fail-before test and each asserted again by the script. Runbook: `docs/runbooks/policy-and-approvals.md`; benchmark: `docs/benchmarks/phase-14-policy-e2e.md`. Step 6 is open.
+
+## Code review dispositions (2026-10-13)
+
+Review: `docs/plans/active/phase-14-code-review.md`. Every finding was fixed or has a recorded disposition; each fix has a test that failed on the old code first (run with the fix stashed, observed failing, then restored).
+
+| Finding | Disposition | Fix | Test (fail-before) |
+| --- | --- | --- | --- |
+| P1-1 pre-claimed event ids erase the record | Fixed | HMAC-derived ids under a per-installation secret in append-only `server_secrets` (migration 0094); `emit` never swallows a conflict (accepted only as a retry of the server's own write; otherwise `500 EVENT_RECORD_FAILED` and the transition rolls back with its event and audit row); idempotency-key ids mix the HMAC and the intent hash; ADR-141 Amendment 2 | `tests/approvals/test_event_ids.py` (the reviewer's probe: `approval.granted` and `approval.consumed` were missing, `assert 'approval.granted' in ['approval.requested']`; a client event at a computed id fails the transition loudly) |
+| P2-1 malformed `deny` falls open | Fixed | decision read first; deny always denies; unknown decision / unusable require_approval fail closed at every risk class (ADR-142 Amendment 1) | `test_policy_review_fixes.py` (61 failed on the old SDK) |
+| P2-2 attribute truncation | Fixed | 64 attributes / 4,096 characters, refused (`422 INTENT_INVALID`, `too_many_attributes`/`attribute_too_long`) in server and SDK, shared vectors `attribute-limit-vectors.json` | `tests/approvals/test_intent.py` (4 failed), `test_policy_intent.py` |
+| P2-3 shell command not in the intent | Fixed | `arguments.command` (exact, at most 4,096; longer fails closed), dry-run mapping parity, panel shows it; ADR-140/141/142 | `test_shell_binding.py` (`git push origin main` approved, `git push --force origin main` is `APPROVAL_INTENT_MISMATCH`), `test_policy_coding.py`, `approval-content.test.tsx` |
+| P2-4 withheld content approvable, wrong copy | Fixed | approve answers `409 APPROVAL_CONTENT_UNAVAILABLE` (deny allowed); panel copy says the content could not be shown; Approve disabled | `test_content.py`, `approval-content.test.tsx` |
+| P2-5 CANCELLED + `on_expiry: allow` proceeds | Fixed | only EXPIRED follows `on_expiry`; CANCELLED raises `ApprovalExpired` | `test_policy_review_fixes.py` |
+| P3-1 weaker approver role still spends | Deferred (KI-157, to file) | recorded in ADR-141 Amendment 2; a deny or the expiry ends it | n/a |
+| P3-2 lost early-fired expiry timer | Fixed | the job re-arms for the due time | `test_expiry.py::test_a_timer_fired_early...` |
+| P3-3 waiter slot leak | Fixed | `enter` and `subscribe` inside the `try` | `test_wait.py::test_a_failing_subscribe...` |
+| P3-4 ask-only key creates runs | Fixed | `RUN_NOT_FOUND` for an unknown run from a key without `events:write`; documented in SECURITY.md/runbook that an ingesting key creates runs anyway | `test_review_fixes.py` |
+| P3-5 racy open-request caps | Fixed | per-workspace advisory lock around count and insert | `test_decide.py::test_concurrent_distinct_asks...` (25 concurrent asks, cap 5: exactly 5) |
+| P3-6 `aguard` waits spend the key budget | Fixed (SDK) | a 429 on a wait is pacing, not a failed round | `test_policy_review_fixes.py::test_429_on_the_wait...` |
+| P3-7 server `Date` skew cancels a live approval | Fixed | `Date` believed within 10 minutes of the local clock, else the local clock | `test_policy_review_fixes.py::test_a_server_date_far_ahead...` |
+| P3-8 replay attempts not audited | Fixed | `approval.consume_refused` for `APPROVAL_INTENT_MISMATCH`, at most one per approval per minute per process | `test_review_fixes.py::test_a_replay_attempt_is_audited_once_a_minute` |
+| P3-9 `guard()` with no run | Documented | ADR-142 Amendment 1 states the behaviour; pinned by a test | `test_policy_review_fixes.py::test_a_guard_outside_a_run...` |
+| P3-10 fake-OIDC log uploaded by CI | Fixed | `policy-e2e.sh` and `security-e2e.sh` do not keep `oidc.log` | `bash -n`; reviewed |
+| KI-152 warning lost after the retry window | Fixed (resolved) | bounded spool, re-sent on contact, flush, shutdown; loss reported once (`policy.warnings_dropped`) | `test_policy_spool.py` (2 failed with the requeue disabled) |
+| Residual-risk paragraph | Done | runbook first section, SECURITY.md, ADR-142 | n/a |
+
+New known issues (to file): KI-157 (approver role tightening), KI-158 (event-id key is per-process cached; rotation needs a restart), KI-159 (the warning spool is memory only).
+
+### Existing tests modified by the review fixes (reason)
+
+| File | Change | Why |
+| --- | --- | --- |
+| `apps/api/tests/test_runtime_role.py` | reads migration 0094 too; the append-only set gains `server_secrets` | a new append-only table must be declared |
+| `apps/api/tests/test_migrations.py` | revision list gains `0094`; one cycle test | the new migration |
+| `apps/api/tests/approvals/test_content.py` | the withheld-content approval now answers `409 APPROVAL_CONTENT_UNAVAILABLE`, deny works (was: approve and consume succeeded) | the decision of P2-4 reverses the old behaviour on purpose |
+| `apps/api/tests/authz/test_content_withheld.py` | `policy.warnings_dropped` classified as metadata | new registered attribute |
+| `packages/sdk-python/tests/test_policy_guard.py` | `test_expiry_allow_proceeds...` parametrised on `EXPIRED` only (CANCELLED removed) | CANCELLED never follows `on_expiry` (P2-5); the CANCELLED case is asserted to deny in `test_policy_review_fixes.py` |
+| `packages/sdk-python/tests/test_policy_failmodes.py` | the `bad-decision` and `approval-without-id` replies removed from the outage list | they are no longer outages: they fail closed at every risk class (P2-1), covered in `test_policy_review_fixes.py` |
+| `packages/sdk-python/tests/test_policy_robustness.py` | the "malformed reply falls open" step uses a non-object body | a reply with no `decision` now fails closed |
+| `packages/sdk-python/tests/test_policy_coding.py` | arguments allowed to include `command`; the sentinel test now asserts file content never travels and the command does; `guard_command` arguments include `command` | P2-3 by design |
+| `packages/sdk-python/tests/policy_server.py` | `events_down` switch | a fake server that is down for longer than the retry window (KI-152) |
+| `apps/web/src/fixtures/policies.ts` | shell fixtures carry `{category, command}`; approving withheld content answers 409 | mirrors the API |
 
 ## Closing evidence (step 5, 2026-10-13)
 
