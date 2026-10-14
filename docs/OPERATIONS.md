@@ -21,8 +21,12 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_DATABASE_URL` | required | `postgresql+asyncpg://...`; startup fails naming the field if missing |
 | `ABB_ENVIRONMENT`, `ABB_LOG_LEVEL`, `ABB_CORS_ORIGINS` | development, INFO, localhost:3000 | |
 | `ABB_INGEST_MAX_BODY_BYTES` / `ABB_INGEST_MAX_BATCH_EVENTS` | 5 MiB / 1000 | request limits (compressed and decompressed) |
-| `ABB_RATE_LIMIT_EVENTS_PER_SECOND` / `_BURST_EVENTS` | 2000 / 10000 | per project, per API process |
+| `ABB_RATE_LIMIT_EVENTS_PER_SECOND` / `_BURST_EVENTS` | 2000 / 10000 | per project: each API process's local bucket, and (shared limiter, below) at most `max(rate x window, burst)` events per window across all processes |
 | `ABB_RATE_LIMIT_BYTES_PER_SECOND` / `_BURST_BYTES` | 10 MiB / 50 MiB | bursts must fit one maximal batch (checked at startup) |
+| `ABB_LIMITS_SHARED_ENABLED` | true | the shared limiter (Phase 19a, ADR-152): the budgets are also counted per fixed window in PostgreSQL (`rate_limit_counters`) so they hold across API processes. `false` is the old per-process behaviour |
+| `ABB_LIMITS_TIMEOUT_MS`, `_BACKOFF_SECONDS` | 500, 5 | one shared-counter call is abandoned after this long (also set as the statement timeout); after a failure the shared tier is skipped for the backoff and the local limiter alone decides (fail open). One warning per 30 s, class names only |
+| `ABB_LIMITS_BLOCK_DIVISOR` | 20 | units are reserved from the database in blocks of limit / divisor: fewer writes, at most `N x (block - 1)` early refusals across N processes. `1000` writes on nearly every request (the worst case the benchmark measures) |
+| `ABB_LIMITS_INGEST_WINDOW_SECONDS` | 10 | window of the per-second ingestion and artifact budgets (the per-minute budgets use 60 s) |
 | `ABB_SUMMARY_DEBOUNCE_SECONDS` | 1 | delay before a run is re-summarized after new events |
 | `ABB_STREAM_MAX_TOTAL` / `_MAX_PER_KEY` | 50 / 10 | concurrent live streams per API process / per key (429 `STREAM_LIMIT` beyond) |
 | `ABB_STREAM_MAX_LIFETIME_SECONDS`, `_KEEPALIVE_SECONDS`, `_FALLBACK_POLL_SECONDS`, `_WRITE_TIMEOUT_SECONDS`, `_END_QUIET_SECONDS`, `_OVERLAP_SECONDS` | 900, 15, 2, 10, 5, 30 | stream timing; see `docs/architecture/api-v1.md` and ADR-022 |
@@ -37,7 +41,7 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_JUDGE_PROVIDER`, `ABB_JUDGE_ALLOW_FAKE`, `ABB_JUDGE_COOLDOWN_SECONDS` | none, 0, 300 | `none` or the deterministic `fake` (development/test only unless allowed); pause after a judge reply exceeded `max_cost_usd` |
 | `ABB_SMTP_HOST`, `_PORT`, `_STARTTLS`, `_USERNAME`, `_PASSWORD`, `_FROM` | unset, 587, true, unset, unset, unset | the SMTP relay for **email alert destinations** (Phase 17). Without `ABB_SMTP_HOST` an email destination cannot be created (`422 EMAIL_NOT_CONFIGURED`); the host needs `ABB_SMTP_FROM`; the username and password go together and are read from the environment only (never stored, logged or returned) |
 | `ABB_ALERTS_MAX_RULES_PER_WORKSPACE`, `_MAX_DESTINATIONS_PER_WORKSPACE`, `_MAX_DESTINATIONS_PER_RULE` | 100, 50, 10 | alerting configuration limits (409 `ALERT_LIMIT_REACHED` beyond) |
-| `ABB_ALERTS_WRITES_PER_MINUTE` | 30 | alert destination and rule changes per workspace per minute, per API process (429 with `Retry-After`) |
+| `ABB_ALERTS_WRITES_PER_MINUTE` | 30 | alert destination and rule changes per workspace per minute, across API processes (shared limiter; 429 with `Retry-After`) |
 | `ABB_ALERTS_SWEEP_INTERVAL_SECONDS` | 60 | how often the scheduled alert checks (approval about to expire, daily spend over a threshold) run per workspace that has such a rule |
 | `ABB_ALERTS_SKIPPED_PER_WINDOW`, `ABB_ALERTS_PREVIEW_TIMEOUT_SECONDS` | 25, 5 | at most this many `skipped` history rows per rule and destination per cooldown window (the rest are only counted in the log); time budget of a rule preview |
 | `ABB_ALERTS_DELIVERY_ENABLED` | true | `false` holds delivery: notifications stay `pending` and are sent when it is switched back on and a delivery tick runs (the next alert of that workspace queues a tick that sends the whole due backlog; there is no separate flush command) |
@@ -48,7 +52,7 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_ALERTS_LOCK_TIMEOUT_SECONDS` | 3 | how long an alert write (destination or rule change) waits for a row lock a delivery tick holds before it answers `409 ALERT_BUSY` (retry) |
 | `ABB_ALERTS_FAILING_AFTER`, `ABB_ALERTS_PAUSE_AFTER_FAILURES` | 3, 10 | consecutive failed attempts that mark a destination `failing`, then pause it (`paused_reason: failures`, audited as `alert.destination.auto_pause`); a success resets the count, a person resumes a pause |
 | `ABB_ALERTS_RATE_PER_MINUTE`, `ABB_ALERTS_DAILY_CAP` | 20, 500 | deliveries per destination per minute and per 24 h; the excess is recorded as `skipped` (`rate_limited`, `daily_cap`), not queued |
-| `ABB_ALERTS_TESTS_PER_MINUTE` | 10 | "Send test" calls per workspace per minute, per API process (on top of the write budget) |
+| `ABB_ALERTS_TESTS_PER_MINUTE` | 10 | "Send test" calls per workspace per minute, across API processes (shared limiter; on top of the write budget) |
 | `ABB_ALERTS_RETENTION_DAYS`, `_PRUNE_INTERVAL_SECONDS`, `_PRUNE_BATCH` | 30, 21600, 2000 | finished delivery-log rows (`delivered`, `dead`, `skipped`, `failed`) older than this are deleted in batches; `pending` rows never are |
 | `ABB_WORKER_POLL_INTERVAL_SECONDS`, `_BATCH_SIZE`, `_LEASE_SECONDS`, `_MAX_ATTEMPTS`, `_BACKOFF_BASE_SECONDS`, `_BACKOFF_MAX_SECONDS` | 0.5, 10, 60, 5, 5, 300 | job processing |
 
@@ -73,6 +77,25 @@ the `alerts-encryption` key row is missing or the row was altered; re-save the t
 (`PATCH state: active`, which clears the count); alerts that arrive while it is paused are recorded as `skipped (destination_paused)`. A dead alert is not retried again: fix the target, then use "Send test".
 Delivery is **at-least-once**: a receiver that sees `X-ABB-Alert-Id` twice must ignore the second. Delivery ticks and pruning are `deliver_alerts` and `alert_prune` outbox jobs (`SELECT ... FROM outbox_jobs
 WHERE job_type IN ('deliver_alerts', 'alert_prune')`); `lease lost while running` for them means a tick outlived its lease (many slow receivers: lower `ABB_ALERTS_DELIVER_BATCH` or raise `ABB_WORKER_LEASE_SECONDS`; jobs claimed behind a slow tick have their leases extended while they wait, but a worker still serves its batch one job at a time, so run more than one worker where tick times are long). `ABB_ALERTS_RETENTION_DAYS` must be at least 7, the longest rule cooldown.
+
+### The shared limiter's counters (Phase 19a, ADR-152)
+
+Budgets that moved onto the shared limiter: ingestion events and bytes, artifact count and bytes, sign-in starts, policy publish/validate/dry-run, approval decisions (per key and per workspace) and the alert write, preview and send-test budgets. The `Scope` enum in `apps/api/src/abb_api/limits/scopes.py` is the closed list. Not moved, on purpose: live-stream and long-poll concurrency caps (per process, KI-017/KI-147), the denial-audit cap (KI-173).
+
+Inspect (read-only; the counters are operational state, never edit them):
+
+```sql
+-- what is counting now, biggest first
+SELECT scope, workspace_id, key, window_start, count, expires_at
+FROM rate_limit_counters WHERE expires_at > now() ORDER BY count DESC LIMIT 20;
+-- table size and backlog (expired rows are deleted in batches of 1000 by whichever API process
+-- is serving; a persistent backlog means no API process is running)
+SELECT count(*) FILTER (WHERE expires_at < now()) AS expired, count(*) AS total FROM rate_limit_counters;
+```
+
+Reset one budget (an operator unblocking a workspace): `DELETE FROM rate_limit_counters WHERE scope = 'policy_write' AND workspace_id = '<uuid>';` (a process that already holds reserved credit keeps it until its window ends, at most one window).
+
+Logs: `shared limiter unavailable; failing open to the local limiter` (at most once per 30 s per process, field `error_class` only) means the budgets are per process again until the database answers; it is also the sign that the database is in trouble. The bench numbers and the Redis trigger are in `docs/benchmarks/phase-19a-limiter.md` and ADR-152.
 
 ## What to watch
 

@@ -56,3 +56,7 @@ Unit and property tests for the counters (window edges, concurrency, fail-open);
 6. Alerts port allow-list and search fairness.
 7. `hardening-e2e.sh` (multi-process), CI job, benchmarks, runbook updates, closing evidence.
 8. Review, fixes, push and PR.
+
+## Progress
+
+- 2026-10-14, step 1 (shared limiter) built: `apps/api/src/abb_api/limits/` (closed `Scope` enum, `SharedCounters` over migration 0097's `rate_limit_counters`, `GuardedLimiter` with credit blocks, factory), ADR-152, `scripts/bench_limiter.py`, `docs/benchmarks/phase-19a-limiter.md`. Moved onto it with settings, values and 429 bodies unchanged: ingestion events/bytes, artifact count/bytes, sign-in starts, policy publish/validate/dry-run, approval decisions (key, workspace), alert write/preview/send-test. Left per process on purpose: stream and approval long-poll concurrency caps (KI-017, KI-147 narrowed and open), the denial-audit cap (KI-173). KI-141 and KI-161 resolved (GitHub issues close with the close-out PR); KI-017 and KI-147 resolved in part. New: KI-173, KI-174. Evidence: `tests/limits/` (27 tests: exact counts under 200 concurrent callers, window edge, tenancy, expiry and bounded pruning, fail-open against an unreachable database and a locked table, local guard writes nothing, two simulated processes within the stated bound, two application objects sharing each moved budget, runtime-role privileges) and `tests/test_migrations.py` (0097 up/down).

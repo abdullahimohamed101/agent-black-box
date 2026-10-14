@@ -56,8 +56,11 @@ ingestion edge | control plane | database/object storage | human approvers.
   `application/json` are accepted; validation errors never echo submitted values; NUL characters and lone surrogates are rejected
   at the boundary (PostgreSQL cannot store them); unhandled errors return a generic 500 without internals.
 - Response headers (implemented): every response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`; full secure-header policy is Phase 19.
-- Denial of service (partly implemented): per-project token buckets (per process), bounded batches, bounded cursors and page
-  sizes, bounded metadata; a shared limiter and quotas are Phase 19.
+- Denial of service (partly implemented): per-project token buckets in front of a PostgreSQL-backed shared limiter (Phase 19a step 1, ADR-152: the
+  ingestion, artifact, sign-in-start, policy, approval-decision and alert budgets hold across API processes; it fails open to the per-process
+  bucket when the database cannot answer, so a database outage is also a limiter outage), bounded batches, bounded cursors and page sizes,
+  bounded metadata; quotas and failed-authentication throttling are the rest of Phase 19a. These are abuse rails, not a WAF: put a reverse proxy with
+  address limits in front of any exposed deployment.
 - Live streams (implemented, Phase 5): the stream endpoint uses the same authentication, `runs:read` scope and tenant/project visibility as
   the other reads (another tenant's or project's run is a 404, tested over a real socket). Payloads are never streamed, only `has_payload`.
   The `NOTIFY` that wakes streams carries ids only and is never trusted for content: streams re-read rows under their own tenant context.
@@ -155,7 +158,7 @@ fixed message and never echo a value. Evaluation is a pure function with a linea
 only from the rule's own description or id, never from the action. The dry run reads recorded events through the event store contract, attributes only, behind
 `policy.write` (held only by roles that also read payloads), and returns counts, rule ids and ids: no command, path or argument. **The guarantee is cooperative**: the
 policy service stops an agent that asks it (through the SDK); it does not stop one that does not, and no screen or document may claim otherwise. Management limits are
-per process (KI-141); the dry run's mapping covers seven event kinds (KI-140).
+shared across API processes (ADR-152); the dry run's mapping covers seven event kinds (KI-140).
 
 Policy checks in the SDK (Phase 14 step 3, D1/D3/D5; `docs/architecture/sdk-python.md`): **what is enforced is only what asks.** `guard()`, `@guarded`, the coding recorder (`read_file`, `write_file`, `delete_file`, `run_command`, the `git_*` helpers that run a command, `git_push`) and the MCP adapter (`call_tool`) ask the policy service before acting and do not act on a denial; the LangGraph, OpenAI and Anthropic adapters do not run tools and ask nothing unless a tool function carries `@guarded`. An agent that bypasses the SDK (its own subprocess, file or network call, or a tool the integration does not wrap) is not stopped, and the three-line git metadata reads the recorder makes for event attributes are not guarded. It is off by default (`policy_mode`, `BLACKBOX_POLICY`). Failure never crashes the host (INV-4): `guard()` raises only `PolicyDenied` (and its subclasses `ApprovalDenied`, `ApprovalExpired`) and `PolicyUnavailable`; any other failure, an SDK bug included, follows the fail mode (R0-R2 and unclassified open with a `policy.warning`, R3-R4 closed; per capability overrides; the server's fail-mode table only if cached before the outage) and a wait for a person never falls open. Every wait is bounded (a decision by `policy_timeout`, an approval by its expiry plus 5 s and an absolute cap), an approval is spent by presenting the whole intent once and a consume that did not finish is a denial (KI-145), arguments over the server's limits are never sent, and arguments, resources and server error text are never logged or put in a `policy.warning` (its reason is one of nine fixed words, plus `policy_warnings_dropped` written by the spool). The fail-open path is the price of availability: with the service down an R0-R2 action goes ahead and the only trace is the warning, so a deployment that cannot accept that sets `policy_fail_modes={"shell.execute": "closed"}` (or `on_error="closed"`). Limits: KI-148 to KI-151.
 
@@ -192,10 +195,9 @@ machine. It is **unset by default**, **refused at startup unless `ABB_ENVIRONMEN
 
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
-Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop; a real shared limiter,
-quotas and failed-authentication throttling are Phase 19 (KI-017, KI-018, KI-019). The identity provider integration was exercised against the fake
+Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); quotas and failed-authentication throttling are the rest of Phase 19a (KI-018, KI-019). The identity provider integration was exercised against the fake
 provider only; a real provider login is an open acceptance check (KI-067). Session listing and "log out everywhere" are not in the UI (SQL/CLI
-recovery is in the runbook, KI-068). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits are per process. The Python SDK
+recovery is in the runbook, KI-068). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits hold across API processes while the database answers and are per process when it does not (the shared limiter fails open, ADR-152). The Python SDK
 redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads); since Phase 13 the server
 redacts again, but detection is best effort, so **clients should still keep secrets out of events**, and a project that needs no payloads should stay
 METADATA_ONLY. Stored text can carry a `[REDACTED:credential]` marker where an assignment looked secret-shaped (a name ending in `token`, `secret` or
