@@ -206,6 +206,26 @@ def test_an_unreachable_server_never_blocks_or_raises() -> None:
     bb.shutdown()
 
 
+def test_a_quota_refusal_413_is_one_attempt_and_the_upload_is_dropped(
+    server: ArtifactServer,
+) -> None:
+    """ADR-154: an artifact over the project's storage quota answers 413 QUOTA_EXCEEDED; resending
+    cannot help, so the SDK makes one attempt, counts the drop and carries on."""
+    bb = client(server)
+    server.script = [413]
+    with bb.run("r"):
+        assert bb.upload_artifact("over the quota") is not None  # the id is returned at once
+    assert bb.flush(5)
+    assert len(server.received) == 1
+    assert bb.stats()["dropped_artifacts"] == 1 and bb.stats()["internal_errors"] == 0
+    server.script = []  # later uploads are unaffected
+    with bb.run("r2"):
+        bb.upload_artifact("fits again")
+    assert bb.flush(5)
+    assert bb.stats()["artifacts_uploaded"] == 1
+    bb.shutdown()
+
+
 def test_the_queue_is_bounded(server: ArtifactServer) -> None:
     server.delay = 0.3
     bb = client(server)
