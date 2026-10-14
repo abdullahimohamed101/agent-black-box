@@ -158,7 +158,8 @@ if stage 8; then
   step "gate 8: dry run compared with an independent evaluation; decision and ingestion latency"
   check gate8
 fi
-if stage probe; then check expiry-probe; fi
+# `POLICY_E2E_STAGES=probe` only (a development aid): when a wait ends relative to the expiry, and when the server stamps it
+if [[ ",${POLICY_E2E_STAGES:-}," == *",probe,"* ]]; then check expiry-probe; fi
 if stage 9; then
   step "real-stack UI checks: editor messages, version conflict, dry-run links, headline time, roles, axe, screenshots"
   check ui-prepare

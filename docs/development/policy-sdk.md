@@ -44,7 +44,12 @@ The push is **paused**: the demo prints a JSON line `{"event": "approval_pending
 not the person whose key asked, unless the rule allows self-approval), or with `POST /v1/approvals/{id}/decision {"decision": "approve"}` as a person. The push then runs and the demo prints its summary.
 `--approval-timeout SECONDS` gives up sooner. Denying (or letting it expire, 15 minutes) leaves the push undone and the run records it.
 
-`scripts/policy-e2e.sh` (step 5) drives the same scenario against the real stack with a scripted approver and also tries to replay the approval.
+`scripts/policy-e2e.sh` (`make policy-e2e`) drives the same scenario against the real stack: the demo is paused for approval, a second admin signs in through the real OIDC flow in a real browser and approves
+or denies it (or nobody does and a one-minute approval expires), and the same stack is used to replay approvals, stop the API mid-wait and race the state machine (`docs/TESTING.md`).
+
+**Stopping an agent that is waiting.** `Ctrl-C` (SIGINT) raises `KeyboardInterrupt` in the waiting call: the SDK withdraws the request (`DELETE`, one second) and re-raises. SIGTERM, SIGKILL and an out-of-memory kill do not run any
+Python: the request stays waiting until it expires (KI-153), and a process started in the background by a shell (`&`, `nohup`, many CI runners) has SIGINT ignored, which Python respects. If you stop agents with SIGTERM, install a
+handler that raises `SystemExit` so a wait is withdrawn.
 
 ## 4. Writing your own guards
 

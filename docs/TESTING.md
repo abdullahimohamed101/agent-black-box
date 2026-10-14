@@ -227,3 +227,31 @@ holds test data.
 - `apps/api/tests/authz/test_security_reanalysis.py`: a settings change queues recent runs (mute, unmute, allowlist), a capture mode change and a no-op do not, edits coalesce
   to one job per run, only the project's own runs are queued, refused changes queue nothing, the bound by count and by age, newest first, and 0 turns it off
   (KI-133). `tests/test_artifact_name_redaction.py`: a secret in an artifact name is redacted before storing.
+
+### Policies and approvals (Phase 14, ADR-140/141/142)
+- **API** (`apps/api/tests/policies/`, `tests/approvals/`, `tests/authz/`): the DSL parser and validator, the glob matcher and the evaluator (golden policies, property tests: ordered, first match wins,
+  defaults, policy id and version on every decision), the versioned store and the seven management routes, the dry run; the decision endpoint, the approval state machine and its database guard
+  (`test_state_machine_db.py` connects as the runtime role and tries illegal SQL), the intent hash against `packages/event-schema/tests/data/intent-hash-vectors.json`, consume (nine variants of a different intent, a second
+  use, 50 at once), expiry, long polling and its caps, the flood limits, roles and self-approval, content (sentinels in every field, never in a response, event, audit row or log), the policy re-check at consume, the reserved event
+  types, and a latency test (`docs/benchmarks/phase-14-decide.md`). The route registry, role matrix and withheld-content classification list the new routes, actions and attributes.
+- **SDK** (`packages/sdk-python/tests/test_policy_*.py`, `policy_server.py` a threaded fake of the endpoints): `guard()` flows, fail modes, the cached table, bounds, intent limits and the golden vectors, the decorator, the
+  coding helpers (a test executes `policies/mapping.py` and compares), robustness (a 120-draw exception fuzz per scenario, 32 threads, hostile arguments, 26 mutations of the defences), the https path. Adapters:
+  `abb_conformance.check_guarded_tool`, the MCP tests; the demo: `examples/coding-agent/tests/test_policy_demo.py` against a fake server.
+- **Web** (`apps/web/tests/{policies-settings,approvals-page,policy-run,policy-lib,policy-proxy,policy-fixtures,policy-css}*`, fixtures Playwright `approvals`, `policies`, `policy-run` specs): the Policies settings page (line and
+  column messages, history, diff, dry run, conflict), the Approvals page and rail count, decisions on the run page, in light and dark, at 1440 and 375 px.
+
+### Policy end to end (Phase 14 step 5, gates 1-8)
+- **Policy E2E** (`make policy-e2e`, `scripts/policy-e2e.sh`, CI job `policy-e2e`): dedicated `abb_policy_e2e` database (`POLICY_E2E_DB_NAME`), API (:8200), a SECOND API process on :8202 (same database; the checks stop and restart it by the PID of the
+  process group they started, never by name), a worker, the dev-only fake OIDC provider (:8201), the built web server (:3200), and a login role in `abb_runtime` for the SQL attacks. The world: a workspace with an owner, an admin, a developer, a
+  viewer and a billing person, seven projects (`full` with the starter policy, `expiry`, `failmodes`, `races`, `ui`, `bench`, `other`) and agent keys **created by the owner through the management API** (so self-approval applies to the owner),
+  plus a second workspace with its own admin and key. Pieces: `scripts/policy_e2e_check.py` + `policy_e2e_gates.py` + `policy_e2e_lib.py` (API, database and disk assertions, one subcommand per gate), `scripts/policy_e2e_sdk.py` (the real SDK against a live and a
+  stopped API, a slow responder and a hung one), `apps/web/e2e/policy-real.spec.ts` (a real browser through the OIDC flow; axe in light and dark; screenshots to `docs/screenshots/phase-14/real-*.png`). `POLICY_E2E_STAGES=1,2` runs only some stages
+  (a development aid; CI runs all) and `POLICY_E2E_LOG_DIR` keeps the server logs of a failed run (they hold no payload bodies, secrets or key tokens, which the final scan asserts).
+  Per gate: (1) `run_demo.py --policy-demo` through the real SDK: the `.env` read is denied (recorded by the policy service, never read), the push to main pauses (run `WAITING_FOR_APPROVAL`, no commit in a local bare remote), the admin approves or denies in the browser
+  after seeing the banner with the real time left, the demo proceeds (commit in the bare remote) or gets `ApprovalDenied`, and a one-minute approval that nobody decides expires into a denial; (2) consume with a different command, resource, argument, extra argument, risk class, agent, run and capability: nine
+  `APPROVAL_INTENT_MISMATCH` and nothing spent, then once, then `APPROVAL_CONSUMED`; other key, other project, other workspace: `APPROVAL_NOT_FOUND`; before approval, denied, cancelled, expired, and after a deny rule was published: the fixed codes; a fresh ask after use is a new request; no intent value or hash in any
+  agent response, audit row, event or log; (4) a live API then none: R0-R2 and unclassified open, R3/R4 closed, operator override, `on_error=`, the cached table, one `policy.warning` per fall-back once the API returns, timeouts against a slow and a hung responder, a wait that breaks, `on_expiry` deny and allow; (5) 20 concurrent decisions
+  five times, 30 concurrent consumes, approve against cancel (both orders occur), approve against expiry, and 14 illegal statements as the runtime role; (6) the role matrix over the API, the browser as viewer, billing, developer, owner and admin, self-approval,
+  planted secrets scrubbed in the approver's view and absent from events, audit and the database scan, policy edits audited; (7) SIGINT during a wait cancels the approval, the wait cap, only documented exceptions across all scenarios, the standard-library audit; (8) the dry run
+  against an independent evaluation (a regular-expression glob and a hand-written event mapping) over 720 crafted events and the demo's own runs, 500 sequential and 1,000 concurrent decisions against a 60-rule policy and ingestion latency alone and
+  under decision load (`docs/benchmarks/phase-14-policy-e2e.md`). The final scan searches every text/jsonb column, the artifact directory and the logs for the planted secrets and key tokens (and, in the logs, the intent values and hashes).
