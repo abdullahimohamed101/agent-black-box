@@ -54,10 +54,10 @@ def test_each_event_type_maps_to_the_documented_intent() -> None:
     assert intent_for(
         "shell.command.started",
         {"shell.command": "git push -f", "shell.risk_class": "R3", "shell.category": "network"},
-    ) == Intent("shell.execute", "git", "R3", {"category": "network"})
+    ) == Intent("shell.execute", "git", "R3", {"category": "network", "command": "git push -f"})
     assert intent_for(
         "shell.command.started", {"shell.command": "ls", "shell.risk_class": "R9"}
-    ) == (Intent("shell.execute", "ls", None, {}))
+    ) == (Intent("shell.execute", "ls", None, {"command": "ls"}))
     assert intent_for("file.read", {"file.path": "src/a.py"}) == Intent(
         "filesystem.read", "src/a.py"
     )
@@ -73,6 +73,8 @@ def test_each_event_type_maps_to_the_documented_intent() -> None:
     )
     odd = intent_for("tool.call.started", {"tool.name": "my tool/ü"})
     assert odd is not None and odd.capability == "tool.my_tool__"
+    long = intent_for("shell.command.started", {"shell.command": "echo " + "a" * 5000})
+    assert long is not None and "command" not in long.attributes  # past 4,096 the SDK never asks
     assert intent_for("tool.call.started", {"tool.name": ""}) is None
     assert intent_for("tool.call.started", {}) is None
     assert intent_for("llm.request.completed", {"llm.model": "m"}) is None
