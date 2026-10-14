@@ -37,7 +37,7 @@ Depends on nothing else in the repo. Status: implemented (Phase 1): IDs, envelop
 ### API (`apps/api`) - modular monolith
 Routers -> services -> repositories -> db, with modules `ingestion`, `runs`, `traces`, `jobs`, `auth`, `projects`
 `artifacts`, `analytics`, `authz` (one `authorize()` path, the role/scope matrix as data), `audit` and `workspaces` (members, invitations, projects)
-`findings` (Phase 10: detectors, finding contract, health, `GET /v1/runs/{id}/findings`) (plus `core` and `db`); `policies` and `approvals` (Phase 14, below); `alerts` (Phase 17 step 1, ADR-150: destinations and rules, sealed secrets, evaluation jobs; delivery follows). Ingestion and query are separate
+`findings` (Phase 10: detectors, finding contract, health, `GET /v1/runs/{id}/findings`) (plus `core` and `db`); `policies` and `approvals` (Phase 14, below); `alerts` (Phase 17, ADR-150 and ADR-151, **merged**: destinations and rules, sealed secrets, evaluation jobs, the `Notifier` contract with webhook, Slack and email, an SSRF-safe sender, delivery with retries and auto-pause). Ingestion and query are separate
 routers so a slow query never sits on the SDK path. Repositories take a tenant context (INV-3) and tables are keyed
 `(workspace_id, id)` with composite foreign keys (ADR-002). Status: implemented (Phase 2): health, API-key auth, ingestion,
 run/event/span queries, provisioning CLI, OpenAPI contract (`apps/api/openapi.json`); artifacts (Phase 6) and analytics (Phase 7) are implemented.

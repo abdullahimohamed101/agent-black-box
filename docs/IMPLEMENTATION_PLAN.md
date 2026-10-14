@@ -209,7 +209,7 @@ Built as: a YAML policy per project with an optional workspace base, immutable v
 single-use, intent-bound approval enforced in the database, long-poll waits (not a WebSocket: ADR-140, ADR-141), an expiry job, server-written decision events (ADR-141, migration 0093);
 SDK 0.4.0 `guard()`/`@guarded`, the coding helpers, the MCP adapter and the demo scenario (ADR-142); the Policies and Approvals pages and decisions on the run page. Enforcement is cooperative.
 **Status: Completed (merged 2026-10-13, PR #152)** (plan with closing evidence for the eight gates: `docs/plans/completed/phase-14-policy-and-approvals.md`; `make policy-e2e`;
-`docs/benchmarks/phase-14-decide.md`, `docs/benchmarks/phase-14-policy-e2e.md`; runbook `docs/runbooks/policy-and-approvals.md`). Next: Phase 17.
+`docs/benchmarks/phase-14-decide.md`, `docs/benchmarks/phase-14-policy-e2e.md`; runbook `docs/runbooks/policy-and-approvals.md`).
 
 ## Phase 15 - Auth, workspaces, RBAC
 OAuth dashboard login, workspace membership, roles (OWNER, ADMIN, DEVELOPER, VIEWER, SECURITY,
@@ -229,6 +229,9 @@ server's parse, matched column, facets, unindexed notice) and the rule-based `Qu
 
 ## Phase 17 - Alerting and integrations
 Alert rules evaluated by workers; webhook, email, Slack behind an extension interface.
+Built as: destinations and rules as separate objects with sealed secrets (ADR-150, migration 0095), four metadata-only triggers (approval requested or about to expire, security finding, failed run, daily spend), event-driven evaluation through small outbox jobs with dedupe and cooldown, an in-repo `Notifier` contract, an SSRF-safe pinned HTTPS sender, signed webhook, Slack and email delivery with bounded retries, dead letters, auto-pause, rate limits and daily caps (ADR-151, migration 0096), and the Alerts page (Rules, Destinations, History).
+**Status: Completed (merged 2026-10-14, PR #171)** (plan with closing evidence for the eight gates: `docs/plans/completed/phase-17-alerting.md`; adversarial review with a security pass: `docs/plans/completed/phase-17-code-review.md`; `make alerts-e2e`;
+`docs/benchmarks/phase-17-alerts-e2e.md`; runbook `docs/runbooks/alerting.md`). KI-160..172. Next: Phase 19.
 
 ## Phase 18 - Performance and scale hardening
 Load tests with realistic payloads first. Each migration (Go ingest, Kafka, ClickHouse, Redis,
