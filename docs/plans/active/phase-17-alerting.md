@@ -67,3 +67,7 @@ Unit and property tests for rule matching, dedupe and cooldown; API tests for CR
   142.8/160.3 ms without rules and 144.0/158.5 ms with them (a second run: 127.6/143.0 and 140.0/176.2). Verified (step 1): ruff check and format, `mypy`, full API suite 3198 passed
   (`tests/authz` 229 passed), `python -m abb_api.openapi --check`, `pnpm gen:api:check`, web typecheck/lint/prettier/vitest (1354 passed), `make schema-check`.
 
+- Step 2 (delivery, 2026-10-14): migration 0096 (skip reasons `rate_limited`, `daily_cap`; delivered-count index), `abb_api/alerts/` `outbound.py` (SSRF-safe pinned HTTPS sender on `asyncio.open_connection(ip, ..., server_hostname=host)`, no new dependency),
+  `notifiers.py` (`Notifier` protocol, registry, webhook HMAC, Slack, email), `delivery.py` (the tick: claim `FOR UPDATE SKIP LOCKED`, re-check, caps, send, retries with jittered backoff, dead letters, health and auto-pause with a system audit entry),
+  `schedule.py`/`jobs.py` (`deliver_alerts`, `alert_prune`), `POST /v1/alerts/destinations/{id}/test`, ADR-151, KI-162..166. Decisions: excess over the rate limit or daily cap is skipped, not queued; a send test touches no health and writes no history;
+  the operator hold is `ABB_ALERTS_DELIVERY_ENABLED=false` (tests default to it). Tests: `test_alerts_outbound.py` (SSRF matrix, pinning, redirects, timeouts), `test_alerts_notifiers.py`, `test_alerts_delivery.py`, `test_alerts_send_test.py`. Steps 3-5 open.

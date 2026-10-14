@@ -316,8 +316,7 @@ withdraw) share a per-key and a per-workspace budget (`ABB_POLICY_DECIDE_PER_MIN
 
 ### Alerts (Phase 17, ADR-150)
 
-Destinations are where an alert goes, rules say what to watch; both are configured by signed-in people only (no API key scope grants an alert action; a key is `403 INSUFFICIENT_SCOPE`). This step stores and evaluates; **delivery is step 2**:
-every matched event writes a notification row with status `pending`. Request bodies refuse unknown fields; a validation error names the field or a fixed reason and never echoes a value. Writes share a per-workspace budget (`ABB_ALERTS_WRITES_PER_MINUTE`, 30; `429 RATE_LIMITED` with `Retry-After`).
+Destinations are where an alert goes, rules say what to watch; both are configured by signed-in people only (no API key scope grants an alert action; a key is `403 INSUFFICIENT_SCOPE`). Every matched event writes a notification row with status `pending`; the delivery worker (ADR-151) sends it. Request bodies refuse unknown fields; a validation error names the field or a fixed reason and never echoes a value. Writes share a per-workspace budget (`ABB_ALERTS_WRITES_PER_MINUTE`, 30; `429 RATE_LIMITED` with `Retry-After`).
 Foreign and unknown ids (path, query or body) are the same `404` (`ALERT_DESTINATION_NOT_FOUND`, `ALERT_RULE_NOT_FOUND`, `PROJECT_NOT_FOUND`).
 
 **Roles.** `alert.read` (rules, preview, history): owner, admin, developer, viewer, security. `alert.write` (every change) and `alert.destination.read` (destinations): owner and admin. A rule read without `alert.destination.read` has `destinations: []` and `destination_count`;
@@ -331,6 +330,10 @@ a history row shows `destination: {id: null, name: null, type}`; `approval_id` i
 - `GET /v1/alerts/destinations` -> `{items[], email_configured}`; `GET /v1/alerts/destinations/{id}` -> the destination (masked; never a URL, recipient or secret).
 - `PATCH /v1/alerts/destinations/{id}` `{name?, target?, state?: active|paused, rotate_signing_secret?}` -> the destination with `signing_secret` set only when rotated. A new target is re-validated, resets the failure count and moves `failing` to `active`;
   `state: paused` sets `paused_reason: manual`, `active` resumes and clears failures; rotation on a non-webhook is `422 DESTINATION_INVALID` (`reason: no_signing_secret`). Audit rows `alert.destination.update` (`changed`: `["name","target"]`), `.pause`, `.resume`, `.rotate_secret`.
+- `POST /v1/alerts/destinations/{id}/test` (no body; owner/admin, `alert.write`) -> `200 {ok: bool, error_code: string|null}`. Sends a fixed `kind: test` alert (no project, agent or content; link to the Alerts page) through the same SSRF-safe sender as real deliveries,
+  synchronously within the 5 s delivery deadline (email: the SMTP timeout). `error_code` is one of the fixed delivery codes (`timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`);
+  what the target answered is never returned. The HTTP status is `200` whether or not the target accepted it. A test does not change `state` or `consecutive_failures` and creates no history row; it works on a paused destination. `404 ALERT_DESTINATION_NOT_FOUND`
+  (foreign and unknown ids alike), `403` for other roles and API keys, `429 RATE_LIMITED` (10 a minute per workspace per process, plus the write budget). Audit `alert.destination.test` (`type`, `ok`, `error_code`).
 - `DELETE /v1/alerts/destinations/{id}` -> `204`. Waiting notifications become `skipped` (`destination_deleted`), history keeps its rows (destination cleared), rules left with no destination are switched off. Audit `alert.destination.delete` (`type`, `rules_disabled`).
 
 **Rules**
@@ -344,8 +347,12 @@ a history row shows `destination: {id: null, name: null, type}`; `approval_id` i
 
 **History**
 
-- `GET /v1/alerts/notifications[?rule_id=&destination_id=&status=pending|delivered|failed|dead|skipped&trigger=&since=&until=&limit=1..200&cursor=]` -> `{items[], next_cursor}`, newest first. An item is `{id: alt_... (the stable alert_id receivers dedupe on), rule: {id, name}|null, destination: {id, name, type}|null, trigger, severity, status, skip_reason (cooldown|destination_paused|destination_deleted|rule_deleted), attempts, error_code (a fixed code), project_id, run_id, finding_id, approval_id, agent_slug, created_at, delivered_at, next_attempt_at}`.
+- `GET /v1/alerts/notifications[?rule_id=&destination_id=&status=pending|delivered|failed|dead|skipped&trigger=&since=&until=&limit=1..200&cursor=]` -> `{items[], next_cursor}`, newest first. An item is `{id: alt_... (the stable alert_id receivers dedupe on), rule: {id, name}|null, destination: {id, name, type}|null, trigger, severity, status, skip_reason (cooldown|destination_paused|destination_deleted|rule_deleted|rate_limited|daily_cap), attempts, error_code (a fixed code), project_id, run_id, finding_id, approval_id, agent_slug, created_at, delivered_at, next_attempt_at}`.
   There is no payload and no response body in the history; the payload (stored in `alert_notifications.payload_json`) is content-free and is read only by the sender.
+
+**Delivery (ADR-151).** A worker sends `pending` notifications: webhook (`POST` JSON = the payload plus an absolute `link`, headers `X-ABB-Alert-Id: alt_...`, `X-ABB-Delivery-Attempt`, `X-ABB-Timestamp`, `X-ABB-Signature: v1=<hex HMAC-SHA256(signing secret, timestamp + "." + body)>`),
+Slack (an incoming-webhook message), email (operator SMTP, plain text plus HTML). Delivery is at-least-once: dedupe on `alert_id`. `status`: `pending` (with `attempts > 0` and a future `next_attempt_at` between retries), `delivered`, `dead` (retries used up or a permanent failure; `error_code` says why), `skipped`.
+`next_attempt_at` is meaningful only while `pending`. A destination's health is `state` (`active`, `failing` from 3 consecutive failed attempts, `paused` from 10 with `paused_reason: failures`), `consecutive_failures`.
 
 **What produces notifications.** A run summarised as FAILED, TIMED_OUT or BLOCKED; a security finding that is new or worse than the stored one; an approval requested; (every 60 s, per workspace with such a rule) an approval whose time to expiry has fallen to the rule's lead, and a UTC day whose spend for the rule's project and agent is strictly over the threshold.
 Dedupe keys (one notification per rule, destination and key): `run_id:STATUS`, `finding_id:detector_version:severity`, `approval_id:requested`, `approval_id:expiring`, `rule_id:YYYY-MM-DD`. A cooldown suppresses new notifications for the same rule and destination as `skipped` rows (`cooldown`).
