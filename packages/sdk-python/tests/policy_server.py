@@ -20,6 +20,14 @@ from blackbox import BlackBox
 ROUTES = ("decide", "wait", "consume", "cancel", "failmodes")
 
 
+class _BacklogServer(ThreadingHTTPServer):
+    """The standard library listens with a backlog of 5. The thread tests open 32 connections at once, and on a
+    slow two-core runner the overflow is dropped before the handler sees it: the SDK then (correctly) fails open
+    and the test counts fewer requests than it sent. A real server listens with far more."""
+
+    request_queue_size = 512
+
+
 @dataclass
 class R:
     status: int = 200
@@ -229,7 +237,7 @@ class PolicyServer:
             def log_message(self, *args: Any) -> None:
                 return None
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = _BacklogServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
         self.scheme = "http"
         if tls is not None:  # (certificate file, key file)
