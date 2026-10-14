@@ -22,7 +22,7 @@ Status values: Not started / Active / Complete / Deferred (env) / Deferred (trig
 | 11 | Evaluations, experiments, run comparison | §85-86, §98 | M6 | Complete (merged, PR #104; plan: `docs/plans/completed/phase-11-evaluations.md`) |
 | 12 | Visual replay | §87 (level 1) | | Completed (PR #136) |
 | 13 | Security observability and redaction modes | §32, §83, §93 | M7 | Completed (PR #143) |
-| 14 | Policy engine and human approvals | §88-89, §151 | M8 | Not started |
+| 14 | Policy engine and human approvals | §88-89, §151 | M8 | Completed (PR #152) |
 | 15 | Auth, workspaces, RBAC | §91-92 | | Complete (merged, CI green; plan: `docs/plans/completed/phase-15-auth-rbac.md`) |
 | 16 | Search and investigation | §77, §152 | | Complete (merged, CI green; plan: `docs/plans/completed/phase-16-search-investigation.md`) |
 | 17 | Alerting and integrations | §35 | | Not started |
@@ -208,8 +208,8 @@ or paused until a human decides; replayed approval rejected.
 Built as: a YAML policy per project with an optional workspace base, immutable versions and a dry run (ADR-140, migration 0092); `POST /v1/policy/decide`, an approval state machine with a
 single-use, intent-bound approval enforced in the database, long-poll waits (not a WebSocket: ADR-140, ADR-141), an expiry job, server-written decision events (ADR-141, migration 0093);
 SDK 0.4.0 `guard()`/`@guarded`, the coding helpers, the MCP adapter and the demo scenario (ADR-142); the Policies and Approvals pages and decisions on the run page. Enforcement is cooperative.
-**Status: Implemented; review fixed, push pending** (branch `feature/phase-14-policy-and-approvals`; plan with closing evidence for the eight gates: `docs/plans/active/phase-14-policy-and-approvals.md`; `make policy-e2e`;
-`docs/benchmarks/phase-14-decide.md`, `docs/benchmarks/phase-14-policy-e2e.md`; runbook `docs/runbooks/policy-and-approvals.md`). Next: Phase 17 after the merge.
+**Status: Completed (merged 2026-10-13, PR #152)** (plan with closing evidence for the eight gates: `docs/plans/completed/phase-14-policy-and-approvals.md`; `make policy-e2e`;
+`docs/benchmarks/phase-14-decide.md`, `docs/benchmarks/phase-14-policy-e2e.md`; runbook `docs/runbooks/policy-and-approvals.md`). Next: Phase 17.
 
 ## Phase 15 - Auth, workspaces, RBAC
 OAuth dashboard login, workspace membership, roles (OWNER, ADMIN, DEVELOPER, VIEWER, SECURITY,
