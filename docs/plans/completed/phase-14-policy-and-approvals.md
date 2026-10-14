@@ -1,6 +1,6 @@
 # Phase 14: Policy engine and approvals
 
-Status: Implemented; review fixed (2026-10-13; steps 1-5 built and evidenced below, the adversarial review `phase-14-code-review.md` (P1 1, P2 5, P3 10) is fixed with fail-before tests, see 'Code review dispositions'; the push and PR remain). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
+Status: Completed (merged 2026-10-13, PR #152; 2026-10-13; steps 1-5 built and evidenced below, the adversarial review `phase-14-code-review.md` (P1 1, P2 5, P3 10) is fixed with fail-before tests, see 'Code review dispositions'; the push and PR remain). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-13).
 Owner: api + sdk + integrations + web. Branch: `feature/phase-14-policy-and-approvals` (from `main` `cb4102f`).
 Depends on: Phase 6 (command risk classes), Phase 8 (adapters), Phase 13 (detectors, redaction, audit), Phase 15 (roles, sessions, audit log), Phase 22 (run page), Phase 12 (replay shows decisions as events).
 Spec refs: §33, §88 (policy engine), §89 (approval workflow), §151 (policy DSL), §154 (approval state machine), §62 invariants (INV-3 tenancy, INV-4 SDK failure never crashes the host and every retry/queue is bounded, INV-5 sensitive capture), §90 threat model (approval replay).
@@ -105,7 +105,7 @@ Unit and property tests for the DSL parser, validator and evaluator; API tests f
 
 ## Code review dispositions (2026-10-13)
 
-Review: `docs/plans/active/phase-14-code-review.md`. Every finding was fixed or has a recorded disposition; each fix has a test that failed on the old code first (run with the fix stashed, observed failing, then restored).
+Review: `docs/plans/completed/phase-14-code-review.md`. Every finding was fixed or has a recorded disposition; each fix has a test that failed on the old code first (run with the fix stashed, observed failing, then restored).
 
 | Finding | Disposition | Fix | Test (fail-before) |
 | --- | --- | --- | --- |
