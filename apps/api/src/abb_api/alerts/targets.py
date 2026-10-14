@@ -26,6 +26,9 @@ _INTERNAL_SUFFIXES: Final = (
     ".localhost", ".local", ".internal", ".localdomain", ".lan", ".home", ".corp", ".intranet",
     ".private", ".home.arpa",
 )  # fmt: skip
+# IPv4-compatible IPv6 (::a.b.c.d, deprecated since RFC 4291). Nothing legitimate lives there, and a
+# stack that still routes it would reach the IPv4 address it carries, so it is never a target.
+_V4_COMPATIBLE = ipaddress.ip_network("::/96")
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")  # RFC 6052: carries an IPv4 address in its low bits
 _LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 _ALL_DIGITS = re.compile(r"^[0-9]+$")
@@ -63,6 +66,8 @@ def is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
         embedded = ip.ipv4_mapped or ip.sixtofour
         if embedded is not None:
             return is_public_ip(embedded)
+        if ip in _V4_COMPATIBLE:
+            return False
         if ip in _NAT64:
             return is_public_ip(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF))
         if ip.teredo is not None:
