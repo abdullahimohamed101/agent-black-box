@@ -32,7 +32,9 @@ def _check(values: tuple[str, ...]) -> str:
 
 def upgrade() -> None:
     op.drop_constraint("ck_alert_notifications_skip_reason", "alert_notifications", type_="check")
-    op.create_check_constraint("ck_alert_notifications_skip_reason", "alert_notifications", _check(NEW))
+    op.create_check_constraint(
+        "ck_alert_notifications_skip_reason", "alert_notifications", _check(NEW)
+    )
     op.create_index(
         "ix_alert_notifications_delivered",
         "alert_notifications",
@@ -48,4 +50,6 @@ def downgrade() -> None:
         "WHERE skip_reason IN ('rate_limited', 'daily_cap')"
     )
     op.drop_constraint("ck_alert_notifications_skip_reason", "alert_notifications", type_="check")
-    op.create_check_constraint("ck_alert_notifications_skip_reason", "alert_notifications", _check(OLD))
+    op.create_check_constraint(
+        "ck_alert_notifications_skip_reason", "alert_notifications", _check(OLD)
+    )
