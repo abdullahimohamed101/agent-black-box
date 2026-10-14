@@ -143,6 +143,7 @@ class PolicyServer:
         self.requests: list[Req] = []
         self.event_batches: list[dict[str, Any]] = []
         self.lock = threading.Lock()
+        self.events_down = False  # the event endpoint answers 503 while this is set
         self.script: dict[str, deque[R]] = {r: deque() for r in ROUTES}
         self.default: dict[str, R] = {
             "decide": allow(),
@@ -175,7 +176,9 @@ class PolicyServer:
                             time.monotonic(),
                         )
                     )
-                if route == "events":
+                if route == "events" and outer.events_down:
+                    reply = R(503, {"error": {"code": "DOWN"}})
+                elif route == "events":
                     with outer.lock:
                         outer.event_batches.append(body)
                     reply = R(

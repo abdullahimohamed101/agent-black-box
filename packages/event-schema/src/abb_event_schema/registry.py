@@ -154,6 +154,9 @@ KNOWN_ATTRIBUTES: dict[str, AttrSpec] = {
     "policy.version": AttrSpec(AttrType.INTEGER, 0),
     "policy.decision": AttrSpec(AttrType.STRING),
     "policy.reason": AttrSpec(AttrType.STRING),
+    # How many `policy.warning` events the SDK lost (its bounded spool overflowed during an
+    # outage); written only with the reason `policy_warnings_dropped`. A count, so metadata.
+    "policy.warnings_dropped": AttrSpec(AttrType.INTEGER, 0),
     "approval.state": AttrSpec(AttrType.STRING),
     "secret.kind": AttrSpec(AttrType.STRING),
     "approval.id": AttrSpec(AttrType.STRING),

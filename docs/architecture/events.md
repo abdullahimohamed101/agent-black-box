@@ -91,6 +91,7 @@ events. Metadata for every role: closed vocabularies, ids and the policy author'
 | `policy.capability` | string | the capability that was asked about, such as `filesystem.read` or `tool.github` |
 | `policy.reason` | string | fixed text: the matching rule's description, `Matched rule <id>.`, or one of two constant sentences; never built from the action |
 | `approval.id`, `approval.capability` | string | the approval request (`apr_...`) and the capability it concerns |
+| `policy.warnings_dropped` | integer | with `policy.reason = policy_warnings_dropped`: how many `policy.warning` events the SDK lost to its bounded spool during an outage |
 | `approval.state` | string | `REQUESTED`, `APPROVED`, `DENIED`, `EXPIRED` or `CANCELLED` |
 
 **Who writes them.** `policy.decision`, `policy.action.blocked` and every `approval.*` event of a decision are written by the **server** (ADR-141), in the

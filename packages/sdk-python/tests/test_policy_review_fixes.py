@@ -74,7 +74,7 @@ def test_an_unknown_decision_fails_closed_at_every_risk_class(
     bb = client(srv)
     with bb.run("t"), pytest.raises(PolicyUnavailable) as info:
         bb.guard("filesystem.read", "x", risk)
-    assert info.value.reason == policy_module.REASON_ERROR
+    assert info.value.reason == "policy_error"
     bb.shutdown()
 
 
@@ -154,3 +154,34 @@ def _http_date(when: float) -> str:
     from email.utils import formatdate
 
     return formatdate(when, usegmt=True)
+
+
+# -- P3-6: a throttled wait is not a failed wait ---------------------------------------------------
+
+
+def test_429_on_the_wait_is_pacing_not_failure(srv: PolicyServer, fast: None) -> None:
+    srv.queue("decide", require())
+    for _ in range(policy_module.MAX_WAIT_FAILURES + 3):
+        srv.queue("wait", R(429, {"error": {"code": "RATE_LIMITED"}}, {"Retry-After": "0"}))
+    srv.queue("wait", state("DENIED"))
+    bb = client(srv)
+    with bb.run("t"), pytest.raises(ApprovalDenied):
+        bb.guard("github.push", "origin main")
+    assert srv.of("cancel") == []
+    bb.shutdown()
+
+
+# -- P3-9: a guard with no run is documented, not accidental ---------------------------------------
+
+
+def test_a_guard_outside_a_run_follows_the_fail_mode_and_asks_nothing(srv: PolicyServer) -> None:
+    """ADR-142 (review P3-9): with no current run there is nothing to bind a decision to, so the
+    service is not asked; R3/R4 refuse, everything else proceeds (and there is no run to hold a
+    warning)."""
+    bb = client(srv)
+    assert bb.guard("filesystem.read", "x", "R1").via == "fail_open"
+    with pytest.raises(PolicyUnavailable) as info:
+        bb.guard("shell.execute", "rm", "R3")
+    assert info.value.reason == "invalid_intent"
+    assert srv.of("decide") == []
+    bb.shutdown()

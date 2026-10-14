@@ -39,6 +39,7 @@ from blackbox.events import (
 )
 from blackbox.exporter import Exporter, HttpSink, LocalSink, Sink
 from blackbox.policy import DISABLED, Decision, PolicyGuard, _run_guard
+from blackbox.policy_spool import WarningSpool
 from blackbox.propagation import TraceContext
 from blackbox.redaction import PayloadMode, Redactor
 from blackbox.stats import Stats
@@ -771,6 +772,7 @@ class BlackBox:
             stats=self.stats_,
         )
         self._buffer = EventBuffer(self.config.max_queue, self.stats_)
+        self._spool = WarningSpool(self.stats_)
         self._exporter = self._new_exporter()
         self._uploader = ArtifactUploader(self.config, self.stats_)
         self._start_lock = threading.Lock()
@@ -891,7 +893,9 @@ class BlackBox:
         if engine is None:
             with self._start_lock:
                 if self._policy is None:
-                    self._policy = PolicyGuard(self.config, self.stats_)
+                    self._policy = PolicyGuard(
+                        self.config, self.stats_, on_contact=self._requeue_warnings
+                    )
                 engine = self._policy
         return engine
 
@@ -1004,6 +1008,7 @@ class BlackBox:
         try:
             wait = self.config.shutdown_timeout if timeout is None else timeout
             started = time.monotonic()
+            self._requeue_warnings()  # one more try for warnings an outage made the exporter drop
             uploaded = self._uploader.flush(wait)
             if not self._started:
                 return len(self._buffer) == 0 and uploaded
@@ -1021,6 +1026,7 @@ class BlackBox:
         try:
             wait = self.config.shutdown_timeout if timeout is None else timeout
             started = time.monotonic()
+            self._requeue_warnings()
             uploaded = self._uploader.shutdown(wait)  # first: events may reference these artifacts
             left = max(0.0, wait - (time.monotonic() - started))
             return self._exporter.shutdown(left) and uploaded
@@ -1040,11 +1046,21 @@ class BlackBox:
 
     # -- internals ---------------------------------------------------------------------------------
 
+    def _requeue_warnings(self) -> None:
+        """The API answered: put back the `policy.warning` events the exporter had to drop (they
+        keep their ids, so a copy that did get through is a duplicate, not a second event)."""
+        spool = getattr(self, "_spool", None)
+        if spool is None or len(spool) == 0:
+            return
+        for event in spool.take_all():
+            self._buffer.put(event, 0)
+        self._exporter.notify()
+
     def _new_exporter(self) -> Exporter:
         sink: Sink | None = None
         try:
             if self.config.mode == "http":
-                sink = HttpSink(self.config, self.stats_)
+                sink = HttpSink(self.config, self.stats_, self._spool.offer, self._requeue_warnings)
             elif self.config.mode == "local" and self.config.local_path:
                 sink = LocalSink(self.config.local_path, self.stats_)
         except Exception:  # INV-4: a bad option must not break the host
@@ -1065,6 +1081,7 @@ class BlackBox:
         self.stats_.reinit_lock()
         self._start_lock = threading.Lock()
         self._buffer = EventBuffer(self.config.max_queue, self.stats_)
+        self._spool = WarningSpool(self.stats_)
         self._exporter = self._new_exporter()
         self._uploader = ArtifactUploader(self.config, self.stats_)
         self._started = False

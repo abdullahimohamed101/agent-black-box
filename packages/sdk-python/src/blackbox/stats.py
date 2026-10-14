@@ -31,6 +31,7 @@ COUNTERS = (
     "policy_approvals",  # decisions that needed a person
     "policy_fail_open",  # the service could not be asked and the action went ahead
     "policy_fail_closed",  # the service could not be asked and the action was refused
+    "policy_warnings_lost",  # policy.warning events pushed out of the spool after an outage
 )
 
 

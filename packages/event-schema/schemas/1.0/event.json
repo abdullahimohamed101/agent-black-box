@@ -1172,6 +1172,10 @@
           "minimum": 0,
           "type": "integer"
         },
+        "policy.warnings_dropped": {
+          "minimum": 0,
+          "type": "integer"
+        },
         "rate_limit.retry_after_ms": {
           "minimum": 0,
           "type": "number"

@@ -68,6 +68,7 @@ export type EventIn = {
     "policy.id"?: string;
     "policy.reason"?: string;
     "policy.version"?: number;
+    "policy.warnings_dropped"?: number;
     "rate_limit.retry_after_ms"?: number;
     "redaction.dropped_reason"?: string;
     "redaction.server_count"?: number;

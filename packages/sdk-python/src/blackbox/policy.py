@@ -85,7 +85,7 @@ WARNING_REASONS = frozenset(
         "approval_consume_failed",
         "approval_expired_allowed",
     }
-)
+)  # `policy_warnings_dropped` (policy_spool) is written by the spool, not by a guard call
 
 WAIT_MARGIN = 5.0  # seconds past the approval's expiry before the SDK stops asking
 ROUND_SLACK = 5.0  # the socket allowance of a wait round beyond the round the server holds
@@ -306,8 +306,10 @@ class PolicyGuard:
         clock: Callable[[], float] = time.monotonic,
         wall: Callable[[], float] = time.time,
         sleep: Callable[[float], None] | None = None,
+        on_contact: Callable[[], None] | None = None,
     ) -> None:
         self._c, self._stats, self._clock, self._wall = config, stats, clock, wall
+        self._on_contact = on_contact
         self._sleeper = sleep
         self._rng = random.Random()  # noqa: S311  (backoff jitter, not security)
         self._lock = threading.Lock()
@@ -420,6 +422,7 @@ class PolicyGuard:
             self._stats.add("policy_fail_closed")
             raise PolicyUnavailable(REASON_ERROR, name if _safe_name(name) else "")
         self._stats.add("policy_checks")
+        self._contacted()
         self._refresh_table(verdict.policy_version)
         if verdict.decision == "allow":
             return Decision("allow", verdict.policy_id, verdict.policy_version, verdict.reason)
@@ -513,6 +516,16 @@ class PolicyGuard:
                     if kind == "pending":
                         failures = 0
                         continue
+                    if kind == "throttled":
+                        # A 429 is the server pacing a busy key (many waits on one key use its
+                        # budget): not a failed round, so it never cancels a live approval. The
+                        # approval's own deadline still bounds the wait (review P3-6).
+                        self._pause(
+                            min(reply.retry_after if reply.retry_after is not None else 1.0, 30.0),
+                            cancel,
+                            deadline,
+                        )
+                        continue
                     if kind == "decided":
                         return self._settle(run, intent, verdict, reply, progress)
                     failures, last_reason = failures + 1, REASON_ERROR
@@ -555,7 +568,7 @@ class PolicyGuard:
 
     @staticmethod
     def _read_wait(reply: Reply) -> str:
-        """pending | decided | retry | terminal for one wait round's reply."""
+        """pending | decided | throttled | retry | terminal for one wait round's reply."""
         body = reply.body
         if reply.status == 200 and body is not None:
             state = body.get("state")
@@ -566,6 +579,8 @@ class PolicyGuard:
             return "retry"
         if reply.status in (401, 403, 404):
             return "terminal"
+        if reply.status == 429:
+            return "throttled"  # the key's budget, not a broken service: wait, do not count
         return "retry"  # 429, 5xx, anything unexpected: transient, counted
 
     def _settle(
@@ -704,6 +719,15 @@ class PolicyGuard:
             raise PolicyUnavailable(reason, name if _safe_name(name) else "")
         self._stats.add("policy_fail_open")
         return Decision("allow", None, 0, "", None, "fail_open")
+
+    def _contacted(self) -> None:
+        """The service answered: let the client re-send warnings an outage made it drop."""
+        if self._on_contact is None:
+            return
+        try:
+            self._on_contact()
+        except Exception:
+            self._stats.add("internal_errors")
 
     def _warn(self, run: "Run | None", capability: str, reason: str) -> None:
         """Record `policy.warning` with fixed words only. Never raises."""
