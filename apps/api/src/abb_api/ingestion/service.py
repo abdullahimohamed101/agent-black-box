@@ -31,9 +31,10 @@ from abb_api.ingestion.emitter import (
     RESERVED_TYPE_CODE,
     SERVER_EMITTER,
 )
-from abb_api.ingestion.ratelimit import RateLimiter, retry_after_seconds
+from abb_api.ingestion.ratelimit import retry_after_seconds
 from abb_api.ingestion.schemas import BatchResponse, EventErrorOut, IssueOut
 from abb_api.ingestion.store import PgEventStore
+from abb_api.limits import AsyncRateLimiter
 from abb_api.security.redaction import (
     REASON,
     SCAN_FAILED,
@@ -79,7 +80,7 @@ class IngestionService:
     def __init__(
         self,
         engine: AsyncEngine,
-        limiter: RateLimiter,
+        limiter: AsyncRateLimiter,
         settings: Settings,
         clock: Clock,
         redactor: ServerRedactor | None = None,
@@ -98,8 +99,11 @@ class IngestionService:
             raise project_key_required()
         batch_id, raw_events = self._parse_batch(document)
 
-        wait = self._limiter.acquire(
-            str(principal.project_id), events=len(raw_events), bytes_=len(document)
+        wait = await self._limiter.acquire(
+            str(principal.project_id),
+            events=len(raw_events),
+            bytes_=len(document),
+            workspace_id=principal.workspace_id,
         )
         if wait is not None:
             raise rate_limited(wait)

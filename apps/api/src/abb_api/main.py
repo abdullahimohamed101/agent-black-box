@@ -49,6 +49,13 @@ from abb_api.health.router import router as health_router
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter, RateLimiter
 from abb_api.ingestion.router import router as ingestion_router
 from abb_api.ingestion.service import IngestionService
+from abb_api.limits import Scope
+from abb_api.limits.factory import (
+    build_counters,
+    default_ingest_bucket,
+    ingest_limiter,
+    minute_limiter,
+)
 from abb_api.policies.api_service import PolicyApiService
 from abb_api.policies.router import router as policies_router
 from abb_api.runs.router import router as runs_router
@@ -176,12 +183,9 @@ def create_app(
     settings = settings or get_settings()
     configure_logging(settings.log_level)
 
-    limiter = rate_limiter or InMemoryRateLimiter(
-        events_per_second=settings.rate_limit_events_per_second,
-        burst_events=settings.rate_limit_burst_events,
-        bytes_per_second=settings.rate_limit_bytes_per_second,
-        burst_bytes=settings.rate_limit_burst_bytes,
-    )
+    # Local guards (cheap, in front); the shared tier behind them is built per lifespan, once the
+    # engine exists (ADR-152).
+    local_ingest = rate_limiter or default_ingest_bucket(settings)
 
     login_bucket = login_limiter or InMemoryRateLimiter(
         events_per_second=settings.login_global_per_minute / 60,
@@ -195,7 +199,30 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = create_engine(settings.database_url)
         app.state.engine = engine
-        app.state.ingestion = IngestionService(engine, limiter, settings, clock)
+        counters = build_counters(engine, settings)
+        app.state.shared_counters = counters
+        ingest_guard = ingest_limiter(
+            local_ingest,
+            counters,
+            settings,
+            events=Scope.INGEST_EVENTS,
+            bytes_=Scope.INGEST_BYTES,
+        )
+        artifact_guard = ingest_limiter(
+            local_ingest,
+            counters,
+            settings,
+            events=Scope.ARTIFACT_COUNT,
+            bytes_=Scope.ARTIFACT_BYTES,
+        )
+        app.state.login_limiter = minute_limiter(
+            counters,
+            Scope.LOGIN_START,
+            settings.login_global_per_minute,
+            block_divisor=settings.limits_block_divisor,
+            local=login_bucket,
+        )
+        app.state.ingestion = IngestionService(engine, ingest_guard, settings, clock)
         app.state.runs = RunService(engine, clock)
         app.state.findings = FindingsService(engine, app.state.runs)
         app.state.security = SecurityApiService(
@@ -213,11 +240,13 @@ def create_app(
             writes_per_minute=settings.policy_writes_per_minute,
             validations_per_minute=settings.policy_validations_per_minute,
             dry_runs_per_minute=settings.policy_dry_runs_per_minute,
+            counters=counters,
+            block_divisor=settings.limits_block_divisor,
         )
-        app.state.alerts = AlertsService(engine, settings, clock)
+        app.state.alerts = AlertsService(engine, settings, clock, counters)
         hub = StreamHub(settings.database_url)
         app.state.hub = hub
-        app.state.approvals = ApprovalService(engine, settings, clock, hub)
+        app.state.approvals = ApprovalService(engine, settings, clock, hub, counters=counters)
         app.state.comparison = ComparisonService(engine, settings)
         app.state.experiments = ExperimentService(engine, settings)
         app.state.evaluators = EvaluatorService(engine, settings.judge_provider)
@@ -230,7 +259,7 @@ def create_app(
         app.state.artifacts = ArtifactService(
             engine,
             artifact_store or LocalFsArtifactStore(settings.artifact_dir),
-            limiter,
+            artifact_guard,
             clock,
             max_bytes=settings.artifact_max_bytes,
             scan_max_bytes=settings.security_scan_artifact_max_bytes,
@@ -261,7 +290,6 @@ def create_app(
     app = FastAPI(title="Agent Black Box API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.clock = clock
-    app.state.login_limiter = login_bucket
     app.state.denial_limiter = new_denial_limiter(settings.audit_denials_per_minute)
     install_error_handlers(app)
     app.add_middleware(

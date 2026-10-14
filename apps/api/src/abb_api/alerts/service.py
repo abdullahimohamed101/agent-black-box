@@ -49,8 +49,10 @@ from abb_api.core.config import Settings
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.db import tables as t
 from abb_api.ids import new_uuid, parse_public_id, public_id
-from abb_api.ingestion.ratelimit import InMemoryRateLimiter, retry_after_seconds
+from abb_api.ingestion.ratelimit import retry_after_seconds
 from abb_api.jobs.outbox import OutboxRepository
+from abb_api.limits import Scope, SharedCounters
+from abb_api.limits.factory import minute_limiter
 from abb_api.projects.repository import ProjectRepository
 from abb_api.runs import cursors
 
@@ -218,23 +220,25 @@ def _who(principal: Principal) -> str:
 
 
 class AlertsService:
-    def __init__(self, engine: AsyncEngine, settings: Settings, clock: Clock) -> None:
+    def __init__(
+        self,
+        engine: AsyncEngine,
+        settings: Settings,
+        clock: Clock,
+        counters: SharedCounters | None = None,
+    ) -> None:
         self._engine = engine
         self._settings = settings
         self._clock = clock
-        per_minute = settings.alerts_writes_per_minute
-        self._write_limiter = InMemoryRateLimiter(
-            events_per_second=per_minute / 60,
-            burst_events=per_minute,
-            bytes_per_second=1.0,
-            burst_bytes=1,
+        divisor = settings.limits_block_divisor
+        self._write_limiter = minute_limiter(
+            counters, Scope.ALERT_WRITE, settings.alerts_writes_per_minute, block_divisor=divisor
         )
-        self._preview_limiter = InMemoryRateLimiter(
-            events_per_second=20 / 60, burst_events=20, bytes_per_second=1.0, burst_bytes=1
+        self._preview_limiter = minute_limiter(
+            counters, Scope.ALERT_PREVIEW, 20, block_divisor=divisor
         )
-        tests = settings.alerts_tests_per_minute
-        self._test_limiter = InMemoryRateLimiter(
-            events_per_second=tests / 60, burst_events=tests, bytes_per_second=1.0, burst_bytes=1
+        self._test_limiter = minute_limiter(
+            counters, Scope.ALERT_TEST, settings.alerts_tests_per_minute, block_divisor=divisor
         )
 
     @asynccontextmanager
@@ -251,15 +255,16 @@ class AlertsService:
                 raise busy() from None
             raise
 
-    def _throttle(
+    async def _throttle(
         self, principal: Principal, *, preview: bool = False, send_test: bool = False
     ) -> None:
         limiter = self._preview_limiter if preview else self._write_limiter
+        key, workspace = str(principal.workspace_id), principal.workspace_id
         if send_test:
-            wait = self._test_limiter.acquire(str(principal.workspace_id), events=1, bytes_=0)
+            wait = await self._test_limiter.acquire(key, workspace_id=workspace)
             if wait is not None:
                 raise _rate_limited(wait)
-        wait = limiter.acquire(str(principal.workspace_id), events=1, bytes_=0)
+        wait = await limiter.acquire(key, workspace_id=workspace)
         if wait is not None:
             raise _rate_limited(wait)
 
@@ -338,7 +343,7 @@ class AlertsService:
     async def create_destination(
         self, principal: Principal, body: s.DestinationCreate
     ) -> s.DestinationCreated:
-        self._throttle(principal)
+        await self._throttle(principal)
         if body.type == m.EMAIL and not self._settings.smtp_configured:
             raise email_not_configured()
         config, masked = self._target_config(body.type, body.target)
@@ -397,7 +402,7 @@ class AlertsService:
         self, principal: Principal, raw_id: str, body: s.DestinationPatch
     ) -> s.DestinationCreated:
         """Rename, replace the target, pause or resume, rotate the signing secret."""
-        self._throttle(principal)
+        await self._throttle(principal)
         destination_id = parse_public_id(IdKind.DESTINATION, raw_id)
         if destination_id is None:
             raise destination_not_found()
@@ -485,7 +490,7 @@ class AlertsService:
         the failure counter, the state and the history are not touched (a person debugging a URL
         must not pause it, and a test must not hide a real outage by resetting the counter).
         The database connection is released before the network wait."""
-        self._throttle(principal, send_test=True)  # one write token and one test token
+        await self._throttle(principal, send_test=True)  # one write token and one test token
         destination_id = parse_public_id(IdKind.DESTINATION, raw_id)
         if destination_id is None:
             raise destination_not_found()
@@ -536,7 +541,7 @@ class AlertsService:
         return s.DestinationTestResult(ok=ok, error_code=code)
 
     async def delete_destination(self, principal: Principal, raw_id: str) -> None:
-        self._throttle(principal)
+        await self._throttle(principal)
         destination_id = parse_public_id(IdKind.DESTINATION, raw_id)
         if destination_id is None:
             raise destination_not_found()
@@ -656,7 +661,7 @@ class AlertsService:
         return unique
 
     async def create_rule(self, principal: Principal, body: s.RuleCreate) -> s.RuleOut:
-        self._throttle(principal)
+        await self._throttle(principal)
         filters = normalise_filters(body.trigger, body.filters)
         if len(set(body.destination_ids)) > self._settings.alerts_max_destinations_per_rule:
             raise limit_reached("destinations per rule")
@@ -706,7 +711,7 @@ class AlertsService:
             return (await self._rule_out(conn, principal, [row]))[0]
 
     async def update_rule(self, principal: Principal, raw_id: str, body: s.RulePatch) -> s.RuleOut:
-        self._throttle(principal)
+        await self._throttle(principal)
         rule_id = parse_public_id(IdKind.ALERT_RULE, raw_id)
         if rule_id is None:
             raise rule_not_found()
@@ -777,7 +782,7 @@ class AlertsService:
             return (await self._rule_out(conn, principal, [row]))[0]
 
     async def delete_rule(self, principal: Principal, raw_id: str) -> None:
-        self._throttle(principal)
+        await self._throttle(principal)
         rule_id = parse_public_id(IdKind.ALERT_RULE, raw_id)
         if rule_id is None:
             raise rule_not_found()
@@ -805,7 +810,7 @@ class AlertsService:
         """How often the rule would have fired over the last `days`, from recorded metadata only.
 
         Counts, never rows; bounded in time (statement timeout) and in window."""
-        self._throttle(principal, preview=True)
+        await self._throttle(principal, preview=True)
         rule_id = parse_public_id(IdKind.ALERT_RULE, raw_id)
         if rule_id is None:
             raise rule_not_found()

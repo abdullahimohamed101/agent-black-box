@@ -1408,3 +1408,25 @@ alert_notifications = Table(
         text("created_at DESC"),
     ),
 )
+
+
+# ------------------------------------------------------------ shared limiter (Phase 19a, ADR-152)
+
+# Fixed-window counters shared by every API process (migration 0097). Short-lived operational
+# state, not tenant data: no foreign key to `workspaces` (nothing here may delay deleting one),
+# global scopes live under the nil workspace id. Rows are deleted once `expires_at` has passed.
+rate_limit_counters = Table(
+    "rate_limit_counters",
+    metadata,
+    Column("scope", Text, nullable=False),
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("key", Text, nullable=False),
+    _ts("window_start", nullable=False),
+    Column("count", BigInteger, nullable=False),
+    _ts("expires_at", nullable=False),
+    PrimaryKeyConstraint("scope", "workspace_id", "key", "window_start"),
+    CheckConstraint("scope ~ '^[a-z][a-z0-9_]{0,63}$'", name="ck_rate_limit_counters_scope"),
+    CheckConstraint("char_length(key) BETWEEN 1 AND 256", name="ck_rate_limit_counters_key"),
+    CheckConstraint("count >= 0", name="ck_rate_limit_counters_count"),
+    Index("ix_rate_limit_counters_expires", "expires_at"),
+)

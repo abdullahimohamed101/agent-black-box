@@ -26,8 +26,8 @@ from abb_api.authz.matrix import role_actions, role_own_actions
 from abb_api.core.config import Settings
 from abb_api.core.errors import AppError, ErrorEnvelope
 from abb_api.ids import public_id
-from abb_api.ingestion.ratelimit import RateLimiter
 from abb_api.ingestion.service import rate_limited
+from abb_api.limits import AsyncRateLimiter
 from abb_api.workspaces.repository import memberships_of
 
 router = APIRouter(tags=["auth"])
@@ -54,12 +54,12 @@ def _login_service(request: Request) -> LoginService:
     return service
 
 
-def _throttle(request: Request) -> None:
+async def _throttle(request: Request) -> None:
     # Sign-in *starts* only. A callback is bound to the browser's own login cookie and a state it
     # consumes, so it is never behind a pool an anonymous client could drain (security review F1).
     # This is a ceiling that protects the database, not a fairness limit: no client address here.
-    limiter: RateLimiter = request.app.state.login_limiter
-    wait = limiter.acquire("auth", events=1, bytes_=0)
+    limiter: AsyncRateLimiter = request.app.state.login_limiter
+    wait = await limiter.acquire("auth", events=1, bytes_=0)
     if wait is not None:
         raise rate_limited(wait)
 
@@ -77,7 +77,7 @@ def _throttle(request: Request) -> None:
 async def login(request: Request, return_to: Annotated[str | None, Query()] = None) -> Response:
     settings: Settings = request.app.state.settings
     service = _login_service(request)
-    _throttle(request)
+    await _throttle(request)
     started = await service.start(return_to)
     response = RedirectResponse(started.authorize_url, status_code=302)
     response.headers["Cache-Control"] = "no-store"

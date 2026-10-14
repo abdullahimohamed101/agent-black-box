@@ -129,6 +129,19 @@ class Settings(BaseSettings):
     # A backstop on the unauthenticated login endpoints, shared by every client (the API cannot
     # tell clients apart behind the web relay; per-client limits live in the web app, D15).
     login_global_per_minute: int = Field(default=6000, ge=1)
+    # Shared limiter (Phase 19a, ADR-152). The budgets above and below are counted per window in
+    # PostgreSQL so they hold across API processes; the in-memory limiter stays in front. Off: the
+    # old per-process behaviour. The call is bounded by `limits_timeout_ms` and, when it fails,
+    # skipped for `limits_backoff_seconds` (fail open to the local limiter).
+    limits_shared_enabled: bool = True
+    limits_timeout_ms: int = Field(default=500, ge=10, le=5000)
+    limits_backoff_seconds: float = Field(default=5.0, ge=0, le=300)
+    # Units are reserved from the database in blocks of limit / divisor (fewer writes, up to
+    # N * (block - 1) early refusals across N processes); 1 means every request writes.
+    limits_block_divisor: int = Field(default=20, ge=1, le=1000)
+    # Window of the ingestion and artifact budgets, whose rates are per second (the minute
+    # budgets use a 60 s window).
+    limits_ingest_window_seconds: int = Field(default=10, ge=1, le=60)
     # Denied requests by one person that are written to the audit log per minute; the rest are
     # only logged (D11), so a refused client cannot fill the table.
     audit_denials_per_minute: int = Field(default=10, ge=1)

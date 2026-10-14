@@ -15,8 +15,8 @@ from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import public_id
-from abb_api.ingestion.ratelimit import RateLimiter
 from abb_api.ingestion.service import project_key_required, rate_limited
+from abb_api.limits import AsyncRateLimiter
 from abb_api.runs.queries import RunQueries
 from abb_api.security.redaction import ArtifactDecision, ServerRedactor
 from abb_api.security.settings import CaptureMode, PgSecuritySettingsStore
@@ -91,7 +91,7 @@ class ArtifactService:
         self,
         engine: AsyncEngine,
         store: ArtifactStore,
-        limiter: RateLimiter,
+        limiter: AsyncRateLimiter,
         clock: Clock,
         *,
         max_bytes: int,
@@ -136,8 +136,11 @@ class ArtifactService:
                 status_code=422,
             )
         # Its own bucket: a burst of artifacts must not starve event ingestion (and vice versa).
-        wait = self._limiter.acquire(
-            f"artifacts:{principal.project_id}", events=1, bytes_=len(data)
+        wait = await self._limiter.acquire(
+            f"artifacts:{principal.project_id}",
+            events=1,
+            bytes_=len(data),
+            workspace_id=principal.workspace_id,
         )
         if wait is not None:
             raise rate_limited(wait)

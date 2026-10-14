@@ -15,7 +15,9 @@ from abb_api.authz.principal import Principal
 from abb_api.core.domain import NotFoundError
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import parse_public_id, public_id
-from abb_api.ingestion.ratelimit import InMemoryRateLimiter, retry_after_seconds
+from abb_api.ingestion.ratelimit import retry_after_seconds
+from abb_api.limits import Scope, SharedCounters
+from abb_api.limits.factory import minute_limiter
 from abb_api.policies import schemas as s
 from abb_api.policies.dryrun import DryRunLimits, DryRunResult, evaluate_events
 from abb_api.policies.mapping import MAPPED_EVENT_TYPES
@@ -101,20 +103,17 @@ class PolicyApiService:
         validations_per_minute: int = 120,
         dry_runs_per_minute: int = 20,
         limits: DryRunLimits = DryRunLimits(),  # noqa: B008
+        counters: SharedCounters | None = None,
+        block_divisor: int = 20,
     ) -> None:
         self._engine = engine
         self._limits = limits
         self._limiters = {
-            kind: InMemoryRateLimiter(
-                events_per_second=per_minute / 60,
-                burst_events=per_minute,
-                bytes_per_second=1.0,
-                burst_bytes=1,
-            )
-            for kind, per_minute in (
-                ("write", writes_per_minute),
-                ("validate", validations_per_minute),
-                ("dry_run", dry_runs_per_minute),
+            kind: minute_limiter(counters, scope, per_minute, block_divisor=block_divisor)
+            for kind, scope, per_minute in (
+                ("write", Scope.POLICY_WRITE, writes_per_minute),
+                ("validate", Scope.POLICY_VALIDATE, validations_per_minute),
+                ("dry_run", Scope.POLICY_DRY_RUN, dry_runs_per_minute),
             )
         }
 
@@ -132,8 +131,10 @@ class PolicyApiService:
             raise project_not_found()
         return parsed
 
-    def _throttle(self, principal: Principal, kind: str) -> None:
-        wait = self._limiters[kind].acquire(str(principal.workspace_id), events=1, bytes_=0)
+    async def _throttle(self, principal: Principal, kind: str) -> None:
+        wait = await self._limiters[kind].acquire(
+            str(principal.workspace_id), workspace_id=principal.workspace_id
+        )
         if wait is not None:
             raise _rate_limited(wait)
 
@@ -252,8 +253,8 @@ class PolicyApiService:
 
     # ------------------------------------------------------------------ validate and publish
 
-    def validate(self, principal: Principal, body: s.ValidateIn) -> s.ValidateOut:
-        self._throttle(principal, "validate")
+    async def validate(self, principal: Principal, body: s.ValidateIn) -> s.ValidateOut:
+        await self._throttle(principal, "validate")
         result = parse_policy(body.document)
         return s.ValidateOut(
             valid=result.policy is not None,
@@ -262,7 +263,7 @@ class PolicyApiService:
         )
 
     async def publish(self, principal: Principal, body: s.PublishIn) -> s.PolicyVersionDetail:
-        self._throttle(principal, "write")
+        await self._throttle(principal, "write")
         parsed = parse_policy(body.document)
         if parsed.policy is None:  # before any connection: a bad draft costs no transaction
             raise policy_invalid(parsed.issues)
@@ -295,7 +296,7 @@ class PolicyApiService:
     # ------------------------------------------------------------------ dry run
 
     async def dry_run(self, principal: Principal, body: s.DryRunIn) -> s.DryRunOut:
-        self._throttle(principal, "dry_run")
+        await self._throttle(principal, "dry_run")
         parsed = parse_policy(body.document)
         if parsed.policy is None:
             raise policy_invalid(parsed.issues)

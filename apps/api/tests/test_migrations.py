@@ -92,6 +92,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0094",
         "0095",
         "0096",
+        "0097",
     ]
 
 
@@ -320,4 +321,19 @@ def test_0095_creates_the_alerting_tables_and_drops_them_again() -> None:
             index_names(url, "alert_notifications")
         )
         alembic(url, "downgrade", "0094")
+        assert asyncio.run(table_names(url)) == before
+
+
+def test_0097_creates_the_rate_limit_counters_and_drops_them_again() -> None:
+    """Phase 19a step 1: one additive table; the previous head upgrades to it and back."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0096")
+        before = asyncio.run(table_names(url))
+        assert "rate_limit_counters" not in before
+        alembic(url, "upgrade", "0097")
+        assert asyncio.run(table_names(url)) - before == {"rate_limit_counters"}
+        assert {"ix_rate_limit_counters_expires"} <= asyncio.run(
+            index_names(url, "rate_limit_counters")
+        )
+        alembic(url, "downgrade", "0096")
         assert asyncio.run(table_names(url)) == before
