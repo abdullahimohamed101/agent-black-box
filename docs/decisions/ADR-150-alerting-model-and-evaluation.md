@@ -93,3 +93,12 @@ credential. The hot paths pay one INSERT (or, in the findings job, one indexed S
   can still differ between runs of the same race; the alert's existence cannot.
 - **The expiring batch skips what is already announced (P3-3).** The sweep reads the 500 waiting approvals nearest to expiry; ones whose "about to expire" rows already exist for every destination of every rule that
   wants them are excluded in SQL (a per-rule, per-destination anti-join on the dedupe key), so a long queue of announced approvals cannot starve later ones, while a second rule with a shorter lead still sees them.
+- **The sweep chain is re-armed and its lock order is fixed (P2-4).** Two weaknesses of the first version. (1) The chain only started when an API call saved a scheduled rule; if its single pending job was lost (a
+  dead letter after an outage, a deploy that dropped it) the scheduled alerts stopped silently, and a window-sensitive "about to expire" alert (60 s lead, 60 s interval) is the first thing to go missing. Now
+  `evaluate_alerts` and `deliver_alerts` each end with `rearm_sweep`: if the workspace has an enabled scheduled rule, enqueue the sweep key (`ON CONFLICT DO NOTHING` on the pending key, so a no-op while the timer exists).
+  KI-160 and KI-166 now describe what remains (a workspace with no alert traffic at all). (2) **Deadlock found by analysis and reproduced with a test**: `alert_sweep` inserted its successor job first and
+  then took rule locks (`record` locks each matching rule `FOR UPDATE`), while an API rule edit holds the rule's row (its UPDATE) and then inserts the same sweep key; the unique-index insert waits for the
+  sweep's uncommitted successor and the sweep waits for the row, which PostgreSQL resolves by aborting one of them (`deadlock detected`). The successor is now inserted **last**. The rule is the global ordering
+  rule: **row locks (rules, destinations, runs) are taken before any outbox insert, and outbox keys are inserted in the order delivery, prune, sweep** in every alert path (evaluation: rules, then delivery, prune, sweep;
+  the delivery tick: destinations, then delivery or retry, then sweep; the sweep: rules, delivery, prune, then its successor; the API: row, then sweep). With one global order no cycle exists.
+  The checks now run before the successor is queued, so the interval is measured from the end of the checks (two bounded queries per rule type), not their start.

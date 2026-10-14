@@ -32,6 +32,7 @@ from abb_api.alerts.evaluate import evaluate_event, sweep
 from abb_api.alerts.repository import NotificationRepository, RuleRepository
 from abb_api.alerts.schedule import ensure_prune, request_delivery, schedule_retry
 from abb_api.clock import system_clock
+from abb_api.core.config import Settings
 from abb_api.jobs.context import job_settings
 from abb_api.jobs.outbox import ALERT_PRUNE, ALERT_SWEEP, EVALUATE_ALERTS, Job, OutboxRepository
 from abb_api.tenancy import TenantContext
@@ -69,15 +70,17 @@ async def evaluate_alerts(job: Job, conn: AsyncConnection) -> None:
         logger.warning("alert job with an unknown trigger", extra={"job_id": str(job.id)})
         return
     settings = job_settings()
+    tenant = TenantContext(job.workspace_id)
     await evaluate_event(
         conn,
-        TenantContext(job.workspace_id),
+        tenant,
         str(trigger),
         subject_id,
         now=system_clock(),
         skipped_cap=settings.alerts_skipped_per_window,
         max_age=timedelta(days=settings.alerts_retention_days),
     )
+    await rearm_sweep(conn, tenant)
 
 
 async def alert_sweep(job: Job, conn: AsyncConnection) -> None:
@@ -85,15 +88,28 @@ async def alert_sweep(job: Job, conn: AsyncConnection) -> None:
     settings = job_settings()
     if not await RuleRepository(conn, tenant).has_enabled(m.SCHEDULED_TRIGGERS):
         return  # nothing to watch; the next scheduled rule written starts the timer again
-    # The successor first, so a slow check cannot stretch the interval; `sweep` itself never
-    # raises on a failing check, which would roll this back and end the chain.
+    # `sweep` itself never raises on a failing check, which would roll this back and end the chain.
+    await sweep(conn, tenant, now=system_clock(), skipped_cap=settings.alerts_skipped_per_window)
+    # The successor goes LAST (review P2-4): every writer takes its rule locks before it inserts
+    # outbox rows, and this job must too. Inserting the successor first and locking rules in the
+    # checks after it could deadlock with an API rule edit, which holds the rule's row and then
+    # inserts the same sweep key (a unique-index conflict waits for our commit while we wait for
+    # its row lock). The interval therefore starts after the checks, which are bounded.
     await OutboxRepository(conn, tenant).enqueue(
         job_type=ALERT_SWEEP,
         dedupe_key=str(tenant.workspace_id),
         payload={},
         delay=timedelta(seconds=settings.alerts_sweep_interval_seconds),
     )
-    await sweep(conn, tenant, now=system_clock(), skipped_cap=settings.alerts_skipped_per_window)
+
+
+async def rearm_sweep(conn: AsyncConnection, tenant: TenantContext) -> None:
+    """Restart the workspace's scheduled-check timer if it has scheduled rules and no pending job.
+    Called last by the other alert jobs (and so after any rule lock they took), it makes a chain
+    that was dead-lettered or lost to a long outage heal itself while the workspace has alert
+    traffic; coalescing makes it a no-op when the timer is already pending."""
+    if await RuleRepository(conn, tenant).has_enabled(m.SCHEDULED_TRIGGERS):
+        await ensure_sweep(OutboxRepository(conn, tenant), tenant)
 
 
 # ---------------------------------------------------------------- delivery and pruning
@@ -104,6 +120,11 @@ async def deliver_alerts(job: Job, conn: AsyncConnection) -> None:
     tenant = TenantContext(job.workspace_id)
     if not settings.alerts_delivery_enabled:
         return  # an operator hold: rows stay pending until it is lifted and a tick runs
+    await _deliver_tick(conn, tenant, settings)
+    await rearm_sweep(conn, tenant)  # last: after the destination locks the tick took
+
+
+async def _deliver_tick(conn: AsyncConnection, tenant: TenantContext, settings: Settings) -> None:
     now = system_clock()
     result = await deliver_due(
         conn, tenant, now=now, settings=settings, registry=registry_for(settings)
