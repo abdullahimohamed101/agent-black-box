@@ -1,19 +1,10 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import { BASE_HEADERS } from "./src/server/csp";
 
-// Next needs inline scripts/styles for hydration; everything else is same-origin. No framing, plugins or <base>.
-const csp = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "connect-src 'self'",
-  "frame-ancestors 'none'",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "form-action 'self'",
-].join("; ");
-
+// The Content-Security-Policy is per request (a nonce), so it is set in src/proxy.ts, with HSTS (which depends on
+// ABB_WEB_ORIGIN at run time, not build time). The headers below are the static ones for every response, including
+// the assets the proxy does not run for. ADR-155.
 const config: NextConfig = {
   output: "standalone",
   // Monorepo: trace dependencies from the workspace root so the standalone bundle is complete.
@@ -23,17 +14,7 @@ const config: NextConfig = {
     return [
       {
         source: "/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value:
-              process.env.NODE_ENV === "production"
-                ? csp
-                : csp.replace("script-src 'self'", "script-src 'self' 'unsafe-eval'"),
-          },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "no-referrer" },
-        ],
+        headers: Object.entries(BASE_HEADERS).map(([key, value]) => ({ key, value })),
       },
       { source: "/api/abb/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] },
     ];

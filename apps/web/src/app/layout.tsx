@@ -44,6 +44,10 @@ const IBMPlexSerif = localFont({
   display: "swap",
 });
 
+// Every page is rendered per request: the Content-Security-Policy carries a fresh nonce that Next stamps on its inline
+// bootstrap scripts, and a prerendered page has no request to take it from (src/proxy.ts, ADR-155).
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Agent Black Box",
   description: "Flight recorder and observability for AI agents",
