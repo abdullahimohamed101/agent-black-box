@@ -23,6 +23,9 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_INGEST_MAX_BODY_BYTES` / `ABB_INGEST_MAX_BATCH_EVENTS` | 5 MiB / 1000 | request limits (compressed and decompressed) |
 | `ABB_QUOTAS_ENABLED` | true | per-project quotas (Phase 19a, ADR-154). `false` is an emergency switch: nothing is checked or counted (the usage figures then go stale) |
 | `ABB_QUOTA_AGENTS` / `_RUNS_PER_DAY` / `_EVENTS_PER_DAY` / `_ARTIFACT_BYTES` | 500 / 50000 / 5000000 / 5368709120 (5 GiB) | the default quota of every project: distinct agents, runs created per UTC day, events accepted per UTC day, total stored artifact bytes. Owners and admins override each per project (Quotas settings page, `PUT /v1/projects/{id}/quotas`). The per-run event cap and the per-artifact size cap (`ABB_ARTIFACT_MAX_BYTES`) are separate and unchanged |
+| `ABB_MAX_BODY_BYTES_IN_FLIGHT` / `ABB_BODY_READ_TIMEOUT_SECONDS` | 64 MiB / 60 | most request-body bytes this API process holds at once (Phase 19a, ADR-155); a body that does not fit is refused `503 BUSY` with `Retry-After: 2` (retryable), bodies up to 64 KiB are always admitted, a body not received within the timeout is dropped `408`. Must be at least the largest body (8 MiB). Resident memory is about baseline + 4 to 6.5 x the cap under a flood of large batches (`docs/benchmarks/phase-19a-edge.md`) |
+| `ABB_API_DOCS_ENABLED` | unset | `/docs`, `/redoc`, `/openapi.json`: unset follows the environment (off in `production`, on in development, test and staging); `true`/`false` overrides |
+| `ABB_ALLOW_PRIVILEGED_DB_ROLE` | 0 | `1` lets the API and worker start in production although their database role can rewrite events (see "Database roles"); every start logs a warning naming why |
 | `ABB_RATE_LIMIT_EVENTS_PER_SECOND` / `_BURST_EVENTS` | 2000 / 10000 | per project: each API process's local bucket, and (shared limiter, below) at most `max(rate x window, burst)` events per window across all processes |
 | `ABB_RATE_LIMIT_BYTES_PER_SECOND` / `_BURST_BYTES` | 10 MiB / 50 MiB | bursts must fit one maximal batch (checked at startup) |
 | `ABB_LIMITS_SHARED_ENABLED` | true | the shared limiter (Phase 19a, ADR-152): the budgets are also counted per fixed window in PostgreSQL (`rate_limit_counters`) so they hold across API processes. `false` is the old per-process behaviour |
@@ -103,6 +106,22 @@ SELECT count(*) FILTER (WHERE expires_at < now()) AS expired, count(*) AS total 
 Reset one budget (an operator unblocking a workspace): `DELETE FROM rate_limit_counters WHERE scope = 'policy_write' AND workspace_id = '<uuid>';` (a process that already holds reserved credit keeps it until its window ends, at most one window).
 
 Logs: `shared limiter unavailable; failing open to the local limiter` (at most once per 30 s per process, field `error_class` only) means the budgets are per process again until the database answers; it is also the sign that the database is in trouble. The bench numbers and the Redis trigger are in `docs/benchmarks/phase-19a-limiter.md` and ADR-152.
+
+### Database roles and the startup check (Phase 19a step 4, ADR-155, KI-031)
+
+Run migrations as the database owner (`ABB_MIGRATION_DATABASE_URL`, alembic) and run the API and worker as the least-privilege role `abb_runtime` (`ABB_DATABASE_URL`), which can append to `events` but never update or delete them (INV-1).
+At start the API and worker ask which role they are: a superuser, `BYPASSRLS`, any `UPDATE`/`DELETE`/`TRUNCATE` on `events`, membership in the owner of `events`, or `CREATE` on schema `public` counts as too privileged. In production the process then **refuses to start**
+(the log names only the closed reasons: `superuser`, `bypass_rls`, `events_rewritable`, `events_owner`, `schema_create`; never a role, host or URL); it also refuses when the question cannot be answered (database down at boot), so start order matters: database first. In development, test and staging it logs one warning
+(the dev stack keeps the owner on purpose). If you knowingly run privileged, set `ABB_ALLOW_PRIVILEGED_DB_ROLE=1`; every start then logs a warning with the reasons. Fix a refusal by pointing `ABB_DATABASE_URL` at the runtime role (`docker-compose.yml` shows the pattern).
+
+### Edge: headers, docs, body cap, and running behind a reverse proxy (Phase 19a step 4, ADR-155)
+
+* Headers are set by the applications (API: deny-all CSP, `nosniff`, frame denial, `no-store`; web: nonce CSP and the headers in ADR-155). **Do not strip or overwrite them at the proxy, and do not cache HTML**: each page carries a per-request nonce.
+* **HTTPS and HSTS.** Set `ABB_WEB_ORIGIN` to the public `https://` origin (it also turns on `Secure` and `__Host-` cookies); both services then send `Strict-Transport-Security` (one year, `includeSubDomains`, no preload). Terminate TLS at the proxy and redirect http to https there. Over http no HSTS is sent.
+* **Client address.** Set `ABB_TRUST_PROXY=1` only when the proxy is the only way to reach the API and web ports and it **appends** the client address as the **last** `X-Forwarded-For` entry (do not pass a client-supplied header through unchanged). Then failed-auth throttling and sign-in limits work per address (ADR-153).
+* **Defence in depth at the proxy.** Limit request body size to 8 MiB (the API's own ceiling) and set read timeouts of about 30 to 60 s on request bodies and headers; add a per-IP request rate limit and connection limit. The API's caps are per process and do not replace these. Do not expose `/docs` (it is off in production by default).
+* **Docs.** `ABB_API_DOCS_ENABLED=true` serves `/docs`, `/redoc`, `/openapi.json` again (for a private staging); they load Swagger UI from a CDN and carry no CSP.
+* **Body cap.** Watch for `503` with code `BUSY` in the request log: sustained BUSY means the cap is too low for the traffic or a client is flooding; raise `ABB_MAX_BODY_BYTES_IN_FLIGHT` only with memory to match (about 6.5 times the cap in the worst measured case).
 
 ### Project quotas (Phase 19a step 3, ADR-154)
 

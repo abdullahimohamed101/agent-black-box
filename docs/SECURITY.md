@@ -224,6 +224,15 @@ defaults are generous abuse rails, not sizing advice. *What a refusal reveals*: 
 never another tenant's data. *Limits of the control* (stated plainly): it does not stop a single project from using its allowance, there is no alert on usage yet, server-written decision and
 approval events are not counted, and the day boundary follows the API process clock (UTC). See ADR-154.
 
+### Edge hardening (Phase 19a step 4, ADR-155)
+
+Threats and answers. *Memory exhaustion by concurrent large bodies* (KI-026): the process counts the body bytes it holds and refuses more with `503 BUSY` (before the read when `Content-Length` says it cannot fit); only bytes actually read are counted, so an anonymous client cannot reserve budget by declaring a size;
+small bodies (64 KiB) are always admitted; a body is dropped after 60 s; accounting is released on disconnect, cancel and exception (tested); every route has a global 8 MiB ceiling. Per process, first come first served (KI-182); the reverse proxy's body limit and timeouts remain the first line.
+*Script injection in the web app (XSS)*: scripts run only with the response's nonce (`strict-dynamic`), no `'unsafe-inline'` or `'unsafe-eval'`; the policy is enforced and tested in a real browser on every page (zero violations; an injected inline handler is blocked). `connect-src 'self'` and `form-action 'self'` stop exfiltration and credential posting to other origins; `font-src`/`img-src` self.
+`frame-ancestors 'none'` and `X-Frame-Options: DENY` stop clickjacking; `base-uri`, `object-src` close the rest. **Accepted weakening:** `style-src-attr 'unsafe-inline'` (style attributes cannot execute script; KI-181). *Sniffing, referrer and capability leaks*: `nosniff`, `Referrer-Policy: no-referrer`, a deny-all `Permissions-Policy`, COOP and CORP `same-origin`.
+*API responses*: deny-all CSP, `no-store` on every response (authenticated, session and secret-bearing included), HSTS only when the deployment is https. *Reconnaissance*: `/docs`, `/redoc` and `/openapi.json` are off in production. *INV-1 lost by misconfiguration* (KI-031): the API and worker refuse to start in production as a role that can rewrite events or alter the schema, or when that cannot be verified; the override is explicit and logged on every start; messages never contain a credential.
+Limits (stated plainly): CSP reduces the impact of an injection, it does not prevent one; a reverse proxy that caches HTML or strips headers undoes it; the role check is a start-time check (KI-183).
+
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
 Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); failed API-key authentication is throttled (ADR-153) (KI-019) and projects have quotas (ADR-154) (KI-018, KI-040). The identity provider integration was exercised against the fake
