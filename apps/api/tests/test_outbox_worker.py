@@ -454,6 +454,48 @@ async def test_a_slow_job_keeps_its_lease_and_runs_exactly_once(
     assert len(runs) == 1 and row.status == "done" and row.attempt_count == 1
 
 
+async def test_jobs_claimed_in_the_same_batch_keep_their_leases_while_an_earlier_one_runs(
+    engine: AsyncEngine, database_url: str
+) -> None:
+    """Review P2-2: a worker runs its batch one job after another and used to extend only the
+    running job's lease; the claimed one behind a slow job (a delivery tick) expired and was run
+    a second time by another worker."""
+    ws = await workspace(engine)
+    async with engine.begin() as conn:
+        ids = [
+            await add_job(
+                conn, ws, job_type="slow", available_at=datetime.now(UTC) - timedelta(seconds=1)
+            )
+            for _ in range(2)
+        ]
+    runs: list[str] = []
+
+    async def slow(job: Job, conn: AsyncConnection) -> None:
+        await asyncio.sleep(2.5)  # two and a half leases
+        runs.append(str(job.id))
+
+    settings = make_settings(
+        database_url,
+        worker_lease_seconds=1.0,
+        worker_poll_interval_seconds=0.05,
+        worker_batch_size=2,
+    )
+    first = Worker(engine, {"slow": slow}, settings, owner="first")
+    claiming = asyncio.create_task(first.run_once())  # takes both and runs them in turn
+    await asyncio.sleep(0.3)
+    other = Worker(engine, {"slow": slow}, settings, owner="other")
+    stop = asyncio.Event()
+    watching = asyncio.create_task(other.run_forever(stop))
+    await claiming
+    await asyncio.sleep(0.5)
+    stop.set()
+    await watching
+    assert sorted(runs) == sorted(str(i) for i in ids)  # each exactly once
+    for job_id in ids:
+        row = await job_row(engine, job_id)
+        assert row.status == "done" and row.attempt_count == 1
+
+
 async def test_the_heartbeat_stops_with_the_job_and_reports_a_lost_lease(
     engine: AsyncEngine, database_url: str
 ) -> None:
