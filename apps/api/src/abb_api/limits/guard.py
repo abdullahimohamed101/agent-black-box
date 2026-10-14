@@ -126,7 +126,10 @@ class GuardedLimiter:
             # no earlier than when we asked.
             credit.deadline = started + got.seconds_left
             credit.units += got.granted
-            if self._spend(credit, cost):
+            # Spend straight away: the grant belongs to the window the database named, even if
+            # that window ends a millisecond from now. Only what is left over expires with it.
+            if credit.units >= cost:
+                credit.units -= cost
                 return None
             return max(got.seconds_left, 0.001)
 

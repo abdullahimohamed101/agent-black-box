@@ -2,11 +2,12 @@
 
 import asyncio
 import time
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter
-from abb_api.limits import Dimension, GuardedLimiter, Scope, SharedCounters
+from abb_api.limits import Dimension, GuardedLimiter, Reservation, Scope, SharedCounters
 from tests.conftest import UNREACHABLE_DATABASE_URL
 from tests.limits.helpers import generous_local, pooled, room_in_window, workspace
 
@@ -153,3 +154,22 @@ async def test_a_limiter_with_no_shared_tier_is_just_the_local_one() -> None:
     )
     ws = workspace()
     assert [await guard.acquire("k", workspace_id=ws) for _ in range(3)][2] is not None
+
+
+async def test_a_grant_from_a_window_about_to_end_still_admits_the_request_that_asked() -> None:
+    """Found by the benchmark: the first request after a window turned over was refused although
+    the database had granted it, because its credit had already expired by the time it was spent."""
+
+    class EndingWindow:
+        database_calls = 0
+
+        async def reserve(self, scope: Scope, key: str, limit: int, window: int, **kw: Any) -> Any:
+            return Reservation(granted=kw["amount"], seconds_left=0.0)
+
+    guard = GuardedLimiter(
+        generous_local(),
+        EndingWindow(),  # type: ignore[arg-type]
+        events(1000),
+        block_divisor=20,
+    )
+    assert await guard.acquire("k", workspace_id=workspace()) is None
