@@ -176,6 +176,8 @@ async def create_key(
                 category=ErrorCategory.NOT_FOUND,
                 status_code=404,
             ) from None
+    # Committed: this process may admit the new key through a closed throttle window at once.
+    request.app.state.auth_throttle.key_created(created.stored.key_id)
     response.headers["Cache-Control"] = "no-store"
     await audit_allowed(
         request, principal, "api_key.create", resource_kind="api_key",

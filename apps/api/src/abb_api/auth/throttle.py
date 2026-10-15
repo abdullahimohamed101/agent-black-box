@@ -11,13 +11,17 @@ throttled is refused from memory: no key lookup, no counter write, no database a
 hashing is one SHA-256 of the presented token (to recognise it in the two caches below).
 
 Because a throttled request is refused before the key is looked up, the throttle alone would lock
-out valid keys too. Two small bounded caches, both keyed by a digest of the *whole* presented
-token and both memory-only, keep that from happening:
+out valid keys too. Three small bounded memory-only helpers keep that from happening:
 
-* known valid: tokens that authenticated in this process within `auth_fail_known_valid_seconds`
-  skip the throttle *gate*. They still go through full authentication every time, so a revoked
-  key stops working at once; the cache only decides whether the gate is consulted. A guessed key id
-  with the wrong secret does not match it.
+* known valid: tokens (keyed by a digest of the *whole* presented token) that authenticated in this
+  process within `auth_fail_known_valid_seconds` skip the throttle *gate*. They still go through
+  full authentication every time, so a revoked key stops working at once. A guessed key id with the
+  wrong secret does not match it.
+* active key ids (`active_keys.py`): while the *address* or *global* window is closed, a request
+  for a key id that really exists still reaches full authentication, so a key this process has
+  never seen is not locked out by a flood. The key id's own credential window still applies, which
+  bounds the lookups to `auth_fail_per_credential` per real key id per window. A random key id is
+  refused from memory.
 * known invalid: tokens that failed within `auth_fail_negative_seconds` are refused without a
   database lookup. Successes are never put here, and a key created later has a different token, so
   it is unaffected by anything cached about earlier guesses.
@@ -35,6 +39,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.audit.repository import AuditEntry, record_audit
+from abb_api.auth.active_keys import ActiveKeyIds
 from abb_api.auth.keys import parse_key
 from abb_api.core.client_address import address_counter_key
 from abb_api.core.config import Settings
@@ -157,8 +162,10 @@ class AuthThrottle:
         *,
         monotonic: Callable[[], float] = time.monotonic,
         wall: Callable[[], float] = time.time,
+        active_keys: ActiveKeyIds | None = None,
     ) -> None:
         self._wall = wall
+        self.active_keys = active_keys
         self._enabled = settings.auth_fail_enabled
         self._window = settings.auth_fail_window_seconds
         self._engine = engine
@@ -211,16 +218,36 @@ class AuthThrottle:
         )
         if self._known_valid.get(digest)[0]:
             return attempt  # authenticated here recently: the gate is not consulted
-        wait = max(
+        own = self._blocked.remaining(f"{Scope.AUTH_FAIL_CREDENTIAL.value}:{attempt.key_id}")
+        if own > 0:
+            raise throttled(own)  # this key id's own budget is spent: refused from memory
+        shared = max(
             (
                 self._blocked.remaining(f"{scope.value}:{key}")
                 for scope, key in self._targets(attempt)
+                if scope is not Scope.AUTH_FAIL_CREDENTIAL
             ),
             default=0.0,
         )
-        if wait > 0:
-            raise throttled(wait)
+        if shared > 0 and not self._is_active(attempt.key_id):
+            raise throttled(shared)
+        # Open, or closed only by an address / the installation while this is a real key id: on to
+        # full authentication, which costs at most `auth_fail_per_credential` lookups for it.
         return attempt
+
+    def _is_active(self, key_id: str) -> bool:
+        keys = self.active_keys
+        if keys is None:
+            return False
+        if not keys.loaded:
+            keys.nudge()
+            return False
+        return key_id in keys
+
+    def key_created(self, key_id: str) -> None:
+        """A key was committed by this process: it must not wait for the next refresh."""
+        if self.active_keys is not None:
+            self.active_keys.add(key_id)
 
     def known_invalid(self, attempt: Attempt) -> bool:
         return self._known_invalid.get(attempt.digest)[0]

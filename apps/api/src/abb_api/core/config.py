@@ -171,6 +171,12 @@ class Settings(BaseSettings):
     auth_fail_negative_seconds: float = Field(default=30.0, ge=0, le=3600)
     auth_fail_known_valid_seconds: float = Field(default=300.0, ge=0, le=3600)
     auth_fail_cache_entries: int = Field(default=10_000, ge=10, le=1_000_000)
+    # The ids of active keys, refreshed in the background: while an address or global window is
+    # closed, a request for one of these ids still reaches full authentication (ADR-153 point 3),
+    # so a key this process has not seen yet is not locked out by a flood. Above the cap the set
+    # holds an arbitrary subset and the rest behave as before (logged once).
+    auth_fail_active_keys_refresh_seconds: float = Field(default=60.0, ge=1, le=3600)
+    auth_fail_active_keys_cap: int = Field(default=100_000, ge=10, le=10_000_000)
     # True only when a reverse proxy that you run sets `X-Forwarded-For` (its last entry is the
     # client) and is the only way to reach the API; otherwise the header is ignored.
     trust_proxy: bool = False

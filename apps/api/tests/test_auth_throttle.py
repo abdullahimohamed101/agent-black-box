@@ -335,21 +335,22 @@ async def test_a_flood_never_refuses_a_valid_key_or_a_session(
         assert (await api.client.get("/v1/runs")).status_code == 401
 
 
-async def test_a_key_not_yet_seen_by_this_process_waits_out_a_closed_window(
+async def test_a_key_not_yet_seen_by_this_process_is_not_locked_out_by_a_closed_window(
     database_url: str, engine: AsyncEngine
 ) -> None:
-    """The stated cost of refusing before any lookup (ADR-153): while a window is closed for an
-    address or the whole installation, a valid key this process has not authenticated recently is
-    refused with Retry-After too (an SDK retries); a key it has seen keeps working."""
+    """Changed with KI-175's fix (ADR-153 point 3): this used to assert that a cold valid key got
+    429 while the global window was closed. A key id that exists now reaches authentication (the
+    full matrix is in test_auth_cold_keys.py); a key id that does not exist is still refused."""
     settings = throttle_settings(database_url, auth_fail_global=3)
     async for api in build_api(database_url, engine, settings=settings):
         await room_in_window(engine, 60)
         assert (await probe(api, api.tokens["writer"])).status_code == 200
         for _ in range(6):
             await probe(api, unknown_key())
-        cold = await probe(api, api.tokens["beta"])
-        assert cold.status_code == 429
-        assert int(cold.headers["retry-after"]) >= 1
+        assert (await probe(api, api.tokens["beta"])).status_code == 200
+        refused = await probe(api, unknown_key())
+        assert refused.status_code == 429
+        assert int(refused.headers["retry-after"]) >= 1
         assert (await probe(api, api.tokens["writer"])).status_code == 200
 
 

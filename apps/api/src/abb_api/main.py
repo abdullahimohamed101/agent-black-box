@@ -9,6 +9,8 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api import __version__
 from abb_api.alerts.router import router as alerts_router
@@ -22,10 +24,12 @@ from abb_api.artifacts.router import router as artifacts_router
 from abb_api.artifacts.service import ArtifactService
 from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
 from abb_api.audit.router import router as audit_router
+from abb_api.auth.active_keys import ActiveKeyIds
 from abb_api.auth.cookies import is_secure
 from abb_api.auth.keys_router import router as api_keys_router
 from abb_api.auth.login import LoginService
 from abb_api.auth.oidc import OidcClient
+from abb_api.auth.repository import ApiKeyLookup
 from abb_api.auth.router import router as auth_router
 from abb_api.auth.sessions_router import router as sessions_router
 from abb_api.auth.throttle import AuthThrottle
@@ -185,6 +189,13 @@ def _oidc_client(
     )
 
 
+async def _load_active_key_ids(engine: AsyncEngine, clock: Clock, limit: int) -> list[str]:
+    """One indexed, bounded read of the usable key ids (the throttle's refresh, ADR-153)."""
+    async with engine.begin() as conn:
+        await conn.execute(text("SELECT set_config('statement_timeout', '4000', true)"))
+        return await ApiKeyLookup(conn).active_key_ids(clock(), limit)
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -247,7 +258,12 @@ def create_app(
             settings.session_writes_per_minute,
             block_divisor=settings.limits_block_divisor,
         )
-        app.state.auth_throttle = AuthThrottle(settings, counters, engine)
+        active_keys = ActiveKeyIds(
+            lambda limit: _load_active_key_ids(engine, clock, limit),
+            refresh_seconds=settings.auth_fail_active_keys_refresh_seconds,
+            cap=settings.auth_fail_active_keys_cap,
+        )
+        app.state.auth_throttle = AuthThrottle(settings, counters, engine, active_keys=active_keys)
         app.state.ingestion = IngestionService(engine, ingest_guard, settings, clock)
         app.state.runs = RunService(
             engine,
@@ -307,9 +323,12 @@ def create_app(
         )
         app.state.streams = StreamService(engine, hub, app.state.runs, settings, clock)
         hub.start()
+        if settings.auth_fail_enabled:
+            await active_keys.start()  # bounded; a failure leaves the set unloaded and retries
         try:
             yield
         finally:
+            await active_keys.stop()
             await hub.stop()
             await engine.dispose()
 

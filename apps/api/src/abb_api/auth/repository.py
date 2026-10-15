@@ -97,6 +97,22 @@ class ApiKeyLookup:
         ).first()
         return _stored(row) if row else None
 
+    async def active_key_ids(self, now: datetime, limit: int) -> list[str]:
+        """Public key ids of keys that are neither revoked nor expired, at most `limit` of them.
+
+        Ids only (no secret hash, no workspace): the throttle uses them to tell a real key id
+        from a random one without touching the database per request (ADR-153 point 3).
+        """
+        rows = await self._conn.execute(
+            select(t.api_keys.c.key_id)
+            .where(
+                t.api_keys.c.revoked_at.is_(None),
+                (t.api_keys.c.expires_at.is_(None)) | (t.api_keys.c.expires_at > now),
+            )
+            .limit(limit)
+        )
+        return [row[0] for row in rows]
+
     async def touch_last_used(self, key: StoredApiKey, now: datetime) -> None:
         """Record use at most once a minute, so ingestion does not write on every request."""
         await self._conn.execute(
