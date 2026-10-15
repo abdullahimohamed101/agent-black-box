@@ -41,21 +41,6 @@ async def _alternate(urls: list[str], total: int, make: Any, concurrency: int = 
         return await lib.run_concurrent(total, concurrency, lambda i: make(client, urls[i % len(urls)], i))
 
 
-
-# A same-machine flood opens a new TCP connection for every request, so a few connections can be refused at the operating system's
-# accept queue (macOS: kern.ipc.somaxconn = 128) before the API ever sees them. That is the load generator's environment, not the API
-# failing; what the gate claims is that the API never answers a flood with anything but 401 or 429, so any other HTTP status is a
-# failure and transport errors are tolerated only as a tiny fraction of the flood, and are named.
-TRANSPORT_ERROR_SHARE = 0.005
-
-
-def _only_401_429(replies: list[lib.Reply], message: str) -> None:
-    other = [r for r in replies if r.status not in {401, 429} and r.status != 0]
-    transport = [r for r in replies if r.status == 0]
-    classes = sorted({str(r.code) for r in transport})
-    check(not other and len(transport) <= max(5, int(TRANSPORT_ERROR_SHARE * len(replies))), message,
-          tally=lib.tally(replies), other_http_statuses=len(other), transport_errors=len(transport), transport_error_classes=classes)
-
 def _budgets(procs: tuple[lib.Proc, lib.Proc], label: str) -> dict[str, int]:
     """Hammer every shared budget through BOTH processes at once; returns how many requests each budget accepted."""
     urls = [p.url for p in procs]
@@ -352,7 +337,7 @@ def _gate2(a: lib.Proc, b: lib.Proc, c: lib.Proc, d: lib.Proc, urls: list[str], 
          db_transactions_per_admitted_failure=round(tx / max(1, seen), 1))
     check(lib.count(flooded, 429) > 0 and all(r.code == "AUTH_THROTTLED" for r in flooded if r.status == 429), "spread flood: the global ceiling answers 429 AUTH_THROTTLED", throttled=lib.count(flooded, 429))
     check(total_failed <= GLOBAL_CEILING + PROCESSES + 24 + 2 * CONCURRENCY, f"failed authentications in the window ({total_failed}) stay within the global ceiling ({GLOBAL_CEILING}) plus in-flight requests")
-    _only_401_429(flooded, "the flood saw only 401 and 429 (no 5xx)")
+    lib.only_statuses(flooded, {401, 429}, "the flood saw only 401 and 429 (no 5xx)")
     check(_valid_ok(good), "a valid session was never refused while the global window closed", probes=len(good), tally=lib.tally(good))
     # The ceiling is closed. A flood now must cost counters at most: flood only, after the background work of the last steps settled.
     idle = lib.quiet()
@@ -381,13 +366,14 @@ def _gate2(a: lib.Proc, b: lib.Proc, c: lib.Proc, d: lib.Proc, urls: list[str], 
     info(cold_key=lib.tally(cold_replies), flood=lib.tally(cold_flooded))
     check(bool(cold_replies) and all(r.code == "cold" for r in cold_replies),
           "a valid key never used by either API process authenticated on every request while the flood kept the global window closed", requests=len(cold_replies), tally=lib.tally(cold_replies))
-    check(lib.count(cold_flooded, 429) > 0 and all(r.status in {401, 429} for r in cold_flooded), "and the flood stayed closed throughout (only 401s from in-flight requests and 429s)", tally=lib.tally(cold_flooded))
+    check(lib.count(cold_flooded, 429) > 0, "and the flood stayed closed: it was answered 429 AUTH_THROTTLED", tally=lib.tally(cold_flooded))
+    lib.only_statuses(cold_flooded, {401, 429}, "and nothing but 401 (in-flight requests) and 429 came back")
 
     # Valid traffic at full rate (ingestion with 20-event batches and sessions, both processes) during a flood against the closed window.
     full = Valid(urls, token)
     closed2, good2, seconds3, _ = asyncio.run(_phase(urls, full, flood, 8.0, 24))
     check(_valid_ok(good2), "a warmed ingestion key and a valid session were NEVER refused during the flood", valid_requests=len(good2), tally=lib.tally(good2))
-    _only_401_429(closed2, "the flood saw only 401 and 429")
+    lib.only_statuses(closed2, {401, 429}, "the flood saw only 401 and 429")
     during = _p95(good2)
     info(valid_p95_ms_before=_p95(before), valid_p95_ms_during_flood=during, ratio=round(during / max(1.0, _p95(before)), 2), flood_requests_per_s=round(len(closed2) / seconds3),
          note="the load generator, the API processes and the database share one machine; the ratio is honest, not a claim of no effect")

@@ -205,7 +205,9 @@ def _body_cap() -> None:
     capped, uncapped = outcome["capped"], outcome["uncapped"]
     busy = sum(v for k, v in capped["large"].items() if k.startswith("503"))
     check(busy > 0 and capped["busy_code"] == ["BUSY"] and all(r for r in capped["retry_after"]), f"capped: concurrent {size / MIB:.1f} MiB bodies are shed with 503 BUSY and Retry-After ({busy} refusals)", tally=capped["large"], retry_after=capped["retry_after"])
-    check(all(k in {"202"} or k.startswith("503") for k in capped["large"]), "capped: nothing but 202 and 503 (no 5xx crash, no connection errors)", tally=capped["large"])
+    transport_n = capped["large"].get("0", 0)  # a refused or reset connection of the same-machine generator (see lib.only_statuses)
+    check(all(k in {"202", "0"} or k.startswith("503") for k in capped["large"]) and transport_n <= lib.transport_budget(sum(capped["large"].values())),
+          "capped: nothing but 202 and 503 (no 5xx crash; a tiny share of generator connection errors is tolerated)", tally=capped["large"], transport_errors=transport_n)
     check(not any(k == "503 BUSY" for k in uncapped["large"]) and uncapped["growth_mib"] > 300, "control (cap effectively off): nothing is shed as BUSY and memory balloons (the test can see the problem); the process degrades to DEPENDENCY_UNAVAILABLE instead", tally=uncapped["large"], growth_mib=uncapped["growth_mib"])
     check(capped["growth_mib"] < 0.6 * uncapped["growth_mib"], f"memory is bounded: capped growth {capped['growth_mib']} MiB vs uncapped {uncapped['growth_mib']} MiB (peak {capped['peak_mib']} vs {uncapped['peak_mib']})")
     check(all(code == 202 for code in capped["recovery"]) and capped["ready"] == 200, "recovery: normal 100-event batches are accepted at once after the flood and /readyz holds", recovery=capped["recovery"])

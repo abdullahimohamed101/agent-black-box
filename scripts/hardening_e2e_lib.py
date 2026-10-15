@@ -518,3 +518,21 @@ def machine() -> dict[str, Any]:
         "os": run("uname", "-sr"), "model": run("sysctl", "-n", "hw.model") if sys.platform == "darwin" else run("uname", "-m"),
         "cpus": os.cpu_count(), "loadavg": [round(x, 2) for x in os.getloadavg()],
     }
+
+
+# A same-machine flood opens a new TCP connection for every request, so a few connections can be refused at the operating system's
+# accept queue (macOS: kern.ipc.somaxconn = 128) before the API ever sees them. That is the load generator's environment, not the API
+# failing. What a flood gate claims is that the API never answers with anything outside the expected statuses (no 5xx, no surprise), so
+# any other HTTP status is a failure and transport errors are tolerated only as a tiny share of the flood, and are named.
+TRANSPORT_ERROR_SHARE = 0.005
+
+
+def transport_budget(total: int) -> int:
+    return max(5, int(TRANSPORT_ERROR_SHARE * total))
+
+
+def only_statuses(replies: list[Reply], allowed: set[int], message: str) -> bool:
+    other = [r for r in replies if r.status not in allowed and r.status != 0]
+    transport = [r for r in replies if r.status == 0]
+    return check(not other and len(transport) <= transport_budget(len(replies)), message, tally=tally(replies), other_http_statuses=len(other),
+                 transport_errors=len(transport), transport_error_classes=sorted({str(r.code) for r in transport}))
