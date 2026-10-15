@@ -10,7 +10,8 @@ that never exceeds the limit: the total granted per window is at most `limit`, e
 
 This module owns the failure contract: a slow or unreachable database raises
 `SharedLimiterUnavailable` within `timeout_seconds` and then short-circuits for `backoff_seconds`
-so the shared tier can never stall a request. Callers (see `guard.py`) fail open to the local
+so the shared tier can never stall a request. The backoff is per scope: a slow statement on one hot
+row must not disable the login ceiling or the failed-auth counters. Callers (see `guard.py`) fail open to the local
 limiter. Logs carry error class names only, never keys.
 """
 
@@ -103,9 +104,10 @@ class SharedCounters:
         self._prune_batch = prune_batch
         self._max_exhausted = max_exhausted
         self._mono = monotonic
-        self._unavailable_until = 0.0
+        self._unavailable_until: dict[str, float] = {}  # scope -> breaker open until
         self._last_log = float("-inf")
         self._next_prune = 0.0
+        self._prune_task: asyncio.Task[None] | None = None
         # Windows already seen full: further asks are answered from memory until the window ends,
         # so a flood of rejected requests costs the database one write per process per window.
         self._exhausted: dict[tuple[str, uuid.UUID, str, int, int], float] = {}
@@ -154,19 +156,19 @@ class SharedCounters:
             if now < until:
                 return Reservation(0, until - now)
             del self._exhausted[cache_key]
-        if now < self._unavailable_until:
+        if now < self._unavailable_until.get(scope.value, 0.0):
             raise SharedLimiterUnavailable
         try:
             count, left = await self._upsert(scope, workspace, key, window_seconds, amount)
         except Exception as exc:
-            self._note_failure(exc)
+            self._note_failure(scope, exc)
             raise SharedLimiterUnavailable from exc
         before = count - amount
         granted = max(0, min(amount, limit - before))
         left = max(left, 0.0)
         if count >= limit:
             self._remember_exhausted(cache_key, now + left)
-        await self._maybe_prune()
+        self._maybe_prune()
         return Reservation(granted, left)
 
     async def prune_expired(self, batch: int | None = None) -> int:
@@ -201,9 +203,11 @@ class SharedCounters:
                 ).one()
         return int(row[0]), float(row[1])
 
-    def _note_failure(self, exc: BaseException) -> None:
+    def _note_failure(self, scope: Scope, exc: BaseException) -> None:
         now = self._mono()
-        self._unavailable_until = now + self._backoff
+        if len(self._unavailable_until) > 64:  # scopes are a closed enum; this is only a guard
+            self._unavailable_until = {k: v for k, v in self._unavailable_until.items() if v > now}
+        self._unavailable_until[scope.value] = now + self._backoff
         self.fail_open_events += 1
         if now - self._last_log >= self._log_interval:
             self._last_log = now
@@ -228,21 +232,39 @@ class SharedCounters:
                     del self._exhausted[stale]
         self._exhausted[cache_key] = until
 
-    async def _maybe_prune(self) -> None:
+    def _maybe_prune(self) -> None:
         """Bounded opportunistic cleanup so the table cannot grow without bound.
 
-        At most one small delete per interval per process; a full batch means a backlog, so the
-        next call may run again almost at once. Failures are ignored: cleanup is never on the
-        critical path.
+        Off the request path: a due prune runs as one background task per process (single flight),
+        so a slow delete never delays the caller that happened to trigger it. At most one small
+        delete per interval per process; a full batch means a backlog, so the next one may run
+        almost at once. Every process prunes, so cleanup does not depend on any one of them.
         """
         now = self._mono()
-        if now < self._next_prune:
+        if now < self._next_prune or self._prune_task is not None:
             return
         self._next_prune = now + self._prune_interval
+        self._prune_task = asyncio.create_task(self._prune_in_background(now))
+
+    async def _prune_in_background(self, started: float) -> None:
         try:
             async with asyncio.timeout(self._timeout):
                 deleted = await self.prune_expired()
-        except Exception:
-            return
-        if deleted >= self._prune_batch:
-            self._next_prune = now + 1.0
+            if deleted >= self._prune_batch:
+                self._next_prune = started + 1.0
+        except Exception as exc:  # cleanup is never on the critical path; the next interval retries
+            logger.debug("rate limit prune failed", extra={"error_class": type(exc).__name__})
+        finally:
+            self._prune_task = None
+
+    async def wait_for_prune(self) -> None:
+        """Wait for a prune in flight, if any (tests and shutdown)."""
+        task = self._prune_task
+        if task is not None:
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def close(self) -> None:
+        task = self._prune_task
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)

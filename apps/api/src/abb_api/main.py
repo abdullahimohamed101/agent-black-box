@@ -329,6 +329,8 @@ def create_app(
             yield
         finally:
             await active_keys.stop()
+            if counters is not None:
+                await counters.close()
             await hub.stop()
             await engine.dispose()
 

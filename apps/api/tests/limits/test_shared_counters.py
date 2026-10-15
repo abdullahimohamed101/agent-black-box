@@ -159,6 +159,7 @@ async def test_expired_windows_are_pruned_in_bounded_batches(
         for _ in range(4):
             counters._next_prune = 0.0
             await counters.reserve(Scope.ALERT_WRITE, "live", 100, 3600, amount=1, workspace_id=ws)
+            await counters.wait_for_prune()  # the prune runs in the background (P2-3)
     remaining = await rows(engine)
     assert [r[2] for r in remaining] == ["live"]  # live windows are never touched
 
@@ -219,7 +220,107 @@ async def test_a_slow_database_cannot_stall_the_caller(
         # The breaker is open for backoff_seconds: still no database attempt after the lock is gone.
         with pytest.raises(SharedLimiterUnavailable):
             await counters.check_and_increment(Scope.POLICY_WRITE, "k", 5, 60, workspace_id=ws)
-        counters._unavailable_until = 0.0
+        counters._unavailable_until.clear()
         assert (
             await counters.check_and_increment(Scope.POLICY_WRITE, "k", 5, 60, workspace_id=ws)
         ).allowed
+
+
+async def test_a_slow_statement_on_one_scope_does_not_disable_the_other_scopes(
+    database_url: str, engine: AsyncEngine
+) -> None:
+    """The breaker is per scope: one timeout on one hot row used to switch the shared tier off for
+    every scope (login ceiling, failed-auth counters) for the whole backoff."""
+    ws = workspace()
+    async with pooled(database_url) as pool:
+        counters = SharedCounters(pool, timeout_seconds=1.0, backoff_seconds=30)
+        real = counters._upsert
+
+        async def hot_row_times_out(scope: Scope, *args: object) -> tuple[int, float]:
+            if scope is Scope.POLICY_WRITE:
+                raise TimeoutError
+            return await real(scope, *args)  # type: ignore[arg-type]
+
+        counters._upsert = hot_row_times_out  # type: ignore[method-assign]
+        with pytest.raises(SharedLimiterUnavailable):
+            await counters.check_and_increment(Scope.POLICY_WRITE, "hot", 5, 60, workspace_id=ws)
+        # The failing scope is short-circuited for the backoff...
+        before = counters.database_calls
+        with pytest.raises(SharedLimiterUnavailable):
+            await counters.check_and_increment(Scope.POLICY_WRITE, "hot", 5, 60, workspace_id=ws)
+        assert counters.database_calls == before
+        # ...every other scope still reaches the database.
+        assert (
+            await counters.check_and_increment(Scope.ALERT_WRITE, "k", 5, 60, workspace_id=ws)
+        ).allowed
+        assert (await counters.check_and_increment(Scope.AUTH_FAIL_GLOBAL, "all", 5, 60)).allowed
+        assert counters.fail_open_events == 1
+
+
+async def test_pruning_never_delays_the_request_that_triggers_it(
+    database_url: str, engine: AsyncEngine
+) -> None:
+    ws = workspace()
+    async with pooled(database_url) as pool:
+        counters = SharedCounters(pool, timeout_seconds=5)
+        calls: list[int] = []
+
+        async def slow_delete(batch: int | None = None) -> int:
+            calls.append(1)
+            await asyncio.sleep(0.6)
+            return 0
+
+        counters.prune_expired = slow_delete  # type: ignore[method-assign]
+        counters._next_prune = 0.0
+        started = time.monotonic()
+        await counters.reserve(Scope.ALERT_WRITE, "k", 100, 3600, amount=1, workspace_id=ws)
+        assert time.monotonic() - started < 0.4  # the 0.6 s delete is not on the request path
+        await asyncio.sleep(0.05)
+        assert calls == [1]  # ...but it did start
+        await counters.wait_for_prune()
+        assert counters._prune_task is None
+
+
+async def test_pruning_is_single_flight_and_survives_a_failing_delete(
+    database_url: str, engine: AsyncEngine
+) -> None:
+    ws = workspace()
+    async with pooled(database_url) as pool:
+        counters = SharedCounters(pool, timeout_seconds=5, prune_interval_seconds=0.0)
+        calls: list[int] = []
+
+        async def failing_delete(batch: int | None = None) -> int:
+            calls.append(1)
+            await asyncio.sleep(0.2)
+            raise RuntimeError("delete failed")
+
+        counters.prune_expired = failing_delete  # type: ignore[method-assign]
+        await asyncio.gather(
+            *(
+                counters.reserve(Scope.ALERT_WRITE, f"k{i}", 100, 3600, amount=1, workspace_id=ws)
+                for i in range(20)
+            )
+        )
+        assert calls == [1]  # twenty callers, one delete in flight
+        await counters.wait_for_prune()  # the exception was captured, not raised
+        await counters.reserve(Scope.ALERT_WRITE, "again", 100, 3600, amount=1, workspace_id=ws)
+        await counters.wait_for_prune()
+        assert calls == [1, 1]  # and the next interval tries again
+
+
+async def test_close_cancels_a_prune_in_flight(database_url: str, engine: AsyncEngine) -> None:
+    async with pooled(database_url) as pool:
+        counters = SharedCounters(pool, timeout_seconds=5)
+
+        async def forever(batch: int | None = None) -> int:
+            await asyncio.sleep(60)
+            return 0
+
+        counters.prune_expired = forever  # type: ignore[method-assign]
+        await counters.reserve(
+            Scope.ALERT_WRITE, "k", 100, 3600, amount=1, workspace_id=workspace()
+        )
+        await asyncio.sleep(0.05)
+        assert counters._prune_task is not None
+        await counters.close()
+        assert counters._prune_task is None

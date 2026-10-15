@@ -115,7 +115,9 @@ async def test_ingestion_keeps_working_and_stays_locally_limited_when_the_counte
         ]
         assert codes[:10] == [202] * 10  # the host agent's telemetry is not refused
         assert codes[10:] == [429] * 4  # and the local limiter still protects the process
-        assert counters.fail_open_events == 1
+        # One trip per breaker, not per request: the breaker is per scope, and ingestion spends
+        # two scopes (events and bytes).
+        assert counters.fail_open_events == 2
 
 
 async def test_two_processes_share_the_policy_write_budget(
