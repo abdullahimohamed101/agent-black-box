@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -139,6 +139,9 @@ e2e-real:
 # Sign-in, workspaces, roles and the stream re-check in a real browser against the dev-only fake OIDC provider (Phase 15).
 auth-e2e:
 	pnpm --filter @abb/web build && scripts/auth-e2e.sh
+
+auth-https-e2e:
+	pnpm --filter @abb/web build && scripts/auth-https-e2e.sh
 
 # Multi-agent example (threads, asyncio, subprocess with a skewed clock) through the real API and web, as owner and viewer.
 multiagent-e2e:

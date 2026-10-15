@@ -304,6 +304,8 @@ jobs:
         run: pnpm --filter @abb/web build
       - name: Auth end to end
         run: scripts/auth-e2e.sh
+      - name: Auth end to end over https (__Host- login cookie, ADR-156)
+        run: scripts/auth-https-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
         uses: actions/upload-artifact@v4
