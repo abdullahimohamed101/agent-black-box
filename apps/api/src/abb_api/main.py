@@ -376,7 +376,9 @@ def create_app(
         expose_headers=["X-Request-ID"],
     )
     # Added last so it is outermost: request IDs exist before CORS or handlers run.
-    app.add_middleware(RequestContextMiddleware, hsts=is_secure(settings))
+    app.add_middleware(
+        RequestContextMiddleware, hsts=is_secure(settings), docs_enabled=settings.docs_enabled
+    )
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)

@@ -111,3 +111,14 @@ async def test_the_docs_pages_are_the_only_ones_without_the_json_csp() -> None:
     assert "content-security-policy" not in docs.headers
     assert docs.headers["x-frame-options"] == "DENY"  # still never framed
     assert schema.headers["content-security-policy"] == API_CSP
+
+
+async def test_with_the_docs_routes_off_their_paths_keep_the_strict_csp() -> None:
+    """The exemption exists for the Swagger page only: where the page is not served, /docs is an
+    ordinary 404 and must not come back without the API policy."""
+    off = create_app(Settings(environment="production", database_url=PLACEHOLDER_DB))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=off), base_url="http://t") as c:
+        for path in ("/docs", "/redoc", "/docs/oauth2-redirect"):
+            response = await c.get(path)
+            assert response.status_code == 404, path
+            assert response.headers["content-security-policy"] == API_CSP, path

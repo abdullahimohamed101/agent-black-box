@@ -18,8 +18,10 @@ HSTS = "max-age=31536000; includeSubDomains"
 
 
 class RequestContextMiddleware:
-    def __init__(self, app: ASGIApp, *, hsts: bool = False) -> None:
+    def __init__(self, app: ASGIApp, *, hsts: bool = False, docs_enabled: bool = False) -> None:
         self.app = app
+        # With the docs routes off these paths are plain 404s and keep the strict API policy.
+        self.exempt = _DOCS_PATHS if docs_enabled else frozenset[str]()
         self.hsts = hsts  # only when the deployment says it is served over HTTPS
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -44,7 +46,7 @@ class RequestContextMiddleware:
                 headers["X-Frame-Options"] = "DENY"
                 headers["Referrer-Policy"] = "no-referrer"
                 headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-                if scope.get("path") not in _DOCS_PATHS:
+                if scope.get("path") not in self.exempt:
                     headers["Content-Security-Policy"] = API_CSP
                 if self.hsts:
                     headers["Strict-Transport-Security"] = HSTS
