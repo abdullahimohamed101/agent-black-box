@@ -15,6 +15,7 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.auth.cookies import session_cookie_name
+from abb_api.auth.keys import parse_key
 from abb_api.auth.service import (
     KeyRejected,
     SessionContext,
@@ -123,6 +124,13 @@ async def _key_principal(request: Request) -> Principal:
     token = bearer_token(request)
     # Memory only: a throttled request is refused here, before any lookup (ADR-153).
     attempt = throttle.admit(token, client_address(request, trust_proxy=settings.trust_proxy))
+    if parse_key(token or "") is None:
+        # Missing or malformed: nothing can match, so answer without taking a pooled
+        # connection. Such a request is neither counted nor gated (ADR-153, point 4), so
+        # it must cost the database nothing either: hardening-e2e measured a pool
+        # checkout, ping and commit (about half a transaction) per junk key.
+        logger.info("api key rejected", extra={"reason": "malformed_or_missing", "key_id": None})
+        raise _bad_key_response(KeyRejected())
     if attempt is not None and throttle.known_invalid(attempt):
         # Seen invalid moments ago: same 401, no database lookup, still counted as a failure.
         refused = await throttle.failed(attempt, None)

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from abb_api.auth.keys import generate_key
 from abb_api.auth.repository import ApiKeyLookup
 from abb_api.auth.throttle import AuthThrottle, _LocalWindow
+from abb_api.authz import dependencies
 from abb_api.core.client_address import client_address
 from abb_api.core.errors import AppError
 from abb_api.limits import SharedCounters
@@ -76,6 +77,43 @@ def lookups(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
 
     monkeypatch.setattr(ApiKeyLookup, "find", spy)
     yield seen
+
+
+# ------------------------------------------------------------------ junk keys cost no connection
+
+
+async def test_a_missing_or_malformed_key_is_refused_without_a_database_connection(
+    database_url: str, engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found by scripts/hardening-e2e.sh: a junk key was neither counted nor gated (ADR-153,
+    point 4) yet still took a pooled connection (checkout, ping, commit), so a flood of junk
+    keys cost transactions with nothing to stop it."""
+    opened: list[int] = []
+    real = dependencies._guarded
+
+    async def spy(request: Any, work: Any) -> Any:
+        opened.append(1)
+        return await real(request, work)
+
+    monkeypatch.setattr(dependencies, "_guarded", spy)
+    async for api in build_api(database_url, engine, settings=throttle_settings(database_url)):
+        reference = await probe(api, unknown_key())  # well-formed but unknown: a real lookup
+        assert reference.status_code == 401 and len(opened) == 1
+        wrong_prefix = "Bearer " + unknown_key().replace("abb_live_", "abb_test_")
+        junk = {
+            "none": {},
+            "empty bearer": {"authorization": "Bearer "},
+            "basic": {"authorization": "Basic abc"},
+            "short": {"authorization": "Bearer abb_live_junk"},
+            "wrong prefix": {"authorization": wrong_prefix},
+            "long secret": {"authorization": "Bearer " + unknown_key() + "extra"},
+        }
+        for name, headers in junk.items():
+            answer = await api.client.get("/v1/runs", headers=headers)
+            assert answer.status_code == 401, name
+            assert body_of(answer) == body_of(reference), name  # as for a well-formed unknown key
+            assert answer.headers["www-authenticate"].startswith("Bearer"), name
+        assert len(opened) == 1  # none of the six opened a connection
 
 
 # ------------------------------------------------------------------ the address counter
