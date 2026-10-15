@@ -96,3 +96,5 @@ The gate therefore judges latency like this, and keeps everything deterministic 
 - **Unchanged and strict:** counter writes per 1,000 requests and per second against the Redis trigger, the row count, and every functional gate.
 
 A real regression (more than 20 ms at the p50, or a p95 difference above both the bound and the spread) still fails.
+
+A third CI failure was not about latency: a flood generator on the same machine saw a tiny share of transport errors and the flood gates asserted none. Every flood gate now tolerates a small share of generator connection errors with one shared tolerance and still fails on any other HTTP status, naming it (commits 6544dac and fe9f959); the next run was green. Rule: assert deterministic facts in CI scripts, not wall-clock thresholds.

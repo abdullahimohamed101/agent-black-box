@@ -231,7 +231,7 @@ server's parse, matched column, facets, unindexed notice) and the rule-based `Qu
 Alert rules evaluated by workers; webhook, email, Slack behind an extension interface.
 Built as: destinations and rules as separate objects with sealed secrets (ADR-150, migration 0095), four metadata-only triggers (approval requested or about to expire, security finding, failed run, daily spend), event-driven evaluation through small outbox jobs with dedupe and cooldown, an in-repo `Notifier` contract, an SSRF-safe pinned HTTPS sender, signed webhook, Slack and email delivery with bounded retries, dead letters, auto-pause, rate limits and daily caps (ADR-151, migration 0096), and the Alerts page (Rules, Destinations, History).
 **Status: Completed (merged 2026-10-14, PR #171)** (plan with closing evidence for the eight gates: `docs/plans/completed/phase-17-alerting.md`; adversarial review with a security pass: `docs/plans/completed/phase-17-code-review.md`; `make alerts-e2e`;
-`docs/benchmarks/phase-17-alerts-e2e.md`; runbook `docs/runbooks/alerting.md`). KI-160..172. Next: Phase 19.
+`docs/benchmarks/phase-17-alerts-e2e.md`; runbook `docs/runbooks/alerting.md`). KI-160..172.
 
 ## Phase 18 - Performance and scale hardening
 Load tests with realistic payloads first. Each migration (Go ingest, Kafka, ClickHouse, Redis,
@@ -243,6 +243,12 @@ Rate limits/quotas, timeouts, circuit breaking where useful, dependency health, 
 secret management, backups + a *performed* restore drill, migration rollback notes, retention
 jobs (§94), audit logging, app metrics (§116) and internal tracing, SLO dashboards (§117),
 runbooks (§125).
+
+Split into three parts, each with its own plan, review and PR (decided 2026-10-14):
+
+- **19a - Abuse resistance. Status: Completed (merged 2026-10-15, PR #186).** Shared PostgreSQL limiter (ADR-152, migration 0097), failed-auth throttling (ADR-153), per-project quotas (ADR-154, migration 0098), edge hardening: body cap, secure headers with a nonce CSP, `/docs` off in production, startup role check (ADR-155), `__Host-` login cookie (ADR-156), sessions page and invitation-only people (ADR-157, migration 0099), alert port allow-list and search fair share (ADR-158), review-fix migration 0100. Plan with closing evidence for the eight gates: `docs/plans/completed/phase-19a-abuse-resistance.md`; adversarial review with a security pass: `docs/plans/completed/phase-19a-code-review.md`; `make hardening-e2e`; benchmarks `docs/benchmarks/phase-19a-*.md`; runbook `docs/runbooks/hardening.md`. KI-173..191 (filed as #187-#202 where open).
+- **19b - Data lifecycle. Status: In progress** (branch `feature/phase-19b-data-lifecycle`): retention jobs (§94), backups and a *performed* restore drill, migration rollback notes, KI-057, KI-170, secret rotation.
+- **19c - Operability. Status: Next:** app metrics (§116) and internal tracing, SLO dashboards (§117), dependency health, timeouts and circuit breaking, runbooks (§125), CI pinning, lockfile audit.
 
 ## Phase 20 - Demo, docs, release quality
 README with screenshots, architecture, quickstart, SDK/API/events/deployment/security/ops/
