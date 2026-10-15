@@ -129,7 +129,16 @@ async def _key_principal(request: Request) -> Principal:
         # connection. Such a request is neither counted nor gated (ADR-153, point 4), so
         # it must cost the database nothing either: hardening-e2e measured a pool
         # checkout, ping and commit (about half a transaction) per junk key.
-        logger.info("api key rejected", extra={"reason": "malformed_or_missing", "key_id": None})
+        sampled = throttle.malformed_to_log()
+        if sampled is not None:  # one line per window, with the count since the last (P3)
+            logger.info(
+                "api key rejected",
+                extra={
+                    "reason": "malformed_or_missing",
+                    "key_id": None,
+                    "since_last_line": sampled,
+                },
+            )
         raise _bad_key_response(KeyRejected())
     if attempt is not None and throttle.known_invalid(attempt):
         # Seen invalid moments ago: same 401, no database lookup, still counted as a failure.

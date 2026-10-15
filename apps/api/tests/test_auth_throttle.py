@@ -597,3 +597,29 @@ async def test_oidc_callbacks_and_sign_in_starts_are_not_behind_the_key_throttle
         assert callback.status_code != 429  # refused for its own reasons (400), never throttled
         start = await api.client.get("/v1/auth/login", headers={"x-forwarded-for": "203.0.113.77"})
         assert start.status_code != 429
+
+
+async def test_malformed_keys_log_one_line_per_window_with_a_count(
+    database_url: str, engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lines: list[dict[str, Any]] = []
+
+    def record(message: str, *args: Any, extra: dict[str, Any] | None = None, **kw: Any) -> None:
+        if message == "api key rejected":
+            lines.append(extra or {})
+
+    monkeypatch.setattr(dependencies.logger, "info", record)
+    async for api in build_api(database_url, engine, settings=throttle_settings(database_url)):
+        throttle: AuthThrottle = api.app.state.auth_throttle
+        clock = [1000.0]
+
+        def fake_monotonic(box: list[float] = clock) -> float:
+            return box[0]
+
+        throttle._mono = fake_monotonic
+        for _ in range(100):
+            assert (await api.client.get("/v1/runs")).status_code == 401
+        assert len(lines) == 1 and lines[0]["since_last_line"] == 1
+        clock[0] += throttle._window + 1
+        await api.client.get("/v1/runs")
+        assert len(lines) == 2 and lines[1]["since_last_line"] == 100

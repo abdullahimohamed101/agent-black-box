@@ -165,6 +165,9 @@ class AuthThrottle:
         active_keys: ActiveKeyIds | None = None,
     ) -> None:
         self._wall = wall
+        self._mono = monotonic
+        self._malformed_count = 0
+        self._malformed_since = float("-inf")
         self.active_keys = active_keys
         self._enabled = settings.auth_fail_enabled
         self._window = settings.auth_fail_window_seconds
@@ -234,6 +237,18 @@ class AuthThrottle:
         # Open, or closed only by an address / the installation while this is a real key id: on to
         # full authentication, which costs at most `auth_fail_per_credential` lookups for it.
         return attempt
+
+    def malformed_to_log(self) -> int | None:
+        """Missing and malformed keys are not counted by the throttle, so a flood of them must not
+        become a log line each: one line per window, carrying how many there were. Returns the
+        count to log now, or None while the window is still collecting."""
+        self._malformed_count += 1
+        now = self._mono()
+        if now - self._malformed_since < self._window:
+            return None
+        count, self._malformed_count = self._malformed_count, 0
+        self._malformed_since = now
+        return count
 
     def _is_active(self, key_id: str) -> bool:
         keys = self.active_keys
