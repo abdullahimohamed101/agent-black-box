@@ -68,6 +68,7 @@ a reason (`cooldown`, `destination_paused`, `destination_deleted`, `rule_deleted
 | `http_4xx` | the receiver rejected it (revoked hook, wrong path); 408, 425, 429 are retried | fix or replace the URL, then Send test |
 | `http_3xx` | the receiver redirects; **redirects are never followed** | put the final URL in the destination |
 | `blocked_address` | the name resolved to a private, loopback, link-local, metadata or otherwise non-public address, at delivery | the target must resolve publicly; never retried |
+| `blocked_port` | the destination's port is not in `ABB_ALERTS_ALLOWED_PORTS` (default 443), typically because it was saved before the list was tightened | change the destination to an allowed port, or add the port to the setting and restart the API and worker; never retried |
 | `tls_failed` | the certificate does not verify for that name against the system trust store | fix the receiver's certificate (private CAs are not supported) |
 | `smtp_failed` | the relay refused or was unreachable (4xx retried) | check `ABB_SMTP_*` and the relay |
 | `config_unreadable` | the sealed target cannot be opened (the key row is missing or changed) | restore `server_secrets`, or re-save the target |

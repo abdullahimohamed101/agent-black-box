@@ -108,7 +108,7 @@ Every non-2xx response, from every route, has this shape and an `X-Request-ID` h
 | `UNSUPPORTED_MEDIA_TYPE` / `UNSUPPORTED_ENCODING` | 415 | not `application/json`; `Content-Encoding` other than gzip/identity |
 | `REQUEST_INVALID` | 422 | invalid query parameter or run-creation body |
 | `QUERY_INVALID` | 422 | the search text `q` could not be parsed (`details.position`, `details.reason`) |
-| `SEARCH_BUSY` / `SEARCH_TIMEOUT` | 503 | all search permits of this process are in use / the search exceeded its time budget; retryable |
+| `SEARCH_BUSY` / `SEARCH_TIMEOUT` | 503 | this process's search permits are in use, or this actor's or workspace's fair share of them is (`details.reason`: `actor_limit`, `workspace_share`, `process_full`; ADR-158) / the search exceeded its time budget, which includes the wait for a database connection; retryable |
 | `RATE_LIMITED` | 429 | retryable; honour `Retry-After` |
 | `QUOTA_EXCEEDED` | 413 | a project quota is reached (Phase 19a, ADR-154): `details.quota` names it (`agents`, `runs_per_day`, `events_per_day`, `artifact_bytes`), with `limit` and `used` where known. Not retryable until the limit changes or, for the per-day quotas, the UTC day ends. On the batch endpoint the same code is reported per event inside a `202` instead |
 | `QUOTA_SETTINGS_INVALID` | 422 | an override outside its range (`details.quota`); the message never repeats the value |
@@ -347,13 +347,13 @@ a history row shows `destination: {id: null, name: null, type}`; `approval_id` i
 **Destinations**
 
 - `POST /v1/alerts/destinations` `{name (1-80), type: webhook|slack|email, target: {url} | {recipients[1..10]}}` -> `201 {id: dst_..., name, type, masked_target, state, consecutive_failures, paused_reason, rule_count, created_by, created_at, updated_by, updated_at, signing_secret}`.
-  `signing_secret` (`whsec_...`, webhook only, else null) is **returned only here and by a rotation**. Errors: `422 DESTINATION_TARGET_INVALID` (`details.reason`: `url_required`, `url_too_long`, `url_malformed`, `not_https`, `credentials_in_url`, `host_invalid`, `host_internal`, `ip_not_public`, `ip_literal_form`, `port_invalid`, `fragment_not_allowed`, `recipients_required`, `too_many_recipients`, `recipient_invalid`, `target_shape`),
+  `signing_secret` (`whsec_...`, webhook only, else null) is **returned only here and by a rotation**. Errors: `422 DESTINATION_TARGET_INVALID` (`details.reason`: `url_required`, `url_too_long`, `url_malformed`, `not_https`, `credentials_in_url`, `host_invalid`, `host_internal`, `ip_not_public`, `ip_literal_form`, `port_invalid`, `port_not_allowed` (the port is not in `ABB_ALERTS_ALLOWED_PORTS`, default 443), `fragment_not_allowed`, `recipients_required`, `too_many_recipients`, `recipient_invalid`, `target_shape`),
   `422 EMAIL_NOT_CONFIGURED` (no `ABB_SMTP_HOST`), `409 ALERT_NAME_TAKEN`, `409 ALERT_LIMIT_REACHED` (50 per workspace). Audit `alert.destination.create` (`details`: `type`).
 - `GET /v1/alerts/destinations` -> `{items[], email_configured}`; `GET /v1/alerts/destinations/{id}` -> the destination (masked; never a URL, recipient or secret).
 - `PATCH /v1/alerts/destinations/{id}` `{name?, target?, state?: active|paused, rotate_signing_secret?}` -> the destination with `signing_secret` set only when rotated. A new target is re-validated, resets the failure count and moves `failing` to `active`;
   `state: paused` sets `paused_reason: manual`, `active` resumes and clears failures; rotation on a non-webhook is `422 DESTINATION_INVALID` (`reason: no_signing_secret`). Audit rows `alert.destination.update` (`changed`: `["name","target"]`), `.pause`, `.resume`, `.rotate_secret`.
 - `POST /v1/alerts/destinations/{id}/test` (no body; owner/admin, `alert.write`) -> `200 {ok: bool, error_code: string|null}`. Sends a fixed `kind: test` alert (no project, agent or content; link to the Alerts page) through the same SSRF-safe sender as real deliveries,
-  synchronously within the 5 s delivery deadline (email: the SMTP timeout). `error_code` is one of the fixed delivery codes (`timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`);
+  synchronously within the 5 s delivery deadline (email: the SMTP timeout). `error_code` is one of the fixed delivery codes (`timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `blocked_port`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`);
   what the target answered is never returned. The HTTP status is `200` whether or not the target accepted it. A test does not change `state` or `consecutive_failures` and creates no history row; it works on a paused destination. `404 ALERT_DESTINATION_NOT_FOUND`
   (foreign and unknown ids alike), `403` for other roles and API keys, `429 RATE_LIMITED` (10 a minute per workspace per process, plus the write budget). Audit `alert.destination.test` (`type`, `ok`, `error_code`).
 - Every alert write (create, change, pause, rotate, delete of a destination or rule; send test's audit) fails fast with `409 ALERT_BUSY` (`retryable`) when a row lock it needs is held by a running delivery tick for longer than `ABB_ALERTS_LOCK_TIMEOUT_SECONDS` (3 s); nothing is changed and the same request can be repeated.
@@ -424,8 +424,8 @@ request's scope with no document (capped at 1,000, `unindexed_capped`); `python 
 with `details.field` (the catalogue's name, never the typed spelling and independent of any data), logged and audited like every denial, and no run statement is executed. Free text then
 searches the metadata document only, so content words give the same items, facets and cursor as a nonsense word. A BILLING person is refused at `run.read` before the query is parsed.
 
-**Errors.** `422 QUERY_INVALID` (`details.position`, `details.reason`; positions depend only on the text), `403 PERMISSION_DENIED` (above), `503 SEARCH_BUSY` (retryable, `Retry-After: 1`: all of this process's
-search permits are in use) and `503 SEARCH_TIMEOUT` (retryable: the statement exceeded the time budget). The web proxy refuses an encoded query string over 2,048 characters with `414 QUERY_TOO_LONG`
+**Errors.** `422 QUERY_INVALID` (`details.position`, `details.reason`; positions depend only on the text), `403 PERMISSION_DENIED` (above), `503 SEARCH_BUSY` (retryable, `Retry-After: 1`, fixed `details.reason`: this actor's or workspace's
+fair share of this process's search permits, or all of them, is in use) and `503 SEARCH_TIMEOUT` (retryable: the statement exceeded the time budget). The web proxy refuses an encoded query string over 2,048 characters with `414 QUERY_TOO_LONG`
 (a legal 512-character `q` of non-ASCII text can exceed it); the UI shows it like a 422 without a caret. Search is per request bounded: at most two statements, a read-only transaction, the budget
 `ABB_SEARCH_TIMEOUT_SECONDS` (5) and `ABB_SEARCH_MAX_CONCURRENT` (4) permits per process.
 

@@ -124,7 +124,7 @@ ingestion edge | control plane | database/object storage | human approvers.
   for an actor without `payload.read` never references a content column (asserted on the compiled SQL); facets are metadata-only; there is no total count and no ranking; error positions depend only on the
   text; the `span.name` *attribute* is indexed, never the derived span name; unregistered attributes that are not content by name are not indexed (KI-080). `run_search` holds commands and paths: it is as
   sensitive as the events and is reachable only through the compiler. Search terms are the searcher's own input: the API logs no query text, the audit log never records `q`, and the web sends
-  `Referrer-Policy: no-referrer`. A search runs under a per-process permit and a time budget (KI-082).
+  `Referrer-Policy: no-referrer`. A search runs under a time budget (which includes the wait for a database connection) and a per-process fair share of permits: a cap per actor, a share per workspace and a process total, refused with `SEARCH_BUSY` and a fixed reason, so one noisy key or workspace cannot take every permit (KI-082, ADR-158). Concurrency is per process by nature; the rate side is the shared limiter.
 - Members are visible to every role of a workspace (`member.read` is in every role, including BILLING and VIEWER: names, emails and roles of the
   people one works with). If that is too open for an organisation, remove `member.read` from a role in `authz/matrix.py` and the literal table
   (one line in two places); tracked as KI-070.
@@ -200,6 +200,8 @@ destination at any **public** host and port, so the server can be used for blind
 auto-pause after ten consecutive failures, and the answer is never shown; a hostname's TLS certificate is verified with the system trust store, so a receiver with a private CA cannot be used; the SMTP relay is
 operator configuration, trusted as such, and email is plain text over the relay's own security (STARTTLS fail-closed by default); the signing secret is shared with the receiver and a leaked one lets anyone forge
 alerts to that receiver until it is rotated (`rotate_signing_secret`, no overlap window).
+
+Alert destination ports (Phase 19a step 6, ADR-158, KI-162). A webhook or Slack destination may only use the ports in `ABB_ALERTS_ALLOWED_PORTS` (default 443; an `https://` URL without a port is 443), so a destination cannot be used to probe SSH, SMTP, Redis, Elasticsearch and similar services of third parties. The port is refused when the destination is saved and checked again, before any lookup or connection, at delivery and in send-test (`blocked_port`, permanent), so a destination saved under a wider list is stopped too. Residual: blind requests to public hosts on allowed ports remain, bounded by 20 deliveries a minute and 500 a day per destination, the destination limit, the 5 s deadline, the attempt cap and auto-pause; no response is ever shown. The test network file does not bypass the port check.
 
 Alert end-to-end test network (Phase 17 step 4, ADR-151 addendum). `ABB_ALERTS_TEST_NETWORK_FILE` replaces the sender's DNS, connect address and TLS trust with a local file so the end-to-end suite can use receivers on this
 machine. It is **unset by default**, **refused at startup unless `ABB_ENVIRONMENT` is `development` or `test`**, logs a warning when active, and changes nothing between the address check and the connection
