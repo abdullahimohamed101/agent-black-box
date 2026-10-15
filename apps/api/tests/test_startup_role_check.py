@@ -105,6 +105,24 @@ async def test_each_dangerous_capability_is_detected_on_its_own(
     assert await reasons(url) == expected
 
 
+async def test_owning_any_table_of_the_schema_is_privileged_not_only_events(
+    make_role: object, engine: AsyncEngine
+) -> None:
+    """An owner can grant itself everything on its table and change its triggers, so the check
+    cannot stop at `events`: a role that owns some other table is too privileged too."""
+    url = await make_role()  # type: ignore[operator]
+    assert await reasons(url) == []
+    name = make_url(url).username
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE TABLE owned_probe (id int)"))
+        await conn.execute(text(f"ALTER TABLE owned_probe OWNER TO {name}"))
+    try:
+        assert await reasons(url) == ["events_owner"]
+    finally:
+        async with engine.begin() as conn:
+            await conn.execute(text("DROP TABLE owned_probe"))
+
+
 # ------------------------------------------------------------------ the policy
 
 

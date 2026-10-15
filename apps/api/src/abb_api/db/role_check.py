@@ -21,7 +21,8 @@ from abb_api.core.config import Settings
 logger = logging.getLogger(__name__)
 
 # One statement, evaluated for the role this connection is. `pg_has_role(.., 'USAGE')` also
-# catches a login role that inherits an owning role.
+# catches a login role that inherits an owning role. Owning *any* table of the schema counts, not
+# only `events`: an owner can grant itself everything on that table and alter its triggers.
 _QUESTION = text(
     """
     SELECT
@@ -32,8 +33,9 @@ _QUESTION = text(
         OR has_table_privilege(current_user, 'public.events', 'TRUNCATE')
                                                          AS events_rewritable,
       COALESCE(
-        (SELECT pg_has_role(current_user, c.relowner, 'USAGE')
-           FROM pg_class c WHERE c.oid = to_regclass('public.events')), false)
+        (SELECT bool_or(pg_has_role(current_user, c.relowner, 'USAGE'))
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')), false)
                                                          AS events_owner,
       has_schema_privilege(current_user, 'public', 'CREATE')
                                                          AS schema_create
