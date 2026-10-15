@@ -70,6 +70,8 @@ from abb_api.policies.router import router as policies_router
 from abb_api.quotas.router import router as quotas_router
 from abb_api.quotas.service import QuotaApiService
 from abb_api.quotas.settings import default_limits
+from abb_api.retention.router import router as retention_router
+from abb_api.retention.service import RetentionApiService
 from abb_api.runs.router import router as runs_router
 from abb_api.runs.service import RunService
 from abb_api.security.api_service import SecurityApiService
@@ -294,6 +296,7 @@ def create_app(
             block_divisor=settings.limits_block_divisor,
         )
         app.state.alerts = AlertsService(engine, settings, clock, counters)
+        app.state.retention = RetentionApiService(engine, settings, clock, counters)
         hub = StreamHub(settings.database_url)
         app.state.hub = hub
         app.state.approvals = ApprovalService(engine, settings, clock, hub, counters=counters)
@@ -387,6 +390,7 @@ def create_app(
     app.include_router(findings_router)
     app.include_router(security_router)
     app.include_router(quotas_router)
+    app.include_router(retention_router)
     app.include_router(policies_router)
     app.include_router(approvals_router)
     app.include_router(alerts_router)
