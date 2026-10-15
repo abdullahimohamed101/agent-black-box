@@ -302,6 +302,15 @@ def session_headers(role: str, base: str | None = None) -> dict[str, str]:
     return {"Cookie": f"abb_session={state()['sessions'][role]}", "Origin": ORIGIN, "x-abb-workspace": client.headers["x-abb-workspace"]}
 
 
+def refresh_session(role: str) -> None:
+    """A gate that ends sessions on purpose (sign out everywhere) re-mints the role's session for the gates after it."""
+    current = state()["sessions"]
+    current[role] = session_token(email(role))
+    save(sessions=current)
+    for key in [k for k in _people if k[0] == role]:
+        del _people[key]
+
+
 def main_url() -> str:
     return str(state()["main_urls"][0])
 

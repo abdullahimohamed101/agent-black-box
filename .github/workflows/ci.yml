@@ -594,6 +594,57 @@ jobs:
             ${{ runner.temp }}/alerts-e2e-logs
           if-no-files-found: ignore
 
+  hardening-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Abuse resistance (Phase 19a): two API processes over one database with a worker, the fake OIDC provider, the built web server and flood
+    # generators (scripts/hardening-e2e.sh). Shared limits hold across processes (and a control with sharing off doubles), a failed-auth
+    # flood is bounded while valid traffic is never refused, quotas hold at the limit through racing batches, the edge (headers, docs per
+    # environment, body cap, privileged-role refusal), sessions and invitations, alert ports and search fairness, the cost of all of it, and
+    # a real browser (zero CSP violations, quota usage, sessions, the no-access notice). About ten minutes.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          pnpm install --frozen-lockfile
+          cp .env.example .env
+      - name: Build the web app
+        run: pnpm --filter @abb/web build
+      - name: Hardening end to end
+        env:
+          HARDENING_E2E_LOG_DIR: ${{ runner.temp }}/hardening-e2e-logs
+        run: scripts/hardening-e2e.sh
+      - name: Keep Playwright output and server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardening-e2e-results
+          path: |
+            apps/web/test-results
+            ${{ runner.temp }}/hardening-e2e-logs
+          if-no-files-found: ignore
+
   containers:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'

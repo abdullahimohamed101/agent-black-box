@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -165,6 +165,12 @@ policy-e2e:
 # bounded retries / dead letter / auto-pause, outbound safety, content-free and secret-free, authorization, noise control, ingestion cost, and a browser.
 alerts-e2e:
 	pnpm --filter @abb/web build && scripts/alerts-e2e.sh
+
+# Abuse resistance (Phase 19a): two API processes over one database, a worker, the fake OIDC provider, the web server and flood generators.
+# Shared limits across processes (with a control), a failed-auth flood, quotas and their races, the edge (headers, docs, body cap, role check),
+# sessions and invitations, alert ports and search fairness, the cost of it all, and a real browser.
+hardening-e2e:
+	pnpm --filter @abb/web build && scripts/hardening-e2e.sh
 
 # Evaluations, comparison and experiments: the coding agent twice (baseline, wrong-fix), owner and viewer in a real browser (Phase 11).
 eval-e2e:

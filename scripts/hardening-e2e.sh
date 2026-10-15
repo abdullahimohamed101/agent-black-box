@@ -123,7 +123,7 @@ export E2E_OIDC_PORT="$OIDC_PORT" E2E_API_PORTS="$API_A,$API_B" E2E_WEB_PORT="$W
 : >"$WORK/state.json"; : >"$WORK/results.jsonl"; chmod 600 "$WORK/state.json"
 failed=()
 check() { $PY "$root/scripts/hardening_e2e_check.py" "$@" || failed+=("$*"); }
-web() { (cd "$root/apps/web" && E2E_HARDENING_API_URL="http://127.0.0.1:$API_A" pnpm exec playwright test e2e/hardening-real.spec.ts "$@") || failed+=("web $*"); }
+web() { (cd "$root/apps/web" && E2E_UI_PROJECT=ui-quotas E2E_UI_RUN="$UI_RUN" E2E_UI_STRANGER="$UI_STRANGER" E2E_OWNER_EMAIL="$E2E_OWNER_EMAIL" pnpm exec playwright test e2e/hardening-real.spec.ts "$@") || failed+=("web $*"); }
 check provision
 [ "${#failed[@]}" -eq 0 ] || { echo "HARDENING-E2E FAILED: provisioning ($failed)" >&2; exit 1; }
 export E2E_OWNER_EMAIL="$($PY -c 'import json,os;print(json.load(open(os.environ["E2E_STATE"]))["people"]["owner"])')"
@@ -137,6 +137,8 @@ if stage 6; then step "gate 6: alert ports and search fairness"; check gate6; fi
 if stage 8; then
   step "real browser: CSP smoke walk, quota usage, sessions, no-access notice"
   check ui-prepare
+  UI_RUN="$($PY -c 'import json,os;print(json.load(open(os.environ["E2E_STATE"]))["ui"]["run_id"])')"
+  UI_STRANGER="$($PY -c 'import json,os;print(json.load(open(os.environ["E2E_STATE"]))["ui"]["stranger"])')"
   web
   check ui-verify
 fi
