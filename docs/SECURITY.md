@@ -93,6 +93,17 @@ ingestion edge | control plane | database/object storage | human approvers.
   `email_verified` required); identity links on `(provider, subject)` and a verified email may adopt only a user with no subject yet. Tested in
   `tests/test_auth_sessions.py`. Cookie-authenticated writes need an `Origin` equal to `ABB_WEB_ORIGIN` (proxy and API); the API never reads
   `X-Forwarded-*`. The web proxy forwards an allowlist of headers and never `Authorization`, other cookies or `Set-Cookie`.
+  **No person without an invitation** (Phase 19a step 5, ADR-157, KI-076): a verified identity gets a `users` row at the callback only if it
+  is already a user (by subject, or a CLI-made user with no identity yet) or some workspace holds an open invitation for its verified
+  email; otherwise nothing is written and the answer is one fixed `403 NO_ACCESS` for every un-invited case (the page never echoes the
+  address). **Sessions page** (KI-068): a person lists and ends only their own sessions (`/v1/auth/sessions`; another person's session id,
+  an unknown one and an ended one are the same 404; the session in use is ended by signing out), the list carries no cookie value or hash
+  and a device label chosen from a closed vocabulary (the `User-Agent` is never stored), each change is audited in the person's workspaces
+  and limited per person (`ABB_SESSION_WRITES_PER_MINUTE`). **Invitations follow their inviter** (KI-077): demoting a person to a role
+  without `invite.write`, or removing them, revokes their open invitations in that workspace in the same transaction, one audit row each.
+  **Open design (ADR-156, Proposed, KI-075):** the `abb_login` cookie cannot carry the `__Host-` prefix (its path is `/api/auth`), so a
+  sibling subdomain that can set cookies could plant a login state and sign a victim in as the attacker; the proposed fix moves it to
+  `__Host-abb_login` with `Path=/` on https. Until it is implemented the exposure stands (it needs a cookie-setting foothold on a related origin).
 - Authorization (implemented, Phase 15, ADR-061): one `authorize()` path for keys and people, the role/scope matrix as data with a literal
   second copy in the tests (both directions), every route in a registry the tests walk (a route without a case fails CI), an AST test against
   scattered role checks, canary tests that nothing of another workspace leaks, `404` (never `403`) for a workspace or id the actor cannot see.
@@ -236,8 +247,7 @@ Limits (stated plainly): CSP reduces the impact of an injection, it does not pre
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
 Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); failed API-key authentication is throttled (ADR-153) (KI-019) and projects have quotas (ADR-154) (KI-018, KI-040). The identity provider integration was exercised against the fake
-provider only; a real provider login is an open acceptance check (KI-067). Session listing and "log out everywhere" are not in the UI (SQL/CLI
-recovery is in the runbook, KI-068). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits hold across API processes while the database answers and are per process when it does not (the shared limiter fails open, ADR-152). The Python SDK
+provider only; a real provider login is an open acceptance check (KI-067). Sessions can be listed and ended in the UI (Settings, Sessions; KI-068 resolved). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits hold across API processes while the database answers and are per process when it does not (the shared limiter fails open, ADR-152). The Python SDK
 redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads); since Phase 13 the server
 redacts again, but detection is best effort, so **clients should still keep secrets out of events**, and a project that needs no payloads should stay
 METADATA_ONLY. Stored text can carry a `[REDACTED:credential]` marker where an assignment looked secret-shaped (a name ending in `token`, `secret` or

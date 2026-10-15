@@ -21,6 +21,7 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_DATABASE_URL` | required | `postgresql+asyncpg://...`; startup fails naming the field if missing |
 | `ABB_ENVIRONMENT`, `ABB_LOG_LEVEL`, `ABB_CORS_ORIGINS` | development, INFO, localhost:3000 | |
 | `ABB_INGEST_MAX_BODY_BYTES` / `ABB_INGEST_MAX_BATCH_EVENTS` | 5 MiB / 1000 | request limits (compressed and decompressed) |
+| `ABB_SESSION_WRITES_PER_MINUTE` | 30 | how many times one person may end sessions (Settings, Sessions) per minute, counted across API processes (Phase 19a step 5, ADR-157). Listing is not limited |
 | `ABB_QUOTAS_ENABLED` | true | per-project quotas (Phase 19a, ADR-154). `false` is an emergency switch: nothing is checked or counted (the usage figures then go stale) |
 | `ABB_QUOTA_AGENTS` / `_RUNS_PER_DAY` / `_EVENTS_PER_DAY` / `_ARTIFACT_BYTES` | 500 / 50000 / 5000000 / 5368709120 (5 GiB) | the default quota of every project: distinct agents, runs created per UTC day, events accepted per UTC day, total stored artifact bytes. Owners and admins override each per project (Quotas settings page, `PUT /v1/projects/{id}/quotas`). The per-run event cap and the per-artifact size cap (`ABB_ARTIFACT_MAX_BYTES`) are separate and unchanged |
 | `ABB_MAX_BODY_BYTES_IN_FLIGHT` / `ABB_BODY_READ_TIMEOUT_SECONDS` | 64 MiB / 60 | most request-body bytes this API process holds at once (Phase 19a, ADR-155); a body that does not fit is refused `503 BUSY` with `Retry-After: 2` (retryable), bodies up to 64 KiB are always admitted, a body not received within the timeout is dropped `408`. Must be at least the largest body (8 MiB). Resident memory is about baseline + 4 to 6.5 x the cap under a flood of large batches (`docs/benchmarks/phase-19a-edge.md`) |
@@ -122,6 +123,15 @@ At start the API and worker ask which role they are: a superuser, `BYPASSRLS`, a
 * **Defence in depth at the proxy.** Limit request body size to 8 MiB (the API's own ceiling) and set read timeouts of about 30 to 60 s on request bodies and headers; add a per-IP request rate limit and connection limit. The API's caps are per process and do not replace these. Do not expose `/docs` (it is off in production by default).
 * **Docs.** `ABB_API_DOCS_ENABLED=true` serves `/docs`, `/redoc`, `/openapi.json` again (for a private staging); they load Swagger UI from a CDN and carry no CSP.
 * **Body cap.** Watch for `503` with code `BUSY` in the request log: sustained BUSY means the cap is too low for the traffic or a client is flooding; raise `ABB_MAX_BODY_BYTES_IN_FLIGHT` only with memory to match (about 6.5 times the cap in the worst measured case).
+
+### Sessions, and people who sign in without an invitation (Phase 19a step 5, ADR-157)
+
+Migration 0099 adds `sessions.device_hint` and a partial index `ix_invitations_open_email`; it is additive and reversible, and sessions that exist before it simply show "Unknown device". The web relay forwards the browser's `User-Agent` (cut to 512 characters) on the sign-in callback so the API can store a coarse label; nothing else of it is kept.
+
+A person the identity provider vouches for but no workspace has invited gets `403 NO_ACCESS` at the callback and **no row**: the login page says "No access yet. Ask a workspace owner to invite you." In the API log this is `login refused` with `reason: not_invited` (never the address). Fix: create an invitation (Settings, Members), or `add-member` with the CLI; the person then signs in again. People made by the CLI (`seed`, `add-member`) and everyone already linked sign in as before.
+
+A person ending a session (or all but the current one) writes `session.revoke` / `session.revoke_others` to the audit log of each workspace they belong to. Demoting or removing a person writes one `invitation.revoke_inviter_lost_rights` row per open invitation they had created. Read-only checks:
+`SELECT count(*) FROM users u WHERE NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.user_id = u.id);` (people without a membership: bounded by invitations, see KI-184) and `SELECT action, count(*) FROM audit_log WHERE action LIKE 'session.%' OR action = 'invitation.revoke_inviter_lost_rights' GROUP BY 1;`.
 
 ### Project quotas (Phase 19a step 3, ADR-154)
 

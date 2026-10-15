@@ -49,6 +49,11 @@ email; the first verified login links their identity. Everyone else: Settings, M
 yourself (there is no email delivery, KI-071). The link is shown once; it works once, for seven days, and only for a signed-in person whose
 verified email equals the invited one. Revoke an open invitation in the same page.
 
+Since Phase 19a (ADR-157) a stranger is **not** given a person record just because the provider vouches for them: at sign-in a person who does not exist yet needs an open
+invitation for their verified email, otherwise they see "No access yet. Ask a workspace owner to invite you." and nothing is created. So invite first, then ask them to sign in
+(they may open the link before or after signing in). Demoting a person to a role that cannot invite (anything but OWNER and ADMIN), or removing them, revokes the open
+invitations they had created, so re-issue any that are still wanted.
+
 ## 3. Roles
 Per workspace: OWNER, ADMIN, DEVELOPER, VIEWER, SECURITY, BILLING (table in `api-v1.md`; source of truth `apps/api/src/abb_api/authz/matrix.py`).
 VIEWER and BILLING never see captured content (payloads, diffs, shell output): the run page says "content hidden by your role". Only an OWNER
@@ -65,7 +70,9 @@ The API refuses to remove the last owner, so this happens only if the owner's ac
 ## 5. Revoke sessions
 - One person, everything: `relink-user --clear-subject` also revokes their sessions; removing them from the workspace (Members, Remove) takes effect on
   their next request and ends their open live streams within `ABB_STREAM_REAUTH_SECONDS` (default 30).
-- Without unlinking (rare; there is no UI, KI-068), as the database owner:
+- A person ends their own other sessions in Settings, Sessions ("End session" on one, or "Sign out everywhere else"); both take effect on that device's next request. Each is
+  in the audit log (`session.revoke`, `session.revoke_others`).
+- Without unlinking, as the database owner (an administrator ending someone else's sessions, since the page is for one's own):
   `UPDATE sessions SET revoked_at = now() WHERE user_id = (SELECT id FROM users WHERE lower(email) = lower('person@example.com')) AND revoked_at IS NULL;`
   The next request with that cookie is `401 SESSION_INVALID`.
 - A person signs out of the current session with "Sign out" (`POST /v1/auth/logout`).
@@ -90,6 +97,7 @@ The API refuses to remove the last owner, so this happens only if the owner's ac
 | Everyone is bounced to `/login` after sign-in | the cookie name differs: `ABB_WEB_ORIGIN` must be identical (https vs http) on web and API; behind a TLS-terminating proxy the browser-facing origin is https |
 | `403 CSRF_REJECTED` on every write | the browser's `Origin` is not exactly `ABB_WEB_ORIGIN` (scheme, host, port) |
 | "no workspaces" after signing in | the person has no membership: invite them or `add-member` |
+| "No access yet. Ask a workspace owner to invite you." after the provider's page | nobody has an open invitation for that verified email (none made, revoked, expired, or its inviter was demoted or removed); invite them, then they sign in again |
 | `403 PERMISSION_DENIED` / "Not available for your role" | working as designed; check the role in Settings, Members |
 | `404` on a workspace or run you know exists | the person is not a member of that workspace (a workspace they cannot see is a 404 by design) |
 | `429` on login | the login limiter (10 sign-in starts a minute per client address, only with `ABB_TRUST_PROXY=1`; 6000 a minute across the API); wait a minute |
