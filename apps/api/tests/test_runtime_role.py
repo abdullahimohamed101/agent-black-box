@@ -131,8 +131,14 @@ async def test_append_only_tables_are_exactly_the_declared_ones_and_the_rest_are
         False,
         False,
     )
+    # Quota counters and overrides are upserted, never deleted by the application (0100).
+    no_delete = deletes_blocked | {
+        "project_quota_overrides",
+        "project_usage_daily",
+        "project_artifact_usage",
+    }
     for name, row in privileges.items():
-        assert row.can_update and row.can_delete == (name not in deletes_blocked), name
+        assert row.can_update and row.can_delete == (name not in no_delete), name
 
 
 @pytest.mark.parametrize("table", ["runs", "agents", "projects", "workspaces"])
@@ -158,3 +164,25 @@ async def test_even_the_owner_cannot_cascade_delete_events_through_a_run(
     with pytest.raises(IntegrityError):
         async with engine.begin() as conn:
             await conn.execute(text("DELETE FROM runs"))
+
+
+@pytest.mark.parametrize(
+    "table", ["project_quota_overrides", "project_usage_daily", "project_artifact_usage"]
+)
+async def test_runtime_role_cannot_delete_quota_history_but_can_read_and_update_it(
+    engine: AsyncEngine, runtime_engine: AsyncEngine, table: str
+) -> None:
+    """0100: counters and overrides are upserted by the application, never deleted by it."""
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        async with runtime_engine.begin() as conn:
+            await conn.execute(text(f"DELETE FROM {table}"))  # noqa: S608
+    async with runtime_engine.begin() as conn:
+        assert (await conn.execute(text(f"SELECT count(*) FROM {table}"))).scalar_one() >= 0  # noqa: S608
+        has = await conn.execute(
+            text(
+                "SELECT has_table_privilege(current_user, :t, 'INSERT')"
+                " AND has_table_privilege(current_user, :t, 'UPDATE')"
+            ),
+            {"t": table},
+        )
+        assert has.scalar_one() is True

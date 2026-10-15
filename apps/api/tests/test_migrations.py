@@ -96,6 +96,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0097",
         "0098",
         "0099",
+        "0100",
     ]
 
 
@@ -452,4 +453,44 @@ def test_0099_adds_the_session_device_hint_column_and_invitation_index_and_drops
         alembic(url, "downgrade", "0098")
         assert "device_hint" not in asyncio.run(column_names(url, "sessions"))
         assert "ix_invitations_open_email" not in asyncio.run(index_names(url, "invitations"))
+        alembic(url, "upgrade", "head")
+
+
+def test_0100_revokes_delete_on_the_quota_tables_and_adds_the_active_key_index() -> None:
+    """Phase 19a review: reversible; the runtime role keeps SELECT, INSERT and UPDATE."""
+
+    async def facts(url: str) -> dict[str, bool]:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.connect() as conn:
+            deletes = {
+                name: bool(
+                    (
+                        await conn.execute(
+                            text("SELECT has_table_privilege('abb_runtime', :n, 'DELETE')"),
+                            {"n": name},
+                        )
+                    ).scalar_one()
+                )
+                for name in (
+                    "project_quota_overrides",
+                    "project_usage_daily",
+                    "project_artifact_usage",
+                )
+            }
+        await engine.dispose()
+        return deletes
+
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0099")
+        before = asyncio.run(facts(url))
+        assert all(before.values())
+        assert "ix_api_keys_active" not in asyncio.run(index_names(url, "api_keys"))
+        alembic(url, "upgrade", "0100")
+        after = asyncio.run(facts(url))
+        assert not any(after.values())
+        assert "ix_api_keys_active" in asyncio.run(index_names(url, "api_keys"))
+        alembic(url, "downgrade", "0099")
+        restored = asyncio.run(facts(url))
+        assert all(restored.values())
+        assert "ix_api_keys_active" not in asyncio.run(index_names(url, "api_keys"))
         alembic(url, "upgrade", "head")

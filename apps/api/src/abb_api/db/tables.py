@@ -291,6 +291,8 @@ api_keys = Table(
         "scopes <@ ARRAY[" + ", ".join(f"'{s}'" for s in API_KEY_SCOPES) + "]::text[]",
         name="ck_api_keys_scopes",
     ),
+    # The throttle's periodic read of usable key ids (ADR-153): live keys only.
+    Index("ix_api_keys_active", "key_id", postgresql_where=text("revoked_at IS NULL")),
 )
 
 # ---------------------------------------------------------------- runs, spans, events
