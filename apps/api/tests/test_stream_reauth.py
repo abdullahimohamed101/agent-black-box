@@ -158,6 +158,26 @@ async def test_a_revoked_or_expired_session_ends_its_stream(live: Live) -> None:
         await second.stop()
 
 
+async def test_a_session_revoked_from_the_sessions_page_ends_its_stream(live: Live) -> None:
+    api = live.api
+    run = await run_with_event(live)
+    user = await add_member(api.engine, api.tenant.context.workspace_id, "a@acme.test", "VIEWER")
+    watched = await mint_session(api.engine, user.id, api.clock())
+    keeper = await mint_session(api.engine, user.id, api.clock() + timedelta(minutes=1))
+    watch = Watch(live, run["run_id"], cookie_headers(api, watched))
+    try:
+        await watch.opened()
+        revoked = await api.client.post(
+            "/v1/auth/sessions/revoke-others",
+            headers={"cookie": f"abb_session={keeper}", "origin": WEB_ORIGIN},
+        )
+        assert revoked.json() == {"revoked": 1}
+        await watch.ended()
+        assert_unauthorised_end(watch)
+    finally:
+        await watch.stop()
+
+
 async def test_removal_and_loss_of_run_read_end_the_stream_but_a_lesser_role_does_not(
     live: Live,
 ) -> None:

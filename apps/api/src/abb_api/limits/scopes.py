@@ -18,6 +18,8 @@ class Scope(StrEnum):
     ARTIFACT_COUNT = "artifact_count"
     ARTIFACT_BYTES = "artifact_bytes"
     LOGIN_START = "login_start"
+    # Revoking one's own sessions: keyed by the person (the sessions page; Phase 19a step 5).
+    SESSION_WRITE = "session_write"
     POLICY_WRITE = "policy_write"
     POLICY_VALIDATE = "policy_validate"
     POLICY_DRY_RUN = "policy_dry_run"
@@ -42,6 +44,7 @@ class Scope(StrEnum):
 _GLOBAL_SCOPES = frozenset(
     {
         Scope.LOGIN_START,
+        Scope.SESSION_WRITE,
         Scope.AUTH_FAIL_ADDRESS,
         Scope.AUTH_FAIL_CREDENTIAL,
         Scope.AUTH_FAIL_GLOBAL,

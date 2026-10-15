@@ -116,6 +116,7 @@ async def callback(
             state=state,
             cookie_state=request.cookies.get(cookies.LOGIN_COOKIE),
             idp_error=error is not None,
+            user_agent=request.headers.get("user-agent"),
         )
     except AppError as exc:
         exc.headers["Set-Cookie"] = clear  # the login cookie is spent on every outcome

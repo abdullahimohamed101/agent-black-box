@@ -146,6 +146,8 @@ class Settings(BaseSettings):
     # A backstop on the unauthenticated login endpoints, shared by every client (the API cannot
     # tell clients apart behind the web relay; per-client limits live in the web app, D15).
     login_global_per_minute: int = Field(default=6000, ge=1)
+    # Revoking sessions, per person (KI-068). Reading the list is not limited.
+    session_writes_per_minute: int = Field(default=30, ge=1)
     # Shared limiter (Phase 19a, ADR-152). The budgets above and below are counted per window in
     # PostgreSQL so they hold across API processes; the in-memory limiter stays in front. Off: the
     # old per-process behaviour. The call is bounded by `limits_timeout_ms` and, when it fails,

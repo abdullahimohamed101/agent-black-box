@@ -40,7 +40,13 @@ PUBLIC: frozenset[tuple[str, str]] = frozenset(
 
 # Routes that need a signed-in person but no particular workspace and no action.
 SESSION_ONLY: frozenset[tuple[str, str]] = frozenset(
-    {("GET", "/v1/me"), ("POST", "/v1/invitations/accept")}
+    {
+        ("GET", "/v1/me"),
+        ("POST", "/v1/invitations/accept"),
+        ("GET", "/v1/auth/sessions"),
+        ("POST", "/v1/auth/sessions/revoke-others"),
+        ("DELETE", "/v1/auth/sessions/{session_id}"),
+    }
 )
 
 

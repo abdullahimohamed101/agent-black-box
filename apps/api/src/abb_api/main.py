@@ -27,6 +27,7 @@ from abb_api.auth.keys_router import router as api_keys_router
 from abb_api.auth.login import LoginService
 from abb_api.auth.oidc import OidcClient
 from abb_api.auth.router import router as auth_router
+from abb_api.auth.sessions_router import router as sessions_router
 from abb_api.auth.throttle import AuthThrottle
 from abb_api.authz.audit import new_denial_limiter
 from abb_api.clock import Clock, system_clock
@@ -87,7 +88,13 @@ _BEARER_ONLY = {
     ("post", "/v1/runs"),
     ("put", "/v1/artifacts/{artifact_id}"),
 }
-_SESSION_ONLY = {("get", "/v1/me"), ("post", "/v1/invitations/accept")}
+_SESSION_ONLY = {
+    ("get", "/v1/me"),
+    ("post", "/v1/invitations/accept"),
+    ("get", "/v1/auth/sessions"),
+    ("post", "/v1/auth/sessions/revoke-others"),
+    ("delete", "/v1/auth/sessions/{session_id}"),
+}
 _NO_CREDENTIAL = {("get", "/v1/auth/login"), ("get", "/v1/auth/callback")}
 _OPTIONAL_SESSION = {("post", "/v1/auth/logout")}
 WORKSPACE_PARAMETER: dict[str, Any] = {
@@ -234,6 +241,12 @@ def create_app(
             block_divisor=settings.limits_block_divisor,
             local=login_bucket,
         )
+        app.state.session_limiter = minute_limiter(
+            counters,
+            Scope.SESSION_WRITE,
+            settings.session_writes_per_minute,
+            block_divisor=settings.limits_block_divisor,
+        )
         app.state.auth_throttle = AuthThrottle(settings, counters, engine)
         app.state.ingestion = IngestionService(engine, ingest_guard, settings, clock)
         app.state.runs = RunService(
@@ -345,6 +358,7 @@ def create_app(
     app.add_middleware(RequestContextMiddleware, hsts=is_secure(settings))
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(sessions_router)
     app.include_router(ingestion_router)
     app.include_router(runs_router)
     app.include_router(findings_router)

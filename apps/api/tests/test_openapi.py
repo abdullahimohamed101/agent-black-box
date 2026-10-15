@@ -36,6 +36,10 @@ EXPECTED_SECURITY: dict[tuple[str, str], list[dict[str, list[str]]]] = {
     ("delete", "/v1/approvals/{approval_id}"): BEARER,
     ("get", "/v1/me"): [{"sessionCookie": []}],
     ("post", "/v1/invitations/accept"): [{"sessionCookie": []}],
+    # Phase 19a step 5: a person's own sessions.
+    ("get", "/v1/auth/sessions"): [{"sessionCookie": []}],
+    ("post", "/v1/auth/sessions/revoke-others"): [{"sessionCookie": []}],
+    ("delete", "/v1/auth/sessions/{session_id}"): [{"sessionCookie": []}],
     ("get", "/v1/auth/login"): [],
     ("get", "/v1/auth/callback"): [],
     ("post", "/v1/auth/logout"): [{}, {"sessionCookie": []}],
@@ -60,8 +64,9 @@ def test_every_v1_operation_is_authenticated_and_described() -> None:
     # main's 37, Phase 11's 15, Phase 22's /v1/analytics/waste, Phase 13's four security routes and
     # Phase 14's seven policy routes, and step 2's nine (decide, fail-modes, wait, consume, cancel,
     # list, pending count, detail, decision), and Phase 17's thirteen alerting routes (step 1's
-    # twelve, step 2's send-test), and Phase 19a step 3's two project quota routes
-    assert seen == 37 + 15 + 1 + 4 + 7 + 9 + 13 + 2
+    # twelve, step 2's send-test), Phase 19a step 3's two project quota routes, and step 5's
+    # three session routes
+    assert seen == 37 + 15 + 1 + 4 + 7 + 9 + 13 + 2 + 3
 
 
 def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
@@ -89,6 +94,9 @@ def test_the_public_surface_is_exactly_what_the_plan_promises() -> None:
         ("GET", "/v1/auth/callback"),
         ("POST", "/v1/auth/logout"),
         ("GET", "/v1/me"),
+        ("GET", "/v1/auth/sessions"),
+        ("POST", "/v1/auth/sessions/revoke-others"),
+        ("DELETE", "/v1/auth/sessions/{session_id}"),
         ("GET", "/v1/projects"),
         ("POST", "/v1/projects"),
         ("POST", "/v1/pricing/overrides"),

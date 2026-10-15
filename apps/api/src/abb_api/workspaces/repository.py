@@ -290,6 +290,28 @@ class InvitationRepository:
         )
         return result.rowcount == 1
 
+    async def revoke_open_by(self, inviter: uuid.UUID, now: datetime) -> list[uuid.UUID]:
+        """Revoke every unexpired, unaccepted invitation this person created here (KI-077).
+
+        Returns the ids, so the caller can audit each. Expired ones are not touched (they are
+        already dead and `retire_expired` marks them), nor are accepted ones: a person who joined
+        stays, because the right to invite was checked when the invitation was made and the
+        owner's remedy for an unwanted member is to remove them.
+        """
+        rows = await self._conn.execute(
+            update(t.invitations)
+            .where(
+                t.invitations.c.workspace_id == self._tenant.workspace_id,
+                t.invitations.c.invited_by == inviter,
+                t.invitations.c.accepted_at.is_(None),
+                t.invitations.c.revoked_at.is_(None),
+                t.invitations.c.expires_at > now,
+            )
+            .values(revoked_at=now)
+            .returning(t.invitations.c.id)
+        )
+        return sorted(r.id for r in rows)
+
     async def mark_accepted(
         self, invitation_id: uuid.UUID, user_id: uuid.UUID, now: datetime
     ) -> bool:
@@ -304,6 +326,24 @@ class InvitationRepository:
             .values(accepted_at=now, accepted_by=user_id)
         )
         return result.rowcount == 1
+
+
+async def has_open_invitation_for_email(conn: AsyncConnection, email: str, now: datetime) -> bool:
+    """Whether any workspace holds an open (unaccepted, unrevoked, unexpired) invitation for
+    `email`. The sign-in callback asks this before it creates a person (KI-076): the second
+    deliberate cross-workspace read next to `find_invitation_by_hash`, and it returns only a
+    yes or no. Invitation emails are stored lower-cased."""
+    found = await conn.execute(
+        select(t.invitations.c.id)
+        .where(
+            t.invitations.c.email == email.lower(),
+            t.invitations.c.accepted_at.is_(None),
+            t.invitations.c.revoked_at.is_(None),
+            t.invitations.c.expires_at > now,
+        )
+        .limit(1)
+    )
+    return found.first() is not None
 
 
 @dataclass(frozen=True)

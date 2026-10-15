@@ -5,6 +5,7 @@ browser's cookie, refuse every bad ID token, never re-bind a linked identity by 
 no user or session behind when it refuses.
 """
 
+import json
 import logging
 from collections.abc import AsyncIterator
 from datetime import timedelta
@@ -19,9 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.auth.repository import UserRepository
 from abb_api.core.config import Settings
+from abb_api.core.domain import AlreadyExistsError
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter
 from tests.api_fixtures import Api, Tick, build_api, person
-from tests.auth_helpers import add_member, mint_session
+from tests.auth_helpers import add_member, mint_session, open_invitation
 from tests.conftest import make_settings
 from tests.fake_oidc import FakeOidc
 from tests.test_runs_api import error
@@ -115,6 +117,8 @@ class Browser:
         return response
 
     async def sign_in(self, email: str, **kwargs: Any) -> httpx.Response:
+        if kwargs.pop("invited", True):
+            await invite(self.api, email)
         started = await self.start(kwargs.pop("return_to", None))
         assert started.status_code == 302, started.text
         return await self.callback(self.fake.approve(started.headers["location"], email, **kwargs))
@@ -127,6 +131,15 @@ class Browser:
         if origin is not None:
             headers["origin"] = origin
         return await self.api.client.post(path, headers=headers)
+
+
+async def invite(api: Api, email: str) -> None:
+    """An open invitation for `email`, so that a stranger the provider vouches for gets a person
+    record at sign-in (KI-076). Idempotent: a second call for the same address changes nothing."""
+    try:
+        await open_invitation(api.engine, api.tenant.context.workspace_id, email, now=api.clock())
+    except AlreadyExistsError:
+        pass
 
 
 async def counts(engine: AsyncEngine) -> tuple[int, int]:
@@ -156,6 +169,7 @@ async def test_a_full_login_creates_a_user_and_a_session_and_lands_on_return_to(
         assert attribute in login_cookie
     assert "Secure" not in login_cookie  # http://localhost development origin
 
+    await invite(auth, "Ada@Example.com")
     done = await browser.callback(fake.approve(started.headers["location"], "Ada@Example.com"))
     assert done.status_code == 302 and done.headers["location"] == "/w/acme/projects/all"
     cookies = cookies_set(done)
@@ -186,6 +200,27 @@ async def test_me_lists_memberships_with_the_actions_their_roles_grant(
     assert "run.read" in by_slug["acme"]["permissions"]
     assert "payload.read" not in by_slug["acme"]["permissions"]
     assert "api_key.create" in by_slug["globex"]["permissions"]
+
+
+async def test_the_browser_label_of_a_login_is_stored_as_a_coarse_hint(
+    auth: Api, fake: FakeOidc
+) -> None:
+    await add_member(auth.engine, auth.tenant.context.workspace_id, "ada@example.com", "VIEWER")
+    browser = Browser(auth, fake)
+    started = await browser.start()
+    await invite(auth, "ada@example.com")
+    approved = fake.approve(started.headers["location"], "ada@example.com")
+    query = {k: v[0] for k, v in parse_qs(urlsplit(approved).query).items()}
+    agent = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
+    done = await auth.client.get(
+        "/v1/auth/callback",
+        params=query,
+        headers={"cookie": f"abb_login={browser.login_cookie}", "user-agent": agent},
+    )
+    assert done.status_code == 302
+    async with auth.engine.connect() as conn:
+        hints = (await conn.execute(text("SELECT device_hint FROM sessions"))).scalars().all()
+    assert hints == ["Firefox on Linux"]  # the header itself is stored nowhere
 
 
 async def test_a_pre_provisioned_user_is_linked_on_first_login(auth: Api, fake: FakeOidc) -> None:
@@ -229,17 +264,21 @@ async def test_a_reassigned_address_cannot_accept_the_new_holders_invitation(
     auth: Api, fake: FakeOidc
 ) -> None:
     """Review F2: acceptance compares the current verified email, not the first login's."""
+    await add_member(auth.engine, auth.tenant.context.workspace_id, "alice@corp.test", None)
     alice = Browser(auth, fake)
-    await alice.sign_in("alice@corp.test", subject="sub-alice")
+    await alice.sign_in("alice@corp.test", subject="sub-alice", invited=False)
     # The provider renames Alice's account and hands her old address to Bob.
-    await alice.sign_in("alice.2@corp.test", subject="sub-alice")
+    await alice.sign_in("alice.2@corp.test", subject="sub-alice", invited=False)
     admin = await person(auth, "admin@acme.test", "ADMIN")
     sent = await auth.client.post(
         "/v1/invitations", json={"email": "alice@corp.test", "role": "VIEWER"}, headers=admin
     )
     token = sent.json()["link"].split("#", 1)[1]
     bob = Browser(auth, fake)
-    assert (await bob.sign_in("alice@corp.test", subject="sub-bob")).status_code == 302
+    # Bob is invited by the real invitation above, which is what lets his record be created.
+    assert (
+        await bob.sign_in("alice@corp.test", subject="sub-bob", invited=False)
+    ).status_code == 302
 
     def accept(browser: Browser) -> Any:
         return auth.client.post(
@@ -260,6 +299,7 @@ async def test_a_callback_without_the_browsers_login_cookie_is_refused(
 ) -> None:
     attacker = Browser(auth, fake)
     started = await attacker.start()
+    await invite(auth, "attacker@example.com")
     url = fake.approve(started.headers["location"], "attacker@example.com")
     victim = Browser(auth, fake)  # follows the attacker's callback URL; has no abb_login cookie
     for cookie in (False, "a" * 43):  # none at all / a different value
@@ -274,6 +314,7 @@ async def test_a_callback_without_the_browsers_login_cookie_is_refused(
 async def test_a_state_can_only_be_used_once(auth: Api, fake: FakeOidc) -> None:
     browser = Browser(auth, fake)
     started = await browser.start()
+    await invite(auth, "ada@example.com")
     url = fake.approve(started.headers["location"], "ada@example.com")
     cookie = browser.login_cookie
     assert (await browser.callback(url)).status_code == 302
@@ -283,6 +324,7 @@ async def test_a_state_can_only_be_used_once(auth: Api, fake: FakeOidc) -> None:
 async def test_an_expired_login_is_refused(auth: Api, fake: FakeOidc) -> None:
     browser = Browser(auth, fake)
     started = await browser.start()
+    await invite(auth, "ada@example.com")
     url = fake.approve(started.headers["location"], "ada@example.com")
     auth.clock.now += timedelta(minutes=11)
     error(await browser.callback(url), 400, "LOGIN_FAILED")
@@ -304,6 +346,7 @@ async def test_the_provider_reporting_an_error_is_never_echoed(
     caplog.set_level(logging.DEBUG)
     browser = Browser(auth, fake)
     started = await browser.start()
+    await invite(auth, "ada@example.com")
     url = fake.approve(started.headers["location"], "ada@example.com")
     refused = await browser.callback(
         url, error="access_denied", error_description="<script>alert(1)</script>"
@@ -341,6 +384,7 @@ async def test_application_routes_are_accepted_and_the_callback_redirects_only_t
 ) -> None:
     browser = Browser(auth, fake)
     started = await browser.start(target)
+    await invite(auth, "ada@example.com")
     url = fake.approve(started.headers["location"], "ada@example.com")
     # A callback cannot choose where it goes: a return_to in its query is ignored.
     done = await browser.callback(url, return_to="https://evil.example")
@@ -411,6 +455,203 @@ async def test_a_key_rotation_is_followed_but_probing_unknown_keys_is_bounded(
     for _ in range(4):
         assert (await Browser(auth, fake).sign_in("c@example.com")).status_code == 401
     assert fake.requests.count("/jwks") == base + 2
+
+
+# ------------------------------------------------------------------ no person without an invitation
+
+NO_ACCESS_TEXT = "No access yet. Ask a workspace owner to invite you."
+
+
+async def rows_of(engine: AsyncEngine, table: str) -> int:
+    async with engine.connect() as conn:
+        return int((await conn.execute(text(f"SELECT count(*) FROM {table}"))).scalar_one())  # noqa: S608
+
+
+async def refused_sign_in(api: Api, fake: FakeOidc, email: str, **kwargs: Any) -> httpx.Response:
+    return await Browser(api, fake).sign_in(email, invited=False, **kwargs)
+
+
+def shape(response: httpx.Response) -> tuple[int, str, tuple[str, ...]]:
+    """Everything a caller could compare between two refusals (the request id aside)."""
+    body = response.json()["error"]
+    return (
+        response.status_code,
+        json.dumps({**body, "request_id": None}, sort_keys=True),
+        tuple(sorted(cookies_set(response))),
+    )
+
+
+async def test_a_stranger_the_provider_vouches_for_gets_no_person_and_no_session(
+    auth: Api, fake: FakeOidc
+) -> None:
+    before = (await rows_of(auth.engine, "users"), await rows_of(auth.engine, "sessions"))
+    refused = await refused_sign_in(auth, fake, "stranger@example.com")
+    body = error(refused, 403, "NO_ACCESS")
+    assert body["message"] == NO_ACCESS_TEXT and body["category"] == "AUTHORIZATION"
+    assert SESSION_COOKIE not in cookies_set(refused)
+    assert "Max-Age=0" in cookies_set(refused)["abb_login"]  # the login cookie is spent
+    assert refused.headers["cache-control"] == "no-store"
+    assert (await rows_of(auth.engine, "users"), await rows_of(auth.engine, "sessions")) == before
+    assert await rows_of(auth.engine, "login_states") == 0  # and nothing is left pending
+    async with auth.engine.connect() as conn:
+        assert (await UserRepository(conn).find_by_email("stranger@example.com")) is None
+    for _ in range(3):  # a flood of strangers still creates nothing
+        await refused_sign_in(auth, fake, f"flood{_}@example.com")
+    assert await rows_of(auth.engine, "users") == before[0]
+
+
+async def test_every_un_invited_case_is_the_same_answer(auth: Api, fake: FakeOidc) -> None:
+    workspace = auth.tenant.context.workspace_id
+    ws2 = auth.other.context.workspace_id
+    await open_invitation(auth.engine, workspace, "someone.else@example.com", now=auth.clock())
+    revoked = await open_invitation(auth.engine, workspace, "revoked@example.com", now=auth.clock())
+    expired = await open_invitation(auth.engine, ws2, "expired@example.com", now=auth.clock())
+    accepted = await open_invitation(auth.engine, ws2, "accepted@example.com", now=auth.clock())
+    async with auth.engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE invitations SET revoked_at = :n WHERE id = :i"),
+            {"n": auth.clock(), "i": revoked},
+        )
+        await conn.execute(
+            text("UPDATE invitations SET expires_at = :e WHERE id = :i"),
+            {"e": auth.clock() - timedelta(minutes=1), "i": expired},
+        )
+        await conn.execute(
+            text("UPDATE invitations SET accepted_at = :n WHERE id = :i"),
+            {"n": auth.clock(), "i": accepted},
+        )
+    emails = [
+        "nobody@example.com",  # no invitation anywhere
+        "revoked@example.com",  # revoked
+        "expired@example.com",  # expired
+        "accepted@example.com",  # already accepted (and its person row is not there)
+        "someone.else.com@example.com",  # an invitation for a similar address
+    ]
+    shapes = {shape(await refused_sign_in(auth, fake, e)) for e in emails}
+    assert len(shapes) == 1
+    assert next(iter(shapes))[0] == 403
+    assert await rows_of(auth.engine, "users") == 0
+
+
+async def test_an_open_invitation_lets_the_invited_person_in_and_acceptance_joins_them(
+    auth: Api, fake: FakeOidc
+) -> None:
+    """The whole invitation flow with a stranger: invite, sign in (person created now), accept."""
+    admin = await person(auth, "admin@acme.test", "ADMIN")
+    sent = await auth.client.post(
+        "/v1/invitations",
+        json={"email": "new.hire@example.com", "role": "DEVELOPER"},
+        headers=admin,
+    )
+    token = sent.json()["link"].split("#", 1)[1]
+    async with auth.engine.connect() as conn:
+        assert await UserRepository(conn).find_by_email("new.hire@example.com") is None
+    browser = Browser(auth, fake)
+    assert (await browser.sign_in("New.Hire@Example.com", invited=False)).status_code == 302
+    me = (await browser.get("/v1/me")).json()
+    assert me["user"]["email"] == "new.hire@example.com" and me["memberships"] == []
+    joined = await auth.client.post(
+        "/v1/invitations/accept",
+        json={"token": token},
+        headers={**browser.cookie_header(), "origin": ORIGIN},
+    )
+    assert joined.status_code == 200 and joined.json()["role"] == "DEVELOPER"
+    assert [m["role"] for m in (await browser.get("/v1/me")).json()["memberships"]] == ["DEVELOPER"]
+
+
+async def test_an_invitation_revoked_before_sign_in_creates_no_person(
+    auth: Api, fake: FakeOidc
+) -> None:
+    admin = await person(auth, "admin@acme.test", "ADMIN")
+    sent = await auth.client.post(
+        "/v1/invitations", json={"email": "late@example.com", "role": "VIEWER"}, headers=admin
+    )
+    invitation_id = sent.json()["invitation"]["id"]
+    assert (
+        await auth.client.delete(f"/v1/invitations/{invitation_id}", headers=admin)
+    ).status_code == 204
+    error(await refused_sign_in(auth, fake, "late@example.com"), 403, "NO_ACCESS")
+    async with auth.engine.connect() as conn:
+        assert await UserRepository(conn).find_by_email("late@example.com") is None
+
+
+async def test_an_invitation_for_any_workspace_is_enough_and_a_lapsed_one_is_not(
+    auth: Api, fake: FakeOidc
+) -> None:
+    await open_invitation(
+        auth.engine, auth.other.context.workspace_id, "far@example.com", now=auth.clock()
+    )
+    assert (await refused_sign_in(auth, fake, "far@example.com", subject="s1")).status_code == 302
+    await open_invitation(
+        auth.engine, auth.tenant.context.workspace_id, "brief@example.com", now=auth.clock(),
+        ttl=timedelta(minutes=5),
+    )  # fmt: skip
+    auth.clock.now += timedelta(minutes=6)
+    error(await refused_sign_in(auth, fake, "brief@example.com"), 403, "NO_ACCESS")
+
+
+async def test_people_who_already_exist_sign_in_as_before_with_no_invitation(
+    auth: Api, fake: FakeOidc
+) -> None:
+    """Bootstrap and CLI paths: a person created by `add-member`/`seed`/`create-owner` (no identity
+    yet), one already linked, one whose link was cleared by `relink-user`, and one with no
+    workspace at all all sign in without any invitation existing."""
+    workspace = auth.tenant.context.workspace_id
+    owner = await add_member(auth.engine, workspace, "owner@example.com", "OWNER")
+    await add_member(auth.engine, workspace, "dev@example.com", "DEVELOPER")
+    await add_member(auth.engine, workspace, "floating@example.com", None)
+    assert await rows_of(auth.engine, "invitations") == 0
+    assert (
+        await refused_sign_in(auth, fake, "owner@example.com", subject="o-1")
+    ).status_code == 302
+    assert (await refused_sign_in(auth, fake, "dev@example.com", subject="d-1")).status_code == 302
+    assert (
+        await refused_sign_in(auth, fake, "floating@example.com", subject="f-1")
+    ).status_code == 302
+    assert (
+        await refused_sign_in(auth, fake, "owner@example.com", subject="o-1")
+    ).status_code == 302
+    async with auth.engine.begin() as conn:  # `relink-user --clear-subject`
+        assert await UserRepository(conn).clear_identity(owner.id)
+    again = await refused_sign_in(auth, fake, "owner@example.com", subject="o-2")
+    assert again.status_code == 302
+    assert await rows_of(auth.engine, "users") == 3
+
+
+async def test_a_person_whose_invitation_is_gone_still_signs_in_once_they_exist(
+    auth: Api, fake: FakeOidc
+) -> None:
+    await open_invitation(
+        auth.engine, auth.tenant.context.workspace_id, "kept@example.com", now=auth.clock()
+    )
+    assert (await refused_sign_in(auth, fake, "kept@example.com", subject="k")).status_code == 302
+    async with auth.engine.begin() as conn:
+        await conn.execute(text("UPDATE invitations SET revoked_at = now()"))
+    assert (await refused_sign_in(auth, fake, "kept@example.com", subject="k")).status_code == 302
+
+
+async def test_an_unverified_email_is_still_a_plain_login_failure(
+    auth: Api, fake: FakeOidc
+) -> None:
+    await open_invitation(
+        auth.engine, auth.tenant.context.workspace_id, "un@example.com", now=auth.clock()
+    )
+    fake.knobs.email_verified = False
+    refused = await refused_sign_in(auth, fake, "un@example.com")
+    error(refused, 401, "LOGIN_FAILED")
+    assert await rows_of(auth.engine, "users") == 0
+
+
+async def test_the_refusal_logs_a_reason_and_no_address(
+    auth: Api, fake: FakeOidc, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO)
+    await refused_sign_in(auth, fake, "private.person@example.com")
+    refusal = [r for r in caplog.records if r.getMessage() == "login refused"]
+    assert [getattr(r, "reason", None) for r in refusal] == ["not_invited"]
+    assert "private.person" not in caplog.text and "private.person" not in str(
+        [r.__dict__ for r in caplog.records]
+    )
 
 
 # ------------------------------------------------------------------ identity linking
@@ -701,6 +942,7 @@ async def test_the_secure_variants_use_the_host_prefix_and_secure_cookies(
         instance.client.cookies.clear()
         login_cookie = cookies_set(started)["abb_login"]
         assert "Secure" in login_cookie and "Path=/api/auth" in login_cookie
+        await invite(instance, "ada@example.com")
         callback_url = fake.approve(started.headers["location"], "ada@example.com")
         query = {k: v[0] for k, v in parse_qs(urlsplit(callback_url).query).items()}
         done = await instance.client.get(
@@ -747,6 +989,7 @@ async def test_the_login_flow_logs_no_secret_token_email_or_identifier_of_the_fl
         browser = Browser(auth, fake)
         started = await browser.start("/w/acme/projects/all")
         query = parse_qs(urlsplit(started.headers["location"]).query)
+        await invite(auth, "secret.person@example.com")
         url = fake.approve(started.headers["location"], "secret.person@example.com")
         callback_query = parse_qs(urlsplit(url).query)
         await browser.callback(url)

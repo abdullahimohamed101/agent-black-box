@@ -95,6 +95,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0096",
         "0097",
         "0098",
+        "0099",
     ]
 
 
@@ -401,3 +402,54 @@ def test_0098_creates_the_quota_tables_backfills_artifact_bytes_and_drops_them_a
         assert asyncio.run(table_names(url)) == before
         alembic(url, "upgrade", "head")  # and the data survives the round trip
         assert asyncio.run(backfilled(url)) == {alpha: 350}
+
+
+def test_0099_adds_the_session_device_hint_column_and_invitation_index_and_drops_them() -> None:
+    """Phase 19a step 5: one nullable column and one partial index; old sessions have no hint."""
+
+    async def insert_session(url: str) -> None:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("INSERT INTO users (id, email) VALUES (gen_random_uuid(), 'a@x.test')")
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO sessions (id, user_id, token_hash, expires_at, idle_expires_at) "
+                    "SELECT gen_random_uuid(), id, decode(repeat('ab', 32), 'hex'), "
+                    "now() + interval '1 day', now() + interval '1 day' FROM users"
+                )
+            )
+        await engine.dispose()
+
+    async def hints(url: str) -> list[object]:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.connect() as conn:
+            found = (await conn.execute(text("SELECT device_hint FROM sessions"))).scalars().all()
+        await engine.dispose()
+        return list(found)
+
+    async def too_long(url: str) -> bool:
+        engine = create_async_engine(url, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("UPDATE sessions SET device_hint = repeat('x', 65)"))
+        except Exception:
+            return True
+        finally:
+            await engine.dispose()
+        return False
+
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0098")
+        assert "device_hint" not in asyncio.run(column_names(url, "sessions"))
+        asyncio.run(insert_session(url))
+        alembic(url, "upgrade", "0099")
+        assert "device_hint" in asyncio.run(column_names(url, "sessions"))
+        assert "ix_invitations_open_email" in asyncio.run(index_names(url, "invitations"))
+        assert asyncio.run(hints(url)) == [None]
+        assert asyncio.run(too_long(url))  # the length is bounded in the database too
+        alembic(url, "downgrade", "0098")
+        assert "device_hint" not in asyncio.run(column_names(url, "sessions"))
+        assert "ix_invitations_open_email" not in asyncio.run(index_names(url, "invitations"))
+        alembic(url, "upgrade", "head")

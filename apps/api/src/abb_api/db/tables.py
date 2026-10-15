@@ -124,8 +124,12 @@ sessions = Table(
     _ts("expires_at", nullable=False),
     _ts("idle_expires_at", nullable=False),
     _ts("revoked_at"),
+    Column("device_hint", Text),
     UniqueConstraint("token_hash", name="uq_sessions_token_hash"),
     CheckConstraint("octet_length(token_hash) = 32", name="ck_sessions_token_hash"),
+    CheckConstraint(
+        "device_hint IS NULL OR char_length(device_hint) <= 64", name="ck_sessions_device_hint"
+    ),
     Index("ix_sessions_user", "user_id"),
     Index("ix_sessions_expires", "expires_at"),
 )
@@ -184,6 +188,11 @@ invitations = Table(
         "workspace_id",
         "email",
         unique=True,
+        postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+    ),
+    Index(
+        "ix_invitations_open_email",
+        "email",
         postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
     ),
 )

@@ -348,6 +348,7 @@ class SessionRecord:
     expires_at: datetime
     idle_expires_at: datetime
     revoked_at: datetime | None
+    device_hint: str | None
 
     def usable(self, now: datetime) -> bool:
         return self.revoked_at is None and now < self.expires_at and now < self.idle_expires_at
@@ -361,6 +362,7 @@ _SESSION_COLUMNS = (
     t.sessions.c.expires_at,
     t.sessions.c.idle_expires_at,
     t.sessions.c.revoked_at,
+    t.sessions.c.device_hint,
 )
 
 PURGE_BATCH = 100  # rows deleted per login: bounded work, and the table cannot grow without limit
@@ -381,6 +383,7 @@ class SessionRepository:
         now: datetime,
         absolute: timedelta,
         idle: timedelta,
+        device_hint: str | None = None,
     ) -> SessionRecord:
         session_id = uuid.uuid4()
         await self._conn.execute(
@@ -392,6 +395,7 @@ class SessionRepository:
                 last_seen_at=now,
                 expires_at=now + absolute,
                 idle_expires_at=min(now + idle, now + absolute),
+                device_hint=device_hint,
             )
         )
         row = (
@@ -438,6 +442,49 @@ class SessionRepository:
             .values(revoked_at=now)
         )
         return result.rowcount == 1
+
+    @staticmethod
+    def _alive(now: datetime) -> Any:
+        return (
+            t.sessions.c.revoked_at.is_(None),
+            t.sessions.c.expires_at > now,
+            t.sessions.c.idle_expires_at > now,
+        )
+
+    async def list_usable(
+        self, user_id: uuid.UUID, now: datetime, limit: int
+    ) -> list[SessionRecord]:
+        """The person's own sessions that still work, most recently used first (bounded)."""
+        rows = await self._conn.execute(
+            select(*_SESSION_COLUMNS)
+            .where(t.sessions.c.user_id == user_id, *self._alive(now))
+            .order_by(t.sessions.c.last_seen_at.desc(), t.sessions.c.id)
+            .limit(limit)
+        )
+        return [
+            SessionRecord(**{c.name: getattr(r, c.name) for c in _SESSION_COLUMNS}) for r in rows
+        ]
+
+    async def revoke_own(self, user_id: uuid.UUID, session_id: uuid.UUID, now: datetime) -> bool:
+        """Revoke one working session of this person. False when there is none (someone else's,
+        unknown, already dead: the caller cannot tell which)."""
+        result = await self._conn.execute(
+            update(t.sessions)
+            .where(t.sessions.c.id == session_id, t.sessions.c.user_id == user_id)
+            .where(*self._alive(now))
+            .values(revoked_at=now)
+        )
+        return result.rowcount == 1
+
+    async def revoke_others(self, user_id: uuid.UUID, keep: uuid.UUID, now: datetime) -> int:
+        """Revoke every working session of this person except `keep`; returns how many."""
+        result = await self._conn.execute(
+            update(t.sessions)
+            .where(t.sessions.c.user_id == user_id, t.sessions.c.id != keep)
+            .where(*self._alive(now))
+            .values(revoked_at=now)
+        )
+        return int(result.rowcount)
 
     async def revoke_all(self, user_id: uuid.UUID, now: datetime) -> int:
         result = await self._conn.execute(
