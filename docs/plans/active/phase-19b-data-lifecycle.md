@@ -1,0 +1,56 @@
+# Phase 19b: Data lifecycle (production hardening, part 2 of 3)
+
+Status: Planned (2026-10-15). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-15). Part 2 of Phase 19 (19a abuse resistance is built and in review as PR #186; 19c operability follows). This branch is stacked on `feature/phase-19a-abuse-resistance`; its PR opens against `main` after #186 merges.
+Owner: api + web + scripts. Branch: `feature/phase-19b-data-lifecycle`.
+Depends on: 19a (usage tables, shared counters, sessions, quotas), Phase 13 (capture modes), Phase 15 (roles, audit), Phase 17 (alert secrets), Phase 5/7 (search, analytics rollups).
+Spec refs: §39, §94, §62 invariants (INV-1 is amended by an ADR), §116-125 context.
+
+## Outcome
+
+An operator can bound how long the product keeps data, back the installation up, and prove that a backup restores: expired data leaves every backend through one audited, resumable, dry-run-first job that the API cannot trigger or abuse; a performed restore drill is evidenced; and the smaller lifecycle leaks recorded in earlier phases are closed.
+
+## Non-goals
+
+- No WAL archiving or point-in-time recovery (documented as the upgrade path only).
+- No in-place scrubbing of content inside events (needs UPDATE on `events`; recorded as a known issue); content in events lives as long as the trace-detail tier.
+- No per-project retention overrides (workspace level only); no deletion API endpoints for projects or workspaces (owner-run CLI only).
+- No metrics, SLOs or tracing (19c).
+
+## Decisions (settled with the user)
+
+- D1 Mechanism: a new database role `abb_retention` is the only role with DELETE on the retained tables. A scheduled job (the CLI or a worker mode, never the API process) deletes expired data by whole run, in batches. ADR amends INV-1: accepted events are immutable until expired by the retention job; the API and normal worker still cannot update or delete events. A tombstone (run id, workspace, when, tier) is kept for audit.
+- D2 Policy, per workspace (owner/admin edit, audited, floor 7 days, "keep forever" is an explicit choice, defaults from environment settings): artifacts 30 days after the run ended; trace detail 90 days (events, spans, findings, evaluations, search entries, run-bound outbox rows); run record 365 days (run summary and its rollup contribution; the run page then says "trace expired"); audit log 365 days (purged by the retention job only, KI-072). Operational tables (finished outbox jobs KI-021, expired counters and usage rows KI-180, never-accepted invited users and expired sessions KI-184) have fixed short windows. Documented deviation from §94: prompt/response inside events lives as long as trace detail (90 days), not 30.
+- D3 Rollout safety: `ABB_RETENTION_MODE` is `off`, `dry_run` or `enforce`; the default is `dry_run`. Dry run executes the real job and records per workspace and tier what it would delete, in a retention report table, shown on a Retention settings page. Enforce is bounded per tick (maximum runs and a time budget per workspace), resumable and idempotent, deletes in a fixed order (artifact files, search entries, events/spans/derived rows, run record last), marks a run "deleting" first so readers never see broken pages, records completion per backend and retries partial failures, writes one audit row per batch with counts only, and stops at the next tick when the mode is set back to `off`. A per-workspace dry-run preview is available in the API. The runbook states that enforced deletes are permanent and requires a backup and a performed restore drill first.
+- D4 Backups: `abb backup` writes one bundle (a `pg_dump -Fc` in one snapshot transaction, the artifact files copied after it, and a manifest with schema revision, row counts, checksums and time); optional passphrase encryption with openssl (no new dependency); refuses a world-readable output; `abb restore` loads it into an empty database and artifact directory, upgrades the schema if older, and verifies checksums and counts. A CI job performs the drill (seed, back up, destroy, restore; the API serves the same runs, an alert secret still decrypts, artifacts match) and the observed times are recorded; RPO is the backup interval and RTO the measured restore time, stated plainly.
+- D5 Rest of the bundle: a migration safety table (every migration classified reversible with a tested downgrade, or forward-only with "restore the pre-upgrade backup" as rollback; a test fails for an unclassified migration); `abb rotate-secrets alerts` (new key, resumable re-seal of every destination, report when the old key can be retired; the event-id key documented as non-rotatable without breaking dedupe); KI-057 analytics dirty marker; `abb retention purge-project` and `purge-workspace` (owner-run, confirmation flag, audited, cascade through rules, usage rows and artifacts, completion per backend) resolving KI-170; analytics rollups refreshed for affected days after purge or expiry; a Retention settings page (policy, preview, last report).
+- D6 Gates: (1) retention in dry run deletes nothing and reports correct counts; (2) in enforce, expired runs vanish from every backend (Postgres, artifact store, search, rollups) in the stated order, unexpired ones are untouched, the API role still cannot update or delete events and the retention role can delete only the retained tables, and a deleting run reads as "trace expired"; (3) a crash mid-batch leaves a consistent state and a rerun completes it; (4) the kill switch and the per-tick bounds hold; (5) policy changes are role-gated, audited, validated (floor 7 days), and workspace-isolated; (6) the backup/restore drill passes in CI with the checks listed in D4 and the times are recorded; (7) the migration safety table is complete and enforced by a test, secret rotation re-seals every destination and the old key opens nothing afterwards, purge commands leave no row of the project in any backend, and the dirty marker loses no refresh; (8) overhead: retention batches do not push ingestion latency beyond a stated bound while running, and no existing test is weakened; clean CI; Fable review with security pass and no open P0/P1.
+
+## Known issues considered
+
+Pulled in: KI-021, 040 (retention and orphans), 055 (rollup growth), 057, 072, 103, 170, 180, 184, and the retention-related notes in KI-137/KI-185. Stays out: in-place content scrubbing (new KI), WAL/PITR (documented), 19c items.
+
+## Acceptance criteria
+
+The eight gates of D6, each evidenced by a command and its observed output; plus the repo standard (format, lint, mypy no args, tests, migration check empty-to-head and previous-head-to-new-head, OpenAPI/client checks, UI exercised in a browser, `scripts/quality.sh full` green in CI, review with security pass and no open P0/P1).
+
+## Verification plan
+
+Unit and property tests for tier selection, ordering and idempotency; API tests for policy, preview and reports; destructive-path tests against real Postgres, a real artifact directory, search and rollups, including crash injection; a `retention-e2e.sh` on a real stack with a CI job; a `backup-restore-e2e.sh` performing the drill with a CI job; my own gate run; then a Fable review with security pass.
+
+## Risks
+
+- Irreversible deletion: dry-run default, bounded ticks, ordering, deleting marker, audit, runbook, backup requirement.
+- A privileged role: separate role, only DELETE on named tables, not reachable from the API process, privilege tests.
+- Partial deletion across backends: per-backend completion records and idempotent retries.
+- Stacked branch: rebase on 19a changes; the 19b PR opens only after #186 merges.
+- Machine-dependent e2e assertions (lesson from 19a): assert deterministic facts, not wall-clock thresholds, in CI scripts.
+
+## Ordered steps (one commit unit each)
+
+1. Retention foundation: `abb_retention` role and grants, policy storage and API (per workspace, floor, audit), the job skeleton with modes, dry run and the report table, tombstones, ADR (amends INV-1), migration tests and privilege tests.
+2. Enforcement: the tiers, ordering, deleting marker, per-backend completion and retries, analytics refresh and the KI-057 dirty marker, operational prunes, kill switch and bounds.
+3. Web: Retention settings page (policy, preview, last report), run page "trace expired" state, fixtures, Playwright.
+4. Backup and restore: `abb backup` / `abb restore`, manifest and checks, optional encryption, the migration safety table and its test, `abb rotate-secrets alerts`.
+5. Purge commands (`purge-project`, `purge-workspace`) with per-backend completion.
+6. `retention-e2e.sh` and `backup-restore-e2e.sh` with CI jobs, benchmarks, runbooks, closing evidence.
+7. Review, fixes, push (stacked) and PR (opened against main after #186 merges).
