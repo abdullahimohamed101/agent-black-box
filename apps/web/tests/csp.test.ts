@@ -26,7 +26,7 @@ describe("pageCsp", () => {
     for (const d of [
       "frame-ancestors 'none'",
       "object-src 'none'",
-      "base-uri 'self'",
+      "base-uri 'none'",
       "form-action 'self'",
     ])
       expect(csp).toContain(d);

@@ -552,6 +552,7 @@ jobs:
     # authorization and tenancy, dedupe / cooldown / rate limit / daily cap, ingestion cost with and without rules, and a real browser:
     # API + worker + local receivers + fake OIDC provider + built web server (scripts/alerts-e2e.sh). About four minutes.
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine
@@ -603,6 +604,7 @@ jobs:
     # environment, body cap, privileged-role refusal), sessions and invitations, alert ports and search fairness, the cost of all of it, and
     # a real browser (zero CSP violations, quota usage, sessions, the no-access notice). About ten minutes.
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:16-alpine

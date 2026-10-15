@@ -123,7 +123,7 @@ for (const [width, height] of [
         expect(directive("connect-src")).toBe("connect-src 'self'");
         expect(csp).toContain("frame-ancestors 'none'");
         expect(csp).toContain("object-src 'none'");
-        expect(csp).toContain("base-uri 'self'");
+        expect(csp).toContain("base-uri 'none'");
         expect(csp).toContain("form-action 'self'");
         expect(headers["x-content-type-options"]).toBe("nosniff");
         expect(headers["x-frame-options"]).toBe("DENY");

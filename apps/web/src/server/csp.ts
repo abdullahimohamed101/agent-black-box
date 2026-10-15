@@ -46,7 +46,7 @@ export function pageCsp({ nonce, dev = false, https = false }: CspOptions): stri
     "frame-src 'none'",
     "frame-ancestors 'none'",
     "object-src 'none'",
-    "base-uri 'self'",
+    "base-uri 'none'",
     "form-action 'self'",
   ];
   if (https) directives.push("upgrade-insecure-requests");

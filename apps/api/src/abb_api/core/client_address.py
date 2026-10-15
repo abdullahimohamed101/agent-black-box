@@ -34,6 +34,8 @@ def client_address(request: Request, *, trust_proxy: bool) -> str | None:
 
 
 def address_counter_key(address: str) -> str:
-    """What is stored in the counter table instead of the address: a salted digest, so a database
-    reader sees a pseudonym that expires within two minutes, never the address itself."""
+    """What is stored in the counter table instead of the address: a domain-separated digest (the
+    fixed prefix keeps it from colliding with any other SHA-256 use; it is not a secret salt), so a
+    database reader sees a pseudonym that expires within two minutes, never the address itself.
+    An IPv4 space can be enumerated, so this is a pseudonym, not anonymisation (ADR-153 point 5)."""
     return hashlib.sha256(b"abb-auth-fail-address:" + address.encode("ascii")).hexdigest()[:32]
