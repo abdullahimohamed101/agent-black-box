@@ -11,6 +11,9 @@ Operating Agent Black Box itself (spec §43, §104-125). Runbooks live in `docs/
 | Migrations | `alembic upgrade head` (`make migrate`) | run once per release before the new API/worker start; compose does this in the `migrate` service |
 | Provisioning | `python -m abb_api.cli ...` | workspaces, projects, API keys, dead-letter inspection, `rebuild-costs`, `rebuild-findings` |
 
+Upgrade note (ADR-156): with an https `ABB_WEB_ORIGIN` the sign-in cookie is renamed `__Host-abb_login` (`Path=/`). Deploy the API and the web
+app together. Logins started in the previous 10 minutes fail once with "Sign-in did not complete. Try again."; sessions are untouched.
+
 Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to prove it works end to end,
 `make down`. Container images run as a non-root user and share one API image for api, worker and migrate.
 

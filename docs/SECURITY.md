@@ -101,9 +101,10 @@ ingestion edge | control plane | database/object storage | human approvers.
   and a device label chosen from a closed vocabulary (the `User-Agent` is never stored), each change is audited in the person's workspaces
   and limited per person (`ABB_SESSION_WRITES_PER_MINUTE`). **Invitations follow their inviter** (KI-077): demoting a person to a role
   without `invite.write`, or removing them, revokes their open invitations in that workspace in the same transaction, one audit row each.
-  **Open design (ADR-156, Proposed, KI-075):** the `abb_login` cookie cannot carry the `__Host-` prefix (its path is `/api/auth`), so a
-  sibling subdomain that can set cookies could plant a login state and sign a victim in as the attacker; the proposed fix moves it to
-  `__Host-abb_login` with `Path=/` on https. Until it is implemented the exposure stands (it needs a cookie-setting foothold on a related origin).
+  **The login cookie is `__Host-abb_login` on https** (ADR-156, KI-075, implemented): `Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600`, no `Domain`,
+  so a sibling subdomain cannot plant or overwrite it (login CSRF by cookie planting); the unprefixed name is never read on https (no fallback), and the
+  web relay refuses a callback whose `Cookie` header carries the login cookie twice. On plain http (development) the name stays `abb_login` with
+  `Path=/api/auth` and the prefix protection does not exist (the same as the session cookie); production requires an https web origin.
 - Authorization (implemented, Phase 15, ADR-061): one `authorize()` path for keys and people, the role/scope matrix as data with a literal
   second copy in the tests (both directions), every route in a registry the tests walk (a route without a case fails CI), an AST test against
   scattered role checks, canary tests that nothing of another workspace leaks, `404` (never `403`) for a workspace or id the actor cannot see.

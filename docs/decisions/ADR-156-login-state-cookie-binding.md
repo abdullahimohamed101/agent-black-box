@@ -1,6 +1,6 @@
 # ADR-156: Binding the sign-in state to the browser with a `__Host-` cookie (login CSRF from a sibling origin)
 
-Status: Proposed (Phase 19a, step 5). A design for review. Nothing in this ADR is implemented: cookie behaviour is unchanged until the user approves it. Addresses KI-075 (S3).
+Status: Accepted (approved by the user 2026-10-15: option A plus D) and implemented in Phase 19a step 5b. Addresses KI-075 (S3).
 Date: 2026-10-14
 Phase: 19a
 
@@ -109,4 +109,15 @@ Docs: SECURITY.md (the login-cookie sentence and the https/prefix note), OPERATI
 
 ## Decision
 
-Pending review. Recommended: A with D.
+Accepted 2026-10-15: A with D. Not adopted: B, C.
+
+## Implementation notes (Phase 19a step 5b)
+
+* `auth/cookies.py`: `login_cookie_name(settings)` and `login_cookie_path(settings)` replace the constants; the rule is `is_secure` (an https `ABB_WEB_ORIGIN`), the same one the session cookie follows, with no new setting. `auth/router.py` sets, reads and clears through them (the clear uses the same name, path and attributes). There is no fallback to `abb_login` on https.
+* Web: `loginCookieName()` in `server/config.ts`; `authRoutes.ts` uses it for the relay allowlist, the callback read and the forward, and `cookieCount` refuses a callback whose `Cookie` header carries the login cookie more than once (`login_failed`, no API call, no detail).
+* Tests: API (exact https attributes and clear, the planting attack with no user/session row and the attacker's `login_states` row not consumed, http unchanged); web unit tests (names, duplicate refusal, the other name not relayed or forwarded); `scripts/auth-https-e2e.sh` with `e2e/auth-https.spec.ts` (real browser over https via `scripts/tls-proxy.mjs`, because `next start` has no https mode): the `__Host-` cookie is stored during the flow and spent after, the browser refuses a `__Host-abb_login` write with `Domain` or a narrower `Path`, and a planted `abb_login` cannot complete the attacker's callback.
+* The https script is wired into the CI `auth-e2e` job (it needs only `openssl` and `node`) and `make auth-https-e2e`.
+
+## Rollout
+
+Deploy the API and the web app together. Logins started in the previous 10 minutes fail once with the usual "Sign-in did not complete. Try again." and succeed on the next try. Sessions are untouched. Rollback has the same transient effect. http deployments see no change.

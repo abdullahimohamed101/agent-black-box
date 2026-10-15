@@ -46,7 +46,7 @@ The authoritative table is `apps/api/src/abb_api/authz/matrix.py`; `GET /v1/me` 
 web shows or hides by it. Resources of another workspace, or of another project for a project key, are `404`, indistinguishable from nonexistent ones.
 
 ### Sign-in and identity
-- `GET /v1/auth/login?return_to=/w/...`: starts OIDC; `302` to the provider and sets the `abb_login` cookie. `return_to` must be one of the app's
+- `GET /v1/auth/login?return_to=/w/...`: starts OIDC; `302` to the provider and sets the login cookie (`__Host-abb_login`, `Path=/` on an https web origin; `abb_login`, `Path=/api/auth` on http). `return_to` must be one of the app's
   own routes (`422 RETURN_TO_INVALID`). `503 AUTH_NOT_CONFIGURED` when no issuer is set.
 - `GET /v1/auth/callback?code=&state=`: finishes it; `302` to the stored `return_to` with the session cookie. Every failure is `400/401 LOGIN_FAILED`
   (the cause is logged, never returned). Both endpoints are rate-limited (`429`) by a global backstop.
