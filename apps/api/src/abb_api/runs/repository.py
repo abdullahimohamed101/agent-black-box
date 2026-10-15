@@ -1,7 +1,7 @@
 """Run persistence. Runs are derived (INV-2): ingestion seeds them, the summarizer owns them."""
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -61,10 +61,25 @@ class RunRepository:
         Arrival order must not matter, so the first event of an unseen run creates it. Rows are
         written in id order so concurrent batches touching the same runs cannot deadlock.
         """
+        owners, _ = await self.ensure_runs_created(seeds)
+        return owners
+
+    async def ensure_runs_created(
+        self,
+        seeds: Sequence[RunSeed],
+        *,
+        known_owners: Mapping[uuid.UUID, uuid.UUID] | None = None,
+    ) -> tuple[dict[uuid.UUID, uuid.UUID], set[uuid.UUID]]:
+        """`ensure_runs`, and which of the runs this call created (quotas count only those).
+
+        A caller that has just looked the runs up passes `known_owners`; then the owners come from
+        it and from the rows this call created, and only a run that is neither (another project
+        created it in the meantime) is asked for again.
+        """
         if not seeds:
-            return {}
+            return {}, set()
         ordered = sorted(seeds, key=lambda s: s.run_id.bytes)
-        await self._conn.execute(
+        created = await self._conn.execute(
             insert(t.runs)
             .values(
                 [
@@ -81,11 +96,26 @@ class RunRepository:
                 ]
             )
             .on_conflict_do_nothing(index_elements=["workspace_id", "id"])
+            .returning(t.runs.c.id)
         )
+        made = {r.id for r in created}
+        if known_owners is None:
+            return await self.owners([s.run_id for s in ordered]), made
+        owners = {s.run_id: s.project_id for s in ordered if s.run_id in made}
+        owners |= {s.run_id: known_owners[s.run_id] for s in ordered if s.run_id in known_owners}
+        missing = [s.run_id for s in ordered if s.run_id not in owners]
+        if missing:
+            owners |= await self.owners(missing)
+        return owners, made
+
+    async def owners(self, run_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, uuid.UUID]:
+        """{run_id: owning project_id} for the runs of `run_ids` that exist."""
+        if not run_ids:
+            return {}
         rows = await self._conn.execute(
             select(t.runs.c.id, t.runs.c.project_id).where(
                 t.runs.c.workspace_id == self._tenant.workspace_id,
-                t.runs.c.id.in_([s.run_id for s in ordered]),
+                t.runs.c.id.in_(list(run_ids)),
             )
         )
         return {r.id: r.project_id for r in rows}

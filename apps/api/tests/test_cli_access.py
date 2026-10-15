@@ -48,6 +48,53 @@ async def audit_actions(engine: AsyncEngine, slug: str = "acme") -> list[tuple[s
 # ---------------------------------------------------------------- members
 
 
+async def test_removing_a_member_revokes_their_open_invitations_with_audit(
+    acme: Settings, engine: AsyncEngine
+) -> None:
+    """The API rule of KI-077 holds for the operator's command too."""
+    from datetime import UTC, datetime
+
+    from abb_event_schema.ids import IdKind
+
+    from abb_api.ids import new_uuid
+    from abb_api.workspaces.repository import InvitationRepository
+
+    for email, role in (("boss@example.com", "OWNER"), ("adm@example.com", "ADMIN")):
+        assert (
+            await invoke(
+                acme, "add-member", "--workspace", "acme", "--email", email, "--role", role
+            )
+        )[0] == 0
+    ws = await workspace_id(engine)
+    async with engine.begin() as conn:
+        users = UserRepository(conn)
+        adm, boss = (
+            await users.find_by_email("adm@example.com"),
+            await users.find_by_email("boss@example.com"),
+        )
+        assert adm and boss
+        repo = InvitationRepository(conn, TenantContext(ws))
+        soon = datetime.now(UTC) + timedelta(days=3)
+        for who, email in ((adm, "by-adm@x.test"), (boss, "by-boss@x.test")):
+            await repo.create(
+                new_uuid(IdKind.INVITATION), email=email, role="VIEWER",
+                token_hash=hash_session_token(email), invited_by=who.id, expires_at=soon,
+            )  # fmt: skip
+    code, _, err = await invoke(
+        acme, "remove-member", "--workspace", "acme", "--email", "adm@example.com"
+    )
+    assert code == 0, err
+    async with engine.connect() as conn:
+        state = {
+            r.email: r.revoked_at is not None
+            for r in await conn.execute(text("SELECT email, revoked_at FROM invitations"))
+        }
+    assert state == {"by-adm@x.test": True, "by-boss@x.test": False}
+    actions = await audit_actions(engine)
+    assert ("invitation.revoke_inviter_lost_rights", OPERATOR) in actions
+    assert [a for a, _ in actions].count("invitation.revoke_inviter_lost_rights") == 1
+
+
 async def test_add_list_and_remove_members_with_audit(acme: Settings, engine: AsyncEngine) -> None:
     code, _, err = await invoke(
         acme,

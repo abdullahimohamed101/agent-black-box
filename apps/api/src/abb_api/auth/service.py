@@ -27,15 +27,25 @@ from abb_api.workspaces.repository import MembershipRepository
 logger = logging.getLogger(__name__)
 
 
-def invalid_key() -> AppError:
+class KeyRejected(AppError):
+    """The one 401 for a bad key. `workspace_id` is the owner of the key id that was presented, when
+    there is one; it never leaves the server (the response is identical for every cause) and only
+    tells the throttle which workspace's audit log to note a throttling in (ADR-153)."""
+
+    def __init__(self, workspace_id: uuid.UUID | None = None) -> None:
+        super().__init__(
+            "API_KEY_INVALID",
+            "The API key is missing, malformed, expired or revoked.",
+            category=ErrorCategory.AUTHENTICATION,
+            status_code=401,
+        )
+        self.workspace_id = workspace_id
+
+
+def invalid_key(workspace_id: uuid.UUID | None = None) -> AppError:
     # One response for unknown, malformed, wrong-secret, revoked and expired keys: the caller
     # learns nothing about which keys exist. The reason is logged server-side by the caller.
-    return AppError(
-        "API_KEY_INVALID",
-        "The API key is missing, malformed, expired or revoked.",
-        category=ErrorCategory.AUTHENTICATION,
-        status_code=401,
-    )
+    return KeyRejected(workspace_id)
 
 
 def _rejection_reason(
@@ -68,7 +78,7 @@ async def authenticate(conn: AsyncConnection, token: str | None, clock: Clock) -
             "api key rejected",
             extra={"reason": reason, "key_id": parsed.key_id if parsed else None},
         )
-        raise invalid_key()
+        raise invalid_key(stored.workspace_id if stored else None)
     await ApiKeyLookup(conn).touch_last_used(stored, now)
     return Principal(
         kind="api_key",

@@ -158,6 +158,17 @@ async def test_a_target_that_resolves_inward_is_refused_by_the_test_too(web: Api
     assert receiver.connections == 0 and PUBLIC_IP
 
 
+async def test_a_port_outside_the_allow_list_is_refused_by_the_test_too(web: Api) -> None:
+    async with TlsReceiver() as receiver:
+        ident = await destination(web, url=receiver.url())  # saved when its port was allowed
+        settings = make_settings("postgresql+asyncpg://x:y@localhost/z", web_origin=WEB_ORIGIN)
+        sender = receiver.sender(allowed_ports=frozenset({443}))
+        with use_registry(n.build_registry(settings, sender)):
+            response = await post_test(web, await owner(web), ident)
+    assert response.json() == {"ok": False, "error_code": o.BLOCKED_PORT}
+    assert receiver.connections == 0
+
+
 async def test_an_unreadable_secret_reports_config_unreadable(web: Api) -> None:
     ident = await destination(web)
     async with web.engine.begin() as conn:

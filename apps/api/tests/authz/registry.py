@@ -40,7 +40,13 @@ PUBLIC: frozenset[tuple[str, str]] = frozenset(
 
 # Routes that need a signed-in person but no particular workspace and no action.
 SESSION_ONLY: frozenset[tuple[str, str]] = frozenset(
-    {("GET", "/v1/me"), ("POST", "/v1/invitations/accept")}
+    {
+        ("GET", "/v1/me"),
+        ("POST", "/v1/invitations/accept"),
+        ("GET", "/v1/auth/sessions"),
+        ("POST", "/v1/auth/sessions/revoke-others"),
+        ("DELETE", "/v1/auth/sessions/{session_id}"),
+    }
 )
 
 
@@ -186,6 +192,19 @@ def _security_settings(method: str) -> Builder:
         content = json.dumps({"muted_detectors": ["sec.risky_git"]}).encode()
         return RequestSpec(
             method, f"/v1/projects/{project}/security-settings",
+            content=content if method == "PUT" else None,
+            headers=JSON if method == "PUT" else {},
+        )  # fmt: skip
+
+    return build
+
+
+def _quotas(method: str) -> Builder:
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        project = overrides.get("project_id", side.project_id)
+        content = json.dumps({"events_per_day": 4_000_000}).encode()
+        return RequestSpec(
+            method, f"/v1/projects/{project}/quotas",
             content=content if method == "PUT" else None,
             headers=JSON if method == "PUT" else {},
         )  # fmt: skip
@@ -483,6 +502,14 @@ CASES: dict[tuple[str, str], RouteCase] = {
         RouteCase(
             "PUT", "/v1/projects/{project_id}/security-settings", actions.PROJECT_WRITE,
             _security_settings("PUT"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/projects/{project_id}/quotas", actions.PROJECT_READ,
+            _quotas("GET"), 200, ("project_id",),
+        ),
+        RouteCase(
+            "PUT", "/v1/projects/{project_id}/quotas", actions.PROJECT_WRITE,
+            _quotas("PUT"), 200, ("project_id",), probe_actors=ADMINS,
         ),
         RouteCase(
             "GET", "/v1/policies/current", actions.POLICY_READ, _policy_get("/v1/policies/current"),

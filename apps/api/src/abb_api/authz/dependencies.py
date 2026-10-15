@@ -15,15 +15,19 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.auth.cookies import session_cookie_name
+from abb_api.auth.keys import parse_key
 from abb_api.auth.service import (
+    KeyRejected,
     SessionContext,
     authenticate,
     authenticate_session,
     session_invalid,
 )
+from abb_api.auth.throttle import AuthThrottle
 from abb_api.authz.audit import authorize_audited
 from abb_api.authz.matrix import role_actions, role_own_actions
 from abb_api.authz.principal import Principal
+from abb_api.core.client_address import client_address
 from abb_api.core.config import Settings
 from abb_api.core.errors import (
     AppError,
@@ -108,16 +112,50 @@ async def _guarded(request: Request, work: Callable[[AsyncConnection], Awaitable
         raise
 
 
+def _bad_key_response(exc: AppError) -> AppError:
+    if exc.status_code == 401:
+        exc.headers["WWW-Authenticate"] = 'Bearer realm="agent-black-box"'
+    return exc
+
+
 async def _key_principal(request: Request) -> Principal:
+    settings: Settings = request.app.state.settings
+    throttle: AuthThrottle = request.app.state.auth_throttle
+    token = bearer_token(request)
+    # Memory only: a throttled request is refused here, before any lookup (ADR-153).
+    attempt = throttle.admit(token, client_address(request, trust_proxy=settings.trust_proxy))
+    if parse_key(token or "") is None:
+        # Missing or malformed: nothing can match, so answer without taking a pooled
+        # connection. Such a request is neither counted nor gated (ADR-153, point 4), so
+        # it must cost the database nothing either: hardening-e2e measured a pool
+        # checkout, ping and commit (about half a transaction) per junk key.
+        sampled = throttle.malformed_to_log()
+        if sampled is not None:  # one line per window, with the count since the last (P3)
+            logger.info(
+                "api key rejected",
+                extra={
+                    "reason": "malformed_or_missing",
+                    "key_id": None,
+                    "since_last_line": sampled,
+                },
+            )
+        raise _bad_key_response(KeyRejected())
+    if attempt is not None and throttle.known_invalid(attempt):
+        # Seen invalid moments ago: same 401, no database lookup, still counted as a failure.
+        refused = await throttle.failed(attempt, None)
+        raise _bad_key_response(refused or KeyRejected())
     try:
         principal: Principal = await _guarded(
             request,
-            lambda conn: authenticate(conn, bearer_token(request), request.app.state.clock),
+            lambda conn: authenticate(conn, token, request.app.state.clock),
         )
     except AppError as exc:
-        if exc.status_code == 401:
-            exc.headers["WWW-Authenticate"] = 'Bearer realm="agent-black-box"'
-        raise
+        if attempt is not None and exc.code == "API_KEY_INVALID":
+            workspace = exc.workspace_id if isinstance(exc, KeyRejected) else None
+            exc = await throttle.failed(attempt, workspace) or exc
+        raise _bad_key_response(exc) from None
+    if attempt is not None:
+        throttle.succeeded(attempt)
     chosen = request.headers.get(WORKSPACE_HEADER)
     if chosen is not None and chosen != public_id(IdKind.WORKSPACE, principal.workspace_id):
         raise workspace_not_found()  # a key is bound to its workspace; naming another is a 404

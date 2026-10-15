@@ -372,3 +372,73 @@ def test_flush_cannot_return_while_a_batch_is_between_the_buffer_and_the_sink() 
     release.set()
     assert exporter.flush(2) and delivered == [1]
     exporter.shutdown(1)
+
+
+QUOTA_ERROR = {
+    "index": 0,
+    "event_id": None,
+    "code": "QUOTA_EXCEEDED",
+    "quota": "events_per_day",
+    "issues": [{"loc": ["quota"], "code": "events_per_day", "message": "over"}],
+}
+
+
+def test_quota_refusals_inside_a_202_are_dropped_counted_and_never_retried(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ADR-154: the server refuses events of a project over its quota per event, inside a 202.
+
+    The SDK must treat that like any per-event rejection: no resend (a retry cannot help and would
+    only add load), no exception into the host, one bounded warning however many batches follow.
+    """
+
+    def respond(body: dict[str, Any]) -> bytes:
+        n = len(body["events"])
+        errors = [{**QUOTA_ERROR, "index": i} for i in range(n)]
+        return json.dumps(
+            {"accepted": 0, "duplicates": 0, "conflicts": 0, "rejected": n, "errors": errors}
+        ).encode()
+
+    stub = start_stub(respond=respond)
+    try:
+        bb = client(stub, batch_size=5)
+        with caplog.at_level("WARNING", logger="blackbox"):
+            emit(bb, 40)
+            assert bb.shutdown(5)
+        stats = bb.stats()
+        sent = sum(len(r.body["events"]) for r in stub.received)
+        assert sent == 42 and len({r.body["batch_id"] for r in stub.received}) == len(stub.received)
+        assert stats["rejected_by_server"] == 42 and stats["events_sent"] == 0
+        assert stats["retries"] == 0 and stats["internal_errors"] == 0
+        assert stats["dropped_export_failed"] == 0 and stats["dropped_rejected"] == 0
+        warnings = [r for r in caplog.records if "rejected" in r.getMessage()]
+        assert len(warnings) == 1  # many refused batches, one line a minute
+    finally:
+        stop_stub(stub)
+
+
+def test_a_mixed_batch_keeps_counting_the_accepted_events() -> None:
+    def respond(body: dict[str, Any]) -> bytes:
+        n = len(body["events"])
+        refused = n // 2
+        return json.dumps(
+            {
+                "accepted": n - refused,
+                "duplicates": 0,
+                "conflicts": 0,
+                "rejected": refused,
+                "errors": [{**QUOTA_ERROR, "index": i} for i in range(refused)],
+            }
+        ).encode()
+
+    stub = start_stub(respond=respond)
+    try:
+        bb = client(stub)
+        emit(bb, 6)
+        assert bb.shutdown(3)
+        stats = bb.stats()
+        assert stats["rejected_by_server"] + stats["events_sent"] == 8
+        assert stats["events_sent"] == 8 - stats["rejected_by_server"] > 0
+        assert stats["retries"] == 0
+    finally:
+        stop_stub(stub)

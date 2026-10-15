@@ -72,6 +72,13 @@ describe("sign-in page", () => {
     expect(document.body.innerHTML).not.toContain("onerror");
   });
 
+  it("tells someone nobody has invited, in the same plain words, without naming any account (KI-076)", async () => {
+    await login({ error: "no_access" });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No access yet. Ask a workspace owner to invite you.",
+    );
+  });
+
   it("an already signed-in visitor is sent on, as before", async () => {
     me.value = { status: "ok" };
     await expect(login({ return_to: "/w/acme/projects/all" })).rejects.toThrow(

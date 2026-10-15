@@ -10,7 +10,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.runs.queries import RunQueries
-from abb_api.search.reads import SearchBudget
+from abb_api.search.reads import SearchBudget, SearchGate
 from tests.api_fixtures import Api, build_api
 from tests.conftest import make_settings
 from tests.ingest_helpers import make_run_ids, wire_event
@@ -110,7 +110,9 @@ async def test_a_search_runs_in_a_read_only_transaction(
 async def test_a_flood_gets_timeouts_and_one_busy_while_ingestion_and_plain_reads_are_fine(
     make_api: MakeApi, monkeypatch: pytest.MonkeyPatch, engine: AsyncEngine
 ) -> None:
-    api = await make_api(search_timeout_seconds=1.5, search_max_concurrent=2)
+    # cap 4: one actor may hold two permits (ADR-158), so three concurrent searches from one key
+    # are two admitted and one refused
+    api = await make_api(search_timeout_seconds=1.5, search_max_concurrent=4)
     monkeypatch.setattr(RunQueries, "page", sleepy_page(5))
 
     async def search() -> Any:
@@ -127,7 +129,9 @@ async def test_a_flood_gets_timeouts_and_one_busy_while_ingestion_and_plain_read
     busy = next(r for r in results if r.json()["error"]["code"] == "SEARCH_BUSY")
     assert busy.status_code == 503 and busy.headers["retry-after"] == "1"
     assert busy.json()["error"]["retryable"] is True
+    assert busy.json()["error"]["details"] == {"reason": "actor_limit"}
     assert await active_sleepers(engine) == 0
+    assert api.app.state.search_gate.held == 0  # every permit was released
     assert api.app.state.engine.pool.checkedout() == 0
     again = await api.get("/v1/runs", token=READER, q="tool:github")  # permits came back
     assert again.status_code == 503 and again.json()["error"]["code"] == "SEARCH_TIMEOUT"
@@ -183,3 +187,41 @@ async def test_the_plain_listing_takes_no_permit_and_has_no_timeout(
         *(api.get("/v1/runs", token=READER, q=q) for q in ("", "", " "))
     )
     assert [r.status_code for r in responses] == [200, 200, 200] and gate_users == 3
+
+
+async def test_a_search_starved_of_a_connection_answers_timeout_within_its_budget(
+    make_api: MakeApi, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """KI-082: the wait for a pooled connection used to sit outside the budget, so the permit was
+    held for the budget plus the pool's 5 s and the answer was DEPENDENCY_UNAVAILABLE."""
+    import time
+    from contextlib import asynccontextmanager
+
+    api = await make_api(search_timeout_seconds=0.4)
+    engine = api.app.state.engine
+    pool = engine.pool
+    held: list[Any] = []
+    original = SearchGate.request
+
+    @asynccontextmanager
+    async def starving(self: SearchGate, workspace_id: Any, actor: str) -> Any:
+        # Authentication has its connection already; ingestion now takes every other one, as
+        # it would under load, after the permit is granted and before the search connects.
+        async with original(self, workspace_id, actor) as budget:
+            while pool.checkedout() < pool.size() + pool._max_overflow:
+                held.append(await engine.connect())
+            yield budget
+
+    monkeypatch.setattr(SearchGate, "request", starving)
+    try:
+        started = time.monotonic()
+        response = await api.get("/v1/runs", token=READER, q="tool:github")
+        elapsed = time.monotonic() - started
+        assert response.status_code == 503, response.text
+        assert response.json()["error"]["code"] == "SEARCH_TIMEOUT"
+        assert elapsed < 2.0, elapsed  # about the budget, far below pool_timeout (5 s)
+        assert api.app.state.search_gate.held == 0
+    finally:
+        for conn in held:
+            await conn.close()
+    assert pool.checkedout() == 0

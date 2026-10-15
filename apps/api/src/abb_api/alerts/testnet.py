@@ -14,6 +14,8 @@ build their sender from a small JSON file instead of the system:
 * the opener connects to 127.0.0.1 on the URL's port, but only for an address that some `hosts`
   entry hands out (so a private answer is refused by the sender before it gets here, exactly as in
   production, and nothing else can be reached through this path);
+* the port guard is the production one: the test's receiver ports are added through
+  `ABB_ALERTS_ALLOWED_PORTS`, not bypassed here;
 * TLS trusts only the given certificate, and still verifies it against the hostname.
 
 Everything between the resolver and the opener (the address check, the pinning, SNI, redirects,
@@ -24,6 +26,7 @@ import asyncio
 import json
 import logging
 import ssl
+from collections.abc import Collection
 from pathlib import Path
 
 from abb_api.alerts import outbound as o
@@ -43,7 +46,9 @@ def _read(path: Path) -> dict[str, list[str]]:
     }
 
 
-def sender_from_file(path: Path, *, timeout_seconds: float) -> o.SafeHttpsSender:
+def sender_from_file(
+    path: Path, *, timeout_seconds: float, allowed_ports: Collection[int]
+) -> o.SafeHttpsSender:
     data = json.loads(path.read_text())
     ca_pem = data.get("ca_pem") if isinstance(data, dict) else None
     context = ssl.create_default_context(cafile=str(ca_pem)) if ca_pem else None
@@ -65,5 +70,9 @@ def sender_from_file(path: Path, *, timeout_seconds: float) -> o.SafeHttpsSender
         )
 
     return o.SafeHttpsSender(
-        resolver=resolver, opener=opener, ssl_context=context, timeout_seconds=timeout_seconds
+        resolver=resolver,
+        opener=opener,
+        ssl_context=context,
+        timeout_seconds=timeout_seconds,
+        allowed_ports=allowed_ports,
     )

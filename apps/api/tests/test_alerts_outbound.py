@@ -65,7 +65,8 @@ async def test_an_ip_literal_in_a_stored_url_is_refused_even_though_save_should_
 ) -> None:
     async with TlsReceiver() as receiver:
         opened: list[tuple[str, int, str]] = []
-        outcome = await receiver.sender(opened=opened).post(url, HEADERS, b"{}")
+        sender = receiver.sender(opened=opened, allowed_ports=frozenset({443, 8443}))
+        outcome = await sender.post(url, HEADERS, b"{}")
     assert outcome.error_code == o.BLOCKED_ADDRESS and opened == []
 
 
@@ -200,6 +201,7 @@ async def test_an_untrusted_certificate_fails_tls() -> None:
             opener=receiver.sender()._opener,
             ssl_context=ssl.create_default_context(),  # does not trust the test certificate
             timeout_seconds=3,
+            allowed_ports={receiver.port},
         )
         outcome = await default_sender.post(receiver.url(), HEADERS, b"{}")
     assert outcome.error_code == o.TLS_FAILED and receiver.requests == []
@@ -263,3 +265,46 @@ async def test_a_task_cancelled_mid_send_does_not_leak() -> None:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
+
+
+# ---------------------------------------------------------------- port allow-list (KI-162)
+
+
+@pytest.mark.parametrize("port", [80, 8443, 22, 25, 6379, 9200, 1, 65535])
+async def test_a_port_outside_the_list_is_refused_before_any_lookup_or_connection(
+    port: int,
+) -> None:
+    looked_up: list[str] = []
+
+    async def resolver(host: str, p: int) -> list[str]:
+        looked_up.append(host)
+        return [PUBLIC_IP]
+
+    sender = o.SafeHttpsSender(resolver=resolver)  # the production default: 443 only
+    outcome = await sender.post(f"https://{HOST}:{port}/h", HEADERS, b"{}")
+    assert outcome == o.SendOutcome.failure(o.BLOCKED_PORT)
+    assert not outcome.retryable and looked_up == []
+
+
+async def test_port_zero_is_not_read_as_443() -> None:
+    outcome = await o.SafeHttpsSender().post(f"https://{HOST}:0/h", HEADERS, b"{}")
+    assert outcome.error_code == o.BLOCKED_PORT
+
+
+async def test_the_implicit_port_is_443_and_the_list_can_be_extended() -> None:
+    async with TlsReceiver() as receiver:
+        refused = await receiver.sender(allowed_ports=frozenset({443})).post(
+            receiver.url(), HEADERS, b"{}"
+        )
+        allowed = await receiver.sender(allowed_ports=frozenset({443, receiver.port})).post(
+            receiver.url(), HEADERS, b"{}"
+        )
+    assert refused.error_code == o.BLOCKED_PORT and allowed.ok
+
+
+async def test_the_address_check_still_applies_on_an_allowed_port() -> None:
+    async with TlsReceiver() as receiver:
+        outcome = await receiver.sender(resolver=stub(["127.0.0.1"])).post(
+            receiver.url(), HEADERS, b"{}"
+        )
+    assert outcome.error_code == o.BLOCKED_ADDRESS

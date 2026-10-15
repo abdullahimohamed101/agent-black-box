@@ -58,8 +58,11 @@ async def test_names_resolve_from_the_file_and_the_address_check_still_applies(
             table.write_text(json.dumps({"hosts": hosts, "ca_pem": str(ca)}))
 
         write(**{HOST: [PUBLIC_IP]})
-        sender = sender_from_file(table, timeout_seconds=3)
         url = f"https://{HOST}:{receiver.port}/hook"
+        guarded = sender_from_file(table, timeout_seconds=3, allowed_ports={443})
+        blocked = await guarded.post(url, {}, b"{}")  # the port guard is not bypassed by the file
+        assert blocked.error_code == o.BLOCKED_PORT and receiver.requests == []
+        sender = sender_from_file(table, timeout_seconds=3, allowed_ports={443, receiver.port})
         assert (await sender.post(url, {}, b"{}")).ok
         assert len(receiver.requests) == 1
         write(**{HOST: ["10.0.0.5"]})  # the same name now answers privately: refused, no request

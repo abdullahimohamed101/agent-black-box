@@ -14,8 +14,11 @@ What it does, in order, for every request:
    resolved a second time, so DNS rebinding between the check and the connection cannot swap the
    address.
 4. No redirect is ever followed (a 3xx is a failure, `http_3xx`).
-5. One total deadline covers resolution, connect, TLS, write and the read of the response head.
-6. The response is read only as far as the status line (capped); the body is never read, stored
+5. The port must be in the allow-list (`ABB_ALERTS_ALLOWED_PORTS`, 443 by default) even though the
+   target was checked at save time, because the list can be tightened later (`blocked_port`,
+   permanent, nothing is resolved or connected).
+6. One total deadline covers resolution, connect, TLS, write and the read of the response head.
+7. The response is read only as far as the status line (capped); the body is never read, stored
    or logged, and the connection is closed.
 
 The HTTP/1.1 request is written by hand on an asyncio TLS stream because no general client lets a
@@ -30,12 +33,12 @@ import ipaddress
 import re
 import socket
 import ssl
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
 from typing import Final
 from urllib.parse import quote, urlsplit
 
-from abb_api.alerts.targets import is_public_ip
+from abb_api.alerts.targets import DEFAULT_ALLOWED_PORTS, DEFAULT_PORT, is_public_ip
 
 # Fixed error vocabulary (stored in `alert_notifications.last_error_code`).
 TIMEOUT: Final = "timeout"
@@ -43,6 +46,7 @@ CONNECT_FAILED: Final = "connect_failed"
 DNS_FAILED: Final = "dns_failed"
 TLS_FAILED: Final = "tls_failed"
 BLOCKED_ADDRESS: Final = "blocked_address"
+BLOCKED_PORT: Final = "blocked_port"  # a destination saved before the allow-list was tightened
 HTTP_3XX: Final = "http_3xx"
 HTTP_4XX: Final = "http_4xx"
 HTTP_5XX: Final = "http_5xx"
@@ -51,8 +55,8 @@ SMTP_FAILED: Final = "smtp_failed"
 CONFIG_UNREADABLE: Final = "config_unreadable"
 INTERNAL_ERROR: Final = "internal_error"
 ERROR_CODES: Final = frozenset({
-    TIMEOUT, CONNECT_FAILED, DNS_FAILED, TLS_FAILED, BLOCKED_ADDRESS, HTTP_3XX, HTTP_4XX,
-    HTTP_5XX, BAD_RESPONSE, SMTP_FAILED, CONFIG_UNREADABLE, INTERNAL_ERROR,
+    TIMEOUT, CONNECT_FAILED, DNS_FAILED, TLS_FAILED, BLOCKED_ADDRESS, BLOCKED_PORT, HTTP_3XX,
+    HTTP_4XX, HTTP_5XX, BAD_RESPONSE, SMTP_FAILED, CONFIG_UNREADABLE, INTERNAL_ERROR,
 })  # fmt: skip
 # Worth another attempt: the receiver may come back. The others need a person to change something.
 RETRYABLE_CODES: Final = frozenset({TIMEOUT, CONNECT_FAILED, DNS_FAILED, HTTP_5XX, INTERNAL_ERROR})
@@ -119,7 +123,9 @@ class SafeHttpsSender:
         opener: Opener = system_opener,
         ssl_context: ssl.SSLContext | None = None,
         timeout_seconds: float = 5.0,
+        allowed_ports: Collection[int] = DEFAULT_ALLOWED_PORTS,
     ) -> None:
+        self._allowed_ports = frozenset(allowed_ports)
         self._resolver = resolver
         self._opener = opener
         self._context = ssl_context or ssl.create_default_context()
@@ -145,12 +151,14 @@ class SafeHttpsSender:
     async def _post(self, url: str, headers: Mapping[str, str], body: bytes) -> SendOutcome:
         try:
             parts = urlsplit(url)
-            port = parts.port or 443
+            port = DEFAULT_PORT if parts.port is None else parts.port
             host = parts.hostname
         except ValueError:
             return SendOutcome.failure(CONFIG_UNREADABLE)
         if parts.scheme != "https" or not host or parts.username or parts.password:
             return SendOutcome.failure(CONFIG_UNREADABLE)  # saved targets are https; refuse anyway
+        if port not in self._allowed_ports:
+            return SendOutcome.failure(BLOCKED_PORT)  # before any lookup or connection
         try:
             request = _request(parts.path, parts.query, host, port, headers, body)
         except ValueError:

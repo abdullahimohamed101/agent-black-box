@@ -396,6 +396,10 @@ describe("destinations", () => {
     expect(
       await form.findByText("Addresses on an internal network are not allowed."),
     ).toBeInTheDocument();
+    await user.clear(form.getByLabelText(/^Webhook URL/));
+    await user.type(form.getByLabelText(/^Webhook URL/), "https://hooks.example.com:6379/x");
+    await user.click(form.getByRole("button", { name: "Add destination" }));
+    expect(await form.findByText(/That port is not allowed/)).toBeInTheDocument();
     expect(form.getByLabelText("Name")).toHaveValue("Plain");
   });
 
@@ -632,6 +636,7 @@ describe("alerts vocabulary", () => {
       "dns_failed",
       "tls_failed",
       "blocked_address",
+      "blocked_port",
       "http_3xx",
       "http_4xx",
       "http_5xx",

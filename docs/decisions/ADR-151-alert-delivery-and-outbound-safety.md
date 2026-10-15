@@ -118,3 +118,7 @@ name that does not resolve to a public address. Rather than weaken the sender, t
   thread, so a resolver that hangs (an unreachable DNS server) keeps one pool thread busy until the OS gives up (typically 5 to 30 s). A flood of destinations with a black-hole name could occupy the pool
   (default `min(32, cpus + 4)` threads) for that long; the per-destination limits, the attempt cap and auto-pause bound how many such rows exist. A dedicated bounded executor with a queue limit is the fix if it is
   ever seen; the other users of the default pool in the worker are SMTP sends and the file artifact store.
+
+## Amendment 2 (Phase 19a step 6, ADR-158): the port allow-list
+
+The sender now refuses a destination whose port (explicit, or 443 from `https://`) is not in `ABB_ALERTS_ALLOWED_PORTS` (default 443), with the permanent code `blocked_port`, before resolving or connecting. Save and update refuse it as `port_not_allowed`. The test network of Addendum 1 adds its receiver ports through the same setting and does not bypass the check. See ADR-158.

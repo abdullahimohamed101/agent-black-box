@@ -5,6 +5,7 @@ inside a test event loop.
 """
 
 import asyncio
+import uuid
 
 import pytest
 from alembic.autogenerate import compare_metadata
@@ -92,6 +93,10 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0094",
         "0095",
         "0096",
+        "0097",
+        "0098",
+        "0099",
+        "0100",
     ]
 
 
@@ -321,3 +326,171 @@ def test_0095_creates_the_alerting_tables_and_drops_them_again() -> None:
         )
         alembic(url, "downgrade", "0094")
         assert asyncio.run(table_names(url)) == before
+
+
+def test_0097_creates_the_rate_limit_counters_and_drops_them_again() -> None:
+    """Phase 19a step 1: one additive table; the previous head upgrades to it and back."""
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0096")
+        before = asyncio.run(table_names(url))
+        assert "rate_limit_counters" not in before
+        alembic(url, "upgrade", "0097")
+        assert asyncio.run(table_names(url)) - before == {"rate_limit_counters"}
+        assert {"ix_rate_limit_counters_expires"} <= asyncio.run(
+            index_names(url, "rate_limit_counters")
+        )
+        alembic(url, "downgrade", "0096")
+        assert asyncio.run(table_names(url)) == before
+
+
+def test_0098_creates_the_quota_tables_backfills_artifact_bytes_and_drops_them_again() -> None:
+    """Phase 19a step 3: three additive tables; existing artifacts count from the first request."""
+    created = {"project_quota_overrides", "project_usage_daily", "project_artifact_usage"}
+    workspace, alpha, beta = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+    async def seed(url: str) -> None:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("INSERT INTO workspaces (id, name, slug) VALUES (:w, 'w', 'w')"),
+                {"w": workspace},
+            )
+            for project, slug in ((alpha, "alpha"), (beta, "beta")):
+                await conn.execute(
+                    text(
+                        "INSERT INTO projects (workspace_id, id, name, slug) "
+                        "VALUES (:w, :p, :s, :s)"
+                    ),
+                    {"w": workspace, "p": project, "s": slug},
+                )
+            # alpha: 100 + 250 bytes and one artifact of unknown size; beta: none
+            for size in (100, 250, None):
+                await conn.execute(
+                    text(
+                        "INSERT INTO artifacts (workspace_id, id, run_id, project_id, "
+                        "artifact_type, storage_uri, size_bytes) "
+                        "VALUES (:w, :a, :r, :p, 'stdout', 'k', :size)"
+                    ),
+                    {
+                        "w": workspace,
+                        "a": uuid.uuid4(),
+                        "r": uuid.uuid4(),
+                        "p": alpha,
+                        "size": size,
+                    },
+                )
+        await engine.dispose()
+
+    async def backfilled(url: str) -> dict[uuid.UUID, int]:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT project_id, bytes_stored FROM project_artifact_usage")
+            )
+            found = {r[0]: int(r[1]) for r in rows}
+        await engine.dispose()
+        return found
+
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0097")
+        before = asyncio.run(table_names(url))
+        assert not created & before
+        asyncio.run(seed(url))
+        alembic(url, "upgrade", "0098")
+        assert asyncio.run(table_names(url)) - before == created
+        assert asyncio.run(backfilled(url)) == {alpha: 350}  # beta has no artifacts: no row
+        alembic(url, "downgrade", "0097")
+        assert asyncio.run(table_names(url)) == before
+        alembic(url, "upgrade", "head")  # and the data survives the round trip
+        assert asyncio.run(backfilled(url)) == {alpha: 350}
+
+
+def test_0099_adds_the_session_device_hint_column_and_invitation_index_and_drops_them() -> None:
+    """Phase 19a step 5: one nullable column and one partial index; old sessions have no hint."""
+
+    async def insert_session(url: str) -> None:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("INSERT INTO users (id, email) VALUES (gen_random_uuid(), 'a@x.test')")
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO sessions (id, user_id, token_hash, expires_at, idle_expires_at) "
+                    "SELECT gen_random_uuid(), id, decode(repeat('ab', 32), 'hex'), "
+                    "now() + interval '1 day', now() + interval '1 day' FROM users"
+                )
+            )
+        await engine.dispose()
+
+    async def hints(url: str) -> list[object]:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.connect() as conn:
+            found = (await conn.execute(text("SELECT device_hint FROM sessions"))).scalars().all()
+        await engine.dispose()
+        return list(found)
+
+    async def too_long(url: str) -> bool:
+        engine = create_async_engine(url, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("UPDATE sessions SET device_hint = repeat('x', 65)"))
+        except Exception:
+            return True
+        finally:
+            await engine.dispose()
+        return False
+
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0098")
+        assert "device_hint" not in asyncio.run(column_names(url, "sessions"))
+        asyncio.run(insert_session(url))
+        alembic(url, "upgrade", "0099")
+        assert "device_hint" in asyncio.run(column_names(url, "sessions"))
+        assert "ix_invitations_open_email" in asyncio.run(index_names(url, "invitations"))
+        assert asyncio.run(hints(url)) == [None]
+        assert asyncio.run(too_long(url))  # the length is bounded in the database too
+        alembic(url, "downgrade", "0098")
+        assert "device_hint" not in asyncio.run(column_names(url, "sessions"))
+        assert "ix_invitations_open_email" not in asyncio.run(index_names(url, "invitations"))
+        alembic(url, "upgrade", "head")
+
+
+def test_0100_revokes_delete_on_the_quota_tables_and_adds_the_active_key_index() -> None:
+    """Phase 19a review: reversible; the runtime role keeps SELECT, INSERT and UPDATE."""
+
+    async def facts(url: str) -> dict[str, bool]:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.connect() as conn:
+            deletes = {
+                name: bool(
+                    (
+                        await conn.execute(
+                            text("SELECT has_table_privilege('abb_runtime', :n, 'DELETE')"),
+                            {"n": name},
+                        )
+                    ).scalar_one()
+                )
+                for name in (
+                    "project_quota_overrides",
+                    "project_usage_daily",
+                    "project_artifact_usage",
+                )
+            }
+        await engine.dispose()
+        return deletes
+
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0099")
+        before = asyncio.run(facts(url))
+        assert all(before.values())
+        assert "ix_api_keys_active" not in asyncio.run(index_names(url, "api_keys"))
+        alembic(url, "upgrade", "0100")
+        after = asyncio.run(facts(url))
+        assert not any(after.values())
+        assert "ix_api_keys_active" in asyncio.run(index_names(url, "api_keys"))
+        alembic(url, "downgrade", "0099")
+        restored = asyncio.run(facts(url))
+        assert all(restored.values())
+        assert "ix_api_keys_active" not in asyncio.run(index_names(url, "api_keys"))
+        alembic(url, "upgrade", "head")

@@ -1,15 +1,20 @@
 """Seed people for tests: users, memberships and ready-made sessions (no identity provider)."""
 
+import os
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from abb_event_schema.ids import IdKind
 from sqlalchemy import insert, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.auth.repository import SessionRepository, UserRecord, UserRepository
 from abb_api.auth.service import hash_session_token
 from abb_api.db import tables as t
+from abb_api.ids import new_uuid
+from abb_api.tenancy import TenantContext
+from abb_api.workspaces.repository import InvitationRepository
 
 
 async def add_member(
@@ -82,3 +87,27 @@ async def mint_session(
             user_id, hash_session_token(token), now=now, absolute=absolute, idle=idle
         )
     return token
+
+
+async def open_invitation(
+    engine: AsyncEngine,
+    workspace_id: uuid.UUID,
+    email: str,
+    *,
+    now: datetime,
+    role: str = "VIEWER",
+    ttl: timedelta = timedelta(days=7),
+) -> uuid.UUID:
+    """An open invitation for `email` (its token is never needed: sign-in only asks that one
+    exists, and accepting is a separate step). Returns the invitation id."""
+    invitation_id = new_uuid(IdKind.INVITATION)
+    async with engine.begin() as conn:
+        await InvitationRepository(conn, TenantContext(workspace_id)).create(
+            invitation_id,
+            email=email.lower(),
+            role=role,
+            token_hash=os.urandom(32),
+            invited_by=None,
+            expires_at=now + ttl,
+        )
+    return invitation_id

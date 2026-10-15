@@ -9,6 +9,8 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api import __version__
 from abb_api.alerts.router import router as alerts_router
@@ -22,14 +24,20 @@ from abb_api.artifacts.router import router as artifacts_router
 from abb_api.artifacts.service import ArtifactService
 from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
 from abb_api.audit.router import router as audit_router
+from abb_api.auth.active_keys import ActiveKeyIds
+from abb_api.auth.cookies import is_secure
 from abb_api.auth.keys_router import router as api_keys_router
 from abb_api.auth.login import LoginService
 from abb_api.auth.oidc import OidcClient
+from abb_api.auth.repository import ApiKeyLookup
 from abb_api.auth.router import router as auth_router
+from abb_api.auth.sessions_router import router as sessions_router
+from abb_api.auth.throttle import AuthThrottle
 from abb_api.authz.audit import new_denial_limiter
 from abb_api.clock import Clock, system_clock
 from abb_api.comparison.router import router as comparison_router
 from abb_api.comparison.service import ComparisonService
+from abb_api.core.body_budget import BodyBudget, BodyBudgetMiddleware
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.errors import install_error_handlers
 from abb_api.core.logging import configure_logging
@@ -37,6 +45,7 @@ from abb_api.core.middleware import RequestContextMiddleware
 from abb_api.cost.router import rebuild_router
 from abb_api.cost.router import router as pricing_router
 from abb_api.db import create_engine
+from abb_api.db.role_check import PrivilegedDatabaseRole, enforce_role
 from abb_api.evaluations.router import router as evaluators_router
 from abb_api.evaluations.run_router import router as run_evaluations_router
 from abb_api.evaluations.runs import RunEvaluationService
@@ -49,8 +58,18 @@ from abb_api.health.router import router as health_router
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter, RateLimiter
 from abb_api.ingestion.router import router as ingestion_router
 from abb_api.ingestion.service import IngestionService
+from abb_api.limits import Scope
+from abb_api.limits.factory import (
+    build_counters,
+    default_ingest_bucket,
+    ingest_limiter,
+    minute_limiter,
+)
 from abb_api.policies.api_service import PolicyApiService
 from abb_api.policies.router import router as policies_router
+from abb_api.quotas.router import router as quotas_router
+from abb_api.quotas.service import QuotaApiService
+from abb_api.quotas.settings import default_limits
 from abb_api.runs.router import router as runs_router
 from abb_api.runs.service import RunService
 from abb_api.security.api_service import SecurityApiService
@@ -73,7 +92,13 @@ _BEARER_ONLY = {
     ("post", "/v1/runs"),
     ("put", "/v1/artifacts/{artifact_id}"),
 }
-_SESSION_ONLY = {("get", "/v1/me"), ("post", "/v1/invitations/accept")}
+_SESSION_ONLY = {
+    ("get", "/v1/me"),
+    ("post", "/v1/invitations/accept"),
+    ("get", "/v1/auth/sessions"),
+    ("post", "/v1/auth/sessions/revoke-others"),
+    ("delete", "/v1/auth/sessions/{session_id}"),
+}
 _NO_CREDENTIAL = {("get", "/v1/auth/login"), ("get", "/v1/auth/callback")}
 _OPTIONAL_SESSION = {("post", "/v1/auth/logout")}
 WORKSPACE_PARAMETER: dict[str, Any] = {
@@ -164,6 +189,13 @@ def _oidc_client(
     )
 
 
+async def _load_active_key_ids(engine: AsyncEngine, clock: Clock, limit: int) -> list[str]:
+    """One indexed, bounded read of the usable key ids (the throttle's refresh, ADR-153)."""
+    async with engine.begin() as conn:
+        await conn.execute(text("SELECT set_config('statement_timeout', '4000', true)"))
+        return await ApiKeyLookup(conn).active_key_ids(clock(), limit)
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -176,12 +208,9 @@ def create_app(
     settings = settings or get_settings()
     configure_logging(settings.log_level)
 
-    limiter = rate_limiter or InMemoryRateLimiter(
-        events_per_second=settings.rate_limit_events_per_second,
-        burst_events=settings.rate_limit_burst_events,
-        bytes_per_second=settings.rate_limit_bytes_per_second,
-        burst_bytes=settings.rate_limit_burst_bytes,
-    )
+    # Local guards (cheap, in front); the shared tier behind them is built per lifespan, once the
+    # engine exists (ADR-152).
+    local_ingest = rate_limiter or default_ingest_bucket(settings)
 
     login_bucket = login_limiter or InMemoryRateLimiter(
         events_per_second=settings.login_global_per_minute / 60,
@@ -195,8 +224,53 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = create_engine(settings.database_url)
         app.state.engine = engine
-        app.state.ingestion = IngestionService(engine, limiter, settings, clock)
-        app.state.runs = RunService(engine, clock)
+        try:
+            await enforce_role(engine, settings, service="api")  # KI-031: may refuse to start
+        except PrivilegedDatabaseRole:
+            await engine.dispose()
+            raise
+        counters = build_counters(engine, settings)
+        app.state.shared_counters = counters
+        ingest_guard = ingest_limiter(
+            local_ingest,
+            counters,
+            settings,
+            events=Scope.INGEST_EVENTS,
+            bytes_=Scope.INGEST_BYTES,
+        )
+        artifact_guard = ingest_limiter(
+            local_ingest,
+            counters,
+            settings,
+            events=Scope.ARTIFACT_COUNT,
+            bytes_=Scope.ARTIFACT_BYTES,
+        )
+        app.state.login_limiter = minute_limiter(
+            counters,
+            Scope.LOGIN_START,
+            settings.login_global_per_minute,
+            block_divisor=settings.limits_block_divisor,
+            local=login_bucket,
+        )
+        app.state.session_limiter = minute_limiter(
+            counters,
+            Scope.SESSION_WRITE,
+            settings.session_writes_per_minute,
+            block_divisor=settings.limits_block_divisor,
+        )
+        active_keys = ActiveKeyIds(
+            lambda limit: _load_active_key_ids(engine, clock, limit),
+            refresh_seconds=settings.auth_fail_active_keys_refresh_seconds,
+            cap=settings.auth_fail_active_keys_cap,
+        )
+        app.state.auth_throttle = AuthThrottle(settings, counters, engine, active_keys=active_keys)
+        app.state.ingestion = IngestionService(engine, ingest_guard, settings, clock)
+        app.state.runs = RunService(
+            engine,
+            clock,
+            default_limits(settings) if settings.quotas_enabled else None,
+            int(settings.quota_lock_timeout_seconds * 1000),
+        )
         app.state.findings = FindingsService(engine, app.state.runs)
         app.state.security = SecurityApiService(
             engine,
@@ -208,16 +282,21 @@ def create_app(
             ),
             clock,
         )
+        app.state.quotas = QuotaApiService(
+            engine, default_limits(settings), clock, enforced=settings.quotas_enabled
+        )
         app.state.policies = PolicyApiService(
             engine,
             writes_per_minute=settings.policy_writes_per_minute,
             validations_per_minute=settings.policy_validations_per_minute,
             dry_runs_per_minute=settings.policy_dry_runs_per_minute,
+            counters=counters,
+            block_divisor=settings.limits_block_divisor,
         )
-        app.state.alerts = AlertsService(engine, settings, clock)
+        app.state.alerts = AlertsService(engine, settings, clock, counters)
         hub = StreamHub(settings.database_url)
         app.state.hub = hub
-        app.state.approvals = ApprovalService(engine, settings, clock, hub)
+        app.state.approvals = ApprovalService(engine, settings, clock, hub, counters=counters)
         app.state.comparison = ComparisonService(engine, settings)
         app.state.experiments = ExperimentService(engine, settings)
         app.state.evaluators = EvaluatorService(engine, settings.judge_provider)
@@ -230,11 +309,12 @@ def create_app(
         app.state.artifacts = ArtifactService(
             engine,
             artifact_store or LocalFsArtifactStore(settings.artifact_dir),
-            limiter,
+            artifact_guard,
             clock,
             max_bytes=settings.artifact_max_bytes,
             scan_max_bytes=settings.security_scan_artifact_max_bytes,
             scan_max_seconds=settings.security_scan_artifact_max_seconds,
+            quota_defaults=default_limits(settings) if settings.quotas_enabled else None,
         )
         app.state.analytics = AnalyticsService(
             engine,
@@ -243,9 +323,14 @@ def create_app(
         )
         app.state.streams = StreamService(engine, hub, app.state.runs, settings, clock)
         hub.start()
+        if settings.auth_fail_enabled:
+            await active_keys.start()  # bounded; a failure leaves the set unloaded and retries
         try:
             yield
         finally:
+            await active_keys.stop()
+            if counters is not None:
+                await counters.close()
             await hub.stop()
             await engine.dispose()
 
@@ -258,12 +343,31 @@ def create_app(
             if settings.dev_sessions_enabled
             else "It is ignored because ABB_ENVIRONMENT is not development or test.",
         )
-    app = FastAPI(title="Agent Black Box API", version=__version__, lifespan=lifespan)
+    # The interactive docs and the schema route are a deliberate choice per environment (KI-023).
+    # `python -m abb_api.openapi` and the web client's generator call `app.openapi()` directly, so
+    # they work with the routes off.
+    docs = settings.docs_enabled
+    app = FastAPI(
+        title="Agent Black Box API",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
+        openapi_url="/openapi.json" if docs else None,
+    )
     app.state.settings = settings
     app.state.clock = clock
-    app.state.login_limiter = login_bucket
     app.state.denial_limiter = new_denial_limiter(settings.audit_denials_per_minute)
     install_error_handlers(app)
+    # Innermost (added first): a body refused for the byte budget (503) is still a CORS-readable,
+    # request-ID'd response (ADR-155).
+    app.state.body_budget = BodyBudget(settings.max_body_bytes_in_flight)
+    app.add_middleware(
+        BodyBudgetMiddleware,
+        budget=app.state.body_budget,
+        ceiling_bytes=settings.body_ceiling_bytes,
+        read_timeout_seconds=settings.body_read_timeout_seconds,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -272,13 +376,17 @@ def create_app(
         expose_headers=["X-Request-ID"],
     )
     # Added last so it is outermost: request IDs exist before CORS or handlers run.
-    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(
+        RequestContextMiddleware, hsts=is_secure(settings), docs_enabled=settings.docs_enabled
+    )
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(sessions_router)
     app.include_router(ingestion_router)
     app.include_router(runs_router)
     app.include_router(findings_router)
     app.include_router(security_router)
+    app.include_router(quotas_router)
     app.include_router(policies_router)
     app.include_router(approvals_router)
     app.include_router(alerts_router)

@@ -21,6 +21,8 @@ INGEST = "allow deny  deny deny   allow  allow deny  deny  allow 401 401 401 401
 LIST = "allow allow allow allow deny  allow deny  deny  allow 401 401 401 401"
 # An id of acme's project alpha: another workspace's key and another project's key see a 404.
 READ_ID = "allow allow allow allow deny  404   deny  deny  404   401 401 401 401"
+# A project's quotas: every key reads its own project; other projects' and workspaces' keys see 404.
+QUOTAS_READ = "allow allow allow allow allow 404   allow allow 404   401 401 401 401"
 EVERY_KEY = "allow allow allow allow allow allow allow allow allow 401 401 401 401"
 NO_KEY = "deny  deny  deny  deny   deny  deny  deny  deny  deny  401 401 401 401"
 UPLOAD = "deny  deny  deny  deny   deny  deny  allow deny  deny  401 401 401 401"
@@ -132,6 +134,8 @@ EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("GET", "/v1/security/detectors"): (LIST, U_RUNS),
     ("GET", "/v1/projects/{project_id}/security-settings"): (NO_KEY, U_PROJECT_ADMIN),
     ("PUT", "/v1/projects/{project_id}/security-settings"): (NO_KEY, U_PROJECT_ADMIN),
+    ("GET", "/v1/projects/{project_id}/quotas"): (QUOTAS_READ, U_PROJECTS),
+    ("PUT", "/v1/projects/{project_id}/quotas"): (NO_KEY, U_PROJECT_ADMIN),
     ("GET", "/v1/policies/current"): (NO_KEY, U_POLICY_READ),
     ("GET", "/v1/policies/versions"): (NO_KEY, U_POLICY_READ),
     ("GET", "/v1/policies/versions/{version}"): (NO_KEY, U_POLICY_READ),
@@ -180,7 +184,7 @@ def allowed_codes(actor: str, want: str) -> set[str]:
         return {
             "RUN_NOT_FOUND", "ARTIFACT_NOT_FOUND", "EVALUATOR_NOT_FOUND", "EVALUATION_NOT_FOUND",
             "EXPERIMENT_NOT_FOUND", "VARIANT_NOT_FOUND", "APPROVAL_NOT_FOUND",
-            "ALERT_DESTINATION_NOT_FOUND", "ALERT_RULE_NOT_FOUND",
+            "ALERT_DESTINATION_NOT_FOUND", "ALERT_RULE_NOT_FOUND", "PROJECT_NOT_FOUND",
         }  # fmt: skip
     return {"WORKSPACE_REQUIRED"}
 

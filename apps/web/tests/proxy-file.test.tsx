@@ -15,8 +15,21 @@ afterEach(() => {
 });
 
 describe("proxy.ts", () => {
-  it("only watches workspace pages", () => {
-    expect(config.matcher).toEqual(["/w/:path*"]);
+  it("runs for pages and routes (the policy is per response) but not for Next's static assets", () => {
+    // Phase 19a: this was ["/w/:path*"] when the proxy only gated workspace pages. It now also sets the CSP, so the
+    // login gate itself checks the path (see the next test).
+    const [rule] = config.matcher as { source: string }[];
+    const re = new RegExp(`^${rule!.source}$`);
+    for (const hit of ["/", "/login", "/w/acme", "/api/abb/v1/me", "/invite"])
+      expect(re.test(hit)).toBe(true);
+    for (const miss of ["/_next/static/chunks/a.js", "/_next/image", "/favicon.ico", "/icon.svg"])
+      expect(re.test(miss)).toBe(false);
+  });
+  it("gates only workspace pages: /login and /invite are never redirected", () => {
+    for (const path of ["/login", "/invite", "/", "/api/health"]) {
+      const res = proxy(new NextRequest(`http://localhost${path}`));
+      expect(res.headers.get("location")).toBeNull();
+    }
   });
   it("redirects a cookieless visitor to an absolute /login URL on the configured origin, not the Host header", () => {
     const res = proxy(new NextRequest("http://evil.example/w/acme/projects/all"));

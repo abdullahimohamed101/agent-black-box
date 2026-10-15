@@ -4,7 +4,7 @@ import { FIXTURE_PROJECT } from "./builder";
 
 /**
  * The alert routes of the fixture API (Phase 17), with in-memory state so the Alerts screens can be exercised without an
- * API. Honesty notes: the target check is a small stand-in for the API's (it knows `not_https` and `host_internal`, not the
+ * API. Honesty notes: the target check is a small stand-in for the API's (it knows `not_https`, `port_not_allowed` and `host_internal`, not the
  * whole list); "Send test" answers by destination (the Slack one is failing and answers `http_4xx`); email is reported
  * as not configured. The signing secret returned on create/rotate is a made-up fixture value. Non-managers
  * (`manage: false`, the viewer workspace) get the API's role behaviour: no destinations, masked history rows.
@@ -263,6 +263,8 @@ function targetProblem(type: string, target: Record<string, unknown>): string | 
   if (!/^https:\/\//i.test(url)) return /^http:\/\//i.test(url) ? "not_https" : "url_malformed";
   const host = /^https:\/\/([^/:?#]+)/i.exec(url)?.[1] ?? "";
   if (!host) return "host_invalid";
+  const port = /^https:\/\/[^/:?#]+:(\d+)/i.exec(url)?.[1];
+  if (port !== undefined && port !== "443") return "port_not_allowed";
   if (/(^localhost$|\.internal$|\.local$|^127\.|^10\.|^192\.168\.)/i.test(host))
     return "host_internal";
   return null;

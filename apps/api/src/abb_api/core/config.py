@@ -25,9 +25,26 @@ class Settings(BaseSettings):
     # Ingestion limits (spec §71.4). Per-event size comes from the event contract itself.
     ingest_max_body_bytes: int = Field(default=5 * 1024 * 1024, ge=1024)
     ingest_max_batch_events: int = Field(default=1000, ge=1)
+    # Request bodies held in memory at once by this process (Phase 19a, ADR-155, KI-026): a request
+    # whose body would pass this is answered 503 BUSY with Retry-After. It must hold the largest
+    # single body (validated below). A body not fully received within the read timeout is dropped.
+    max_body_bytes_in_flight: int = Field(default=64 * 1024 * 1024, ge=1024 * 1024)
+    body_read_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
     # Artifacts (ADR-030): local filesystem store, per-artifact size cap.
     artifact_dir: str = ".artifacts"
     artifact_max_bytes: int = Field(default=8 * 1024 * 1024, ge=1024)
+    # Per-project quotas (Phase 19a, ADR-154). These are the defaults; an owner or admin may
+    # override each one for a project. A project at a quota has the excess refused loudly
+    # (`QUOTA_EXCEEDED`); what it already stored keeps working. `quotas_enabled=false` is an
+    # emergency switch (and the benchmark's baseline): nothing is checked or counted while off.
+    quotas_enabled: bool = True
+    quota_agents: int = Field(default=500, ge=1, le=1_000_000)
+    quota_runs_per_day: int = Field(default=50_000, ge=1, le=100_000_000)
+    quota_events_per_day: int = Field(default=5_000_000, ge=1, le=100_000_000_000)
+    quota_artifact_bytes: int = Field(default=5 * 1024**3, ge=1024, le=1024**5)
+    # Counted data of one project is written one batch at a time (a per-project row lock); a batch
+    # that cannot get it within this long is answered 503 and retried by the SDK.
+    quota_lock_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
     # Server-side secret scan (ADR-130). An event whose strings exceed the size or time budget has
     # the offending values dropped; an artifact beyond its budget has its body dropped. Fail closed.
     security_scan_event_max_seconds: float = Field(default=1.0, gt=0)
@@ -129,6 +146,43 @@ class Settings(BaseSettings):
     # A backstop on the unauthenticated login endpoints, shared by every client (the API cannot
     # tell clients apart behind the web relay; per-client limits live in the web app, D15).
     login_global_per_minute: int = Field(default=6000, ge=1)
+    # Revoking sessions, per person (KI-068). Reading the list is not limited.
+    session_writes_per_minute: int = Field(default=30, ge=1)
+    # Shared limiter (Phase 19a, ADR-152). The budgets above and below are counted per window in
+    # PostgreSQL so they hold across API processes; the in-memory limiter stays in front. Off: the
+    # old per-process behaviour. The call is bounded by `limits_timeout_ms` and, when it fails,
+    # skipped for `limits_backoff_seconds` (fail open to the local limiter).
+    limits_shared_enabled: bool = True
+    limits_timeout_ms: int = Field(default=500, ge=10, le=5000)
+    limits_backoff_seconds: float = Field(default=5.0, ge=0, le=300)
+    # Units are reserved from the database in blocks of limit / divisor (fewer writes, up to
+    # N * (block - 1) early refusals across N processes); 1 means every request writes.
+    limits_block_divisor: int = Field(default=20, ge=1, le=1000)
+    # Failed API-key authentication (Phase 19a, ADR-153). Only failures are counted, in fixed
+    # windows shared by every API process; exceeding any of the three answers 429 AUTH_THROTTLED.
+    # A valid request never spends a budget. The address budget needs `trust_proxy`.
+    auth_fail_enabled: bool = True
+    auth_fail_window_seconds: int = Field(default=60, ge=1, le=3600)
+    auth_fail_per_address: int = Field(default=30, ge=1)
+    auth_fail_per_credential: int = Field(default=10, ge=1)
+    auth_fail_global: int = Field(default=600, ge=1)
+    # Keys seen invalid are refused from memory for this long (no database lookup); a key seen
+    # valid is exempt from the throttle gate (never from authentication) for this long.
+    auth_fail_negative_seconds: float = Field(default=30.0, ge=0, le=3600)
+    auth_fail_known_valid_seconds: float = Field(default=300.0, ge=0, le=3600)
+    auth_fail_cache_entries: int = Field(default=10_000, ge=10, le=1_000_000)
+    # The ids of active keys, refreshed in the background: while an address or global window is
+    # closed, a request for one of these ids still reaches full authentication (ADR-153 point 3),
+    # so a key this process has not seen yet is not locked out by a flood. Above the cap the set
+    # holds an arbitrary subset and the rest behave as before (logged once).
+    auth_fail_active_keys_refresh_seconds: float = Field(default=60.0, ge=1, le=3600)
+    auth_fail_active_keys_cap: int = Field(default=100_000, ge=10, le=10_000_000)
+    # True only when a reverse proxy that you run sets `X-Forwarded-For` (its last entry is the
+    # client) and is the only way to reach the API; otherwise the header is ignored.
+    trust_proxy: bool = False
+    # Window of the ingestion and artifact budgets, whose rates are per second (the minute
+    # budgets use a 60 s window).
+    limits_ingest_window_seconds: int = Field(default=10, ge=1, le=60)
     # Denied requests by one person that are written to the audit log per minute; the rest are
     # only logged (D11), so a refused client cannot fill the table.
     audit_denials_per_minute: int = Field(default=10, ge=1)
@@ -192,6 +246,9 @@ class Settings(BaseSettings):
     # the alert sender so local receivers can stand in for public hosts (alerts/testnet.py). Unset
     # by default and refused outside development and test.
     alerts_test_network_file: Path | None = None
+    # Ports a webhook or Slack destination may use (KI-162, ADR-158). Comma-separated; 443 is the
+    # default and what an https URL without a port means. Extra ports are an operator decision.
+    alerts_allowed_ports: str = "443"
     # Email delivery needs an operator-provided SMTP relay (no mail credentials in the database).
     # Without `smtp_host`, email destinations cannot be created. The password is read from the
     # environment only and is never logged or returned.
@@ -203,6 +260,13 @@ class Settings(BaseSettings):
     smtp_from: str | None = None
     # Lets the CLI mint sessions without an identity provider. Honoured only in development/test.
     allow_dev_sessions: bool = False
+    # /docs, /redoc and /openapi.json (KI-023). Unset: served in development, test and staging,
+    # not in production. true/false overrides the environment.
+    api_docs_enabled: bool | None = None
+    # The API and worker refuse to start in production when their database role can alter stored
+    # events (superuser, owner of the tables, ...; KI-031). 1 accepts that knowingly; a log line
+    # records it on every start.
+    allow_privileged_db_role: bool = False
 
     @model_validator(mode="after")
     def _sign_in_is_configured_safely(self) -> "Settings":
@@ -270,6 +334,23 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _alert_ports_are_a_valid_list(self) -> "Settings":
+        _ = self.alerts_allowed_port_set  # raises ValueError (a settings error) when malformed
+        return self
+
+    @property
+    def alerts_allowed_port_set(self) -> frozenset[int]:
+        ports: set[int] = set()
+        for item in self.alerts_allowed_ports.split(","):
+            text = item.strip()
+            if not text.isascii() or not text.isdigit() or not 1 <= int(text) <= 65535:
+                raise ValueError("alerts_allowed_ports must be a comma list of ports 1-65535")
+            ports.add(int(text))
+        if not ports:
+            raise ValueError("alerts_allowed_ports must list at least one port")
+        return frozenset(ports)
+
+    @model_validator(mode="after")
     def _the_test_network_never_runs_in_production(self) -> "Settings":
         if self.alerts_test_network_file is not None and self.environment not in (
             "development",
@@ -313,6 +394,26 @@ class Settings(BaseSettings):
         if self.rate_limit_burst_bytes < self.artifact_max_bytes:
             raise ValueError("rate_limit_burst_bytes must be >= artifact_max_bytes")
         return self
+
+    @model_validator(mode="after")
+    def _the_body_budget_holds_the_largest_body(self) -> "Settings":
+        if self.max_body_bytes_in_flight < self.body_ceiling_bytes:
+            raise ValueError(
+                "max_body_bytes_in_flight must be >= the largest body "
+                "(ingest_max_body_bytes, artifact_max_bytes)"
+            )
+        return self
+
+    @property
+    def body_ceiling_bytes(self) -> int:
+        """No request body may be larger than this, whatever the route."""
+        return max(self.ingest_max_body_bytes, self.artifact_max_bytes)
+
+    @property
+    def docs_enabled(self) -> bool:
+        if self.api_docs_enabled is not None:
+            return self.api_docs_enabled
+        return self.environment != "production"
 
     @property
     def cors_origin_list(self) -> list[str]:

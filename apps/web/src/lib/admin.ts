@@ -20,6 +20,13 @@ export const useInvitations = (enabled: boolean) =>
     queryFn: async ({ signal }) => unwrap(await api.GET("/v1/invitations", { signal })).items,
   });
 
+/** The signed-in person's own sessions (any role; the API answers 401 to a key). */
+export const useSessions = () =>
+  useQuery({
+    queryKey: ["sessions"],
+    queryFn: async ({ signal }) => unwrap(await api.GET("/v1/auth/sessions", { signal })).items,
+  });
+
 export const useApiKeys = (enabled: boolean) =>
   useQuery({
     enabled,
@@ -54,6 +61,20 @@ export const useSecuritySettings = (projectId: string | null, enabled = true) =>
     queryFn: async ({ signal }) =>
       unwrap(
         await api.GET("/v1/projects/{project_id}/security-settings", {
+          signal,
+          params: { path: { project_id: projectId! } },
+        }),
+      ),
+  });
+
+/** One project's quota limits and use (any role that reads projects; the API says 404 for a project it may not show). */
+export const useProjectQuotas = (projectId: string | null) =>
+  useQuery({
+    enabled: projectId != null,
+    queryKey: ["project-quotas", projectId],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/projects/{project_id}/quotas", {
           signal,
           params: { path: { project_id: projectId! } },
         }),
@@ -110,6 +131,22 @@ export const useRemoveMember = () =>
     },
     ["members"],
   );
+export const useRevokeSession = () =>
+  useWrite(
+    async (sessionId: string) => {
+      const r = await api.DELETE("/v1/auth/sessions/{session_id}", {
+        params: { path: { session_id: sessionId } },
+      });
+      if (!r.response.ok) unwrap({ error: r.error, response: r.response });
+    },
+    ["sessions", "audit"],
+  );
+/** Ends every session but the current one; resolves to how many it ended. */
+export const useRevokeOtherSessions = () =>
+  useWrite(
+    async () => unwrap(await api.POST("/v1/auth/sessions/revoke-others", {})).revoked,
+    ["sessions", "audit"],
+  );
 export const useCreateKey = () =>
   useWrite(
     async (body: components["schemas"]["CreateKey"]) =>
@@ -136,6 +173,27 @@ export const useRebuildCosts = () =>
       unwrap(await api.POST("/v1/cost/rebuild", { body })),
     ["audit"],
   );
+
+/**
+ * Change a project's quota overrides (owners and admins). Like the security settings, the cache takes the API's answer:
+ * what the page shows after a save is what the API stored.
+ */
+export const useUpdateProjectQuotas = (projectId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: components["schemas"]["QuotaOverridesIn"]) =>
+      unwrap(
+        await api.PUT("/v1/projects/{project_id}/quotas", {
+          params: { path: { project_id: projectId } },
+          body,
+        }),
+      ),
+    onSuccess: async (data) => {
+      client.setQueryData(["project-quotas", projectId], data);
+      await client.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+};
 
 /**
  * Partial update (a list given replaces the stored one; fields left out stay). The settings query is refreshed from

@@ -10,8 +10,9 @@ from datetime import timedelta
 from typing import NoReturn
 
 from abb_event_schema.ids import IdKind
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from abb_api.auth.device import device_hint
 from abb_api.auth.oidc import OidcClient, OidcError, OidcUnavailable, new_pkce
 from abb_api.auth.repository import (
     LoginStateRepository,
@@ -25,6 +26,7 @@ from abb_api.core.config import Settings
 from abb_api.core.domain import AlreadyExistsError
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import public_id
+from abb_api.workspaces.repository import has_open_invitation_for_email
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,20 @@ def auth_not_configured() -> AppError:
         "Sign-in is not configured on this server.",
         category=ErrorCategory.DEPENDENCY,
         status_code=503,
+    )
+
+
+class NotInvited(Exception):
+    """The provider vouched for someone no workspace has invited (KI-076). Creates nothing."""
+
+
+def no_access() -> AppError:
+    # One answer for every un-invited case; it says nothing the person's own provider did not.
+    return AppError(
+        "NO_ACCESS",
+        "No access yet. Ask a workspace owner to invite you.",
+        category=ErrorCategory.AUTHORIZATION,
+        status_code=403,
     )
 
 
@@ -125,7 +141,13 @@ class LoginService:
         return StartedLogin(url, state)
 
     async def finish(
-        self, *, code: str | None, state: str | None, cookie_state: str | None, idp_error: bool
+        self,
+        *,
+        code: str | None,
+        state: str | None,
+        cookie_state: str | None,
+        idp_error: bool,
+        user_agent: str | None = None,
     ) -> FinishedLogin:
         # Login CSRF: the state in the URL must be the one this browser was given at the start.
         if (
@@ -159,9 +181,13 @@ class LoginService:
         issuer = self._oidc.issuer
         async with self._engine.begin() as conn:
             users = UserRepository(conn)
-            user = await self._resolve_user(
-                users, issuer, identity.subject, identity.email, identity.name
-            )
+            try:
+                user = await self._resolve_user(
+                    conn, users, issuer, identity.subject, identity.email, identity.name
+                )
+            except NotInvited:
+                logger.warning("login refused", extra={"reason": "not_invited", "iss": issuer})
+                raise no_access() from None
             if user is None:
                 self._fail("identity_conflict", status=401)
             sessions = SessionRepository(conn)
@@ -172,6 +198,7 @@ class LoginService:
                 now=now,
                 absolute=timedelta(hours=self._settings.session_absolute_hours),
                 idle=timedelta(hours=self._settings.session_idle_hours),
+                device_hint=device_hint(user_agent),
             )
             await users.record_login(user.id, now)
         logger.info(
@@ -181,12 +208,21 @@ class LoginService:
         return FinishedLogin(pending.return_to, token, public_id(IdKind.USER, user.id))
 
     async def _resolve_user(
-        self, users: UserRepository, issuer: str, subject: str, email: str, name: str | None
+        self,
+        conn: AsyncConnection,
+        users: UserRepository,
+        issuer: str,
+        subject: str,
+        email: str,
+        name: str | None,
     ) -> UserRecord | None:
         """The user for a verified identity, or None when the email belongs to someone else.
 
         The subject decides. A verified email may claim a user only while that user has no subject
-        yet (pre-provisioned by the CLI or an invitation); it can never re-bind a linked one.
+        yet (pre-provisioned by the CLI); it can never re-bind a linked one. A person nobody has
+        a record for gets one only while a workspace holds an open invitation for their verified
+        email (`NotInvited` otherwise, and nothing is written): the provider vouching for someone
+        is not an invitation (KI-076).
         """
         now = self._clock()
         known = await users.find_by_identity(issuer, subject)
@@ -200,6 +236,8 @@ class LoginService:
             return await users.get(known.id)
         by_email = await users.find_by_email(email)
         if by_email is None:
+            if not await has_open_invitation_for_email(conn, email, now):
+                raise NotInvited
             try:
                 by_email = await users.create(email=email, name=name)
             except AlreadyExistsError:

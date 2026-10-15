@@ -124,8 +124,12 @@ sessions = Table(
     _ts("expires_at", nullable=False),
     _ts("idle_expires_at", nullable=False),
     _ts("revoked_at"),
+    Column("device_hint", Text),
     UniqueConstraint("token_hash", name="uq_sessions_token_hash"),
     CheckConstraint("octet_length(token_hash) = 32", name="ck_sessions_token_hash"),
+    CheckConstraint(
+        "device_hint IS NULL OR char_length(device_hint) <= 64", name="ck_sessions_device_hint"
+    ),
     Index("ix_sessions_user", "user_id"),
     Index("ix_sessions_expires", "expires_at"),
 )
@@ -184,6 +188,11 @@ invitations = Table(
         "workspace_id",
         "email",
         unique=True,
+        postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+    ),
+    Index(
+        "ix_invitations_open_email",
+        "email",
         postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
     ),
 )
@@ -282,6 +291,8 @@ api_keys = Table(
         "scopes <@ ARRAY[" + ", ".join(f"'{s}'" for s in API_KEY_SCOPES) + "]::text[]",
         name="ck_api_keys_scopes",
     ),
+    # The throttle's periodic read of usable key ids (ADR-153): live keys only.
+    Index("ix_api_keys_active", "key_id", postgresql_where=text("revoked_at IS NULL")),
 )
 
 # ---------------------------------------------------------------- runs, spans, events
@@ -1407,4 +1418,94 @@ alert_notifications = Table(
         "destination_id",
         text("created_at DESC"),
     ),
+)
+
+
+# ------------------------------------------------------------ shared limiter (Phase 19a, ADR-152)
+
+# Fixed-window counters shared by every API process (migration 0097). Short-lived operational
+# state, not tenant data: no foreign key to `workspaces` (nothing here may delay deleting one),
+# global scopes live under the nil workspace id. Rows are deleted once `expires_at` has passed.
+rate_limit_counters = Table(
+    "rate_limit_counters",
+    metadata,
+    Column("scope", Text, nullable=False),
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("key", Text, nullable=False),
+    _ts("window_start", nullable=False),
+    Column("count", BigInteger, nullable=False),
+    _ts("expires_at", nullable=False),
+    PrimaryKeyConstraint("scope", "workspace_id", "key", "window_start"),
+    CheckConstraint("scope ~ '^[a-z][a-z0-9_]{0,63}$'", name="ck_rate_limit_counters_scope"),
+    CheckConstraint("char_length(key) BETWEEN 1 AND 256", name="ck_rate_limit_counters_key"),
+    CheckConstraint("count >= 0", name="ck_rate_limit_counters_count"),
+    Index("ix_rate_limit_counters_expires", "expires_at"),
+)
+
+
+# ------------------------------------------------------------ project quotas (Phase 19a, ADR-154)
+
+# Per-project overrides of the environment's quota defaults (migration 0098). A NULL column means
+# "use the default"; a row exists only for a project an owner or admin has changed.
+project_quota_overrides = Table(
+    "project_quota_overrides",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("max_agents", Integer),
+    Column("max_runs_per_day", Integer),
+    Column("max_events_per_day", BigInteger),
+    Column("max_artifact_bytes", BigInteger),
+    _ts("updated_at", nullable=False, default_now=True),
+    Column("updated_by", Text, nullable=False),
+    PrimaryKeyConstraint("workspace_id", "project_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="CASCADE",
+    ),
+    CheckConstraint("max_agents BETWEEN 1 AND 1000000", name="ck_quota_overrides_agents"),
+    CheckConstraint("max_runs_per_day BETWEEN 1 AND 100000000", name="ck_quota_overrides_runs"),
+    CheckConstraint(
+        "max_events_per_day BETWEEN 1 AND 100000000000", name="ck_quota_overrides_events"
+    ),
+    CheckConstraint(
+        "max_artifact_bytes BETWEEN 1 AND 1125899906842624", name="ck_quota_overrides_artifacts"
+    ),
+    CheckConstraint("char_length(updated_by) <= 128", name="ck_quota_overrides_updated_by"),
+)
+
+# What a project has used on one UTC day, maintained in the transaction that stores the data
+# (so it is exactly what committed, never more). One row per active project per day.
+project_usage_daily = Table(
+    "project_usage_daily",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("day", Date, nullable=False),
+    Column("runs_created", BigInteger, nullable=False, server_default="0"),
+    Column("events_accepted", BigInteger, nullable=False, server_default="0"),
+    PrimaryKeyConstraint("workspace_id", "project_id", "day"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="CASCADE",
+    ),
+    CheckConstraint("runs_created >= 0 AND events_accepted >= 0", name="ck_usage_daily_counts"),
+)
+
+# Total stored artifact bytes of a project, kept in the transaction that records the artifact.
+project_artifact_usage = Table(
+    "project_artifact_usage",
+    metadata,
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True), nullable=False),
+    Column("bytes_stored", BigInteger, nullable=False, server_default="0"),
+    PrimaryKeyConstraint("workspace_id", "project_id"),
+    ForeignKeyConstraint(
+        ["workspace_id", "project_id"],
+        ["projects.workspace_id", "projects.id"],
+        ondelete="CASCADE",
+    ),
+    CheckConstraint("bytes_stored >= 0", name="ck_artifact_usage_bytes"),
 )

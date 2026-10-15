@@ -320,6 +320,25 @@ async def test_a_name_that_now_resolves_inward_is_dead_with_blocked_address_and_
     assert (await rig.row(first)).status == "delivered"
 
 
+async def test_a_destination_saved_before_the_ports_were_tightened_is_dead_with_blocked_port(
+    rig_factory: Any,
+) -> None:
+    rig: Rig = await rig_factory()
+    # The receiver listens on a random port, which the default list (443) does not contain: the
+    # same state as an 8443 destination saved while the operator still allowed 8443.
+    rig.registry = build_registry(rig.settings, rig.receiver.sender(allowed_ports=frozenset({443})))
+    (nid,) = await rig.add()
+    result = await rig.tick()
+    row = await rig.row(nid)
+    assert (result.dead, row.status, row.last_error_code, row.attempts) == (
+        1,
+        "dead",
+        "blocked_port",
+        1,
+    )
+    assert rig.receiver.connections == 0 and rig.receiver.requests == []
+
+
 async def test_an_unreadable_secret_is_dead_with_config_unreadable_and_sends_nothing(
     rig_factory: Any,
 ) -> None:

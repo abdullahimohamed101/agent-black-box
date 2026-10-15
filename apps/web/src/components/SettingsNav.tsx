@@ -11,8 +11,10 @@ const TABS = [
   { slug: "api-keys", label: "API keys", needs: "api_key.read" },
   { slug: "pricing", label: "Pricing", needs: "pricing.read" },
   { slug: "security", label: "Security", needs: "project.write" },
+  { slug: "quotas", label: "Quotas", needs: "project.read" },
   { slug: "policies", label: "Policies", needs: "policy.read" },
   { slug: "audit", label: "Audit log", needs: "audit.read" },
+  { slug: "sessions", label: "Sessions", needs: null }, // yours, whatever your role
 ] as const;
 
 export function SettingsNav() {
@@ -20,7 +22,7 @@ export function SettingsNav() {
   const path = usePathname();
   return (
     <nav className="subnav" aria-label="Settings">
-      {TABS.filter((t) => ws.permissions.includes(t.needs)).map((t) => {
+      {TABS.filter((t) => t.needs === null || ws.permissions.includes(t.needs)).map((t) => {
         const href = `/w/${ws.workspace.slug}/settings/${t.slug}`;
         return (
           <Link key={t.slug} href={href} aria-current={path === href ? "page" : undefined}>

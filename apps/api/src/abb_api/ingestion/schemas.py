@@ -18,6 +18,13 @@ class EventErrorOut(BaseModel):
     index: int = Field(description="Position of the event in the submitted `events` array.")
     event_id: str | None = Field(description="The event's id, when it was readable.")
     code: str
+    quota: Literal["agents", "runs_per_day", "events_per_day", "artifact_bytes"] | None = Field(
+        default=None,
+        description=(
+            "Which quota refused the event; set only when `code` is `QUOTA_EXCEEDED`. Existing "
+            "data keeps working; retrying does not help until the quota changes or its day ends."
+        ),
+    )
     issues: list[IssueOut] = []
 
 

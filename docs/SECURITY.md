@@ -56,8 +56,11 @@ ingestion edge | control plane | database/object storage | human approvers.
   `application/json` are accepted; validation errors never echo submitted values; NUL characters and lone surrogates are rejected
   at the boundary (PostgreSQL cannot store them); unhandled errors return a generic 500 without internals.
 - Response headers (implemented): every response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`; full secure-header policy is Phase 19.
-- Denial of service (partly implemented): per-project token buckets (per process), bounded batches, bounded cursors and page
-  sizes, bounded metadata; a shared limiter and quotas are Phase 19.
+- Denial of service (partly implemented): per-project token buckets in front of a PostgreSQL-backed shared limiter (Phase 19a step 1, ADR-152: the
+  ingestion, artifact, sign-in-start, policy, approval-decision and alert budgets hold across API processes; it fails open to the per-process
+  bucket when the database cannot answer, so a database outage is also a limiter outage), bounded batches, bounded cursors and page sizes,
+  bounded metadata, and per-project quotas that refuse loudly (Phase 19a step 3, ADR-154: distinct agents, runs and events per UTC day, total artifact bytes). These are abuse rails, not a WAF: put a reverse proxy with
+  address limits in front of any exposed deployment.
 - Live streams (implemented, Phase 5): the stream endpoint uses the same authentication, `runs:read` scope and tenant/project visibility as
   the other reads (another tenant's or project's run is a 404, tested over a real socket). Payloads are never streamed, only `has_payload`.
   The `NOTIFY` that wakes streams carries ids only and is never trusted for content: streams re-read rows under their own tenant context.
@@ -90,6 +93,18 @@ ingestion edge | control plane | database/object storage | human approvers.
   `email_verified` required); identity links on `(provider, subject)` and a verified email may adopt only a user with no subject yet. Tested in
   `tests/test_auth_sessions.py`. Cookie-authenticated writes need an `Origin` equal to `ABB_WEB_ORIGIN` (proxy and API); the API never reads
   `X-Forwarded-*`. The web proxy forwards an allowlist of headers and never `Authorization`, other cookies or `Set-Cookie`.
+  **No person without an invitation** (Phase 19a step 5, ADR-157, KI-076): a verified identity gets a `users` row at the callback only if it
+  is already a user (by subject, or a CLI-made user with no identity yet) or some workspace holds an open invitation for its verified
+  email; otherwise nothing is written and the answer is one fixed `403 NO_ACCESS` for every un-invited case (the page never echoes the
+  address). **Sessions page** (KI-068): a person lists and ends only their own sessions (`/v1/auth/sessions`; another person's session id,
+  an unknown one and an ended one are the same 404; the session in use is ended by signing out), the list carries no cookie value or hash
+  and a device label chosen from a closed vocabulary (the `User-Agent` is never stored), each change is audited in the person's workspaces
+  and limited per person (`ABB_SESSION_WRITES_PER_MINUTE`). **Invitations follow their inviter** (KI-077): demoting a person to a role
+  without `invite.write`, or removing them, revokes their open invitations in that workspace in the same transaction, one audit row each.
+  **The login cookie is `__Host-abb_login` on https** (ADR-156, KI-075, implemented): `Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=600`, no `Domain`,
+  so a sibling subdomain cannot plant or overwrite it (login CSRF by cookie planting); the unprefixed name is never read on https (no fallback), and the
+  web relay refuses a callback whose `Cookie` header carries the login cookie twice. On plain http (development) the name stays `abb_login` with
+  `Path=/api/auth` and the prefix protection does not exist (the same as the session cookie); production requires an https web origin.
 - Authorization (implemented, Phase 15, ADR-061): one `authorize()` path for keys and people, the role/scope matrix as data with a literal
   second copy in the tests (both directions), every route in a registry the tests walk (a route without a case fails CI), an AST test against
   scattered role checks, canary tests that nothing of another workspace leaks, `404` (never `403`) for a workspace or id the actor cannot see.
@@ -109,7 +124,7 @@ ingestion edge | control plane | database/object storage | human approvers.
   for an actor without `payload.read` never references a content column (asserted on the compiled SQL); facets are metadata-only; there is no total count and no ranking; error positions depend only on the
   text; the `span.name` *attribute* is indexed, never the derived span name; unregistered attributes that are not content by name are not indexed (KI-080). `run_search` holds commands and paths: it is as
   sensitive as the events and is reachable only through the compiler. Search terms are the searcher's own input: the API logs no query text, the audit log never records `q`, and the web sends
-  `Referrer-Policy: no-referrer`. A search runs under a per-process permit and a time budget (KI-082).
+  `Referrer-Policy: no-referrer`. A search runs under a time budget (which includes the wait for a database connection) and a per-process fair share of permits: a cap per actor, a share per workspace and a process total, refused with `SEARCH_BUSY` and a fixed reason, so one noisy key or workspace cannot take every permit (KI-082, ADR-158). Concurrency is per process by nature; the rate side is the shared limiter.
 - Members are visible to every role of a workspace (`member.read` is in every role, including BILLING and VIEWER: names, emails and roles of the
   people one works with). If that is too open for an organisation, remove `member.read` from a role in `authz/matrix.py` and the literal table
   (one line in two places); tracked as KI-070.
@@ -155,7 +170,7 @@ fixed message and never echo a value. Evaluation is a pure function with a linea
 only from the rule's own description or id, never from the action. The dry run reads recorded events through the event store contract, attributes only, behind
 `policy.write` (held only by roles that also read payloads), and returns counts, rule ids and ids: no command, path or argument. **The guarantee is cooperative**: the
 policy service stops an agent that asks it (through the SDK); it does not stop one that does not, and no screen or document may claim otherwise. Management limits are
-per process (KI-141); the dry run's mapping covers seven event kinds (KI-140).
+shared across API processes (ADR-152); the dry run's mapping covers seven event kinds (KI-140).
 
 Policy checks in the SDK (Phase 14 step 3, D1/D3/D5; `docs/architecture/sdk-python.md`): **what is enforced is only what asks.** `guard()`, `@guarded`, the coding recorder (`read_file`, `write_file`, `delete_file`, `run_command`, the `git_*` helpers that run a command, `git_push`) and the MCP adapter (`call_tool`) ask the policy service before acting and do not act on a denial; the LangGraph, OpenAI and Anthropic adapters do not run tools and ask nothing unless a tool function carries `@guarded`. An agent that bypasses the SDK (its own subprocess, file or network call, or a tool the integration does not wrap) is not stopped, and the three-line git metadata reads the recorder makes for event attributes are not guarded. It is off by default (`policy_mode`, `BLACKBOX_POLICY`). Failure never crashes the host (INV-4): `guard()` raises only `PolicyDenied` (and its subclasses `ApprovalDenied`, `ApprovalExpired`) and `PolicyUnavailable`; any other failure, an SDK bug included, follows the fail mode (R0-R2 and unclassified open with a `policy.warning`, R3-R4 closed; per capability overrides; the server's fail-mode table only if cached before the outage) and a wait for a person never falls open. Every wait is bounded (a decision by `policy_timeout`, an approval by its expiry plus 5 s and an absolute cap), an approval is spent by presenting the whole intent once and a consume that did not finish is a denial (KI-145), arguments over the server's limits are never sent, and arguments, resources and server error text are never logged or put in a `policy.warning` (its reason is one of nine fixed words, plus `policy_warnings_dropped` written by the spool). The fail-open path is the price of availability: with the service down an R0-R2 action goes ahead and the only trace is the warning, so a deployment that cannot accept that sets `policy_fail_modes={"shell.execute": "closed"}` (or `on_error="closed"`). Limits: KI-148 to KI-151.
 
@@ -186,16 +201,57 @@ auto-pause after ten consecutive failures, and the answer is never shown; a host
 operator configuration, trusted as such, and email is plain text over the relay's own security (STARTTLS fail-closed by default); the signing secret is shared with the receiver and a leaked one lets anyone forge
 alerts to that receiver until it is rotated (`rotate_signing_secret`, no overlap window).
 
+Alert destination ports (Phase 19a step 6, ADR-158, KI-162). A webhook or Slack destination may only use the ports in `ABB_ALERTS_ALLOWED_PORTS` (default 443; an `https://` URL without a port is 443), so a destination cannot be used to probe SSH, SMTP, Redis, Elasticsearch and similar services of third parties. The port is refused when the destination is saved and checked again, before any lookup or connection, at delivery and in send-test (`blocked_port`, permanent), so a destination saved under a wider list is stopped too. Residual: blind requests to public hosts on allowed ports remain, bounded by 20 deliveries a minute and 500 a day per destination, the destination limit, the 5 s deadline, the attempt cap and auto-pause; no response is ever shown. The test network file does not bypass the port check.
+
 Alert end-to-end test network (Phase 17 step 4, ADR-151 addendum). `ABB_ALERTS_TEST_NETWORK_FILE` replaces the sender's DNS, connect address and TLS trust with a local file so the end-to-end suite can use receivers on this
 machine. It is **unset by default**, **refused at startup unless `ABB_ENVIRONMENT` is `development` or `test`**, logs a warning when active, and changes nothing between the address check and the connection
 (a private or loopback answer is still refused). Never set it on a deployment that receives real alerts; `tests/test_alerts_testnet.py` proves the default and the refusal.
 
+### Failed-authentication throttling (Phase 19a step 2, ADR-153)
+
+Threats and answers. *Credential stuffing and key guessing*: a key is `abb_live_<12-char id>.<256-bit secret>`, so guessing a secret is not
+feasible; the risk is load. Failures (not successes) are counted per client address, per presented key id and globally, in fixed windows shared by every API process;
+beyond a budget the answer is `429 AUTH_THROTTLED` with `Retry-After`, identical for an existing and an unknown key id. *Flood amplification*:
+a refused request is answered from memory (no lookup, no counter write); an invalid token seen moments ago is answered from memory; the global
+ceiling bounds the lookups per window. The database-load figures are in `docs/benchmarks/phase-19a-auth-throttle.md`.
+*Header spoofing*: the client address is read only when `ABB_TRUST_PROXY=1`, from the last `X-Forwarded-For` entry (the one the proxy appended); otherwise the header is ignored, so it cannot be
+used to evade a bucket or to frame another address. Set it only when the proxy is the only route to the API. The stored counter key is a domain-separated SHA-256 prefix of the address,
+kept at most a window plus 60 s; addresses and secrets are never logged or audited.
+*Throttle as a denial-of-service lever* (the tradeoff, stated plainly): a caller who knows a key id (ids are visible to project members, secrets are not) can close **that key id's own** window for up to a minute with ten bad
+secrets (KI-191); authentication of that key id's valid requests that are not in the process cache is then refused with `429` for the rest of the window. A flood that closes the address or the global window no longer locks out any other valid key:
+while those are closed a request for a key id that exists (a per-process set of active key ids, ids only, refreshed every 60 s and on key creation) still reaches full authentication, bounded by that key id's own budget, and a random key id is refused from memory.
+Anyone sharing a trusted address with an attacker shares that address budget. Ingestion, people's sessions, and sign-in starts and callbacks are never refused by it.
+The throttle fails open (a counter outage falls back to the local budget; any throttle error leaves the normal 401). One `auth.throttled` audit row per workspace per window is written for key ids that
+belong to a workspace; others are logged by scope name only (KI-177). Failed session cookies and sign-in starts are not covered (KI-176, KI-073).
+
+### Project quotas (Phase 19a step 3, ADR-154)
+
+Threats and answers. *A runaway agent or a hostile key inventing data* (agent slugs, run ids, events, artifacts): each project has four
+quotas, with environment defaults (`ABB_QUOTA_*`) and per-project overrides. At a limit the excess is **refused loudly**, never folded or silently dropped:
+the batch answer names the refused event, the fixed code `QUOTA_EXCEEDED` and the closed quota name (`agents`, `runs_per_day`, `events_per_day`,
+`artifact_bytes`); the other endpoints answer `413 QUOTA_EXCEEDED` with the same name. Data the project already has is never refused: events of runs
+and agents it already holds, and replays of events it already stored, are accepted at any usage. The counters are written in the same transaction as the data
+(so they equal what committed) under one per-project lock, so a race cannot pass a limit, for any quota (tested with concurrent batches and uploads).
+*Isolation*: every counter, override and lookup carries the workspace and project; one project's use never counts against another, in the
+same workspace or another (tested). *Who may raise a limit*: only owners and admins (`project.write`), every change is an audit entry naming the quota and its old
+and new value, and a person without the role (or a key) gets 403, a project of another workspace 404. A raised limit is a lever on the operator's disk and database; the
+defaults are generous abuse rails, not sizing advice. *What a refusal reveals*: the quota name and, on the non-batch endpoints, the limit and current use of the caller's own project;
+never another tenant's data. *Limits of the control* (stated plainly): it does not stop a single project from using its allowance, there is no alert on usage yet, server-written decision and
+approval events are not counted, and the day boundary follows the API process clock (UTC). See ADR-154.
+
+### Edge hardening (Phase 19a step 4, ADR-155)
+
+Threats and answers. *Memory exhaustion by concurrent large bodies* (KI-026): the process counts the body bytes it holds and refuses more with `503 BUSY` (before any byte is read when `Content-Length` says it cannot fit: the declared size is reserved at admission and reconciled with what arrives; a reservation is held at most the read timeout, so clients that declare large bodies and stall can make other large bodies wait up to 60 s, never longer, and never small ones);
+small bodies (64 KiB) are always admitted; a body is dropped after 60 s; accounting is released on disconnect, cancel and exception (tested); every route has a global 8 MiB ceiling. Per process, first come first served (KI-182); the reverse proxy's body limit and timeouts remain the first line.
+*Script injection in the web app (XSS)*: scripts run only with the response's nonce (`strict-dynamic`), no `'unsafe-inline'` or `'unsafe-eval'`; the policy is enforced and tested in a real browser on every page (zero violations; an injected inline handler is blocked). `connect-src 'self'` and `form-action 'self'` stop exfiltration and credential posting to other origins; `font-src`/`img-src` self.
+`frame-ancestors 'none'` and `X-Frame-Options: DENY` stop clickjacking; `base-uri`, `object-src` close the rest. **Accepted weakening:** `style-src-attr 'unsafe-inline'` (style attributes cannot execute script; KI-181). *Sniffing, referrer and capability leaks*: `nosniff`, `Referrer-Policy: no-referrer`, a deny-all `Permissions-Policy`, COOP and CORP `same-origin`.
+*API responses*: deny-all CSP, `no-store` on every response (authenticated, session and secret-bearing included), HSTS only when the deployment is https. *Reconnaissance*: `/docs`, `/redoc` and `/openapi.json` are off in production. *INV-1 lost by misconfiguration* (KI-031): the API and worker refuse to start in production as a role that can rewrite events or alter the schema, or when that cannot be verified; the override is explicit and logged on every start; messages never contain a credential.
+Limits (stated plainly): CSP reduces the impact of an injection, it does not prevent one; a reverse proxy that caches HTML or strips headers undoes it; the role check is a start-time check (KI-183).
+
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
-Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop; a real shared limiter,
-quotas and failed-authentication throttling are Phase 19 (KI-017, KI-018, KI-019). The identity provider integration was exercised against the fake
-provider only; a real provider login is an open acceptance check (KI-067). Session listing and "log out everywhere" are not in the UI (SQL/CLI
-recovery is in the runbook, KI-068). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits are per process. The Python SDK
+Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); failed API-key authentication is throttled (ADR-153) (KI-019) and projects have quotas (ADR-154) (KI-018, KI-040). The identity provider integration was exercised against the fake
+provider only; a real provider login is an open acceptance check (KI-067). Sessions can be listed and ended in the UI (Settings, Sessions; KI-068 resolved). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits hold across API processes while the database answers and are per process when it does not (the shared limiter fails open, ADR-152). The Python SDK
 redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads); since Phase 13 the server
 redacts again, but detection is best effort, so **clients should still keep secrets out of events**, and a project that needs no payloads should stay
 METADATA_ONLY. Stored text can carry a `[REDACTED:credential]` marker where an assignment looked secret-shaped (a name ending in `token`, `secret` or

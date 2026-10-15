@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import logging
 import uuid
+from datetime import UTC
 
 from abb_event_schema.ids import IdKind
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -15,8 +16,10 @@ from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import public_id
-from abb_api.ingestion.ratelimit import RateLimiter
 from abb_api.ingestion.service import project_key_required, rate_limited
+from abb_api.limits import AsyncRateLimiter
+from abb_api.quotas.model import Quota, QuotaLimits, quota_exceeded
+from abb_api.quotas.repository import QuotaRepository
 from abb_api.runs.queries import RunQueries
 from abb_api.security.redaction import ArtifactDecision, ServerRedactor
 from abb_api.security.settings import CaptureMode, PgSecuritySettingsStore
@@ -86,18 +89,25 @@ def align_to_character(data: bytes, end: int) -> int:
     return end
 
 
+class _OverQuota(Exception):
+    def __init__(self, used: int) -> None:
+        super().__init__("artifact quota reached")
+        self.used = used
+
+
 class ArtifactService:
     def __init__(
         self,
         engine: AsyncEngine,
         store: ArtifactStore,
-        limiter: RateLimiter,
+        limiter: AsyncRateLimiter,
         clock: Clock,
         *,
         max_bytes: int,
         redactor: ServerRedactor | None = None,
         scan_max_bytes: int = 4 * 1024 * 1024,
         scan_max_seconds: float = 10.0,
+        quota_defaults: QuotaLimits | None = None,
     ) -> None:
         self._engine = engine
         self._store = store
@@ -107,6 +117,7 @@ class ArtifactService:
         self._redactor = redactor or ServerRedactor()
         self._scan_max_bytes = scan_max_bytes
         self._scan_max_seconds = scan_max_seconds
+        self._quota_defaults = quota_defaults  # None: quotas are off
 
     @property
     def max_bytes(self) -> int:
@@ -136,8 +147,11 @@ class ArtifactService:
                 status_code=422,
             )
         # Its own bucket: a burst of artifacts must not starve event ingestion (and vice versa).
-        wait = self._limiter.acquire(
-            f"artifacts:{principal.project_id}", events=1, bytes_=len(data)
+        wait = await self._limiter.acquire(
+            f"artifacts:{principal.project_id}",
+            events=1,
+            bytes_=len(data),
+            workspace_id=principal.workspace_id,
         )
         if wait is not None:
             raise rate_limited(wait)
@@ -168,6 +182,7 @@ class ArtifactService:
         stored = decision.body
         digest = hashlib.sha256(stored).digest()
         key = storage_key(principal.workspace_id, artifact_id, digest)
+        limit = await self._check_quota(principal, artifact_id, len(stored))
         try:
             await self._store.put(key, stored)
         except ArtifactStoreError:
@@ -186,10 +201,22 @@ class ArtifactService:
             created_at=self._clock(),
             redaction=decision.record() if (decision.count or decision.dropped_reason) else None,
         )
-        async with self._engine.begin() as conn:
-            repo = ArtifactRepository(conn, principal.tenant)
-            created = await repo.insert(record)
-            winner = record if created else await repo.get(artifact_id, project_id=None)
+        try:
+            async with self._engine.begin() as conn:
+                repo = ArtifactRepository(conn, principal.tenant)
+                created = await repo.insert(record)
+                winner = record if created else await repo.get(artifact_id, project_id=None)
+                if created and limit is not None:
+                    quotas = QuotaRepository(conn, principal.tenant)
+                    if not await quotas.reserve_artifact_bytes(
+                        principal.project_id, record.size_bytes, limit
+                    ):
+                        # Leaving the block rolls back: the row and its count go together or not
+                        # at all.
+                        raise _OverQuota(await quotas.artifact_bytes(principal.project_id))
+        except _OverQuota as over:
+            await self._discard_unreferenced(principal, artifact_id, key)
+            raise quota_exceeded(Quota.ARTIFACT_BYTES, limit=limit, used=over.used) from None
         if not created:
             # A concurrent upload of the same id won. Our file is an orphan unless the content is
             # identical (then it is the same key, and must stay).
@@ -207,6 +234,48 @@ class ArtifactService:
                 extra={"redactions": decision.count, "dropped_reason": decision.dropped_reason},
             )
         return artifact_out(record), True
+
+    async def _check_quota(
+        self, principal: Principal, artifact_id: uuid.UUID, size: int
+    ) -> int | None:
+        """Refuse an upload that cannot fit before it is written; the limit, or None when off.
+
+        This read only saves the write: the authoritative check is the conditional counter update
+        in the transaction that records the artifact, which concurrent uploads cannot pass.
+        """
+        if self._quota_defaults is None or principal.project_id is None:
+            return None
+        async with self._engine.connect() as conn:
+            quotas = QuotaRepository(conn, principal.tenant)
+            state = await quotas.state(
+                principal.project_id, self._clock().astimezone(UTC).date(), lock=False
+            )
+            used = await quotas.artifact_bytes(principal.project_id)
+            # A retry that raced the original (it was not stored yet when `put` looked) is a
+            # duplicate, not a new artifact: it adds no bytes and is never refused for the quota.
+            stored = await ArtifactRepository(conn, principal.tenant).get(
+                artifact_id, project_id=None
+            )
+        limit = (
+            state.limits(self._quota_defaults) if state else self._quota_defaults
+        ).artifact_bytes
+        if stored is None and used + size > limit:
+            raise quota_exceeded(Quota.ARTIFACT_BYTES, limit=limit, used=used)
+        return limit
+
+    async def _discard_unreferenced(
+        self, principal: Principal, artifact_id: uuid.UUID, key: str
+    ) -> None:
+        """Remove the file of a refused upload unless a concurrent upload of the same id kept it."""
+        async with self._engine.connect() as conn:
+            kept = await ArtifactRepository(conn, principal.tenant).get(
+                artifact_id, project_id=None
+            )
+        if kept is None:
+            try:
+                await self._store.delete(key)
+            except ArtifactStoreError:
+                logger.warning("could not remove the file of a refused artifact")
 
     async def _decide(self, data: bytes, mode: CaptureMode) -> ArtifactDecision:
         # Off the event loop: a few MiB of text takes tens of milliseconds to scan.

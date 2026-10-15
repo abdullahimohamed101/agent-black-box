@@ -158,6 +158,9 @@ async def test_email_destinations_are_masked_validated_and_never_echo_an_address
         ({"url": "https://[::1]/x"}, "ip_not_public"),
         ({"url": "https://127.1/x"}, "ip_literal_form"),
         ({"url": "https://intranet/x"}, "host_internal"),
+        ({"url": "https://hooks.example.com:8443/x"}, "port_not_allowed"),
+        ({"url": "https://hooks.example.com:6379/x"}, "port_not_allowed"),
+        ({"url": "https://hooks.example.com:0/x"}, "port_invalid"),
         ({"recipients": ["a@example.com"]}, "target_shape"),
         ({}, "target_shape"),
     ],
@@ -170,6 +173,41 @@ async def test_bad_targets_are_refused_without_echoing_them(
     assert body["details"] == {"reason": reason}
     for value in target.values():
         assert str(value) not in created.text
+
+
+@pytest.fixture
+async def extra_ports(
+    database_url: str, runtime_database_url: str, engine: AsyncEngine
+) -> AsyncIterator[Api]:
+    """The web API whose operator added port 8443 to the alert allow-list."""
+    settings = make_settings(database_url, web_origin=WEB_ORIGIN, alerts_allowed_ports="443, 8443")
+    async for instance in build_api(database_url, engine, settings=settings):
+        yield instance
+
+
+async def test_the_setting_extends_the_port_allow_list_at_save_and_on_update(
+    extra_ports: Api,
+) -> None:
+    headers = await owner(extra_ports)
+    ok = await create_destination(
+        extra_ports, headers, target={"url": "https://hooks.example.com:8443/x"}
+    )
+    assert ok.status_code == 201, ok.text
+    other = await create_destination(
+        extra_ports, headers, "second", target={"url": "https://hooks.example.com:9443/x"}
+    )
+    assert error(other, 422, "DESTINATION_TARGET_INVALID")["details"] == {
+        "reason": "port_not_allowed"
+    }
+    ident = ok.json()["id"]
+    moved = await extra_ports.client.patch(
+        f"/v1/alerts/destinations/{ident}",
+        json={"target": {"url": "https://hooks.example.com:22/x"}},
+        headers=headers,
+    )
+    assert error(moved, 422, "DESTINATION_TARGET_INVALID")["details"] == {
+        "reason": "port_not_allowed"
+    }
 
 
 async def test_unknown_fields_and_bad_shapes_are_422s(web: Api) -> None:

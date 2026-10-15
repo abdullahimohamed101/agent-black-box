@@ -24,7 +24,7 @@ def reason_of(url: object) -> str:
         "https://hooks.slack.com/services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX",
         "https://example.com/hook",
         "https://receiver.alerts-e2e.test/hook",  # a test name that a stub resolver may map
-        "HTTPS://Example.COM:8443/a/b?x=1",
+        "HTTPS://Example.COM:443/a/b?x=1",
         "https://203.0.113.9/x".replace("203.0.113.9", "93.184.216.34"),
         "https://[2606:4700:4700::1111]/x",
     ],
@@ -97,7 +97,10 @@ def test_a_url_is_normalised_and_masked() -> None:
 
 def test_a_short_final_segment_is_not_shown_at_all() -> None:
     assert validate_web_url("https://example.com/hook").masked == "https://example.com/…"
-    assert validate_web_url("https://example.com:8443/").masked == "https://example.com:8443"
+    assert (
+        validate_web_url("https://example.com:8443/", {443, 8443}).masked
+        == "https://example.com:8443"
+    )
     assert validate_web_url("https://[2606:4700:4700::1111]/x").masked.startswith(
         "https://[2606:4700:4700::1111]"
     )
@@ -136,3 +139,45 @@ def test_bad_recipients_are_refused(value: object, reason: str) -> None:
     with pytest.raises(TargetInvalid) as excinfo:
         validate_recipients(value)
     assert excinfo.value.reason == reason
+
+
+# ---------------------------------------------------------------- port allow-list (KI-162)
+
+
+@pytest.mark.parametrize("port", [80, 8443, 22, 25, 6379, 9200, 8080, 1])
+def test_a_port_outside_the_default_list_is_refused(port: int) -> None:
+    assert reason_of(f"https://example.com:{port}/hook") == "port_not_allowed"
+
+
+def test_the_implicit_https_port_is_443_and_is_accepted_by_default() -> None:
+    assert validate_web_url("https://example.com/hook").url == "https://example.com/hook"
+    assert validate_web_url("https://example.com:443/hook").url == "https://example.com/hook"
+
+
+def test_the_implicit_port_is_refused_when_the_list_drops_443() -> None:
+    with pytest.raises(TargetInvalid) as excinfo:
+        validate_web_url("https://example.com/hook", {8443})
+    assert excinfo.value.reason == "port_not_allowed"
+
+
+def test_the_setting_extends_the_list() -> None:
+    web = validate_web_url("https://example.com:8443/hook", {443, 8443})
+    assert web.url == "https://example.com:8443/hook"
+    with pytest.raises(TargetInvalid):
+        validate_web_url("https://example.com:9443/hook", {443, 8443})
+
+
+@pytest.mark.parametrize(
+    ("url", "reason"),
+    [
+        ("https://example.com:0/hook", "port_invalid"),
+        ("https://example.com:65536/hook", "url_malformed"),
+        ("https://example.com:-1/hook", "url_malformed"),
+    ],
+)
+def test_an_out_of_range_port_is_invalid_not_merely_disallowed(url: str, reason: str) -> None:
+    assert reason_of(url) == reason
+
+
+def test_the_scheme_is_judged_before_the_port() -> None:
+    assert reason_of("http://example.com:8080/x") == "not_https"

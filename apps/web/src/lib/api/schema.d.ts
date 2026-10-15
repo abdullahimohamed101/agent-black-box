@@ -585,6 +585,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List your sessions
+         * @description The signed-in person's own working sessions, most recently used first, at most 100. Each carries an opaque handle, timestamps and a coarse device label; never the cookie value or anything derived from it. `current` marks the session making the request.
+         */
+        get: operations["list_sessions_v1_auth_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/sessions/revoke-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out everywhere else
+         * @description Revokes every working session of the caller except the one making the request. Takes effect at once, including on open streams (within the re-check interval).
+         */
+        post: operations["revoke_other_sessions_v1_auth_sessions_revoke_others_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one of your sessions
+         * @description A session id that is someone else's, unknown or already ended is the same 404. The session in use is refused with 409 `CURRENT_SESSION`: sign out instead.
+         */
+        delete: operations["revoke_session_v1_auth_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cost/rebuild": {
         parameters: {
             query?: never;
@@ -677,7 +737,7 @@ export interface paths {
         put?: never;
         /**
          * Ingest a batch of events
-         * @description Accepts `{batch_id?, sent_at?, events: [...]}` (at most 1000 events, 5 MiB, optionally gzip). `202` means the valid events are committed. Invalid events are reported per event in `errors` and do not affect the others. Retrying a batch is safe.
+         * @description Accepts `{batch_id?, sent_at?, events: [...]}` (at most 1000 events, 5 MiB, optionally gzip). `202` means the valid events are committed. Invalid events are reported per event in `errors` and do not affect the others. A project at one of its quotas (distinct agents, runs per day, events per day) has the excess events refused per event with code `QUOTA_EXCEEDED` and the closed `quota` name; events of runs and agents it already has, and replays, are unaffected. Retrying a batch is safe.
          */
         post: operations["ingest_batch_v1_events_batch_post"];
         delete?: never;
@@ -1174,6 +1234,30 @@ export interface paths {
          * @description Owners and admins only. A workspace holds at most 200 projects.
          */
         post: operations["create_project_v1_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/quotas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a project's quota limits and usage
+         * @description For each quota: the limit in force, the environment default, whether it is overridden, what is used now and the percentage. `status` is `near_limit` from 80 percent and `at_limit` once new items are being refused. Daily quotas count the current UTC day. Any role that may read projects; a project-bound key sees only its own project.
+         */
+        get: operations["get_project_quotas_v1_projects__project_id__quotas_get"];
+        /**
+         * Override a project's quotas
+         * @description Fields left out stay as they are; a whole number sets that quota's override; `null` removes it (the environment default applies again). Owners and admins only. Each changed quota writes one audit entry (`project.quota.update`, details: the quota's name, old and new value). Lowering a limit below current use refuses new items only; nothing already stored is touched.
+         */
+        put: operations["put_project_quotas_v1_projects__project_id__quotas_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2310,7 +2394,7 @@ export interface components {
         DestinationTestResult: {
             /**
              * Error Code
-             * @description A fixed code when it did not: `timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`. Never a response body.
+             * @description A fixed code when it did not: `timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `blocked_port`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`. Never a response body.
              */
             error_code: string | null;
             /**
@@ -2801,6 +2885,11 @@ export interface components {
              * @default []
              */
             issues: components["schemas"]["abb_api__ingestion__schemas__IssueOut"][];
+            /**
+             * Quota
+             * @description Which quota refused the event; set only when `code` is `QUOTA_EXCEEDED`. Existing data keeps working; retrying does not help until the quota changes or its day ends.
+             */
+            quota?: ("agents" | "runs_per_day" | "events_per_day" | "artifact_bytes") | null;
         };
         /**
          * EventOut
@@ -3746,6 +3835,37 @@ export interface components {
             /** Slug */
             slug: string;
         };
+        /** ProjectQuotasOut */
+        ProjectQuotasOut: {
+            /**
+             * Day
+             * Format: date
+             * @description The UTC day the daily figures belong to.
+             */
+            day: string;
+            /**
+             * Enforced
+             * @description False while `ABB_QUOTAS_ENABLED=false`: nothing is checked or counted.
+             */
+            enforced: boolean;
+            /** Project Id */
+            project_id: string;
+            /** Quotas */
+            quotas: components["schemas"]["QuotaUsageOut"][];
+            /**
+             * Resets At
+             * Format: date-time
+             * @description When the daily quotas start again (next UTC midnight).
+             */
+            resets_at: string;
+            /**
+             * Updated At
+             * @description Null while the project has no overrides.
+             */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+        };
         /** PublishIn */
         PublishIn: {
             /**
@@ -3847,6 +3967,59 @@ export interface components {
              * @description End of a `between` range (a whole UTC day).
              */
             value_end: string | null;
+        };
+        /**
+         * QuotaOverridesIn
+         * @description A field left out stays as it is; a number sets the override; null removes it.
+         */
+        QuotaOverridesIn: {
+            /** Agents */
+            agents?: number | null;
+            /** Artifact Bytes */
+            artifact_bytes?: number | null;
+            /** Events Per Day */
+            events_per_day?: number | null;
+            /** Runs Per Day */
+            runs_per_day?: number | null;
+        };
+        /** QuotaUsageOut */
+        QuotaUsageOut: {
+            /**
+             * Default
+             * @description The environment default (`ABB_QUOTA_*`).
+             */
+            default: number;
+            /**
+             * Limit
+             * @description The limit in force: the override if there is one.
+             */
+            limit: number;
+            /** Overridden */
+            overridden: boolean;
+            /**
+             * Percent
+             * @description Whole percent of the limit used; above 100 after a lowering.
+             */
+            percent: number;
+            /**
+             * Period
+             * @description `day` quotas count the current UTC day and start again at midnight UTC.
+             * @enum {string}
+             */
+            period: "total" | "day";
+            /**
+             * Quota
+             * @enum {string}
+             */
+            quota: "agents" | "runs_per_day" | "events_per_day" | "artifact_bytes";
+            /**
+             * Status
+             * @description `near_limit` from 80 percent; `at_limit` when new items are being refused.
+             * @enum {string}
+             */
+            status: "ok" | "near_limit" | "at_limit";
+            /** Used */
+            used: number;
         };
         /** Rates */
         Rates: {
@@ -3994,6 +4167,11 @@ export interface components {
              * @description All retry spend in the window, as in the cost report.
              */
             total_usd: number;
+        };
+        /** RevokedSessions */
+        RevokedSessions: {
+            /** Revoked */
+            revoked: number;
         };
         /** RowOut */
         RowOut: {
@@ -4445,6 +4623,46 @@ export interface components {
             updated_at: string | null;
             /** Updated By */
             updated_by: string | null;
+        };
+        /** SessionList */
+        SessionList: {
+            /** Items */
+            items: components["schemas"]["SessionOut"][];
+        };
+        /** SessionOut */
+        SessionOut: {
+            /** Created At */
+            created_at: string;
+            /**
+             * Current
+             * @description The session making this request.
+             */
+            current: boolean;
+            /**
+             * Device
+             * @description Coarse label such as "Firefox on Linux", or null.
+             */
+            device: string | null;
+            /**
+             * Expires At
+             * @description When it ends regardless of use.
+             */
+            expires_at: string;
+            /**
+             * Id
+             * @description Opaque handle for this session. Not the cookie value.
+             */
+            id: string;
+            /**
+             * Idle Expires At
+             * @description When it ends if it is not used before then.
+             */
+            idle_expires_at: string;
+            /**
+             * Last Seen At
+             * @description Accurate to about five minutes.
+             */
+            last_seen_at: string;
         };
         /** SideOut */
         SideOut: {
@@ -8203,6 +8421,228 @@ export interface operations {
             };
         };
     };
+    list_sessions_v1_auth_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionList"];
+                };
+            };
+            /** @description No valid session (API keys have none). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A cookie-authenticated write came from the wrong origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such session of yours. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description That is the session making the request; sign out to end it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many session changes; honour `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revoke_other_sessions_v1_auth_sessions_revoke_others_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevokedSessions"];
+                };
+            };
+            /** @description No valid session (API keys have none). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A cookie-authenticated write came from the wrong origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such session of yours. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description That is the session making the request; sign out to end it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many session changes; honour `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revoke_session_v1_auth_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session (API keys have none). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A cookie-authenticated write came from the wrong origin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such session of yours. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description That is the session making the request; sign out to end it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many session changes; honour `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     rebuild_costs_v1_cost_rebuild_post: {
         parameters: {
             query?: never;
@@ -8557,7 +8997,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Body (compressed or decompressed) or event too large. */
+            /** @description Body (compressed or decompressed) or event too large; or, on the single-event endpoint, `QUOTA_EXCEEDED` (the batch endpoint reports quotas per event instead). */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -8649,7 +9089,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Body (compressed or decompressed) or event too large. */
+            /** @description Body (compressed or decompressed) or event too large; or, on the single-event endpoint, `QUOTA_EXCEEDED` (the batch endpoint reports quotas per event instead). */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -11093,6 +11533,150 @@ export interface operations {
                 };
             };
             /** @description The request body is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_project_quotas_v1_projects__project_id__quotas_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectQuotasOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value is outside its range; the message never repeats the value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    put_project_quotas_v1_projects__project_id__quotas_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuotaOverridesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectQuotasOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role or key may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found, or not visible to this caller (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value is outside its range; the message never repeats the value. */
             422: {
                 headers: {
                     [name: string]: unknown;

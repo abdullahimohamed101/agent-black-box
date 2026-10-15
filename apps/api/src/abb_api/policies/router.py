@@ -150,7 +150,7 @@ async def policy_diff(
     ),
 )
 async def validate_policy(body: s.ValidateIn, request: Request, principal: Writer) -> s.ValidateOut:
-    return _service(request).validate(principal, body)
+    return await _service(request).validate(principal, body)
 
 
 @router.post(

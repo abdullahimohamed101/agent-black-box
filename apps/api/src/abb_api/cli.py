@@ -76,7 +76,7 @@ from abb_api.security.settings import (
 from abb_api.tenancy import TenantContext
 from abb_api.workspaces import Workspace, WorkspaceProvisioning
 from abb_api.workspaces.members import MAX_MEMBERS, Email
-from abb_api.workspaces.repository import MembershipRepository, memberships_of
+from abb_api.workspaces.repository import InvitationRepository, MembershipRepository, memberships_of
 
 SEED_WORKSPACE = ("Local development", "local")
 SEED_PROJECT = ("Demo", "demo")
@@ -367,7 +367,9 @@ async def _add_member(
     return user, True
 
 
-async def _remove_member(conn: AsyncConnection, workspace: Workspace, email: str) -> None:
+async def _remove_member(
+    conn: AsyncConnection, workspace: Workspace, email: str, now: datetime
+) -> None:
     user = await _user(conn, email)
     members = MembershipRepository(conn, TenantContext(workspace.id))
     owners = await members.lock_owners()  # same lock order as the API: owners, then the target
@@ -381,6 +383,15 @@ async def _remove_member(conn: AsyncConnection, workspace: Workspace, email: str
         conn, workspace.id, "member.remove", resource_kind="user",
         resource_id=public_id(IdKind.USER, user.id), role=target.role,
     )  # fmt: skip
+    # Same rule as the API (KI-077): a removed person's open invitations die with their membership.
+    for invitation_id in await InvitationRepository(
+        conn, TenantContext(workspace.id)
+    ).revoke_open_by(user.id, now):
+        await _audit(
+            conn, workspace.id, "invitation.revoke_inviter_lost_rights",
+            resource_kind="invitation", resource_id=public_id(IdKind.INVITATION, invitation_id),
+            inviter=public_id(IdKind.USER, user.id), reason="inviter_removed",
+        )  # fmt: skip
 
 
 async def _relink_user(conn: AsyncConnection, email: str, now: datetime, err: TextIO) -> None:
@@ -697,7 +708,7 @@ async def run(
                 print(f"added a {args.role} to '{ws.slug}'", file=err)
             elif args.command == "remove-member":
                 ws = await _workspace(conn, args.workspace)
-                await _remove_member(conn, ws, args.email)
+                await _remove_member(conn, ws, args.email, clock())
                 print(f"removed the member from '{ws.slug}'", file=err)
             elif args.command == "list-members":
                 ws = await _workspace(conn, args.workspace)

@@ -51,9 +51,11 @@ from abb_api.clock import Clock
 from abb_api.core.config import Settings
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ids import new_uuid, parse_public_id, public_id
-from abb_api.ingestion.ratelimit import InMemoryRateLimiter, retry_after_seconds
+from abb_api.ingestion.ratelimit import retry_after_seconds
 from abb_api.ingestion.service import project_key_required
 from abb_api.jobs.outbox import EXPIRE_APPROVAL, OutboxRepository
+from abb_api.limits import Scope, SharedCounters
+from abb_api.limits.factory import minute_limiter
 from abb_api.policies.evaluator import evaluate
 from abb_api.policies.model import (
     DEFAULT_EXPIRES_SECONDS,
@@ -131,15 +133,6 @@ def _rate_limited(wait: float) -> AppError:
     )
 
 
-def _bucket(per_minute: int) -> InMemoryRateLimiter:
-    return InMemoryRateLimiter(
-        events_per_second=per_minute / 60,
-        burst_events=per_minute,
-        bytes_per_second=1.0,
-        burst_bytes=1,
-    )
-
-
 def _json_size(value: Any) -> int:
     import json
 
@@ -168,6 +161,7 @@ class ApprovalService:
         clock: Clock,
         hub: StreamHub | None = None,
         redactor: ServerRedactor | None = None,
+        counters: SharedCounters | None = None,
     ) -> None:
         self._engine = engine
         self._settings = settings
@@ -177,8 +171,19 @@ class ApprovalService:
             event_max_seconds=settings.security_scan_event_max_seconds
         )
         self._summary_delay = timedelta(seconds=settings.summary_debounce_seconds)
-        self._key_limiter = _bucket(settings.policy_decide_per_minute_key)
-        self._workspace_limiter = _bucket(settings.policy_decide_per_minute_workspace)
+        divisor = settings.limits_block_divisor
+        self._key_limiter = minute_limiter(
+            counters,
+            Scope.APPROVAL_DECIDE_KEY,
+            settings.policy_decide_per_minute_key,
+            block_divisor=divisor,
+        )
+        self._workspace_limiter = minute_limiter(
+            counters,
+            Scope.APPROVAL_DECIDE_WORKSPACE,
+            settings.policy_decide_per_minute_workspace,
+            block_divisor=divisor,
+        )
         self._mismatch_audited: dict[uuid.UUID, float] = {}
         self.waiters = WaiterGate(
             settings.approval_waiters_per_workspace, settings.approval_waiters_per_process
@@ -186,13 +191,17 @@ class ApprovalService:
 
     # ------------------------------------------------------------------ shared pieces
 
-    def _agent(self, principal: Principal) -> tuple[uuid.UUID, str]:
+    async def _agent(self, principal: Principal) -> tuple[uuid.UUID, str]:
         """The project and key id of an agent's key; a workspace-wide key cannot act here."""
         if principal.project_id is None:
             raise project_key_required()
-        wait = self._key_limiter.acquire(principal.actor_id, events=1, bytes_=0)
+        wait = await self._key_limiter.acquire(
+            principal.actor_id, workspace_id=principal.workspace_id
+        )
         if wait is None:
-            wait = self._workspace_limiter.acquire(str(principal.workspace_id), events=1, bytes_=0)
+            wait = await self._workspace_limiter.acquire(
+                str(principal.workspace_id), workspace_id=principal.workspace_id
+            )
         if wait is not None:
             raise _rate_limited(wait)
         return principal.project_id, principal.actor_id.removeprefix("key:")
@@ -239,7 +248,7 @@ class ApprovalService:
     # ------------------------------------------------------------------ the decision
 
     async def decide(self, principal: Principal, body: IntentIn) -> s.DecideOut:
-        project_id, key_id = self._agent(principal)
+        project_id, key_id = await self._agent(principal)
         digest = hash_of(principal, body)
         run_id = run_uuid(body)
         tenant = principal.tenant
@@ -476,7 +485,7 @@ class ApprovalService:
     async def wait(self, principal: Principal, approval_id: str, seconds: float) -> s.WaitOut:
         """Long poll: the approval's state now if it is no longer REQUESTED, else the state at the
         first change or after `seconds`. No database connection is held between reads."""
-        project_id, key_id = self._agent(principal)
+        project_id, key_id = await self._agent(principal)
         identifier = self._parse(approval_id)
         approval = await self._view(principal, project_id, key_id, identifier)
         if approval.state != m.REQUESTED or seconds <= 0:
@@ -559,7 +568,7 @@ class ApprovalService:
     async def _consume(
         self, principal: Principal, approval_id: str, body: s.ConsumeIn
     ) -> s.ConsumeOut:
-        project_id, key_id = self._agent(principal)
+        project_id, key_id = await self._agent(principal)
         identifier = self._parse(approval_id)
         digest = hash_of(principal, body.intent)
         run_id = run_uuid(body.intent)
@@ -705,7 +714,7 @@ class ApprovalService:
         return self._rejected(code, text)
 
     async def cancel(self, principal: Principal, approval_id: str) -> None:
-        project_id, key_id = self._agent(principal)
+        project_id, key_id = await self._agent(principal)
         identifier = self._parse(approval_id)
         tenant = principal.tenant
         await self._sweep_one(tenant, identifier)

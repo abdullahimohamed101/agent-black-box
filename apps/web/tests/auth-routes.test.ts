@@ -210,6 +210,30 @@ describe("GET /api/auth/callback", () => {
     expect(again.headers.getSetCookie().join(";")).not.toContain("abb_session");
   });
 
+  it("sends someone nobody has invited to the same fixed notice, with the login cookie cleared and no session (KI-076)", async () => {
+    stubFetch(upstream(403, [["set-cookie", clearLogin]]));
+    const res = await callbackRoute(withLogin("/api/auth/callback?code=a&state=b"));
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/login?error=no_access");
+    expect(res.headers.getSetCookie()).toEqual([clearLogin]);
+  });
+
+  it("forwards the browser's User-Agent, cut to a bound, for the sessions page label", async () => {
+    const fetchMock = stubFetch(upstream(400));
+    await callbackRoute(
+      get("/api/auth/callback?code=a&state=b", {
+        cookie: `abb_login=${STATE}`,
+        "user-agent": "U".repeat(5000),
+      }),
+    );
+    const [, init] = fetchMock.mock.calls[0]! as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["user-agent"]).toBe("U".repeat(512));
+    const none = stubFetch(upstream(400));
+    await callbackRoute(withLogin("/api/auth/callback?code=a&state=b"));
+    const [, bare] = none.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(Object.keys(bare.headers as object)).not.toContain("user-agent");
+  });
+
   it("forwards only code, state and error, within bounds", async () => {
     const fetchMock = stubFetch(upstream(400));
     await callbackRoute(
@@ -246,6 +270,102 @@ describe("GET /api/auth/callback", () => {
     const res = await callbackRoute(get("/api/auth/callback?code=a&state=b"));
     expect(res.headers.get("location")).toBe("/login?error=login_failed");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("the login cookie on an https origin (ADR-156, KI-075)", () => {
+  const SECURE_ORIGIN = "https://app.example.test";
+  const HOST_LOGIN = "__Host-abb_login";
+  const secureGet = (path: string, headers: Record<string, string> = {}) =>
+    new Request(`${SECURE_ORIGIN}${path}`, { headers });
+  const clearHost = `${HOST_LOGIN}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax; Secure`;
+
+  beforeEach(() => {
+    vi.stubEnv("ABB_WEB_ORIGIN", SECURE_ORIGIN);
+  });
+
+  it("relays the prefixed cookie from the login start, and not the unprefixed one", async () => {
+    const issued = `${HOST_LOGIN}=${STATE}; Max-Age=600; Path=/; HttpOnly; SameSite=Lax; Secure`;
+    stubFetch(
+      upstream(302, [
+        ["location", "https://idp.example/a"],
+        ["set-cookie", issued],
+        ["set-cookie", `abb_login=${STATE}; Path=/api/auth; HttpOnly`],
+      ]),
+    );
+    const res = await loginRoute(secureGet("/api/auth/login"));
+    expect(res.headers.getSetCookie()).toEqual([issued]);
+  });
+
+  it("forwards the prefixed cookie to the API on the callback and relays it cleared", async () => {
+    const fetchMock = stubFetch(
+      upstream(302, [
+        ["location", "/"],
+        ["set-cookie", clearHost],
+        ["set-cookie", `abb_login=; Max-Age=0; Path=/api/auth`],
+      ]),
+    );
+    const res = await callbackRoute(
+      secureGet("/api/auth/callback?code=a&state=b", { cookie: `${HOST_LOGIN}=${STATE}` }),
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.getSetCookie()).toEqual([clearHost]);
+    const [, init] = fetchMock.mock.calls[0]! as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).cookie).toBe(`${HOST_LOGIN}=${STATE}`);
+  });
+
+  it("does not accept or forward a planted unprefixed cookie", async () => {
+    const fetchMock = stubFetch(upstream(302, [["location", "/"]]));
+    const res = await callbackRoute(
+      secureGet("/api/auth/callback?code=a&state=b", { cookie: `abb_login=${STATE}` }),
+    );
+    expect(res.headers.get("location")).toBe("/login?error=login_failed");
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Beside the real cookie, the planted one is not forwarded either.
+    const other = "o".repeat(43);
+    const ok = stubFetch(upstream(400));
+    await callbackRoute(
+      secureGet("/api/auth/callback?code=a&state=b", {
+        cookie: `abb_login=${other}; ${HOST_LOGIN}=${STATE}`,
+      }),
+    );
+    const [, init] = ok.mock.calls[0]! as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).cookie).toBe(`${HOST_LOGIN}=${STATE}`);
+  });
+
+  it("refuses a callback that carries the login cookie twice, without asking the API", async () => {
+    const fetchMock = stubFetch(upstream(302, [["location", "/"]]));
+    const twice = secureGet("/api/auth/callback?code=a&state=b", {
+      cookie: `${HOST_LOGIN}=${"p".repeat(43)}; ${HOST_LOGIN}=${STATE}`,
+    });
+    const res = await callbackRoute(twice);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/login?error=login_failed");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("the duplicate login cookie refusal on http", () => {
+  it("refuses two copies and accepts one", async () => {
+    const fetchMock = stubFetch(upstream(400));
+    const dup = get("/api/auth/callback?code=a&state=b", {
+      cookie: `abb_login=${"p".repeat(43)}; abb_login=${STATE}`,
+    });
+    expect((await callbackRoute(dup)).headers.get("location")).toBe("/login?error=login_failed");
+    expect(fetchMock).not.toHaveBeenCalled();
+    await callbackRoute(withLogin("/api/auth/callback?code=a&state=b"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the unprefixed name and does not relay a prefixed cookie", async () => {
+    stubFetch(
+      upstream(302, [
+        ["location", "https://idp.example/a"],
+        ["set-cookie", `__Host-abb_login=${STATE}; Path=/; Secure`],
+      ]),
+    );
+    const res = await loginRoute(get("/api/auth/login"));
+    expect(res.headers.getSetCookie()).toEqual([]);
   });
 });
 

@@ -2315,7 +2315,7 @@
                 "type": "null"
               }
             ],
-            "description": "A fixed code when it did not: `timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`. Never a response body.",
+            "description": "A fixed code when it did not: `timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `blocked_port`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`. Never a response body.",
             "title": "Error Code"
           },
           "ok": {
@@ -3506,6 +3506,24 @@
             },
             "title": "Issues",
             "type": "array"
+          },
+          "quota": {
+            "anyOf": [
+              {
+                "enum": [
+                  "agents",
+                  "runs_per_day",
+                  "events_per_day",
+                  "artifact_bytes"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which quota refused the event; set only when `code` is `QUOTA_EXCEEDED`. Existing data keeps working; retrying does not help until the quota changes or its day ends.",
+            "title": "Quota"
           }
         },
         "required": [
@@ -5982,6 +6000,73 @@
         "title": "ProjectOut",
         "type": "object"
       },
+      "ProjectQuotasOut": {
+        "properties": {
+          "day": {
+            "description": "The UTC day the daily figures belong to.",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "enforced": {
+            "description": "False while `ABB_QUOTAS_ENABLED=false`: nothing is checked or counted.",
+            "title": "Enforced",
+            "type": "boolean"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "quotas": {
+            "items": {
+              "$ref": "#/components/schemas/QuotaUsageOut"
+            },
+            "title": "Quotas",
+            "type": "array"
+          },
+          "resets_at": {
+            "description": "When the daily quotas start again (next UTC midnight).",
+            "format": "date-time",
+            "title": "Resets At",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while the project has no overrides.",
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "required": [
+          "project_id",
+          "day",
+          "resets_at",
+          "enforced",
+          "quotas",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "ProjectQuotasOut",
+        "type": "object"
+      },
       "PublishIn": {
         "properties": {
           "base_version": {
@@ -6230,6 +6315,126 @@
           "span"
         ],
         "title": "QueryTermOut",
+        "type": "object"
+      },
+      "QuotaOverridesIn": {
+        "additionalProperties": false,
+        "description": "A field left out stays as it is; a number sets the override; null removes it.",
+        "properties": {
+          "agents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agents"
+          },
+          "artifact_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Bytes"
+          },
+          "events_per_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Events Per Day"
+          },
+          "runs_per_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runs Per Day"
+          }
+        },
+        "title": "QuotaOverridesIn",
+        "type": "object"
+      },
+      "QuotaUsageOut": {
+        "properties": {
+          "default": {
+            "description": "The environment default (`ABB_QUOTA_*`).",
+            "title": "Default",
+            "type": "integer"
+          },
+          "limit": {
+            "description": "The limit in force: the override if there is one.",
+            "title": "Limit",
+            "type": "integer"
+          },
+          "overridden": {
+            "title": "Overridden",
+            "type": "boolean"
+          },
+          "percent": {
+            "description": "Whole percent of the limit used; above 100 after a lowering.",
+            "title": "Percent",
+            "type": "integer"
+          },
+          "period": {
+            "description": "`day` quotas count the current UTC day and start again at midnight UTC.",
+            "enum": [
+              "total",
+              "day"
+            ],
+            "title": "Period",
+            "type": "string"
+          },
+          "quota": {
+            "enum": [
+              "agents",
+              "runs_per_day",
+              "events_per_day",
+              "artifact_bytes"
+            ],
+            "title": "Quota",
+            "type": "string"
+          },
+          "status": {
+            "description": "`near_limit` from 80 percent; `at_limit` when new items are being refused.",
+            "enum": [
+              "ok",
+              "near_limit",
+              "at_limit"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quota",
+          "period",
+          "limit",
+          "default",
+          "overridden",
+          "used",
+          "percent",
+          "status"
+        ],
+        "title": "QuotaUsageOut",
         "type": "object"
       },
       "Rates": {
@@ -6575,6 +6780,19 @@
           "in_other_runs_usd"
         ],
         "title": "RetrySpend",
+        "type": "object"
+      },
+      "RevokedSessions": {
+        "properties": {
+          "revoked": {
+            "title": "Revoked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "title": "RevokedSessions",
         "type": "object"
       },
       "RowOut": {
@@ -7853,6 +8071,78 @@
           "detectors"
         ],
         "title": "SecuritySettingsOut",
+        "type": "object"
+      },
+      "SessionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SessionList",
+        "type": "object"
+      },
+      "SessionOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "description": "The session making this request.",
+            "title": "Current",
+            "type": "boolean"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Coarse label such as \"Firefox on Linux\", or null.",
+            "title": "Device"
+          },
+          "expires_at": {
+            "description": "When it ends regardless of use.",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "description": "Opaque handle for this session. Not the cookie value.",
+            "title": "Id",
+            "type": "string"
+          },
+          "idle_expires_at": {
+            "description": "When it ends if it is not used before then.",
+            "title": "Idle Expires At",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "description": "Accurate to about five minutes.",
+            "title": "Last Seen At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "device",
+          "created_at",
+          "last_seen_at",
+          "expires_at",
+          "idle_expires_at",
+          "current"
+        ],
+        "title": "SessionOut",
         "type": "object"
       },
       "SideOut": {
@@ -14042,6 +14332,271 @@
         ]
       }
     },
+    "/v1/auth/sessions": {
+      "get": {
+        "description": "The signed-in person's own working sessions, most recently used first, at most 100. Each carries an opaque handle, timestamps and a coarse device label; never the cookie value or anything derived from it. `current` marks the session making the request.",
+        "operationId": "list_sessions_v1_auth_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session (API keys have none)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A cookie-authenticated write came from the wrong origin."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such session of yours."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "That is the session making the request; sign out to end it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many session changes; honour `Retry-After`."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List your sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/sessions/revoke-others": {
+      "post": {
+        "description": "Revokes every working session of the caller except the one making the request. Takes effect at once, including on open streams (within the re-check interval).",
+        "operationId": "revoke_other_sessions_v1_auth_sessions_revoke_others_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokedSessions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session (API keys have none)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A cookie-authenticated write came from the wrong origin."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such session of yours."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "That is the session making the request; sign out to end it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many session changes; honour `Retry-After`."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Sign out everywhere else",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/v1/auth/sessions/{session_id}": {
+      "delete": {
+        "description": "A session id that is someone else's, unknown or already ended is the same 404. The session in use is refused with 409 `CURRENT_SESSION`: sign out instead.",
+        "operationId": "revoke_session_v1_auth_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No valid session (API keys have none)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A cookie-authenticated write came from the wrong origin."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such session of yours."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "That is the session making the request; sign out to end it."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many session changes; honour `Retry-After`."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Revoke one of your sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/v1/cost/rebuild": {
       "post": {
         "description": "Queues the newest runs (optionally one project, optionally since a time) to be re-derived with the current prices. Bounded to 10,000 runs per call; repeat with `since` for older ones.",
@@ -14518,7 +15073,7 @@
                 }
               }
             },
-            "description": "Body (compressed or decompressed) or event too large."
+            "description": "Body (compressed or decompressed) or event too large; or, on the single-event endpoint, `QUOTA_EXCEEDED` (the batch endpoint reports quotas per event instead)."
           },
           "415": {
             "content": {
@@ -14574,7 +15129,7 @@
     },
     "/v1/events/batch": {
       "post": {
-        "description": "Accepts `{batch_id?, sent_at?, events: [...]}` (at most 1000 events, 5 MiB, optionally gzip). `202` means the valid events are committed. Invalid events are reported per event in `errors` and do not affect the others. Retrying a batch is safe.",
+        "description": "Accepts `{batch_id?, sent_at?, events: [...]}` (at most 1000 events, 5 MiB, optionally gzip). `202` means the valid events are committed. Invalid events are reported per event in `errors` and do not affect the others. A project at one of its quotas (distinct agents, runs per day, events per day) has the excess events refused per event with code `QUOTA_EXCEEDED` and the closed `quota` name; events of runs and agents it already has, and replays, are unaffected. Retrying a batch is safe.",
         "operationId": "ingest_batch_v1_events_batch_post",
         "responses": {
           "202": {
@@ -14625,7 +15180,7 @@
                 }
               }
             },
-            "description": "Body (compressed or decompressed) or event too large."
+            "description": "Body (compressed or decompressed) or event too large; or, on the single-event endpoint, `QUOTA_EXCEEDED` (the batch endpoint reports quotas per event instead)."
           },
           "415": {
             "content": {
@@ -18086,6 +18641,214 @@
         "summary": "Create a project",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/quotas": {
+      "get": {
+        "description": "For each quota: the limit in force, the environment default, whether it is overridden, what is used now and the percentage. `status` is `near_limit` from 80 percent and `at_limit` once new items are being refused. Daily quotas count the current UTC day. Any role that may read projects; a project-bound key sees only its own project.",
+        "operationId": "get_project_quotas_v1_projects__project_id__quotas_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectQuotasOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A value is outside its range; the message never repeats the value."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read a project's quota limits and usage",
+        "tags": [
+          "quotas"
+        ]
+      },
+      "put": {
+        "description": "Fields left out stay as they are; a whole number sets that quota's override; `null` removes it (the environment default applies again). Owners and admins only. Each changed quota writes one audit entry (`project.quota.update`, details: the quota's name, old and new value). Lowering a limit below current use refuses new items only; nothing already stored is touched.",
+        "operationId": "put_project_quotas_v1_projects__project_id__quotas_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuotaOverridesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectQuotasOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role or key may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found, or not visible to this caller (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A value is outside its range; the message never repeats the value."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Override a project's quotas",
+        "tags": [
+          "quotas"
         ]
       }
     },

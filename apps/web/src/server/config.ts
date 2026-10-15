@@ -34,7 +34,10 @@ export const fixturesBlocked = (): boolean =>
 export function sessionCookieName(): string {
   return webOrigin()?.startsWith("https://") ? "__Host-abb_session" : "abb_session";
 }
-export const LOGIN_COOKIE = "abb_login";
+/** Must match the API's `cookies.login_cookie_name` (ADR-156). No fallback to the unprefixed name on https. */
+export function loginCookieName(): string {
+  return webOrigin()?.startsWith("https://") ? "__Host-abb_login" : "abb_login";
+}
 
 const COOKIE_VALUE = /^[A-Za-z0-9_-]{16,256}$/;
 
@@ -49,6 +52,17 @@ export function cookieValue(header: string | null | undefined, name: string): st
     return COOKIE_VALUE.test(value) ? value : null;
   }
   return null;
+}
+
+/** How many times a `Cookie` header carries this name (a planted `Domain` copy beside ours makes two). */
+export function cookieCount(header: string | null | undefined, name: string): number {
+  if (!header) return 0;
+  let n = 0;
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq >= 0 && part.slice(0, eq).trim() === name) n += 1;
+  }
+  return n;
 }
 
 /**

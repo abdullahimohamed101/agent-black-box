@@ -46,7 +46,7 @@ The authoritative table is `apps/api/src/abb_api/authz/matrix.py`; `GET /v1/me` 
 web shows or hides by it. Resources of another workspace, or of another project for a project key, are `404`, indistinguishable from nonexistent ones.
 
 ### Sign-in and identity
-- `GET /v1/auth/login?return_to=/w/...`: starts OIDC; `302` to the provider and sets the `abb_login` cookie. `return_to` must be one of the app's
+- `GET /v1/auth/login?return_to=/w/...`: starts OIDC; `302` to the provider and sets the login cookie (`__Host-abb_login`, `Path=/` on an https web origin; `abb_login`, `Path=/api/auth` on http). `return_to` must be one of the app's
   own routes (`422 RETURN_TO_INVALID`). `503 AUTH_NOT_CONFIGURED` when no issuer is set.
 - `GET /v1/auth/callback?code=&state=`: finishes it; `302` to the stored `return_to` with the session cookie. Every failure is `400/401 LOGIN_FAILED`
   (the cause is logged, never returned). Both endpoints are rate-limited (`429`) by a global backstop.
@@ -108,8 +108,10 @@ Every non-2xx response, from every route, has this shape and an `X-Request-ID` h
 | `UNSUPPORTED_MEDIA_TYPE` / `UNSUPPORTED_ENCODING` | 415 | not `application/json`; `Content-Encoding` other than gzip/identity |
 | `REQUEST_INVALID` | 422 | invalid query parameter or run-creation body |
 | `QUERY_INVALID` | 422 | the search text `q` could not be parsed (`details.position`, `details.reason`) |
-| `SEARCH_BUSY` / `SEARCH_TIMEOUT` | 503 | all search permits of this process are in use / the search exceeded its time budget; retryable |
+| `SEARCH_BUSY` / `SEARCH_TIMEOUT` | 503 | this process's search permits are in use, or this actor's or workspace's fair share of them is (`details.reason`: `actor_limit`, `workspace_share`, `process_full`; ADR-158) / the search exceeded its time budget, which includes the wait for a database connection; retryable |
 | `RATE_LIMITED` | 429 | retryable; honour `Retry-After` |
+| `QUOTA_EXCEEDED` | 413 | a project quota is reached (Phase 19a, ADR-154): `details.quota` names it (`agents`, `runs_per_day`, `events_per_day`, `artifact_bytes`), with `limit` and `used` where known. Not retryable until the limit changes or, for the per-day quotas, the UTC day ends. On the batch endpoint the same code is reported per event inside a `202` instead |
+| `QUOTA_SETTINGS_INVALID` | 422 | an override outside its range (`details.quota`); the message never repeats the value |
 | `TOO_MANY_WAITERS` / `TOO_MANY_OPEN_APPROVALS` | 429 | too many long polls (workspace or process) / too many requests waiting for a decision; retryable (Phase 14) |
 | `APPROVAL_NOT_FOUND` | 404 | absent, malformed, or not visible to this credential (another workspace, project or key): one body for all |
 | `APPROVAL_NOT_APPROVED`, `APPROVAL_EXPIRED`, `APPROVAL_CONSUMED`, `APPROVAL_INTENT_MISMATCH` | 409 | consuming an approval; fixed codes that echo nothing |
@@ -149,6 +151,15 @@ come from the key (an event naming another tenant is rejected, never overwritten
   scanned. An event whose redaction fails outright is rejected with `REDACTION_FAILED`. An event of a type the server writes (`policy.decision`, `policy.action.blocked`, `approval.requested|granted|denied|consumed|expired|cancelled`) is rejected with `RESERVED_EVENT_TYPE`; the rest of the batch is stored and the SDK does not retry it. If the project's settings cannot be read the whole batch
   is refused with a retryable `503`. Artifacts follow the same modes (see `PUT /v1/artifacts/{id}` in the OpenAPI document): dropped bodies are
   stored as a one-line note and the `sha256`/`size_bytes` returned describe what is stored.
+- **Quotas (Phase 19a, ADR-154).** Each project has four quotas: distinct agents (500), runs created per UTC day (50,000), events accepted per UTC day
+  (5,000,000) and total artifact bytes (5 GiB); the per-run event cap is unchanged. An event the project cannot take is refused per event, inside a normal `202`, as
+  `{"index": 2, "event_id": "evt_...", "code": "QUOTA_EXCEEDED", "quota": "events_per_day", "issues": [{"loc": ["quota"], "code": "events_per_day", "message": "..."}]}` and counted in
+  `rejected`. `quota` is additive and closed (`agents | runs_per_day | events_per_day | artifact_bytes`); older clients see an ordinary rejected event and do not retry it.
+  The rule, in batch order: an event naming an agent slug the project has not seen is refused at the agent limit; an event of a run the project has not seen is
+  refused at the run limit (every event of that run, in this and later batches); any other event is refused when the day's events are used up. An event that was refused counts
+  nothing (no agent, no run, no event). Events of existing runs and agents, and replays of stored events (`duplicate`, `conflict`), are never refused for a quota and never counted twice.
+  `POST /v1/events` and `POST /v1/runs` answer `413 QUOTA_EXCEEDED` instead; `PUT /v1/artifacts/{id}` does when the stored bytes would pass the limit (a retry of an artifact
+  already stored is still `200`). Usage and the audited overrides are in "Project quotas" below.
 - Per-project rate limit: 2,000 events/s (burst 10,000) and 10 MiB/s by default, per API process
   (`ABB_RATE_LIMIT_*`); exceeding it returns `429` and stores nothing from that request.
 
@@ -244,6 +255,17 @@ All metadata: no route accepts or returns captured content, and each returns the
   a request that changes nothing writes no audit row. `422 SETTINGS_INVALID` (fixed message, never the value), `404 PROJECT_NOT_FOUND`. A new capture mode applies
   to the next accepted batch; a change to the mutes or the allowlist queues the project's recent runs for re-analysis in the same transaction (at most `ABB_SECURITY_REANALYSE_MAX_RUNS`=200 started within `ABB_SECURITY_REANALYSE_MAX_AGE_DAYS`=30, newest first, coalesced per run, and a wave within `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS`=60 of the project's previous mute or allowlist change is queued but not due until the cooldown ends; older runs: `python -m abb_api.cli rebuild-findings`), a capture mode change does not. An allowlist entry is a host name of at most 253 characters (punycode for an international name).
 
+### Project quotas (Phase 19a, ADR-154)
+
+- `GET /v1/projects/{project_id}/quotas` (`project.read`: every role; a project-bound key sees only its own project): `{project_id, day, resets_at, enforced, quotas[], updated_at, updated_by}`.
+  Each `quotas[]` item is `{quota, period (total|day), limit, default, overridden, used, percent, status}`, in the fixed order `agents`, `runs_per_day`, `events_per_day`, `artifact_bytes`.
+  `percent` is the whole percent of the limit used (above 100 after a limit was lowered below use); `status` is `ok`, `near_limit` (from 80 percent) or `at_limit` (new items are being refused).
+  `day` and `resets_at` say which UTC day the daily figures belong to. `enforced` is false while `ABB_QUOTAS_ENABLED=false` (nothing checked or counted). `404 PROJECT_NOT_FOUND` for a project that is not in the workspace or not visible to the key.
+- `PUT /v1/projects/{project_id}/quotas` (`project.write`: owners and admins; keys and other roles get 403): body `{agents?, runs_per_day?, events_per_day?, artifact_bytes?}`, each a whole number
+  within `1..1,000,000`, `1..100,000,000`, `1..100,000,000,000` and `1..1 PiB`, or `null` to remove the override. A field left out stays; unknown fields are 422. Returns the same body as the `GET`.
+  Each changed quota writes one audit entry `project.quota.update` (resource: the project; details: `quota`, `old`, `new`, nothing else); a request that changes nothing writes none.
+  `422 QUOTA_SETTINGS_INVALID`. The new limit applies to the next request; lowering it below current use refuses new items only.
+
 ### Policies (Phase 14, ADR-140)
 
 Policy management. Enforcement is cooperative: a policy governs agents that ask the policy service through the SDK, and says nothing about one that does not.
@@ -325,13 +347,13 @@ a history row shows `destination: {id: null, name: null, type}`; `approval_id` i
 **Destinations**
 
 - `POST /v1/alerts/destinations` `{name (1-80), type: webhook|slack|email, target: {url} | {recipients[1..10]}}` -> `201 {id: dst_..., name, type, masked_target, state, consecutive_failures, paused_reason, rule_count, created_by, created_at, updated_by, updated_at, signing_secret}`.
-  `signing_secret` (`whsec_...`, webhook only, else null) is **returned only here and by a rotation**. Errors: `422 DESTINATION_TARGET_INVALID` (`details.reason`: `url_required`, `url_too_long`, `url_malformed`, `not_https`, `credentials_in_url`, `host_invalid`, `host_internal`, `ip_not_public`, `ip_literal_form`, `port_invalid`, `fragment_not_allowed`, `recipients_required`, `too_many_recipients`, `recipient_invalid`, `target_shape`),
+  `signing_secret` (`whsec_...`, webhook only, else null) is **returned only here and by a rotation**. Errors: `422 DESTINATION_TARGET_INVALID` (`details.reason`: `url_required`, `url_too_long`, `url_malformed`, `not_https`, `credentials_in_url`, `host_invalid`, `host_internal`, `ip_not_public`, `ip_literal_form`, `port_invalid`, `port_not_allowed` (the port is not in `ABB_ALERTS_ALLOWED_PORTS`, default 443), `fragment_not_allowed`, `recipients_required`, `too_many_recipients`, `recipient_invalid`, `target_shape`),
   `422 EMAIL_NOT_CONFIGURED` (no `ABB_SMTP_HOST`), `409 ALERT_NAME_TAKEN`, `409 ALERT_LIMIT_REACHED` (50 per workspace). Audit `alert.destination.create` (`details`: `type`).
 - `GET /v1/alerts/destinations` -> `{items[], email_configured}`; `GET /v1/alerts/destinations/{id}` -> the destination (masked; never a URL, recipient or secret).
 - `PATCH /v1/alerts/destinations/{id}` `{name?, target?, state?: active|paused, rotate_signing_secret?}` -> the destination with `signing_secret` set only when rotated. A new target is re-validated, resets the failure count and moves `failing` to `active`;
   `state: paused` sets `paused_reason: manual`, `active` resumes and clears failures; rotation on a non-webhook is `422 DESTINATION_INVALID` (`reason: no_signing_secret`). Audit rows `alert.destination.update` (`changed`: `["name","target"]`), `.pause`, `.resume`, `.rotate_secret`.
 - `POST /v1/alerts/destinations/{id}/test` (no body; owner/admin, `alert.write`) -> `200 {ok: bool, error_code: string|null}`. Sends a fixed `kind: test` alert (no project, agent or content; link to the Alerts page) through the same SSRF-safe sender as real deliveries,
-  synchronously within the 5 s delivery deadline (email: the SMTP timeout). `error_code` is one of the fixed delivery codes (`timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`);
+  synchronously within the 5 s delivery deadline (email: the SMTP timeout). `error_code` is one of the fixed delivery codes (`timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address`, `blocked_port`, `http_3xx`, `http_4xx`, `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable`, `internal_error`);
   what the target answered is never returned. The HTTP status is `200` whether or not the target accepted it. A test does not change `state` or `consecutive_failures` and creates no history row; it works on a paused destination. `404 ALERT_DESTINATION_NOT_FOUND`
   (foreign and unknown ids alike), `403` for other roles and API keys, `429 RATE_LIMITED` (10 a minute per workspace per process, plus the write budget). Audit `alert.destination.test` (`type`, `ok`, `error_code`).
 - Every alert write (create, change, pause, rotate, delete of a destination or rule; send test's audit) fails fast with `409 ALERT_BUSY` (`retryable`) when a row lock it needs is held by a running delivery tick for longer than `ABB_ALERTS_LOCK_TIMEOUT_SECONDS` (3 s); nothing is changed and the same request can be repeated.
@@ -402,8 +424,8 @@ request's scope with no document (capped at 1,000, `unindexed_capped`); `python 
 with `details.field` (the catalogue's name, never the typed spelling and independent of any data), logged and audited like every denial, and no run statement is executed. Free text then
 searches the metadata document only, so content words give the same items, facets and cursor as a nonsense word. A BILLING person is refused at `run.read` before the query is parsed.
 
-**Errors.** `422 QUERY_INVALID` (`details.position`, `details.reason`; positions depend only on the text), `403 PERMISSION_DENIED` (above), `503 SEARCH_BUSY` (retryable, `Retry-After: 1`: all of this process's
-search permits are in use) and `503 SEARCH_TIMEOUT` (retryable: the statement exceeded the time budget). The web proxy refuses an encoded query string over 2,048 characters with `414 QUERY_TOO_LONG`
+**Errors.** `422 QUERY_INVALID` (`details.position`, `details.reason`; positions depend only on the text), `403 PERMISSION_DENIED` (above), `503 SEARCH_BUSY` (retryable, `Retry-After: 1`, fixed `details.reason`: this actor's or workspace's
+fair share of this process's search permits, or all of them, is in use) and `503 SEARCH_TIMEOUT` (retryable: the statement exceeded the time budget). The web proxy refuses an encoded query string over 2,048 characters with `414 QUERY_TOO_LONG`
 (a legal 512-character `q` of non-ASCII text can exceed it); the UI shows it like a 422 without a caret. Search is per request bounded: at most two statements, a read-only transaction, the budget
 `ABB_SEARCH_TIMEOUT_SECONDS` (5) and `ABB_SEARCH_MAX_CONCURRENT` (4) permits per process.
 

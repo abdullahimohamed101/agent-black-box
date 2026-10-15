@@ -21,11 +21,12 @@ The web page and `query.unindexed` say how many runs in the searched scope have 
 
 ## Searches fail with 503
 
-- `SEARCH_BUSY` (retryable, `Retry-After: 1`): all `ABB_SEARCH_MAX_CONCURRENT` (default 4) permits of this API process are in use. Searches never queue and never take a
-  database connection before a permit, so ingestion and the plain list are not affected. Raise the cap only with the connection pool in mind (the cap is validated at 1 to 14).
-- The budget starts when the permit is granted, but a request can still wait for a pooled connection (`pool_timeout`, 5 s) and the project check before its first statement, so a
-  permit can be held for the budget plus up to 5 s while ingestion holds the pool, and that search answers `503 DEPENDENCY_UNAVAILABLE` rather than `SEARCH_TIMEOUT` (KI-082).
-  Harmless for ingestion (that is what the cap is for); if it shows up, look at pool saturation, not at the search statements.
+- `SEARCH_BUSY` (retryable, `Retry-After: 1`, `details.reason`): a search is never queued. `actor_limit`: that key or person already has its maximum (2 at the default cap) searches running.
+  `workspace_share`: the workspace holds its share of the process's `ABB_SEARCH_MAX_CONCURRENT` permits (half, or all but one while no other workspace is searching). `process_full`: all permits of this API
+  process are in use. The share is per API process, not cluster-wide; the request *rate* is the shared limiter's. Permits are taken before a database connection, so ingestion and the plain list are not
+  affected. Raise the cap only with the connection pool in mind (validated at 1 to 14); with a cap of 1 there is no sharing (ADR-158).
+- The wait for a pooled connection counts against the search budget: a search that cannot get a connection answers `503 SEARCH_TIMEOUT` when the budget ends and releases its permit then. Seeing these
+  without slow statements means the pool is saturated (look at ingestion and the pool size, not at search).
 - `SEARCH_TIMEOUT` (retryable): the page statement ran past `ABB_SEARCH_TIMEOUT_SECONDS` (default 5). Narrow the time range or the project. A search whose *facets* statement
   runs out of budget still succeeds with `facets: null, facets_skipped: "budget"`.
 - If many users see timeouts: check that the GIN indexes exist and are not bloated (`\di+ ix_run_search_*`), then the measured triggers in ADR-100 (`pg_trgm` for `command:` and `file:`

@@ -14,6 +14,7 @@ from abb_api.core.request_context import get_request_id
 from abb_api.ingestion.body import decode_body, read_body, require_json_content_type
 from abb_api.ingestion.schemas import BatchResponse, EventResponse
 from abb_api.ingestion.service import IngestionService
+from abb_api.quotas.model import Quota, quota_exceeded
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
 
@@ -23,7 +24,12 @@ _ERROR_TEXT: dict[int | str, dict[str, Any]] = {
     400: {"description": "Malformed batch or unsupported schema version."},
     401: {"description": "Missing, malformed, unknown, revoked or expired API key."},
     403: {"description": "The key lacks `events:write` or is not bound to a project."},
-    413: {"description": "Body (compressed or decompressed) or event too large."},
+    413: {
+        "description": (
+            "Body (compressed or decompressed) or event too large; or, on the single-event "
+            "endpoint, `QUOTA_EXCEEDED` (the batch endpoint reports quotas per event instead)."
+        )
+    },
     415: {"description": "Not application/json, or an unsupported Content-Encoding."},
     422: {"description": "The event is invalid (single-event endpoint)."},
     429: {"description": "Rate limit exceeded; honour `Retry-After`."},
@@ -50,7 +56,10 @@ async def _document(request: Request) -> bytes:
     description=(
         "Accepts `{batch_id?, sent_at?, events: [...]}` (at most 1000 events, 5 MiB, optionally "
         "gzip). `202` means the valid events are committed. Invalid events are reported per "
-        "event in `errors` and do not affect the others. Retrying a batch is safe."
+        "event in `errors` and do not affect the others. A project at one of its quotas (distinct "
+        "agents, runs per day, events per day) has the excess events refused per event with "
+        "code `QUOTA_EXCEEDED` and the closed `quota` name; events of runs and agents it "
+        "already has, and replays, are unaffected. Retrying a batch is safe."
     ),
 )
 async def ingest_batch(request: Request, principal: Writer) -> BatchResponse:
@@ -80,6 +89,8 @@ async def ingest_event(request: Request, principal: Writer) -> EventResponse | J
     result = await service.ingest_batch(principal, json.dumps({"events": [event]}).encode("utf-8"))
     if result.errors:
         failure = result.errors[0]
+        if failure.quota is not None:
+            raise quota_exceeded(Quota(failure.quota))
         status = {
             "EVENT_TOO_LARGE": (413, "PAYLOAD_TOO_LARGE"),
             "EVENT_SCHEMA_UNSUPPORTED": (400, "EVENT_SCHEMA_UNSUPPORTED"),

@@ -49,6 +49,8 @@ export ABB_SMTP_HOST=127.0.0.1 ABB_SMTP_PORT=$SMTP_PORT ABB_SMTP_STARTTLS=false 
 WORK="$(mktemp -d)"; pids=()
 export ABB_ARTIFACT_DIR="$WORK/artifacts"
 export ABB_ALERTS_TEST_NETWORK_FILE="$WORK/net.json"
+# The receivers listen on these ports; the guard is the production one, the test adds them through the same setting an operator would (KI-162).
+export ABB_ALERTS_ALLOWED_PORTS="443,$MAIN_PORT,$SLACK_PORT,$FLAKY_PORT"
 kill_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done; kill "$1" 2>/dev/null || true; }
 cleanup() {
   for p in "${pids[@]:-}"; do [ -n "$p" ] && kill_tree "$p"; done

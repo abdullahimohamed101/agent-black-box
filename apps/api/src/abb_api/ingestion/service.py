@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import re
-from datetime import timedelta
+from datetime import UTC, timedelta
 from typing import Any
 
 from abb_event_schema.errors import ErrorCode, EventValidationError, Issue
@@ -31,9 +31,12 @@ from abb_api.ingestion.emitter import (
     RESERVED_TYPE_CODE,
     SERVER_EMITTER,
 )
-from abb_api.ingestion.ratelimit import RateLimiter, retry_after_seconds
+from abb_api.ingestion.ratelimit import retry_after_seconds
 from abb_api.ingestion.schemas import BatchResponse, EventErrorOut, IssueOut
-from abb_api.ingestion.store import PgEventStore
+from abb_api.ingestion.store import EventResult, PgEventStore, QuotaPolicy
+from abb_api.limits import AsyncRateLimiter
+from abb_api.quotas.model import QUOTA_EXCEEDED, QUOTA_WORDS, Quota
+from abb_api.quotas.settings import default_limits
 from abb_api.security.redaction import (
     REASON,
     SCAN_FAILED,
@@ -79,7 +82,7 @@ class IngestionService:
     def __init__(
         self,
         engine: AsyncEngine,
-        limiter: RateLimiter,
+        limiter: AsyncRateLimiter,
         settings: Settings,
         clock: Clock,
         redactor: ServerRedactor | None = None,
@@ -92,14 +95,18 @@ class IngestionService:
             event_max_seconds=settings.security_scan_event_max_seconds
         )
         self._summary_delay = timedelta(seconds=settings.summary_debounce_seconds)
+        self._quota_defaults = default_limits(settings)
 
     async def ingest_batch(self, principal: Principal, document: bytes) -> BatchResponse:
         if principal.project_id is None:
             raise project_key_required()
         batch_id, raw_events = self._parse_batch(document)
 
-        wait = self._limiter.acquire(
-            str(principal.project_id), events=len(raw_events), bytes_=len(document)
+        wait = await self._limiter.acquire(
+            str(principal.project_id),
+            events=len(raw_events),
+            bytes_=len(document),
+            workspace_id=principal.workspace_id,
         )
         if wait is not None:
             raise rate_limited(wait)
@@ -173,9 +180,18 @@ class IngestionService:
             valid = await self._redact(principal, valid, errors, size=len(document))
         if valid:
             try:
+                quota = (
+                    QuotaPolicy(
+                        self._quota_defaults,
+                        received_at.astimezone(UTC).date(),
+                        int(self._settings.quota_lock_timeout_seconds * 1000),
+                    )
+                    if self._settings.quotas_enabled
+                    else None
+                )
                 async with self._engine.begin() as conn:
                     outcome = await PgEventStore(
-                        conn, principal.tenant, summary_delay=self._summary_delay
+                        conn, principal.tenant, summary_delay=self._summary_delay, quota=quota
                     ).ingest([event for _, event in valid])
             except Exception as exc:
                 if is_connectivity_error(exc) or _is_transient_conflict(exc):
@@ -184,11 +200,7 @@ class IngestionService:
                 raise
             for (index, _), result in zip(valid, outcome.results, strict=True):
                 if result.status == "rejected":
-                    errors.append(
-                        EventErrorOut(
-                            index=index, event_id=result.event_id, code=result.code or "REJECTED"
-                        )
-                    )
+                    errors.append(self._rejected_out(index, result))
             accepted, duplicates, conflicts = (
                 outcome.accepted,
                 outcome.duplicates,
@@ -301,6 +313,26 @@ class IngestionService:
         return batch_id, events
 
     @staticmethod
+    def _rejected_out(index: int, result: EventResult) -> EventErrorOut:
+        if result.quota is not None:
+            # A closed vocabulary and fixed words: nothing the client sent is repeated.
+            quota = Quota(result.quota)
+            return EventErrorOut(
+                index=index,
+                event_id=result.event_id,
+                code=QUOTA_EXCEEDED,
+                quota=quota.value,
+                issues=[
+                    IssueOut(
+                        loc=["quota"],
+                        code=quota.value,
+                        message=f"This project has reached its quota for {QUOTA_WORDS[quota]}.",
+                    )
+                ],
+            )
+        return EventErrorOut(index=index, event_id=result.event_id, code=result.code or "REJECTED")
+
+    @staticmethod
     def _event_id_hint(raw: Any) -> str | None:
         """The event's id if it is readable and well formed (never echoes anything else)."""
         candidate = raw.get("event_id") if isinstance(raw, dict) else None
@@ -318,9 +350,10 @@ class IngestionService:
 
 
 def _is_transient_conflict(exc: BaseException) -> bool:
-    """Deadlock or serialization failure: the client should simply retry the batch."""
+    """Deadlock, serialization failure or a lock wait that timed out (the project lock, ADR-154):
+    the client should simply retry the batch."""
     sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
-    return sqlstate in {"40P01", "40001"}
+    return sqlstate in {"40P01", "40001", "55P03"}
 
 
 __all__ = ["ErrorCode", "IngestionService"]

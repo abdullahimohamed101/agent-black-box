@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -59,12 +60,37 @@ class Api:
         clean = {k: v for k, v in params.items() if v is not None}
         return await self.client.get(path, params=clean, headers=headers)
 
-    async def drain(self) -> None:
-        """Run the background worker until it has nothing left to do."""
+    async def drain(self, *, expect_retries: bool = False) -> None:
+        """Run the background worker until it has nothing left to do.
+
+        A job that failed once is rescheduled behind a backoff, so `run_once` finds nothing to do
+        and the test would go on with that job still pending (a summary that "stays processing",
+        KI-172). That is a failure, not a quiet state: it is raised here with the job's own error,
+        unless the test is about retries (`expect_retries=True`).
+        """
         for _ in range(100):
             if await self.worker.run_once() == 0:
-                return
-        raise AssertionError("worker never ran out of jobs")
+                break
+        else:
+            raise AssertionError("worker never ran out of jobs")
+        if expect_retries:
+            return
+        async with self.engine.connect() as conn:
+            waiting = (
+                await conn.execute(
+                    text(
+                        "SELECT job_type, attempt_count, last_error FROM outbox_jobs"
+                        " WHERE status = 'pending' AND last_error IS NOT NULL"
+                        " ORDER BY created_at LIMIT 5"
+                    )
+                )
+            ).all()
+        if waiting:
+            raise AssertionError(
+                "drain() left jobs waiting for a retry after a failure (pass expect_retries=True "
+                "if the test is about retries): "
+                + "; ".join(f"{job} attempt {n}: {error}" for job, n, error in waiting)
+            )
 
     async def post_batch(
         self,

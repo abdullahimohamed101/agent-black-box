@@ -353,8 +353,12 @@ def _default_sender(settings: Settings) -> o.SafeHttpsSender:
         return sender_from_file(
             settings.alerts_test_network_file,
             timeout_seconds=settings.alerts_request_timeout_seconds,
+            allowed_ports=settings.alerts_allowed_port_set,
         )
-    return o.SafeHttpsSender(timeout_seconds=settings.alerts_request_timeout_seconds)
+    return o.SafeHttpsSender(
+        timeout_seconds=settings.alerts_request_timeout_seconds,
+        allowed_ports=settings.alerts_allowed_port_set,
+    )
 
 
 def build_registry(

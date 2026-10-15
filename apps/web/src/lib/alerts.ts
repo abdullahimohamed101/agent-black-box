@@ -137,6 +137,8 @@ const ERROR_CODE_WORD: Record<string, string> = {
   dns_failed: "The destination's name could not be looked up.",
   tls_failed: "The secure connection to the destination failed.",
   blocked_address: "The destination points at an address that alerts are not allowed to reach.",
+  blocked_port:
+    "The destination uses a port that alerts are not allowed to reach. Ask your operator, or use port 443.",
   http_3xx: "The destination answered with a redirect, which is not followed.",
   http_4xx: "The destination refused the alert (a 4xx answer). Check the address or its access.",
   http_5xx: "The destination had an error of its own (a 5xx answer).",
@@ -350,6 +352,8 @@ const TARGET_REASON_WORD: Record<string, string> = {
   ip_not_public: "That address is not a public one. Alerts only go to public addresses.",
   ip_literal_form: "Write the address with a host name or a standard IP form.",
   port_invalid: "The port in that address is not valid.",
+  port_not_allowed:
+    "That port is not allowed. Alerts go to port 443 unless your operator allows more.",
   fragment_not_allowed: "Remove the part after # from the address.",
   recipients_required: "Enter at least one email address.",
   too_many_recipients: "Use at most 10 email addresses.",

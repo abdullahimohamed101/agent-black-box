@@ -543,23 +543,25 @@ async def test_the_gate_refuses_instead_of_queueing() -> None:
     from abb_api.core.errors import AppError
 
     gate = SearchGate(max_concurrent=2, timeout_seconds=1.0)
+    WS_A, WS_B, WS_C = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     release = asyncio.Event()
     entered = 0
 
-    async def hold() -> None:
+    async def hold(workspace: uuid.UUID) -> None:
         nonlocal entered
-        async with gate.request():
+        async with gate.request(workspace, "user:a"):
             entered += 1
             await release.wait()
 
-    first, second = asyncio.create_task(hold()), asyncio.create_task(hold())
+    first, second = asyncio.create_task(hold(WS_A)), asyncio.create_task(hold(WS_B))
     await asyncio.sleep(0.01)
     assert entered == 2
     with pytest.raises(AppError) as caught:
-        async with gate.request():
+        async with gate.request(WS_C, "user:a"):
             raise AssertionError("must not be admitted")
     assert caught.value.code == "SEARCH_BUSY" and caught.value.headers == {"Retry-After": "1"}
+    assert caught.value.details == {"reason": "process_full"}
     release.set()
     await asyncio.gather(first, second)
-    async with gate.request():  # permits come back
+    async with gate.request(WS_A, "user:a"):  # permits come back
         pass

@@ -7,6 +7,7 @@ The routes live in `members_router.py`; everything that inspects a role lives he
 import hashlib
 import logging
 import secrets
+import uuid
 from datetime import timedelta
 from typing import Annotated, Literal
 
@@ -18,8 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from abb_api.audit.repository import AuditEntry, record_audit
 from abb_api.auth.repository import UserRepository
 from abb_api.auth.service import SessionContext
+from abb_api.authz import actions
 from abb_api.authz.audit import audit_allowed
 from abb_api.authz.dependencies import workspace_not_found
+from abb_api.authz.matrix import role_actions
 from abb_api.authz.members import authorize_role_change
 from abb_api.authz.principal import Principal
 from abb_api.core.domain import AlreadyExistsError
@@ -191,13 +194,22 @@ async def change_role(
             return _member_out(target)  # nothing changes, nothing is audited
         if target.role == "OWNER" and len(owners) <= 1:
             raise _conflict("LAST_OWNER", "A workspace needs at least one owner.")
-        await members.set_role(target_id, body.role, request.app.state.clock())
+        now = request.app.state.clock()
+        await members.set_role(target_id, body.role, now)
+        # A role that cannot invite takes the person's open invitations with it, in this same
+        # transaction: there is no moment where the demoted person's links still work (KI-077).
+        revoked = (
+            []
+            if actions.INVITE_WRITE in role_actions(body.role)
+            else await InvitationRepository(conn, principal.tenant).revoke_open_by(target_id, now)
+        )
         updated = await members.get(target_id)
     assert updated is not None
     await audit_allowed(
         request, principal, "member.update", resource_kind="member",
         resource_id=user_id, **{"from": target.role, "to": updated.role},
     )  # fmt: skip
+    await _audit_lapsed_invitations(request, principal, revoked, user_id, "inviter_role_changed")
     return _member_out(updated)
 
 
@@ -215,10 +227,30 @@ async def remove_member(request: Request, principal: Principal, user_id: str) ->
         if target.role == "OWNER" and len(owners) <= 1:
             raise _conflict("LAST_OWNER", "A workspace needs at least one owner.")
         await members.remove(target_id)
+        revoked = await InvitationRepository(conn, principal.tenant).revoke_open_by(
+            target_id, request.app.state.clock()
+        )
     await audit_allowed(
         request, principal, "member.remove", resource_kind="member", resource_id=user_id,
         role=target.role,
     )  # fmt: skip
+    await _audit_lapsed_invitations(request, principal, revoked, user_id, "inviter_removed")
+
+
+async def _audit_lapsed_invitations(
+    request: Request,
+    principal: Principal,
+    revoked: list[uuid.UUID],
+    inviter_id: str,
+    reason: str,
+) -> None:
+    """One audit row per invitation the change revoked (bounded by the open-invitation cap)."""
+    for invitation_id in revoked:
+        await audit_allowed(
+            request, principal, "invitation.revoke_inviter_lost_rights",
+            resource_kind="invitation", resource_id=public_id(IdKind.INVITATION, invitation_id),
+            inviter=inviter_id, reason=reason,
+        )  # fmt: skip
 
 
 # ------------------------------------------------------------------ invitations
