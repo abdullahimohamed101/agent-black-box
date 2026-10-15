@@ -1509,3 +1509,107 @@ project_artifact_usage = Table(
     ),
     CheckConstraint("bytes_stored >= 0", name="ck_artifact_usage_bytes"),
 )
+
+
+# ------------------------------------------------------------ data lifecycle (Phase 19b, ADR-159)
+
+RETENTION_POLICY_TIERS = ("artifacts", "trace", "run", "audit")
+# Tiers a retention report can describe: the four the workspace sets, the fixed-window clean-up of
+# a workspace's operational rows, and the install-level clean-up (`workspace_id` NULL).
+RETENTION_REPORT_TIERS = (*RETENTION_POLICY_TIERS, "operational", "platform")
+RETENTION_MODES = ("dry_run", "enforce")
+RETENTION_FLOOR_DAYS = 7
+RETENTION_CEILING_DAYS = 36500
+
+# A workspace's retention policy (migration 0101). A tier's `*_days` NULL means "the environment
+# default"; `*_forever` is the explicit choice to keep that tier for good (then `*_days` is NULL).
+# The runtime role reads, inserts and updates it; the retention job only reads it.
+retention_policies = Table(
+    "retention_policies",
+    metadata,
+    Column(
+        "workspace_id",
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    *[
+        column
+        for tier in RETENTION_POLICY_TIERS
+        for column in (
+            Column(f"{tier}_days", Integer),
+            Column(f"{tier}_forever", Boolean, nullable=False, server_default=text("false")),
+        )
+    ],
+    _ts("updated_at", nullable=False, default_now=True),
+    Column("updated_by", Text, nullable=False),
+    *[
+        constraint
+        for tier in RETENTION_POLICY_TIERS
+        for constraint in (
+            CheckConstraint(
+                f"{tier}_days IS NULL OR {tier}_days BETWEEN {RETENTION_FLOOR_DAYS} "
+                f"AND {RETENTION_CEILING_DAYS}",
+                name=f"ck_retention_policies_{tier}_days",
+            ),
+            CheckConstraint(
+                f"NOT {tier}_forever OR {tier}_days IS NULL",
+                name=f"ck_retention_policies_{tier}_forever",
+            ),
+        )
+    ],
+    CheckConstraint("char_length(updated_by) <= 128", name="ck_retention_policies_updated_by"),
+)
+
+# What one retention tick found (dry run) or did (enforce) for one workspace and tier: counts only,
+# never content. Written by the retention role; the application only reads. `workspace_id` is NULL
+# exactly for the install-level `platform` tier.
+retention_reports = Table(
+    "retention_reports",
+    metadata,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column("tick_id", UUID(as_uuid=True), nullable=False),
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE")),
+    Column("tier", Text, nullable=False),
+    Column("mode", Text, nullable=False),
+    Column("runs", BigInteger, nullable=False, server_default="0"),
+    Column("events", BigInteger, nullable=False, server_default="0"),
+    Column("artifact_bytes", BigInteger, nullable=False, server_default="0"),
+    Column("row_count", BigInteger, nullable=False, server_default="0"),
+    Column("truncated", Boolean, nullable=False, server_default=text("false")),
+    _ts("cutoff_at"),
+    _ts("started_at", nullable=False),
+    _ts("finished_at", nullable=False),
+    CheckConstraint(_in("tier", RETENTION_REPORT_TIERS), name="ck_retention_reports_tier"),
+    CheckConstraint(_in("mode", RETENTION_MODES), name="ck_retention_reports_mode"),
+    CheckConstraint(
+        "(workspace_id IS NULL) = (tier = 'platform')", name="ck_retention_reports_scope"
+    ),
+    CheckConstraint(
+        "runs >= 0 AND events >= 0 AND artifact_bytes >= 0 AND row_count >= 0",
+        name="ck_retention_reports_counts",
+    ),
+    Index("ix_retention_reports_workspace", "workspace_id", "tier", text("started_at DESC")),
+)
+
+# One row per run the retention job removed data of (step 2; unused in step 1): the run id, the
+# tier and when. Written by the retention role; the application only reads.
+retention_tombstones = Table(
+    "retention_tombstones",
+    metadata,
+    Column(
+        "workspace_id",
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("tier", Text, nullable=False),
+    Column("mode", Text, nullable=False),
+    _ts("deleted_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "run_id", "tier"),
+    CheckConstraint(
+        _in("tier", ("artifacts", "trace", "run")), name="ck_retention_tombstones_tier"
+    ),
+    CheckConstraint(_in("mode", RETENTION_MODES), name="ck_retention_tombstones_mode"),
+)

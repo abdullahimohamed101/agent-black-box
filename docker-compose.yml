@@ -49,6 +49,8 @@ services:
       <<: *api-env
       ABB_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb
       ABB_RUNTIME_DB_PASSWORD: ${ABB_RUNTIME_DB_PASSWORD:-abb_runtime_dev_password}
+      # Gives the retention role (ADR-159) a login; only the retention service below knows the password.
+      ABB_RETENTION_DB_PASSWORD: ${ABB_RETENTION_DB_PASSWORD:-abb_retention_dev_password}
     restart: "no"
     depends_on:
       postgres:
@@ -105,6 +107,22 @@ services:
     <<: *api
     profiles: ["app"]
     command: ["python", "-m", "abb_api.worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Data retention (ADR-159). Its own environment on purpose: the retention role's URL is never given to the
+  # api or the worker, and this service has no ABB_DATABASE_URL. ABB_RETENTION_MODE=dry_run (the default)
+  # only measures and writes reports; enforce is not available before Phase 19b step 2.
+  retention:
+    <<: *api
+    profiles: ["app"]
+    command: ["python", "-m", "abb_api.retention", "run"]
+    environment:
+      ABB_ENVIRONMENT: development
+      ABB_RETENTION_DATABASE_URL: postgresql+asyncpg://abb_retention:${ABB_RETENTION_DB_PASSWORD:-abb_retention_dev_password}@postgres:5432/abb
+      ABB_RETENTION_MODE: ${ABB_RETENTION_MODE:-dry_run}
     restart: unless-stopped
     depends_on:
       migrate:

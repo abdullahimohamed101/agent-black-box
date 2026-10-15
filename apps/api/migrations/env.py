@@ -25,30 +25,34 @@ def _database_url() -> str:
     return url
 
 
-def _set_runtime_role_password(connection: Connection) -> None:
-    """Give the runtime role a login password from the environment (idempotent, every run).
+def _set_role_password(connection: Connection, role: str, variable: str) -> None:
+    """Give a login role a password from the environment (idempotent, every run).
 
-    The password never lives in a migration file. Without ABB_RUNTIME_DB_PASSWORD the role stays
-    NOLOGIN, so a deployment cannot accidentally run with a well-known password.
+    The password never lives in a migration file. Without the variable the role stays NOLOGIN, so
+    a deployment cannot accidentally run with a well-known password.
     """
     command = getattr(getattr(config, "cmd_opts", None), "cmd", None)
     ran_upgrade = bool(command) and command[0].__name__ == "upgrade"
     at_head = context.get_context().get_current_revision() == context.get_head_revision()
     if not (ran_upgrade and at_head):
-        return  # never touch the role on downgrades or read-only commands
-    password = os.environ.get("ABB_RUNTIME_DB_PASSWORD")
-    exists = connection.exec_driver_sql("SELECT 1 FROM pg_roles WHERE rolname = 'abb_runtime'")
+        return  # never touch a role on downgrades or read-only commands
+    password = os.environ.get(variable)
+    exists = connection.exec_driver_sql(
+        f"SELECT 1 FROM pg_roles WHERE rolname = '{role}'"  # noqa: S608  (fixed role names)
+    )
     if not password or exists.first() is None:
         return
     literal = "'" + password.replace("'", "''") + "'"
-    connection.exec_driver_sql(f"ALTER ROLE abb_runtime LOGIN PASSWORD {literal}")
+    connection.exec_driver_sql(f"ALTER ROLE {role} LOGIN PASSWORD {literal}")
 
 
 def _run(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()
-        _set_runtime_role_password(connection)
+        _set_role_password(connection, "abb_runtime", "ABB_RUNTIME_DB_PASSWORD")
+        # The retention job's own role (ADR-159); a separate secret, never the runtime one.
+        _set_role_password(connection, "abb_retention", "ABB_RETENTION_DB_PASSWORD")
 
 
 async def _run_async() -> None:

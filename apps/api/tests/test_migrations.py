@@ -6,6 +6,7 @@ inside a test event loop.
 
 import asyncio
 import uuid
+from typing import Any
 
 import pytest
 from alembic.autogenerate import compare_metadata
@@ -97,6 +98,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0098",
         "0099",
         "0100",
+        "0101",
     ]
 
 
@@ -494,3 +496,72 @@ def test_0100_revokes_delete_on_the_quota_tables_and_adds_the_active_key_index()
         assert all(restored.values())
         assert "ix_api_keys_active" not in asyncio.run(index_names(url, "api_keys"))
         alembic(url, "upgrade", "head")
+
+
+def test_0101_adds_the_retention_tables_and_role_and_downgrades_cleanly() -> None:
+    """Phase 19b: 0100 -> 0101 keeps data, creates the role with its grants; the downgrade removes
+    the tables and every grant of the role (the role itself is cluster-wide and stays)."""
+
+    async def facts(url: str) -> dict[str, Any]:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.connect() as conn:
+            grants = (
+                await conn.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.role_table_grants "
+                        "WHERE grantee = 'abb_retention'"
+                    )
+                )
+            ).scalar_one()
+            columns = (
+                await conn.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.column_privileges "
+                        "WHERE grantee = 'abb_retention'"
+                    )
+                )
+            ).scalar_one()
+            role = (
+                await conn.execute(text("SELECT 1 FROM pg_roles WHERE rolname = 'abb_retention'"))
+            ).first()
+            workspaces = (await conn.execute(text("SELECT count(*) FROM workspaces"))).scalar_one()
+        await engine.dispose()
+        return {"grants": grants, "columns": columns, "role": role is not None, "ws": workspaces}
+
+    retention_tables = {"retention_policies", "retention_reports", "retention_tombstones"}
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0100")
+        engine = create_async_engine(url, poolclass=NullPool)
+
+        async def seed() -> None:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO workspaces (id, name, slug) "
+                        "VALUES (gen_random_uuid(), 'a', 'a')"
+                    )
+                )
+            await engine.dispose()
+
+        asyncio.run(seed())
+        before = asyncio.run(table_names(url))
+        assert not retention_tables & before
+        alembic(url, "upgrade", "0101")
+        assert retention_tables <= asyncio.run(table_names(url))
+        up = asyncio.run(facts(url))
+        assert up["role"] is True and up["ws"] == 1
+        assert up["grants"] > 0 and up["columns"] > 0
+        assert asyncio.run(column_names(url, "retention_policies")) >= {
+            "workspace_id",
+            "artifacts_days",
+            "artifacts_forever",
+            "audit_days",
+            "audit_forever",
+            "updated_by",
+        }
+        alembic(url, "downgrade", "0100")
+        down = asyncio.run(facts(url))
+        assert asyncio.run(table_names(url)) == before
+        assert (down["grants"], down["columns"], down["role"], down["ws"]) == (0, 0, True, 1)
+        alembic(url, "upgrade", "head")
+        assert asyncio.run(facts(url)) == up

@@ -131,11 +131,23 @@ async def test_append_only_tables_are_exactly_the_declared_ones_and_the_rest_are
         False,
         False,
     )
-    # Quota counters and overrides are upserted, never deleted by the application (0100).
+    # What the retention job reports is written by the retention role only (0101): the
+    # application reads it and can neither forge nor erase it.
+    for name in ("retention_reports", "retention_tombstones"):
+        row = privileges.pop(name)
+        assert (row.can_select, row.can_insert, row.can_update, row.can_delete) == (
+            True,
+            False,
+            False,
+            False,
+        ), name
+    # Quota counters and overrides are upserted, never deleted by the application (0100), and a
+    # retention policy is written but never deleted (0101).
     no_delete = deletes_blocked | {
         "project_quota_overrides",
         "project_usage_daily",
         "project_artifact_usage",
+        "retention_policies",
     }
     for name, row in privileges.items():
         assert row.can_update and row.can_delete == (name not in no_delete), name
