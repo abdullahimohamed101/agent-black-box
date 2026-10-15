@@ -31,5 +31,5 @@ Limiter math and bounds; quota admission order and races; the login cookie flow;
 ## Residual risks
 
 - KI-191: a person who knows an API key id can close that key id's own failed-auth window with 10 bad secrets and delay that key's first use for up to 60 s (known-valid keys in the process cache keep working).
-- KI-187 and KI-188 were named in the hand-off; no register row with those ids exists in the repository, so they are not filed here (see the close-out PR).
+- KI-187 (plain-http deployments have no `__Host-` cookie protection, #204) and KI-188 (the https e2e uses a test-only TLS proxy, #205) were reported by the cookie-fix step but not written into the register at the time; they were added and filed in this close-out.
 - The remaining new rows are KI-173, KI-174, KI-176 to KI-186, KI-189 and KI-190, filed as #187 to #202.
