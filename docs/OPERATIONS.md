@@ -190,6 +190,7 @@ SELECT id, job_type, attempt_count, left(last_error, 120) FROM outbox_jobs WHERE
 - [Dead-lettered jobs](runbooks/dead-letters.md)
 - [Ingestion rejections](runbooks/ingestion-rejections.md)
 - [Live streams](runbooks/stream-issues.md)
+- [Abuse resistance and hardening](runbooks/hardening.md): what each limit, quota and throttle does, what an operator sees when it triggers, reading the counters and audit rows, reverse-proxy guidance, and the Phase 19a upgrade notes (migrations 0097-0099)
 
 Still to write (Phases 18-19): database saturation, backup and restore drill (spec §123).
 Recovery targets: RPO <= 15 min, RTO <= 4 h (spec §122) once managed PostgreSQL with point-in-time recovery is in place.
