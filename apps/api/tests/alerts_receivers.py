@@ -145,6 +145,7 @@ class TlsReceiver:
         resolver: o.Resolver | None = None,
         timeout_seconds: float = 5.0,
         opened: list[tuple[str, int, str]] | None = None,
+        allowed_ports: frozenset[int] | None = None,
     ) -> o.SafeHttpsSender:
         """A sender that resolves our reserved name to a public address (a stub) and "connects" to
         that address by opening the local port instead; every pinned connection is recorded."""
@@ -166,6 +167,9 @@ class TlsReceiver:
             opener=opener,
             ssl_context=self.client_context,
             timeout_seconds=timeout_seconds,
+            # the receiver listens on a random port: allowing it is what the e2e script does with
+            # ABB_ALERTS_ALLOWED_PORTS, the guard itself stays the production one
+            allowed_ports=frozenset({443, self.port}) if allowed_ports is None else allowed_ports,
         )
 
     def url(self, path: str = "/hook/SECRETPATHTOKEN1234") -> str:

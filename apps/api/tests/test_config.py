@@ -59,3 +59,17 @@ def test_quota_defaults_and_their_environment_names(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("ABB_QUOTA_AGENTS", "0")
     with pytest.raises(ValidationError, match="quota_agents"):
         Settings(database_url="x")
+
+
+def test_the_alert_port_allow_list_defaults_to_443_and_parses_a_comma_list() -> None:
+    assert Settings(database_url="x").alerts_allowed_port_set == {443}
+    listed = Settings(database_url="x", alerts_allowed_ports=" 443,8443 , 9443")
+    assert listed.alerts_allowed_port_set == {443, 8443, 9443}
+
+
+@pytest.mark.parametrize(
+    "value", ["", ",", "0", "65536", "-1", "443,abc", "44 3", "443;8443", "٤٤٣"]
+)
+def test_a_malformed_alert_port_list_is_refused_at_startup(value: str) -> None:
+    with pytest.raises(ValidationError, match="alerts_allowed_ports"):
+        Settings(database_url="x", alerts_allowed_ports=value)

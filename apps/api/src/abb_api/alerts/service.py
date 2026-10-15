@@ -318,7 +318,7 @@ class AlertsService:
                 return {"recipients": recipients}, mask_recipients(recipients)
             if target.recipients is not None or target.url is None:
                 raise TargetInvalid("target_shape")
-            web = validate_web_url(target.url)
+            web = validate_web_url(target.url, self._settings.alerts_allowed_port_set)
             return {"url": web.url}, web.masked
         except TargetInvalid as invalid:
             raise target_invalid(invalid.reason) from None

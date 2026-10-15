@@ -11,6 +11,7 @@ echoed in a message, a log line or an audit row.
 
 import ipaddress
 import re
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Final
 from urllib.parse import urlsplit
@@ -19,6 +20,11 @@ MAX_URL_LENGTH: Final = 2048
 MAX_RECIPIENTS: Final = 10
 MAX_EMAIL_LENGTH: Final = 254
 MAX_HOST_LENGTH: Final = 253
+# What an https URL without a port means, and the only port allowed unless the operator adds more
+# (`ABB_ALERTS_ALLOWED_PORTS`, KI-162): it keeps a destination from probing SSH, SMTP, Redis,
+# Elasticsearch and the like on public hosts.
+DEFAULT_PORT: Final = 443
+DEFAULT_ALLOWED_PORTS: Final = frozenset({DEFAULT_PORT})
 
 # Names that are internal by convention. A hostname outside this list can still resolve to a
 # private address; the sender's resolution check is what stops that.
@@ -49,7 +55,7 @@ REASONS: Final = frozenset({
     "url_required", "url_too_long", "url_malformed", "not_https", "credentials_in_url",
     "host_invalid", "host_internal", "ip_not_public", "ip_literal_form", "port_invalid",
     "fragment_not_allowed", "recipients_required", "too_many_recipients", "recipient_invalid",
-    "target_shape",
+    "target_shape", "port_not_allowed",
 })  # fmt: skip
 
 
@@ -82,8 +88,11 @@ def _host_of(raw_netloc_host: str) -> str:
     return host
 
 
-def validate_web_url(value: object) -> WebTarget:
-    """A webhook or Slack URL, or `TargetInvalid`."""
+def validate_web_url(
+    value: object, allowed_ports: Collection[int] = DEFAULT_ALLOWED_PORTS
+) -> WebTarget:
+    """A webhook or Slack URL, or `TargetInvalid`. The port (explicit, or 443 from the scheme)
+    must be in `allowed_ports`."""
     if not isinstance(value, str) or not value.strip():
         raise TargetInvalid("url_required")
     if len(value) > MAX_URL_LENGTH:
@@ -106,6 +115,8 @@ def validate_web_url(value: object) -> WebTarget:
         raise TargetInvalid("fragment_not_allowed")
     if port is not None and not 1 <= port <= 65535:
         raise TargetInvalid("port_invalid")
+    if (DEFAULT_PORT if port is None else port) not in allowed_ports:
+        raise TargetInvalid("port_not_allowed")
     host = _host_of(raw_host)
     if len(host) > MAX_HOST_LENGTH:
         raise TargetInvalid("host_invalid")

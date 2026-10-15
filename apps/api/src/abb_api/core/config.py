@@ -240,6 +240,9 @@ class Settings(BaseSettings):
     # the alert sender so local receivers can stand in for public hosts (alerts/testnet.py). Unset
     # by default and refused outside development and test.
     alerts_test_network_file: Path | None = None
+    # Ports a webhook or Slack destination may use (KI-162, ADR-158). Comma-separated; 443 is the
+    # default and what an https URL without a port means. Extra ports are an operator decision.
+    alerts_allowed_ports: str = "443"
     # Email delivery needs an operator-provided SMTP relay (no mail credentials in the database).
     # Without `smtp_host`, email destinations cannot be created. The password is read from the
     # environment only and is never logged or returned.
@@ -323,6 +326,23 @@ class Settings(BaseSettings):
                 "judge_provider=fake is only for development or test (or set judge_allow_fake)"
             )
         return self
+
+    @model_validator(mode="after")
+    def _alert_ports_are_a_valid_list(self) -> "Settings":
+        _ = self.alerts_allowed_port_set  # raises ValueError (a settings error) when malformed
+        return self
+
+    @property
+    def alerts_allowed_port_set(self) -> frozenset[int]:
+        ports: set[int] = set()
+        for item in self.alerts_allowed_ports.split(","):
+            text = item.strip()
+            if not text.isascii() or not text.isdigit() or not 1 <= int(text) <= 65535:
+                raise ValueError("alerts_allowed_ports must be a comma list of ports 1-65535")
+            ports.add(int(text))
+        if not ports:
+            raise ValueError("alerts_allowed_ports must list at least one port")
+        return frozenset(ports)
 
     @model_validator(mode="after")
     def _the_test_network_never_runs_in_production(self) -> "Settings":

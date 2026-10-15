@@ -36,7 +36,7 @@ async def seed_destination(
         config: dict[str, Any] = {"recipients": recipients or ["oncall@example.com"]}
         masked = mask_recipients(config["recipients"])
     else:
-        web = validate_web_url(url)
+        web = validate_web_url(url, allowed_ports=range(1, 65536))
         config, masked = {"url": web.url}, web.masked
     blob = await sealed.seal(
         engine,
