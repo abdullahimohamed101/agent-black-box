@@ -93,6 +93,8 @@ and no growth in time alone. Whether to clamp the claimed day or add rollup rete
 * A raised limit is a lever on the operator's resources, so it is owner/admin only, audited, and range-checked; the defaults are abuse rails, not capacity guidance.
 * `POST /v1/runs` shares the runs-per-day counter, so queued runs and event-created runs count together.
 * Usage rows are one per active project per day and are not pruned (KI-180).
+* Not fixed (review note): `artifacts/service.py` reads the artifact-bytes limit before the quota transaction, so one upload can exceed a limit that an owner lowered a moment earlier; the counter itself stays exact.
+* Least privilege (migration 0100): the application role cannot DELETE from the three quota tables; it only upserts them.
 
 ## Alternatives considered
 

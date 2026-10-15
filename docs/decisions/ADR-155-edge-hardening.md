@@ -18,12 +18,16 @@ database protection (KI-031). The plan settled the answers with the user (D4); t
 `abb_api.core.body_budget` is a pure ASGI middleware (innermost, so a refusal still gets CORS headers and a request ID). `ABB_MAX_BODY_BYTES_IN_FLIGHT` (default 64 MiB; it must be at least
 the largest single body, checked at startup) is the most body bytes this process holds at once.
 
-* **Only bytes the handler actually pulled from the socket are counted.** A request refused before its body is read (a bad key, a rate limit, a quota) costs nothing, and an anonymous
-  client cannot reserve budget by declaring a large `Content-Length` and never sending it. This is the reason it is not a reserve-by-`Content-Length` scheme: that would let 13 anonymous slow
-  connections starve ingestion.
-* **Before the body is read:** a request whose `Content-Length` (capped at the largest allowed body) would not fit in what is left is answered `503 BUSY` with `Retry-After: 2` and its body is
-  never read. **While it is read:** chunked bodies and requests admitted together are counted chunk by chunk; the chunk that would pass the cap is refused with the same `503 BUSY` (raised
-  into the normal error handler, so the envelope is the one every route uses: category `DEPENDENCY`, `retryable: true`).
+* **A declared size is reserved at admission and reconciled on arrival (review fix, supersedes the first design).** The first version counted only bytes the handler had pulled, so N requests that each declared
+  a large `Content-Length` all passed while `in_flight` was still zero and were refused one by one after transferring bytes. Now a request whose `Content-Length` (capped at the largest allowed body) would not
+  fit in what is left is answered `503 BUSY` with `Retry-After: 2` **before any byte is read**, and one that fits has its declared size added to `in_flight` on the spot. The reservation is reconciled with what
+  really arrives: when the body is complete the unread part is released, and **a reservation is held at most `ABB_BODY_READ_TIMEOUT_SECONDS`** (a timer releases it even if the handler never reads), so peak
+  accounted bytes never exceed the cap (plus the small allowance) and a stalled declaration cannot hold budget for longer than the timeout. Chunked bodies declare nothing and are counted as they arrive: the chunk that
+  would pass the cap is refused with the same `503 BUSY` (raised into the normal error handler: category `DEPENDENCY`, `retryable: true`).
+* **The cost of reserving, stated plainly.** The first design rejected reserve-by-`Content-Length` because anonymous slow clients could starve ingestion (13 connections declaring 5 MiB each fill 64 MiB). With the bound above
+  that remains true for up to one read timeout: enough clients that declare large bodies and send nothing make *other large bodies* answer `503 BUSY` until their reservations expire (60 s by default) or their connections close;
+  small bodies (at most 64 KiB) are never refused. Before the review fix the same clients could not block anyone, but N honest clients could overshoot the cap. Memory safety was chosen over the larger denial window; the
+  reverse proxy's own body timeout and connection limits (OPERATIONS) are the first line against slowloris, and a per-address share is not added here (KI-182).
 * **Release cannot leak.** The middleware releases in a `finally` around the application call, so a client disconnect (the server's `http.disconnect`), a cancelled task and an exception all return the
   bytes (tested for each, with the accounted bytes back at zero). Release is at the end of the request, not after the read, because the buffered bytes live as long as the handler.
 * **Bounded in time.** A body not fully received within `ABB_BODY_READ_TIMEOUT_SECONDS` (60) is dropped with `408 REQUEST_TIMEOUT` (retryable), so a client trickling bytes cannot hold budget for ever.
@@ -57,7 +61,7 @@ are the only responses without the CSP; they still carry the other headers. `Str
 | `img-src` | `'self'` | nothing loads an image from elsewhere (there are none today, the policy keeps it that way); no `data:` |
 | `frame-ancestors` | `'none'` (+ `X-Frame-Options: DENY`) | clickjacking |
 | `object-src` | `'none'` | plugins |
-| `base-uri` | `'self'` | an injected `<base>` retargeting relative URLs |
+| `base-uri` | `'none'` | an injected `<base>` retargeting relative URLs; the app uses no `<base>` element, so nothing needs even its own origin (review fix) |
 | `form-action` | `'self'` | a form (or an injected one) posting credentials elsewhere |
 | `frame-src`, `worker-src`, `media-src` | `'none'` | features the app does not use |
 | `upgrade-insecure-requests` | only over https | mixed content |
@@ -102,7 +106,7 @@ owner, a member of the owner role and an explicit grant alike); membership in th
 
 ## Alternatives considered
 
-* Reserve-by-`Content-Length` (rejected, above: anonymous slowloris). A semaphore around the handler (rejected: it would also serialise requests that read nothing). `uvicorn --limit-concurrency` (not byte-aware, and a refusal there is a bare 503 outside our envelope).
+* Reserve-by-`Content-Length` (first rejected as anonymous slowloris, adopted in the review fix with the reservation bounded by the read timeout; see point 1). A semaphore around the handler (rejected: it would also serialise requests that read nothing). `uvicorn --limit-concurrency` (not byte-aware, and a refusal there is a bare 503 outside our envelope).
 * A hash-based CSP (`experimental.sri`) instead of nonces: keeps static rendering, but is not available with the Turbopack build and hashes the framework's inline scripts only; the nonce approach is the documented stable one.
 * Keeping `'unsafe-inline'` for styles entirely: rejected; `style-src-attr` is a strictly smaller allowance.
 * HSTS from a new setting: rejected, `ABB_WEB_ORIGIN` already decides every other https behaviour.

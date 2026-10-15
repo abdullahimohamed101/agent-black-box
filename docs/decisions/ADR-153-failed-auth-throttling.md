@@ -27,18 +27,28 @@ service to the people it protects.
    (tested: zero lookups and zero counter calls across 50 throttled requests). The only computation is one SHA-256 of the presented
    token. Other processes learn about a closed window on their own next failure, which costs one counter write; so the fleet does at most
    `limit + N` lookups per scope per window.
-3. **Valid traffic is not refused, with a stated exception.** Because a throttled request is refused before the lookup, the gate cannot
-   by itself tell a valid key from a guess. Two bounded in-memory caches, keyed by a SHA-256 of the *whole* presented token, close that gap:
-   * *known valid* (default 300 s): a token that authenticated in this process skips the gate. It still goes through full
-     authentication on every request, so a key revoked a second ago stops working at once (tested). The cache decides only whether the gate is
+3. **Valid traffic is not refused.** Because a throttled request is refused before the lookup, the gate cannot by itself tell a valid key from a guess.
+   Three bounded in-memory helpers close that gap:
+   * *known valid* (default 300 s, keyed by a SHA-256 of the *whole* presented token): a token that authenticated in this process skips the gate. It still goes
+     through full authentication on every request, so a key revoked a second ago stops working at once (tested). The cache decides only whether the gate is
      consulted. A guessed key id with a wrong secret has a different digest and gets no exemption;
-   * *known invalid* (default 30 s): a token that failed is answered with the same 401 from memory, without a lookup, and still counts as
-     a failure. Successes are never put here. A key created later has a different token, so nothing cached about earlier guesses can
-     affect it (tested). Both caches are bounded (`ABB_AUTH_FAIL_CACHE_ENTRIES`, oldest evicted) and expire.
-   The stated exception: while a window is closed for a key id, an address or the whole installation, a valid key that **this process
-   has not authenticated in the last five minutes** (a brand-new key, a process that just restarted, a key used first on another process)
-   is refused with `429` and `Retry-After` at most one window long; SDKs retry on 429. Established ingestion streams, whose keys are
-   in the cache, are not touched. This is the price of not touching the database for refused requests and is recorded as KI-175.
+   * *active key ids* (review fix, resolves KI-175; `auth/active_keys.py`): a per-process set of the **public ids** of keys that are neither revoked nor expired,
+     loaded by one bounded query at startup and refreshed in a background task every `ABB_AUTH_FAIL_ACTIVE_KEYS_REFRESH_SECONDS` (60), plus insertion when this process
+     creates a key. While the *address* or *global* window is closed, a request whose key id is in the set is let through to full authentication; a key id that is not
+     in it (random, revoked, expired, created elsewhere since the last refresh) is refused from memory with no lookup. The key id's **own credential window still
+     applies**, so the lookups an attacker can cause while the global window is closed are at most `ABB_AUTH_FAIL_PER_CREDENTIAL` (10) per real key id per window (plus
+     the in-flight and per-process slack of point 2): bounded by the installation's data, not by the attacker. The set holds ids only (no secret, hash or workspace) and is
+     a hint about which requests may reach authentication, never a substitute for it. The load is off the request path, bounded by a 5 s timeout and `LIMIT cap + 1`
+     (`ABB_AUTH_FAIL_ACTIVE_KEYS_CAP`, 100,000; above it the set holds an arbitrary subset, one warning is logged, and keys beyond it behave as the old exception did); a failed refresh keeps
+     the previous set; until the first load succeeds the set is "not loaded", requests behave as before and a nudge makes the task retry (floor 2 s between attempts);
+   * *known invalid* (default 30 s): a token that failed is answered with the same 401 from memory, without a lookup, and still counts as a failure. Successes are
+     never put here. A key created later has a different token, so nothing cached about earlier guesses can affect it (tested). Both caches are bounded
+     (`ABB_AUTH_FAIL_CACHE_ENTRIES`, oldest evicted) and expire.
+   Small design details decided in the review fix: the refresh interval is 60 s and the load timeout 5 s (not settings of their own beyond the interval and cap); the set is
+   re-merged with keys created in this process while a load ran, so a snapshot older than the commit cannot drop a new key; a revoked key stays in the set until the next refresh
+   and is rejected by the normal lookup in between (a bad credential that trips a closed window is answered 429 rather than 401, as any counted failure is). The residual, stated plainly: a key
+   created by the CLI or another process during a closed window is admitted after the next refresh (at most 60 s); and anyone who knows a key id can still close **that key id's**
+   own window with ten bad secrets (next section).
 4. **Which requests count.** Only a well-formed key (`abb_live_<id>.<secret>`) that fails authentication. A missing or malformed
    `Authorization` header costs no lookup, is not counted and is not gated, so a signed-out browser (which has no key) never meets a 429
    because of someone else's flood. Requests authenticated by session cookie never enter this path.
@@ -48,7 +58,7 @@ service to the people it protects.
    IPv6 is bucketed by /64 and IPv4-mapped addresses fold to IPv4, so rotating low bits does not evade. Without the setting the header is
    ignored entirely, so it can neither evade a bucket nor frame an address (tested). Without it the credential and global counters still
    apply; address throttling needs the proxy header, and the proxy's own IP limit is recommended defence in depth (OPERATIONS.md).
-   The counter row stores a salted SHA-256 prefix of the address, never the address. That is a pseudonym, not anonymisation (an IPv4
+   The counter row stores a domain-separated SHA-256 prefix of the address (fixed prefix, no secret salt), never the address. That is a pseudonym, not anonymisation (an IPv4
    space can be enumerated), and it lives at most one window plus the 60 s grace before it is pruned; nothing logs it.
 6. **Audit: one capped row, where there is a workspace.** The first time a budget closes in a window the process logs one warning
    with the scope names only. If the failing key id belongs to a workspace (a real key, wrong secret or revoked), an `auth.throttled` row is
@@ -69,16 +79,16 @@ service to the people it protects.
 
 ## The throttle as a denial-of-service lever
 
-Anyone who learns a key id (they appear in the UI and in the audit log, not in secrets) can close that key id's window by sending
-ten bad secrets, for up to a minute. Consequences, stated plainly: a key in the process cache keeps ingesting; a key not in the cache
-(first use, restart) waits at most one window. Anyone behind the same trusted address as an attacker (a shared NAT) shares the address
-budget; an attacker who can close the global window delays first use of new keys installation-wide while it lasts, and bounded to the
-window, never beyond it, with no escalation. People's sign-in, their sessions and read paths are never affected. The alternative that avoids
-this (looking every key up regardless) is exactly the database load the throttle exists to cap.
+Anyone who learns a key id (they appear in the UI and in the audit log, not in secrets) can close **that key id's own** credential window by sending ten bad secrets, for up
+to a minute; during it that key id's valid requests that are not in the process cache get `429` (an SDK retries; a key in the cache keeps ingesting). This is the one remaining
+form of the lever and is recorded as KI-191. It no longer extends to other keys: a flood that closes the global window or an address window does not lock out any other
+valid key (point 3, active key ids). Anyone behind the same trusted address as an attacker (a shared NAT) shares the address budget but, for the same reason, is not locked out
+if their key id is real. People's sign-in, their sessions and read paths are never affected. The alternative that avoids the per-key-id lever (looking every key up regardless)
+is exactly the database load the throttle exists to cap.
 
 ## Database load bound
 
-Per window, across N processes: key lookups at most `auth_fail_global + N` (plus the lookups of valid requests, unchanged), counter
+Per window, across N processes: key lookups at most `auth_fail_global + N` for unknown key ids and `auth_fail_per_credential` (+ in-flight) per real key id (plus the lookups of valid requests, unchanged), counter
 writes at most roughly `3 x (that) / block` plus one refusal write per process per scope, and nothing at all for a refused request.
 Measured with `scripts/bench_auth_throttle.py` (`docs/benchmarks/phase-19a-auth-throttle.md`).
 
@@ -94,5 +104,5 @@ Measured with `scripts/bench_auth_throttle.py` (`docs/benchmarks/phase-19a-auth-
 ## Consequences
 
 * Positive: KI-019 closes; the flood bound is a setting and a number; valid ingestion is unaffected in the measured case.
-* Negative: the cold-key exception (KI-175); a guessed key id can briefly close that key id's window; address throttling needs a
+* Negative: a guessed key id can briefly close that key id's window (KI-191); the active-ids refresh is one more small background task and query per process; address throttling needs a
   correctly configured trusted proxy; sessions are not covered (a flood of bad session cookies still costs one indexed lookup each; KI-176).

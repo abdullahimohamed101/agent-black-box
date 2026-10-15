@@ -215,11 +215,12 @@ beyond a budget the answer is `429 AUTH_THROTTLED` with `Retry-After`, identical
 a refused request is answered from memory (no lookup, no counter write); an invalid token seen moments ago is answered from memory; the global
 ceiling bounds the lookups per window. The database-load figures are in `docs/benchmarks/phase-19a-auth-throttle.md`.
 *Header spoofing*: the client address is read only when `ABB_TRUST_PROXY=1`, from the last `X-Forwarded-For` entry (the one the proxy appended); otherwise the header is ignored, so it cannot be
-used to evade a bucket or to frame another address. Set it only when the proxy is the only route to the API. The stored counter key is a salted digest prefix of the address,
+used to evade a bucket or to frame another address. Set it only when the proxy is the only route to the API. The stored counter key is a domain-separated SHA-256 prefix of the address,
 kept at most a window plus 60 s; addresses and secrets are never logged or audited.
-*Throttle as a denial-of-service lever* (the tradeoff, stated plainly): a caller who knows a key id (ids are visible to project members, secrets are not) can close that key id's window for up to a minute with ten bad
-secrets. A key this process has recently authenticated keeps working (the cache only skips the gate, authentication still runs, so revocation is immediate); a key it has not seen waits out the window (KI-175).
-Anyone sharing a trusted address with an attacker shares that address budget. Ingestion with a valid, recently used key, people's sessions, and sign-in starts and callbacks are never refused by it.
+*Throttle as a denial-of-service lever* (the tradeoff, stated plainly): a caller who knows a key id (ids are visible to project members, secrets are not) can close **that key id's own** window for up to a minute with ten bad
+secrets (KI-191); authentication of that key id's valid requests that are not in the process cache is then refused with `429` for the rest of the window. A flood that closes the address or the global window no longer locks out any other valid key:
+while those are closed a request for a key id that exists (a per-process set of active key ids, ids only, refreshed every 60 s and on key creation) still reaches full authentication, bounded by that key id's own budget, and a random key id is refused from memory.
+Anyone sharing a trusted address with an attacker shares that address budget. Ingestion, people's sessions, and sign-in starts and callbacks are never refused by it.
 The throttle fails open (a counter outage falls back to the local budget; any throttle error leaves the normal 401). One `auth.throttled` audit row per workspace per window is written for key ids that
 belong to a workspace; others are logged by scope name only (KI-177). Failed session cookies and sign-in starts are not covered (KI-176, KI-073).
 
@@ -240,7 +241,7 @@ approval events are not counted, and the day boundary follows the API process cl
 
 ### Edge hardening (Phase 19a step 4, ADR-155)
 
-Threats and answers. *Memory exhaustion by concurrent large bodies* (KI-026): the process counts the body bytes it holds and refuses more with `503 BUSY` (before the read when `Content-Length` says it cannot fit); only bytes actually read are counted, so an anonymous client cannot reserve budget by declaring a size;
+Threats and answers. *Memory exhaustion by concurrent large bodies* (KI-026): the process counts the body bytes it holds and refuses more with `503 BUSY` (before any byte is read when `Content-Length` says it cannot fit: the declared size is reserved at admission and reconciled with what arrives; a reservation is held at most the read timeout, so clients that declare large bodies and stall can make other large bodies wait up to 60 s, never longer, and never small ones);
 small bodies (64 KiB) are always admitted; a body is dropped after 60 s; accounting is released on disconnect, cancel and exception (tested); every route has a global 8 MiB ceiling. Per process, first come first served (KI-182); the reverse proxy's body limit and timeouts remain the first line.
 *Script injection in the web app (XSS)*: scripts run only with the response's nonce (`strict-dynamic`), no `'unsafe-inline'` or `'unsafe-eval'`; the policy is enforced and tested in a real browser on every page (zero violations; an injected inline handler is blocked). `connect-src 'self'` and `form-action 'self'` stop exfiltration and credential posting to other origins; `font-src`/`img-src` self.
 `frame-ancestors 'none'` and `X-Frame-Options: DENY` stop clickjacking; `base-uri`, `object-src` close the rest. **Accepted weakening:** `style-src-attr 'unsafe-inline'` (style attributes cannot execute script; KI-181). *Sniffing, referrer and capability leaks*: `nosniff`, `Referrer-Policy: no-referrer`, a deny-all `Permissions-Policy`, COOP and CORP `same-origin`.

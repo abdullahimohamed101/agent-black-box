@@ -47,13 +47,13 @@ the next steps needs a counter that every process shares.
 5. **Fail open to the local limiter.** A limiter that can refuse the whole API when its own store is down turns a database blip into an
    outage of the control plane's front door, and the database being down already stops everything that matters. A shared call has a
    hard deadline (`ABB_LIMITS_TIMEOUT_MS`, default 500 ms, also set as the statement timeout so the server abandons it too); on any
-   failure the shared tier is skipped for `ABB_LIMITS_BACKOFF_SECONDS` (5 s) so a sick database adds one timeout, not one per request
+   failure the shared tier is skipped for `ABB_LIMITS_BACKOFF_SECONDS` (5 s) so a sick database adds one timeout, not one per request. The breaker is **per scope** (review fix): one slow statement on one hot row disables only that scope, not the login ceiling or the failed-auth counters; a full outage trips each scope once, so the first request of each scope pays one timeout per backoff
    (tested against an unreachable database and against a table held under an exclusive lock). One warning per 30 s, with the error class
    name and a running count, never a key or a driver message. This is a deliberate availability choice for INV-4 style behaviour; an
    operator who wants closed behaviour has the edge proxy.
 6. **Table growth is bounded.** Rows expire at the end of their window plus a 60 s grace. Whichever API process is serving deletes expired
    rows in batches of 1,000 (served by `ix_rate_limit_counters_expires`), at most once per 30 s, and again after one second while a batch
-   comes back full; a failed prune is ignored (never on the critical path). The table therefore holds the live (scope, key) pairs of the
+   comes back full; a failed prune is ignored. The delete runs **in a single in-flight background task per process** (review fix), never inside the request that happened to trigger it, so a slow delete cannot delay a caller; every process still prunes opportunistically, so cleanup depends on no single one. The table therefore holds the live (scope, key) pairs of the
    last window or two. No scheduled job: the writers are the cleaners, an idle system has nothing to clean, and the job framework's
    per-workspace jobs fit a global table badly. The worker is not involved.
 7. **What stays local, and why.** Concurrency caps (live streams, approval long polls) count open connections of this process, not uses

@@ -57,9 +57,11 @@ limit and may refuse up to `N x (block - 1)` early (about 15% in the worst case,
 **`429 AUTH_THROTTLED`.** Someone is presenting bad API keys. Only failures count, so valid traffic does not spend a budget. Budgets per 60 s window: 30 per client address
 (needs `ABB_TRUST_PROXY=1` and a proxy that sets the address), 10 per presented key id, 600 for the whole installation. A closed window refuses from memory: no key lookup, no
 counter write, so a flood costs the database counters, not requests (measured: a closed-window flood of about 500 requests/s caused about 5 database transactions/s, idle level).
-Keys that authenticated in the last five minutes on that process skip the gate and are never refused; a **brand-new key or a key first used on a process that has not seen it, while a
-window is closed for its key id, its address or the installation, can get `429` for at most one window** (KI-175); SDKs retry. Missing or malformed keys are neither counted nor gated and
-cost the database nothing. People's sessions, sign-in and callbacks are never behind this throttle. If a real user is being throttled: check `auth.throttled` audit rows for the key id,
+Keys that authenticated in the last five minutes on that process skip the gate and are never refused, and while the address or the installation window is closed **a key id that exists still reaches
+authentication** (the process keeps the set of active key ids, refreshed every minute and when it creates a key), so a flood does not lock out valid keys, new keys or a restarted process. What a bad
+actor can still do is close one *key id's own* window: ten bad secrets for a key id they know make that key id's valid requests (not in the process cache) get `429` for up to a window (KI-191); SDKs retry.
+A key created by the CLI is admitted during a closed window after the next refresh (at most a minute). Missing or malformed keys are neither counted nor gated and
+cost the database nothing (one log line per window, with a count). People's sessions, sign-in and callbacks are never behind this throttle. If a real user is being throttled: check `auth.throttled` audit rows for the key id,
 confirm the key is correct and not revoked, and look for a shared NAT (everyone behind one address shares its budget). The global budget protects the database; raise it only with headroom.
 
 **`QUOTA_EXCEEDED`.** A project hit one of its four quotas. The item is refused, nothing already stored changes, replays of accepted events are still accepted, and events of existing runs

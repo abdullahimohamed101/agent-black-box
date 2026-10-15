@@ -28,7 +28,7 @@ Reading it:
 * Throughput of accepted large batches is not improved by the cap (it is limited by the secure ingestion path, not by memory); the cap trades refused work for a bounded footprint
   and a process that stays responsive. Clients that honour `Retry-After` recover.
 
-The accounted-bytes figure itself is asserted by `tests/test_body_budget.py` (a flood of 40 concurrent 3 MiB bodies against an 8 MiB cap: peak accounted bytes at most the cap,
+The measurements above were taken with the first design (bytes counted as read); the review fix reserves the declared `Content-Length` at admission, which only makes refusals earlier (before any byte is read) and was not re-benchmarked: expect the same peak or lower and more `503 BUSY` answered before transfer. The accounted-bytes figure itself is asserted by `tests/test_body_budget.py` (a flood of 40 concurrent 3 MiB bodies against an 8 MiB cap: peak accounted bytes at most the cap, ten concurrent 3 MiB declarations against a 4 MiB cap: nine refused before any read,
 back to zero afterwards, also after disconnects, cancellations, exceptions and read timeouts).
 
 Reproduce: `cd apps/api && uv run python ../../scripts/bench_body_budget.py --admin-url postgresql+asyncpg://USER:PASS@HOST:PORT/postgres --json out.json`.

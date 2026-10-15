@@ -1,7 +1,7 @@
 """Gate 4 of scripts/hardening-e2e.sh: the edge (ADR-155) on a real stack.
 
 Headers on API and web responses; /docs and /openapi.json absent in production and present in development; the request-body cap
-sheds load with 503 BUSY before reading (concurrent large bodies, bounded process memory, recovery); production refuses to start
+sheds load with 503 BUSY (a declared size is reserved at admission, so those refusals come before any byte is read; chunked bodies are refused while they stream; concurrent large bodies, bounded process memory, recovery); production refuses to start
 connected as a privileged database role (and starts with the documented override). The browser half (zero CSP violations across the
 main pages) is e2e/hardening-real.spec.ts; the fixtures spec e2e/csp.spec.ts walks every route.
 """
