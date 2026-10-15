@@ -1,8 +1,9 @@
 import {
-  LOGIN_COOKIE,
   UPSTREAM_TIMEOUT_MS,
   apiBase,
+  cookieCount,
   cookieValue,
+  loginCookieName,
   envelope,
   fixturesMode,
   safeReturnTo,
@@ -17,7 +18,7 @@ import { clientKey, loginLimiter } from "./loginLimiter";
  * (the IdP is for the browser), forward nothing but what each call needs, and relay only cookies we issue.
  */
 
-const ISSUED_COOKIES = () => new Set([sessionCookieName(), LOGIN_COOKIE]);
+const ISSUED_COOKIES = () => new Set([sessionCookieName(), loginCookieName()]);
 
 export type LoginError =
   "login_failed" | "rate_limited" | "unavailable" | "not_configured" | "no_access";
@@ -106,7 +107,11 @@ export async function callbackRoute(request: Request): Promise<Response> {
   if (fixturesMode()) return redirect("/", 302);
   // The callback is bound to this browser's own login cookie, so the anonymous-flood limiter never applies to it;
   // without the cookie there is nothing to complete, and the API is not asked.
-  const login = cookieValue(request.headers.get("cookie"), LOGIN_COOKIE);
+  const loginName = loginCookieName();
+  const header = request.headers.get("cookie");
+  // Two copies means one was planted from a related origin (ADR-156 D): which one is ours cannot be told, so refuse.
+  if (cookieCount(header, loginName) > 1) return toLogin("login_failed");
+  const login = cookieValue(header, loginName);
   if (!login) return toLogin("login_failed");
   const incoming = new URL(request.url).searchParams;
   const forward = new URLSearchParams();
@@ -120,7 +125,7 @@ export async function callbackRoute(request: Request): Promise<Response> {
   const upstream = await callApi(`/v1/auth/callback?${forward.toString()}`, {
     headers: {
       accept: "application/json",
-      cookie: `${LOGIN_COOKIE}=${login}`,
+      cookie: `${loginName}=${login}`,
       ...(agent ? { "user-agent": agent } : {}),
     },
   });

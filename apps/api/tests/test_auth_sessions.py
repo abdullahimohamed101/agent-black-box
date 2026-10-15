@@ -925,32 +925,56 @@ def test_dev_sessions_need_both_a_local_environment_and_the_explicit_flag() -> N
         assert settings.dev_sessions_enabled is expected, (environment, flag)
 
 
-async def test_the_secure_variants_use_the_host_prefix_and_secure_cookies(
-    database_url: str, runtime_database_url: str, engine: AsyncEngine, fake: FakeOidc
-) -> None:
+HTTPS_ORIGIN = "https://dashboard.example.test"
+HOST_LOGIN = "__Host-abb_login"
+
+
+async def secure_api(database_url: str, engine: AsyncEngine, fake: FakeOidc) -> AsyncIterator[Api]:
     assert isinstance(fake.clock, Tick)
-    origin = "https://dashboard.example.test"
-    fake.redirect_uris = (f"{origin}/api/auth/callback",)
+    fake.redirect_uris = (f"{HTTPS_ORIGIN}/api/auth/callback",)
     settings = make_settings(
-        database_url, oidc_issuer=ISSUER, oidc_client_id=CLIENT_ID, web_origin=origin
+        database_url, oidc_issuer=ISSUER, oidc_client_id=CLIENT_ID, web_origin=HTTPS_ORIGIN
     )
     async for instance in build_api(
         database_url, engine, settings=settings, clock=fake.clock,
         app_options={"oidc_transport": fake.transport()},
     ):  # fmt: skip
+        yield instance
+
+
+def callback_query(url: str) -> dict[str, str]:
+    return {k: v[0] for k, v in parse_qs(urlsplit(url).query).items()}
+
+
+async def test_the_secure_variants_use_the_host_prefix_and_secure_cookies(
+    database_url: str, runtime_database_url: str, engine: AsyncEngine, fake: FakeOidc
+) -> None:
+    assert isinstance(fake.clock, Tick)
+    async for instance in secure_api(database_url, engine, fake):
         started = await instance.client.get("/v1/auth/login")
         instance.client.cookies.clear()
-        login_cookie = cookies_set(started)["abb_login"]
-        assert "Secure" in login_cookie and "Path=/api/auth" in login_cookie
+        issued = cookies_set(started)
+        assert "abb_login" not in issued  # the unprefixed name is never issued on https
+        login_cookie = issued[HOST_LOGIN]
+        token = cookie_value(login_cookie)
+        assert (
+            login_cookie
+            == f"{HOST_LOGIN}={token}; Max-Age=600; Path=/; HttpOnly; SameSite=Lax; Secure"
+        )
+        assert "Domain" not in login_cookie
         await invite(instance, "ada@example.com")
         callback_url = fake.approve(started.headers["location"], "ada@example.com")
-        query = {k: v[0] for k, v in parse_qs(urlsplit(callback_url).query).items()}
         done = await instance.client.get(
             "/v1/auth/callback",
-            params=query,
-            headers={"cookie": f"abb_login={cookie_value(login_cookie)}"},
+            params=callback_query(callback_url),
+            headers={"cookie": f"{HOST_LOGIN}={token}"},
         )
         instance.client.cookies.clear()
+        # Spent with the same name and attributes it was set with (else it would not clear).
+        assert (
+            cookies_set(done)[HOST_LOGIN]
+            == f"{HOST_LOGIN}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax; Secure"
+        )
         session = cookies_set(done)["__Host-abb_session"]
         for attribute in ("Secure", "HttpOnly", "SameSite=Lax", "Path=/"):
             assert attribute in session
@@ -961,6 +985,60 @@ async def test_the_secure_variants_use_the_host_prefix_and_secure_cookies(
         # The plain name is not accepted when the secure one is in force.
         plain = await instance.client.get("/v1/me", headers={"cookie": f"abb_session={token}"})
         assert plain.status_code == 401
+
+
+async def test_a_planted_legacy_login_cookie_cannot_sign_a_victim_in_on_https(
+    database_url: str, runtime_database_url: str, engine: AsyncEngine, fake: FakeOidc
+) -> None:
+    """Login CSRF by cookie planting (ADR-156, KI-075): a sibling can plant only the old name."""
+    assert isinstance(fake.clock, Tick)
+    async for instance in secure_api(database_url, engine, fake):
+        started = await instance.client.get("/v1/auth/login")
+        instance.client.cookies.clear()
+        state = cookie_value(cookies_set(started)[HOST_LOGIN])  # the attacker's own state
+        await invite(instance, "attacker@example.com")
+        url = fake.approve(started.headers["location"], "attacker@example.com")
+        pending = await rows_of(instance.engine, "login_states")
+        assert pending == 1
+        # The victim's browser carries only what the attacker planted under the old name.
+        for planted in ({"cookie": f"abb_login={state}"}, {}):
+            refused = await instance.client.get(
+                "/v1/auth/callback", params=callback_query(url), headers=planted
+            )
+            instance.client.cookies.clear()
+            error(refused, 400, "LOGIN_FAILED")
+            assert "__Host-abb_session" not in cookies_set(refused)
+            assert "abb_session" not in cookies_set(refused)
+        assert await counts(instance.engine) == (0, 0)
+        # The refusals did not consume the attacker's row: their own browser can still finish.
+        assert await rows_of(instance.engine, "login_states") == pending
+        own = await instance.client.get(
+            "/v1/auth/callback",
+            params=callback_query(url),
+            headers={"cookie": f"{HOST_LOGIN}={state}"},
+        )
+        instance.client.cookies.clear()
+        assert own.status_code == 302
+
+
+async def test_the_login_cookie_keeps_its_name_and_path_on_http(auth: Api, fake: FakeOidc) -> None:
+    started = await auth.client.get("/v1/auth/login")
+    auth.client.cookies.clear()
+    issued = cookies_set(started)
+    assert "__Host-abb_login" not in issued
+    line = issued["abb_login"]
+    assert "Path=/api/auth" in line and "Secure" not in line and "Domain" not in line
+    browser = Browser(auth, fake)
+    await browser.start()
+    await invite(auth, "ada@example.com")
+    assert browser.login_cookie
+    spent = await browser.callback(
+        fake.approve(
+            (await auth.client.get("/v1/auth/login")).headers["location"], "ada@example.com"
+        ),
+        cookie="x" * 43,
+    )
+    assert cookies_set(spent)["abb_login"].startswith("abb_login=; Max-Age=0; Path=/api/auth;")
 
 
 async def test_the_startup_warns_when_sign_in_is_configured_outside_production(

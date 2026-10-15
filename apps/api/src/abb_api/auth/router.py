@@ -85,9 +85,9 @@ async def login(request: Request, return_to: Annotated[str | None, Query()] = No
         "Set-Cookie",
         cookies.set_cookie(
             settings,
-            cookies.LOGIN_COOKIE,
+            cookies.login_cookie_name(settings),
             started.state,
-            path=cookies.LOGIN_COOKIE_PATH,
+            path=cookies.login_cookie_path(settings),
             max_age=cookies.LOGIN_TTL_SECONDS,
         ),
     )
@@ -109,12 +109,13 @@ async def callback(
 ) -> Response:
     settings: Settings = request.app.state.settings
     service = _login_service(request)
-    clear = cookies.clear_cookie(settings, cookies.LOGIN_COOKIE, path=cookies.LOGIN_COOKIE_PATH)
+    login_name = cookies.login_cookie_name(settings)
+    clear = cookies.clear_cookie(settings, login_name, path=cookies.login_cookie_path(settings))
     try:
         finished = await service.finish(
             code=code,
             state=state,
-            cookie_state=request.cookies.get(cookies.LOGIN_COOKIE),
+            cookie_state=request.cookies.get(login_name),
             idp_error=error is not None,
             user_agent=request.headers.get("user-agent"),
         )

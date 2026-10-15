@@ -6,9 +6,6 @@ session cookie carries the `__Host-` prefix (browsers then insist on Secure, Pat
 
 from abb_api.core.config import Settings
 
-LOGIN_COOKIE = "abb_login"
-# The login cookie is scoped to the web app's auth routes, which relay the callback.
-LOGIN_COOKIE_PATH = "/api/auth"
 LOGIN_TTL_SECONDS = 600
 
 
@@ -18,6 +15,21 @@ def is_secure(settings: Settings) -> bool:
 
 def session_cookie_name(settings: Settings) -> str:
     return "__Host-abb_session" if is_secure(settings) else "abb_session"
+
+
+def login_cookie_name(settings: Settings) -> str:
+    """The cookie that binds a callback to the browser that started it (ADR-156).
+
+    On https it carries `__Host-`, so a sibling origin cannot plant or overwrite it (login CSRF,
+    KI-075). There is deliberately no fallback to the unprefixed name: reading it would keep the
+    planting attack alive.
+    """
+    return "__Host-abb_login" if is_secure(settings) else "abb_login"
+
+
+def login_cookie_path(settings: Settings) -> str:
+    # `__Host-` demands Path=/. On http (development) it stays scoped to the web app's auth routes.
+    return "/" if is_secure(settings) else "/api/auth"
 
 
 def set_cookie(settings: Settings, name: str, value: str, *, path: str, max_age: int) -> str:
