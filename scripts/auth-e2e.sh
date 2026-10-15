@@ -54,6 +54,7 @@ step "provision two workspaces, people (generated, local-only) and a write key (
 suffix="$(date +%s)$RANDOM"
 A="auth-a-$suffix"; B="auth-b-$suffix"
 OWNER="owner-$suffix@auth.test"; INVITEE="invitee-$suffix@auth.test"; STREAMER="streamer-$suffix@auth.test"
+STRANGER="stranger-$suffix@auth.test"   # signs in at the provider but is invited nowhere (KI-076): must get no users row
 SEARCH_OWNER="searcher-$suffix@auth.test"; SEARCH_VIEWER="viewer-$suffix@auth.test"   # fresh people per run: the database is reused
 cli() { uv run python -m abb_api.cli "$@" 2>/dev/null; }
 cli create-workspace --name "Auth Alpha" --slug "$A" >/dev/null
@@ -140,8 +141,25 @@ done
 step "Playwright: real browser <-> web server <-> API <-> fake provider"
 cd "$root/apps/web"
 mkdir -p "$root/docs/screenshots/phase-15" "$root/docs/screenshots/phase-16"
-E2E_AUTH_API_URL="$API" E2E_WORKSPACE="$A" E2E_WORKSPACE_B="$B" E2E_STREAMER_SESSION="$STREAMER_SESSION" E2E_OWNER_EMAIL="$OWNER" E2E_INVITEE_EMAIL="$INVITEE" E2E_STREAMER_EMAIL="$STREAMER" \
+E2E_AUTH_API_URL="$API" E2E_WORKSPACE="$A" E2E_WORKSPACE_B="$B" E2E_STREAMER_SESSION="$STREAMER_SESSION" E2E_OWNER_EMAIL="$OWNER" E2E_INVITEE_EMAIL="$INVITEE" E2E_STREAMER_EMAIL="$STREAMER" E2E_STRANGER_EMAIL="$STRANGER" \
   E2E_SEARCH_OWNER_SESSION="$SEARCH_OWNER_SESSION" E2E_SEARCH_VIEWER_SESSION="$SEARCH_VIEWER_SESSION" \
   E2E_RUN_PAYLOAD="$E2E_RUN_PAYLOAD" E2E_RUN_LIVE="$E2E_RUN_LIVE" E2E_RUN_REPLAY="$E2E_RUN_REPLAY" E2E_PAYLOAD_TEXT="$PAYLOAD_TEXT" E2E_COMMAND_TEXT="$COMMAND_TEXT" E2E_PATH_TEXT="$PATH_TEXT" \
   pnpm exec playwright test e2e/auth.spec.ts e2e/search.spec.ts e2e/replay-viewer-real.spec.ts
+step "database: the un-invited person has no users row, the invited one does (KI-076)"
+cd "$root/apps/api"
+STRANGER="$STRANGER" INVITEE="$INVITEE" uv run python - <<'PY'
+import asyncio, os, asyncpg
+async def main():
+    url = os.environ["ABB_DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
+    conn = await asyncpg.connect(url)
+    stranger = await conn.fetchval("select count(*) from users where lower(email) = lower($1)", os.environ["STRANGER"])
+    invited = await conn.fetchval("select count(*) from users where lower(email) = lower($1)", os.environ["INVITEE"])
+    sessions = await conn.fetchval(
+        "select count(*) from sessions s join users u on u.id = s.user_id where lower(u.email) = lower($1)", os.environ["STRANGER"])
+    await conn.close()
+    assert stranger == 0 and sessions == 0, f"un-invited sign-in left rows: users={stranger} sessions={sessions}"
+    assert invited == 1, f"the invited person should have exactly one users row, found {invited}"
+    print("un-invited person: 0 users rows, 0 sessions; invited person: 1 users row")
+asyncio.run(main())
+PY
 printf '\nAUTH-E2E PASSED\n'

@@ -21,10 +21,12 @@ test.skip(
 test.use({ baseURL: "http://localhost:3160" });
 test.describe.configure({ mode: "serial" }); // the steps build on each other: one person, one invitation, one session
 const SHOTS = "../../docs/screenshots/phase-15";
+const SHOTS_19A = "../../docs/screenshots/phase-19a";
 const ORIGIN = "http://localhost:3160";
 const OWNER = process.env.E2E_OWNER_EMAIL!;
 const INVITEE = process.env.E2E_INVITEE_EMAIL!;
 const STREAMER = process.env.E2E_STREAMER_EMAIL!;
+const STRANGER = process.env.E2E_STRANGER_EMAIL!;
 
 async function axe(page: Page) {
   await settleAnimations(page);
@@ -285,6 +287,90 @@ test("removing a person ends the live stream they have open", async () => {
     await streamer.screenshot({ path: `${SHOTS}/stream-unauthorized.png`, fullPage: true });
   } finally {
     await context.close();
+  }
+});
+
+test("a person the provider vouches for but nobody invited sees the plain notice and gets no account (KI-076)", async () => {
+  const context = await browserRef.newContext({ baseURL: ORIGIN });
+  const page = await context.newPage();
+  try {
+    await page.goto("/login");
+    await loginAs(page, STRANGER);
+    await expect(page).toHaveURL(/\/login\?error=no_access$/);
+    await expect(
+      page
+        .getByRole("alert")
+        .filter({ hasText: "No access yet. Ask a workspace owner to invite you." }),
+    ).toBeVisible();
+    expect(page.url()).not.toContain(STRANGER); // the address is not echoed anywhere
+    await expect(page.locator("body")).not.toContainText(STRANGER);
+    expect((await cookiesOf(context)).find((c) => c.name === "abb_session")).toBeUndefined();
+    expect((await page.request.get("/api/abb/v1/me")).status()).toBe(401);
+    await page.screenshot({ path: `${SHOTS_19A}/no-access.png`, fullPage: true });
+    await axe(page);
+    // scripts/auth-e2e.sh then checks the database: no users row exists for this address
+  } finally {
+    await context.close();
+  }
+});
+
+test("sessions: a second sign-in is listed, ending it from here signs it out at once, and 'everywhere else' keeps this one", async () => {
+  const { page } = owner;
+  await page.goto(`/w/${A}/settings/sessions`);
+  await expect(page.getByRole("heading", { name: "Sessions", level: 1 })).toBeVisible();
+  await expect(page.getByTestId("session-item")).toHaveCount(1);
+  await expect(page.getByTestId("session-item")).toContainText("This session");
+  await expect(page.getByTestId("session-item")).not.toContainText("Unknown device"); // the browser's label came through the relay
+
+  const second = await browserRef.newContext({ baseURL: ORIGIN });
+  const other = await second.newPage();
+  try {
+    await other.goto(`/w/${A}/projects/all`);
+    await loginAs(other, OWNER);
+    await expect(other.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByTestId("session-item")).toHaveCount(2);
+    await page.screenshot({ path: `${SHOTS_19A}/sessions-two.png`, fullPage: true });
+    await axe(page);
+    await page
+      .getByTestId("session-item")
+      .filter({ hasNotText: "This session" })
+      .getByRole("button")
+      .click();
+    await expect(page.getByTestId("session-item")).toHaveCount(1);
+    // revoked sessions stop working on their next request, not at their next sign-in
+    expect((await other.request.get("/api/abb/v1/me")).status()).toBe(401);
+    await other.goto(`/w/${A}/projects/all`);
+    await expect(other).toHaveURL(/\/login\?return_to=/);
+
+    // two more sign-ins, then 'everywhere else' from here: they end, this one stays
+    await other.goto(`/w/${A}/projects/all`);
+    await loginAs(other, OWNER);
+    const third = await browserRef.newContext({ baseURL: ORIGIN });
+    const more = await third.newPage();
+    try {
+      await more.goto(`/w/${A}/projects/all`);
+      await loginAs(more, OWNER);
+      await page.reload();
+      await expect(page.getByTestId("session-item")).toHaveCount(3);
+      await page.getByRole("button", { name: "Sign out everywhere else" }).click();
+      await page.getByRole("button", { name: "Confirm sign out everywhere else" }).click();
+      await expect(page.getByTestId("session-item")).toHaveCount(1);
+      await expect(page.getByTestId("session-status")).toContainText(
+        "Signed out 2 other sessions.",
+      );
+      expect((await other.request.get("/api/abb/v1/me")).status()).toBe(401);
+      expect((await more.request.get("/api/abb/v1/me")).status()).toBe(401);
+      expect((await page.request.get("/api/abb/v1/me")).status()).toBe(200); // this one is untouched
+    } finally {
+      await third.close();
+    }
+    // the changes are in the audit log
+    await page.goto(`/w/${A}/settings/audit`);
+    await expect(page.getByText("session.revoke").first()).toBeVisible();
+  } finally {
+    await second.close();
   }
 });
 

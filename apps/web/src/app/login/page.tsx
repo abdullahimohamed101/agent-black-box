@@ -12,6 +12,7 @@ const MESSAGES: Record<string, string> = {
   rate_limited: "Too many sign-in attempts. Wait a minute and try again.",
   unavailable: "The sign-in service is unavailable. Try again shortly.",
   not_configured: "Sign-in is not configured on this server.",
+  no_access: "No access yet. Ask a workspace owner to invite you.",
   logout_failed: "Signing out failed; your session may still be active.",
 };
 

@@ -3,6 +3,7 @@ import { isFixtureViewerWorkspace } from "@/fixtures/auth";
 import { fixtureAlertWrite } from "@/fixtures/alerts";
 import { fixturePolicyWrite } from "@/fixtures/policies";
 import { fixtureQuotas } from "@/fixtures/quotas";
+import { fixtureSessions } from "@/fixtures/sessions";
 import { fixtureSecuritySettings } from "@/fixtures/security";
 import {
   MAX_BODY_BYTES,
@@ -37,6 +38,10 @@ const ROUTES: readonly Route[] = [
     `(runs(/${ID}(/(spans|stream|findings|evaluations|compare|events(/${ID})?))?)?|artifacts/${ID}(/content)?|analytics/(summary|cost|reliability|performance|waste)|security/(findings|detectors)|projects/${ID}/(security-settings|quotas))`,
   ),
   route("GET", "(me|projects|members|invitations|api-keys|pricing|audit|evaluators|experiments)"),
+  // Phase 19a: the signed-in person's own sessions. The API scopes every call to the caller.
+  route("GET", "auth/sessions"),
+  route("POST", "auth/sessions/revoke-others"),
+  route("DELETE", `auth/sessions/${ID}`),
   route("GET", `experiments/${ID}`),
   // Phase 14 reads: approvals (people only) and the policy documents. The agent-facing routes (decide, wait, consume,
   // fail-modes) are deliberately absent: the browser never calls them, so the proxy does not carry them.
@@ -65,6 +70,8 @@ const ROUTES: readonly Route[] = [
   route("DELETE", `(members|invitations|api-keys|evaluators|experiments)/${ID}`),
   route("DELETE", `experiments/${ID}/runs/${ID}`),
 ];
+// A POST with no body at all (nothing to say beyond "do it"): the one place a JSON body is not demanded.
+const BODYLESS_POST = /^v1\/auth\/sessions\/revoke-others$/;
 const STREAM = new RegExp(`^v1/runs/${ID}/stream$`);
 const MAX_QUERY_CHARS = 2048;
 const LAST_EVENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -162,7 +169,9 @@ async function prepare(
   if (lastEventId && LAST_EVENT_ID.test(lastEventId)) headers["last-event-id"] = lastEventId;
 
   let body: string | undefined;
-  if (method === "POST" || method === "PATCH" || method === "PUT") {
+  if (method === "POST" && BODYLESS_POST.test(path)) {
+    headers.origin = webOrigin()!;
+  } else if (method === "POST" || method === "PATCH" || method === "PUT") {
     if (!(incoming.get("content-type") ?? "").toLowerCase().startsWith("application/json"))
       return fail(envelope(415, "UNSUPPORTED_MEDIA_TYPE", "A JSON body is required."));
     const text = await readCapped(options.body, incoming.get("content-length"));
@@ -248,6 +257,14 @@ export async function readThrough(
         headers: { ...SAFE, "x-request-id": "req_fixture" },
       });
     }
+    const sessionReply = fixtureSessions(fixtureMethod, segments);
+    if (sessionReply)
+      return sessionReply.status === 204
+        ? new Response(null, { status: 204, headers: { ...SAFE, "x-request-id": "req_fixture" } })
+        : Response.json(sessionReply.body, {
+            status: sessionReply.status,
+            headers: { ...SAFE, "x-request-id": "req_fixture" },
+          });
     if (fixtureMethod !== "GET" && /^v1\/alerts\//.test(path)) {
       // Alert writes keep in-memory state (like the policy fixtures); a JSON body is required for POST and PATCH.
       let parsed: unknown = {};

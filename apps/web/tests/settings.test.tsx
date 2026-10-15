@@ -360,7 +360,11 @@ describe("AuditLog", () => {
 describe("permission-driven navigation", () => {
   it("shows only the tabs the API's permission list allows", () => {
     mount(<SettingsNav />, ctx(["member.read", "pricing.read"]));
-    expect(screen.getAllByRole("link").map((l) => l.textContent)).toEqual(["Members", "Pricing"]);
+    expect(screen.getAllByRole("link").map((l) => l.textContent)).toEqual([
+      "Members",
+      "Pricing",
+      "Sessions",
+    ]);
   });
   it("replaces a page the person cannot use with a clear note, and fetches nothing", () => {
     const calls = api({});

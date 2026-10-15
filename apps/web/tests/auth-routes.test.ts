@@ -210,6 +210,30 @@ describe("GET /api/auth/callback", () => {
     expect(again.headers.getSetCookie().join(";")).not.toContain("abb_session");
   });
 
+  it("sends someone nobody has invited to the same fixed notice, with the login cookie cleared and no session (KI-076)", async () => {
+    stubFetch(upstream(403, [["set-cookie", clearLogin]]));
+    const res = await callbackRoute(withLogin("/api/auth/callback?code=a&state=b"));
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/login?error=no_access");
+    expect(res.headers.getSetCookie()).toEqual([clearLogin]);
+  });
+
+  it("forwards the browser's User-Agent, cut to a bound, for the sessions page label", async () => {
+    const fetchMock = stubFetch(upstream(400));
+    await callbackRoute(
+      get("/api/auth/callback?code=a&state=b", {
+        cookie: `abb_login=${STATE}`,
+        "user-agent": "U".repeat(5000),
+      }),
+    );
+    const [, init] = fetchMock.mock.calls[0]! as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["user-agent"]).toBe("U".repeat(512));
+    const none = stubFetch(upstream(400));
+    await callbackRoute(withLogin("/api/auth/callback?code=a&state=b"));
+    const [, bare] = none.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(Object.keys(bare.headers as object)).not.toContain("user-agent");
+  });
+
   it("forwards only code, state and error, within bounds", async () => {
     const fetchMock = stubFetch(upstream(400));
     await callbackRoute(

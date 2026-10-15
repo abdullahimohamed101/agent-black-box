@@ -20,6 +20,13 @@ export const useInvitations = (enabled: boolean) =>
     queryFn: async ({ signal }) => unwrap(await api.GET("/v1/invitations", { signal })).items,
   });
 
+/** The signed-in person's own sessions (any role; the API answers 401 to a key). */
+export const useSessions = () =>
+  useQuery({
+    queryKey: ["sessions"],
+    queryFn: async ({ signal }) => unwrap(await api.GET("/v1/auth/sessions", { signal })).items,
+  });
+
 export const useApiKeys = (enabled: boolean) =>
   useQuery({
     enabled,
@@ -123,6 +130,22 @@ export const useRemoveMember = () =>
       if (!r.response.ok) unwrap({ error: r.error, response: r.response });
     },
     ["members"],
+  );
+export const useRevokeSession = () =>
+  useWrite(
+    async (sessionId: string) => {
+      const r = await api.DELETE("/v1/auth/sessions/{session_id}", {
+        params: { path: { session_id: sessionId } },
+      });
+      if (!r.response.ok) unwrap({ error: r.error, response: r.response });
+    },
+    ["sessions", "audit"],
+  );
+/** Ends every session but the current one; resolves to how many it ended. */
+export const useRevokeOtherSessions = () =>
+  useWrite(
+    async () => unwrap(await api.POST("/v1/auth/sessions/revoke-others", {})).revoked,
+    ["sessions", "audit"],
   );
 export const useCreateKey = () =>
   useWrite(

@@ -19,7 +19,8 @@ import { clientKey, loginLimiter } from "./loginLimiter";
 
 const ISSUED_COOKIES = () => new Set([sessionCookieName(), LOGIN_COOKIE]);
 
-export type LoginError = "login_failed" | "rate_limited" | "unavailable" | "not_configured";
+export type LoginError =
+  "login_failed" | "rate_limited" | "unavailable" | "not_configured" | "no_access";
 
 /** A redirect with no body; `cookies` are `Set-Cookie` values from the API, relayed untouched. */
 function redirect(location: string, status: 302 | 303, cookies: readonly string[] = []): Response {
@@ -40,6 +41,7 @@ export function issuedCookies(upstream: Response): string[] {
 }
 
 function errorFor(status: number): LoginError {
+  if (status === 403) return "no_access"; // the provider vouched for someone no workspace has invited (KI-076)
   if (status === 429) return "rate_limited";
   if (status === 503) return "unavailable";
   return "login_failed";
@@ -112,8 +114,15 @@ export async function callbackRoute(request: Request): Promise<Response> {
     const value = incoming.get(name);
     if (value !== null && value.length <= BOUNDS[name]) forward.set(name, value);
   }
+  // The browser's User-Agent is forwarded, bounded, only so the API can store a coarse device label for the sessions
+  // page (closed vocabulary; the header itself is never stored). It decides nothing.
+  const agent = request.headers.get("user-agent")?.slice(0, 512);
   const upstream = await callApi(`/v1/auth/callback?${forward.toString()}`, {
-    headers: { accept: "application/json", cookie: `${LOGIN_COOKIE}=${login}` },
+    headers: {
+      accept: "application/json",
+      cookie: `${LOGIN_COOKIE}=${login}`,
+      ...(agent ? { "user-agent": agent } : {}),
+    },
   });
   if (!upstream) return toLogin("unavailable");
   const cookies = issuedCookies(upstream); // on failure this is just the spent login cookie being cleared
