@@ -268,3 +268,161 @@ def test_the_cap_is_a_setting_with_a_sane_default() -> None:
     assert settings.body_ceiling_bytes == 8 * MIB
     app = create_app(settings)
     assert app.state.body_budget.cap_bytes == 64 * MIB
+
+
+# ------------------------------------------------- reservation at admission (Content-Length)
+
+
+def declared_scope(length: int) -> dict[str, Any]:
+    return {
+        "type": "http",
+        "method": "POST",
+        "path": "/body",
+        "headers": [(b"content-length", str(length).encode())],
+    }
+
+
+class Client:
+    """One raw request that declares `length` bytes and sends them only when told to."""
+
+    def __init__(self, app: Any, length: int, *, send_bytes: int | None = None) -> None:
+        self.reads = 0
+        self.go = asyncio.Event()
+        self.length = length
+        self.send_bytes = length if send_bytes is None else send_bytes
+        self.sent: list[Message] = []
+        self.app = app
+
+    async def receive(self) -> Message:
+        self.reads += 1
+        await self.go.wait()
+        self.go.clear()
+        return {"type": "http.request", "body": b"a" * self.send_bytes, "more_body": False}
+
+    async def send(self, message: Message) -> None:
+        self.sent.append(message)
+
+    def status(self) -> int | None:
+        started = [m for m in self.sent if m["type"] == "http.response.start"]
+        return int(started[0]["status"]) if started else None
+
+    def run(self) -> "asyncio.Task[None]":
+        return asyncio.create_task(self.app(declared_scope(self.length), self.receive, self.send))
+
+
+async def read_body_then_wait(scope_: Any, receive: Any, send: Any) -> None:
+    await receive()
+    await asyncio.sleep(0.3)
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b""})
+
+
+async def test_many_declared_large_bodies_are_refused_before_any_byte_is_read() -> None:
+    """Admission reserves the declared size: ten requests declaring 3 MiB against a 4 MiB cap used
+    to all pass (nothing was counted until bytes arrived) and fail one by one mid-transfer."""
+    budget = BodyBudget(4 * MIB)
+    app = BodyBudgetMiddleware(
+        read_body_then_wait, budget=budget, ceiling_bytes=8 * MIB, read_timeout_seconds=30
+    )
+    clients = [Client(app, 3 * MIB) for _ in range(10)]
+    tasks = [c.run() for c in clients]
+    await asyncio.sleep(0.05)
+    refused = [c for c in clients if c.status() == 503]
+    assert len(refused) == 9 and all(c.reads == 0 for c in refused)  # refused unread
+    assert budget.in_flight == 3 * MIB and budget.peak <= 4 * MIB  # the admitted one is reserved
+    admitted = next(c for c in clients if c.status() is None)
+    admitted.go.set()
+    await asyncio.gather(*tasks)
+    assert admitted.status() == 200 and budget.in_flight == 0 and budget.refused == 9
+
+
+async def test_the_unread_part_of_a_reservation_is_released_when_the_body_is_complete() -> None:
+    budget = BodyBudget(8 * MIB)
+    app = BodyBudgetMiddleware(
+        read_body_then_wait, budget=budget, ceiling_bytes=8 * MIB, read_timeout_seconds=30
+    )
+    client = Client(app, 3 * MIB, send_bytes=1 * MIB)
+    task = client.run()
+    await asyncio.sleep(0.05)
+    assert budget.in_flight == 3 * MIB
+    client.go.set()
+    await asyncio.sleep(0.1)  # body read, handler still working on it
+    assert budget.in_flight == 1 * MIB  # only what really arrived is held
+    await task
+    assert budget.in_flight == 0
+
+
+async def test_a_reservation_that_is_never_filled_is_released_by_the_read_timeout() -> None:
+    """The anonymous-slow-client bound: declare a big body, never send it, hold budget for at most
+    the read timeout, even when the handler never gets round to reading."""
+    budget = BodyBudget(4 * MIB)
+
+    async def never_reads(scope_: Any, receive: Any, send: Any) -> None:
+        await asyncio.sleep(0.6)
+
+    app = BodyBudgetMiddleware(
+        never_reads, budget=budget, ceiling_bytes=8 * MIB, read_timeout_seconds=0.2
+    )
+    task = Client(app, 3 * MIB).run()
+    await asyncio.sleep(0.05)
+    assert budget.in_flight == 3 * MIB
+    # Nothing else of this size fits meanwhile...
+    other = Client(app, 3 * MIB)
+    other_task = other.run()
+    await asyncio.sleep(0.05)
+    assert other.status() == 503
+    await asyncio.sleep(0.25)  # ...until the timeout has passed.
+    assert budget.in_flight == 0 and not task.done()  # released while the handler still runs
+    await asyncio.gather(task, other_task)
+    assert budget.in_flight == 0  # and releasing again at the end does not go negative
+
+
+async def test_a_declared_body_that_times_out_while_being_read_releases_everything() -> None:
+    set_request_id("req_test")
+    budget = BodyBudget(4 * MIB)
+
+    async def reads(scope_: Any, receive: Any, send: Any) -> None:
+        await receive()
+
+    app = BodyBudgetMiddleware(
+        reads, budget=budget, ceiling_bytes=8 * MIB, read_timeout_seconds=0.2
+    )
+    client = Client(app, 3 * MIB)
+    with pytest.raises(AppError) as caught:
+        await client.run()
+    assert caught.value.status_code == 408 and budget.in_flight == 0
+
+
+async def test_a_declared_body_releases_on_disconnect_cancel_and_exception() -> None:
+    budget = BodyBudget(4 * MIB)
+
+    async def explode(scope_: Any, receive: Any, send: Any) -> None:
+        raise RuntimeError("boom before reading")
+
+    for handler in (explode, read_body_then_wait):
+        app = BodyBudgetMiddleware(
+            handler, budget=budget, ceiling_bytes=8 * MIB, read_timeout_seconds=30
+        )
+        client = Client(app, 3 * MIB)
+        task = client.run()
+        await asyncio.sleep(0.05)
+        if handler is read_body_then_wait:
+            assert budget.in_flight == 3 * MIB
+            task.cancel()
+        with pytest.raises((asyncio.CancelledError, RuntimeError)):
+            await task
+        assert budget.in_flight == 0
+
+
+async def test_small_declared_bodies_are_admitted_while_the_budget_is_full() -> None:
+    budget = BodyBudget(4 * MIB)
+    budget.in_flight = 4 * MIB
+    app = BodyBudgetMiddleware(
+        read_body_then_wait, budget=budget, ceiling_bytes=8 * MIB, read_timeout_seconds=30
+    )
+    client = Client(app, SMALL_BODY_BYTES, send_bytes=SMALL_BODY_BYTES)
+    task = client.run()
+    await asyncio.sleep(0.05)
+    client.go.set()
+    await task
+    assert client.status() == 200 and budget.in_flight == 4 * MIB and budget.refused == 0

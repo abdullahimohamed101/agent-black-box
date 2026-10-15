@@ -2,24 +2,28 @@
 
 Routes that buffer a body (ingestion, artifacts, approvals, every JSON write) read it whole, so many
 concurrent large requests multiply the per-request cap into memory pressure. This pure ASGI
-middleware counts the body bytes the application has actually pulled from the socket and refuses
-what would not fit with `503 BUSY` plus `Retry-After`:
+middleware accounts for the body bytes of every request and refuses what would not fit with
+`503 BUSY` plus `Retry-After`:
 
-- Before the body is read, when `Content-Length` says it cannot fit right now.
-- While it is read, when concurrent requests grew past the cap after their own admission check
-  (chunked bodies, or several requests admitted together).
+- Before the body is read, when `Content-Length` says it cannot fit right now. The declared size
+  (capped at the largest allowed body) is *reserved* at admission, so many requests declaring large
+  bodies together cannot all pass and then be refused one by one after transferring bytes.
+- While it is read, when concurrent requests grew past the cap (chunked bodies, which declare
+  nothing and are counted as they arrive).
 
-Only bytes the handler really consumed are counted, so a request that is turned away before its
-body is read (a bad key, a rate limit) costs nothing, and an anonymous client cannot reserve budget
-by declaring a large `Content-Length` it never sends. Accounting is released in a `finally`, so
-a client disconnect, a cancelled task or an exception cannot leak it. A body read is also bounded in
-time, so a trickling client cannot hold bytes for ever.
+A reservation is reconciled against what really arrived: once the body is complete the unread
+part is released, and it is also released when the read timeout passes without a complete body
+(`ABB_BODY_READ_TIMEOUT_SECONDS`), so a client that declares a large body and never sends it holds
+budget for at most that long (and no longer than its request lives). Peak accounted bytes never
+exceed the cap plus the small allowance. The cost of this choice, accepted in ADR-155: a flood of
+anonymous clients that declare large bodies and stall can make other *large* bodies wait with
+`503 BUSY` for up to the read timeout; small bodies are never refused. Accounting is released in a
+`finally`, so a disconnect, a cancelled task or an exception cannot leak it.
 
 Fairness: first come, first served. A request whose body is at most `SMALL_BODY_BYTES` is always
 admitted (it is still counted), so sign-in, approval decisions and other small writes are not
-starved by a flood of large batches; the bound is therefore the cap plus the small allowance of each
-concurrent request. There is no per-project share: per-project fairness is the rate limiter's and
-the quotas' job.
+starved by a flood of large batches. There is no per-project share: per-project fairness is the
+rate limiter's and the quotas' job.
 """
 
 import asyncio
@@ -65,6 +69,10 @@ class BodyBudget:
     def fits(self, want: int) -> bool:
         """Whether `want` bytes could be admitted now (the early, Content-Length check)."""
         return want <= self.small_bytes or self.in_flight + want <= self.cap_bytes
+
+    def reserve(self, want: int) -> bool:
+        """Account for a declared body up front. False (nothing changed) when it does not fit."""
+        return self.grow(0, want)
 
     def grow(self, held: int, want: int) -> bool:
         """Raise one request's accounted bytes from `held` to `want`; False (and nothing changed)
@@ -112,17 +120,33 @@ class BodyBudgetMiddleware:
         if declared == 0 and not chunked:
             await self.app(scope, receive, send)  # no body: nothing to account
             return
-        if declared and not self.budget.fits(min(declared, self.ceiling)):
+        reserved = min(declared, self.ceiling)
+        if reserved and not self.budget.reserve(reserved):
             self.budget.note_refusal("content-length")
             await error_response(busy_error())(scope, receive, send)
             return
 
-        held = 0
+        held = 0  # body bytes that really arrived
+        accounted = reserved  # what the budget currently counts for this request
         body_done = False
         deadline = time.monotonic() + self.read_timeout
 
+        def settle() -> None:
+            """Give back the part of the reservation that has not arrived (and now never will)."""
+            nonlocal accounted
+            if accounted > held:
+                self.budget.release(accounted - held)
+                accounted = held
+
+        # A reservation never outlives the read timeout, whether or not the handler is reading.
+        expiry = (
+            asyncio.get_running_loop().call_later(self.read_timeout, lambda: settle())
+            if reserved
+            else None
+        )
+
         async def counted_receive() -> Message:
-            nonlocal held, body_done
+            nonlocal held, body_done, accounted
             if body_done:
                 return await receive()
             try:
@@ -136,8 +160,6 @@ class BodyBudgetMiddleware:
                     retryable=True,
                 ) from None
             if message["type"] == "http.request":
-                if not message.get("more_body", False):
-                    body_done = True
                 size = len(message.get("body", b""))
                 if size:
                     want = held + size
@@ -149,13 +171,20 @@ class BodyBudgetMiddleware:
                             status_code=413,
                             details={"limit_bytes": self.ceiling},
                         )
-                    if not self.budget.grow(held, want):
-                        self.budget.note_refusal("streaming")
-                        raise busy_error()
+                    if want > accounted:
+                        if not self.budget.grow(accounted, want):
+                            self.budget.note_refusal("streaming")
+                            raise busy_error()
+                        accounted = want
                     held = want
+                if not message.get("more_body", False):
+                    body_done = True
+                    settle()
             return message
 
         try:
             await self.app(scope, counted_receive, send)
         finally:
-            self.budget.release(held)
+            if expiry is not None:
+                expiry.cancel()
+            self.budget.release(accounted)

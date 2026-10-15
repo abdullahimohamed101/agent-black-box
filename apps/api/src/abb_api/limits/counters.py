@@ -11,8 +11,8 @@ that never exceeds the limit: the total granted per window is at most `limit`, e
 This module owns the failure contract: a slow or unreachable database raises
 `SharedLimiterUnavailable` within `timeout_seconds` and then short-circuits for `backoff_seconds`
 so the shared tier can never stall a request. The backoff is per scope: a slow statement on one hot
-row must not disable the login ceiling or the failed-auth counters. Callers (see `guard.py`) fail open to the local
-limiter. Logs carry error class names only, never keys.
+row must not disable the login ceiling or the failed-auth counters. Callers (see `guard.py`) fail
+open to the local limiter. Logs carry error class names only, never keys.
 """
 
 import asyncio

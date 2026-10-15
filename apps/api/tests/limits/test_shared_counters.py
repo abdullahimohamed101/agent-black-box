@@ -241,7 +241,7 @@ async def test_a_slow_statement_on_one_scope_does_not_disable_the_other_scopes(
                 raise TimeoutError
             return await real(scope, *args)  # type: ignore[arg-type]
 
-        counters._upsert = hot_row_times_out  # type: ignore[method-assign]
+        counters._upsert = hot_row_times_out  # type: ignore[assignment]
         with pytest.raises(SharedLimiterUnavailable):
             await counters.check_and_increment(Scope.POLICY_WRITE, "hot", 5, 60, workspace_id=ws)
         # The failing scope is short-circuited for the backoff...
