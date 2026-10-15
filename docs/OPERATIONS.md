@@ -8,6 +8,7 @@ Operating Agent Black Box itself (spec §43, §104-125). Runbooks live in `docs/
 | --- | --- | --- |
 | API | `uvicorn abb_api.main:app_from_env --factory` | stateless; `/healthz` (liveness, no dependencies), `/readyz` (database, 2.5 s deadline) |
 | Worker | `python -m abb_api.worker` | claims background jobs; any number may run; SIGTERM finishes the current batch and exits 0 |
+| Retention | `python -m abb_api.retention run` (one tick: `python -m abb_api.cli retention run-once`) | the data-retention job (ADR-159); own credentials (`ABB_RETENTION_DATABASE_URL`), never in the API's or worker's environment; one at a time (advisory lock); SIGTERM stops after the current tick |
 | Migrations | `alembic upgrade head` (`make migrate`) | run once per release before the new API/worker start; compose does this in the `migrate` service |
 | Provisioning | `python -m abb_api.cli ...` | workspaces, projects, API keys, dead-letter inspection, `rebuild-costs`, `rebuild-findings` |
 
@@ -27,6 +28,15 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_SESSION_WRITES_PER_MINUTE` | 30 | how many times one person may end sessions (Settings, Sessions) per minute, counted across API processes (Phase 19a step 5, ADR-157). Listing is not limited |
 | `ABB_QUOTAS_ENABLED` | true | per-project quotas (Phase 19a, ADR-154). `false` is an emergency switch: nothing is checked or counted (the usage figures then go stale) |
 | `ABB_QUOTA_AGENTS` / `_RUNS_PER_DAY` / `_EVENTS_PER_DAY` / `_ARTIFACT_BYTES` | 500 / 50000 / 5000000 / 5368709120 (5 GiB) | the default quota of every project: distinct agents, runs created per UTC day, events accepted per UTC day, total stored artifact bytes. Owners and admins override each per project (Quotas settings page, `PUT /v1/projects/{id}/quotas`). The per-run event cap and the per-artifact size cap (`ABB_ARTIFACT_MAX_BYTES`) are separate and unchanged |
+| `ABB_RETENTION_MODE` | `dry_run` | `off` (the job does nothing), `dry_run` (measures and writes reports, deletes nothing) or `enforce` (refused by this release: it logs the refusal once, writes nothing, `run-once` exits 2). Read by the retention process (and shown by the API) |
+| `ABB_RETENTION_ARTIFACTS_DAYS` / `_TRACE_DAYS` / `_RUN_DAYS` / `_AUDIT_DAYS` | 30 / 90 / 365 / 365 | workspace defaults, in days after a run ended (the audit log: after the entry). 7 to 36500 or `forever`; `artifacts <= trace <= run` (the run record goes last). A workspace's owner or admin overrides each (`PUT /v1/workspaces/{id}/retention`); a bad value stops the process at startup |
+| `ABB_RETENTION_DATABASE_URL` | none | the `abb_retention` role's URL; read only by the retention process. No fallback to the runtime URL. Development and test fall back to `ABB_MIGRATION_DATABASE_URL`, then `ABB_DATABASE_URL` (the owner) with a warning; staging and production refuse to run without it |
+| `ABB_RETENTION_DB_PASSWORD` | none | read by `alembic upgrade` (not by the app) to give `abb_retention` a login password, like `ABB_RUNTIME_DB_PASSWORD`; without it the role cannot log in |
+| `ABB_RETENTION_TICK_INTERVAL_SECONDS` / `_TICK_BUDGET_SECONDS` | 3600 / 60 | the loop interval; and the time after which a tick starts no new workspace (the one in progress finishes, bounded by its statement timeouts) |
+| `ABB_RETENTION_MAX_RUNS_PER_TICK` / `_MAX_ROWS_PER_TICK` | 2000 / 100000 | per workspace and tier: runs considered, and other rows counted. When reached the report says `truncated` and the figures are a lower bound |
+| `ABB_RETENTION_STATEMENT_TIMEOUT_SECONDS` / `_PREVIEW_TIMEOUT_SECONDS` / `_PREVIEW_MAX_RUNS` | 30 / 10 / 5000 | database timeouts for a tick query and the preview (`504 RETENTION_PREVIEW_TIMEOUT`), and the preview's run cap |
+| `ABB_RETENTION_REPORTS_KEEP` | 50 | reports kept per workspace and tier |
+| `ABB_RETENTION_WRITES_PER_MINUTE` / `_PREVIEWS_PER_MINUTE` | 20 / 10 | per workspace, shared across API processes |
 | `ABB_MAX_BODY_BYTES_IN_FLIGHT` / `ABB_BODY_READ_TIMEOUT_SECONDS` | 64 MiB / 60 | most request-body bytes this API process holds at once (Phase 19a, ADR-155); a body that does not fit is refused `503 BUSY` with `Retry-After: 2` (retryable), bodies up to 64 KiB are always admitted, a body not received within the timeout is dropped `408`. Must be at least the largest body (8 MiB). Resident memory is about baseline + 4 to 6.5 x the cap under a flood of large batches (`docs/benchmarks/phase-19a-edge.md`) |
 | `ABB_API_DOCS_ENABLED` | unset | `/docs`, `/redoc`, `/openapi.json`: unset follows the environment (off in `production`, on in development, test and staging); `true`/`false` overrides |
 | `ABB_ALLOW_PRIVILEGED_DB_ROLE` | 0 | `1` lets the API and worker start in production although their database role can rewrite events (see "Database roles"); every start logs a warning naming why |
@@ -137,6 +147,18 @@ A person the identity provider vouches for but no workspace has invited gets `40
 
 A person ending a session (or all but the current one) writes `session.revoke` / `session.revoke_others` to the audit log of each workspace they belong to. Demoting or removing a person writes one `invitation.revoke_inviter_lost_rights` row per open invitation they had created. Read-only checks:
 `SELECT count(*) FROM users u WHERE NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.user_id = u.id);` (people without a membership: bounded by invitations, see KI-184) and `SELECT action, count(*) FROM audit_log WHERE action LIKE 'session.%' OR action = 'invitation.revoke_inviter_lost_rights' GROUP BY 1;`.
+
+### Data retention (Phase 19b step 1, ADR-159)
+
+**State of the feature:** this release measures and reports; it never deletes (`enforce` is refused). Enforcement arrives in step 2, after which deletes are permanent: take a backup and perform a restore drill first (step 4).
+
+*Provisioning.* Migration 0101 creates the role `abb_retention` (`NOLOGIN`) with exactly the grants listed in ADR-159, pinned by `apps/api/tests/retention/test_retention_role.py`. Give it a login the way the runtime role gets one: set `ABB_RETENTION_DB_PASSWORD` for `alembic upgrade` (compose does, with a dev default), then point the retention process at it with `ABB_RETENTION_DATABASE_URL` (`postgresql+asyncpg://abb_retention:<password>@<host>/<db>`). Never put that URL in the API's or worker's environment. In tests and CI a login role is created `IN ROLE abb_retention`, as for `abb_runtime`. At start the process refuses (production) or warns (elsewhere) if its role is a superuser, an owner, can create in the schema or can touch the credential tables; set `ABB_ALLOW_PRIVILEGED_DB_ROLE=1` only knowingly.
+
+*Running.* Compose (`--profile app`) runs the `retention` service in the mode `ABB_RETENTION_MODE` (default `dry_run`). Natively: `python -m abb_api.retention run` (loop) or `python -m abb_api.cli retention run-once` (one tick; prints `mode=... reports=N truncated=N errors=N budget_exhausted=...`; exit 2 when enforce was refused or the configuration is unsafe). Set `ABB_RETENTION_MODE=off` for a kill switch; the next tick does nothing.
+
+*Reading the reports.* `GET /v1/workspaces/<id>/retention/reports` (any member), or SQL: `SELECT workspace_id, tier, mode, runs, events, artifact_bytes, row_count, truncated, cutoff_at, finished_at FROM retention_reports ORDER BY id DESC LIMIT 50`. Per workspace and tier: what the policy *would* delete now (counts only, never content). Tiers are counted separately, not added: `trace` and `run` both count the same expired runs. `operational` is a workspace's finished jobs (7 days; dead letters 30), expired counters (1 hour) and daily usage rows (35 days); `platform` (no workspace) is dead sessions (7 days after expiry or revocation), global counters and people who never joined a workspace (30 days). A tier kept `forever` has no report. `truncated=true` means a per-tick bound was reached; raise `ABB_RETENTION_MAX_*` or wait for enforcement to drain it. A missing report for a tier with data means its query timed out or the saved policy became invalid under the current defaults (logged as `retention measurement failed` / `retention policy invalid for a workspace`, never with content). `GET .../retention/preview?trace_days=30` answers the same question for a *proposed* policy without saving it.
+
+*A run's end* is its `completed_at`, or its last update while it has none, clamped between the server's first sight and last update of the run, so a client cannot move its own expiry.
 
 ### Project quotas (Phase 19a step 3, ADR-154)
 

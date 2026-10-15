@@ -67,6 +67,9 @@ row lock, debounced and coalesced `summarize_run` jobs; run state is a pure func
 (`runs/summary.py`) so it is rebuildable (ADR-012); that includes the first-error facts (event, retries, time and spend after it, ADR-112). Status: implemented (Phase 2); cost and analytics refresh jobs (Phase 7); the `detect_findings` job (Phase 10: pure detectors over a capped canonical event load, derived findings, ADR-080); the `evaluate_run` job (Phase 11: a budgeted evaluator in a thread, writes only `evaluations`, ADR-090); alert jobs
 arrive in later phases.
 
+### Retention (`abb_api.retention`) - Phase 19b, ADR-159
+A separate process (`python -m abb_api.retention run`, or `python -m abb_api.cli retention run-once`) connecting as the `abb_retention` role, the only role that may DELETE retained tables (INV-1: events are immutable until expired by this job). The API holds the per-workspace policy (`retention_policies`, four tiers, floor 7 days, `forever` explicit; routes under `/v1/workspaces/{id}/retention`) and reads the job's reports, but cannot start the job, holds no retention credentials and cannot write or erase reports. `ABB_RETENTION_MODE` is `off`, `dry_run` (default) or `enforce`; step 1 implements dry run only (counts per workspace and tier in `retention_reports`, nothing deleted; `enforce` is refused). Measurement (`retention/measure.py`) is shared by the preview endpoint and the tick. Status: foundation (Phase 19b step 1); enforcement in step 2.
+
 ### Python SDK (`packages/sdk-python`)
 Instrumentation API -> context manager -> builder/sanitizer -> bounded buffer -> exporter.
 Never raises into the host agent. Status: implemented (Phase 3; `blackbox.coding` in Phase 6; SDK 0.2.0 in Phase 8).

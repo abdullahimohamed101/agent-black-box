@@ -40,6 +40,8 @@ Database roles: Compose runs `migrate` as the owner (`abb`) and the API/worker a
 `.env` keeps using the owner for convenience; to try the restricted role natively, export `ABB_RUNTIME_DB_PASSWORD`, run `make migrate`, and point
 `ABB_DATABASE_URL` at `abb_runtime` (see `.env.example`), keeping `ABB_MIGRATION_DATABASE_URL` on the owner.
 
+Retention (ADR-159): compose also runs a `retention` service as the `abb_retention` role (dry run: it only writes reports). Natively, `ABB_RETENTION_DATABASE_URL` (or, in development, the owner URL the migrations use) lets `python -m abb_api.cli retention run-once` run one tick; `ABB_RETENTION_DB_PASSWORD` at `make migrate` gives the role a login.
+
 Native `make dev` does not start the worker, so runs stay `processing` unless you start one (or use `make up`).
 
 ## Web app against the API (Phase 4, sign-in in Phase 15)
