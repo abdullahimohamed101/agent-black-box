@@ -1,16 +1,20 @@
-"""Bounds on search reads: a per-process concurrency cap and one wall-clock budget per request.
+"""Bounds on search reads: a per-process, fair-share concurrency cap and one wall-clock budget per
+request.
 
-The cap is a semaphore acquired **before** a pooled connection is taken, so search can hold at most
-`max_concurrent` of the process's connections and ingestion is never starved by it (a full gate is
-`503 SEARCH_BUSY`, immediately). The budget is one deadline for the whole request: each statement
-runs read-only under `statement_timeout` set to what remains, and the optional facets statement
-only runs while enough of the budget is left (plan D8). Both are per process, like every limiter
-today (KI-082).
+A permit is taken **before** a pooled connection, so search can hold at most `max_concurrent` of
+the process's connections and ingestion is never starved by it (a full gate is `503 SEARCH_BUSY`,
+immediately); the wait for a connection counts against the budget. The budget is one deadline for
+the whole request: each statement runs read-only under `statement_timeout` set to what remains,
+and the optional facets statement only runs while enough of the budget is left (plan D8).
+Concurrency is per process by nature; who may hold how many permits is `SearchGate`'s fair share
+(KI-082, ADR-158).
 """
 
 import asyncio
+import contextlib
 import logging
 import time
+import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -18,7 +22,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Result
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.exc import TimeoutError as PoolTimeout
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from abb_api.search.errors import search_busy, search_timeout
 
@@ -45,6 +50,25 @@ class SearchBudget:
     def allows_facets(self) -> bool:
         return self.remaining_fraction() >= FACETS_MIN_BUDGET_FRACTION
 
+    @asynccontextmanager
+    async def connect(self, engine: AsyncEngine) -> AsyncIterator[AsyncConnection]:
+        """A pooled connection whose wait is part of the budget. A starved pool is a
+        `SEARCH_TIMEOUT` when the budget ends, not a `DEPENDENCY_UNAVAILABLE` after the pool's own
+        timeout, and the permit is never held longer than the budget for want of a connection."""
+        conn = engine.connect()
+        try:
+            async with asyncio.timeout(self.remaining_seconds()):
+                await conn.start()
+        except (TimeoutError, PoolTimeout):
+            with contextlib.suppress(Exception):
+                await conn.close()
+            logger.warning("search gave up waiting for a database connection")
+            raise search_timeout() from None
+        try:
+            yield conn
+        finally:
+            await conn.close()
+
     async def run(self, conn: AsyncConnection, statement: Any) -> Result[Any]:
         """Execute read-only with the remaining time as the statement timeout.
 
@@ -69,20 +93,74 @@ class SearchBudget:
 
 
 class SearchGate:
-    """The per-process cap on concurrent searches, and the source of per-request budgets."""
+    """The per-process admission of searches: a fair share per workspace, a cap per actor, and
+    the source of per-request budgets (KI-082, ADR-158).
+
+    Search concurrency is a process-local resource by nature (it protects this process's share of
+    the database pool and its event loop), so nothing here is shared between processes; the
+    request *rate* is the shared limiter's job. Admission is one synchronous check-and-increment
+    (no `await` in between), so on one event loop it is atomic without a lock, and a refusal is
+    immediate: a search is never queued behind others.
+
+    Rules, with `cap` = `max_concurrent`:
+
+    * an actor (API key or person) holds at most `min(2, max(1, cap // 2))` permits;
+    * a workspace holds at most `max(1, cap // 2)` while any other workspace holds a permit, and at
+      most `max(that, cap - 1)` while it is the only one searching, so a lone user is not held to
+      half the process, yet one permit always stays free for the next workspace to arrive;
+    * the process holds at most `cap` in total.
+
+    A refusal is `SEARCH_BUSY` with a fixed `details.reason`: `actor_limit`, `workspace_share` or
+    `process_full`. With `cap` 1 there is nothing to share: the single permit goes to whoever
+    asks first.
+    """
 
     def __init__(self, *, max_concurrent: int, timeout_seconds: float) -> None:
-        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._cap = max_concurrent
+        self._share = max(1, max_concurrent // 2)
+        self._lone = max(self._share, max_concurrent - 1)
+        self._per_actor = min(2, self._share)
         self._timeout = timeout_seconds
+        self._total = 0
+        self._by_workspace: dict[uuid.UUID, int] = {}
+        self._by_actor: dict[tuple[uuid.UUID, str], int] = {}
+
+    @property
+    def held(self) -> int:
+        """Permits in use right now (tests assert this returns to zero)."""
+        return self._total
+
+    def _admit(self, workspace_id: uuid.UUID, actor: str) -> None:
+        key = (workspace_id, actor)
+        if self._by_actor.get(key, 0) >= self._per_actor:
+            raise search_busy("actor_limit")
+        mine = self._by_workspace.get(workspace_id, 0)
+        others_searching = self._total > mine
+        if mine >= (self._share if others_searching else self._lone):
+            raise search_busy("workspace_share")
+        if self._total >= self._cap:
+            raise search_busy("process_full")
+        self._total += 1
+        self._by_workspace[workspace_id] = mine + 1
+        self._by_actor[key] = self._by_actor.get(key, 0) + 1
+
+    def _release(self, workspace_id: uuid.UUID, actor: str) -> None:
+        self._total -= 1
+        _decrement(self._by_workspace, workspace_id)
+        _decrement(self._by_actor, (workspace_id, actor))
 
     @asynccontextmanager
-    async def request(self) -> AsyncIterator[SearchBudget]:
-        # `locked()` and `acquire()` do not yield to the loop between them when a permit is free,
-        # so a full gate refuses at once instead of queueing a search behind the others.
-        if self._semaphore.locked():
-            raise search_busy()
-        await self._semaphore.acquire()
+    async def request(self, workspace_id: uuid.UUID, actor: str) -> AsyncIterator[SearchBudget]:
+        self._admit(workspace_id, actor)
         try:
-            yield SearchBudget(self._timeout)
+            yield SearchBudget(self._timeout)  # the clock starts with the permit
         finally:
-            self._semaphore.release()
+            self._release(workspace_id, actor)  # every path: error, timeout, cancel, disconnect
+
+
+def _decrement[K](table: dict[K, int], key: K) -> None:
+    remaining = table[key] - 1
+    if remaining:
+        table[key] = remaining
+    else:
+        del table[key]  # an idle workspace or actor leaves nothing behind

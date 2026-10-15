@@ -32,7 +32,8 @@ def search_timeout() -> AppError:
     )
 
 
-def search_busy() -> AppError:
+def search_busy(reason: str) -> AppError:
+    """`reason` is a fixed word (`actor_limit`, `workspace_share`, `process_full`), never data."""
     return AppError(
         "SEARCH_BUSY",
         "Too many searches are running; try again in a moment.",
@@ -40,4 +41,5 @@ def search_busy() -> AppError:
         status_code=503,
         retryable=True,
         headers={"Retry-After": "1"},
+        details={"reason": reason},
     )

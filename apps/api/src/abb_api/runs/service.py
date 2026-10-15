@@ -325,7 +325,10 @@ class RunService:
                 )
         else:
             assert gate is not None and query is not None
-            async with gate.request() as budget, self._engine.connect() as conn:
+            async with (
+                gate.request(principal.workspace_id, principal.actor_id) as budget,
+                budget.connect(self._engine) as conn,
+            ):
                 scope_project = await authorise_project(conn, principal, project_id)
                 queries = RunQueries(conn, principal.tenant, principal.project_id)
                 records = await queries.page(
