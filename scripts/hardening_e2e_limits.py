@@ -207,6 +207,9 @@ async def _phase(urls: list[str], valid: Valid, flood: Any, seconds: float, floo
 
 def gate2() -> None:
     gate("gate2-auth-throttle")
+    # A valid key that no process below has ever seen: created through the main API before the pair starts, so each process loads its
+    # id at startup (the active key ids, ADR-153 point 3) but has never authenticated its token.
+    cold_key = lib.new_key(lib.new_project("throttle-cold"), ["runs:read"], "cold")
     ports = (lib.OIDC_PORT + 3, lib.OIDC_PORT + 4)
     shared = {"ABB_TRUST_PROXY": "1"}
     a, b = lib.start_pair("throttle", ports, shared)
@@ -214,13 +217,13 @@ def gate2() -> None:
     d = lib.start_api("throttle-off", lib.OIDC_PORT + 6, {"ABB_AUTH_FAIL_ENABLED": "0"})
     urls = [a.url, b.url]
     try:
-        _gate2(a, b, c, d, urls)
+        _gate2(a, b, c, d, urls, cold_key)
     finally:
         lib.stop_all(a, b, c, d)
     lib.finish()
 
 
-def _gate2(a: lib.Proc, b: lib.Proc, c: lib.Proc, d: lib.Proc, urls: list[str]) -> None:
+def _gate2(a: lib.Proc, b: lib.Proc, c: lib.Proc, d: lib.Proc, urls: list[str], cold_key: str) -> None:
     project = lib.new_project("throttle", base=a.url)
     token = lib.new_key(project, ["events:write", "runs:read"], "warm", base=a.url)
     victim = lib.new_key(project, ["events:write"], "victim", base=a.url)
@@ -302,7 +305,10 @@ def _gate2(a: lib.Proc, b: lib.Proc, c: lib.Proc, d: lib.Proc, urls: list[str]) 
         info(credential_flood=name, tally=lib.tally(got))
         check(PER_CREDENTIAL - 2 <= ok401 <= PER_CREDENTIAL + PROCESSES + CONCURRENCY, f"one {'existing' if name == 'real' else 'unknown'} key id with 80 wrong secrets from 80 addresses: {ok401} lookups, then 429 (limit {PER_CREDENTIAL})")
         check(bool(too) and all(r.code == "AUTH_THROTTLED" and r.retry_after for r in too), f"{name}: the throttled answers are 429 AUTH_THROTTLED with Retry-After")
-    bodies = {name: lib.scrub(next(r.body for r in cred[name] if r.status == 429)) for name in cred}
+    throttled_bodies = {name: next((r.body for r in cred[name] if r.status == 429), None) for name in cred}
+    check(all(isinstance(body, dict) and body.get("error", {}).get("code") == "AUTH_THROTTLED" for body in throttled_bodies.values()),
+          "both floods produced a 429 body in the standard envelope with code AUTH_THROTTLED (so the comparison below is not vacuous)")
+    bodies = {name: lib.scrub(body) for name, body in throttled_bodies.items()}
     check(bodies["real"] == bodies["ghost"], "throttled bodies are identical for an existing and an unknown key id", body=bodies["real"])
     first_401 = lib.scrub(next(r.body for r in cred["real"] if r.status == 401))
     check(first_401 == lib.scrub(unknown.body), "the 401 body of a wrong secret equals the unknown-key 401 body")
@@ -340,6 +346,28 @@ def _gate2(a: lib.Proc, b: lib.Proc, c: lib.Proc, d: lib.Proc, urls: list[str]) 
     info(closed_window_flood=lib.tally(closed), requests_per_s=round(req_rate), db_tx=tx2, db_tx_per_s=round(rate, 1), idle_tx_per_s=idle)
     check(lib.count(closed, 401) <= 2 * PROCESSES, "closed window: zero lookups (a request that finds the window closed does no work)", lookups=lib.count(closed, 401))
     check(tx2 < 0.05 * len(closed) and rate < 60, f"closed window: database transactions ({tx2}, {rate:.0f}/s) are under 5% of the {len(closed)} flood requests and under 60/s (bound: counters, not requests)")
+    # --- COLD KEY DURING A FLOOD (ADR-153 point 3, KI-175): a valid key that neither process has ever authenticated, first used while
+    # the flood keeps the global window closed. It used to be refused with 429 until the window ended.
+    async def closed_everywhere() -> list[lib.Reply]:
+        async with httpx.AsyncClient(timeout=30) as client:
+            return [await _bad(client, base) for base in urls]
+
+    still_closed = asyncio.run(closed_everywhere())
+    check(all(r.status == 429 and r.code == "AUTH_THROTTLED" for r in still_closed), "before the cold key is used the global window is closed on both processes (a fresh random key gets 429)", tally=lib.tally(still_closed))
+
+    class ColdKey(Valid):
+        async def one(self, client: httpx.AsyncClient, i: int) -> lib.Reply:
+            base = self.urls[i % len(self.urls)]
+            reply = await lib.fire(client, "GET", f"{base}/v1/runs", headers=lib.bearer(cold_key))
+            reply.code = "cold" if reply.status == 200 else reply.code
+            return reply
+
+    cold_flooded, cold_replies, _, _ = asyncio.run(_phase(urls, ColdKey(urls, token), flood, 6.0, 24))
+    info(cold_key=lib.tally(cold_replies), flood=lib.tally(cold_flooded))
+    check(bool(cold_replies) and all(r.code == "cold" for r in cold_replies),
+          "a valid key never used by either API process authenticated on every request while the flood kept the global window closed", requests=len(cold_replies), tally=lib.tally(cold_replies))
+    check(lib.count(cold_flooded, 429) > 0 and all(r.status in {401, 429} for r in cold_flooded), "and the flood stayed closed throughout (only 401s from in-flight requests and 429s)", tally=lib.tally(cold_flooded))
+
     # Valid traffic at full rate (ingestion with 20-event batches and sessions, both processes) during a flood against the closed window.
     full = Valid(urls, token)
     closed2, good2, seconds3, _ = asyncio.run(_phase(urls, full, flood, 8.0, 24))
