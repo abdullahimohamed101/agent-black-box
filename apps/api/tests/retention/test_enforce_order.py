@@ -160,8 +160,9 @@ async def _rows(engine: AsyncEngine, sql: str) -> list[Any]:
         return [tuple(r) for r in await conn.execute(text(sql))]
 
 
-# Exhaustive on purpose: it kills the procedure after EVERY hook call and reruns it, so it takes about 60 to 90 seconds and
-# crossed the suite-wide 90 s limit on a loaded machine. Deterministic; only the budget is larger (as test_findings_job does).
+# Exhaustive on purpose: it kills the procedure after EVERY hook call and reruns it, so it
+# takes about 60 to 100 seconds and crossed the suite-wide 90 s limit on a loaded machine.
+# Deterministic; only the budget is larger (as test_findings_job does).
 @pytest.mark.timeout(600)
 async def test_a_crash_after_every_single_step_is_completed_by_the_next_tick(
     engine: AsyncEngine, retention_engine: AsyncEngine, tmp_path: Path
