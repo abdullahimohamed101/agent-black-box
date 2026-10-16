@@ -194,6 +194,7 @@ export class RunBuilder {
       completed_at: terminal ? last.occurred_at : null,
       duration_ms: duration,
       ordering_mode: mode,
+      trace_state: "available",
       summary: {
         event_count: ev.length,
         duration_ms: Date.parse(last.occurred_at) - Date.parse(first.occurred_at),

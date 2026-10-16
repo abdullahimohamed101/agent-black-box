@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e retention-e2e backup-restore-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -38,6 +38,26 @@ dev: db
 	(cd $(API) && uv run uvicorn abb_api.main:app_from_env --factory --reload --port 8000) & \
 	(pnpm --filter @abb/web dev) & \
 	wait
+
+# Backup and restore (ADR-162; docs/runbooks/backup-restore.md). OUT and BUNDLE are absolute paths.
+#   make backup OUT=/var/backups/abb/2026-10-16 [BACKUP_FLAGS="--encrypt --passphrase-file /etc/abb/backup.pass"]
+#   make backup-verify BUNDLE=/var/backups/abb/2026-10-16 [BACKUP_FLAGS="--passphrase-file ..."]
+#   make restore BUNDLE=/var/backups/abb/2026-10-16 ARTIFACT_DIR=/new/empty/dir [BACKUP_FLAGS=...]  (needs ABB_RESTORE_DATABASE_URL)
+backup:
+	@test -n "$(OUT)" || { echo "usage: make backup OUT=<new directory>"; exit 2; }
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run python -m abb_api.backup create --out "$(OUT)" $(BACKUP_FLAGS)
+
+backup-verify:
+	@test -n "$(BUNDLE)" || { echo "usage: make backup-verify BUNDLE=<directory>"; exit 2; }
+	cd $(API) && uv run python -m abb_api.backup verify "$(BUNDLE)" $(BACKUP_FLAGS)
+
+restore:
+	@test -n "$(BUNDLE)" || { echo "usage: make restore BUNDLE=<directory> ARTIFACT_DIR=<empty directory>"; exit 2; }
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run python -m abb_api.backup restore "$(BUNDLE)" $(if $(ARTIFACT_DIR),--artifact-dir "$(ARTIFACT_DIR)") $(BACKUP_FLAGS)
+
+# Rotate the alert-encryption key and re-seal every destination; ROTATE_FLAGS="--new-key", "--dry-run" or empty to resume.
+rotate-alert-keys:
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run python -m abb_api.rotate alerts $(ROTATE_FLAGS)
 
 test:
 	cd $(SCHEMA) && uv run pytest -q
@@ -171,6 +191,17 @@ alerts-e2e:
 # sessions and invitations, alert ports and search fairness, the cost of it all, and a real browser.
 hardening-e2e:
 	pnpm --filter @abb/web build && scripts/hardening-e2e.sh
+
+# Data retention (Phase 19b): a real stack with the retention job as its own database login. Dry run deletes nothing, enforcement removes expired
+# data in order, a crash (SIGKILL) mid-run is finished by a rerun, the kill switch and bounds, privileges, purge commands, a real browser, and the
+# cost of enforcement (informational). Deterministic assertions only (docs/benchmarks/phase-19b-retention-e2e.md).
+retention-e2e:
+	pnpm --filter @abb/web build && scripts/retention-e2e.sh
+
+# The performed restore drill (Phase 19b): seed, back up (module CLI, encrypted, compose service), destroy, restore, serve, upgrade an older bundle,
+# rotate the alert key. Needs pg_dump, pg_restore and openssl on the PATH, and Docker for the compose step (docs/benchmarks/phase-19b-restore-drill.md).
+backup-restore-e2e:
+	scripts/backup-restore-e2e.sh
 
 # Evaluations, comparison and experiments: the coding agent twice (baseline, wrong-fix), owner and viewer in a real browser (Phase 11).
 eval-e2e:

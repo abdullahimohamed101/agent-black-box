@@ -1,0 +1,258 @@
+{
+  "_how_to_classify": "Every file in versions/ must appear here (tests/test_migration_safety.py fails otherwise). 'reversible': the downgrade is run against the previous revision by that test and restores its schema and privileges exactly; it removes only objects this revision created and deletes or rewrites no row that existed before the upgrade, cannot fail on data, and weakens no protection. 'forward-only': anything else (it deletes or rewrites rows, can fail on data, drops a key or a record that cannot be recreated, or depends on whether a job has run); rollback is to restore the backup taken before the upgrade. 'downgrade_discards' lists what a downgrade throws away (the contents of objects the revision created). 'upgrade_risk' records lock-heavy or data-rewriting upgrade steps. Add the new revision's entry in the same commit as the migration.",
+  "migrations": {
+    "0001": {
+      "class": "reversible",
+      "notes": "Empty baseline; the downgrade is a no-op."
+    },
+    "0002": {
+      "class": "reversible",
+      "notes": "Creates the tenancy tables. Rolling back past it empties the installation.",
+      "downgrade_discards": [
+        "workspaces",
+        "users",
+        "workspace_members",
+        "projects",
+        "agents",
+        "agent_versions",
+        "api_keys"
+      ]
+    },
+    "0003": {
+      "class": "reversible",
+      "notes": "Creates runs, spans and the append-only events table.",
+      "downgrade_discards": [
+        "runs",
+        "spans",
+        "events"
+      ]
+    },
+    "0004": {
+      "class": "reversible",
+      "notes": "Creates the outbox.",
+      "downgrade_discards": [
+        "outbox_jobs"
+      ]
+    },
+    "0005": {
+      "class": "reversible",
+      "notes": "Skeleton tables (artifacts, evaluations, policies) that later revisions extend.",
+      "downgrade_discards": [
+        "artifacts",
+        "evaluations",
+        "policies"
+      ]
+    },
+    "0006": {
+      "class": "reversible",
+      "notes": "Index on outbox_jobs.",
+      "upgrade_risk": "A plain CREATE INDEX holds a write-blocking lock on outbox_jobs for the build; time grows with the table. Run in a quiet period on a large database."
+    },
+    "0007": {
+      "class": "reversible",
+      "notes": "Creates the abb_runtime role (never dropped: roles are cluster-wide) and its grants; the downgrade removes this database's grants, so the application cannot work until 0007 is applied again. Security-relevant: do not leave a deployment between revisions."
+    },
+    "0008": {
+      "class": "reversible",
+      "notes": "Makes events.run_id RESTRICT and removes the runtime role's DELETE on the parents of events. The downgrade restores CASCADE and re-grants DELETE, which reopens a path that deletes events (INV-1). Mechanically reversible; do not leave a production database there."
+    },
+    "0009": {
+      "class": "reversible",
+      "notes": "Index on events (run, arrival).",
+      "upgrade_risk": "A plain CREATE INDEX on events blocks inserts for the build, which grows with the table; this is the largest table. Build in a quiet period, or create the index CONCURRENTLY by hand first (same name) and let the migration skip it."
+    },
+    "0040": {
+      "class": "reversible",
+      "notes": "Cost lines (derived) and pricing overrides (operator-entered).",
+      "downgrade_discards": [
+        "cost_calculations",
+        "pricing_overrides (operator-entered prices are lost)"
+      ]
+    },
+    "0041": {
+      "class": "reversible",
+      "notes": "Typed analytics columns on runs and spans; all derived (INV-2). Rebuild with refresh-analytics.",
+      "downgrade_discards": [
+        "runs typed figure columns",
+        "spans.project_id and run_started_at"
+      ],
+      "upgrade_risk": "The backfill UPDATE rewrites every run and every span row once, and the two indexes are built inside the transaction (write-blocking). Run off-peak on a large database (KI-056)."
+    },
+    "0042": {
+      "class": "reversible",
+      "notes": "Daily analytics rollups; derived and rebuildable.",
+      "downgrade_discards": [
+        "analytics_*_daily and analytics_top_runs"
+      ]
+    },
+    "0043": {
+      "class": "forward-only",
+      "notes": "Widens money columns to numeric(38,9). The downgrade narrows them back and fails (numeric field overflow) as soon as any stored value does not fit numeric(20,9); a rollback cannot be guaranteed. Rollback = restore the pre-upgrade backup."
+    },
+    "0044": {
+      "class": "forward-only",
+      "notes": "Artifacts become project-scoped and lose the run foreign key. The downgrade DELETES artifact rows whose run never arrived (their files stay behind, orphaned) and drops name, media type and project columns. Rollback = restore the pre-upgrade backup."
+    },
+    "0045": {
+      "class": "reversible",
+      "notes": "Identity columns on users, sessions and login states.",
+      "downgrade_discards": [
+        "sessions",
+        "login_states",
+        "users identity link (provider, subject, last login)"
+      ]
+    },
+    "0046": {
+      "class": "reversible",
+      "notes": "Invitations and membership bookkeeping columns.",
+      "downgrade_discards": [
+        "invitations",
+        "workspace_members.invited_by and updated_at"
+      ]
+    },
+    "0047": {
+      "class": "reversible",
+      "notes": "Append-only audit log. Rolling back drops the whole audit history; acceptable only immediately after the upgrade that created it.",
+      "downgrade_discards": [
+        "audit_log (the audit history)"
+      ]
+    },
+    "0060": {
+      "class": "reversible",
+      "notes": "Findings tables; derived (rebuild-findings).",
+      "downgrade_discards": [
+        "findings",
+        "run_findings"
+      ]
+    },
+    "0070": {
+      "class": "reversible",
+      "notes": "Evaluators and evaluation state columns plus a trigger that makes finished evaluations immutable.",
+      "downgrade_discards": [
+        "evaluators",
+        "evaluation results and state columns"
+      ]
+    },
+    "0071": {
+      "class": "reversible",
+      "notes": "Experiments, variants and attached runs.",
+      "downgrade_discards": [
+        "experiments",
+        "experiment_variants",
+        "experiment_runs"
+      ]
+    },
+    "0080": {
+      "class": "reversible",
+      "notes": "Per-run search document; derived (search-rebuild).",
+      "downgrade_discards": [
+        "run_search"
+      ]
+    },
+    "0090": {
+      "class": "reversible",
+      "notes": "Per-project security settings. Without a row a project behaves as METADATA_ONLY, so rolling back changes capture behaviour.",
+      "downgrade_discards": [
+        "project_security_settings (capture modes, mutes, allow-lists)"
+      ]
+    },
+    "0091": {
+      "class": "forward-only",
+      "notes": "Widens finding severities and adds the security badge. The downgrade DELETES security findings and findings with the new severities (derived, but a table that existed before) and swaps CHECK constraints back. Rollback = restore the pre-upgrade backup, or rebuild-findings after a downgrade.",
+      "upgrade_risk": "The partial index is built inside the transaction and blocks findings writes for the build (KI-137). Small today; on a large database create it CONCURRENTLY first (0041 precedent)."
+    },
+    "0092": {
+      "class": "reversible",
+      "notes": "Append-only policy version history.",
+      "downgrade_discards": [
+        "policy_versions"
+      ]
+    },
+    "0093": {
+      "class": "forward-only",
+      "notes": "Approvals with a database-enforced state machine and a wider audit actor kind. The downgrade REWRITES audit rows (actor_kind system to cli) in the append-only audit log, drops all approvals and their trigger functions. Rollback = restore the pre-upgrade backup."
+    },
+    "0094": {
+      "class": "forward-only",
+      "notes": "Server-only secrets. The downgrade drops the table that holds the event-id key: a new key would change the ids of future server-written events and break deduplication against stored ones, and the alert-encryption key (0095) could never be recovered. Never downgrade past 0094; rollback = restore the pre-upgrade backup."
+    },
+    "0095": {
+      "class": "reversible",
+      "notes": "Alerting tables; destinations hold sealed secrets.",
+      "downgrade_discards": [
+        "alert_destinations",
+        "alert_rules",
+        "alert_rule_destinations",
+        "alert_notifications"
+      ]
+    },
+    "0096": {
+      "class": "forward-only",
+      "notes": "Two new skip reasons and an index. The downgrade REWRITES notification rows (rate_limited and daily_cap become destination_paused), which loses information. Rollback = restore the pre-upgrade backup."
+    },
+    "0097": {
+      "class": "reversible",
+      "notes": "Shared limiter counters; operational, rebuilt by traffic.",
+      "downgrade_discards": [
+        "rate_limit_counters"
+      ]
+    },
+    "0098": {
+      "class": "reversible",
+      "notes": "Project quota tables. Artifact bytes are backfilled from artifacts at upgrade; daily usage counting starts at the upgrade.",
+      "downgrade_discards": [
+        "project_quota_overrides (operator quota overrides are lost)",
+        "project_usage_daily",
+        "project_artifact_usage"
+      ],
+      "upgrade_risk": "The backfill scans the artifacts table once (an aggregate INSERT ... SELECT) inside the migration transaction; time grows with the number of artifacts."
+    },
+    "0099": {
+      "class": "reversible",
+      "notes": "Session device hint column and an invitation lookup index.",
+      "downgrade_discards": [
+        "sessions.device_hint"
+      ]
+    },
+    "0100": {
+      "class": "reversible",
+      "notes": "Removes DELETE on the quota tables from the runtime role and adds a key index. The downgrade re-grants DELETE (a privilege widening); mechanically reversible."
+    },
+    "0101": {
+      "class": "reversible",
+      "notes": "Creates the abb_retention role grants and the retention policy, report and tombstone tables.",
+      "downgrade_discards": [
+        "retention_policies (operator policies)",
+        "retention_reports",
+        "retention_tombstones (the deletion record)"
+      ]
+    },
+    "0102": {
+      "class": "forward-only",
+      "notes": "Adds runs.trace_state and the retention progress and dirty-day tables. After the retention job has ENFORCED anything, the downgrade drops the marker that tells readers a trace is gone, so deleted runs would look like ordinary runs with no events, and the progress records are lost. Reversible only while ABB_RETENTION_MODE never reached enforce; otherwise rollback = restore the pre-upgrade backup.",
+      "upgrade_risk": "CHECK validation scans runs under a short lock, and the new column has a constant default (a catalog change, not a rewrite)."
+    },
+    "0103": {
+      "class": "reversible",
+      "notes": "Adds analytics_runs_daily.expired_trace_runs (derived; a day rebuild refills it).",
+      "downgrade_discards": [
+        "analytics_runs_daily.expired_trace_runs"
+      ]
+    },
+    "0104": {
+      "class": "reversible",
+      "notes": "Adds projects.purge_state and workspaces.purge_state, the platform purge_tombstones table and the retention role's purge privileges. The downgrade discards the purge record and would un-hide a project or workspace that a purge left in the purging state: do not roll back while a purge is running (finish it, or restore the pre-upgrade backup).",
+      "downgrade_discards": [
+        "purge_tombstones (the record of purges that ran)",
+        "purge_state markers"
+      ]
+    },
+    "0105": {
+      "class": "reversible",
+      "notes": "Replaces the runtime role's table-level UPDATE on runs, projects and workspaces by column-level UPDATE on the columns the application writes (so it can no longer change trace_state or purge_state), and adds the retention grace-period columns to retention_policies. The downgrade restores the table-level privilege and drops the columns: a shortening still waiting for its effective time would then apply at once.",
+      "downgrade_discards": [
+        "retention_policies.*_prev_days, *_prev_forever, *_effective_at (pending shortenings)"
+      ]
+    }
+  }
+}

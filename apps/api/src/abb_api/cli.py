@@ -22,6 +22,8 @@
     python -m abb_api.cli relink-user --email you@example.com --clear-subject
     python -m abb_api.cli create-session --email owner@local.test [--hours 1]   # dev/test only
     python -m abb_api.cli seed            # local development only
+    python -m abb_api.cli retention run-once   # one retention tick (ADR-159; own credentials)
+    python -m abb_api.cli retention purge-project|purge-workspace   # ADR-163; dry run default
 
 `create-session` (and the dev owner that `seed` adds) needs ABB_ENVIRONMENT=development|test and
 ABB_ALLOW_DEV_SESSIONS=1; it prints the session cookie value once, to stdout.
@@ -734,6 +736,12 @@ async def run(
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["retention"]:
+        # The retention job has its own settings and credentials (ADR-159): it never goes through
+        # the application's `Settings`, and the API process never imports this branch.
+        from abb_api.retention.runner import main as retention_main
+
+        raise SystemExit(retention_main(sys.argv[2:]))
     raise SystemExit(asyncio.run(run(sys.argv[1:], get_settings())))
 
 

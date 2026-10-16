@@ -16,7 +16,7 @@ from abb_api.alerts.jobs import (
     evaluate_alerts,
 )
 from abb_api.alerts.model import RUN_FAIL_STATUSES, RUN_FAILED
-from abb_api.analytics.rollup import refresh_day
+from abb_api.analytics.dirty import mark_dirty, refresh_with_marker
 from abb_api.approvals.job import expire_approval
 from abb_api.cost.engine import CostEngine
 from abb_api.cost.repository import CostRepository
@@ -101,6 +101,9 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
         # Both the day the run was in and the day it is in now need their rollup rewritten.
         outbox = OutboxRepository(conn, tenant)
         for day in {derived.started_at.date(), *([before.date()] if before else [])}:
+            # Bumped in this transaction, so a refresh already running cannot miss the change
+            # that this job's coalescing would otherwise swallow (KI-057).
+            await mark_dirty(conn, tenant, day)
             await outbox.enqueue(
                 job_type=REFRESH_ANALYTICS_DAY,
                 dedupe_key=f"{tenant.workspace_id}:{day.isoformat()}",
@@ -134,8 +137,19 @@ async def _enqueue_detect(
 
 
 async def refresh_analytics_day(job: Job, conn: AsyncConnection) -> None:
-    """Rewrite one workspace-day of analytics rollups from the derived tables (idempotent)."""
-    await refresh_day(conn, TenantContext(job.workspace_id), date.fromisoformat(job.payload["day"]))
+    """Rewrite one workspace-day of analytics rollups from the derived tables (idempotent).
+
+    A writer that committed while this ran leaves the day dirty (KI-057): ask for another refresh.
+    """
+    tenant = TenantContext(job.workspace_id)
+    day = date.fromisoformat(job.payload["day"])
+    if await refresh_with_marker(conn, tenant, day):
+        await OutboxRepository(conn, tenant).enqueue(
+            job_type=REFRESH_ANALYTICS_DAY,
+            dedupe_key=job.dedupe_key,
+            payload=job.payload,
+            delay=refresh_delay(),
+        )
 
 
 async def detect_findings(job: Job, conn: AsyncConnection) -> None:

@@ -8,11 +8,14 @@ Operating Agent Black Box itself (spec §43, §104-125). Runbooks live in `docs/
 | --- | --- | --- |
 | API | `uvicorn abb_api.main:app_from_env --factory` | stateless; `/healthz` (liveness, no dependencies), `/readyz` (database, 2.5 s deadline) |
 | Worker | `python -m abb_api.worker` | claims background jobs; any number may run; SIGTERM finishes the current batch and exits 0 |
+| Retention | `python -m abb_api.retention run` (one tick: `python -m abb_api.cli retention run-once`) | the data-retention job (ADR-159); own credentials (`ABB_RETENTION_DATABASE_URL`), never in the API's or worker's environment; one at a time (advisory lock); SIGTERM/SIGINT stops at the next batch boundary (not the end of the tick), leaving a run in hand `deleting` with its progress row for the next enforcing tick to finish |
 | Migrations | `alembic upgrade head` (`make migrate`) | run once per release before the new API/worker start; compose does this in the `migrate` service |
 | Provisioning | `python -m abb_api.cli ...` | workspaces, projects, API keys, dead-letter inspection, `rebuild-costs`, `rebuild-findings` |
 
 Upgrade note (ADR-156): with an https `ABB_WEB_ORIGIN` the sign-in cookie is renamed `__Host-abb_login` (`Path=/`). Deploy the API and the web
 app together. Logins started in the previous 10 minutes fail once with "Sign-in did not complete. Try again."; sessions are untouched.
+
+**Supported PostgreSQL: 15 or later** (compose and CI run 16). The migrations use column-list foreign key actions (`ON DELETE SET NULL (col)`, migration 0095), which need 15. On 14 and earlier `PUBLIC` also holds `CREATE` on schema `public`, so the retention process's start-up check ("can create in the schema") refuses to start in production and warns elsewhere until `REVOKE CREATE ON SCHEMA public FROM PUBLIC` has been run; that is the only difference the retention and backup code depends on.
 
 Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to prove it works end to end,
 `make down`. Container images run as a non-root user and share one API image for api, worker and migrate.
@@ -27,6 +30,17 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_SESSION_WRITES_PER_MINUTE` | 30 | how many times one person may end sessions (Settings, Sessions) per minute, counted across API processes (Phase 19a step 5, ADR-157). Listing is not limited |
 | `ABB_QUOTAS_ENABLED` | true | per-project quotas (Phase 19a, ADR-154). `false` is an emergency switch: nothing is checked or counted (the usage figures then go stale) |
 | `ABB_QUOTA_AGENTS` / `_RUNS_PER_DAY` / `_EVENTS_PER_DAY` / `_ARTIFACT_BYTES` | 500 / 50000 / 5000000 / 5368709120 (5 GiB) | the default quota of every project: distinct agents, runs created per UTC day, events accepted per UTC day, total stored artifact bytes. Owners and admins override each per project (Quotas settings page, `PUT /v1/projects/{id}/quotas`). The per-run event cap and the per-artifact size cap (`ABB_ARTIFACT_MAX_BYTES`) are separate and unchanged |
+| `ABB_RETENTION_MODE` | `dry_run` | `off` (the job does nothing), `dry_run` (measures and writes reports, deletes nothing) or `enforce` (deletes, in the order and within the bounds of ADR-160; refused, exit 2, unless `ABB_ARTIFACT_DIR` is an existing directory). Read by the retention process (and shown by the API and by the Retention settings page) |
+| `ABB_RETENTION_ARTIFACTS_DAYS` / `_TRACE_DAYS` / `_RUN_DAYS` / `_AUDIT_DAYS` | 30 / 90 / 365 / 365 | workspace defaults, in days after a run ended (the audit log: after the entry). 7 to 36500 or `forever`; `artifacts <= trace <= run` (the run record goes last). A workspace's owner or admin overrides each (`PUT /v1/workspaces/{id}/retention`); a bad value stops the process at startup |
+| `ABB_RETENTION_DATABASE_URL` | none | the `abb_retention` role's URL; read only by the retention process. No fallback to the runtime URL. Development and test fall back to `ABB_MIGRATION_DATABASE_URL`, then `ABB_DATABASE_URL` (the owner) with a warning; staging and production refuse to run without it |
+| `ABB_RETENTION_DB_PASSWORD` | none | read by `alembic upgrade` (not by the app) to give `abb_retention` a login password, like `ABB_RUNTIME_DB_PASSWORD`; without it the role cannot log in |
+| `ABB_RETENTION_TICK_INTERVAL_SECONDS` / `_TICK_BUDGET_SECONDS` | 3600 / 60 | the loop interval; and the time after which a tick starts no new workspace (the one in progress finishes, bounded by its statement timeouts) |
+| `ABB_RETENTION_MAX_RUNS_PER_TICK` / `_MAX_ROWS_PER_TICK` | 2000 / 100000 | per workspace and tier: runs considered, and other rows counted. When reached the report says `truncated` and the figures are a lower bound |
+| `ABB_RETENTION_STATEMENT_TIMEOUT_SECONDS` / `_PREVIEW_TIMEOUT_SECONDS` / `_PREVIEW_MAX_RUNS` | 30 / 10 / 5000 | database timeouts for a tick query and the preview (`504 RETENTION_PREVIEW_TIMEOUT`), and the preview's run cap |
+| `ABB_RETENTION_REPORTS_KEEP` | 50 | reports kept per workspace and tier |
+| `ABB_RETENTION_GRACE_HOURS` | 24 | a shortened period takes effect after this many hours (0..720; 0: at once); until then the longer period is enforced, the page says when, and saving the previous value cancels (ADR-159 amendment) |
+| `ABB_RETENTION_AUDIT_FLOOR_DAYS` | 90 | the shortest period the audit log tier may be given (at least 7; the other tiers keep 7). Only an owner may change the audit tier, and `retention.*` audit entries are kept 365 days whatever the policy says |
+| `ABB_RETENTION_WRITES_PER_MINUTE` / `_PREVIEWS_PER_MINUTE` | 20 / 10 | per workspace, shared across API processes |
 | `ABB_MAX_BODY_BYTES_IN_FLIGHT` / `ABB_BODY_READ_TIMEOUT_SECONDS` | 64 MiB / 60 | most request-body bytes this API process holds at once (Phase 19a, ADR-155); a body that does not fit is refused `503 BUSY` with `Retry-After: 2` (retryable), bodies up to 64 KiB are always admitted, a body not received within the timeout is dropped `408`. Must be at least the largest body (8 MiB). Resident memory is about baseline + 4 to 6.5 x the cap under a flood of large batches (`docs/benchmarks/phase-19a-edge.md`) |
 | `ABB_API_DOCS_ENABLED` | unset | `/docs`, `/redoc`, `/openapi.json`: unset follows the environment (off in `production`, on in development, test and staging); `true`/`false` overrides |
 | `ABB_ALLOW_PRIVILEGED_DB_ROLE` | 0 | `1` lets the API and worker start in production although their database role can rewrite events (see "Database roles"); every start logs a warning naming why |
@@ -72,14 +86,19 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_ALERTS_RETENTION_DAYS`, `_PRUNE_INTERVAL_SECONDS`, `_PRUNE_BATCH` | 30, 21600, 2000 | finished delivery-log rows (`delivered`, `dead`, `skipped`, `failed`) older than this are deleted in batches; `pending` rows never are |
 | `ABB_WORKER_POLL_INTERVAL_SECONDS`, `_BATCH_SIZE`, `_LEASE_SECONDS`, `_MAX_ATTEMPTS`, `_BACKOFF_BASE_SECONDS`, `_BACKOFF_MAX_SECONDS` | 0.5, 10, 60, 5, 5, 300 | job processing |
 
-### Alert secrets and their key (Phase 17, ADR-150)
+### Alert secrets and their key (Phase 17, ADR-150; rotation tool Phase 19b, ADR-162)
 
 Alert destination targets and webhook signing secrets are stored as AES-256-GCM ciphertext under a key kept in the append-only `server_secrets` table (name `alerts-encryption`),
-created on first use. **Back that table up with the database**: without its row the secrets sealed under it cannot be read (the destinations then fail closed). **Rotation** (planned or after a
-suspected leak of a database read): as the database owner role run
-`INSERT INTO server_secrets (name, secret) VALUES ('alerts-encryption', decode('<64 hex characters from openssl rand -hex 32>', 'hex'));` and restart the API and worker processes (they cache the
-current key). New and re-saved destinations use the new key; existing ones keep opening with their own, so nothing needs re-encrypting; to retire the old key, replace each destination's target (`PATCH` with the `target`; the stored URL is never
-returned, so the owner supplies it again) and rotate webhook signing secrets (`rotate_signing_secret`). Which key sealed a destination: `SELECT id, name, key_id FROM alert_destinations`. Alerts carry no captured content; a destination's masked form is the only display of its target.
+created on first use. **Back that table up with the database** (every bundle of `python -m abb_api.backup` includes it): without its row the secrets sealed under it cannot be read (the destinations then fail closed).
+
+**Rotation** (planned, or after a suspected leak of a database read): `python -m abb_api.rotate alerts --new-key` (as the owner role: `ABB_ROTATION_DATABASE_URL`, else `ABB_MIGRATION_DATABASE_URL`, else `ABB_DATABASE_URL`; `make rotate-alert-keys ROTATE_FLAGS=--new-key`)
+inserts a newer key row and re-seals every destination (target and signing secret) in resumable, bounded batches, each destination in its own transaction with its associated data (purpose, workspace, destination) preserved and the result checked to open to the same plaintext.
+Then **restart the API and worker** (they cache the current key and would otherwise keep sealing under the old one) and run `python -m abb_api.rotate alerts` once more (without `--new-key`) to catch anything sealed meanwhile. The final line is
+`verdict=old_keys_can_be_retired` only when no blob of any destination references a key other than the newest and none failed (exit 1 lists the failed destination ids; fix and rerun, it resumes). `--dry-run` reports what would change and writes nothing. Output is counts and destination ids, never a target or a secret.
+Delivery keeps working during a rotation (old blobs open with their own key until their own commit). **Retiring the old key is a manual owner action** (the runtime role cannot delete from `server_secrets`): only after the report says zero and a bundle taken after the rotation exists,
+`DELETE FROM server_secrets WHERE name = 'alerts-encryption' AND id < <newest id>;` (the foreign key from `alert_destinations.key_id` refuses while any destination still names it). Which key sealed a destination: `SELECT id, name, key_id FROM alert_destinations`.
+The **event-id key** (`server_secrets`, name `event-id`) is the one key that is **not rotatable without breaking deduplication** of already-accepted server-written events; see `docs/runbooks/secrets.md` for what to do if it leaks and for how every other secret rotates.
+Alerts carry no captured content; a destination's masked form is the only display of its target.
 
 ### Reading the alert delivery log and dead letters (Phase 17, ADR-151)
 
@@ -138,6 +157,97 @@ A person the identity provider vouches for but no workspace has invited gets `40
 A person ending a session (or all but the current one) writes `session.revoke` / `session.revoke_others` to the audit log of each workspace they belong to. Demoting or removing a person writes one `invitation.revoke_inviter_lost_rights` row per open invitation they had created. Read-only checks:
 `SELECT count(*) FROM users u WHERE NOT EXISTS (SELECT 1 FROM workspace_members m WHERE m.user_id = u.id);` (people without a membership: bounded by invitations, see KI-184) and `SELECT action, count(*) FROM audit_log WHERE action LIKE 'session.%' OR action = 'invitation.revoke_inviter_lost_rights' GROUP BY 1;`.
 
+### Data retention (Phase 19b steps 1-2, ADR-159, ADR-160)
+
+Operator procedure (turning enforcement on, reading reports and tombstones, the kill switch, crash recovery, purge): **`docs/runbooks/retention.md`**. The whole chain is exercised on a real stack by `make retention-e2e` (`scripts/retention-e2e.sh`, CI job `retention-e2e`); the measured cost of enforcement is in `docs/benchmarks/phase-19b-retention-e2e.md`.
+
+**State of the feature:** the default mode `dry_run` measures and reports and deletes nothing. `enforce` deletes expired data, **permanently**. There is no undelete: take a backup first, and **perform a restore drill before the first enforced tick** (see "Backups and restore" below; `enforce` should not be switched on until a restore of a recent bundle has been performed and its output kept). Read the dry-run reports for at least one full cycle before switching.
+
+*Provisioning.* Migrations 0101 and 0102 create the role `abb_retention` (`NOLOGIN`) with exactly the grants listed in ADR-159 and ADR-160, pinned by `apps/api/tests/retention/test_retention_role.py`. Give it a login the way the runtime role gets one: set `ABB_RETENTION_DB_PASSWORD` for `alembic upgrade` (compose does, with a dev default), then point the retention process at it with `ABB_RETENTION_DATABASE_URL` (`postgresql+asyncpg://abb_retention:<password>@<host>/<db>`). Never put that URL in the API's or worker's environment. In tests and CI a login role is created `IN ROLE abb_retention`, as for `abb_runtime`. At start the process refuses (production) or warns (elsewhere) if its role is a superuser, an owner, can create in the schema or can touch the credential tables; set `ABB_ALLOW_PRIVILEGED_DB_ROLE=1` only knowingly. **Enforcement also needs the artifact files:** the retention process must see the API's artifact directory (`ABB_ARTIFACT_DIR`; compose mounts the same volume) and refuses to start in `enforce` if that directory does not exist.
+
+*Running.* Compose (`--profile app`) runs the `retention` service in the mode `ABB_RETENTION_MODE` (default `dry_run`). Natively: `python -m abb_api.retention run` (loop) or `python -m abb_api.cli retention run-once` (one tick; prints `mode=... workspaces=N reports=N truncated=N errors=N budget_exhausted=... halted=... deleted_runs=N expired_traces=N deleted_events=N failed=N skipped_locked=N`; exit 2 when the configuration is unsafe, e.g. enforce without an artifact directory). `python -m abb_api.retention retry-failed` gives runs whose attempts ran out a fresh set (see below).
+
+*When to flip modes (the enforce runbook).*
+1. Leave `ABB_RETENTION_MODE=dry_run` (the default). Read `GET /v1/workspaces/<id>/retention/reports` (or the SQL below) after a full tick: the counts are what `enforce` would remove now, per workspace and tier. Use `GET .../retention/preview?trace_days=30` to see the effect of a proposed policy before saving it.
+2. Take a backup bundle (`python -m abb_api.backup create`, below; database **and** artifacts in one consistent set), verify it, and **perform a restore drill** from it into a scratch database and directory. Enforcement removes both and cannot bring them back. Run the retention job before the backup in your schedule, not during it.
+3. Set `ABB_RETENTION_MODE=enforce` and restart the retention process. The first tick removes at most `ABB_RETENTION_MAX_RUNS_PER_TICK` runs (2000) and `ABB_RETENTION_MAX_ROWS_PER_TICK` rows (100000) per workspace and tier and stops at the time budget (`ABB_RETENTION_TICK_BUDGET_SECONDS`, 60 s); a backlog drains over ticks (`truncated=true` in the report says there is more).
+4. Watch `retention tick finished` in the log, the reports (`mode = 'enforce'`: counts actually deleted), and `failed=` in the tick summary.
+
+*Kill switch.* Deletion stops **at the next batch**, not the next tick: set `ABB_RETENTION_MODE=off` (or `dry_run`) in the `.env` file the process reads (the file is re-read before every batch; **an unreadable value counts as `off`**), or send the process SIGTERM/SIGINT. A mode set only through the process environment cannot change in a running process: stop it, then start it with the new mode. A run stopped half way stays `deleting` with its progress row, and the next enforcing tick finishes it; nothing is torn.
+
+*Reading the reports.* SQL: `SELECT workspace_id, tier, mode, runs, events, artifact_bytes, row_count, truncated, cutoff_at, finished_at FROM retention_reports ORDER BY id DESC LIMIT 50`. Per workspace and tier, counts only, never content. In `enforce` the figures are what was actually deleted in that pass, and `dry_run` reports for the same data show the same figures. Tiers are counted separately, not added: `trace` and `run` both count the runs they act on. `operational` is a workspace's finished jobs, expired counters, old usage rows and settled analytics markers; `platform` (no workspace) is dead sessions, global counters and people who never joined a workspace. A tier kept `forever` has no report. `truncated=true` means a bound or the kill switch ended the pass early. A missing report for a tier with data means its query timed out or the saved policy became invalid under the current defaults (logged as `retention measurement failed` / `retention policy invalid for a workspace`, never with content).
+
+*The Retention settings page (Phase 19b step 3).* Settings, Retention, for every member of the workspace (`retention.read`); owners and admins also edit (`retention.write`; the audit log's period is owner-only, `retention.audit.write`). A saved shortening shows "This shortening takes effect on <date>; until then the longer period still applies" with a button that cancels it (saving the period in force). The top banner states the installation mode in words (the `mode` the API reports): "Retention is in dry-run mode: nothing is being deleted", "Retention is enforcing" or "Retention is off". Each tier shows its current period and whether it is the installation default or set for this workspace, with what it removes (artifacts: terminal output and large payload bodies; trace detail: events, spans, findings, evaluations and the search entry; run record: the summary, its numbers and its share of the analytics; audit log). Editing offers the default, a number of days (at least 7) or "Keep forever", checks the order rule on the page, and "Preview what this would remove" asks `GET .../retention/preview` for the **proposed** values (nothing is saved; in dry-run mode the page says nothing is deleted yet). A save that shortens any tier first asks, in words, about permanent deletion. "Last passes" lists the newest reports (time, tier, Dry run / Enforced, counts, "stopped early" when truncated). Errors: a validation message from the API, "Too many requests ... try again in N seconds" from `Retry-After`, a 404, and a preview timeout with Try again. Every save is in the audit log as `retention.policy.update`.
+
+*What a reader sees for a run whose trace is gone.* The run page reads `runs.trace_state` first. `deleting` and `expired` show one notice ("Trace expired: the trace of this run was removed by the retention policy; the run summary and its numbers remain", amber while deleting) in place of the events, findings, waterfall, replay, context column and evaluations, with the summary figures; nothing more of the trace is requested. The runs list marks such runs "Trace expired" / "Trace being removed" (glyph and words, never red) and the row stays openable. Comparing or evaluating one answers `409 TRACE_EXPIRED`, shown as "Trace expired". A run link whose run is gone (the run-record tier) reads "This run no longer exists. It may have been removed by the retention policy, or the link may be wrong." (the API does not say which, nor does the page). After the trace tier the analytics page states "Excludes N runs whose trace has expired" beside the cost by agent/model/source, the tool success rates and the model and tool latencies (ADR-161); run counts, totals and the cost headline still include them.
+
+*What gets deleted, in what order (per run, per tier).* Artifacts tier: files through the artifact store, then rows and the project's stored-bytes counter. Trace tier: the run is marked `deleting`, then its search entry, then events, spans, cost lines, findings, evaluations and run-bound background jobs in batches, then (one transaction) the last rows, `expired` and the tombstone, then the analytics rollups of the run's day are rebuilt. Run tier: the run record (and what cascades from it) last, then the rollups again. The runs API reports `trace_state`: `available`, `deleting` (events and spans may be partial), `expired` (only the record remains: events, spans and findings are empty; comparing or evaluating answers `409 TRACE_EXPIRED`). After the run tier the run is `404`. Each deletion leaves a tombstone: `SELECT run_id, tier, mode, deleted_at FROM retention_tombstones ORDER BY deleted_at DESC LIMIT 50`.
+
+*Fixed windows (not configurable).* Finished background jobs 7 days (dead letters 30), expired rate-limit counters 1 hour after expiry, daily usage rows 35 days, settled analytics dirty markers 35 days, dead sessions 7 days after they expired or were revoked, and people who signed in on an invitation, never joined a workspace and have no open invitation or live session 30 days after sign-in. Audit-log entries follow the workspace's `audit` tier; each batch of the purge writes a `retention.delete.audit` entry (counts and age range) in the same transaction, and every other enforced pass writes one `retention.delete.<tier>` entry (system actor, counts only).
+
+*When something fails.* Watch for `failed=` in the tick summary and `retention step failed` (fields: `run_id`, `tier`, `failure_code`). The state is in the table: `SELECT tier, failure_code, attempts, count(*) FROM retention_run_progress GROUP BY 1,2,3 ORDER BY 4 DESC`. Codes: `artifact_store` (the files could not be removed: check the directory and its permissions), `database`, `timeout` (a batch exceeded `ABB_RETENTION_STATEMENT_TIMEOUT_SECONDS`: lower `ABB_RETENTION_BATCH_SIZE`), `internal`. A failed run is retried by each tick up to `ABB_RETENTION_MAX_ATTEMPTS` (5); after that it waits until you fix the cause and run `retry-failed`. A failure never blocks other runs. A run that reads `deleting` for a long time has an unfinished progress row.
+
+*A run's end* is its `completed_at`, or its last update while it has none, clamped between the server's first sight and last update of the run, so a client cannot move its own expiry. A run that is updated after it became eligible but before the job marks it is left alone.
+
+*Known limits:* approvals keep their scrubbed arguments (KI-195); artifact files with no row are not swept (KI-196); a late event for an expired or deleted run creates a fresh run (KI-197); the audit entry of a pass is lost if the process dies in it, the tombstones are the authoritative record (KI-200).
+
+### Purging a project or a workspace (Phase 19b step 5, ADR-163)
+
+**This is permanent.** A purge deletes a project (or a whole workspace) from every backend: Postgres rows, artifact files, search entries and analytics rollups. Nothing brings it back except a restore of a backup taken before it, and backups keep the data until they expire (KI-215). **Take a backup bundle first (`python -m abb_api.backup create`) and know where it is.** There is no API endpoint for this and the API process cannot do it; it is run by an operator, in the retention process's environment (`ABB_RETENTION_DATABASE_URL`, and `ABB_ARTIFACT_DIR` pointing at the API's artifact directory, as for enforcement). `ABB_RETENTION_MODE` is irrelevant: a purge is an explicit action.
+
+```
+python -m abb_api.retention purge-project   --workspace <slug> --project <slug> [--dry-run] [--confirm <project-slug>]
+python -m abb_api.retention purge-workspace --workspace <slug>                  [--dry-run] [--confirm <workspace-slug>]
+```
+
+1. **Dry run (the default).** Without `--confirm` nothing is changed. Example:
+
+```
+$ python -m abb_api.retention purge-project --workspace acme --project checkout
+purge-project workspace=acme project=checkout
+postgres, rows per table:
+  agents 3
+  alert_rules 2
+  api_keys 4
+  artifacts 1840
+  events 912344
+  runs 5120
+  spans 40211
+  ...
+artifact store: files=1840 bytes=1403219811
+search index: entries=5120
+rollups: rows=612
+dry run: nothing was deleted
+to purge, run the same command with --confirm checkout (this is permanent: take a backup first)
+```
+
+   Check the numbers are what you expect for that scope and nothing else. For a workspace it also says how many people are tied to it and how many the users rule could remove.
+2. **Purge.** Repeat the command with `--confirm` and the **exact** slug of what is deleted (the project slug for `purge-project`, the workspace slug for `purge-workspace`; case matters). Anything else is refused with exit 2 and nothing is touched.
+
+```
+$ python -m abb_api.retention purge-project --workspace acme --project checkout --confirm checkout
+purge-project: done purge_id=7b0f...; removed (counts when the purge began):
+...
+```
+
+3. **What happens first.** The project (or workspace) is marked `purging` in the same transaction as its purge record. From that moment its API keys answer the uniform `401 API_KEY_INVALID`, ingestion stops, the project and its runs read as not found (a purging workspace is a 404 for its members), and then the data is deleted: every run through the retention engine's procedure (files, search entry, events and derived rows, run record, tombstone, rollups rebuilt), then the project's rules (this resolves KI-170), approvals, policies, agents, keys, counters, and last the project row, in one transaction with the record's completion and one counts-only audit entry (`retention.purge.project`, system actor). A workspace purge does this for every project, then its destinations (with their sealed secrets), invitations, the workspace's audit log, memberships and the workspace row.
+4. **The users rule.** People are platform-level. A workspace purge removes memberships and invitations and deletes a person only if they then have no membership anywhere, no live session, no open invitation elsewhere and nothing that references them; a person who is still a member of another workspace, or is signed in, is kept. The platform's sealing keys (`server_secrets`) are never touched.
+5. **Interrupted or failed.** SIGTERM/SIGINT stops at the next batch (exit 5). A failed step prints a fixed code and exits 4 (`artifact_store`: check the artifact directory and permissions; `database`; `timeout`: lower `ABB_RETENTION_BATCH_SIZE`; `internal`: rows were left that the inventory says must not be, see the log line `purge refused to delete its root` for the table names). **Run the same command again**: it resumes the `running` record and never creates a second. Exit 3 `locked` means a retention tick or another purge holds that workspace; wait for it to finish. Exit 3 `not_found` is also what you get after a purge completed.
+6. **Verify.** The record is `SELECT id, scope, state, requested_at, completed_at, attempts, failure_code, steps_done, counts FROM purge_tombstones ORDER BY requested_at DESC LIMIT 20` (ids, a hash of the typed slug, counts: no names or content). A running one is an unfinished purge. To check that nothing of a project is left, run the dry run again: it answers `not_found`; the test suite's scan (`tests/retention/purge_helpers.py::assert_scope_gone`) does the same for every table with a `project_id` or `workspace_id` column. A workspace's own audit log goes with it; the purge record is what remains, and the per-run tombstones of a purged project (`retention_tombstones`, ids only) stay in its workspace.
+
+*Known limits:* backups taken earlier still hold the data (KI-215); artifact files with no database row are not found (KI-196/KI-216); other per-run read endpoints of a purging project are not filtered until their run is deleted (KI-211); non-run background jobs of a purged project are not removed (KI-214).
+
+### Backups and restore (Phase 19b step 4, ADR-162)
+
+`python -m abb_api.backup create|verify|restore` (and `make backup`, `make backup-verify`, `make restore`; compose service `backup`, profile `ops`) writes and reads one bundle: a `pg_dump -Fc` taken in a single snapshot, the artifact files copied after it, and a `MANIFEST.json` (schema revision, row counts, SHA-256 of every file and artifact, versions; nothing secret). Optional `--encrypt` (openssl AES-256, PBKDF2, an HMAC over the manifest; passphrase from a file, an environment variable name or a descriptor, never an argument). Bundles are created `0700`/`0600` and an existing non-empty output is refused. **A bundle holds `server_secrets` and is as sensitive as the database: encrypt it at rest.**
+Restore loads only into an empty database and an empty artifact directory, never drops anything, loads the database in one transaction, upgrades an older bundle to the code's head and verifies counts and files; exit codes are fixed (3 refused, 4 integrity, 5 tool, 6 verification, 7 inconsistent backup). Full procedure, scheduling (systemd timer and cron examples), the ordering advice (retention before the backup, not during) and the restore steps: `docs/runbooks/backup-restore.md`.
+
+**RPO = the interval between successful backups; RTO = the measured restore time** plus provisioning (the performed drill, `make backup-restore-e2e`: restore took 1.2 s for a 10 MB bundle and 2.5 s for a 132 MB one on a laptop, indicative only; `docs/benchmarks/phase-19b-restore-drill.md`, KI-219). Point-in-time recovery (WAL archiving) is the documented upgrade path when a smaller RPO is needed and is not built. **`ABB_RETENTION_MODE=enforce` requires a performed restore drill first.** Not in a bundle: the operator's `.env` and external secrets (OIDC client secret, SMTP password, role passwords, the passphrase), role logins, PostgreSQL configuration.
+
+### Upgrading and rolling back migrations (Phase 19b step 4, ADR-162)
+
+Every migration is `reversible` or `forward-only` in `apps/api/migrations/safety.json` (a test fails for an unclassified one). Back up, upgrade, verify; roll back reversible ones with `alembic downgrade`, and restore the pre-upgrade backup for forward-only ones: `docs/runbooks/migrations.md` (with per-migration notes on what a downgrade discards and which upgrades are lock-heavy or rewrite data).
+
 ### Project quotas (Phase 19a step 3, ADR-154)
 
 A project at a quota has the excess refused with `QUOTA_EXCEEDED` (per event inside a `202` on `POST /v1/events/batch`; `413` on `POST /v1/events`, `POST /v1/runs` and `PUT /v1/artifacts/{id}`). Nothing the project already holds is refused or removed:
@@ -163,7 +273,7 @@ SELECT occurred_at, actor_id, resource_id, details FROM audit_log WHERE action =
 ```
 
 The counters equal what committed: they are updated in the transaction that stores the data. If `project_artifact_usage` and the real sum ever disagree (an out-of-band delete), recompute: `UPDATE project_artifact_usage u SET bytes_stored = (SELECT coalesce(sum(size_bytes),0) FROM artifacts a WHERE a.workspace_id = u.workspace_id AND a.project_id = u.project_id);`.
-The per-day rows are one per active project per day and are not pruned yet (retention, Phase 19b). Ingestion of one project is serialised on its project row for the length of one batch transaction; the measured cost is in `docs/benchmarks/phase-19a-quotas.md`.
+The per-day rows are one per active project per day and are pruned after 35 days by the retention job (ADR-160). Ingestion of one project is serialised on its project row for the length of one batch transaction; the measured cost is in `docs/benchmarks/phase-19a-quotas.md`.
 Counting began at the migration (0098): activity before it is not in the first day's figures; existing artifacts were counted from the start.
 
 ## What to watch
@@ -193,5 +303,9 @@ SELECT id, job_type, attempt_count, left(last_error, 120) FROM outbox_jobs WHERE
 - [Live streams](runbooks/stream-issues.md)
 - [Abuse resistance and hardening](runbooks/hardening.md): what each limit, quota and throttle does, what an operator sees when it triggers, reading the counters and audit rows, reverse-proxy guidance, and the Phase 19a upgrade notes (migrations 0097-0099)
 
-Still to write (Phases 18-19): database saturation, backup and restore drill (spec §123).
-Recovery targets: RPO <= 15 min, RTO <= 4 h (spec §122) once managed PostgreSQL with point-in-time recovery is in place.
+- [Backup and restore](runbooks/backup-restore.md): the bundle, scheduling, verifying, the restore procedure and exit codes, the restore drill
+- [Migrations](runbooks/migrations.md): the safe upgrade, rolling back each class, per-migration notes
+- [Secrets](runbooks/secrets.md): every secret and how it rotates (the event-id key does not)
+
+Still to write (Phases 18-19c): database saturation.
+Recovery targets: with the backup tool above, RPO = the backup interval and RTO = the measured restore time (Phase 19b step 6). The spec §122 targets (RPO <= 15 min, RTO <= 4 h) need managed PostgreSQL with point-in-time recovery, which is not built.

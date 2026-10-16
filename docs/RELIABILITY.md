@@ -22,6 +22,16 @@ to PostgreSQL. Late events accepted after run completion. Derived state is rebui
 | Too many streams | none | n/a | `429 STREAM_LIMIT` + `Retry-After` | "Live updates unavailable", page polls |
 | Policy service down | per capability | configured fail-open/closed | emit outage event | explicit message |
 
+## Backups and recovery (Phase 19b, ADR-162)
+Full logical backups only: **RPO = the backup interval**; **RTO = the measured restore time** (Docker-stack drill, step 6). A bundle is one snapshot (`pg_dump` plus manifest counts in the same snapshot) with the artifact files copied after it, so no artifact row points at a missing file; a deletion between dump and copy fails the backup (exit 7) instead of writing a bundle that lies. Restore is all-or-nothing for the database (one transaction), refuses a non-empty target and verifies counts and files before reporting ok. No point-in-time recovery or WAL archiving (documented upgrade path). Rolling back a migration is per-class: `reversible` downgrades are tested, `forward-only` ones are a restore (`docs/runbooks/migrations.md`).
+
+| Failure | Behaviour |
+| --- | --- |
+| Backup interrupted or `pg_dump` fails | Nothing is left in the output directory; non-zero exit |
+| Artifact file deleted during a backup | Backup fails (7), rerun; never a bundle with a dangling artifact row |
+| Bundle corrupted or tampered | `verify`/`restore` fail (4) naming the file; encrypted: one fixed passphrase-or-modified error before decryption; nothing restored |
+| Restore interrupted | Database load is one transaction (empty on failure); unpacked artifact files are removed; the message says what to discard |
+
 ## Limits and budgets
 Event 256 KB; batch 5 MB uncompressed; SDK defaults batch 100 / 250 ms / queue 10,000 / timeout 2 s.
 Targets (not promises until measured): ingest ack p50 <50 ms, p95 <150 ms; live propagation p95 <1 s;

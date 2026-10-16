@@ -220,9 +220,21 @@ async def test_the_unloaded_set_behaves_as_before_and_a_nudge_loads_it(
         keys._loaded = False  # as if the first load had failed
         keys._ids = set()
         keys._retry = 0.05
+        # The retry loop would otherwise load the set during the flood whenever the machine is
+        # slow (parallel workers, a busy Docker VM) and the "unknown yet" answer would be a race.
+        # The load is held back until the refusal has been observed; the nudge path is unchanged.
+        gate = {"open": False}
+
+        async def refresh_when_allowed(
+            real_refresh: Any = keys.refresh, gate: dict[str, bool] = gate
+        ) -> bool:
+            return bool(await real_refresh()) if gate["open"] else False
+
+        keys.refresh = refresh_when_allowed  # type: ignore[method-assign]
         keys._task = asyncio.create_task(keys._run())
         await flood_until_closed(api)
         assert (await probe(api, api.tokens["beta"])).status_code == 429  # unknown yet
+        gate["open"] = True
         for _ in range(100):
             if keys.loaded:
                 break

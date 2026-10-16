@@ -136,6 +136,12 @@ EXPECTED: dict[tuple[str, str], tuple[str, str]] = {
     ("PUT", "/v1/projects/{project_id}/security-settings"): (NO_KEY, U_PROJECT_ADMIN),
     ("GET", "/v1/projects/{project_id}/quotas"): (QUOTAS_READ, U_PROJECTS),
     ("PUT", "/v1/projects/{project_id}/quotas"): (NO_KEY, U_PROJECT_ADMIN),
+    # Retention (Phase 19b): every member reads the policy, preview and reports; owner and admin
+    # change the policy; no API key holds either action.
+    ("GET", "/v1/workspaces/{workspace_id}/retention"): (NO_KEY, U_MONEY),
+    ("PUT", "/v1/workspaces/{workspace_id}/retention"): (NO_KEY, U_PROJECT_ADMIN),
+    ("GET", "/v1/workspaces/{workspace_id}/retention/preview"): (NO_KEY, U_MONEY),
+    ("GET", "/v1/workspaces/{workspace_id}/retention/reports"): (NO_KEY, U_MONEY),
     ("GET", "/v1/policies/current"): (NO_KEY, U_POLICY_READ),
     ("GET", "/v1/policies/versions"): (NO_KEY, U_POLICY_READ),
     ("GET", "/v1/policies/versions/{version}"): (NO_KEY, U_POLICY_READ),

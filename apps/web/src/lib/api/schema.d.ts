@@ -1544,6 +1544,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workspaces/{workspace_id}/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a workspace's retention policy
+         * @description For each tier (artifacts, trace detail, run record, audit log): the days in force (null: kept forever), whether the workspace chose it and the environment default. Every member may read it.
+         */
+        get: operations["get_retention_v1_workspaces__workspace_id__retention_get"];
+        /**
+         * Change a workspace's retention policy
+         * @description Tiers left out stay as they are; a whole number of days (at least 7) sets that tier; `"forever"` keeps it for good; `null` returns it to the environment default. Artifacts cannot outlast trace detail, nor trace detail the run record. Owners and admins only. Each changed tier writes one audit entry (`retention.policy.update`: the tier, the old and the new value, and when it takes effect). A shortening takes effect after the grace period (`grace_hours`); until then the longer period is enforced, and saving the previous value again cancels it. Lengthening is immediate. Only an owner may change the audit tier (403 for an admin), whose minimum is `audit_floor_days`. Shortening deletes nothing by itself: the retention job applies the policy, and in dry-run mode (the default) only reports what it would delete.
+         */
+        put: operations["put_retention_v1_workspaces__workspace_id__retention_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/retention/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview what a retention policy would delete
+         * @description Counts, per tier, the runs, events, artifact bytes and other rows that would be deleted now under the saved policy or a proposed one (`artifacts_days`, `trace_days`, `run_days`, `audit_days`: a number or `forever`; tiers left out use the saved value). Nothing is saved or deleted. Bounded in time and size: `truncated` marks a lower bound. `tiers` limits the tiers measured (comma-separated).
+         */
+        get: operations["preview_retention_v1_workspaces__workspace_id__retention_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workspaces/{workspace_id}/retention/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the retention job's latest reports
+         * @description What the retention job found (dry run) or did (enforce) for this workspace, newest first: counts per tier and tick, never content. Every member may read them.
+         */
+        get: operations["retention_reports_v1_workspaces__workspace_id__retention_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2091,6 +2155,11 @@ export interface components {
             by_project: components["schemas"]["CostByProject"][] | null;
             /** By Source */
             by_source: components["schemas"]["CostBySource"][];
+            /**
+             * Excluded Expired Traces
+             * @description Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (cost by agent, model and source).
+             */
+            excluded_expired_traces: number;
             /** Expensive Runs */
             expensive_runs: components["schemas"]["ExpensiveRun"][];
             headline: components["schemas"]["CostHeadline"];
@@ -3636,6 +3705,25 @@ export interface components {
             count: number;
         };
         /**
+         * PendingShorteningOut
+         * @description A shortening that has not taken effect: the longer period still applies until then.
+         */
+        PendingShorteningOut: {
+            /**
+             * Current Days
+             * @description The period enforced until then (the longer of the two); null: forever.
+             */
+            current_days: number | null;
+            /** Current Forever */
+            current_forever: boolean;
+            /**
+             * Effective At
+             * Format: date-time
+             * @description When the shorter period starts to apply.
+             */
+            effective_at: string;
+        };
+        /**
          * Percentiles
          * @description Approximate: read from duration histograms with about 10% wide buckets (ADR-043).
          */
@@ -3649,6 +3737,11 @@ export interface components {
         };
         /** PerformanceReport */
         PerformanceReport: {
+            /**
+             * Excluded Expired Traces
+             * @description Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (model and tool latency).
+             */
+            excluded_expired_traces: number;
             llm: components["schemas"]["Percentiles"];
             run: components["schemas"]["Percentiles"];
             /** Slow Operations */
@@ -3742,6 +3835,52 @@ export interface components {
              * Format: date
              */
             day: string;
+        };
+        /** PreviewTierOut */
+        PreviewTierOut: {
+            /** Artifact Bytes */
+            artifact_bytes: number;
+            /**
+             * Cutoff
+             * @description Data that ended before this would be deleted.
+             */
+            cutoff: string | null;
+            /** Days */
+            days: number | null;
+            /**
+             * Effective At
+             * @description When the shorter period would start to apply; null: at once.
+             */
+            effective_at?: string | null;
+            /**
+             * Enforced Days
+             * @description The period the job applies right now if this policy were saved (the longer of the old and the new while a shortening waits); null: forever. The counts below are for `days`, once the shortening takes effect.
+             */
+            enforced_days: number | null;
+            /** Events */
+            events: number;
+            /** Forever */
+            forever: boolean;
+            /**
+             * Rows
+             * @description Other rows: artifact records, derived rows of the runs, audit entries.
+             */
+            rows: number;
+            /**
+             * Runs
+             * @description Runs whose data in this tier would be deleted.
+             */
+            runs: number;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "artifacts" | "trace" | "run" | "audit";
+            /**
+             * Truncated
+             * @description True when a bound was reached: the figures are a lower bound.
+             */
+            truncated: boolean;
         };
         /** PriceOut */
         PriceOut: {
@@ -4094,6 +4233,11 @@ export interface components {
         };
         /** ReliabilityReport */
         ReliabilityReport: {
+            /**
+             * Excluded Expired Traces
+             * @description Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (tool reliability).
+             */
+            excluded_expired_traces: number;
             /** Failure Trend */
             failure_trend: components["schemas"]["FailureDay"][];
             rates: components["schemas"]["Rates"];
@@ -4104,6 +4248,113 @@ export interface components {
             tools: components["schemas"]["ToolReliability"][];
             tools_other: components["schemas"]["OtherBucket"] | null;
             window: components["schemas"]["Window"];
+        };
+        /**
+         * RetentionPolicyIn
+         * @description A tier left out stays as it is; a whole number of days sets it; `"forever"` keeps it for
+         *     good; `null` returns it to the environment default.
+         */
+        RetentionPolicyIn: {
+            /** Artifacts */
+            artifacts?: number | "forever" | null;
+            /** Audit */
+            audit?: number | "forever" | null;
+            /** Run */
+            run?: number | "forever" | null;
+            /** Trace */
+            trace?: number | "forever" | null;
+        };
+        /** RetentionPolicyOut */
+        RetentionPolicyOut: {
+            /**
+             * Audit Floor Days
+             * @description The audit tier's own minimum (owners only).
+             */
+            audit_floor_days: number;
+            /** Floor Days */
+            floor_days: number;
+            /**
+             * Grace Hours
+             * @description A shortening takes effect after this many hours (0: at once).
+             */
+            grace_hours: number;
+            /**
+             * Mode
+             * @description What the retention job does on this installation (`ABB_RETENTION_MODE`): `dry_run` only measures and reports; `enforce` deletes.
+             * @enum {string}
+             */
+            mode: "off" | "dry_run" | "enforce";
+            /** Tiers */
+            tiers: components["schemas"]["TierPolicyOut"][];
+            /**
+             * Updated At
+             * @description Null while the workspace has no choices.
+             */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+        };
+        /** RetentionPreviewOut */
+        RetentionPreviewOut: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Note
+             * @description Nothing is deleted by a preview. Tiers are counted separately, not added.
+             */
+            note: string;
+            /**
+             * Proposed
+             * @description True when the query proposed values instead of the saved.
+             */
+            proposed: boolean;
+            /** Tiers */
+            tiers: components["schemas"]["PreviewTierOut"][];
+        };
+        /** RetentionReportOut */
+        RetentionReportOut: {
+            /** Artifact Bytes */
+            artifact_bytes: number;
+            /** Cutoff At */
+            cutoff_at: string | null;
+            /** Events */
+            events: number;
+            /**
+             * Finished At
+             * Format: date-time
+             */
+            finished_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "dry_run" | "enforce";
+            /** Rows */
+            rows: number;
+            /** Runs */
+            runs: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "artifacts" | "trace" | "run" | "audit" | "operational" | "platform";
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** RetentionReportsOut */
+        RetentionReportsOut: {
+            /** Items */
+            items: components["schemas"]["RetentionReportOut"][];
         };
         /**
          * RetryBreakdown
@@ -4459,6 +4710,13 @@ export interface components {
             /** Trace Id */
             trace_id: string;
             /**
+             * Trace State
+             * @description Whether the run's trace detail (events, spans, findings, cost lines) is still stored. `deleting`: the retention job is removing it; `expired`: it is gone and only this record remains. Events, spans and findings are then empty, never partial.
+             * @default available
+             * @enum {string}
+             */
+            trace_state: "available" | "deleting" | "expired";
+            /**
              * Updated At
              * Format: date-time
              */
@@ -4796,6 +5054,34 @@ export interface components {
             runs: components["schemas"]["RunCounts"];
             tools: components["schemas"]["SpanRate"];
             window: components["schemas"]["Window"];
+        };
+        /** TierPolicyOut */
+        TierPolicyOut: {
+            /**
+             * Days
+             * @description Days a run (or audit entry) is kept after it ended, as saved; null: kept forever. While `pending` is set the longer `pending.current_days` is what is enforced.
+             */
+            days: number | null;
+            /**
+             * Default Days
+             * @description The environment default (null: forever).
+             */
+            default_days: number | null;
+            /** Forever */
+            forever: boolean;
+            /** @description Set while a saved shortening waits for its effective time. */
+            pending?: components["schemas"]["PendingShorteningOut"] | null;
+            /**
+             * Source
+             * @description `workspace` when this workspace chose it, else `default`.
+             * @enum {string}
+             */
+            source: "default" | "workspace";
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "artifacts" | "trace" | "run" | "audit";
         };
         /** ToolReliability */
         ToolReliability: {
@@ -12145,6 +12431,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description `TRACE_EXPIRED`: a run's trace was removed by retention, so there is nothing to compare. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description A parameter is invalid. */
             422: {
                 headers: {
@@ -12215,7 +12510,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A bound, an archived evaluator or the judge configuration conflicts with the request. */
+            /** @description A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12307,7 +12602,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A bound, an archived evaluator or the judge configuration conflicts with the request. */
+            /** @description A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12771,7 +13066,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A bound, an archived evaluator or the judge configuration conflicts with the request. */
+            /** @description A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12949,6 +13244,343 @@ export interface operations {
             };
             /** @description A parameter or the body is invalid; the message never repeats a value. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_retention_v1_workspaces__workspace_id__retention_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionPolicyOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace not found, or not the caller's (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value is outside its range; the message never repeats the value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests for this workspace; honour Retry-After. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    put_retention_v1_workspaces__workspace_id__retention_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionPolicyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionPolicyOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace not found, or not the caller's (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value is outside its range; the message never repeats the value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests for this workspace; honour Retry-After. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    preview_retention_v1_workspaces__workspace_id__retention_preview_get: {
+        parameters: {
+            query?: {
+                tiers?: string | null;
+                artifacts_days?: string | null;
+                trace_days?: string | null;
+                run_days?: string | null;
+                audit_days?: string | null;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionPreviewOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace not found, or not the caller's (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value is outside its range; the message never repeats the value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests for this workspace; honour Retry-After. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A dependency is unavailable; retry with backoff. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preview took too long; retry later. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    retention_reports_v1_workspaces__workspace_id__retention_reports_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                /** @description The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it. */
+                "X-ABB-Workspace"?: string;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionReportsOut"];
+                };
+            };
+            /** @description Missing or invalid credential. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller's role may not use this route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Workspace not found, or not the caller's (never reveals other tenants). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value is outside its range; the message never repeats the value. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests for this workspace; honour Retry-After. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

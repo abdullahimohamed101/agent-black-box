@@ -8,8 +8,81 @@ from urllib.parse import urlsplit
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Retention (Phase 19b, ADR-159). "forever" keeps a tier for good; a number is days after the run
+# ended (the audit log: after the entry). The floor protects against a typo that would delete
+# everything on the next tick; the ceiling is 100 years.
+RETENTION_FLOOR_DAYS = 7
+RETENTION_CEILING_DAYS = 36500
+RetentionDays = int | Literal["forever"]
 
-class Settings(BaseSettings):
+
+class RetentionSettings(BaseSettings):
+    """The retention knobs both the API (policy defaults, preview) and the retention job read.
+
+    Deliberately holds no database URL: the credentials of the retention role live only in
+    `abb_api.retention.runner.RetentionRunnerSettings`, which the API process never loads.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="ABB_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    # Defaults for a workspace that has not chosen its own.
+    retention_artifacts_days: RetentionDays = 30
+    retention_trace_days: RetentionDays = 90
+    retention_run_days: RetentionDays = 365
+    retention_audit_days: RetentionDays = 365
+    # off: the job does nothing. dry_run (default): it measures and reports, deleting nothing.
+    # enforce: it deletes, permanently (ADR-160): take a backup first.
+    retention_mode: Literal["off", "dry_run", "enforce"] = "dry_run"
+    # Bounds of one tick for one workspace: at most this many runs and this many other rows per
+    # tier are considered, and the statement timeout applies to every query of the tick.
+    retention_max_runs_per_tick: int = Field(default=2000, ge=1, le=1_000_000)
+    retention_max_rows_per_tick: int = Field(default=100_000, ge=1, le=100_000_000)
+    retention_statement_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    # Enforcement deletes this many rows per transaction, and gives a run up after this many
+    # failed attempts (until an operator runs `retry-failed`).
+    retention_batch_size: int = Field(default=2000, ge=1, le=100_000)
+    retention_max_attempts: int = Field(default=5, ge=1, le=100)
+    # The preview endpoint is cheaper and tighter than a tick (a person is waiting).
+    retention_preview_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    retention_preview_max_runs: int = Field(default=5000, ge=1, le=100_000)
+    # A shortened period takes effect after this many hours; until then the longer one applies
+    # (ADR-159 amendment). 0: at once.
+    retention_grace_hours: int = Field(default=24, ge=0, le=720)
+    # The audit log is the record of who changed the policy, so it has its own, higher minimum
+    # (the other tiers keep RETENTION_FLOOR_DAYS).
+    retention_audit_floor_days: int = Field(default=90, ge=RETENTION_FLOOR_DAYS, le=36500)
+
+    @model_validator(mode="after")
+    def _retention_defaults_are_a_valid_policy(self) -> "RetentionSettings":
+        days = {
+            "artifacts": self.retention_artifacts_days,
+            "trace": self.retention_trace_days,
+            "run": self.retention_run_days,
+            "audit": self.retention_audit_days,
+        }
+        for tier, value in days.items():
+            if isinstance(value, int) and not (
+                RETENTION_FLOOR_DAYS <= value <= RETENTION_CEILING_DAYS
+            ):
+                raise ValueError(
+                    f"retention_{tier}_days must be 'forever' or "
+                    f"{RETENTION_FLOOR_DAYS}-{RETENTION_CEILING_DAYS} days"
+                )
+        audit = self.retention_audit_days
+        if isinstance(audit, int) and audit < self.retention_audit_floor_days:
+            raise ValueError("retention_audit_days must not be below retention_audit_floor_days")
+        # A run record is deleted last, so it can never be kept for less time than the trace
+        # detail, nor the trace detail for less than the artifacts (ADR-159).
+        for inner, outer in (("artifacts", "trace"), ("trace", "run")):
+            a, b = days[inner], days[outer]
+            if b != "forever" and (a == "forever" or a > b):
+                raise ValueError(f"retention_{inner}_days must not exceed retention_{outer}_days")
+        return self
+
+
+class Settings(RetentionSettings):
     """All configuration comes from ABB_* environment variables (or a local .env)."""
 
     model_config = SettingsConfigDict(
@@ -186,6 +259,9 @@ class Settings(BaseSettings):
     # Denied requests by one person that are written to the audit log per minute; the rest are
     # only logged (D11), so a refused client cannot fill the table.
     audit_denials_per_minute: int = Field(default=10, ge=1)
+    # Retention policy changes and the heavier preview, per workspace per minute (ADR-159).
+    retention_writes_per_minute: int = Field(default=20, ge=1)
+    retention_previews_per_minute: int = Field(default=10, ge=1)
     # Policy management per workspace (Phase 14, ADR-140), per minute: publishes, validations (an
     # editor validates as people type) and the heavier dry runs. Per process, like ingestion.
     policy_writes_per_minute: int = Field(default=30, ge=1)

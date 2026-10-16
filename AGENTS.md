@@ -59,7 +59,7 @@ plan-change  ->  implement-change  ->  verify-change  ->  review-change
 
 ## Architectural Invariants (spec §62 - never violate without an ADR)
 
-- INV-1 Accepted events are immutable. Corrections are new events or derived records.
+- INV-1 Accepted events are immutable until expired by the retention job (ADR-159). Corrections are new events or derived records.
 - INV-2 Derived state (summaries, costs, findings, aggregates) is rebuildable from events.
 - INV-3 Every tenant-data operation carries workspace context. No repository method
   reads tenant data without it.

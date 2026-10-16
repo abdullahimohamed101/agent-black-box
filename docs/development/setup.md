@@ -40,6 +40,8 @@ Database roles: Compose runs `migrate` as the owner (`abb`) and the API/worker a
 `.env` keeps using the owner for convenience; to try the restricted role natively, export `ABB_RUNTIME_DB_PASSWORD`, run `make migrate`, and point
 `ABB_DATABASE_URL` at `abb_runtime` (see `.env.example`), keeping `ABB_MIGRATION_DATABASE_URL` on the owner.
 
+Retention (ADR-159): compose also runs a `retention` service as the `abb_retention` role (dry run: it only writes reports). Natively, `ABB_RETENTION_DATABASE_URL` (or, in development, the owner URL the migrations use) lets `python -m abb_api.cli retention run-once` run one tick; `ABB_RETENTION_DB_PASSWORD` at `make migrate` gives the role a login.
+
 Native `make dev` does not start the worker, so runs stay `processing` unless you start one (or use `make up`).
 
 ## Web app against the API (Phase 4, sign-in in Phase 15)
@@ -73,3 +75,5 @@ prompts, tool results, diffs and terminal output in a project, set it to `FULL` 
 `python -m abb_api.cli create-project ... --capture-mode full` or `python -m abb_api.cli set-capture-mode --workspace W --project P --mode full`
 (audited). `make seed` sets the local demo project to `FULL`; the e2e scripts create their projects with `--capture-mode full`. Tests that need payloads
 use `make_tenant`, whose projects are `FULL` unless told otherwise.
+
+Migrations (ADR-162): every new migration must be classified `reversible` or `forward-only` in `apps/api/migrations/safety.json` in the same commit (`tests/test_migration_safety.py` fails otherwise); see `docs/runbooks/migrations.md`. Backup, restore and key rotation: `make backup OUT=...`, `make restore BUNDLE=... ARTIFACT_DIR=...`, `make rotate-alert-keys` (`docs/runbooks/backup-restore.md`). They need `pg_dump`/`pg_restore` (and `openssl` for `--encrypt`) on the PATH, at least as new as the server.

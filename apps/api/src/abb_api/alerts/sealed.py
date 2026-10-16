@@ -125,6 +125,26 @@ async def _by_id(engine: AsyncEngine, key_id: int) -> AESGCM:
     return keys.by_id[key_id]
 
 
+async def newest_key_id(conn: AsyncConnection) -> int | None:
+    """The id of the key that seals new data, or None before the first use."""
+    found = await _newest(conn)
+    return found[0] if found else None
+
+
+async def add_key(conn: AsyncConnection) -> int:
+    """Insert a fresh key row (rotation, `abb_api.rotate`); the caller commits. Processes cache
+    the current key, so they seal under the new one only after a restart; every older row stays
+    and keeps opening what it sealed."""
+    await conn.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": _LOCK})
+    row = (
+        await conn.execute(
+            text("INSERT INTO server_secrets (name, secret) VALUES (:n, :s) RETURNING id"),
+            {"n": NAME, "s": secrets.token_bytes(32)},
+        )
+    ).one()
+    return int(row.id)
+
+
 def _aad(purpose: Purpose, workspace_id: uuid.UUID, destination_id: uuid.UUID) -> bytes:
     return b"abb-alert|" + purpose.encode() + b"|" + workspace_id.bytes + destination_id.bytes
 

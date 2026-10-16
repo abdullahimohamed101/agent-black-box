@@ -20,6 +20,17 @@ import { Empty, ErrorState, Loading } from "./States";
 
 const pct = (r: number | null | undefined) => (r == null ? "—" : `${Math.round(r * 100)}%`);
 
+/** Figures built from trace detail leave out runs whose trace the retention policy removed (ADR-161). Only when there are any. */
+function ExpiredTraceNote({ runs, what }: { runs: number; what: string }) {
+  if (runs <= 0) return null;
+  return (
+    <p role="note" className="muted" data-testid="expired-traces">
+      Excludes {formatInt(runs)} run{runs === 1 ? "" : "s"} whose trace has expired: {what} need the
+      trace detail. Run counts, totals and the cost headline include them.
+    </p>
+  );
+}
+
 function Section({
   id,
   title,
@@ -173,6 +184,10 @@ export function Analytics({ base }: { base: Base }) {
                   their costs are rebuilt.
                 </p>
               )}
+              <ExpiredTraceNote
+                runs={c.excluded_expired_traces}
+                what="the cost by agent, model and source"
+              />
               <h3>Daily spend</h3>
               <DayColumns
                 caption="Daily spend"
@@ -300,6 +315,10 @@ export function Analytics({ base }: { base: Base }) {
                 tone: "bad" as const,
               }))}
             />
+            <ExpiredTraceNote
+              runs={reliability.data.excluded_expired_traces}
+              what="the tool success rates below"
+            />
             <h3>Tool success</h3>
             {reliability.data.tools.length ? (
               <div className="table-wrap">
@@ -376,6 +395,10 @@ export function Analytics({ base }: { base: Base }) {
                 </dd>
               </div>
             </dl>
+            <ExpiredTraceNote
+              runs={performance.data.excluded_expired_traces}
+              what="the model and tool latencies and the slow operations"
+            />
             <h3>Slow operations</h3>
             {performance.data.slow_operations.length ? (
               <div className="table-wrap">

@@ -79,6 +79,7 @@ export function fixtureAnalytics(kind: string, q: URLSearchParams): unknown {
     for (const m of models)
       modelCost[m] = (modelCost[m] ?? 0) + s(r, "estimated_cost_usd") / models.length;
   }
+  const expired = runs.filter((r) => r.trace_state === "expired").length;
   const retryRuns = runs.filter((r) => s(r, "retry_count") > 0);
   const row = (r: RunOut) => ({
     run_id: r.id,
@@ -156,6 +157,7 @@ export function fixtureAnalytics(kind: string, q: URLSearchParams): unknown {
             retry_usd: retryUsd(r),
             retry_count: s(r, "retry_count"),
           })),
+        excluded_expired_traces: expired,
       } satisfies S["CostReport"];
     case "reliability":
       return {
@@ -187,6 +189,7 @@ export function fixtureAnalytics(kind: string, q: URLSearchParams): unknown {
             retry_usd: retryUsd(r),
             cost_usd: s(r, "estimated_cost_usd"),
           })),
+        excluded_expired_traces: expired,
       } satisfies S["ReliabilityReport"];
     case "performance":
       return {
@@ -195,6 +198,7 @@ export function fixtureAnalytics(kind: string, q: URLSearchParams): unknown {
         llm: { count: 0, p50_ms: null, p95_ms: null },
         tool: { count: 0, p50_ms: null, p95_ms: null },
         slow_operations: [],
+        excluded_expired_traces: expired,
       } satisfies S["PerformanceReport"];
     case "waste": {
       // Failed, timed-out and blocked runs are all waste; retry cost counts only in the other runs (no dollar twice).

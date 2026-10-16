@@ -13,6 +13,11 @@ COPY apps/api/src src
 RUN uv sync --frozen --no-dev --no-editable
 
 FROM python:3.12-slim
+# Backup and restore (ADR-162) shell out to pg_dump/pg_restore and, for encrypted bundles, openssl. The client's
+# major version must be at least the server's (the stock stack runs PostgreSQL 16; this base image's client is newer).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client openssl \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home --uid 10001 abb
 # Same absolute path as the build stage: the virtualenv's scripts embed it.
 WORKDIR /repo/apps/api

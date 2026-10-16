@@ -38,21 +38,21 @@ EXPECTED_SCOPE_ACTIONS: dict[str, set[str]] = {
     "policy:check": KEY_BASE | ASK,
 }
 
-_EVERYONE = {"workspace.read", "project.read", "member.read", "pricing.read"}
+_EVERYONE = {"workspace.read", "project.read", "member.read", "pricing.read", "retention.read"}
 _CONTENT = {"payload.read", "artifact.read"}
 _EVAL_READ = {"evaluation.read", "experiment.read"}
 _EVAL_WRITE = {"evaluation.run", "evaluation.label", "evaluator.write", "experiment.write"}
 _POLICY_READ = {"policy.read", "policy.fail_modes"}
 EXPECTED_ROLE_ACTIONS: dict[str, set[str]] = {
     "OWNER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE | _POLICY_READ | {"policy.write"}
-    | APPROVALS | ALERT_READ | ALERT_MANAGE
+    | APPROVALS | ALERT_READ | ALERT_MANAGE | {"retention.write", "retention.audit.write"}
     | {
         "run.read", "analytics.read", "project.write", "api_key.read", "api_key.create",
         "api_key.revoke", "member.write", "member.write_owner", "invite.read", "invite.write",
         "pricing.write", "audit.read", "billing.read",
     },
     "ADMIN": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE | _POLICY_READ | {"policy.write"}
-    | APPROVALS | ALERT_READ | ALERT_MANAGE
+    | APPROVALS | ALERT_READ | ALERT_MANAGE | {"retention.write"}
     | {
         "run.read", "analytics.read", "project.write", "api_key.read", "api_key.create",
         "api_key.revoke", "member.write", "invite.read", "invite.write", "pricing.write",
@@ -72,7 +72,8 @@ ADMIN_ACTIONS = {
     "project.write", "member.read", "member.write", "member.write_owner", "invite.read",
     "invite.write", "api_key.read", "api_key.create", "api_key.revoke", "pricing.write",
     "audit.read", "billing.read", "policy.read", "policy.write", "approval.read",
-    "approval.decide", "alert.write", "alert.destination.read",
+    "approval.decide", "alert.write", "alert.destination.read", "retention.write", "retention.read",
+    "retention.audit.write",
 }  # fmt: skip
 
 

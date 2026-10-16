@@ -131,6 +131,15 @@ class RunOut(BaseModel):
         description="Why the run matched a search: the indexed values the query named. Only "
         "present when `q` named at least one indexed field or word.",
     )
+    # Appended after the existing fields (Phase 19b, ADR-160).
+    trace_state: Literal["available", "deleting", "expired"] = Field(
+        default="available",
+        description=(
+            "Whether the run's trace detail (events, spans, findings, cost lines) is still "
+            "stored. `deleting`: the retention job is removing it; `expired`: it is gone and only "
+            "this record remains. Events, spans and findings are then empty, never partial."
+        ),
+    )
 
 
 class QueryTermOut(BaseModel):

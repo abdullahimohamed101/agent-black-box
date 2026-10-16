@@ -16,6 +16,7 @@ import { matchedLabels, matchedOf } from "@/lib/search";
 import { findingsCell } from "@/lib/findings";
 import { failureLine } from "@/lib/runsListRow";
 import { StatusBadge } from "./StatusBadge";
+import { TraceMarker } from "./TraceNotice";
 
 function FindingsCell({ badge }: { badge: RunOut["findings"] }) {
   const c = findingsCell(badge);
@@ -132,6 +133,11 @@ export function RunsTable({
                         <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
                       </button>
                     </div>
+                    {r.trace_state !== "available" && (
+                      <p className="run-trace">
+                        <TraceMarker state={r.trace_state} />
+                      </p>
+                    )}
                     {fail && (
                       <p className="run-fail" data-testid="failure-line">
                         <span className="run-fail-sentence">{fail.sentence}</span>

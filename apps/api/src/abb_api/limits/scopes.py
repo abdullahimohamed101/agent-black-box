@@ -28,6 +28,9 @@ class Scope(StrEnum):
     ALERT_WRITE = "alert_write"
     ALERT_PREVIEW = "alert_preview"
     ALERT_TEST = "alert_test"
+    # Retention policy changes and the preview of what a policy would delete (ADR-159).
+    RETENTION_WRITE = "retention_write"
+    RETENTION_PREVIEW = "retention_preview"
     # Failed API-key authentication (ADR-153). Counted before any tenant is known, so these are
     # global scopes keyed by a pseudonymous client address, a presented key id, or one fixed key.
     AUTH_FAIL_ADDRESS = "auth_fail_address"

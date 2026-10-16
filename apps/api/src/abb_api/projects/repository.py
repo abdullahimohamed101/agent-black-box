@@ -91,9 +91,13 @@ class ProjectRepository:
         return [Project(r.id, r.name, r.slug, r.created_at) for r in rows]
 
     def _select(self) -> Select[Any]:
+        # A project being purged is gone for every reader (ADR-163): not listed, not found.
         return select(
             t.projects.c.id, t.projects.c.name, t.projects.c.slug, t.projects.c.created_at
-        ).where(t.projects.c.workspace_id == self._tenant.workspace_id)
+        ).where(
+            t.projects.c.workspace_id == self._tenant.workspace_id,
+            t.projects.c.purge_state == "active",
+        )
 
     async def _one(self, condition: ColumnElement[bool]) -> Project | None:
         row = (await self._conn.execute(self._select().where(condition))).first()

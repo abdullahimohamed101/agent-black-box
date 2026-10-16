@@ -20,6 +20,7 @@ _ERROR_TEXT: dict[int | str, str] = {
     401: "Missing, malformed, unknown, revoked or expired credentials.",
     403: "The caller lacks `run.read`.",
     404: "A run was not found, or is not visible to this caller (never reveals other tenants).",
+    409: "`TRACE_EXPIRED`: a run's trace was removed by retention, so there is nothing to compare.",
     422: "A parameter is invalid.",
     503: "A dependency is unavailable; retry with backoff.",
 }

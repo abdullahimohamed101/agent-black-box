@@ -55,6 +55,16 @@ def run_not_found() -> AppError:
     return _not_found("RUN_NOT_FOUND", "Run")
 
 
+def trace_expired() -> AppError:
+    """The run's record is there but its trace detail was removed by retention (ADR-160)."""
+    return AppError(
+        "TRACE_EXPIRED",
+        "The run's trace is no longer stored.",
+        category=ErrorCategory.CONFLICT,
+        status_code=409,
+    )
+
+
 def project_not_found() -> AppError:
     return _not_found("PROJECT_NOT_FOUND", "Project")
 
@@ -157,6 +167,7 @@ def _run_out(
         security_findings=security,
         first_error=_first_error(summary),
         matched=matched_out(search, record.search) if search is not None else None,
+        trace_state=record.trace_state,  # type: ignore[arg-type]
     )
 
 

@@ -62,11 +62,17 @@ ALERT_READ: Final = "alert.read"
 ALERT_WRITE: Final = "alert.write"
 ALERT_DESTINATION_READ: Final = "alert.destination.read"
 
-# Reserved for later phases (19: retention). Granted to nobody, so the names exist in one place and
-# a future phase only has to add grants.
+# Retention (Phase 19b, ADR-159). Every member may read the policy, the preview and the reports
+# (counts only); owners and admins change the policy. No API key holds either: retention is
+# configured by signed-in people, and nothing in the API can start the retention job.
+RETENTION_READ: Final = "retention.read"
 RETENTION_WRITE: Final = "retention.write"
+# Changing the AUDIT tier's period is for owners only (the audit log is what shows who changed the
+# policy): checked inside the route once the request is known to change that tier.
+RETENTION_AUDIT_WRITE: Final = "retention.audit.write"
 
-RESERVED_ACTIONS: Final = frozenset({RETENTION_WRITE})
+# Names reserved for later phases and granted to nobody; none at the moment.
+RESERVED_ACTIONS: Final[frozenset[str]] = frozenset()
 
 ALL_ACTIONS: Final = frozenset(
     {
@@ -76,7 +82,8 @@ ALL_ACTIONS: Final = frozenset(
         API_KEY_REVOKE, AUDIT_READ, BILLING_READ, EVALUATION_READ, EVALUATION_RUN,
         EVALUATION_LABEL, EVALUATOR_WRITE, EXPERIMENT_READ, EXPERIMENT_WRITE, POLICY_READ,
         POLICY_WRITE, POLICY_DECIDE, APPROVAL_USE, APPROVAL_READ, APPROVAL_DECIDE,
-        POLICY_FAIL_MODES, ALERT_READ, ALERT_WRITE, ALERT_DESTINATION_READ,
+        POLICY_FAIL_MODES, ALERT_READ, ALERT_WRITE, ALERT_DESTINATION_READ, RETENTION_READ,
+        RETENTION_WRITE, RETENTION_AUDIT_WRITE,
     }
 ) | RESERVED_ACTIONS  # fmt: skip
 
