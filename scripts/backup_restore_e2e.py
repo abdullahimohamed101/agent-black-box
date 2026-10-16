@@ -368,8 +368,8 @@ def compose_backup(src_db: str, artifacts: Path, work: Path, bundles_dir: Path) 
     try:
         manifest = json.loads((out_dir / "compose-bundle" / "MANIFEST.json").read_text())
         results["compose"]["manifest_seen_from_host"] = True
-        results["compose"]["manifest"] = manifest
-        results["compose"]["row_counts_equal_module_bundle"] = manifest.get("row_counts") == json.loads((bundles_dir / "plain" / "MANIFEST.json").read_text()).get("row_counts")
+        results["compose"]["manifest_totals"] = {"artifact_files": manifest["artifacts"]["count"], "total_bytes": manifest["total_bytes"]}
+        results["compose"]["row_counts_equal_module_bundle"] = manifest.get("tables") == json.loads((bundles_dir / "plain" / "MANIFEST.json").read_text()).get("tables")
         check(results["compose"]["row_counts_equal_module_bundle"], "compose: the container's bundle records the same row counts as the module CLI's")
     except OSError:
         results["compose"]["manifest_seen_from_host"] = False  # Linux: the bundle is 0700 and owned by the container's uid, as designed
