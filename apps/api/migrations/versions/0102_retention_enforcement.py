@@ -57,11 +57,18 @@ def upgrade() -> None:
         sa.Column("tier", sa.Text(), nullable=False),
         sa.Column("project_id", sa.UUID()),
         sa.Column("started_day", sa.Date()),
-        *[sa.Column(s, sa.Boolean(), server_default=sa.text("false"), nullable=False) for s in STEPS],
+        *[
+            sa.Column(s, sa.Boolean(), server_default=sa.text("false"), nullable=False)
+            for s in STEPS
+        ],
         sa.Column("attempts", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column("failure_code", sa.Text()),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.PrimaryKeyConstraint("workspace_id", "run_id", "tier"),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.CheckConstraint(
