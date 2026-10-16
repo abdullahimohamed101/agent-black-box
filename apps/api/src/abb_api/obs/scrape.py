@@ -83,6 +83,7 @@ class ScrapeSampler:
         statement_timeout_ms: int = STATEMENT_TIMEOUT_MS,
         deadline_seconds: float = DEADLINE_SECONDS,
         monotonic: Callable[[], float] = time.monotonic,
+        retention_mode: str | None = None,
     ) -> None:
         self._engine_of = engine_of
         self._cat = catalogue
@@ -96,6 +97,13 @@ class ScrapeSampler:
         self.samples = 0  # attempts started, for tests and the benchmark
         catalogue.retention_seconds_since_last_pass.set(math.nan)
         catalogue.abb_scrape_database_up.set(0)
+        if retention_mode in RETENTION_MODES:
+            # What this process was configured with (ABB_RETENTION_MODE), not what the newest
+            # report says: an off retention process writes no report, so the newest report's mode
+            # is the last mode it ran in. AbbRetentionStale needs the configuration.
+            catalogue.retention_configured_mode.replace(
+                {(m,): 1.0 if m == retention_mode else 0.0 for m in RETENTION_MODES}
+            )
         self._probes = (
             _Probe("jobs", _DUE_JOBS, {"lookahead": DUE_JOBS_LOOKAHEAD}, self._apply_jobs),
             _Probe("dead_letters", _DEAD_LETTERS, {}, self._apply_dead_letters),

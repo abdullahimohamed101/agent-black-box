@@ -262,7 +262,11 @@ async def _main() -> None:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)  # finish the current batch, then exit cleanly
-    metrics_server = _start_metrics_server(settings, ScrapeSampler(lambda: engine, METRICS), loop)
+    metrics_server = _start_metrics_server(
+        settings,
+        ScrapeSampler(lambda: engine, METRICS, retention_mode=settings.retention_mode),
+        loop,
+    )
     try:
         await worker.run_forever(stop)
     finally:

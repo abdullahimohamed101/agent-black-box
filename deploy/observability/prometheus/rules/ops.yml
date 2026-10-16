@@ -115,8 +115,9 @@ groups:
           summary: "The database circuit breaker opened 3 or more times in 30 minutes"
           description: >-
             The breaker on {{ $labels.instance }} opened repeatedly. Each trip is a stretch of shed
-            requests; recurring trips mean the pool or the database is at its limit, even though
-            each one recovers on its own.
+            requests; recurring trips mean the database or the network between them flaps, or the
+            server keeps hitting max_connections, even though each one recovers on its own. A busy
+            pool alone does not trip it.
           runbook_url: docs/runbooks/database-saturation.md#database-breaker-open
 
       - alert: AbbPoolWaitHigh
@@ -440,17 +441,20 @@ groups:
       - alert: AbbRetentionStale
         expr: |
           max(retention_seconds_since_last_pass) > 10800
-          unless on () (max(retention_mode{mode="off"}) == 1)
+          unless on () (max(retention_configured_mode{mode="off"}) == 1)
         for: 15m
         labels:
           severity: ticket
         annotations:
           summary: "No retention pass has been recorded for over 3 hours"
           description: >-
-            The newest retention report is older than 3 hours while retention is not switched off.
-            The default tick interval is 1 hour, so 3 hours is three missed ticks. The retention
-            process may be stopped or crashing, and data is being kept beyond policy. It is silent
-            when no report has ever been written (the gauge is NaN) and while the mode is off.
+            The newest retention report is older than 3 hours while the API or worker is configured
+            with retention on (ABB_RETENTION_MODE is not off). The default tick interval is 1 hour,
+            so 3 hours is three missed ticks. The retention process may be stopped or crashing, and
+            data is being kept beyond policy. It is silent when no report has ever been written (the
+            gauge is NaN) and when the API or worker is configured with the mode off. It trusts
+            that the API, worker and retention process share ABB_RETENTION_MODE: if the retention
+            process alone is switched off, restart the API and worker too, or silence this alert.
           runbook_url: docs/runbooks/retention.md#retention-is-stale
 
       - alert: AbbBackupTooOld

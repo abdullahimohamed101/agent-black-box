@@ -119,6 +119,7 @@ so they are as fresh as the last tick (hourly by default). The API and worker ad
 
 | Signal | Meaning |
 | --- | --- |
+| `retention_configured_mode{mode}` | The mode the API or worker was configured with (`ABB_RETENTION_MODE`); `AbbRetentionStale` stays silent when it is `off` |
 | `retention_mode{mode}` | The effective mode of the newest report: `off`, `dry_run`, `enforce`. `dry_run` deletes nothing, so data is kept beyond policy by design |
 | `retention_seconds_since_last_pass` | Seconds since the newest report; NaN when none exists yet |
 | `retention_passes_total{mode}` | Ticks finished by mode |
@@ -139,6 +140,6 @@ so they are as fresh as the last tick (hourly by default). The API and worker ad
 
 ### Retention is stale
 
-`AbbRetentionStale`: no report for over 3 hours (three default ticks) while the mode is not `off`. The retention process is not running or cannot write reports.
+`AbbRetentionStale`: no report for over 3 hours (three default ticks) while the API/worker is configured with a mode other than `off` (`retention_configured_mode`). The retention process is not running or cannot write reports. If you switched retention off on purpose, set `ABB_RETENTION_MODE=off` for the API and worker as well and restart them (the alert reads *their* configuration; an off retention process writes no report, so `retention_mode` keeps showing the last mode it ran in).
 `docker compose --profile app ps retention` and its log; the database it connects to is configured separately (`ABB_RETENTION_DATABASE_URL`, role `abb_retention`). If retention is deliberately stopped,
 set `ABB_RETENTION_MODE=off` so the alert stays quiet. Raise the 3 hours if you set a longer tick interval.

@@ -196,6 +196,7 @@ class Catalogue:
     retention_failures_total: Counter
     retention_dry_run_candidates: Gauge
     retention_mode: Gauge
+    retention_configured_mode: Gauge
     retention_seconds_since_last_pass: Gauge
     # backups and key rotation (written to a textfile by their own processes)
     backup_last_success_timestamp_seconds: Gauge
@@ -409,6 +410,11 @@ def build_catalogue(registry: Registry, *, version: str = __version__) -> Catalo
         retention_mode=r.gauge(
             "retention_mode",
             "1 for the mode of the newest retention report (the effective mode), else 0.",
+            [closed("mode", *RETENTION_MODES)],
+        ),
+        retention_configured_mode=r.gauge(
+            "retention_configured_mode",
+            "1 for the retention mode this API or worker process is configured with, else 0.",
             [closed("mode", *RETENTION_MODES)],
         ),
         retention_seconds_since_last_pass=r.gauge(

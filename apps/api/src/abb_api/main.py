@@ -489,7 +489,9 @@ def create_app(
         app.state.metrics_auth = MetricsAuth(settings.metrics_token)
         app.state.metrics_limiter = per_minute_bucket(settings.metrics_requests_per_minute)
         app.state.scrape_sampler = ScrapeSampler(
-            lambda: getattr(app.state, "engine", None), observability.catalogue
+            lambda: getattr(app.state, "engine", None),
+            observability.catalogue,
+            retention_mode=settings.retention_mode,
         )
         app.include_router(metrics_router)
     app.include_router(auth_router)
