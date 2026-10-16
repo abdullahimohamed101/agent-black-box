@@ -165,9 +165,11 @@ async def test_the_cli_in_production_without_the_retention_url_refuses(tmp_path:
     assert URL not in done.stderr
 
 
-async def test_enforce_exits_2_and_deletes_nothing(
+async def test_enforce_refuses_a_missing_artifact_directory_and_deletes_nothing(
     tmp_path: Path, engine: AsyncEngine, retention_database_url: str
 ) -> None:
+    """Unlinking a file that is not there succeeds, so a process pointed at the wrong place would
+    delete the artifact rows and leave the files: it must not start."""
     acme = await make_tenant(engine, "acme")
     await seed_run(engine, acme, ended=NOW.replace(year=2020), events=2, spans=0, jobs=0)
     done = run_cli(
@@ -175,11 +177,36 @@ async def test_enforce_exits_2_and_deletes_nothing(
         ABB_ENVIRONMENT="production",
         ABB_RETENTION_MODE="enforce",
         ABB_RETENTION_DATABASE_URL=retention_database_url,
+        ABB_ARTIFACT_DIR=str(tmp_path / "not-there"),
     )
-    assert done.returncode == 2 and "refused=True" in done.stdout
+    assert done.returncode == 2 and "ABB_ARTIFACT_DIR" in done.stderr
     async with engine.connect() as conn:
         assert (await conn.execute(text("SELECT count(*) FROM events"))).scalar_one() == 2
         assert (await conn.execute(text("SELECT count(*) FROM runs"))).scalar_one() == 1
+
+
+async def test_enforce_from_the_cli_deletes_with_the_retention_role_only(
+    tmp_path: Path, engine: AsyncEngine, retention_database_url: str
+) -> None:
+    acme = await make_tenant(engine, "acme")
+    await seed_run(engine, acme, ended=NOW.replace(year=2020), events=2, spans=1, jobs=0)
+    (tmp_path / "artifacts").mkdir()
+    done = run_cli(
+        tmp_path,
+        ABB_ENVIRONMENT="production",
+        ABB_RETENTION_MODE="enforce",
+        ABB_RETENTION_DATABASE_URL=retention_database_url,
+        ABB_ARTIFACT_DIR=str(tmp_path / "artifacts"),
+    )
+    assert done.returncode == 0, done.stderr
+    assert "mode=enforce" in done.stdout and "deleted_runs=1" in done.stdout, done.stdout
+    async with engine.connect() as conn:
+        assert (await conn.execute(text("SELECT count(*) FROM events"))).scalar_one() == 0
+        assert (await conn.execute(text("SELECT count(*) FROM runs"))).scalar_one() == 0
+        assert (
+            await conn.execute(text("SELECT count(*) FROM retention_tombstones"))
+        ).scalar_one() == 2
+    assert retention_database_url not in done.stdout + done.stderr
 
 
 async def test_off_does_not_even_connect(tmp_path: Path) -> None:

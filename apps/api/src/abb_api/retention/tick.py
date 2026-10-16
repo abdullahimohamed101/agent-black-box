@@ -63,7 +63,8 @@ class TickResult:
     locked_out: bool = False  # another tick holds the lock
     refused: bool = False  # enforce needs an artifact store, and was given none
     halted: str | None = None  # `mode`, `stop` or `budget`: enforcement ended early on purpose
-    deleted_runs: int = 0  # runs whose tier work completed (enforce)
+    deleted_runs: int = 0  # run records removed (the run tier, enforce)
+    expired_traces: int = 0  # runs whose trace detail was removed (the trace tier)
     deleted_events: int = 0
     failed: int = 0  # runs or days whose step failed (see `retention_run_progress`)
     skipped_locked: int = 0  # workspaces another process holds the lock of
@@ -353,7 +354,10 @@ class _Enforcement:
         started: datetime,
         keep: int,
     ) -> None:
-        result.deleted_runs += counts.runs
+        if tier == m.Tier.RUN.value:
+            result.deleted_runs += counts.runs
+        elif tier == m.Tier.TRACE.value:
+            result.expired_traces += counts.runs
         result.deleted_events += counts.events
         result.failed += counts.failed
         if counts.runs or counts.rows or counts.failed or counts.artifact_bytes:

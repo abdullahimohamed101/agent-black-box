@@ -137,6 +137,7 @@ def _summary(result: TickResult) -> dict[str, object]:
         "refused": result.refused,
         "halted": result.halted,
         "deleted_runs": result.deleted_runs,
+        "expired_traces": result.expired_traces,
         "deleted_events": result.deleted_events,
         "failed": result.failed,
         "skipped_locked": result.skipped_locked,
