@@ -122,6 +122,8 @@ def summary() -> None:
     bad: dict[str, list[str]] = {}
     scanned = 0
     for log in lib.all_logs():
+        if log.name.startswith("retention-overprivileged-"):
+            continue  # started on purpose to fail in production: gate 5 checks its fixed message and that it prints no credential
         scanned += 1
         for line in lib.log_lines(log, "Traceback", "job failed", "Unhandled exception", "ERROR:", '"level": "ERROR"', '"level":"ERROR"'):
             if any(allowed in line for allowed, _ in LOG_ALLOW):

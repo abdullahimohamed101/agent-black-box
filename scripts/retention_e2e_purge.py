@@ -27,8 +27,6 @@ def gate5() -> None:
         "DELETE events": "delete from events where false",
         "UPDATE events": "update events set agent_id = agent_id where false",
         "DELETE runs": "delete from runs where false",
-        "UPDATE runs.trace_state": "update runs set trace_state = 'expired' where false",
-        "DELETE artifacts": "delete from artifacts where false",
         "INSERT retention_run_progress": "insert into retention_run_progress (workspace_id, run_id, tier) values (gen_random_uuid(), gen_random_uuid(), 'trace')",
         "DELETE retention_run_progress": "delete from retention_run_progress where false",
         "INSERT retention_tombstones": "insert into retention_tombstones (workspace_id, run_id, tier, mode) values (gen_random_uuid(), gen_random_uuid(), 'trace', 'enforce')",
@@ -44,6 +42,10 @@ def gate5() -> None:
     for label, sql in denied_runtime.items():
         state = lib.sqlstate_as(runtime, sql)
         check(state == DENIED, f"runtime role (the API and worker): {label} is refused (42501)", sqlstate=state)
+    # What the runtime role legitimately does to the run tables (the summariser updates runs; a failed upload removes its artifact row):
+    # not a retention path, recorded so a reader sees the line is drawn at events, deletion of runs and the job's own tables.
+    info(runtime_may_update_runs=lib.sqlstate_as(runtime, "update runs set updated_at = updated_at where false") is None,
+         runtime_may_delete_artifacts=lib.sqlstate_as(runtime, "delete from artifacts where false") is None)
     for label, sql in {"SELECT retention_reports": "select count(*) from retention_reports", "SELECT retention_tombstones": "select count(*) from retention_tombstones",
                        "SELECT purge_tombstones": "select count(*) from purge_tombstones", "SELECT events": "select count(*) from events"}.items():
         state = lib.sqlstate_as(runtime, sql)
