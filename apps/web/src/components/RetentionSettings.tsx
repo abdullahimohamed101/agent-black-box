@@ -39,7 +39,8 @@ import {
   type RetentionPreview,
   type TierName,
 } from "@/lib/retention";
-import { when } from "./SettingsKit";
+import { settings } from "@/copy/settings";
+import { Lede, ReadOnly, Section, StatusLine, when } from "./SettingsKit";
 import { ErrorState, Loading } from "./States";
 import { useCan, useWorkspace } from "./WorkspaceProvider";
 import "../app/retention.css";
@@ -56,13 +57,10 @@ export function RetentionSettings() {
   const [saved, setSaved] = useState(false);
   return (
     <div className="retention">
-      <div className="page-head">
-        <h1>Retention</h1>
-        <p className="muted">
-          How long this workspace keeps its data. Older data is removed by a background job, a run
-          at a time, and every change to these periods is written to the <AuditLink />.
-        </p>
-      </div>
+      <Lede>
+        {settings.retention.ledeLead}
+        <AuditLink />.
+      </Lede>
       {policy.isPending ? (
         <Loading label="Loading the retention policy" />
       ) : policy.isError ? (
@@ -70,12 +68,14 @@ export function RetentionSettings() {
       ) : (
         <>
           <ModeBanner mode={policy.data.mode} />
-          <Policy
-            key={policy.data.updated_at ?? "default"}
-            policy={policy.data}
-            saved={saved}
-            setSaved={setSaved}
-          />
+          <Section title="Periods">
+            <Policy
+              key={policy.data.updated_at ?? "default"}
+              policy={policy.data}
+              saved={saved}
+              setSaved={setSaved}
+            />
+          </Section>
           <LastPasses />
         </>
       )}
@@ -207,7 +207,7 @@ function Policy({
               data-source={tier.source}
             >
               <div className="retention-head">
-                <h2 id={`${id}-h`}>{meta.label}</h2>
+                <h3 id={`${id}-h`}>{meta.label}</h3>
                 <span className="retention-value" data-testid="tier-value">
                   {describeTier(tier)}
                 </span>
@@ -289,9 +289,7 @@ function Policy({
         {policy.audit_floor_days} for the audit log).
       </p>
       {!canEdit ? (
-        <p className="muted retention-note" data-testid="retention-readonly">
-          Owners and admins can change these periods.
-        </p>
+        <ReadOnly testId="retention-readonly">Owners and admins can change these periods.</ReadOnly>
       ) : (
         <>
           <div className="retention-actions">
@@ -348,18 +346,13 @@ function Policy({
               </div>
             </div>
           )}
-          <div
-            className="retention-status"
-            role="status"
-            aria-live="polite"
-            data-testid="save-status"
-          >
+          <StatusLine testId="save-status">
             {saved && !dirty
               ? policy.tiers.some((t) => t.pending)
                 ? "Saved. A shorter period takes effect after its waiting time; until then the longer one still applies."
                 : "Saved. The retention job applies the new periods on its next pass."
               : ""}
-          </div>
+          </StatusLine>
           {save.isError && (
             <p role="alert" className="notice" data-state="error">
               {retentionError(save.error).text}
@@ -415,8 +408,7 @@ function LastPasses() {
   const ws = useWorkspace();
   const reports = useRetentionReports(ws.workspace.id);
   return (
-    <section className="retention-passes" aria-labelledby="passes-h">
-      <h2 id="passes-h">Last passes</h2>
+    <Section title="Last passes" testId="retention-passes">
       {reports.isPending ? (
         <Loading label="Loading the last passes" />
       ) : reports.isError ? (
@@ -454,6 +446,6 @@ function LastPasses() {
           ))}
         </ul>
       )}
-    </section>
+    </Section>
   );
 }
