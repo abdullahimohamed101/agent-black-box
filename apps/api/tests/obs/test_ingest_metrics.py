@@ -111,12 +111,12 @@ async def test_a_commit_that_fails_is_an_error_ack_not_a_committed_one(
     observed: tuple[Api, Observability], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     api, obs = observed
-    from abb_api.ingestion import service
+    from abb_api.ingestion import store as event_store
 
     async def lost(*_: Any, **__: Any) -> None:
         raise OSError("connection reset")  # the database went away before the commit
 
-    monkeypatch.setattr(service.PgEventStore, "ingest", lost)
+    monkeypatch.setattr(event_store.PgEventStore, "ingest", lost)
     response = await api.post_batch([wire_event(make_run_ids(), 1)])
     assert response.status_code == 503
     assert value(obs, "ingest_acks_total", outcome="error") == 1
@@ -128,7 +128,7 @@ async def test_a_commit_that_fails_is_an_error_ack_not_a_committed_one(
     async def bug(*_: Any, **__: Any) -> None:
         raise RuntimeError("bug")
 
-    monkeypatch.setattr(service.PgEventStore, "ingest", bug)
+    monkeypatch.setattr(event_store.PgEventStore, "ingest", bug)
     assert (await api.post_batch([wire_event(make_run_ids(), 1)])).status_code == 500
     assert value(obs, "ingest_acks_total", outcome="error") == 2
     assert observations(obs, "ingest_ack_duration_seconds") == 2

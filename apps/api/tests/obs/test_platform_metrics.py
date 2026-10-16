@@ -1,7 +1,7 @@
 """Alerts, the live stream, the connection pool and the scrape endpoint with real traffic."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import timedelta
 from typing import Any
 
@@ -36,7 +36,7 @@ async def tick(rig: Rig, obs: Observability, at: Any = T0, **settings: Any) -> A
 
 
 async def test_alert_deliveries_by_status_and_fixed_reason(rig_factory: Any) -> None:  # noqa: F811
-    answers = iter([(503, {}), (200, {}), (400, {})])
+    answers: Iterator[tuple[int, dict[str, str]]] = iter([(503, {}), (200, {}), (400, {})])
 
     def responder(_: Request) -> tuple[int, dict[str, str]]:
         return next(answers)

@@ -12,7 +12,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from abb_api.main import create_app
-from abb_api.obs.catalogue import Observability
+from abb_api.obs.catalogue import DEFAULT, Observability
 from tests.api_fixtures import Api
 from tests.conftest import make_settings, runtime_url
 from tests.ingest_helpers import wire_event
@@ -77,7 +77,7 @@ async def serve(
     app = create_app(
         base.model_copy(update={**timings, **settings}),
         clock=api.clock,
-        **({"observability": observability} if observability is not None else {}),
+        observability=observability or DEFAULT,
     )
     server = uvicorn.Server(
         uvicorn.Config(

@@ -137,7 +137,7 @@ async def test_a_body_that_never_finishes_is_counted_as_a_timeout() -> None:
         while (await receive()).get("more_body"):
             pass
 
-    async def send(message: dict[str, Any]) -> None:
+    async def send(message: Any) -> None:
         sent.append(message)
 
     queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
