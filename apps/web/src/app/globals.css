@@ -1,6 +1,6 @@
 /* Design tokens: the colour, type, space, radius and motion tokens are GENERATED from design-tokens/tokens.json into
-   tokens.generated.css (new names) and tokens.aliases.css (the pre-pass-2 names: --bg --surface --ink --muted --accent --fail
-   --wait ...). Both load before this file (layout.tsx). What stays here is what has no token yet: the frame sizes and the
+   tokens.generated.css, which loads before this file (layout.tsx); the pre-pass-2 names (--bg --ink --border --mono ...) have no
+   alias layer any more (deleted in step 5d). What stays here is what has no token yet: the frame sizes and the
    legacy --t-* durations that tests/motion-contract.test.ts reads. Red (--fail) is the fault line and the failed word only
    (tests/tokens-red.test.ts; ADR-166). Light is the default; dark follows the system. */
 :root {
@@ -21,7 +21,6 @@
   }
 }
 body {
-  /* --sans and --mono are aliases generated into tokens.aliases.css (body-scoped: next/font puts its variables on body). */
   margin: 0;
   background: var(--color-bg-canvas);
   color: var(--color-text-primary);
@@ -34,7 +33,6 @@ body {
 .tl-type,
 .wf-meta,
 .wf-tick,
-.stat dd,
 .fields dd,
 .meta,
 .id,
@@ -56,7 +54,7 @@ main {
 }
 .panel {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   padding: 0.75rem 1rem;
   margin-top: 1.5rem;
 }
@@ -96,50 +94,16 @@ a {
 }
 /* The application frame (top bar, navigation, scope, person menu) lives in shell.css. */
 h1 {
-  font-size: 1.4rem;
-  margin: 0.5rem 0;
+  margin: 0 0 var(--space-3);
+  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
 }
 h2 {
-  font-size: 1.1rem;
-  margin: 1.25rem 0 0.5rem;
+  margin: var(--space-6) 0 var(--space-2);
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
 }
 h3 {
   margin: var(--space-4) 0 var(--space-1);
   font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
-}
-/* ---- Readout strip (Phase 21): value in mono, small-caps label, hairlines instead of tiles ---- */
-.stats {
-  display: flex;
-  flex-wrap: wrap;
-  margin: 0.75rem 0;
-  padding: 0;
-  border-top: 1px solid var(--color-border-subtle);
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-.stat {
-  min-width: 6rem;
-  margin-right: 1.25rem;
-  padding: 0.5rem 1.25rem 0.55rem 0;
-  border-right: 1px solid var(--color-border-subtle);
-}
-.stat:last-child {
-  margin-right: 0;
-  padding-right: 0;
-  border-right: 0;
-}
-.stat dt {
-  font: var(--type-small-weight) var(--type-small-size) / var(--type-small-line) var(--font-sans);
-  color: var(--color-text-secondary);
-}
-.stat dd {
-  margin: 0.05rem 0 0;
-  font: 600 1.05rem/1.25 var(--font-mono);
-  overflow-wrap: anywhere;
-}
-.stat small {
-  display: block;
-  font: 400 var(--type-small-size)/1.35 var(--font-sans);
-  color: var(--color-text-secondary);
 }
 .id {
   font-size: var(--type-small-size);
@@ -160,9 +124,13 @@ table {
 th,
 td {
   text-align: left;
-  padding: 0.25rem 0.6rem;
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
   border-bottom: 1px solid var(--color-border-subtle);
   white-space: nowrap;
+}
+th:last-child,
+td:last-child {
+  padding-right: 0;
 }
 /* Column heads are small ink-2 sentence-case labels in every table of the app (ADR-166: no upper case, no tracking); row heads
    stay ordinary text. */
@@ -291,7 +259,7 @@ legend {
   align-items: center;
   gap: 0.3rem;
   border: 1px solid var(--color-border-strong);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   padding: 0.15rem 0.6rem;
   font-size: var(--type-body-size);
   cursor: pointer;
@@ -308,7 +276,7 @@ select {
   font: inherit;
   padding: 0.3rem 0.5rem;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: var(--color-bg-canvas);
   color: var(--color-text-primary);
 }
@@ -381,7 +349,7 @@ pre {
   padding: 0.6rem;
   background: var(--color-bg-canvas);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   overflow: auto;
   max-height: 20rem;
   font-size: var(--type-body-size);
@@ -397,7 +365,7 @@ pre {
   overflow-wrap: anywhere;
   background: var(--color-bg-canvas);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   padding: 0.5rem;
   font-size: var(--type-body-size);
 }
@@ -416,7 +384,7 @@ pre {
 }
 .diff [role="group"] {
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   overflow: auto;
   max-height: 32rem;
 }
@@ -530,7 +498,7 @@ button.danger {
   font: inherit;
   padding: 0.25rem 0.4rem;
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: var(--color-bg-canvas);
   color: var(--color-text-primary);
 }
@@ -552,7 +520,7 @@ button.danger {
   overflow-wrap: anywhere;
   background: var(--color-bg-canvas);
   border: 1px solid var(--color-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   padding: 0.4rem 0.6rem;
   margin: 0.4rem 0;
 }
@@ -578,41 +546,6 @@ td a {
 /* Visually hidden text inside a cell must be clipped by the scrolling wrapper, not widen the page. */
 .table-wrap {
   position: relative;
-}
-/* ---- Page title line (design pass 2): one h1 per document page, 24/30 Sans ---- */
-.page-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-4);
-  margin: 0 0 var(--space-3);
-}
-.page-head h1 {
-  margin: 0;
-  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
-}
-.page-head p {
-  margin: 0;
-  font-size: var(--type-body-size);
-}
-.page-head .toolbar {
-  margin: 0;
-}
-/* Document pages: one head style, one rhythm. */
-.page:not(:has(> .run-detail)) > h1,
-.page:not(:has(> .run-detail)) > div > h1 {
-  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
-  margin: 0 0 var(--space-3);
-}
-.page:not(:has(> .run-detail)) h2 {
-  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
-  margin: 1.25rem 0 0.4rem;
-}
-.page:not(:has(> .run-detail)) .stats {
-  margin: 0.5rem 0 0.75rem;
-}
-.page:not(:has(> .run-detail)) .muted {
-  font-size: var(--type-body-size);
 }
 /* Two weights only (ADR-166): the browser's bold (700) is the strong weight. */
 strong,

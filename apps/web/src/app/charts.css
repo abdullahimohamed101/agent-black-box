@@ -8,10 +8,15 @@
   display: grid;
   gap: var(--space-2);
 }
+.bars {
+  /* One set of columns for the whole list (subgrid below), so every track starts and ends at the same place. */
+  grid-template-columns: minmax(5rem, 11rem) minmax(4rem, 1fr) auto;
+  column-gap: var(--space-3);
+}
 .bars li {
   display: grid;
-  grid-template-columns: minmax(5rem, 11rem) minmax(0, 1fr) auto;
-  gap: var(--space-3);
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   align-items: center;
   font-size: var(--type-body-size);
 }
@@ -55,7 +60,7 @@
 .column {
   /* Grow to share the row, but a lone day must not become one slab. */
   flex: 1 1 0;
-  max-width: 3rem;
+  max-width: 2rem;
   height: 100%;
   display: flex;
   align-items: flex-end;
@@ -63,6 +68,10 @@
 .column-fill {
   display: block;
   width: 100%;
+  background: var(--color-data-neutral);
+}
+/* The tallest column is ink, and the figcaption says which it is. */
+.column[data-peak="true"] .column-fill {
   background: var(--color-text-primary);
 }
 .columns figcaption {

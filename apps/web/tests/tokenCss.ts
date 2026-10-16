@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-// Reads the colour custom properties the way the browser would: tokens.generated.css, then tokens.aliases.css, then
+// Reads the colour custom properties the way the browser would: tokens.generated.css, then
 // globals.css (the order layout.tsx imports them), light block first and the prefers-color-scheme: dark overrides on top.
 // Values are resolved through var() chains to the hex the primitives hold. Shared by the contrast, palette and red tests.
 const DIR = path.join(__dirname, "../src/app");
-export const FILES = ["tokens.generated.css", "tokens.aliases.css", "globals.css"];
+export const FILES = ["tokens.generated.css", "globals.css"];
 
 function strip(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, "");

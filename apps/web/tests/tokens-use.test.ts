@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // ADR-111 / ADR-166: red means failure and nothing else (design pass 2 tightens it to the fault line and the failed word:
-// tests/tokens-colour-rules.test.ts pins the token side and a ratchet on this list's length; 32 before 5a, 26 after 5a, 7 after 5b, 6 after 5c (the form field error is ink with the word "Error:"):
+// tests/tokens-colour-rules.test.ts pins the token side and a ratchet on this list's length; 32 before 5a, 26 after 5a, 7 after 5b, 6 after 5c (the form field error is ink with the word "Error:"), 5 after 5d (the Analytics error column is ink and a number): the allow-list is now exactly the fault elements,
 // the run page's tinted rows, red headline, red counts, red finding bars, red drawer section and the red landing outline are gone).
 // The old and the new token names are both policed.
 // ADR-111: red means failure and nothing else. Any rule that reads --fail, --bad or their -bg tints must be on this allowlist
@@ -18,8 +18,7 @@ const ALLOWED: RegExp[] = [
   /^\.tl-fault(-label|::before)?$/, // the fault line (its ::before is the line itself) and its label
   /^\.wf-fault-(line|flag)/, // the same cut across the waterfall's lanes, and its flag
   /^\.run-fail-dash$/, // the miniature fault line before a failure sentence in the runs list (step 5a)
-  /^:root$/, // token definitions and aliases
-  /^\.column-fill\[data-tone="bad"\]/, // TODO(5d): the Analytics chart's error column, the last chart that paints a failure red
+  /^:root$/, // token definitions
 ];
 
 function rules(src: string): { selector: string; body: string }[] {
@@ -53,7 +52,8 @@ describe("red is for failure only", () => {
       expect(FILES).toContain(f);
   });
   it("finds the failure rules at all", () => {
-    expect(uses.length).toBeGreaterThanOrEqual(8);
+    // the floor only proves the scan finds the fault rules (7 today: step 5d removed the Analytics column rule that made it 8)
+    expect(uses.length).toBeGreaterThanOrEqual(5);
   });
   it("every rule that reads --fail/--bad is a failure selector", () => {
     const stray = uses.filter((u) => {

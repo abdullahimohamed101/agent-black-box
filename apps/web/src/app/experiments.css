@@ -101,3 +101,20 @@
     min-height: var(--layout-touch);
   }
 }
+/* The control notice: the "i" mark in its own column, the sentence and the list of changes beside it. */
+.experiment .notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+}
+.experiment .notice > * {
+  grid-column: 2;
+}
+.experiment .notice::before {
+  grid-column: 1;
+  grid-row: 1;
+}
+/* Row heads of the metrics table are plain: the figures are the content. */
+.experiment [data-testid="metrics"] tbody th {
+  font-weight: var(--weight-regular);
+}

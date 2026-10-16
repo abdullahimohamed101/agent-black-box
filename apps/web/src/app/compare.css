@@ -38,7 +38,7 @@
 }
 .evaluation-foot {
   margin: 0.35rem 0 0;
-  font-size: 0.85rem;
+  font-size: var(--type-body-size);
 }
 .evaluation-history {
   margin: 0.5rem 0;
@@ -78,7 +78,7 @@
   gap: 0.25rem 1rem;
   align-items: center;
   margin: 0 0 0.35rem;
-  font-size: 0.78rem;
+  font-size: var(--type-small-size);
   color: var(--color-text-secondary);
 }
 .compare-pick {
@@ -90,7 +90,7 @@ tr[data-picked="true"] {
 }
 .button-link {
   border: 1px solid var(--color-interactive-default);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   padding: 0.2rem 0.6rem;
 }
 

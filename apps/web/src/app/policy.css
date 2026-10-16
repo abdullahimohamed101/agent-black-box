@@ -261,8 +261,7 @@
   color: var(--color-text-primary);
   font-weight: var(--weight-strong);
 }
-.pol-editor textarea,
-.pol-viewer {
+.pol-editor textarea {
   box-sizing: border-box;
   display: block;
   width: 100%;
@@ -380,11 +379,6 @@
 .pol-viewer-wrap h3 {
   margin: 0 0 var(--space-2);
 }
-.pol-viewer {
-  height: 14rem;
-  padding: var(--space-2) 0;
-  background: var(--color-bg-raised);
-}
 pre.pol-diff {
   max-height: 20rem;
   margin: var(--space-2) 0;
@@ -434,7 +428,7 @@ pre.pol-diff {
 }
 .tl-prov {
   margin: 0 0.1rem 0 0.4rem;
-  font-size: 0.66rem;
+  font-size: var(--type-small-size);
 }
 .approval-banner {
   display: flex;

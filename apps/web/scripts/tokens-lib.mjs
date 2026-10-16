@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const TOKENS_PATH = path.join(ROOT, "design-tokens/tokens.json");
 export const GENERATED_CSS = path.join(ROOT, "src/app/tokens.generated.css");
-export const ALIASES_CSS = path.join(ROOT, "src/app/tokens.aliases.css");
 export const REPORT_MD = path.join(ROOT, "../../docs/design/pass-2/04-colour-type-tokens.md");
 
 export const loadTokens = () => JSON.parse(readFileSync(TOKENS_PATH, "utf8"));
@@ -174,20 +173,6 @@ export function renderTokensCss(tokens) {
   return css;
 }
 
-export function renderAliasesCss(tokens) {
-  const root = [];
-  const body = [];
-  for (const [name, a] of Object.entries(tokens.alias)) {
-    const target = a.to ? `var(${cssName(a.to, lookup(tokens, a.to))})` : null;
-    if (!target) continue; // status "kept": defined where it always was, nothing to emit
-    (a.scope === "body" ? body : root).push(`  --${name}: ${target};`);
-  }
-  let css = HEADER("alias section");
-  css += `/* The pre-pass-2 custom property names, as aliases of the new tokens, so every screen keeps working until its batch of step 5 rebuilds it (5b deleted the aliases nothing reads any more).\n   Status of each name (aliased, kept, deleted in step 5) is listed in docs/design/pass-2/04-colour-type-tokens.md. */\n`;
-  css += `:root {\n${root.join("\n")}\n}\nbody {\n${body.join("\n")}\n}\n`;
-  return css;
-}
-
 // ---- contrast ---------------------------------------------------------------------------------------------------
 
 export const TARGET = {
@@ -246,7 +231,7 @@ export function customPropertyInventory() {
   const files = [
     ...walkFiles(path.join(ROOT, "src"), [".css", ".ts", ".tsx"]),
     ...walkFiles(path.join(ROOT, "e2e"), [".ts"]),
-  ].filter((f) => !/tokens\.(generated|aliases)\.css$/.test(f));
+  ].filter((f) => !/tokens\.generated\.css$/.test(f));
   const text = files.map((f) => readFileSync(f, "utf8")).join("\n");
   const readers = (name) => text.split(`var(--${name}`).length - 1;
   return { defs: [...defs].sort(), readers };
@@ -372,7 +357,7 @@ export function renderSections(tokens) {
     counts.kept++;
     rows.push([`\`--${name}\``, "kept", "(unchanged)", String(inv.readers(name)), dataNote(name)]);
   }
-  sec.aliases = `${counts.aliased + counts.delete + counts.kept} old custom properties: ${counts.aliased} aliased to a faithful new token, ${counts.kept} kept unchanged, ${counts.delete} to be deleted in step 5 (their role is removed, or they alias a removed role).\n\n${table(["Old name", "Status", "Now", "Readers", "Note"], rows)}`;
+  sec.aliases = `${counts.aliased + counts.delete + counts.kept} custom properties outside the token file, none an alias (step 5d deleted the last four aliases and the alias file): ${counts.kept} kept as defined where they are used.\n\n${table(["Old name", "Status", "Now", "Readers", "Note"], rows)}`;
   return sec;
 }
 

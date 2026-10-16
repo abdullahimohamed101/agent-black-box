@@ -209,7 +209,7 @@
   color: var(--color-text-secondary);
 }
 .live-glyph {
-  font-size: 0.7em;
+  font-size: var(--type-small-size);
 }
 .live-bar[data-stream="live"] .live-glyph {
   color: var(--color-status-running);

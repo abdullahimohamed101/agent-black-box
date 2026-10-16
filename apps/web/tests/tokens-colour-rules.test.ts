@@ -108,6 +108,6 @@ describe("the one red line (tokens)", () => {
       .slice(src.indexOf("const ALLOWED"), src.indexOf("];", src.indexOf("const ALLOWED")))
       .split("\n")
       .filter((l) => /^\s+\//.test(l));
-    expect(entries.length).toBeLessThanOrEqual(6); // 32 before step 5a, 26 after it (runs list, notices), 7 after 5b (the run page), 6 after 5c (the form field error is ink)
+    expect(entries.length).toBe(5); // exactly the fault elements: badge word, fault line, waterfall cut, runs-list dash, :root; // 32 before step 5a, 26 after it (runs list, notices), 7 after 5b (the run page), 6 after 5c (the form field error is ink)
   });
 });

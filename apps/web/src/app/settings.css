@@ -118,8 +118,7 @@
 }
 
 /* ---- forms: label over field, helper text under, one primary button last ---- */
-.st .form,
-.st form.st-form {
+.st .form {
   display: grid;
   gap: var(--space-4);
   align-items: start;
@@ -361,8 +360,7 @@
   .st .table-wrap td:not([data-label]) {
     display: block;
   }
-  .st .form,
-  .st form.st-form {
+  .st .form {
     max-width: none;
   }
   .st .form.form-pairs {

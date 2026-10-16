@@ -4,7 +4,6 @@ import { Providers } from "@/components/Providers";
 // Token files first: globals.css and every later stylesheet read the custom properties they define (generated from
 // design-tokens/tokens.json; `pnpm tokens:build`).
 import "./tokens.generated.css";
-import "./tokens.aliases.css";
 import "./globals.css";
 import "./shell.css";
 import "./waterfall.css";

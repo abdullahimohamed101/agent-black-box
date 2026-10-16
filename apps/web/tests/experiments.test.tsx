@@ -8,7 +8,7 @@ import { WorkspaceProvider } from "@/components/WorkspaceProvider";
 import { fixtureReply } from "@/fixtures/api";
 import { fid } from "@/fixtures/ids";
 import type { ExperimentOut } from "@/lib/api/types";
-import { controlOf, parseConfig, warningText } from "@/lib/experiments";
+import { controlOf, parseConfig, verdictOf, warningText } from "@/lib/experiments";
 import type { WorkspaceContext } from "@/lib/workspace";
 import { BASE } from "./helpers";
 
@@ -310,5 +310,128 @@ describe("experiment helpers", () => {
     expect(warningText({ code: "something_new" as "unevaluated_runs", variant_id: null })).toBe(
       "something_new",
     );
+  });
+});
+
+// Step 5d: the page opens with which variant leads, in words, from the API's per-variant metrics only.
+describe("the winner in words", () => {
+  const dist = (v: number | null) => ({ mean: v, median: v, p95: v });
+  const mk = (
+    id: string,
+    name: string,
+    role: "baseline" | "candidate",
+    sr: number | null,
+    finished: number,
+    cost: number | null,
+  ) => ({
+    v: {
+      id,
+      name,
+      role,
+      config: {},
+      run_count: finished,
+      controlled: role === "baseline" ? null : true,
+      changed_variables: role === "baseline" ? null : ["model"],
+    },
+    m: {
+      variant_id: id,
+      runs: finished,
+      finished,
+      success_rate: sr,
+      retry_rate: 0,
+      tool_calls_mean: 1,
+      cost_usd: dist(cost),
+      duration_ms: dist(1),
+      failure_categories: {},
+      evaluations: [],
+    },
+  });
+  const exp = (...rows: ReturnType<typeof mk>[]) => ({
+    variants: rows.map((r) => r.v),
+    metrics: rows.map((r) => r.m),
+  });
+
+  it("names the variant with the higher success rate, both rates, the cost and how many runs it rests on", () => {
+    const v = verdictOf(
+      exp(
+        mk("a", "baseline", "baseline", 0.6, 10, 0.2),
+        mk("b", "new prompt", "candidate", 0.8, 10, 0.1),
+      ),
+    );
+    expect(v.kind).toBe("lead");
+    expect(v.leader).toBe("b");
+    expect(v.text).toBe(
+      "new prompt leads on success rate: 80% against 60% for baseline. It also cost less, at a median $0.10 against $0.20. Based on 10 finished runs for new prompt and 10 for baseline.",
+    );
+  });
+
+  it("says so when the leader cost more, and when too few runs back it", () => {
+    const v = verdictOf(
+      exp(
+        mk("a", "baseline", "baseline", 1, 1, 0.17),
+        mk("b", "wrong fix", "candidate", 0, 1, 0.14),
+      ),
+    );
+    expect(v.leader).toBe("a");
+    expect(v.text).toContain("baseline leads on success rate: 100% against 0% for wrong fix.");
+    expect(v.text).toContain("It cost more, at a median $0.17 against $0.14.");
+    expect(v.text).toContain("Based on 1 finished run for baseline and 1 for wrong fix.");
+    expect(v.text).toMatch(/too few to be sure\.$/);
+  });
+
+  it("a tie on success is broken by the median cost, in words, and a full tie names no one", () => {
+    const cheaper = verdictOf(
+      exp(
+        mk("a", "baseline", "baseline", 0.9, 8, 0.3),
+        mk("b", "small model", "candidate", 0.9, 8, 0.1),
+      ),
+    );
+    expect(cheaper.leader).toBe("b");
+    expect(cheaper.text).toContain(
+      "small model and baseline both succeeded in 90% of runs, and small model cost less",
+    );
+    const tie = verdictOf(
+      exp(mk("a", "baseline", "baseline", 0.9, 8, 0.3), mk("b", "same", "candidate", 0.9, 8, 0.3)),
+    );
+    expect(tie.kind).toBe("tie");
+    expect(tie.leader).toBeNull();
+    expect(tie.text).toContain(
+      "No variant leads: baseline and same both succeeded in 90% of runs.",
+    );
+    expect(tie.text).toContain("The median cost is the same, $0.30.");
+  });
+
+  it("says there is not enough to compare when fewer than two variants have finished runs", () => {
+    const v = verdictOf(
+      exp(mk("a", "baseline", "baseline", 1, 3, 0.1), mk("b", "empty", "candidate", null, 0, null)),
+    );
+    expect(v.kind).toBe("none");
+    expect(v.text).toBe(
+      "Not enough finished runs to compare yet: attach finished runs to at least two variants.",
+    );
+  });
+
+  it("the page opens with the sentence, and the chart marks the leader while the words say it", async () => {
+    stub();
+    detail(CONTROLLED);
+    const sentence = await screen.findByTestId("experiment-verdict");
+    expect(sentence).toHaveAttribute("data-verdict", "lead");
+    expect(sentence).toHaveTextContent(/leads on success rate: 100% against 0%/);
+    const bars = screen.getByRole("list", { name: "Success rate by variant" });
+    const items = within(bars).getAllByRole("listitem");
+    expect(items.map((i) => i.textContent)).toEqual(["baseline100%", "wrong fix0%"]);
+    expect(items[0]).toHaveAttribute("data-lead", "true");
+    // the sentence comes before the control notice and the tables
+    const banner = screen.getByTestId("control-banner");
+    expect(
+      sentence.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("an experiment without finished runs says there is nothing to compare, and draws no chart", async () => {
+    stub();
+    detail(UNCONTROLLED);
+    expect(await screen.findByTestId("experiment-verdict")).toHaveAttribute("data-verdict", "none");
+    expect(screen.queryByRole("list", { name: "Success rate by variant" })).toBeNull();
   });
 });

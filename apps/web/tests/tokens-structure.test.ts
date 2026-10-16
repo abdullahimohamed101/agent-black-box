@@ -1,8 +1,7 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  ALIASES_CSS,
   GENERATED_CSS,
   REPORT_MD,
   applySections,
@@ -11,7 +10,6 @@ import {
   leaves,
   loadTokens,
   lookup,
-  renderAliasesCss,
   renderSections,
   renderTokensCss,
   resolveValue,
@@ -136,18 +134,18 @@ describe("generated artifacts are current", () => {
   it("tokens.generated.css matches tokens.json", () => {
     expect(readFileSync(GENERATED_CSS, "utf8")).toBe(renderTokensCss(tokens));
   });
-  it("tokens.aliases.css matches tokens.json", () => {
-    expect(readFileSync(ALIASES_CSS, "utf8")).toBe(renderAliasesCss(tokens));
+  it("tokens.aliases.css is gone: the old custom property names have no alias layer any more (step 5d)", () => {
+    expect(existsSync(path.join(__dirname, "../src/app/tokens.aliases.css"))).toBe(false);
+    expect(Object.values<{ to?: string }>(tokens.alias).filter((a) => a.to)).toEqual([]);
   });
   it("04-colour-type-tokens.md tables match tokens.json", () => {
     const md = readFileSync(REPORT_MD, "utf8");
     expect(applySections(md, renderSections(tokens))).toBe(md);
   });
-  it("both generated files carry the do-not-edit header", () => {
-    for (const f of [GENERATED_CSS, ALIASES_CSS])
-      expect(readFileSync(f, "utf8").startsWith("/* generated: do not edit.")).toBe(true);
+  it("the generated file carries the do-not-edit header", () => {
+    expect(readFileSync(GENERATED_CSS, "utf8").startsWith("/* generated: do not edit.")).toBe(true);
   });
-  it("every pre-pass-2 custom property still resolves: defined in the alias file or in a stylesheet", () => {
+  it("every pre-pass-2 custom property still resolves: defined in a stylesheet", () => {
     const dir = path.join(__dirname, "../src/app");
     const defined = new Set<string>();
     for (const f of readdirSync(dir).filter((x) => x.endsWith(".css")))

@@ -1,20 +1,11 @@
-// Generates src/app/tokens.generated.css and src/app/tokens.aliases.css from design-tokens/tokens.json.
-//   node scripts/tokens-build.mjs          write both files
-//   node scripts/tokens-build.mjs --check  exit 1 when either file differs from what tokens.json produces
+// Generates src/app/tokens.generated.css from design-tokens/tokens.json (the aliases file is gone since step 5d: no old name is left).
+//   node scripts/tokens-build.mjs          write the file
+//   node scripts/tokens-build.mjs --check  exit 1 when it differs from what tokens.json produces
 import { readFileSync, writeFileSync } from "node:fs";
-import {
-  ALIASES_CSS,
-  GENERATED_CSS,
-  loadTokens,
-  renderAliasesCss,
-  renderTokensCss,
-} from "./tokens-lib.mjs";
+import { GENERATED_CSS, loadTokens, renderTokensCss } from "./tokens-lib.mjs";
 
 const tokens = loadTokens();
-const outputs = [
-  [GENERATED_CSS, renderTokensCss(tokens)],
-  [ALIASES_CSS, renderAliasesCss(tokens)],
-];
+const outputs = [[GENERATED_CSS, renderTokensCss(tokens)]];
 const check = process.argv.includes("--check");
 let stale = 0;
 for (const [file, css] of outputs) {
@@ -32,4 +23,4 @@ for (const [file, css] of outputs) {
   } else writeFileSync(file, css);
 }
 if (check && stale) process.exit(1);
-if (!check) console.log(`wrote ${outputs.length} files`);
+if (!check) console.log(`wrote ${outputs.length} file`);

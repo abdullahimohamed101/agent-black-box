@@ -37,6 +37,11 @@ describe.each(Object.keys(themes))("%s palette", (name) => {
       "sel",
       "fail",
       "wait",
+      // deleted in step 5d with tokens.aliases.css
+      "border",
+      "mono",
+      "fs-headline",
+      "fs-small",
       "fs-title",
       "fs-body",
       "ease-out",

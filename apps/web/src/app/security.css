@@ -146,9 +146,6 @@
 }
 
 /* The workspace Security page. */
-.sec-page .page-head {
-  align-items: baseline;
-}
 .sec-table td.title {
   min-width: 14rem;
 }
@@ -160,11 +157,6 @@
 }
 .sec-table tbody tr:hover {
   background: color-mix(in srgb, var(--color-bg-wash) 50%, transparent);
-}
-.sec-count {
-  color: var(--color-text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--type-small-size);
 }
 .sec-count-line {
   margin: var(--space-2) 0 0;
@@ -275,7 +267,7 @@
 .sec-skel {
   display: inline-block;
   height: 0.8rem;
-  border-radius: 3px;
+  border-radius: var(--radius-control);
   background: var(--color-border-subtle);
 }
 

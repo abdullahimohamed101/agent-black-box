@@ -12,10 +12,9 @@ hand-written.
 | --- | --- |
 | `apps/web/design-tokens/tokens.json` | the one source: primitives, semantic tokens (light and dark), type, space, layout, radius, motion, the alias map, the contrast pair list |
 | `apps/web/scripts/tokens-lib.mjs` | OKLCH to sRGB conversion, contrast maths, CSS and report renderers (stdlib node, no dependency) |
-| `apps/web/scripts/tokens-build.mjs` | writes (or with `--check` verifies) `src/app/tokens.generated.css` and `src/app/tokens.aliases.css` |
+| `apps/web/scripts/tokens-build.mjs` | writes (or with `--check` verifies) `src/app/tokens.generated.css` |
 | `apps/web/scripts/tokens-report.mjs` | rewrites (or checks) the tables in this file and exits 1 when a pair is below target |
 | `apps/web/src/app/tokens.generated.css` | `--color-*`, `--type-*`, `--weight-*`, `--font-*`, `--measure`, `--space-*`, `--layout-*`, `--radius-*`, `--motion-*` (generated: do not edit) |
-| `apps/web/src/app/tokens.aliases.css` | the old names (`--bg`, `--ink`, ...) as aliases of the new tokens (generated: do not edit) |
 | `apps/web/tests/tokens-structure.test.ts`, `tokens-contrast-computed.test.ts`, `tokens-colour-rules.test.ts` | structure and freshness, the computed contrast gate, the raw-colour and red-line ratchets |
 | `apps/web/tests/tokenCss.ts` | reads the colour properties the way the browser loads them, for the older token tests |
 
@@ -286,23 +285,20 @@ $contrast                             the pair list the computed table and the t
 Rules: components read semantic tokens only (never `color.primitive.*`); a new role needs a row in `$contrast`; a literal colour in
 a stylesheet fails `tests/tokens-colour-rules.test.ts`.
 
-## 5. The alias layer: status of every pre-pass-2 custom property
+## 5. The alias layer: gone (step 5d)
 
-Nothing was deleted in step 4. "Readers" counts `var(--name` occurrences in `src/**` and `e2e/**` (CSS, TSX and inline styles);
-the older token tests read values by name through `tests/tokenCss.ts`. Status: **aliased** = now resolves to a new token,
-step 5 migrates the readers and deletes the alias; **kept** = unchanged value and definition (no token for it yet);
-**deleted in step 5** = the role is removed by the direction (or it is an ADR-111 alias of a removed role), kept alive only so
-the old screens keep working.
+Step 4 kept every pre-pass-2 custom property alive as an alias; steps 5a to 5c migrated their readers and deleted the aliases that
+nothing read any more, and step 5d migrated the last four (`--border`, `--mono`, `--fs-headline`, `--fs-small`, whose only reader
+was `analytics.css`) and **deleted `tokens.aliases.css`**, its generator and the `layout.tsx` import. There is no alias layer: a
+stylesheet reads `--color-*`, `--type-*`, `--space-*`, `--layout-*`, `--radius-*`, `--font-*` or a name it defines itself. What the
+table lists are custom properties defined next to their readers (motion durations of the motion contract, the waterfall's lane
+widths, component-local tones); "Readers" counts `var(--name` occurrences in `src/**` and `e2e/**`.
 
 <!-- tokens:report:aliases:start -->
-31 old custom properties: 4 aliased to a faithful new token, 27 kept unchanged, 0 to be deleted in step 5 (their role is removed, or they alias a removed role).
+27 custom properties outside the token file, none an alias (step 5d deleted the last four aliases and the alias file): 27 kept as defined where they are used.
 
 | Old name | Status | Now | Readers | Note |
 | --- | --- | --- | --- | --- |
-| `--border` | aliased | `--color-border-subtle` | 1 |  |
-| `--mono` | aliased | `--font-mono` | 2 |  |
-| `--fs-headline` | aliased | `--type-h1-size` | 1 |  |
-| `--fs-small` | aliased | `--type-small-size` | 1 |  |
 | `--t-fast` | kept | (defined in globals.css, unchanged) | 0 | motion contract (tests/motion-contract.test.ts reads globals.css); motion.duration.* are the new names, step 5 aliases these |
 | `--t-base` | kept | (defined in globals.css, unchanged) | 0 | as --t-fast |
 | `--t-slow` | kept | (defined in globals.css, unchanged) | 0 | as --t-fast |
@@ -343,9 +339,7 @@ Axe stays clean on every route in both schemes (the fixtures Playwright run, `e2
 
 ## 7. Handed to step 5
 
-1. Migrate readers off the aliases (counts above) onto `--color-*`, `--type-*`, `--space-*`, `--radius-*`, then delete each alias
-   and its `color.legacy.*` token; `tokens:check` and `tests/tokens-structure.test.ts` ("every pre-pass-2 custom property still
-   resolves") guard it.
+1. (done in 5a to 5d) Migrate readers off the aliases and delete them; `tokens.aliases.css` no longer exists.
 2. Shrink the ratchets to zero: the red allow-list in `tests/tokens-use.test.ts` (KI-272), the raw-colour counts in
    `tests/tokens-colour-rules.test.ts` (KI-271).
 3. Delete the Condensed and Serif faces, files, `--cond`, `--serif` and the 500 weight (KI-273); move controls to

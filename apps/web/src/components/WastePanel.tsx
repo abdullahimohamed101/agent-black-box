@@ -59,7 +59,7 @@ export function WastePanel({
               <p className="muted waste-note">{t.waste.basis}</p>
               <div className="two-col">
                 <div>
-                  <h3>{t.cost.byAgent}</h3>
+                  <h3>{t.waste.byAgent}</h3>
                   <BarList
                     caption="Wasted spend by agent"
                     bars={w.by_agent.map((a) => ({
@@ -77,7 +77,7 @@ export function WastePanel({
                   )}
                 </div>
                 <div>
-                  <h3>{t.cost.byModel}</h3>
+                  <h3>{t.waste.byModel}</h3>
                   <BarList
                     caption="Wasted spend by model"
                     bars={w.by_model.map((m) => ({

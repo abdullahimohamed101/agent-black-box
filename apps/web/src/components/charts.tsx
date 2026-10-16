@@ -69,7 +69,12 @@ export function DayColumns({
     <figure className="columns">
       <div className="column-row" aria-hidden="true">
         {days.map((d) => (
-          <div key={d.label} className="column" title={`${d.label}: ${d.display}`}>
+          <div
+            key={d.label}
+            className="column"
+            data-peak={top === d ? "true" : undefined}
+            title={`${d.label}: ${d.display}`}
+          >
             <span
               className="column-fill"
               style={{

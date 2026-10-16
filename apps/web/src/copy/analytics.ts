@@ -7,11 +7,13 @@ export type Report = (typeof REPORTS)[number];
 export const parseReport = (v: string | null | undefined): Report =>
   REPORTS.find((r) => r === v) ?? "cost";
 
+/** A rate that rounds to 0% is left out of a sentence. */
+const shown = (r: number | null | undefined) => r != null && Math.round(r * 100) > 0;
 const pct = (r: number | null | undefined) => (r == null ? null : `${Math.round(r * 100)}%`);
 
-/** "today" or "the last 7 days": the window in words, for the headline sentences. */
+/** "today" or "in the last 7 days": the window in words, for the headline sentences. */
 export const windowPhrase = (days: number): string =>
-  days === 1 ? "today" : `the last ${days} days`;
+  days === 1 ? "today" : `in the last ${days} days`;
 
 export const analytics = {
   title: "Analytics",
@@ -48,7 +50,7 @@ export const analytics = {
     byAgent: "By agent",
     byModel: "By model",
     unknownModel: "(unknown model)",
-    calls: (n: number) => `${formatInt(n)} calls`,
+    calls: (n: number) => `${formatInt(n)} call${n === 1 ? "" : "s"}`,
     unpriced: (n: number) => `${n} unpriced`,
     sources: "Where the cost figures come from",
     sourceLabel: {
@@ -113,6 +115,8 @@ export const analytics = {
     loading: "Loading wasted spend",
     emptyTitle: "Nothing was wasted in this window",
     emptyBody: "No run failed or retried with a cost.",
+    byAgent: "Wasted by agent",
+    byModel: "Wasted by model",
     basis:
       "Spend on runs that failed, timed out or were blocked, plus retries in the runs that did not. Retries inside a failed run are already in its spend.",
   },
@@ -135,10 +139,10 @@ export function costHeadline(h: Headline, days: number): string {
       ? null
       : `${formatCost(h.per_successful_run_usd)} per successful run`,
   ].filter((x): x is string => x !== null);
-  const lead = `${formatCost(h.total_usd)} spent in ${windowPhrase(days)}`;
+  const lead = `${formatCost(h.total_usd)} spent ${windowPhrase(days)}`;
   const body = per.length ? `${lead}, ${per.join(" and ")}.` : `${lead}.`;
   return h.unpriced_calls > 0
-    ? `${body} ${formatInt(h.unpriced_calls)} model call${h.unpriced_calls === 1 ? " has" : "s have"} no price and count as $0.`
+    ? `${body} ${formatInt(h.unpriced_calls)} model call${h.unpriced_calls === 1 ? " has no price and counts" : "s have no price and count"} as $0.`
     : body;
 }
 
@@ -148,18 +152,18 @@ type Rates = {
   timeout_rate: number | null;
   retry_rate: number | null;
 };
-/** "50% of finished runs succeeded in the last 7 days; 25% failed and 25% timed out. 10% had a retry." */
+/** "50% of finished runs succeeded in the last 7 days; 25% failed and 25% timed out. 10% had at least one retry." A rate of zero is left out. */
 export function reliabilityHeadline(r: Rates, days: number): string {
   const when = windowPhrase(days);
   const success = pct(r.success_rate);
-  if (success === null) return `No runs finished in ${when}.`;
+  if (success === null) return `No runs finished ${when}.`;
   const bad = [
-    pct(r.failure_rate) && `${pct(r.failure_rate)} failed`,
-    pct(r.timeout_rate) && `${pct(r.timeout_rate)} timed out`,
+    shown(r.failure_rate) && `${pct(r.failure_rate)} failed`,
+    shown(r.timeout_rate) && `${pct(r.timeout_rate)} timed out`,
   ].filter((x): x is string => !!x);
-  const head = `${success} of finished runs succeeded in ${when}`;
-  const mid = bad.length ? `; ${bad.join(" and ")}.` : ".";
-  const retry = pct(r.retry_rate);
+  const head = `${success} of finished runs succeeded ${when}`;
+  const mid = bad.length ? `; ${bad.join(" and ")}.` : "; none failed or timed out.";
+  const retry = shown(r.retry_rate) ? pct(r.retry_rate) : null;
   return retry ? `${head}${mid} ${retry} had at least one retry.` : `${head}${mid}`;
 }
 
@@ -168,6 +172,6 @@ export function performanceHeadline(
   run: { p50_ms: number | null; p95_ms: number | null },
   days: number,
 ): string {
-  if (run.p50_ms == null || run.p95_ms == null) return `No timed runs in ${windowPhrase(days)}.`;
-  return `Half of runs finished within ${formatDuration(run.p50_ms)} and 95% within ${formatDuration(run.p95_ms)} in ${windowPhrase(days)}.`;
+  if (run.p50_ms == null || run.p95_ms == null) return `No timed runs ${windowPhrase(days)}.`;
+  return `Half of runs finished within ${formatDuration(run.p50_ms)} and 95% within ${formatDuration(run.p95_ms)} ${windowPhrase(days)}.`;
 }
