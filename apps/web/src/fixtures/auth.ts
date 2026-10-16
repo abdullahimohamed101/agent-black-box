@@ -13,11 +13,11 @@ const OWNER_PERMISSIONS = [
   "payload.read", "pricing.read", "pricing.write", "project.read", "project.write", "run.read",
   "workspace.read", "evaluation.read", "evaluation.run", "evaluation.label", "evaluator.write",
   "experiment.read", "experiment.write", "approval.read", "approval.decide", "policy.read", "policy.write",
-  "alert.read", "alert.write", "alert.destination.read",
+  "alert.read", "alert.write", "alert.destination.read", "retention.read", "retention.write",
 ]; // prettier-ignore
 const VIEWER_PERMISSIONS = [
   "analytics.read", "member.read", "pricing.read", "project.read", "run.read", "workspace.read",
-  "evaluation.read", "experiment.read", "alert.read",
+  "evaluation.read", "experiment.read", "alert.read", "retention.read",
 ]; // prettier-ignore
 
 export const FIXTURE_USER = {

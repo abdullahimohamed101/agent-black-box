@@ -7,10 +7,12 @@ import {
   fixtureWorkspaceReply,
   type Viewer,
 } from "./evaluations";
-import { fixtureRuns } from "./index";
+import { fixtureRuns, fixtureServedRuns } from "./index";
+import { TRACE_STATE_AGENT } from "./traceStateRuns";
 import { fixtureAlertReply } from "./alerts";
 import { fixturePolicyReply } from "./policies";
 import { fixtureQuotas } from "./quotas";
+import { fixtureRetention } from "./retention";
 import { fixtureSecurityDetectors, fixtureSecurityList, fixtureSecuritySettings } from "./security";
 import { withholdEvent, withholdSpan } from "./withhold";
 import { FixtureForbiddenError, FixtureQueryError, fixtureSearch } from "./search";
@@ -86,7 +88,13 @@ export function fixtureReply(
     return fixtureSecuritySettings(runId, undefined, viewer.content);
   if (v1 === "v1" && runs === "projects" && runId && sub === "quotas")
     return fixtureQuotas(runId, undefined, viewer.content);
-  const all = fixtureRuns();
+  if (v1 === "v1" && runs === "workspaces" && runId && sub === "retention")
+    return fixtureRetention(runId, eventId, q, undefined, viewer.content);
+  // The two runs whose trace retention removed (ADR-160) are reachable by id and by `agent_id=report-agent`, and stay out
+  // of the default list, so the many tests and screens that count the fixture runs keep their numbers.
+  const everything = fixtureServedRuns();
+  const wantsRetained = !runId && q.get("agent_id") === TRACE_STATE_AGENT;
+  const all = runId || wantsRetained ? everything : fixtureRuns();
   if (v1 === "v1" && (runs === "evaluators" || runs === "experiments")) {
     return fixtureWorkspaceReply(segments, all, viewer) ?? notFound("NOT_FOUND", "Not found.");
   }
@@ -164,6 +172,21 @@ export function fixtureReply(
     const withId = q.get("with_run_id");
     const other = withId ? all.find((x) => x.run.id === withId) : undefined;
     if (!other) return notFound("RUN_NOT_FOUND", "Run not found.");
+    // Like the API (ADR-160): comparing a run whose trace is gone is a conflict, not a comparison of nothing.
+    if (f.run.trace_state !== "available" || other.run.trace_state !== "available")
+      return {
+        status: 409,
+        body: {
+          error: {
+            code: "TRACE_EXPIRED",
+            message: "The run's trace is no longer stored.",
+            category: "CONFLICT",
+            retryable: false,
+            request_id: "req_fixture",
+            details: {},
+          },
+        },
+      };
     return { status: 200, body: fixtureComparison(f, other, viewer) };
   }
   if (sub !== "events") return notFound("NOT_FOUND", "Not found.");

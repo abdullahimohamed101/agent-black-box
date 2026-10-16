@@ -8,6 +8,7 @@ import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
 import { useEventDetail, useRun, useRunEvents, useRunFindings } from "@/lib/queries";
 import { useTimers } from "@/lib/useTimers";
+import { traceAvailable } from "@/lib/traceState";
 import { headlineKind, headlineModel, replayHeadline } from "@/lib/runHeadline";
 import { ageSeconds, pendingApproval } from "@/lib/policy";
 import { useApproval } from "@/lib/policyApi";
@@ -50,6 +51,7 @@ import { RunHeadline } from "./RunHeadline";
 import { StatusBadge } from "./StatusBadge";
 import { ReplayTransport } from "./ReplayTransport";
 import { ErrorState, Loading } from "./States";
+import { TraceNotice } from "./TraceNotice";
 import { useCan, useWorkspaceOptional } from "./WorkspaceProvider";
 import { Timeline } from "./Timeline";
 import { ViewSwitch, type RunView } from "./ViewSwitch";
@@ -213,6 +215,7 @@ function useFollowCount(replaying: boolean, shownCount: number, arrived: number)
 }
 
 const NO_IDS: ReadonlySet<string> = new Set();
+const NO_EVENTS: readonly EventOut[] = [];
 const MAX_NEW_IDS = 200;
 
 export function RunDetail({
@@ -225,9 +228,14 @@ export function RunDetail({
   live?: boolean;
 }) {
   const run = useRun(runId);
+  // The trace detail is shown only when the run says it is stored. While retention removes it the events endpoint answers
+  // with partial data (KI-198) and afterwards with nothing, so once the run says otherwise nothing more is requested
+  // (no paging, polling, stream or context queries) and nothing of it is shown. The first events page is requested
+  // alongside the run, as before, so the header does not wait for a second round trip on every run page.
+  const available = traceAvailable(run.data?.trace_state);
   const eventCount = num(run.data?.summary["event_count"]) ?? undefined;
   const active = run.data ? isActive(run.data.status) : true;
-  const ev = useRunEvents(runId, active);
+  const ev = useRunEvents(runId, active, !run.data || available);
   const {
     hasNextPage,
     isFetchingNextPage,
@@ -240,20 +248,20 @@ export function RunDetail({
   // pageCount is a dependency so a page that lands without an observed `isFetchingNextPage` toggle still triggers the next.
   const pageCount = ev.data?.pages.length ?? 0;
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && !evError) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
+    if (available && hasNextPage && !isFetchingNextPage && !evError) void fetchNextPage();
+  }, [available, hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
 
   const restEvents = useMemo(() => ev.data?.pages.flatMap((p) => p.items) ?? [], [ev.data]);
   const restComplete = ev.isSuccess && !hasNextPage;
   const refetchRun = run.refetch;
   const stream = useLiveEvents(runId, {
-    enabled: live && active && !!run.data,
+    enabled: live && active && available,
     restEvents,
     restComplete,
     reconcile: () => void refetchEvents(),
     onEnd: () => void refetchRun(),
   });
-  const events = stream.events;
+  const events = available ? stream.events : NO_EVENTS;
   const streaming =
     stream.state === "connecting" || stream.state === "live" || stream.state === "reconnecting";
 
@@ -262,7 +270,7 @@ export function RunDetail({
   const seen = useRef<string | null>(null);
   const marker = run.data ? `${eventCount ?? ""}|${run.data.status}` : null;
   useEffect(() => {
-    if (marker == null || streaming) return;
+    if (marker == null || streaming || !available) return;
     if (
       seen.current !== null &&
       seen.current !== marker &&
@@ -271,7 +279,7 @@ export function RunDetail({
       void refetchEvents();
     }
     seen.current = marker;
-  }, [marker, active, streaming, refetchEvents, run.data?.status]);
+  }, [marker, active, streaming, available, refetchEvents, run.data?.status]);
 
   // Timeline or waterfall, kept in the URL (`?view=waterfall`) so a link to the waterfall is shareable.
   const pathname = usePathname();
@@ -606,7 +614,7 @@ export function RunDetail({
   // `?finding=<id>` (a row of the workspace Security page): open the column, mark the finding, show its evidence.
   const wantedFinding = params?.get("finding") ?? null;
   const handledFinding = useRef<string | null>(null);
-  const deepFindings = useRunFindings(runId, false).data;
+  const deepFindings = useRunFindings(runId, false, available).data;
   const focusId =
     wantedFinding &&
     deepFindings?.items.some((f) => f.id === wantedFinding && f.category === "security")
@@ -656,6 +664,7 @@ export function RunDetail({
   if (run.isError) return <ErrorState error={run.error} onRetry={() => void run.refetch()} />;
   const r = run.data;
   const s = r.summary;
+  const gone = r.trace_state !== "available" ? r.trace_state : null;
   const total = Math.max(eventCount ?? 0, events.length);
   const nowDoing = active || stream.state !== "off" ? liveStatus(events) : null;
   const loadingMore = ev.isPending || hasNextPage || isFetchingNextPage;
@@ -703,7 +712,7 @@ export function RunDetail({
             {formatTimestamp(r.started_at)}
           </span>
         </div>
-        {headlineFailed ? (
+        {gone ? null : headlineFailed ? (
           <RunHeadline kind={kind} variant="error" onRetry={() => void refetchEvents()} />
         ) : headlineLoading ? (
           <RunHeadline kind={kind} variant="skeleton" />
@@ -774,261 +783,274 @@ export function RunDetail({
         </dl>
       </header>
 
-      <div className="pane-head">
-        <ViewSwitch
-          view={view}
-          onChange={changeView}
-          counts={{
-            timeline: events.length ? formatInt(events.length) : undefined,
-            evidence: evidence.length ? formatInt(evidence.length) : undefined,
-          }}
-        />
-        <div className="pane-actions">
-          <button
-            type="button"
-            className="context-toggle"
-            aria-pressed={!contextClosed}
-            aria-controls="run-context"
-            onClick={toggleContext}
-          >
-            Context
-            <ContextSummary runId={runId} poll={active || r.summary_state === "processing"} />
-          </button>
-          <button
-            ref={replayButton}
-            type="button"
-            className="context-toggle replay-toggle"
-            aria-pressed={replay.mode}
-            aria-keyshortcuts="r"
-            disabled={events.length === 0 && !replay.mode}
-            onClick={replay.toggleMode}
-          >
-            Replay <kbd aria-hidden="true">r</kbd>
-          </button>
-        </div>
-      </div>
-
-      {replay.mode && <ReplayTransport replay={replay} skewed={skewed} />}
-
-      <div
-        className="work"
-        data-inspector={inspected ? "open" : "closed"}
-        data-context={contextClosed ? "closed" : "open"}
-        data-compact={(!contextClosed && !!inspected && compactWindow && !inspectorPx) || undefined}
-        data-fault-intro={faultIntro || undefined}
-        style={
-          inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
-        }
-      >
-        {/* Scrolls on its own, so it takes a tab stop: a scrollable region with nothing focusable in it is unreachable by keyboard. */}
-        <aside
-          id="run-context"
-          className="context"
-          aria-label="Run context"
-          tabIndex={contextClosed ? undefined : 0}
-          ref={contextRef}
-        >
-          <button
-            type="button"
-            className="context-strip"
-            onClick={() => {
-              focusContext.current = true;
-              setContextPref(squeezedWindow && inspected ? "pinned" : "open");
-            }}
-            aria-label="Show run context"
-            aria-expanded="false"
-            aria-controls="run-context"
-            tabIndex={contextClosed ? 0 : -1}
-          >
-            <ContextStripBody
-              runId={runId}
-              poll={active || r.summary_state === "processing"}
-              agents={multiAgent ? agents.length : 0}
-            />
-          </button>
-          <div className="context-body" inert={contextClosed || undefined}>
-            {replay.mode && (
-              <p className="replay-ctx-note muted" data-testid="replay-context-note">
-                Findings and agent totals reflect the whole run.
-              </p>
-            )}
-            <SecurityFindings
-              runId={runId}
-              projectId={r.project_id}
-              poll={active || r.summary_state === "processing"}
-              focusId={focusId}
-              onShowEvent={jumpTo}
-            />
-            {/* Findings first: they are why the column is opened (D3). */}
-            <Findings
-              runId={runId}
-              runActive={active}
-              summaryProcessing={r.summary_state === "processing"}
-              onShowEvent={jumpTo}
-            />
-
-            <CodingSummary
-              events={shown}
-              onOpen={(id) => {
-                setFilters(NO_FILTERS);
-                setSelected(id);
-                setDrawerEventId(id);
+      {gone ? (
+        <TraceNotice state={gone} />
+      ) : (
+        <>
+          <div className="pane-head">
+            <ViewSwitch
+              view={view}
+              onChange={changeView}
+              counts={{
+                timeline: events.length ? formatInt(events.length) : undefined,
+                evidence: evidence.length ? formatInt(evidence.length) : undefined,
               }}
             />
-
-            {multiAgent && (
-              <AgentTree
-                rows={agents}
-                current={rs?.currentAgent ?? null}
-                active={filters.agents ?? null}
-                onToggle={toggleAgent}
-                onClear={() => setFilters((f) => ({ ...f, agents: null }))}
-              />
-            )}
-
-            <Evaluations runId={runId} onShowEvent={jumpTo} />
-          </div>
-        </aside>
-
-        <section aria-labelledby="tl-h" className="pane">
-          <h2 id="tl-h" className="sr-only">
-            {view === "waterfall" ? "Waterfall" : view === "evidence" ? "Evidence" : "Timeline"}
-          </h2>
-          {view === "timeline" && (
-            <div className="toolbar tl-toolbar" role="group" aria-label="Timeline filters">
-              <FilterMenu
-                classes={filters.classes}
-                onToggle={toggleClass}
-                onReset={() => setFilters((f) => ({ ...f, classes: null }))}
-              />
-              <label className="chip">
-                <input
-                  type="checkbox"
-                  checked={filters.errorsOnly}
-                  onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
-                />
-                Errors only
-              </label>
+            <div className="pane-actions">
               <button
                 type="button"
-                disabled={allGroups.length === 0}
-                onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allGroups))}
+                className="context-toggle"
+                aria-pressed={!contextClosed}
+                aria-controls="run-context"
+                onClick={toggleContext}
               >
-                {collapsed.size ? "Expand groups" : "Collapse groups"}
+                Context
+                <ContextSummary runId={runId} poll={active || r.summary_state === "processing"} />
+              </button>
+              <button
+                ref={replayButton}
+                type="button"
+                className="context-toggle replay-toggle"
+                aria-pressed={replay.mode}
+                aria-keyshortcuts="r"
+                disabled={events.length === 0 && !replay.mode}
+                onClick={replay.toggleMode}
+              >
+                Replay <kbd aria-hidden="true">r</kbd>
               </button>
             </div>
-          )}
-          {drawerId && !loadedDrawerEvent && (
-            <p
-              role={remoteDrawer.isError ? "alert" : "status"}
-              className="notice"
-              data-testid="event-notice"
+          </div>
+
+          {replay.mode && <ReplayTransport replay={replay} skewed={skewed} />}
+
+          <div
+            className="work"
+            data-inspector={inspected ? "open" : "closed"}
+            data-context={contextClosed ? "closed" : "open"}
+            data-compact={
+              (!contextClosed && !!inspected && compactWindow && !inspectorPx) || undefined
+            }
+            data-fault-intro={faultIntro || undefined}
+            style={
+              inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
+            }
+          >
+            {/* Scrolls on its own, so it takes a tab stop: a scrollable region with nothing focusable in it is unreachable by keyboard. */}
+            <aside
+              id="run-context"
+              className="context"
+              aria-label="Run context"
+              tabIndex={contextClosed ? undefined : 0}
+              ref={contextRef}
             >
-              {remoteDrawer.isError
-                ? "That event could not be loaded; it may not exist in this run."
-                : "Loading the event…"}{" "}
-              <button type="button" onClick={() => setDrawerEventId(null)}>
-                Dismiss
-              </button>
-            </p>
-          )}
-          {rs && view === "evidence" && (
-            <p className="notice replay-note" data-testid="replay-evidence-note">
-              Evidence shows the whole run.
-            </p>
-          )}
-          {ev.isError && events.length === 0 ? (
-            <ErrorState error={ev.error} onRetry={() => void ev.refetch()} />
-          ) : events.length === 0 && !ev.isPending ? (
-            <p className="state">This run has no events yet.</p>
-          ) : events.length === 0 ? (
-            <Loading label="Loading events" />
-          ) : view === "timeline" && rows.length === 0 ? (
-            <div className="state" data-state="empty">
-              <p className="state-title">No events match these filters</p>
-              <button type="button" onClick={() => setFilters(NO_FILTERS)}>
-                Clear filters
-              </button>
-            </div>
-          ) : (
-            <div className="pane-body" key={view} ref={timelineWrap}>
-              {view === "evidence" ? (
-                <EvidenceList rows={evidence} t0={t0} selectedEventId={selected} onOpen={jumpTo} />
-              ) : view === "timeline" ? (
-                <Timeline
-                  rows={rows}
-                  t0={t0}
-                  selectedKey={selectedKey}
-                  firstErrorId={reachedFault ? firstErrorId : null}
-                  currentId={currentId}
-                  onSpace={rs ? replay.togglePlay : undefined}
-                  faultStep={model.failure?.step ?? null}
-                  showAgent={multiAgent}
-                  onSelect={setSelected}
-                  onActivate={activate}
-                  onEscape={onEscape}
-                  onJumpToError={jumpToError}
-                  newIds={newIds}
-                  arrived={followCount}
-                  landedId={landed?.id ?? null}
-                  landedTone={landed?.tone}
+              <button
+                type="button"
+                className="context-strip"
+                onClick={() => {
+                  focusContext.current = true;
+                  setContextPref(squeezedWindow && inspected ? "pinned" : "open");
+                }}
+                aria-label="Show run context"
+                aria-expanded="false"
+                aria-controls="run-context"
+                tabIndex={contextClosed ? 0 : -1}
+              >
+                <ContextStripBody
+                  runId={runId}
+                  poll={active || r.summary_state === "processing"}
+                  agents={multiAgent ? agents.length : 0}
                 />
-              ) : (
-                <Waterfall
-                  spans={spans}
-                  bounds={bounds}
-                  spanIdOf={spanIdOf}
-                  selectedEventId={selected}
-                  firstErrorId={reachedFault ? firstErrorId : null}
-                  currentEventId={currentId}
-                  replaying={!!rs}
-                  onSpace={rs ? replay.togglePlay : undefined}
-                  faultAtMs={reachedFault && err ? Date.parse(err.occurred_at) : null}
-                  faultStep={model.failure?.step ?? null}
-                  agentFilter={filters.agents ?? null}
-                  onSelect={setSelected}
-                  onActivate={setDrawerEventId}
-                  onEscape={onEscape}
-                  onJumpToError={jumpToError}
-                  newIds={newIds}
-                  landedId={landed?.id ?? null}
-                  landedTone={landed?.tone}
+              </button>
+              <div className="context-body" inert={contextClosed || undefined}>
+                {replay.mode && (
+                  <p className="replay-ctx-note muted" data-testid="replay-context-note">
+                    Findings and agent totals reflect the whole run.
+                  </p>
+                )}
+                <SecurityFindings
+                  runId={runId}
+                  projectId={r.project_id}
+                  poll={active || r.summary_state === "processing"}
+                  focusId={focusId}
+                  onShowEvent={jumpTo}
                 />
+                {/* Findings first: they are why the column is opened (D3). */}
+                <Findings
+                  runId={runId}
+                  runActive={active}
+                  summaryProcessing={r.summary_state === "processing"}
+                  onShowEvent={jumpTo}
+                />
+
+                <CodingSummary
+                  events={shown}
+                  onOpen={(id) => {
+                    setFilters(NO_FILTERS);
+                    setSelected(id);
+                    setDrawerEventId(id);
+                  }}
+                />
+
+                {multiAgent && (
+                  <AgentTree
+                    rows={agents}
+                    current={rs?.currentAgent ?? null}
+                    active={filters.agents ?? null}
+                    onToggle={toggleAgent}
+                    onClear={() => setFilters((f) => ({ ...f, agents: null }))}
+                  />
+                )}
+
+                <Evaluations runId={runId} onShowEvent={jumpTo} />
+              </div>
+            </aside>
+
+            <section aria-labelledby="tl-h" className="pane">
+              <h2 id="tl-h" className="sr-only">
+                {view === "waterfall" ? "Waterfall" : view === "evidence" ? "Evidence" : "Timeline"}
+              </h2>
+              {view === "timeline" && (
+                <div className="toolbar tl-toolbar" role="group" aria-label="Timeline filters">
+                  <FilterMenu
+                    classes={filters.classes}
+                    onToggle={toggleClass}
+                    onReset={() => setFilters((f) => ({ ...f, classes: null }))}
+                  />
+                  <label className="chip">
+                    <input
+                      type="checkbox"
+                      checked={filters.errorsOnly}
+                      onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
+                    />
+                    Errors only
+                  </label>
+                  <button
+                    type="button"
+                    disabled={allGroups.length === 0}
+                    onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allGroups))}
+                  >
+                    {collapsed.size ? "Expand groups" : "Collapse groups"}
+                  </button>
+                </div>
               )}
-            </div>
-          )}
-          <div className="pane-foot">
-            <p className="muted" role="status" aria-live="polite" data-testid="progress">
-              {loadingMore
-                ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
-                : view === "evidence"
-                  ? `${formatInt(evidence.length)} artifact${evidence.length === 1 ? "" : "s"} in ${formatInt(events.length)} events`
-                  : view === "waterfall"
-                    ? rs
-                      ? `${formatInt(shown.length)} of ${formatInt(events.length)} events in ${formatInt(spans.length)} spans, replay`
-                      : `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
-                    : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown${rs ? ", replay" : ""}${playheadHidden ? ", the event at the playhead is hidden by the filters" : ""}`}
-              {ev.isError && " (some events failed to load)"}
-            </p>
-            {view !== "evidence" && (
-              <p className="keys muted" aria-hidden="true">
-                <kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> open · <kbd>e</kbd> first error ·{" "}
-                <kbd>r</kbd> replay · <kbd>esc</kbd> close
-              </p>
+              {drawerId && !loadedDrawerEvent && (
+                <p
+                  role={remoteDrawer.isError ? "alert" : "status"}
+                  className="notice"
+                  data-testid="event-notice"
+                >
+                  {remoteDrawer.isError
+                    ? "That event could not be loaded; it may not exist in this run."
+                    : "Loading the event…"}{" "}
+                  <button type="button" onClick={() => setDrawerEventId(null)}>
+                    Dismiss
+                  </button>
+                </p>
+              )}
+              {rs && view === "evidence" && (
+                <p className="notice replay-note" data-testid="replay-evidence-note">
+                  Evidence shows the whole run.
+                </p>
+              )}
+              {ev.isError && events.length === 0 ? (
+                <ErrorState error={ev.error} onRetry={() => void ev.refetch()} />
+              ) : events.length === 0 && !ev.isPending ? (
+                <p className="state">This run has no events yet.</p>
+              ) : events.length === 0 ? (
+                <Loading label="Loading events" />
+              ) : view === "timeline" && rows.length === 0 ? (
+                <div className="state" data-state="empty">
+                  <p className="state-title">No events match these filters</p>
+                  <button type="button" onClick={() => setFilters(NO_FILTERS)}>
+                    Clear filters
+                  </button>
+                </div>
+              ) : (
+                <div className="pane-body" key={view} ref={timelineWrap}>
+                  {view === "evidence" ? (
+                    <EvidenceList
+                      rows={evidence}
+                      t0={t0}
+                      selectedEventId={selected}
+                      onOpen={jumpTo}
+                    />
+                  ) : view === "timeline" ? (
+                    <Timeline
+                      rows={rows}
+                      t0={t0}
+                      selectedKey={selectedKey}
+                      firstErrorId={reachedFault ? firstErrorId : null}
+                      currentId={currentId}
+                      onSpace={rs ? replay.togglePlay : undefined}
+                      faultStep={model.failure?.step ?? null}
+                      showAgent={multiAgent}
+                      onSelect={setSelected}
+                      onActivate={activate}
+                      onEscape={onEscape}
+                      onJumpToError={jumpToError}
+                      newIds={newIds}
+                      arrived={followCount}
+                      landedId={landed?.id ?? null}
+                      landedTone={landed?.tone}
+                    />
+                  ) : (
+                    <Waterfall
+                      spans={spans}
+                      bounds={bounds}
+                      spanIdOf={spanIdOf}
+                      selectedEventId={selected}
+                      firstErrorId={reachedFault ? firstErrorId : null}
+                      currentEventId={currentId}
+                      replaying={!!rs}
+                      onSpace={rs ? replay.togglePlay : undefined}
+                      faultAtMs={reachedFault && err ? Date.parse(err.occurred_at) : null}
+                      faultStep={model.failure?.step ?? null}
+                      agentFilter={filters.agents ?? null}
+                      onSelect={setSelected}
+                      onActivate={setDrawerEventId}
+                      onEscape={onEscape}
+                      onJumpToError={jumpToError}
+                      newIds={newIds}
+                      landedId={landed?.id ?? null}
+                      landedTone={landed?.tone}
+                    />
+                  )}
+                </div>
+              )}
+              <div className="pane-foot">
+                <p className="muted" role="status" aria-live="polite" data-testid="progress">
+                  {loadingMore
+                    ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
+                    : view === "evidence"
+                      ? `${formatInt(evidence.length)} artifact${evidence.length === 1 ? "" : "s"} in ${formatInt(events.length)} events`
+                      : view === "waterfall"
+                        ? rs
+                          ? `${formatInt(shown.length)} of ${formatInt(events.length)} events in ${formatInt(spans.length)} spans, replay`
+                          : `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
+                        : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown${rs ? ", replay" : ""}${playheadHidden ? ", the event at the playhead is hidden by the filters" : ""}`}
+                  {ev.isError && " (some events failed to load)"}
+                </p>
+                {view !== "evidence" && (
+                  <p className="keys muted" aria-hidden="true">
+                    <kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> open · <kbd>e</kbd> first error ·{" "}
+                    <kbd>r</kbd> replay · <kbd>esc</kbd> close
+                  </p>
+                )}
+              </div>
+            </section>
+
+            {drawerEvent && <InspectorResizer width={inspectorPx} onChange={setInspectorPx} />}
+            {inspected && (
+              <EventDrawer
+                runId={runId}
+                event={inspected}
+                onClose={closeDrawer}
+                closing={!drawerEvent}
+              />
             )}
           </div>
-        </section>
-
-        {drawerEvent && <InspectorResizer width={inspectorPx} onChange={setInspectorPx} />}
-        {inspected && (
-          <EventDrawer
-            runId={runId}
-            event={inspected}
-            onClose={closeDrawer}
-            closing={!drawerEvent}
-          />
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }

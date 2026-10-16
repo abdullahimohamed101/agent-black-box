@@ -12,6 +12,7 @@ const TABS = [
   { slug: "pricing", label: "Pricing", needs: "pricing.read" },
   { slug: "security", label: "Security", needs: "project.write" },
   { slug: "quotas", label: "Quotas", needs: "project.read" },
+  { slug: "retention", label: "Retention", needs: "retention.read" },
   { slug: "policies", label: "Policies", needs: "policy.read" },
   { slug: "audit", label: "Audit log", needs: "audit.read" },
   { slug: "sessions", label: "Sessions", needs: null }, // yours, whatever your role
