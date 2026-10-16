@@ -18,6 +18,7 @@ A rejected attribute is dropped (and counted on the tracer); it never raises int
 (INV-4), except under ``strict`` which the tests switch on so a new call site cannot slip through.
 """
 
+import importlib
 import logging
 import re
 from collections.abc import Callable
@@ -207,7 +208,7 @@ def start(settings: Any, *, service: str, metrics: Any) -> None:
     if not settings.otel_enabled or _tracer is not None:
         return
     try:
-        from abb_api.obs import tracing_otel
+        tracing_otel = importlib.import_module("abb_api.obs.tracing_otel")
     except ImportError:
         raise TracingUnavailable(
             "ABB_OTEL_ENABLED is set but the optional tracing packages are not installed. "

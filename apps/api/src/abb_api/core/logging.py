@@ -80,3 +80,7 @@ def configure_logging(level: str, service: str = "abb-api") -> None:
     # every wire message. An operator asking for DEBUG must never get the data (INV-5).
     for data_bearing in ("sqlalchemy", "asyncpg", "asyncio"):
         logging.getLogger(data_bearing).setLevel(logging.WARNING)
+    # The optional tracing exporter speaks HTTP through requests/urllib3, whose DEBUG lines name
+    # the collector's host, port and path (and a retry warning would quote the full URL).
+    for transport in ("urllib3", "requests"):
+        logging.getLogger(transport).setLevel(logging.ERROR)

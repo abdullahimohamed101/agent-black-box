@@ -6,7 +6,6 @@ optional ``otel`` extra). Everything that reaches a span passes ``clean_attribut
 
 import logging
 import threading
-import time
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
 from typing import Any, Self
@@ -168,13 +167,23 @@ class OtelTracer:
         return f"00-{context.trace_id:032x}-{context.span_id:016x}-{int(context.trace_flags):02x}"
 
     def shutdown(self, timeout_seconds: float) -> None:
-        started = time.monotonic()
-        self.provider.force_flush(int(max(timeout_seconds, 0.001) * 1000))
-        # shutdown() joins the exporter thread, which a stuck collector can hold for its own
-        # timeout: give it only what is left of the budget, on a daemon thread.
-        closer = threading.Thread(target=self.provider.shutdown, daemon=True)
+        """Flush then shut down, returning after at most ``timeout_seconds``.
+
+        The SDK's flush runs the exporter in the calling thread with no deadline of its own, so a
+        collector that accepts the connection and never answers would hold a stop for the
+        exporter's whole timeout. The work runs on a daemon thread and is abandoned at the budget
+        (spans still queued are lost; that is the cost of a bounded stop).
+        """
+
+        def close() -> None:
+            self.provider.force_flush(int(max(timeout_seconds, 0.001) * 1000))
+            self.provider.shutdown()
+
+        closer = threading.Thread(target=close, name="abb-tracing-shutdown", daemon=True)
         closer.start()
-        closer.join(max(timeout_seconds - (time.monotonic() - started), 0.0))
+        closer.join(max(timeout_seconds, 0.0))
+        if closer.is_alive():
+            logger.warning("tracing shutdown abandoned at its time budget")
 
 
 def create_tracer(

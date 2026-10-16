@@ -135,8 +135,17 @@ def test_configure_logging_keeps_data_bearing_libraries_quiet() -> None:
         assert logging.getLogger("sqlalchemy.engine").getEffectiveLevel() >= logging.WARNING
         assert logging.getLogger("asyncpg").getEffectiveLevel() >= logging.WARNING
         assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
+        assert logging.getLogger("urllib3").getEffectiveLevel() >= logging.ERROR
     finally:
         root.handlers[:] = before
         root.setLevel(level)
-        for name in ("sqlalchemy", "asyncpg", "asyncio", "httpx", "httpcore"):
+        for name in (
+            "sqlalchemy",
+            "asyncpg",
+            "asyncio",
+            "httpx",
+            "httpcore",
+            "urllib3",
+            "requests",
+        ):
             logging.getLogger(name).setLevel(logging.NOTSET)
