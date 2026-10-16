@@ -213,7 +213,8 @@ def gate6() -> None:
     check(len(purge_record) == 1 and purge_record[0][1] == "completed", "one purge record (ids and counts only) survives", record=[tuple(r) for r in purge_record])
     check(lib.audit_actions(owner).count("retention.purge.project") == 1, "one counts-only audit entry, retention.purge.project")
 
-    # ---- purge-workspace
+    # ---- purge-workspace (the worker has finished deriving the sibling's new run, so a snapshot taken now is stable)
+    lib.wait_idle()
     ws_c = lib.db_one("select id from workspaces where slug = $1", slug_c)
     c_runs = [r.uuid for r in lib.seeded("c_young")]
     c_files = lib.run_keys(c_runs)
