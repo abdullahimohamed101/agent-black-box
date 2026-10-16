@@ -190,3 +190,69 @@ async def test_refusals_from_inner_layers_are_counted_in_the_real_app() -> None:
     # The CORS layer answers the preflight before routing, so it is "unmatched" by design.
     assert reqs.value("OPTIONS", UNMATCHED, "200") == 1
     assert isinstance(too_big, httpx.Response)
+
+
+class _Orig:
+    sqlstate = "57014"
+
+
+async def test_mapped_database_errors_are_recorded_with_their_real_status() -> None:
+    # The 503/504 mapping used to run in the outermost handler, outside this middleware: the
+    # counter and the request log said 500 for a response the client saw as 503 or 504.
+    from sqlalchemy.exc import DBAPIError, OperationalError
+
+    from abb_api.db.breaker import BreakerOpen
+    from tests.obs.log_capture import capture_everything
+
+    obs = build_observability()
+    app = make_app(observability=obs)
+
+    @app.get("/t/timeout")
+    async def timeout() -> None:
+        raise DBAPIError("SELECT secret-sql", {}, _Orig())
+
+    @app.get("/t/connect")
+    async def connect() -> None:
+        raise OperationalError("SELECT secret-sql", {}, ConnectionRefusedError("refused"))
+
+    @app.get("/t/os")
+    async def os_error() -> None:
+        raise ConnectionResetError("reset")
+
+    @app.get("/t/breaker")
+    async def breaker() -> None:
+        raise BreakerOpen(4)
+
+    @app.get("/t/unknown")
+    async def unknown() -> None:
+        raise RuntimeError("boom")
+
+    with capture_everything() as captured:
+        async with client_for(app) as client:
+            timed_out = await client.get("/t/timeout")
+            refused = await client.get("/t/connect")
+            reset = await client.get("/t/os")
+            shed = await client.get("/t/breaker")
+            unknown_response = await client.get("/t/unknown")
+    assert timed_out.status_code == 504
+    assert timed_out.json()["error"]["code"] == "DATABASE_TIMEOUT"
+    assert refused.status_code == 503 and reset.status_code == 503
+    assert shed.status_code == 503 and shed.headers["retry-after"] == "4"
+    assert refused.headers["retry-after"] == "2"
+    assert unknown_response.status_code == 500
+    assert "secret-sql" not in timed_out.text + refused.text
+    reqs = obs.catalogue.http_requests_total
+    assert reqs.value("GET", "/t/timeout", "504") == 1
+    assert reqs.value("GET", "/t/connect", "503") == 1
+    assert reqs.value("GET", "/t/os", "503") == 1
+    assert reqs.value("GET", "/t/breaker", "503") == 1
+    assert reqs.value("GET", "/t/unknown", "500") == 1
+    logged = {
+        r.__dict__["route"]: r.__dict__["status"]
+        for r in captured.records
+        if r.getMessage() == "request" and "route" in r.__dict__
+    }
+    assert logged["/t/timeout"] == 504
+    assert logged["/t/connect"] == 503
+    assert logged["/t/breaker"] == 503
+    assert logged["/t/unknown"] == 500

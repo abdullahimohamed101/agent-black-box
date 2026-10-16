@@ -194,13 +194,32 @@ def install_error_handlers(app: FastAPI) -> None:
             )
         )
 
-    @app.exception_handler(Exception)
-    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
+    def _mapped(exc: Exception) -> JSONResponse | None:
         if is_connectivity_error(exc):  # the database went away mid-request: tell clients to retry
             return error_response(dependency_unavailable(exc))
         if is_statement_timeout(exc):  # the default deadline; never the SQL
             logger.warning("statement timeout", extra={"error_type": type(exc).__name__})
             return error_response(database_timeout())
+        return None
+
+    async def _database_failure(_: Request, exc: Exception) -> JSONResponse:
+        # Registered for the concrete classes, not for Exception: Starlette runs those in the
+        # ExceptionMiddleware, inside the metrics and request-log layers, so the 503 and 504 are
+        # recorded with the status the client saw. A handler for Exception runs outside every
+        # middleware and the response would count as a 500.
+        response = _mapped(exc)
+        if response is None:
+            raise exc  # any other database error is an internal error: the outer handler's 500
+        return response
+
+    for cls in (DBAPIError, OSError, PoolTimeoutError, BreakerOpen):
+        app.add_exception_handler(cls, _database_failure)
+
+    @app.exception_handler(Exception)
+    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
+        mapped = _mapped(exc)  # the same mapping for anything that reaches the outer handler
+        if mapped is not None:
+            return mapped
         # Never expose internals to clients; the stack trace is logged by the middleware.
         return error_response(
             AppError(

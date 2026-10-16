@@ -68,4 +68,11 @@ In `TimedPool.connect` (the one entry point of every checkout): after `ABB_DB_BR
 - **Schema check (P3-5).** A failure to read the code's alembic scripts is `schema: degraded`,
   `head_unknown`, remembered for 30 s so the scripts are not re-read on every probe; it never
   reports `database: down`.
+- **Where 503 and 504 are produced (P2-2).** The catch-all `Exception` handler runs in Starlette's
+  outermost layer, outside the metrics and request-log middleware, so a mapped 503/504 was
+  recorded as 500 in `http_requests_total` and in the request log. The mapping is now also
+  registered for the concrete classes (`DBAPIError`, `OSError`, the pool `TimeoutError`,
+  `BreakerOpen`), which Starlette's inner exception middleware handles inside those layers. Bodies
+  and `Retry-After` are unchanged; a database error that is neither connectivity nor a statement
+  timeout is re-raised to the outer handler (500, with the logged traceback).
 
