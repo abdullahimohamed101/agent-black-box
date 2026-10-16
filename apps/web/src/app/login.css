@@ -77,8 +77,8 @@ main.state-page {
   }
   .auth-page h1,
   .state-page h1 {
-    font-size: var(--type-h1-size);
-    line-height: var(--type-h1-line);
+    font-size: 1.75rem;
+    line-height: 2.25rem;
   }
   .auth-page a.button,
   .auth-page button.primary {

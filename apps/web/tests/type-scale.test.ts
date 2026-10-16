@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 
 // Design pass 2 step 5d (ADR-166): the whole app uses the seven type steps, two weights and two radii, and nothing shouts. This
 // scans every stylesheet for a value that is not a token, so a new off-scale size fails here instead of shipping. The exceptions
-// are few and named: the 13 px body base, the 20 px phone headings (title-line.css, run-header.css) and circles (50%).
+// are few and named: the 13 px body base, the 20 px phone headings (title-line.css, run-header.css), the 28 px phone display headline of the
+// sign-in pages (login.css; e2e/shell.spec.ts pins it) and circles (50%).
 const DIR = path.join(__dirname, "../src/app");
 const FILES = readdirSync(DIR)
   .filter((f) => f.endsWith(".css") && !f.startsWith("tokens."))
@@ -26,7 +27,8 @@ describe("type steps, weights and radii are tokens", () => {
         !(
           TOKEN_SIZE.test(d.value) ||
           d.value === "inherit" ||
-          (d.value === "1.25rem" && /^(title-line|run-header)\.css$/.test(d.file))
+          (d.value === "1.25rem" && /^(title-line|run-header)\.css$/.test(d.file)) ||
+          (d.value === "1.75rem" && d.file === "login.css")
         ),
     );
     expect(bad).toEqual([]);

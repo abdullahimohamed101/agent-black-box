@@ -365,8 +365,8 @@ rule; each is reversible and the alternative is named.
    `.st-form` are deleted (each grepped; `scripts/dead-css.mjs` lists class names with no reader as an informational report);
    every off-scale font size, the 6, 3 and 2 px radii and the one `em` size moved to tokens. **The red allow-list is five entries,
    exactly the fault elements** (the badge status word, `.tl-fault`, `.wf-fault-*`, `.run-fail-dash`, `:root`).
-10. **Guards**: `tests/type-scale.test.ts` fails on a font size that is not a type token (exceptions: the 13 px body base and the
-    20 px phone headings), a weight other than 400 and 600, a radius other than 0, the 4 px control radius or a circle, upper case,
+10. **Guards**: `tests/type-scale.test.ts` fails on a font size that is not a type token (exceptions: the 13 px body base, the
+    20 px phone headings and the 28 px phone display headline of the sign-in pages), a weight other than 400 and 600, a radius other than 0, the 4 px control radius or a circle, upper case,
     letter spacing, an inline style that sets a font or colour, a fault token or a red keyword in a component, or a revived legacy
     rule; `tokens-colour-rules.test.ts` pins the allow-list length at exactly 5.
 
