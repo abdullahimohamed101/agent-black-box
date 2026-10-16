@@ -355,8 +355,8 @@ async def test_the_throttle_fails_open_to_the_local_budget_when_counters_are_dow
         for _ in range(8):
             try:
                 attempt = throttle.admit(junk(), None)
-            except AppError as gate:  # the window the failures closed
-                outcomes.append(gate.status_code)
+            except AppError as closed:  # the window the failures closed
+                outcomes.append(closed.status_code)
                 continue
             assert attempt is not None
             refused = await throttle.failed(attempt)

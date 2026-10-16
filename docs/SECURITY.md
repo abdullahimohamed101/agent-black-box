@@ -223,7 +223,7 @@ secrets (KI-191); authentication of that key id's valid requests that are not in
 while those are closed a request for a key id that exists (a per-process set of active key ids, ids only, refreshed every 60 s and on key creation) still reaches full authentication, bounded by that key id's own budget, and a random key id is refused from memory.
 Anyone sharing a trusted address with an attacker shares that address budget. Ingestion, people's sessions, and sign-in starts and callbacks are never refused by it.
 The throttle fails open (a counter outage falls back to the local budget; any throttle error leaves the normal 401). One `auth.throttled` audit row per workspace per window is written for key ids that
-belong to a workspace; others are logged by scope name only (KI-177). Failed session cookies and sign-in starts are not covered (KI-176, KI-073).
+belong to a workspace; others are logged by scope name only (KI-177). Failed session cookies are covered by the same design (below, ADR-169); sign-in starts are not (KI-073).
 
 ### Project quotas (Phase 19a step 3, ADR-154)
 
@@ -239,6 +239,12 @@ and new value, and a person without the role (or a key) gets 403, a project of a
 defaults are generous abuse rails, not sizing advice. *What a refusal reveals*: the quota name and, on the non-batch endpoints, the limit and current use of the caller's own project;
 never another tenant's data. *Limits of the control* (stated plainly): it does not stop a single project from using its allowance, there is no alert on usage yet, server-written decision and
 approval events are not counted, and the day boundary follows the API process clock (UTC). See ADR-154.
+
+### Failed-session throttling and database dependency safety (Phase 19c step 3, ADR-169)
+
+*Failed session cookies (KI-176).* A session token is 256 random bits, so guessing is not the risk; the load of an anonymous flood is. Failures (not successes) are counted per trusted client address (`ABB_TRUST_PROXY=1`, last `X-Forwarded-For` entry; ignored otherwise) and globally, in fixed windows shared by every API process; beyond a budget the answer is `429 SESSION_THROTTLED` with `Retry-After`, decided from memory before any lookup and identical for every throttled caller (it is deliberately not the 401 that signs people out, and says nothing about the cookie). A session that authenticated here recently skips the gate (full authentication still runs on every request, so revocation is immediate), and while a window is closed a cookie whose stored-hash prefix is in a background-refreshed hint set (16-byte prefixes of usable sessions' hashes: no token, user or workspace; a hint, never a substitute for authentication) still reaches its single lookup, so a flood cannot lock out a session that exists. Residual (KI-233): a session created on another process within the last minute is answered 429 and succeeds on retry. The throttle fails open to a per-process window and writes no audit row (a failed session names no workspace; an anonymous flood must not write to a tenant's log). Cookies, hashes and addresses are never logged or exported (tested with planted sentinels).
+
+*Database failure behaviour.* `/readyz` fails (503, fixed reason codes, no error text) when the database, the schema revision, the artifact directory or (production) the database role is wrong, so traffic stops reaching a process that cannot serve it correctly; a database outage is shed fast by a per-process circuit breaker instead of piling requests on pool timeouts. The role is re-checked while running (a privilege granted after start fails readiness; it never crashes the process). Migration 0105 lets the runtime role *read* `alembic_version` (still no write). Every outbound call and child process in the API and SDK is shown by a source-scanning test to carry an explicit timeout or a total deadline (ADR-169 section 6; the operator-only backup tools are the documented exception, KI-230).
 
 ### Edge hardening (Phase 19a step 4, ADR-155)
 

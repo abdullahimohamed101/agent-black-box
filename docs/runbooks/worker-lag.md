@@ -19,3 +19,8 @@ events are visible but summaries and spans are not.
 
 **Do not** delete rows from `outbox_jobs` to "clear" a backlog: events are fine, but the runs would keep stale summaries
 until the next event for them.
+
+## Readiness hint
+
+`GET /readyz` reports the same signal as a `worker` line (`degraded`/`worker_lag` when the oldest due job has waited over 60 seconds). It never fails readiness: a late worker does not make the API unable to serve. See `docs/OPERATIONS.md`, "Readiness, the database breaker and timeouts".
+

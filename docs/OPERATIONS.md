@@ -28,6 +28,13 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_SESSION_WRITES_PER_MINUTE` | 30 | how many times one person may end sessions (Settings, Sessions) per minute, counted across API processes (Phase 19a step 5, ADR-157). Listing is not limited |
 | `ABB_METRICS_TOKEN` | unset | enables `GET /metrics` on the API (Phase 19c, ADR-165) and is the bearer token for it and for the worker's endpoint. At least 24 characters (`openssl rand -hex 32`), refused at startup if shorter, never logged. Unset: `/metrics` is a plain 404 |
 | `ABB_METRICS_REQUESTS_PER_MINUTE` | 120 | one in-process bucket per API (or worker) process, spent by every request to `/metrics` whatever its token; over it: `429` |
+| `ABB_DB_STATEMENT_TIMEOUT_SECONDS` | 30 | default `statement_timeout` of every API database connection (Phase 19c, ADR-169); 0 = none, at most 3600. A route with its own budget (search, analytics, previews) sets `SET LOCAL statement_timeout`, which wins. A cancelled statement is `504 DATABASE_TIMEOUT`. Migrations, retention, backup and rotation never use it. Behind a transaction-mode pooler that rejects startup parameters set 0 and `ALTER ROLE abb_runtime SET statement_timeout` instead |
+| `ABB_WORKER_DB_STATEMENT_TIMEOUT_SECONDS` | 0 | the worker's own default statement timeout (0 = none: its jobs are long and bounded by leases) |
+| `ABB_DB_BREAKER_ENABLED` / `_THRESHOLD` / `_OPEN_SECONDS` / `_WINDOW_SECONDS` | 1 / 5 / 5 / 30 | the database circuit breaker (below): consecutive checkout failures within the window that open it, and how long it sheds before one probe. `ABB_DB_BREAKER_ENABLED=0` is the kill switch |
+| `ABB_ROLE_CHECK_INTERVAL_SECONDS` | 300 | how often the API and worker repeat the database-role check (KI-183); 0 = off, otherwise at least 5 |
+| `ABB_SESSION_FAIL_ENABLED` / `_WINDOW_SECONDS` / `_PER_ADDRESS` / `_GLOBAL` | 1 / 60 / 30 / 600 | the failed-session-cookie throttle (ADR-169, KI-176): failures per trusted client address (needs `ABB_TRUST_PROXY=1`) and globally per window, shared across API processes; over a budget: `429 SESSION_THROTTLED` with `Retry-After`, answered before any lookup. Valid sessions and sign-in are never refused by it |
+| `ABB_SESSION_FAIL_NEGATIVE_SECONDS` / `_KNOWN_VALID_SECONDS` / `_CACHE_ENTRIES` | 30 / 300 / 10000 | the in-memory helpers: a cookie seen invalid is refused 401 without a lookup for this long; a cookie that authenticated skips the gate for this long (it is still fully authenticated on every request, so revocation is immediate); the bound on each cache |
+| `ABB_SESSION_FAIL_ACTIVE_REFRESH_SECONDS` / `_ACTIVE_CAP` | 60 / 100000 | the background-refreshed set of hash prefixes of usable sessions that lets a session this process has not seen reach its lookup while a window is closed |
 | `ABB_WORKER_METRICS_PORT` / `ABB_WORKER_METRICS_BIND` | unset / `127.0.0.1` | the worker serves the same registry on this port (needs `ABB_METRICS_TOKEN`); off unless the port is set. The bind must be an IP address; Compose does not publish the port |
 | `ABB_QUOTAS_ENABLED` | true | per-project quotas (Phase 19a, ADR-154). `false` is an emergency switch: nothing is checked or counted (the usage figures then go stale) |
 | `ABB_QUOTA_AGENTS` / `_RUNS_PER_DAY` / `_EVENTS_PER_DAY` / `_ARTIFACT_BYTES` | 500 / 50000 / 5000000 / 5368709120 (5 GiB) | the default quota of every project: distinct agents, runs created per UTC day, events accepted per UTC day, total stored artifact bytes. Owners and admins override each per project (Quotas settings page, `PUT /v1/projects/{id}/quotas`). The per-run event cap and the per-artifact size cap (`ABB_ARTIFACT_MAX_BYTES`) are separate and unchanged |
@@ -137,6 +144,30 @@ Run migrations as the database owner (`ABB_MIGRATION_DATABASE_URL`, alembic) and
 At start the API and worker ask which role they are: a superuser, `BYPASSRLS`, any `UPDATE`/`DELETE`/`TRUNCATE` on `events`, membership in the owner of `events`, or `CREATE` on schema `public` counts as too privileged. In production the process then **refuses to start**
 (the log names only the closed reasons: `superuser`, `bypass_rls`, `events_rewritable`, `events_owner`, `schema_create`; never a role, host or URL); it also refuses when the question cannot be answered (database down at boot), so start order matters: database first. In development, test and staging it logs one warning
 (the dev stack keeps the owner on purpose). If you knowingly run privileged, set `ABB_ALLOW_PRIVILEGED_DB_ROLE=1`; every start then logs a warning with the reasons. Fix a refusal by pointing `ABB_DATABASE_URL` at the runtime role (`docker-compose.yml` shows the pattern).
+
+### Readiness, the database breaker and timeouts (Phase 19c step 3, ADR-169)
+
+`GET /healthz` is liveness: no I/O, green while the process turns. Use it for the container's liveness probe and never as a dependency check. `GET /readyz` is what a load balancer or orchestrator should gate traffic on. It answers `200` or `503` (with `Retry-After`) and
+`{"status": "ready" | "not_ready", "checks": {name: {"status": "ok" | "fail" | "degraded", "reason": code | null}}}`. Reasons are fixed codes, never error text, hosts or paths.
+
+| Check | Fails readiness | Reasons |
+| --- | --- | --- |
+| `database` | yes | `down`, `timeout` (answer later than 2.5 s, pool wait included), `breaker_open` |
+| `schema` | yes, when behind | `behind` (the code needs a migration that has not run), `unreadable` (runtime role cannot read `alembic_version`: migration 0105 not applied), `unchecked`; **`degraded`/`ahead`** when the database is newer than this code (ready: rolling deploys migrate first), `degraded`/`head_unknown` when the migrations are not shipped with the code |
+| `artifacts` | yes | `missing`, `not_writable`, `timeout` (a tiny probe file is written and removed, checked at most every 5 s; the directory is created if absent) |
+| `role` | production only | `privileged_role` (the periodic role check found excess privilege; `degraded` in other environments) |
+| `worker` | never (reported) | `worker_lag` when the oldest due job has waited over 60 s |
+| `retention` | never (reported) | the configured mode: `off`, `dry_run`, `enforce` |
+
+One evaluation is shared by concurrent probes and cached for 2 s, so probing every second from several places is fine. `readiness_check{check}` is 1/0 per failing-capable check and `readiness_flaps_total` counts changes of the overall answer; alert on a check at 0 for a minute, and on flapping.
+
+**Deploying:** run the migrations first, then roll the processes. A process started before its migration reports `not_ready` (`schema: behind`) and receives no traffic; a still-running old process reports `ready` (`ahead`) and keeps serving. After applying 0105 the check is `ok`.
+
+**The database circuit breaker.** After 5 consecutive checkout failures within 30 s an API process sheds: requests that need the database get `503 DEPENDENCY_UNAVAILABLE` with `Retry-After` immediately for 5 s (no pool wait, no connect attempt), then one probe request goes through; its success closes the breaker, its failure reopens it. Slow queries, statement timeouts and application errors never trip it. `/healthz` stays green and `/readyz` shows `database: fail/breaker_open`. Metrics: `db_breaker_state` (0 closed, 1 half-open, 2 open) and `db_breaker_trips_total`; a trip is a page-worthy event (see the database-saturation runbook). Kill switch: `ABB_DB_BREAKER_ENABLED=0`. The state is per process.
+
+**The role re-check.** Every `ABB_ROLE_CHECK_INTERVAL_SECONDS` the API and worker repeat the startup question. A role that *became* privileged (a grant after start) logs one line with the closed reasons, sets `db_role_privileged{reason}`, and in production fails the `role` readiness check; the process is never stopped for it. Fix by revoking the grant (the next check, within the interval, restores readiness) or restarting with the runtime role.
+
+**Statement timeouts.** Every API connection starts with `statement_timeout` = `ABB_DB_STATEMENT_TIMEOUT_SECONDS` (30). A cancelled statement answers `504 DATABASE_TIMEOUT` (retryable, fixed text). Raise it, or set 0, only after confirming which statement is slow (`pg_stat_statements`); budgeted routes are unaffected.
 
 ### Edge: headers, docs, body cap, and running behind a reverse proxy (Phase 19a step 4, ADR-155)
 
