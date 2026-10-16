@@ -117,11 +117,15 @@ def _breaker_counted() -> None:
         check(waits_after == threshold and lib.value(families, "db_breaker_trips_total") == 1.0,
               "breaker: 6 further requests made NO checkout attempt (the pool-wait count did not move) and did not re-trip it: shed without touching the database",
               checkout_observations=waits_after)
+        # /readyz is cached for 2 s and shared; the first evaluation after the breaker opened sees it. Poll, never sleep.
+        lib.poll("/readyz reports the open breaker", lambda: _checks(_ready(proc.url))["database"] == ("fail", "breaker_open"), timeout=30, every=0.5)
         live = httpx.get(f"{proc.url}/healthz", timeout=10)
         ready = _ready(proc.url)
         check(live.status_code == 200 and ready.status_code == 503 and _checks(ready)["database"] == ("fail", "breaker_open"),
               "breaker: /healthz stays 200 while /readyz is 503 with database `breaker_open`", checks=_checks(ready)["database"])
         check(lib.value(lib.scrape(proc.url), "readiness_check", check="database") == 0.0, "breaker: readiness_check{database} = 0")
+        after_ready = lib.total(lib.scrape(proc.url), "postgres_pool_wait_seconds", "postgres_pool_wait_seconds_count") - lib.total(before, "postgres_pool_wait_seconds", "postgres_pool_wait_seconds_count")
+        check(after_ready == threshold, "breaker: evaluating readiness while open made no checkout attempt either", checkout_observations=after_ready)
     finally:
         proc.stop()
         proxy.close()
@@ -140,7 +144,8 @@ def _breaker_recovers() -> None:
         proxy.stop()
         answers = [httpx.get(f"{proc.url}/v1/runs", headers=lib.bearer(key), timeout=30) for _ in range(3)]
         check(all(a.status_code == 503 for a in answers) and lib.value(lib.scrape(proc.url), "db_breaker_trips_total") == 1.0, "recovery: 3 failures during the outage open the breaker (1 trip)")
-        check(_ready(proc.url).status_code == 503, "recovery: not ready during the outage")
+        lib.poll("/readyz reports not ready during the outage", lambda: _ready(proc.url).status_code == 503, timeout=30, every=0.5)
+        check(_checks(_ready(proc.url))["database"] == ("fail", "breaker_open"), "recovery: not ready during the outage (breaker_open)")
         proxy.start()  # the database comes back
 
         def served() -> bool:

@@ -305,13 +305,17 @@ class TcpProxy:
         self._server = await asyncio.start_server(self._handle, "127.0.0.1", self.port, reuse_address=True)
 
     async def _stop(self) -> None:
-        if self._server is not None:
-            self._server.close()
-            await self._server.wait_closed()
-            self._server = None
+        server, self._server = self._server, None
+        if server is not None:
+            server.close()  # stop listening first: new connections are refused from here on
         for writer in list(self._writers):
-            writer.close()
+            writer.close()  # then cut the open ones
         self._writers.clear()
+        if server is not None:
+            try:
+                await asyncio.wait_for(server.wait_closed(), 5)
+            except TimeoutError:
+                pass
 
     def start(self) -> None:
         self._run(self._start())

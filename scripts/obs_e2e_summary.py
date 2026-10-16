@@ -33,6 +33,7 @@ ERRORS_ALLOWED: list[tuple[str, int, str]] = [
     ("job failed", 1, "the same job is reported once by the worker when it is dead-lettered (outcome dead_letter)"),
     ("alert delivery failed", 2, "gate 2: the relay is a closed port, two attempts (ABB_ALERTS_MAX_ATTEMPTS=2)"),
     ("alert notification dead", 1, "gate 2: the second attempt dead-letters the notification"),
+    ("database role became too privileged; /readyz now fails", 1, "gate 3 grants UPDATE on events to the production process on purpose, once"),
 ]
 ADDRESS = re.compile(r"\b(203\.0\.113\.\d+|198\.51\.100\.\d+|192\.0\.2\.\d+)\b")
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}")
