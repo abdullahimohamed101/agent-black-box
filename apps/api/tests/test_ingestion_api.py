@@ -299,8 +299,8 @@ async def test_content_type_and_encoding_are_enforced(api: Api) -> None:
     ("payload", "label"),
     [
         (b"this is not gzip", "garbage"),
-        (gzip.compress(b'{"events": [1]}')[:-8], "truncated"),
-        (gzip.compress(b'{"events": [1]}') + b"junk", "trailing data"),
+        (gzip.compress(b'{"events": [1]}', mtime=0)[:-8], "truncated"),
+        (gzip.compress(b'{"events": [1]}', mtime=0) + b"junk", "trailing data"),
         (zlib.compress(b'{"events": [1]}'), "zlib, not gzip"),
     ],
 )
