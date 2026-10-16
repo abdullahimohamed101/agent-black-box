@@ -353,7 +353,10 @@ test("a deep link to the waterfall works and the failure run's root span is fini
 }) => {
   await page.goto(`${BASE}/runs/${RUN(2)}?view=waterfall`);
   await expect(page.getByRole("treegrid")).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Waterfall" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Waterfall" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByRole("treegrid")).not.toContainText("no end recorded");
   await expect(page.getByRole("treegrid")).toContainText("error");
 });

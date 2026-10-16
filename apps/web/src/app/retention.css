@@ -14,7 +14,6 @@
 }
 .retention-mode[data-mode="enforce"] {
   border-left-color: var(--wait);
-  background: var(--wait-bg);
 }
 .retention-glyph {
   flex: none;
@@ -123,7 +122,7 @@
   margin: 0;
 }
 .retention-pass-head {
-  font-weight: 500;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .retention-truncated {

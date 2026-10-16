@@ -1,7 +1,7 @@
 /* Phase 22 consistency pass: the settings sub-navigation takes the product's sentence-case labels (ADR-111); only table
    column heads keep small caps. Higher specificity than the Phase 21 rule in globals.css so import order cannot matter. */
 nav.subnav a {
-  font: 500 var(--fs-body) / 1.2 var(--cond);
+  font: 600 var(--fs-body) / 1.2 var(--sans);
   letter-spacing: 0;
   text-transform: none;
 }

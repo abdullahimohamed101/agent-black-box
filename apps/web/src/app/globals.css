@@ -21,13 +21,10 @@
   }
 }
 body {
-  /* --sans and --mono are aliases generated into tokens.aliases.css (body-scoped: next/font puts its variables on body).
-     --cond and --serif are DEPRECATED (ADR-166): the faces are still loaded and used until step 5 deletes their last reader. */
-  --cond: var(--font-plex-cond), "IBM Plex Sans Condensed", var(--sans);
-  --serif: var(--font-plex-serif), "IBM Plex Serif", ui-serif, Georgia, serif;
+  /* --sans and --mono are aliases generated into tokens.aliases.css (body-scoped: next/font puts its variables on body). */
   margin: 0;
   background: var(--bg);
-  color: var(--fg);
+  color: var(--color-text-primary);
   font: 13px/1.45 var(--sans);
   font-variant-numeric: tabular-nums;
 }
@@ -133,7 +130,7 @@ h2 {
 }
 .stat dd {
   margin: 0.05rem 0 0;
-  font: 500 1.05rem/1.25 var(--mono);
+  font: 600 1.05rem/1.25 var(--mono);
   overflow-wrap: anywhere;
 }
 .stat small {
@@ -174,7 +171,7 @@ th[scope="col"] {
   border-bottom-color: var(--color-border-strong);
 }
 tbody th {
-  font-weight: 500;
+  font-weight: 600;
 }
 tbody tr:hover {
   background: var(--surface);
@@ -232,7 +229,7 @@ td.name {
   white-space: nowrap;
 }
 .tag-warn {
-  color: var(--warn);
+  color: var(--wait);
 }
 .state {
   padding: var(--space-4) 0;
@@ -310,7 +307,7 @@ select {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg);
-  color: var(--fg);
+  color: var(--color-text-primary);
 }
 /* One notice style (ADR-166): a sentence, no bar, no fill. A notice leads with a small "i" mark (decorative: empty alt text);
    an empty or error state is a statement under a hairline. Nothing here is red. */
@@ -427,7 +424,7 @@ pre {
   overflow-wrap: anywhere;
 }
 .diff-no {
-  color: var(--fg);
+  color: var(--color-text-primary);
   text-align: right;
   padding-right: 0.4rem;
   user-select: none;
@@ -436,7 +433,7 @@ pre {
   user-select: none;
 }
 .diff-add {
-  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  background: color-mix(in srgb, var(--color-interactive-default) 14%, transparent);
 }
 .diff-del {
   background: color-mix(in srgb, var(--wait) 16%, transparent);
@@ -446,7 +443,7 @@ pre {
   background: var(--surface);
 }
 .diff-add-n {
-  color: var(--ok);
+  color: var(--color-text-primary);
 }
 .diff-del-n {
   color: var(--wait);
@@ -481,7 +478,7 @@ pre {
 .toolbar button[aria-pressed="true"] {
   background: var(--sel);
   border-color: var(--accent);
-  color: var(--fg);
+  color: var(--color-text-primary);
 }
 h3 {
   font-size: 0.95rem;
@@ -551,7 +548,7 @@ h3 {
   border-radius: 2px 2px 0 0;
 }
 .column-fill[data-tone="bad"] {
-  background: var(--bad);
+  background: var(--fail);
 }
 /* Figures shown while the next window or project is loading are dimmed and announced. */
 [data-stale="true"] > :not(.updating) {
@@ -599,7 +596,7 @@ button.danger {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg);
-  color: var(--fg);
+  color: var(--color-text-primary);
 }
 .subnav {
   display: flex;
@@ -619,10 +616,10 @@ button.danger {
   margin-bottom: -1px;
 }
 .subnav a:hover {
-  color: var(--fg);
+  color: var(--color-text-primary);
 }
 .subnav a[aria-current="page"] {
-  color: var(--fg);
+  color: var(--color-text-primary);
   border-bottom-color: var(--accent);
 }
 .form {
@@ -639,7 +636,7 @@ button.danger {
   font-size: 0.85rem;
 }
 .field-error {
-  color: var(--bad);
+  color: var(--fail);
   font-size: 0.8rem;
 }
 .secret {

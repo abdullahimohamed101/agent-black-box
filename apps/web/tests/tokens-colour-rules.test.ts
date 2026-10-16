@@ -66,9 +66,8 @@ describe("no raw colour outside the token files", () => {
 });
 
 describe("the one red line (tokens)", () => {
-  // TODO(KI-272, step 5): color.legacy.fault-bg goes with the alias layer; after that only the fault tokens remain.
+  // Step 5b deleted color.legacy.* (the red tint went with it): only the fault tokens remain red-ish (KI-272).
   const RED_TOKENS_ALLOWED = [
-    "color.legacy.fault-bg",
     "color.primitive.red.300",
     "color.primitive.red.600",
     "color.status.fault",
@@ -83,7 +82,7 @@ describe("the one red line (tokens)", () => {
     for (const theme of node.light !== undefined ? ["light", "dark"] : ["light"])
       if (isRedish(colorHex(tokens, p, theme))) red.add(p);
   }
-  it("red-ish values appear only in the fault tokens (and the legacy tint, until step 5)", () => {
+  it("red-ish values appear only in the fault tokens", () => {
     // semantic tokens that merely point at the red primitives are red too: none may, other than the fault token
     expect([...red].sort()).toEqual(RED_TOKENS_ALLOWED);
   });

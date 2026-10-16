@@ -16,12 +16,12 @@
   min-height: 2.25rem;
   padding: 0 0.9rem;
   border-bottom: 2px solid transparent;
-  color: var(--fg-2);
-  font: 500 var(--fs-body) / 1 var(--cond);
+  color: var(--color-text-primary);
+  font: 600 var(--fs-body) / 1 var(--sans);
   text-decoration: none;
 }
 .al-tabs a:hover {
-  background: var(--surface-2);
+  background: var(--color-bg-raised);
 }
 .al-tabs a[aria-current="page"] {
   border-bottom-color: var(--accent);
@@ -33,7 +33,7 @@
   display: inline-flex;
   align-items: baseline;
   gap: 0.3rem;
-  font: 500 0.75rem/1.3 var(--sans);
+  font: 600 0.75rem/1.3 var(--sans);
   color: var(--ink);
 }
 .al-mark[data-tone="wait"] .al-glyph {
@@ -97,7 +97,7 @@ td.al-detail {
 }
 .al-form h2 {
   margin: 0;
-  font: 600 var(--fs-title) / 1.3 var(--cond);
+  font: 600 var(--fs-title) / 1.3 var(--sans);
 }
 .al-form .field input:not([type="checkbox"]),
 .al-form .field select,
@@ -142,7 +142,7 @@ td.al-detail {
   padding: 1rem 0;
 }
 .al-empty .state-title {
-  font-family: var(--serif);
+  font-family: var(--sans);
   font-size: var(--fs-title);
 }
 .al-foot {

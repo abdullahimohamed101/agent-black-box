@@ -183,7 +183,7 @@ export function renderAliasesCss(tokens) {
     (a.scope === "body" ? body : root).push(`  --${name}: ${target};`);
   }
   let css = HEADER("alias section");
-  css += `/* The pre-pass-2 custom property names, as aliases of the new tokens, so every screen keeps working until step 5 rebuilds it.\n   Status of each name (aliased, kept, deleted in step 5) is listed in docs/design/pass-2/04-colour-type-tokens.md. */\n`;
+  css += `/* The pre-pass-2 custom property names, as aliases of the new tokens, so every screen keeps working until its batch of step 5 rebuilds it (5b deleted the aliases nothing reads any more).\n   Status of each name (aliased, kept, deleted in step 5) is listed in docs/design/pass-2/04-colour-type-tokens.md. */\n`;
   css += `:root {\n${root.join("\n")}\n}\nbody {\n${body.join("\n")}\n}\n`;
   return css;
 }

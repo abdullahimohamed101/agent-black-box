@@ -18,7 +18,7 @@
   font-variant-numeric: tabular-nums;
 }
 .waste-total {
-  font: 500 var(--fs-headline) / 1.2 var(--mono);
+  font: 600 var(--fs-headline) / 1.2 var(--mono);
 }
 .waste-line .muted {
   font-size: var(--fs-small);

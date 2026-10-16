@@ -174,4 +174,3 @@ export function useFindingCounts(runId: string, poll: boolean, enabled = true) {
   const { security, reliability } = splitFindings(items);
   return { security: security.length, reliability: reliability.length };
 }
-

@@ -17,33 +17,31 @@ describe.each(Object.keys(themes))("%s palette", (name) => {
   it("matches the plan's base colours", () => {
     expect([t.bg, t.surface]).toEqual(PLAN[name]);
   });
-  for (const fg of ["ink", "muted", "accent", "fail", "wait", "ok"])
-    for (const bg of ["bg", "surface", "surface-2", "sel"])
+  // Step 5b deleted surface-2, ok and the three tint backgrounds (fail-bg, wait-bg, accent-bg) with their pairs and the filled
+  // FAILED chip's pair: no screen draws on them any more. The semantic pairs are in tokens-contrast-computed.test.ts.
+  for (const fg of ["ink", "muted", "accent", "fail", "wait"])
+    for (const bg of ["bg", "surface", "sel"])
       it(`${fg} on ${bg} is at least 4.5:1`, () => {
         expect(contrast(t[fg]!, t[bg]!)).toBeGreaterThanOrEqual(4.5);
       });
-  for (const [fg, bg] of [
-    ["fail", "fail-bg"],
-    ["wait", "wait-bg"],
-    ["accent", "accent-bg"],
-    ["ink", "fail-bg"],
-    ["ink", "wait-bg"],
-    ["ink", "accent-bg"],
-    ["muted", "fail-bg"],
-    ["muted", "wait-bg"],
-  ] as const)
-    it(`${fg} on ${bg} is at least 4.5:1`, () => {
-      expect(contrast(t[fg]!, t[bg]!)).toBeGreaterThanOrEqual(4.5);
-    });
-  it("the filled FAILED status (surface on the fail fill) is at least 4.5:1", () => {
-    expect(contrast(t.surface!, t.fail!)).toBeGreaterThanOrEqual(4.5);
-  });
-  it("old token names alias the semantic tokens", () => {
-    expect(t.bad).toBe(t.fail);
-    expect(t["bad-bg"]).toBe(t["fail-bg"]);
-    expect(t.warn).toBe(t.wait);
-    expect(t["warn-bg"]).toBe(t["wait-bg"]);
-    expect(t.fg).toBe(t.ink);
-    expect(t.info).toBe(t.accent);
+  it("the aliases nothing reads any more are gone", () => {
+    for (const gone of [
+      "bad",
+      "bad-bg",
+      "warn",
+      "warn-bg",
+      "fg",
+      "fg-2",
+      "info",
+      "surface-2",
+      "ok",
+      "ok-bg",
+      "fail-bg",
+      "wait-bg",
+      "accent-bg",
+      "cond",
+      "serif",
+    ])
+      expect(t[gone], gone).toBeUndefined();
   });
 });

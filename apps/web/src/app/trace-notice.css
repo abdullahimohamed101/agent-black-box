@@ -1,37 +1,35 @@
-/* A run whose trace the retention policy removed (Phase 19b, ADR-160). A statement with a glyph and words: neutral once the
-   trace is gone, amber while the removal is still in progress. Never red (red is a failed run, ADR-111). */
+/* A run whose trace the retention policy removed (Phase 19b, ADR-160), in the one notice style of design pass 2 (ADR-166): a
+   statement with a glyph and words under a hairline, no bar and no fill. Ink once the trace is gone, a caution glyph while the
+   removal is still in progress. Never red (red is a failed run, ADR-111): not an error, a state of the record. */
 .trace-notice {
-  margin: 1rem 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--border-strong);
-  border-radius: 4px;
-  background: var(--surface);
-}
-.trace-notice[data-state="deleting"] {
-  border-left-color: var(--wait);
-  background: var(--wait-bg);
+  margin: var(--space-4) var(--layout-gutter);
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--color-border-subtle);
+  max-width: var(--measure);
 }
 .trace-notice p {
   margin: 0;
 }
 .trace-notice-title {
-  font-weight: 600;
-  margin-bottom: 0.25rem !important;
+  font-weight: var(--weight-strong);
+  margin-bottom: var(--space-1) !important;
+}
+.trace-notice[data-state="deleting"] .trace-notice-title > span:first-child {
+  color: var(--color-status-caution);
 }
 .trace-marker {
   display: inline-flex;
-  gap: 0.3rem;
+  gap: var(--space-1);
   align-items: baseline;
-  font-size: 0.8125rem;
-  color: var(--muted);
+  font-size: var(--type-body-size);
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
 .trace-marker[data-state="deleting"] {
-  color: var(--ink);
+  color: var(--color-text-primary);
 }
 .trace-marker[data-state="deleting"] > span:first-child {
-  color: var(--wait);
+  color: var(--color-status-caution);
 }
 .run-trace {
   margin: 0.15rem 0 0;

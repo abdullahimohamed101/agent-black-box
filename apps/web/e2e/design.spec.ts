@@ -80,14 +80,14 @@ test.describe("1440x900 frame", () => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
     await page.evaluate(async () => {
       await Promise.all(
-        ['400 1rem "IBMPlexSans"', '600 1rem "IBMPlexSansCondensed"', '400 1rem "IBMPlexMono"'].map(
-          (f) => document.fonts.load(f),
+        ['400 1rem "IBMPlexSans"', '600 1rem "IBMPlexSans"', '400 1rem "IBMPlexMono"'].map((f) =>
+          document.fonts.load(f),
         ),
       );
     });
     for (const face of [
       '400 1rem "IBMPlexSans"',
-      '600 1rem "IBMPlexSansCondensed"',
+      '600 1rem "IBMPlexSans"',
       '400 1rem "IBMPlexMono"',
     ])
       expect(await page.evaluate((f) => document.fonts.check(f), face)).toBe(true);
@@ -97,7 +97,12 @@ test.describe("1440x900 frame", () => {
         .first()
         .evaluate((e) => getComputedStyle(e).fontFamily);
     expect(await fam("body")).toContain("IBMPlexSans,");
-    expect(await fam("h1")).toContain("IBMPlexSansCondensed");
+    // headings are Plex Sans too (batch 5b removed the condensed face), and nothing asks for the deleted families
+    expect(await fam("h1")).toContain("IBMPlexSans,");
+    const families = await page.evaluate(() =>
+      [...document.fonts].map((f) => f.family.replace(/"/g, "")),
+    );
+    expect(families.filter((f) => /Condensed|Serif/.test(f))).toEqual([]);
     expect(await fam(".tl-type")).toContain("IBMPlexMono");
     expect(await page.evaluate(() => getComputedStyle(document.body).fontSize)).toBe("13px");
     expect([...origins]).toEqual(["http://localhost:3100"]);
@@ -121,17 +126,7 @@ test.describe("375 px", () => {
   for (const [name, url] of ROUTES)
     test(`no horizontal scroll: ${name}`, async ({ page }) => {
       await page.goto(url);
-      // The shell no longer renders in Plex Sans Condensed, which is not preloaded (ADR-166), so a run page requests that face
-      // only when its own tabs render and `fonts.ready` can resolve before it arrives; with the fallback face the run page's
-      // tab row is 2 px wider. Ask for the deprecated faces explicitly so the measurement is of the page, not of a font race
-      // (step 5b deletes both faces and this line).
-      await page.evaluate(() =>
-        Promise.all([
-          document.fonts.load('600 1rem "IBMPlexSansCondensed"'),
-          document.fonts.load('400 1rem "IBMPlexSerif"'),
-          document.fonts.ready,
-        ]),
-      );
+      await page.evaluate(() => document.fonts.ready);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
     });
   test("the top region is one 44 px bar and the links stay reachable through the Menu button", async ({
@@ -330,7 +325,10 @@ test.describe("run work area", () => {
     await expect(page.getByTestId("waterfall")).toBeVisible();
     const h = (await page.locator(".wf-scroll").boundingBox())!.height;
     expect(h).toBeGreaterThan(250);
-    await expect(page.getByRole("tab", { name: "Waterfall" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Waterfall" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   test("the 10,000-event run: bounded rows in both views, the page still does not scroll", async ({
@@ -457,7 +455,10 @@ test.describe("evidence view", () => {
     await page.goto(`${BASE}/runs/${RUN(11)}?view=evidence`);
     const region = page.getByRole("region", { name: "Captured artifacts" });
     await expect(region.getByRole("row")).toHaveCount(1 + 4); // header, two diffs, stdout and stderr of the one failed command
-    await expect(page.getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Evidence" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await axe(page);
     await region
       .getByRole("button", { name: /^Open diff/ })
@@ -484,7 +485,10 @@ test.describe("evidence view", () => {
   test("a viewer's evidence view never shows the API's placeholder", async ({ page }) => {
     await withArtifacts(page);
     await page.goto(`/w/viewer-only/projects/all/runs/${RUN(7)}?view=evidence`);
-    await expect(page.getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Evidence" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await page.waitForTimeout(300);
     const text = await page.locator("body").innerText();
     expect(text).not.toContain("[withheld]");
@@ -817,7 +821,10 @@ test.describe("polish: toolbar, story, agents, context strip and view tabs", () 
 
   test("the view tabs show counts without changing their names", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await expect(page.getByRole("tab", { name: "Timeline", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Timeline", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await expect(page.locator(".seg-count").first()).toHaveText("15");
   });
 });

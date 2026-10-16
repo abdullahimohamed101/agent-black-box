@@ -89,11 +89,6 @@ what is rendered and what every contrast number below is computed on.
 | `color.status.success` | `--color-status-success` | color.text.secondary `#5c646f` | same | a check glyph in ink-2 (no green) |
 | `color.status.running` | `--color-status-running` | color.interactive.default `#2a5f8f` | same | the running dot |
 | `color.brand.mark` | `--color-brand-mark` | orange.600 `#d9650f` | orange.400 `#ff7a1a` | the brand glyph cut and the recording dot; never an interaction colour |
-| `color.legacy.surface-2` | `--color-legacy-surface-2` | `#f5f7f9` | `#222932` | DELETED IN STEP 5: zebra and hover surface |
-| `color.legacy.ok` | `--color-legacy-ok` | `#1b7a3a` | `#5fcf84` | DELETED IN STEP 5: green words |
-| `color.legacy.ok-bg` | `--color-legacy-ok-bg` | `#e2f5e8` | `#16301f` | DELETED IN STEP 5 |
-| `color.legacy.wait-bg` | `--color-legacy-wait-bg` | `#fff1d1` | `#3a2c0f` | DELETED IN STEP 5: amber tint |
-| `color.legacy.fault-bg` | `--color-legacy-fault-bg` | `#fbe7e5` | `#3b1d1b` | DELETED IN STEP 5: red tint (the one red line forbids fills) |
 | `color.data.llm` | `--color-data-llm` | `#72649b` | `#9c8dca` | waterfall lane: model calls |
 | `color.data.tool` | `--color-data-tool` | `#46729e` | `#6d9dce` | waterfall lane: tool calls |
 | `color.data.shell` | `--color-data-shell` | `#846b34` | `#b89a5a` | waterfall lane: shell commands |
@@ -175,11 +170,6 @@ selected row and the filled button.
 | `border.strong` on `bg.canvas` | 1.64 | 2.18 | 1.3:1 (decorative floor, graphics) | n/a (decorative) | n/a | table head rule and section rules (decorative; never the only cue) |
 | `border.subtle` on `bg.canvas` | 1.27 | 1.46 | 1.1:1 (decorative floor, graphics) | n/a (decorative) | n/a | row rules (decorative; never the only cue) |
 | `brand.mark` on `bg.canvas` | 3.39 | 7.09 | 3:1 (AA, graphics) | pass | dark only | the brand cut and the recording dot (graphics, 3:1) |
-| `text.secondary` on `legacy.surface-2` (legacy) | 5.58 | 5.91 | 4.5:1 (AA) | pass | no | legacy zebra and hover surface, until step 5 |
-| `text.primary` on `legacy.surface-2` (legacy) | 14.89 | 11.60 | 4.5:1 (AA) | pass | yes | legacy zebra and hover surface, until step 5 |
-| `status.fault` on `legacy.fault-bg` (legacy) | 5.50 | 6.68 | 4.5:1 (AA) | pass | no | legacy red tint, until step 5 |
-| `status.caution` on `legacy.wait-bg` (legacy) | 5.29 | 9.05 | 4.5:1 (AA) | pass | dark only | legacy amber tint (removed diff lines), until step 5 |
-| `legacy.ok` on `bg.raised` (legacy) | 5.40 | 8.39 | 4.5:1 (AA) | pass | dark only | legacy green word, until step 5 |
 | `data.llm` on `bg.canvas` | 4.92 | 6.23 | 3:1 (AA, graphics) | pass | yes | waterfall bar (graphics, 3:1) |
 | `data.tool` on `bg.canvas` | 4.74 | 6.48 | 3:1 (AA, graphics) | pass | yes | waterfall bar (graphics, 3:1) |
 | `data.shell` on `bg.canvas` | 4.77 | 6.87 | 3:1 (AA, graphics) | pass | yes | waterfall bar (graphics, 3:1) |
@@ -305,43 +295,28 @@ step 5 migrates the readers and deletes the alias; **kept** = unchanged value an
 the old screens keep working.
 
 <!-- tokens:report:aliases:start -->
-61 old custom properties: 19 aliased to a faithful new token, 27 kept unchanged, 15 to be deleted in step 5 (their role is removed, or they alias a removed role).
+46 old custom properties: 19 aliased to a faithful new token, 27 kept unchanged, 0 to be deleted in step 5 (their role is removed, or they alias a removed role).
 
 | Old name | Status | Now | Readers | Note |
 | --- | --- | --- | --- | --- |
 | `--bg` | aliased | `--color-bg-canvas` | 4 |  |
-| `--surface` | aliased | `--color-bg-raised` | 26 | collapses into canvas in step 5 (tables and panels sit directly on it) |
-| `--surface-2` | deleted in step 5 | `--color-legacy-surface-2` | 6 | removed role |
-| `--border` | aliased | `--color-border-subtle` | 46 |  |
-| `--border-strong` | aliased | `--color-border-strong` | 8 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
-| `--ink` | aliased | `--color-text-primary` | 20 |  |
-| `--fg` | deleted in step 5 | `--color-text-primary` | 10 | ADR-111 alias of --ink |
-| `--fg-2` | deleted in step 5 | `--color-text-primary` | 2 | no role between ink and ink-2 |
-| `--muted` | aliased | `--color-text-secondary` | 36 |  |
+| `--surface` | aliased | `--color-bg-raised` | 19 | collapses into canvas in step 5 (tables and panels sit directly on it) |
+| `--border` | aliased | `--color-border-subtle` | 44 |  |
+| `--border-strong` | aliased | `--color-border-strong` | 7 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
+| `--ink` | aliased | `--color-text-primary` | 19 |  |
+| `--muted` | aliased | `--color-text-secondary` | 33 |  |
 | `--accent` | aliased | `--color-interactive-default` | 24 |  |
-| `--accent-bg` | deleted in step 5 | `--color-bg-wash` | 0 | the accent fill is removed; the wash is the selection colour |
 | `--sel` | aliased | `--color-bg-wash` | 3 |  |
-| `--info` | deleted in step 5 | `--color-interactive-default` | 0 | removed role |
-| `--fail` | aliased | `--color-status-fault` | 6 |  |
-| `--bad` | deleted in step 5 | `--color-status-fault` | 2 | ADR-111 alias of --fail |
-| `--fail-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 0 | no red fill (one red line) |
-| `--bad-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 0 | no red fill (one red line) |
-| `--wait` | aliased | `--color-status-caution` | 24 |  |
-| `--warn` | deleted in step 5 | `--color-status-caution` | 1 | ADR-111 alias of --wait |
-| `--wait-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 6 | caution is text only, no fill |
-| `--warn-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 0 | caution is text only, no fill |
-| `--ok` | deleted in step 5 | `--color-legacy-ok` | 2 | green removed; success is a check glyph in ink-2 |
-| `--ok-bg` | deleted in step 5 | `--color-legacy-ok-bg` | 0 | green removed |
+| `--fail` | aliased | `--color-status-fault` | 8 |  |
+| `--wait` | aliased | `--color-status-caution` | 17 |  |
 | `--mark` | aliased | `--color-brand-mark` | 0 |  |
-| `--sans` | aliased | `--font-sans` | 15 |  |
+| `--sans` | aliased | `--font-sans` | 25 |  |
 | `--mono` | aliased | `--font-mono` | 25 |  |
 | `--fs-headline` | aliased | `--type-h1-size` | 1 |  |
 | `--fs-title` | aliased | `--type-h2-size` | 7 |  |
 | `--fs-body` | aliased | `--type-body-size` | 7 |  |
 | `--fs-small` | aliased | `--type-small-size` | 1 |  |
 | `--ease-out` | aliased | `--motion-easing-out` | 5 |  |
-| `--cond` | deleted in step 5 | (defined in globals.css, unchanged) | 8 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
-| `--serif` | deleted in step 5 | (defined in globals.css, unchanged) | 3 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
 | `--t-fast` | kept | (defined in globals.css, unchanged) | 0 | motion contract (tests/motion-contract.test.ts reads globals.css); motion.duration.* are the new names, step 5 aliases these |
 | `--t-base` | kept | (defined in globals.css, unchanged) | 0 | as --t-fast |
 | `--t-slow` | kept | (defined in globals.css, unchanged) | 0 | as --t-fast |
