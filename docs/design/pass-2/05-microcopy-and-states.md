@@ -1,7 +1,7 @@
 # Design pass 2, step 5: microcopy, errors, empty states and loading
 
 Status: batch 5a written 2026-10-16 (shell, navigation, sign-in and no-access pages, the Runs home); batch 5b written 2026-10-16 (sections 5
-and 6: the run page and Compare). Later batches append their sections below (5c Review, Alerts, Analytics, Experiments, 5d Settings). Source prompt: Prompt 1 sections 4 to 7
+and 6: the run page and Compare); batch 5c written 2026-10-16 (sections 7 to 9: Review, the Settings pattern and its tabs, Alerts). Later batches append their sections below (5d Analytics, Experiments). Source prompt: Prompt 1 sections 4 to 7
 (`docs/design/design-pass-2-prompts.md`). Voice from `01-direction.md` (voice cues): sentences, not labels; one verb per button;
 numbers carry units; no upper case shouting; no marketing tone; never echo captured content (names of runs, commands, payload
 text, search text). A string that includes a run, agent or workspace name renders it as a text node and appears only where the
@@ -247,3 +247,166 @@ Strings: `run.ts` (`compare`).
 | Pick state | **Pick two runs to compare** with a link to the runs list |
 | Loading | Comparing runs… |
 | Errors | as section 4; an expired side gets the `TRACE_EXPIRED` note above |
+
+---
+
+## 7. Review (batch 5c)
+
+Strings: `apps/web/src/copy/review.ts` (`review`). Review is one page with two tabs; the routes stay `/w/{ws}/approvals` and
+`/w/{ws}/security`, and `?approval=` and `?state=` keep working.
+
+### 7.1 Frame
+
+| Element | Copy | Notes |
+| --- | --- | --- |
+| Title (h1) | Review | |
+| Count (right of the title) | `3 waiting` | pending approvals; hidden at zero, absent when the person cannot read approvals |
+| Tab list | label "Review sections": **Approvals** (the pending count beside it, decoration) and **Security findings** | the shared Tabs component; a tab the person cannot read is absent; both absent shows the shared "Not available for your role" |
+| Foot of Approvals | An approval authorises one action, once. Policies apply to agents that ask through the SDK guard. | small, ink-2 |
+
+### 7.2 Approvals
+
+| Element | Copy |
+| --- | --- |
+| State tabs (chip density, label "Approval state") | Pending, Decided, All |
+| Column heads | Request, Risk, State, Requested, Time left |
+| Row | capability (mono, 600, the link that opens the panel), the resource under it (mono, small, ink-2); risk as shield glyph and word (R4 filled and 600, R3 outline in caution text, below that ink-2); state as glyph and word (`‖ Waiting` caution, `✓ Approved` ink-2, `Denied` ink 600 with an outline glyph, `Expired` caution); time left `5 h 59 min`, `Expired` at zero |
+| List count | `3 requests loaded (end of list)` / `20 requests loaded` |
+| Load more | Load more / Loading… |
+| Panel heading | the capability (mono 18/24 600) and a **Close** button |
+| Panel fields | Capability, Resource, Risk class, Policy, Approver needed, Expires (with "if it expires, the action is denied/allowed"), Requested, Requested by (run link, agent, project), then Decided, Comment, Used when decided |
+| Panel sections | Command (shell only: "Approving covers exactly this command, once."), Arguments |
+| Decide | Comment (optional) with `0 / 1000`; **Approve** (the page's one filled button), **Deny** (outline, caution text) |
+| Confirm (in place, not a dialog) | "Approve this request? It authorises this one action, once." / "Deny this request? The agent is told it was refused." with **Confirm approve** or **Confirm deny**, **Cancel**; Escape undoes the confirm first |
+| After a decision | You approved this request. / You denied this request. (a status line, focus moves to it) |
+| Read-only role | Your role can read this request but not decide it. |
+| Content withheld | The content of this request could not be shown (it was withheld when the request was made), so it cannot be approved. You can deny it. |
+
+| Empty state | Headline | Body |
+| --- | --- | --- |
+| Pending, first time | Nothing is waiting for you | When an agent asks a person to approve an action, the request appears here. |
+| Decided, none | No decided requests yet | Approved, denied, expired and cancelled requests are listed here. |
+| All, none | No approval requests yet | Policies that require approval create a request when an agent asks to act. |
+
+No illustration on any of them (step 1, removal 15).
+
+| Error | Headline | Body | Action |
+| --- | --- | --- | --- |
+| Forbidden | Not available for your role | Your role in this workspace does not include approvals. | none |
+| Offline or 5xx on the list | Could not load this data | the API's fixed sentence (request id) | Try again |
+| Rate limited | Too many requests | Wait N seconds and try again. | Try again |
+| Request not found | Not found | the API's sentence for APPROVAL_NOT_FOUND | none |
+| Decision refused (already decided, expired, conflict, offline) | the existing fixed sentences of `decisionErrorText`, as one status line in the panel | nothing optimistic; the form keeps the comment | Try again by pressing the button again |
+| Loading | Loading approvals… (list), Loading the request… (panel) | |
+
+### 7.3 Security findings
+
+| Element | Copy |
+| --- | --- |
+| Facets | Narrow results (N on); groups Severity, Detector, Project, Run started (the shared facet column of the Runs list) |
+| Column heads | Severity, Finding, Run, When (the Project column is dropped: the scope control and the Project facet say it) |
+| Severity | shield glyph and word: Critical (filled, 600), High (outline, caution text), Medium, Low, Info (outline, ink-2). Order is by severity then newest run first, so the order is readable without colour |
+| Rule line | `Rule: a redaction record names a credential pattern` (small, ink-2, the API's fixed text) |
+| List count | `10 findings loaded (end of list)` |
+
+| State | Headline | Body | Action |
+| --- | --- | --- | --- |
+| Clean | Nothing suspicious found | No security findings in this workspace. These detectors are on: (then the detector list) | none |
+| Zero results | No findings match | Try clearing a filter or widening the time range. | Clear filters |
+| Forbidden | Not available for your role | Your role in this workspace does not include security findings. | none |
+| Error | Could not load this data | the API's sentence (request id) | Try again |
+| Loading | Loading security findings… | | |
+
+---
+
+## 8. Settings: the one pattern (batch 5c)
+
+Strings: `apps/web/src/copy/settings.ts` (`settings`). The same words are used on every tab so a person learns them once.
+
+### 8.1 Frame and navigation
+
+| Element | Copy | Notes |
+| --- | --- | --- |
+| Title line | `Settings` (link to the first tab the role may read) `/` the tab's name as the h1 | the shared title line of 5b; at 375 the back link is its own line `‹ Settings` |
+| Section list (nav label "Settings sections") | groups **People**: Members, Sessions; **Access**: API keys, Policies, Capture and detectors; **Limits**: Quotas, Retention, Pricing; **Notify**: Alerts; **Record**: Audit log | a tab the role may not read is absent (the same permissions as before); a group with no tab is absent |
+| Section list below 900 px | a button `Section: Quotas` with a chevron opens the grouped list | closes on selection, Escape returns focus to the button |
+| Tab heading (h2 does not exist; the h1 is the tab name) | each tab starts with its lede, then sections with h2 headings | |
+| Section heading | h2, 18/24 600, followed by one sentence (14/20, ink-2, at most 72 characters wide) | |
+| Primary button | one filled button per section at most, at the end of the section it saves | |
+| Row actions | text buttons: Remove, Revoke, Edit, Delete; destructive ones in caution text | |
+| Saved | `Saved.` plus what changed, as a polite status line under the button; it names what the API stored | the existing per-tab sentences are kept |
+| Read-only | one plain sentence at the top of the section instead of the form: `Your role can read this but not change it. Owners and admins can.` (per tab, the existing wording is kept where a test pins it) | no disabled form is shown |
+| Forbidden tab | Not available for your role / Your role in this workspace does not include `what`. | `what` per tab: members, API keys, pricing, security settings, project quotas, retention, policies, the audit log |
+
+### 8.2 Destructive actions (two steps in place)
+
+The first press turns the button row into a sentence and two buttons. The second press acts. Escape and **Cancel** go back.
+
+| Action | First step | Second step | Cancel |
+| --- | --- | --- | --- |
+| Remove a member | Remove | Confirm remove | Cancel |
+| Revoke an API key | Revoke | Confirm revoke | Cancel |
+| Revoke an invitation | Revoke | Confirm revoke | Cancel |
+| End one session | End session | (one step: it signs a device out and the list says so) | |
+| Sign out everywhere else | Sign out everywhere else | Confirm sign out everywhere else | Cancel |
+| Delete an alert rule | Delete | Delete NAME (the rule's name is the confirmation) | Keep |
+| Delete or rotate a destination | as before | as before | as before |
+| Shorten a retention period | Save periods | Save and shorten | Cancel |
+
+### 8.3 Field errors, helper text, conflict, offline
+
+- A field error is one sentence under the field, ink, with a leading `!` mark in a 600 weight; never red (red is run failure only). The field has `aria-invalid` and `aria-describedby`.
+- A write that fails shows one status line under the section: the API's fixed sentence, then `(request ID)` in small type. A 403 reads `Your role does not allow this.` first.
+- A conflict (policy version, concurrent edit) keeps the draft and says what to do: `Someone published a newer version (version 4). Reload to continue from it; your draft in the editor will be replaced.` with **Reload the latest version**.
+- Rate limited: `Too many requests. Wait N seconds and try again.` Offline: `The request failed.` with **Try again**; the form keeps its values.
+- Helper text is 13/20 ink-2 directly under the field, never a placeholder.
+
+### 8.4 Per tab
+
+| Tab | Title (h1) | Lede | Sections (h2) | Primary | Empty / read-only |
+| --- | --- | --- | --- | --- | --- |
+| Members | Members | Who can open this workspace, and what they may do. | Members; Invitations | Create invitation | No members / No open invitations |
+| Sessions | Sessions | The browsers and devices where you are signed in. Ending a session signs that device out at once. Each change is written to the audit log of your workspaces. | Your sessions | none | No sessions: You have no working session. Reload the page to sign in again. |
+| API keys | API keys | Keys let SDKs and tools send events and read runs. A token is shown once, when the key is created. | Keys; Create a key | Create key | No API keys: Create one to connect an agent. |
+| Policies | Policies | Rules for what an agent may do. The first rule that matches decides; anything that matches no rule is allowed. | Policy text; Dry run; Publish; Versions | Publish | No policy yet: Start from the example and edit it, or write your own. Read-only: You can read policies but not change them. Owners and admins edit and publish. |
+| Capture and detectors | Capture and detectors | What the server stores, which detectors report and which hosts an agent may contact, for one project. Every change is written to the audit log. | Capture mode; Detectors; Allowed hosts | Save changes | No projects yet: Settings appear once an agent reports a project. |
+| Quotas | Quotas | What one project may store. At a limit, new items are refused with a clear code; what the project already has keeps working. Changes to a limit are written to the audit log. | Usage and limits | Save limits | read-only: Owners and admins can change these limits. |
+| Retention | Retention | How long this workspace keeps its data. Older data is removed by a background job, a run at a time, and every change to these periods is written to the audit log. | Mode; Periods; Last passes | Save periods | read-only: Owners and admins can change these periods. |
+| Pricing | Pricing | Prices per million tokens used to cost LLM calls. An override replaces the built-in price for matching models from its start time; past runs change only after a rebuild. | Prices; Add an override; Apply to past runs | Add override | No prices |
+| Alerts | Alerts | Tell a person or a channel when a run fails, a security finding appears, an approval needs attention or spend goes over a limit. | tabs Rules, Destinations, History | Add a rule / Add a destination | see section 9 |
+| Audit log | Audit log | Administrative actions and refused attempts, newest first. | Entries | none (Load more) | Nothing recorded yet |
+
+### 8.5 Quotas and usage words
+
+`12 of 500 (2 %)` mono; state word with glyph: `✓ Within limit` ink-2, `◐ Near limit` caution (from 80 %), `● Limit reached` ink 600; the bar is 4 px, ink-2, caution from 80 %, ink at the limit; never red. At the limit one sentence under the row: the quota's refusal sentence plus `Starts again at 2026-10-17 00:00 UTC.` for daily quotas.
+
+### 8.6 Loading and transitions
+
+| Moment | Copy |
+| --- | --- |
+| Tab loading | `Loading members…` and so on: one polite status line in place of the section; no skeleton |
+| Saving | the button reads `Saving…` and is disabled; the rest stays |
+| Saved | the status line under the button; focus stays where it was |
+| Navigating away with unsaved text (Policies, signing secret) | the browser's own leave prompt with the existing sentence |
+
+---
+
+## 9. Alerts, under Settings (batch 5c)
+
+Strings: `apps/web/src/copy/settings.ts` (`settings.alerts`). Route `/w/{ws}/settings/alerts?tab=rules|destinations|history`; `/w/{ws}/alerts` redirects there with the tab kept.
+
+| Element | Copy |
+| --- | --- |
+| Tab list (label "Alert sections") | Rules, Destinations, History (the shared Tabs component, URL `?tab=`) |
+| Foot | Alerts are notifications that are sent as soon as possible and may arrive more than once. They carry names, ids and counts, never what an agent read, wrote or ran. |
+| Rules, columns | Name, When, Only if, Sends to, On, Last fired; row actions **Edit** and **Delete** as text buttons |
+| Rules, first time | Add a destination, then a rule: A destination is where alerts go: a webhook, a Slack channel or an email address. A rule says what to watch for. then **Add a destination** |
+| Rules, destination exists | Now add a rule: A rule says what to watch for and which destinations to tell. then **Start with "a run fails"** and **Add a rule** |
+| Rule delete | Delete, then `Delete this rule?` **Delete NAME** / **Keep** |
+| Rule saved | Saved NAME. then the 7-day preview line (counts only), **Dismiss** |
+| Destinations, columns | Name, Target, Health, Rules; **Send a test**, **Pause**/**Resume**, **Rotate secret**, **Delete** |
+| Destinations, role | Destinations are for owners and admins: A destination holds a private address or a signing secret, so only owners and admins can see or change them. You can still read the rules and the history of what was sent. |
+| Send a test | `Sending a test…`, then `Test sent.` or `Test failed: CODE in words`; nothing is stored |
+| Signing secret panel (unchanged words) | Signing secret for NAME. It is shown once and is not kept in this browser. ... **Copy secret**, "I have stored the secret", **Done** (disabled until ticked); leaving the page asks first |
+| History | filters (Destination, Outcome, Rule), table (When, Rule, Destination, Outcome, Attempts), Load more; empty `Nothing has been sent yet` / `No alerts match these filters` |
+| Field errors | the existing fixed sentences of `problemFrom` (for example "Only port 443 is allowed" is the API's reason), shown as the shared field error |
