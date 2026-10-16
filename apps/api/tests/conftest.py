@@ -66,6 +66,10 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
     overrides.setdefault("auth_fail_per_credential", 1_000_000)
     overrides.setdefault("auth_fail_per_address", 1_000_000)
     overrides.setdefault("auth_fail_global", 1_000_000)
+    # Same for the failed-session throttle (ADR-169): the matrix presents expired and revoked
+    # cookies by the hundred. tests/test_session_throttle.py sets real numbers.
+    overrides.setdefault("session_fail_per_address", 1_000_000)
+    overrides.setdefault("session_fail_global", 1_000_000)
     return Settings(
         environment="test",
         log_level="WARNING",

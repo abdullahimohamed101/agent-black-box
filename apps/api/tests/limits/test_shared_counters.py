@@ -200,7 +200,7 @@ async def test_an_unreachable_database_raises_unavailable_fast_then_short_circui
     logged = [r for r in caplog.records if "failing open" in r.getMessage()]
     assert len(logged) == 1  # once per interval, not once per request
     assert "secret-key" not in caplog.text and "abb:x" not in caplog.text
-    assert getattr(logged[0], "error_class", "")
+    assert getattr(logged[0], "error_type", "")
     await dead.dispose()
 
 

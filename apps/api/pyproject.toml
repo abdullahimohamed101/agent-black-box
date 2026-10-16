@@ -17,6 +17,15 @@ dependencies = [
   "pyyaml>=6.0.2",
 ]
 
+[project.optional-dependencies]
+# Optional tracing (ADR-170). Never imported unless ABB_OTEL_ENABLED=1. Exact pins: the SDK and
+# the exporter move together, and an unreviewed upgrade could change what a span carries.
+otel = [
+  "opentelemetry-api==1.45.1",
+  "opentelemetry-sdk==1.45.1",
+  "opentelemetry-exporter-otlp-proto-http==1.45.1",
+]
+
 [tool.uv.sources]
 abb-event-schema = { path = "../../packages/event-schema", editable = true }
 
@@ -62,6 +71,18 @@ plugins = []
 [[tool.mypy.overrides]]
 module = ["asyncpg", "asyncpg.*", "yaml", "yaml.*"]
 ignore_missing_imports = true
+
+# The optional `otel` extra: absent in the default install, typed when present. One override
+# serves both (a per-line ignore would be "unused" with the extra installed).
+[[tool.mypy.overrides]]
+module = ["opentelemetry.sdk", "opentelemetry.sdk.*", "opentelemetry.exporter.*"]
+ignore_missing_imports = true
+
+# Checked the same with and without the extra: where the packages are absent their names are Any.
+[[tool.mypy.overrides]]
+module = ["abb_api.obs.tracing_otel", "tests.obs.test_tracing_otel"]
+disallow_subclassing_any = false
+warn_return_any = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

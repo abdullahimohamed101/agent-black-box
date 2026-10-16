@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
+from abb_api.obs.tracing import current_traceparent
 from abb_api.tenancy import TenantContext
 
 SUMMARIZE_RUN = "summarize_run"
@@ -94,6 +95,12 @@ class OutboxRepository:
         new job was created. Written in the caller's transaction, so a job
         exists if and only if the data that needs processing committed.
         """
+        # With tracing on, the job carries the W3C trace context of the work that asked for it
+        # (55 characters), so the worker's span can link back to the request's. A job that
+        # coalesces into a pending one keeps the first context. Off: the payload is unchanged.
+        traceparent = current_traceparent()
+        if traceparent is not None and "traceparent" not in payload:
+            payload = {**payload, "traceparent": traceparent}
         values: dict[str, Any] = {
             "id": uuid.uuid4(),
             "job_type": job_type,

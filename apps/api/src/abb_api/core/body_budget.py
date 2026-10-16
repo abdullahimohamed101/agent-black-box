@@ -34,6 +34,7 @@ from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from abb_api.core.errors import AppError, ErrorCategory, error_response
+from abb_api.obs.catalogue import METRICS, Catalogue
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,16 @@ def busy_error() -> AppError:
 class BodyBudget:
     """Bytes of request bodies held by this process. Single event loop: no lock is needed."""
 
-    def __init__(self, cap_bytes: int, *, small_bytes: int = SMALL_BODY_BYTES) -> None:
+    def __init__(
+        self,
+        cap_bytes: int,
+        *,
+        small_bytes: int = SMALL_BODY_BYTES,
+        metrics: Catalogue = METRICS,
+    ) -> None:
+        self.metrics = metrics
+        # Read at scrape time: nothing is added to the accounting itself.
+        metrics.body_bytes_in_flight.set_function(lambda: float(self.in_flight))
         self.cap_bytes = cap_bytes
         self.small_bytes = small_bytes
         self.in_flight = 0
@@ -91,6 +101,7 @@ class BodyBudget:
 
     def note_refusal(self, where: str) -> None:
         self.refused += 1
+        self.metrics.body_cap_refusals_total.inc("budget")
         now = time.monotonic()
         if now - self._last_log >= _LOG_EVERY_SECONDS:
             self._last_log = now
@@ -152,6 +163,7 @@ class BodyBudgetMiddleware:
             try:
                 message = await asyncio.wait_for(receive(), max(deadline - time.monotonic(), 0.001))
             except TimeoutError:
+                self.budget.metrics.body_cap_refusals_total.inc("timeout")
                 raise AppError(
                     "REQUEST_TIMEOUT",
                     "The request body was not received in time.",
@@ -164,6 +176,7 @@ class BodyBudgetMiddleware:
                 if size:
                     want = held + size
                     if want > self.ceiling:
+                        self.budget.metrics.body_cap_refusals_total.inc("ceiling")
                         raise AppError(
                             "PAYLOAD_TOO_LARGE",
                             f"Request body exceeds the {self.ceiling} byte limit.",

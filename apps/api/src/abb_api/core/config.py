@@ -1,11 +1,12 @@
 """Typed settings, validated once at startup (spec §108: fail fast)."""
 
+import ipaddress
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Retention (Phase 19b, ADR-159). "forever" keeps a tier for good; a number is days after the run
@@ -82,7 +83,27 @@ class RetentionSettings(BaseSettings):
         return self
 
 
-class Settings(RetentionSettings):
+class TracingSettings(BaseSettings):
+    """Optional tracing (Phase 19c, ADR-170): off unless ABB_OTEL_ENABLED=1 and the `otel` extra
+    is installed. The collector's address and headers come from the standard
+    OTEL_EXPORTER_OTLP_* variables, read by the exporter itself and never held (or logged) here.
+    Shared by the API, the worker and the retention process."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="ABB_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    otel_enabled: bool = False
+    otel_sample_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    otel_shutdown_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+
+    @field_validator("otel_enabled", mode="before")
+    @classmethod
+    def _blank_otel_is_off(cls, value: object) -> object:
+        return False if isinstance(value, str) and not value.strip() else value
+
+
+class Settings(RetentionSettings, TracingSettings):
     """All configuration comes from ABB_* environment variables (or a local .env)."""
 
     model_config = SettingsConfigDict(
@@ -343,6 +364,67 @@ class Settings(RetentionSettings):
     # events (superuser, owner of the tables, ...; KI-031). 1 accepts that knowingly; a log line
     # records it on every start.
     allow_privileged_db_role: bool = False
+    # Database safety (Phase 19c step 3, ADR-169). The API's connections carry this
+    # `statement_timeout` (seconds; 0 = none); a budgeted route that sets its own `SET LOCAL
+    # statement_timeout` overrides it for its transaction. Migrations, retention, backup and
+    # rotation never use it. The worker has its own setting (default off: its jobs are long).
+    db_statement_timeout_seconds: float = Field(default=30.0, ge=0, le=3600)
+    worker_db_statement_timeout_seconds: float = Field(default=0.0, ge=0, le=86_400)
+    # Circuit breaker on database connectivity (API only): after `threshold` consecutive
+    # connect/checkout failures within `window` seconds, requests that need the database answer
+    # 503 DEPENDENCY_UNAVAILABLE at once for `open_seconds`, then one probe goes through.
+    db_breaker_enabled: bool = True
+    db_breaker_threshold: int = Field(default=5, ge=1, le=1000)
+    db_breaker_open_seconds: float = Field(default=5.0, gt=0, le=300)
+    db_breaker_window_seconds: float = Field(default=30.0, gt=0, le=3600)
+    # The startup role check (KI-031) repeated while running (KI-183); 0 turns the repeat off.
+    role_check_interval_seconds: float = Field(default=300.0, ge=0, le=86_400)
+    # Failed *session* cookies (Phase 19c step 3, ADR-169, KI-176): the same shape as the failed
+    # API-key throttle (`auth_fail_*`), counted per trusted client address and globally. The
+    # address budget needs `trust_proxy`.
+    session_fail_enabled: bool = True
+    session_fail_window_seconds: int = Field(default=60, ge=1, le=3600)
+    session_fail_per_address: int = Field(default=30, ge=1)
+    session_fail_global: int = Field(default=600, ge=1)
+    session_fail_negative_seconds: float = Field(default=30.0, ge=0, le=3600)
+    session_fail_known_valid_seconds: float = Field(default=300.0, ge=0, le=3600)
+    session_fail_cache_entries: int = Field(default=10_000, ge=10, le=1_000_000)
+    session_fail_active_refresh_seconds: float = Field(default=60.0, ge=1, le=3600)
+    session_fail_active_cap: int = Field(default=100_000, ge=10, le=10_000_000)
+    # Metrics (Phase 19c, ADR-165). `/metrics` exists only when a token is set; it is then served
+    # with `Authorization: Bearer <token>`. The worker serves the same registry on its own port
+    # (off by default), bound to loopback unless the bind address says otherwise.
+    metrics_token: SecretStr | None = None
+    metrics_requests_per_minute: int = Field(default=120, ge=1, le=100_000)
+    worker_metrics_port: int | None = Field(default=None, ge=1, le=65535)
+    worker_metrics_bind: str = "127.0.0.1"
+
+    @field_validator("metrics_token", "worker_metrics_port", mode="before")
+    @classmethod
+    def _blank_means_unset(cls, value: object) -> object:
+        # Compose passes `${VAR:-}` as an empty string when the operator set nothing.
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
+
+    @field_validator("role_check_interval_seconds")
+    @classmethod
+    def _role_check_interval_is_not_a_busy_loop(cls, value: float) -> float:
+        if 0 < value < 5:
+            raise ValueError("role_check_interval_seconds must be 0 (off) or at least 5")
+        return value
+
+    @model_validator(mode="after")
+    def _metrics_are_configured_safely(self) -> "Settings":
+        if self.metrics_token is not None and len(self.metrics_token.get_secret_value()) < 24:
+            raise ValueError("metrics_token must be at least 24 characters")
+        if self.worker_metrics_port is not None and self.metrics_token is None:
+            raise ValueError("worker_metrics_port needs metrics_token (the same bearer token)")
+        try:
+            ipaddress.ip_address(self.worker_metrics_bind)
+        except ValueError:
+            raise ValueError("worker_metrics_bind must be an IP address") from None
+        return self
 
     @model_validator(mode="after")
     def _sign_in_is_configured_safely(self) -> "Settings":

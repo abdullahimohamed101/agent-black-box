@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from abb_api.core.config import Settings
 from abb_api.main import create_app
 from abb_api.openapi import build_document
-from tests.authz.registry import CASES, PUBLIC, SESSION_ONLY
+from tests.authz.registry import CASES, OPERATOR_ONLY, PUBLIC, SESSION_ONLY
 from tests.authz.routes import enumerate_routes
 
 # Counted by hand when the registry was written; a mismatch means the walker or the registry moved.
@@ -40,6 +40,12 @@ def problems(app: FastAPI) -> list[str]:
             if not route.requires_session or route.required_actions:
                 found.append(f"{route.describe()}: listed SESSION_ONLY but not guarded that way")
             continue
+        if route.key in OPERATOR_ONLY:
+            if route.required_actions or route.requires_session or route.in_schema:
+                found.append(
+                    f"{route.describe()}: an operator route must be bearer-only and hidden"
+                )
+            continue
         if route.key in PUBLIC:
             if route.required_actions or route.requires_session:
                 found.append(f"{route.describe()}: listed PUBLIC but demands an action")
@@ -65,6 +71,21 @@ def problems(app: FastAPI) -> list[str]:
 
 def test_every_route_has_an_authorization_case() -> None:
     assert problems(_app()) == []
+
+
+def test_the_metrics_route_exists_only_with_a_token_and_is_accounted_for() -> None:
+    token = "t" * 32
+    with_token = create_app(
+        Settings(
+            database_url="postgresql+asyncpg://x:x@127.0.0.1:1/x",
+            environment="test",
+            metrics_token=token,  # type: ignore[arg-type]
+        )
+    )
+    assert ("GET", "/metrics") in {r.key for r in enumerate_routes(with_token)}
+    assert problems(with_token) == []
+    assert ("GET", "/metrics") not in {r.key for r in enumerate_routes(_app())}
+    assert "/metrics" not in with_token.openapi()["paths"]
 
 
 def test_an_unregistered_route_is_reported_even_when_hidden_from_openapi() -> None:

@@ -25,6 +25,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.exc import TimeoutError as PoolTimeout
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from abb_api.obs.catalogue import METRICS, Catalogue
 from abb_api.search.errors import search_busy, search_timeout
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,10 @@ class SearchGate:
     asks first.
     """
 
-    def __init__(self, *, max_concurrent: int, timeout_seconds: float) -> None:
+    def __init__(
+        self, *, max_concurrent: int, timeout_seconds: float, metrics: Catalogue = METRICS
+    ) -> None:
+        self._permits = metrics.search_permits_in_use
         self._cap = max_concurrent
         self._share = max(1, max_concurrent // 2)
         self._lone = max(self._share, max_concurrent - 1)
@@ -141,11 +145,13 @@ class SearchGate:
         if self._total >= self._cap:
             raise search_busy("process_full")
         self._total += 1
+        self._permits.inc()
         self._by_workspace[workspace_id] = mine + 1
         self._by_actor[key] = self._by_actor.get(key, 0) + 1
 
     def _release(self, workspace_id: uuid.UUID, actor: str) -> None:
         self._total -= 1
+        self._permits.dec()
         _decrement(self._by_workspace, workspace_id)
         _decrement(self._by_actor, (workspace_id, actor))
 

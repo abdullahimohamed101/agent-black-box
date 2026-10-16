@@ -62,6 +62,25 @@ def _media_type(request: Request) -> str:
     return media_type
 
 
+_FAILURE_REASON = {
+    "PAYLOAD_TOO_LARGE": "too_large",
+    "RATE_LIMITED": "rate_limited",
+    "QUOTA_EXCEEDED": "quota_exceeded",
+    "ARTIFACT_STORE_UNAVAILABLE": "store_unavailable",
+    "DEPENDENCY_UNAVAILABLE": "unavailable",
+    "RUN_PROJECT_MISMATCH": "conflict",
+    "ARTIFACT_CONFLICT": "conflict",
+}
+
+
+def _failure_reason(error: AppError) -> str:
+    """A closed reason for the metric (unknown codes fold into `other`, 4xx into `invalid`)."""
+    known = _FAILURE_REASON.get(error.code)
+    if known is not None:
+        return known
+    return "invalid" if 400 <= error.status_code < 500 else "other"
+
+
 @router.put(
     "/{artifact_id}",
     response_model=ArtifactOut,
@@ -112,18 +131,28 @@ async def put_artifact(
         raise _invalid("X-Content-SHA256 must be 64 hex characters.")
     media_type = _media_type(request)
     service = _service(request)
-    raw = await read_body(request, service.max_bytes)
-    data = decode_body(raw, request.headers.get("content-encoding"), service.max_bytes)
-    artifact, created = await service.put(
-        principal,
-        artifact_id=art_uuid,
-        run_id=run_uuid,
-        kind=kind,
-        name=name,
-        media_type=media_type,
-        data=data,
-        claimed_sha256=claimed,
-    )
+    cat = request.app.state.observability.catalogue
+    try:
+        raw = await read_body(request, service.max_bytes)
+        data = decode_body(raw, request.headers.get("content-encoding"), service.max_bytes)
+        artifact, created = await service.put(
+            principal,
+            artifact_id=art_uuid,
+            run_id=run_uuid,
+            kind=kind,
+            name=name,
+            media_type=media_type,
+            data=data,
+            claimed_sha256=claimed,
+        )
+    except AppError as exc:
+        cat.artifact_upload_failures_total.inc(_failure_reason(exc))
+        raise
+    except Exception:
+        cat.artifact_upload_failures_total.inc("unavailable")  # ours: a bug or a lost dependency
+        raise
+    if created:
+        cat.artifact_upload_bytes.observe(float(artifact.size_bytes))
     response.status_code = 201 if created else 200
     return artifact
 

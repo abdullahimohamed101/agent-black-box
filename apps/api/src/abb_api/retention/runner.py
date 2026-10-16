@@ -9,6 +9,7 @@ its own environment.
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 import uuid
@@ -21,9 +22,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
-from abb_api.core.config import RetentionSettings
+from abb_api.core.config import RetentionSettings, TracingSettings
 from abb_api.core.logging import configure_logging
 from abb_api.db import create_engine
+from abb_api.obs import tracing
+from abb_api.obs.catalogue import METRICS
+from abb_api.obs.textfile import RETENTION_METRICS, TextfileMetrics, textfile_path
+from abb_api.obs.tracing import span
+from abb_api.retention.metrics import record_crash, record_tick
 from abb_api.retention.tick import TickResult, run_tick
 
 logger = logging.getLogger(__name__)
@@ -33,7 +39,7 @@ class RetentionConfigError(RuntimeError):
     """The runner cannot start safely; the message never contains a credential."""
 
 
-class RetentionRunnerSettings(RetentionSettings):
+class RetentionRunnerSettings(RetentionSettings, TracingSettings):
     """Retention knobs plus the retention role's credentials. Never loaded by the API."""
 
     model_config = SettingsConfigDict(
@@ -186,27 +192,45 @@ async def mode_now() -> str:
         return "off"
 
 
-async def run_once(settings: RetentionRunnerSettings) -> TickResult:
+def _finished(textfile: TextfileMetrics | None, result: TickResult) -> None:
+    """Fold a finished tick into the metrics file (a no-op without one)."""
+    if textfile is not None:
+        record_tick(textfile.catalogue, result)
+        textfile.write()
+
+
+async def run_once(
+    settings: RetentionRunnerSettings, textfile: TextfileMetrics | None = None
+) -> TickResult:
     if settings.retention_mode == "off":
-        return TickResult(tick_id=uuid.uuid4(), mode="off")
+        result = TickResult(tick_id=uuid.uuid4(), mode="off")
+        _finished(textfile, result)
+        return result
     store = artifact_store_of(settings)
     engine = await _engine(settings)
     try:
-        result = await run_tick(
-            engine,
-            settings,
-            budget_seconds=settings.retention_tick_budget_seconds,
-            keep_reports=settings.retention_reports_keep,
-            store=store,
-            mode_probe=mode_now,
-        )
+        with span("retention.tick", mode=settings.retention_mode) as traced:
+            result = await run_tick(
+                engine,
+                settings,
+                budget_seconds=settings.retention_tick_budget_seconds,
+                keep_reports=settings.retention_reports_keep,
+                store=store,
+                mode_probe=mode_now,
+            )
+            traced.set(outcome="ok")
     finally:
         await engine.dispose()
     logger.info("retention tick finished", extra=_summary(result))
+    _finished(textfile, result)
     return result
 
 
-async def run_forever(settings: RetentionRunnerSettings, stop: asyncio.Event) -> None:
+async def run_forever(
+    settings: RetentionRunnerSettings,
+    stop: asyncio.Event,
+    textfile: TextfileMetrics | None = None,
+) -> None:
     """Tick every `retention_tick_interval_seconds` until told to stop (one tick at a time)."""
     if settings.retention_mode == "off":
         logger.info("ABB_RETENTION_MODE=off: the retention job does nothing")
@@ -216,18 +240,24 @@ async def run_forever(settings: RetentionRunnerSettings, stop: asyncio.Event) ->
         while not stop.is_set():
             if engine is not None:
                 try:
-                    result = await run_tick(
-                        engine,
-                        settings,
-                        budget_seconds=settings.retention_tick_budget_seconds,
-                        keep_reports=settings.retention_reports_keep,
-                        store=store,
-                        mode_probe=mode_now,
-                        stop=stop,
-                    )
+                    with span("retention.tick", mode=settings.retention_mode) as traced:
+                        result = await run_tick(
+                            engine,
+                            settings,
+                            budget_seconds=settings.retention_tick_budget_seconds,
+                            keep_reports=settings.retention_reports_keep,
+                            store=store,
+                            mode_probe=mode_now,
+                            stop=stop,
+                        )
+                        traced.set(outcome="ok")
                     logger.info("retention tick finished", extra=_summary(result))
+                    _finished(textfile, result)
                 except Exception:  # e.g. the database restarted: try again next interval
                     logger.exception("retention tick failed")
+                    if textfile is not None:
+                        record_crash(textfile.catalogue)
+                        textfile.write()
             try:
                 await asyncio.wait_for(stop.wait(), settings.retention_tick_interval_seconds)
             except TimeoutError:
@@ -307,8 +337,17 @@ async def run_purge(settings: RetentionRunnerSettings, args: argparse.Namespace)
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="abb_api.retention", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("run-once", help="run one tick and print a summary (exit 2: refused or invalid)")
-    sub.add_parser("run", help="tick repeatedly until stopped (the production process)")
+    for name, what in (
+        ("run-once", "run one tick and print a summary (exit 2: refused or invalid)"),
+        ("run", "tick repeatedly until stopped (the production process)"),
+    ):
+        ticking = sub.add_parser(name, help=what)
+        ticking.add_argument(
+            "--metrics-textfile",
+            metavar="PATH",
+            help="write Prometheus metrics to this file after each tick (node_exporter textfile "
+            "collector); default: ABB_METRICS_TEXTFILE",
+        )
     sub.add_parser(
         "retry-failed", help="give runs whose retry attempts ran out a fresh set of attempts"
     )
@@ -332,22 +371,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _textfile(args: argparse.Namespace) -> TextfileMetrics | None:
+    path = textfile_path(getattr(args, "metrics_textfile", None), os.environ)
+    return TextfileMetrics(path, RETENTION_METRICS) if path is not None else None
+
+
 async def _run(args: argparse.Namespace, settings: RetentionRunnerSettings) -> int:
-    command = args.command
     configure_logging(settings.log_level, service="abb-retention")
+    tracing.start(settings, service="abb-retention", metrics=METRICS)
+    try:
+        return await _dispatch(args, settings)
+    finally:
+        await asyncio.to_thread(tracing.stop, settings.otel_shutdown_timeout_seconds)
+
+
+async def _dispatch(args: argparse.Namespace, settings: RetentionRunnerSettings) -> int:
+    command = args.command
     if command == "run":
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, stop.set)
-        await run_forever(settings, stop)
+        await run_forever(settings, stop, _textfile(args))
         return 0
     if command == "retry-failed":
         print(f"reset={await retry_failed(settings)}")
         return 0
     if command in ("purge-project", "purge-workspace"):
         return await run_purge(settings, args)
-    result = await run_once(settings)
+    result = await run_once(settings, _textfile(args))
     summary = _summary(result)
     print(" ".join(f"{k}={v}" for k, v in summary.items()))
     return 2 if result.refused else 0

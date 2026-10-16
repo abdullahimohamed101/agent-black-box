@@ -1995,6 +1995,19 @@ export interface components {
              */
             role: "OWNER" | "ADMIN" | "DEVELOPER" | "VIEWER" | "SECURITY" | "BILLING";
         };
+        /** CheckOut */
+        CheckOut: {
+            /**
+             * Reason
+             * @description A fixed reason code (for example `behind`, `breaker_open`), never error text.
+             */
+            reason: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "fail" | "degraded";
+        };
         /** ComparisonOut */
         ComparisonOut: {
             /**
@@ -4186,15 +4199,17 @@ export interface components {
         /** ReadyResponse */
         ReadyResponse: {
             /**
-             * Database
-             * @constant
+             * Checks
+             * @description `database`, `schema`, `artifacts` and `role` fail readiness; `worker` and `retention` are reported only.
              */
-            database: "ok";
+            checks: {
+                [key: string]: components["schemas"]["CheckOut"];
+            };
             /**
              * Status
-             * @constant
+             * @enum {string}
              */
-            status: "ok";
+            status: "ready" | "not_ready";
             /** Version */
             version: string;
         };
@@ -5462,13 +5477,13 @@ export interface operations {
                     "application/json": components["schemas"]["ReadyResponse"];
                 };
             };
-            /** @description The database is unreachable. */
+            /** @description Not ready: see `checks`. */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["ReadyResponse"];
                 };
             };
         };

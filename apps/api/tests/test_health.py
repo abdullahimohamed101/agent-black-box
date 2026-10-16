@@ -18,19 +18,22 @@ async def test_healthz_needs_no_database(client_db_down: httpx.AsyncClient) -> N
 async def test_readyz_ok_with_database(client: httpx.AsyncClient) -> None:
     response = await client.get("/readyz")
     assert response.status_code == 200
-    assert response.json()["database"] == "ok"
+    body = response.json()
+    assert body["status"] == "ready"
+    assert body["checks"]["database"] == {"status": "ok", "reason": None}
 
 
-async def test_readyz_503_with_typed_error_when_database_down(
+async def test_readyz_503_with_fixed_reason_codes_when_database_down(
     client_db_down: httpx.AsyncClient,
 ) -> None:
     response = await client_db_down.get("/readyz")
     assert response.status_code == 503
-    error = response.json()["error"]
-    assert error["code"] == "DEPENDENCY_UNAVAILABLE"
-    assert error["retryable"] is True
-    assert error["request_id"] == response.headers["x-request-id"]
-    assert "asyncpg" not in json.dumps(error)  # no internals leak to clients
+    body = response.json()
+    assert body["status"] == "not_ready"
+    assert body["checks"]["database"] == {"status": "fail", "reason": "down"}
+    assert response.headers["x-request-id"]
+    assert "asyncpg" not in json.dumps(body)  # no internals leak to clients
+    assert "127.0.0.1" not in json.dumps(body)  # nor the address it tried
 
 
 async def test_request_id_generated_and_echoed(client: httpx.AsyncClient) -> None:
@@ -58,7 +61,8 @@ async def test_request_log_is_structured_with_request_id(
         response = await client.get("/healthz")
     record = next(r for r in caplog.records if r.name == "abb_api.request")
     assert record.__dict__["status"] == 200
-    assert record.__dict__["path"] == "/healthz"
+    assert record.__dict__["route"] == "/healthz"
+    assert "path" not in record.__dict__  # raw paths carry ids; the template and request_id remain
     assert response.headers["x-request-id"]
 
 
@@ -109,4 +113,10 @@ async def test_readyz_is_bounded_when_pool_is_saturated(database_url: str) -> No
         finally:
             for conn in held:
                 await conn.close()
-    assert response.status_code == 503
+    # Bounded: it answered within the readiness deadline, not after the 5 s pool timeout. A busy
+    # pool is not a down database, so it reports degraded and stays ready (ADR-169 amendment).
+    assert response.status_code == 200
+    assert response.json()["checks"]["database"] == {
+        "status": "degraded",
+        "reason": "pool_saturated",
+    }

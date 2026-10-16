@@ -1,0 +1,20 @@
+name: Lockfile audit (weekly)
+
+# New advisories appear without any change to this repository. This runs only the audit (not the whole CI) on a
+# schedule, so a fresh advisory is noticed within a week; the same script runs on every pull request in ci.yml.
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: scripts/audit-lockfiles.sh

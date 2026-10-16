@@ -1,4 +1,9 @@
-export type ReadyResponse = { status: "ok"; version: string; database: "ok" };
+/** `GET /readyz` (ADR-169): `checks` carries a fixed reason code per check, never error text. */
+export type ReadyResponse = {
+  status: "ready" | "not_ready";
+  version: string;
+  checks: Record<string, { status: "ok" | "fail" | "degraded"; reason: string | null }>;
+};
 
 export type ApiError = {
   code: string;
@@ -27,9 +32,16 @@ export async function fetchReadiness(
       return { state: "ok", version: (body as ReadyResponse).version };
     }
     const error = (body as { error?: ApiError }).error;
+    const failing = Object.entries((body as Partial<ReadyResponse>).checks ?? {})
+      .filter(([, check]) => check.status === "fail")
+      .map(([name, check]) => `${name}: ${check.reason ?? "fail"}`);
     return {
       state: "error",
-      message: error?.message ?? `API returned ${response.status}`,
+      message:
+        error?.message ??
+        (failing.length > 0
+          ? `API is not ready (${failing.join(", ")})`
+          : `API returned ${response.status}`),
       requestId: error?.request_id ?? response.headers.get("x-request-id"),
     };
   } catch (cause) {

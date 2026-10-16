@@ -1,0 +1,221 @@
+# Ingestion service-level objective: recording rules and multi-window multi-burn-rate alerts
+# (spec 117, Phase 19c D6, ADR-171). Metrics are the ones declared in apps/api/src/abb_api/obs/catalogue.py.
+#
+# THE OBJECTIVE (spec 117): 99.95% of valid authenticated event batches are durably accepted over a
+# rolling 30 days.
+#
+# THE INDICATOR (what "durably accepted" is measured as):
+#
+#   SLI = committed / (committed + error)        both from increase(ingest_acks_total{outcome=...})
+#
+#   committed  an ingestion request answered 2xx AFTER its database transaction committed
+#   error      an ingestion request that failed on OUR side: a 5xx, an unexpected exception, a commit
+#              that failed, a database that could not be reached
+#   rejected   a 4xx answer, the CLIENT's fault. It is EXCLUDED from the denominator on purpose.
+#
+# LIMITS OF THIS DEFINITION (also in docs/OPERATIONS.md and docs/runbooks/slo-and-burn-rate.md):
+#   - "Valid" is judged by the server. A batch refused as invalid, too large, unauthorised, rate
+#     limited or over quota is a 4xx and is not counted against the objective. A rate limit or quota
+#     that is set too low therefore refuses real customers WITHOUT spending error budget. Watch
+#     telemetry_events_rejected_total{reason="rate_limited"|"quota_exceeded"} next to this SLI
+#     (the Ingestion row of the dashboard shows both).
+#   - Failed authentication never reaches the ingestion handler: it is not in this ratio (see
+#     http_requests_total{status="401"} and auth_throttle_blocks_total).
+#   - A request that never arrives (the load balancer is down, DNS, TLS) is invisible to a metric the
+#     server itself exports. Measure that from outside (a probe on /readyz or a synthetic batch).
+#   - A 202 whose individual events were refused inside the batch is a committed batch here; the
+#     per-event refusals are in telemetry_events_rejected_total.
+#   - The counters are per process and reset on restart; increase()/rate() handle the reset. With no
+#     traffic there is no ratio (the expression returns nothing), and nothing alerts.
+#
+# ERROR BUDGET ARITHMETIC. Target 99.95% => budget = 1 - 0.9995 = 0.0005 (0.05%) of requests over 30 days.
+# A burn rate of N means the error ratio is N times the budget, so the budget would be gone in 30d / N.
+#   burn  threshold (N * 0.0005)  budget gone in   budget spent in the long window
+#   14.4  0.0072  (0.72%)         50 hours         1h  * 14.4 / 720h = 2%
+#    6    0.0030  (0.30%)         5 days           6h  * 6    / 720h = 5%
+#    3    0.0015  (0.15%)         10 days          1d  * 3    / 30d  = 10%
+#    1    0.0005  (0.05%)         30 days          3d  * 1    / 30d  = 10%
+# Each alert needs the long window (the burn is real and sustained) AND the short window (it is still
+# happening, so the alert resets quickly after a fix); the short window is 1/12 of the long one.
+# The first two page (fast burn: act now); the last two open a ticket (slow burn: act this week).
+# tests/obs/test_observability_assets.py recomputes these constants from the target.
+#
+# TUNING. Change the target in the recorded series `abb:ingest_slo:target_ratio` AND every threshold
+# together (the test fails if they disagree). A 99.9% target is a budget of 0.001: 14.4x = 0.0144.
+# Low-traffic installations: a handful of failed requests is a large ratio. Raise `for:` or add a
+# minimum-rate condition before paging a small installation on this.
+
+groups:
+  - name: abb-ingest-slo-recording
+    interval: 30s
+    rules:
+      - record: abb:ingest_slo:target_ratio
+        expr: vector(0.9995)
+
+      # Error ratio = error / (committed + error), per window. The `or vector(0)` makes "no errors at
+      # all" a 0 instead of an empty result; with no traffic at all the denominator is empty and so
+      # is the result.
+      - record: abb:ingest_error_ratio:rate5m
+        expr: |
+          (sum(rate(ingest_acks_total{outcome="error"}[5m])) or vector(0))
+          / sum(rate(ingest_acks_total{outcome=~"committed|error"}[5m]))
+      - record: abb:ingest_error_ratio:rate30m
+        expr: |
+          (sum(rate(ingest_acks_total{outcome="error"}[30m])) or vector(0))
+          / sum(rate(ingest_acks_total{outcome=~"committed|error"}[30m]))
+      - record: abb:ingest_error_ratio:rate1h
+        expr: |
+          (sum(rate(ingest_acks_total{outcome="error"}[1h])) or vector(0))
+          / sum(rate(ingest_acks_total{outcome=~"committed|error"}[1h]))
+      - record: abb:ingest_error_ratio:rate2h
+        expr: |
+          (sum(rate(ingest_acks_total{outcome="error"}[2h])) or vector(0))
+          / sum(rate(ingest_acks_total{outcome=~"committed|error"}[2h]))
+      - record: abb:ingest_error_ratio:rate6h
+        expr: |
+          (sum(rate(ingest_acks_total{outcome="error"}[6h])) or vector(0))
+          / sum(rate(ingest_acks_total{outcome=~"committed|error"}[6h]))
+      - record: abb:ingest_error_ratio:rate1d
+        expr: |
+          (sum(rate(ingest_acks_total{outcome="error"}[1d])) or vector(0))
+          / sum(rate(ingest_acks_total{outcome=~"committed|error"}[1d]))
+      - record: abb:ingest_error_ratio:rate3d
+        expr: |
+          (sum(rate(ingest_acks_total{outcome="error"}[3d])) or vector(0))
+          / sum(rate(ingest_acks_total{outcome=~"committed|error"}[3d]))
+
+      # The SLI over the objective window, for the dashboard (the 30d window is expensive: evaluated
+      # every 5 minutes, not every 30 s).
+  - name: abb-ingest-slo-window
+    interval: 5m
+    rules:
+      - record: abb:ingest_error_ratio:rate30d
+        expr: |
+          (sum(rate(ingest_acks_total{outcome="error"}[30d])) or vector(0))
+          / sum(rate(ingest_acks_total{outcome=~"committed|error"}[30d]))
+      # Share of the 30-day error budget still unspent: 1 - (error ratio / budget), floored at 0.
+      - record: abb:ingest_error_budget_remaining:ratio
+        expr: |
+          clamp_min(1 - abb:ingest_error_ratio:rate30d / (1 - abb:ingest_slo:target_ratio), 0)
+
+  # Acknowledgement latency: the share of ingestion requests answered within 1 second (a bucket
+  # boundary of ingest_ack_duration_seconds; `1|1.0` because Prometheus 3 normalises le="1.0").
+  # Objective for the alert: 99% within 1 s over 1 hour. This is a latency health signal, not the
+  # spec's SLO (spec 117 sets a target for durability only); choose your own number from your
+  # measurements (docs/benchmarks) and edit 0.99 and the le bucket together.
+  - name: abb-ingest-latency-recording
+    interval: 30s
+    rules:
+      - record: abb:ingest_ack_within_1s:ratio5m
+        expr: |
+          sum(rate(ingest_ack_duration_seconds_bucket{le=~"1|1.0"}[5m]))
+          / sum(rate(ingest_ack_duration_seconds_count[5m]))
+      - record: abb:ingest_ack_within_1s:ratio1h
+        expr: |
+          sum(rate(ingest_ack_duration_seconds_bucket{le=~"1|1.0"}[1h]))
+          / sum(rate(ingest_ack_duration_seconds_count[1h]))
+      - record: abb:ingest_ack_p99_seconds:5m
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(ingest_ack_duration_seconds_bucket[5m])))
+
+  - name: abb-ingest-slo-alerts
+    interval: 30s
+    rules:
+      # Fast burn: 2% of the monthly budget in one hour. Page.
+      - alert: AbbIngestErrorBudgetBurnFast
+        expr: |
+          abb:ingest_error_ratio:rate1h > 0.0072
+          and
+          abb:ingest_error_ratio:rate5m > 0.0072
+        for: 2m
+        labels:
+          severity: page
+          slo: ingest_durability
+          burn_rate: "14.4"
+        annotations:
+          summary: "Ingestion is failing on our side at 14.4 times the error budget"
+          description: >-
+            More than 0.72% of ingestion requests failed with an error of ours (5xx or failed commit)
+            over both the last hour and the last 5 minutes. At this rate the 30-day budget of 0.05%
+            is gone in about 50 hours. The long window shows the burn is sustained, the short one
+            that it is still happening. Client mistakes (4xx) are not counted.
+          runbook_url: docs/runbooks/slo-and-burn-rate.md#fast-burn-page
+
+      # 6x for 6 hours: 5% of the budget. Page (still urgent: gone in 5 days).
+      - alert: AbbIngestErrorBudgetBurnSustained
+        expr: |
+          abb:ingest_error_ratio:rate6h > 0.003
+          and
+          abb:ingest_error_ratio:rate30m > 0.003
+        for: 5m
+        labels:
+          severity: page
+          slo: ingest_durability
+          burn_rate: "6"
+        annotations:
+          summary: "Ingestion is failing on our side at 6 times the error budget"
+          description: >-
+            More than 0.3% of ingestion requests failed with an error of ours over both the last 6
+            hours and the last 30 minutes. At this rate the 30-day budget is gone in 5 days. It is a
+            slower failure than the fast burn, so it was easy to miss; page because the budget is
+            being spent steadily.
+          runbook_url: docs/runbooks/slo-and-burn-rate.md#sustained-burn-page
+
+      # 3x for a day: 10% of the budget. Ticket.
+      - alert: AbbIngestErrorBudgetBurnSlow
+        expr: |
+          abb:ingest_error_ratio:rate1d > 0.0015
+          and
+          abb:ingest_error_ratio:rate2h > 0.0015
+        for: 15m
+        labels:
+          severity: ticket
+          slo: ingest_durability
+          burn_rate: "3"
+        annotations:
+          summary: "Ingestion has been failing on our side at 3 times the error budget for a day"
+          description: >-
+            More than 0.15% of ingestion requests failed with an error of ours over both the last day
+            and the last 2 hours. At this rate the 30-day budget is gone in 10 days. Not an emergency;
+            find the cause this week.
+          runbook_url: docs/runbooks/slo-and-burn-rate.md#slow-burn-ticket
+
+      # 1x for three days: 10% of the budget. Ticket. The budget would last exactly the 30 days if
+      # this continued, so this is "we are spending it all on one cause".
+      - alert: AbbIngestErrorBudgetBurnBaseline
+        expr: |
+          abb:ingest_error_ratio:rate3d > 0.0005
+          and
+          abb:ingest_error_ratio:rate6h > 0.0005
+        for: 30m
+        labels:
+          severity: ticket
+          slo: ingest_durability
+          burn_rate: "1"
+        annotations:
+          summary: "Ingestion errors are consuming the whole error budget"
+          description: >-
+            More than 0.05% of ingestion requests failed with an error of ours over both the last 3
+            days and the last 6 hours. If this continued the 30-day budget would be exactly used up.
+            Per the error-budget policy (spec 117) avoid shipping risky changes until it recovers.
+          runbook_url: docs/runbooks/slo-and-burn-rate.md#baseline-burn-ticket
+
+      - alert: AbbIngestAckSlow
+        expr: |
+          abb:ingest_ack_within_1s:ratio1h < 0.99
+          and
+          abb:ingest_ack_within_1s:ratio5m < 0.99
+        for: 10m
+        labels:
+          severity: ticket
+          slo: ingest_latency
+        annotations:
+          summary: "More than 1% of ingestion requests took over a second to answer"
+          description: >-
+            Fewer than 99% of ingestion requests were answered within 1 second over both the last hour
+            and the last 5 minutes. A normal batch takes tens of milliseconds
+            (docs/benchmarks/phase-2-ingestion.md); sustained slowness means the database, a very
+            large run being summarised, or a saturated host. 1 s and 99% are defaults, not spec values;
+            tune them to your measured baseline. A slow answer is not an error: this does not spend
+            the durability budget, but SDK buffers fill if it continues.
+          runbook_url: docs/runbooks/database-saturation.md#slow-ingestion-answers

@@ -163,7 +163,13 @@ async def build_api(
         **(app_options or {}),
     )
     worker_engine = create_async_engine(runtime_url(database_url), poolclass=NullPool)
-    worker = Worker(worker_engine, HANDLERS, make_settings(database_url), owner="api-test")
+    worker = Worker(
+        worker_engine,
+        HANDLERS,
+        make_settings(database_url),
+        owner="api-test",
+        metrics=app.state.observability.catalogue,  # the app's registry, isolated when given one
+    )
     try:
         async for client in _client(app):
             yield Api(client, engine, tenant, other, clock, tokens, worker, app)

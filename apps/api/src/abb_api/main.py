@@ -1,5 +1,7 @@
 """Application factory (spec §103: modular monolith). Modules are added as phases land."""
 
+import asyncio
+import inspect
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -31,6 +33,7 @@ from abb_api.auth.login import LoginService
 from abb_api.auth.oidc import OidcClient
 from abb_api.auth.repository import ApiKeyLookup
 from abb_api.auth.router import router as auth_router
+from abb_api.auth.session_throttle import SessionThrottle
 from abb_api.auth.sessions_router import router as sessions_router
 from abb_api.auth.throttle import AuthThrottle
 from abb_api.authz.audit import new_denial_limiter
@@ -45,7 +48,8 @@ from abb_api.core.middleware import RequestContextMiddleware
 from abb_api.cost.router import rebuild_router
 from abb_api.cost.router import router as pricing_router
 from abb_api.db import create_engine
-from abb_api.db.role_check import PrivilegedDatabaseRole, enforce_role
+from abb_api.db.breaker import DbBreaker
+from abb_api.db.role_check import PrivilegedDatabaseRole, RoleMonitor, enforce_role
 from abb_api.evaluations.router import router as evaluators_router
 from abb_api.evaluations.run_router import router as run_evaluations_router
 from abb_api.evaluations.runs import RunEvaluationService
@@ -54,6 +58,7 @@ from abb_api.experiments.router import router as experiments_router
 from abb_api.experiments.service import ExperimentService
 from abb_api.findings.router import router as findings_router
 from abb_api.findings.service import FindingsService
+from abb_api.health.readiness import Readiness
 from abb_api.health.router import router as health_router
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter, RateLimiter
 from abb_api.ingestion.router import router as ingestion_router
@@ -64,7 +69,14 @@ from abb_api.limits.factory import (
     default_ingest_bucket,
     ingest_limiter,
     minute_limiter,
+    per_minute_bucket,
 )
+from abb_api.obs import tracing
+from abb_api.obs.access import MetricsAuth
+from abb_api.obs.catalogue import DEFAULT, Observability
+from abb_api.obs.http import MetricsMiddleware
+from abb_api.obs.router import router as metrics_router
+from abb_api.obs.scrape import ScrapeSampler
 from abb_api.policies.api_service import PolicyApiService
 from abb_api.policies.router import router as policies_router
 from abb_api.quotas.router import router as quotas_router
@@ -198,6 +210,32 @@ async def _load_active_key_ids(engine: AsyncEngine, clock: Clock, limit: int) ->
         return await ApiKeyLookup(conn).active_key_ids(clock(), limit)
 
 
+async def _load_active_session_handles(engine: AsyncEngine, clock: Clock, limit: int) -> list[str]:
+    """One bounded read of the usable sessions' hash prefixes (the session throttle's hint set)."""
+    now = clock()
+    async with engine.begin() as conn:
+        await conn.execute(text("SELECT set_config('statement_timeout', '4000', true)"))
+        rows = await conn.execute(
+            text(
+                "SELECT substr(token_hash, 1, 16) FROM sessions WHERE revoked_at IS NULL "
+                "AND expires_at > :now AND idle_expires_at > :now LIMIT :limit"
+            ),
+            {"now": now, "limit": limit},
+        )
+        return [bytes(row[0]).hex() for row in rows]
+
+
+def _library_telemetry_off() -> dict[str, Any]:
+    """FastAPI (0.142+) has its own OpenTelemetry: it records ``url.path`` and ``url.query``, the
+    original input of validation errors and exception messages, and exports to any
+    ``OTEL_EXPORTER_OTLP_*`` collector it finds. None of that may leave this process (INV-5), and
+    our spans are the only ones (ADR-170), so it is switched off whatever the environment says.
+    Older FastAPI has no such parameter."""
+    if "telemetry" not in inspect.signature(FastAPI.__init__).parameters:
+        return {}
+    return {"telemetry": dict(tracing.LIBRARY_INSTRUMENTATION_DISABLED)}
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -206,6 +244,7 @@ def create_app(
     artifact_store: ArtifactStore | None = None,
     login_limiter: RateLimiter | None = None,
     oidc_transport: httpx.AsyncBaseTransport | None = None,
+    observability: Observability = DEFAULT,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
@@ -224,14 +263,43 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        engine = create_engine(settings.database_url)
+        metrics = observability.catalogue
+        tracing.start(settings, service="abb-api", metrics=metrics)  # off unless asked (ADR-170)
+        breaker = DbBreaker(
+            threshold=settings.db_breaker_threshold,
+            open_seconds=settings.db_breaker_open_seconds,
+            window_seconds=settings.db_breaker_window_seconds,
+            enabled=settings.db_breaker_enabled,
+            metrics=metrics,
+        )
+        app.state.db_breaker = breaker
+        engine = create_engine(
+            settings.database_url,
+            pool_wait=metrics.postgres_pool_wait_seconds,
+            statement_timeout_seconds=settings.db_statement_timeout_seconds,
+            breaker=breaker,
+        )
         app.state.engine = engine
         try:
-            await enforce_role(engine, settings, service="api")  # KI-031: may refuse to start
+            startup_reasons = await enforce_role(engine, settings, service="api")  # KI-031
         except PrivilegedDatabaseRole:
             await engine.dispose()
             raise
-        counters = build_counters(engine, settings)
+        role_monitor = RoleMonitor(
+            engine, settings, service="api", initial=startup_reasons, metrics=metrics
+        )
+        app.state.role_monitor = role_monitor
+        local_store = artifact_store is None  # an injected store is not a directory we probe
+        app.state.readiness = Readiness(
+            lambda: engine,
+            settings,
+            breaker=breaker,
+            role=role_monitor,
+            artifacts_dir=settings.artifact_dir if local_store else None,
+            metrics=metrics,
+        )
+        role_monitor.start()
+        counters = build_counters(engine, settings, metrics)
         app.state.shared_counters = counters
         ingest_guard = ingest_limiter(
             local_ingest,
@@ -264,8 +332,23 @@ def create_app(
             lambda limit: _load_active_key_ids(engine, clock, limit),
             refresh_seconds=settings.auth_fail_active_keys_refresh_seconds,
             cap=settings.auth_fail_active_keys_cap,
+            metrics=metrics,
         )
-        app.state.auth_throttle = AuthThrottle(settings, counters, engine, active_keys=active_keys)
+        app.state.auth_throttle = AuthThrottle(
+            settings, counters, engine, active_keys=active_keys, metrics=metrics
+        )
+        active_sessions = ActiveKeyIds(
+            lambda limit: _load_active_session_handles(engine, clock, limit),
+            refresh_seconds=settings.session_fail_active_refresh_seconds,
+            cap=settings.session_fail_active_cap,
+            metrics=metrics,
+            size_gauge=metrics.session_active_handles,
+            failure_counter=metrics.session_active_refresh_failures_total,
+        )
+        session_throttle = SessionThrottle(
+            settings, counters, active=active_sessions, metrics=metrics
+        )
+        app.state.session_throttle = session_throttle
         app.state.ingestion = IngestionService(engine, ingest_guard, settings, clock)
         app.state.runs = RunService(
             engine,
@@ -308,7 +391,13 @@ def create_app(
             stale_seconds=settings.eval_stale_seconds,
             judge_provider=settings.judge_provider,
         )
-        app.state.login = LoginService(engine, oidc, settings, clock) if oidc else None
+        app.state.login = (
+            LoginService(
+                engine, oidc, settings, clock, on_session_created=session_throttle.session_created
+            )
+            if oidc
+            else None
+        )
         app.state.artifacts = ArtifactService(
             engine,
             artifact_store or LocalFsArtifactStore(settings.artifact_dir),
@@ -324,18 +413,25 @@ def create_app(
             PostgresAnalyticsStore(engine, timeout_seconds=settings.analytics_timeout_seconds),
             clock,
         )
-        app.state.streams = StreamService(engine, hub, app.state.runs, settings, clock)
+        app.state.streams = StreamService(
+            engine, hub, app.state.runs, settings, clock, metrics=metrics
+        )
         hub.start()
         if settings.auth_fail_enabled:
             await active_keys.start()  # bounded; a failure leaves the set unloaded and retries
+        if settings.session_fail_enabled:
+            await active_sessions.start()
         try:
             yield
         finally:
+            await role_monitor.stop()
+            await active_sessions.stop()
             await active_keys.stop()
             if counters is not None:
                 await counters.close()
             await hub.stop()
             await engine.dispose()
+            await asyncio.to_thread(tracing.stop, settings.otel_shutdown_timeout_seconds)
 
     if settings.allow_dev_sessions:
         # Never log the flag's effect as a secret; do say loudly that it exists.
@@ -357,6 +453,7 @@ def create_app(
         docs_url="/docs" if docs else None,
         redoc_url="/redoc" if docs else None,
         openapi_url="/openapi.json" if docs else None,
+        **_library_telemetry_off(),
     )
     app.state.settings = settings
     app.state.clock = clock
@@ -364,7 +461,9 @@ def create_app(
     install_error_handlers(app)
     # Innermost (added first): a body refused for the byte budget (503) is still a CORS-readable,
     # request-ID'd response (ADR-155).
-    app.state.body_budget = BodyBudget(settings.max_body_bytes_in_flight)
+    app.state.body_budget = BodyBudget(
+        settings.max_body_bytes_in_flight, metrics=observability.catalogue
+    )
     app.add_middleware(
         BodyBudgetMiddleware,
         budget=app.state.body_budget,
@@ -382,7 +481,19 @@ def create_app(
     app.add_middleware(
         RequestContextMiddleware, hsts=is_secure(settings), docs_enabled=settings.docs_enabled
     )
+    # Outermost of all: counts what the inner layers refuse as well (ADR-165).
+    app.add_middleware(MetricsMiddleware, catalogue=observability.catalogue)
+    app.state.observability = observability
     app.include_router(health_router)
+    if settings.metrics_token is not None:  # without a token /metrics is a plain 404
+        app.state.metrics_auth = MetricsAuth(settings.metrics_token)
+        app.state.metrics_limiter = per_minute_bucket(settings.metrics_requests_per_minute)
+        app.state.scrape_sampler = ScrapeSampler(
+            lambda: getattr(app.state, "engine", None),
+            observability.catalogue,
+            retention_mode=settings.retention_mode,
+        )
+        app.include_router(metrics_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
     app.include_router(ingestion_router)

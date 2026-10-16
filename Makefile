@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e retention-e2e backup-restore-e2e backup restore backup-verify rotate-alert-keys
+.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -122,10 +122,19 @@ sdk-e2e:
 	scripts/sdk-e2e.sh
 
 # Known-vulnerability scan (spec §111). JS: production dependencies only; dev-only findings are
-# tracked in docs/KNOWN_ISSUES.md. Python: whole locked set.
-audit:
+# tracked in docs/KNOWN_ISSUES.md. Python: every uv.lock (scripts/audit-lockfiles.sh, allow-list in
+# scripts/audit-allowlist.txt). New advisories can fail an unchanged tree.
+audit: audit-pnpm audit-lockfiles
+
+audit-pnpm:
 	pnpm audit --prod
-	cd $(API) && uv export --frozen --no-hashes --no-emit-project -o /tmp/abb-api-requirements.txt >/dev/null && uvx --python 3.12 pip-audit -r /tmp/abb-api-requirements.txt
+
+audit-lockfiles:
+	scripts/audit-lockfiles.sh
+
+# Every GitHub Action pinned by commit sha, every container image by digest (KI-024, spec §127).
+check-pins:
+	scripts/check-pins.sh
 
 quality:
 	scripts/quality.sh quick
@@ -192,6 +201,13 @@ alerts-e2e:
 hardening-e2e:
 	pnpm --filter @abb/web build && scripts/hardening-e2e.sh
 
+# Operability (Phase 19c): a real stack with a metrics token, every catalogue family moved by exactly the traffic driven, readiness and the
+# database breaker against deliberately broken processes, the logs of every process scanned at DEBUG, the shipped Prometheus rules and Grafana
+# dashboard run by the pinned images (an alert really fires), tracing into a local OTLP receiver, and the cost of metrics and tracing.
+# Needs Postgres on 5433, Docker and uv; pulls only the two images pinned in docker-compose.yml (and refuses when the VM has under 3 GB free).
+obs-e2e:
+	scripts/obs-e2e.sh
+
 # Data retention (Phase 19b): a real stack with the retention job as its own database login. Dry run deletes nothing, enforcement removes expired
 # data in order, a crash (SIGKILL) mid-run is finished by a rerun, the kill switch and bounds, privileges, purge commands, a real browser, and the
 # cost of enforcement (informational). Deterministic assertions only (docs/benchmarks/phase-19b-retention-e2e.md).
@@ -223,3 +239,21 @@ integrations-test:
 
 integrations-e2e:
 	scripts/integrations-e2e.sh
+
+# Local dashboards (docs/OPERATIONS.md "Local dashboards"): Prometheus on 127.0.0.1:9090, Grafana on 127.0.0.1:3001.
+# The token file is created once (mode 0600, git-ignored) and nothing is printed; it is passed to the API and worker
+# as ABB_METRICS_TOKEN and mounted read-only into Prometheus.
+OBS_TOKEN := .local/metrics-token
+observability-token:
+	@mkdir -p .local && chmod 700 .local
+	@test -s $(OBS_TOKEN) || (umask 077 && openssl rand -hex 24 > $(OBS_TOKEN))
+	@chmod 600 $(OBS_TOKEN)
+
+observability-up: observability-token
+	@ABB_METRICS_TOKEN="$$(cat $(OBS_TOKEN))" ABB_WORKER_METRICS_PORT=9101 ABB_WORKER_METRICS_BIND=0.0.0.0 \
+	  ABB_OBS_UID="$$(id -u)" ABB_OBS_GID="$$(id -g)" \
+	  docker compose --profile app --profile observability up -d --build
+	@echo "Grafana http://127.0.0.1:3001 (user admin), Prometheus http://127.0.0.1:9090"
+
+observability-down:
+	docker compose --profile observability rm -sf prometheus grafana

@@ -77,7 +77,9 @@ async def test_the_runtime_engine_really_is_the_restricted_role(
         "DROP TABLE events",
         "ALTER TABLE events ADD COLUMN x int",
         "CREATE TABLE sneaky (id int)",
-        "SELECT * FROM alembic_version",
+        "UPDATE alembic_version SET version_num = '0001'",  # it may read the revision (0106)
+        "DELETE FROM alembic_version",
+        "INSERT INTO alembic_version (version_num) VALUES ('0001')",
         "ALTER ROLE abb_runtime SUPERUSER",
     ],
 )

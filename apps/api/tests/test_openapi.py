@@ -77,6 +77,11 @@ def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
         for status, response in op["responses"].items():
             if int(status) >= 400:
                 schema = response["content"]["application/json"]["schema"]
+                if (method, path, status) == ("get", "/readyz", "503"):
+                    # Not ready answers with the per-check body (ADR-169): the reason codes are
+                    # the content, and it carries no error text.
+                    assert schema == {"$ref": "#/components/schemas/ReadyResponse"}
+                    continue
                 assert schema == {"$ref": "#/components/schemas/ErrorEnvelope"}, (
                     method,
                     path,

@@ -20,7 +20,7 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, insert, select, text
@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from abb_api.artifacts.store import ArtifactStore
 from abb_api.core.config import RetentionSettings
+from abb_api.core.request_context import set_operation
 from abb_api.db import tables as t
 from abb_api.retention import model as m
 from abb_api.retention.batches import Control, Halt, Hook, no_hook
@@ -52,6 +53,16 @@ ModeProbe = Callable[[], Awaitable[str]]
 
 
 @dataclass
+class TierTally:
+    """What one tick removed (enforce) or would remove (dry run) in one tier, all workspaces."""
+
+    runs: int = 0
+    events: int = 0
+    rows: int = 0
+    artifact_bytes: int = 0
+
+
+@dataclass
 class TickResult:
     tick_id: uuid.UUID
     mode: str
@@ -68,6 +79,14 @@ class TickResult:
     deleted_events: int = 0
     failed: int = 0  # runs or days whose step failed (see `retention_run_progress`)
     skipped_locked: int = 0  # workspaces another process holds the lock of
+    tiers: dict[str, TierTally] = field(default_factory=dict)  # for the metrics, by tier name
+
+    def tally(self, tier: str, *, runs: int, events: int, rows: int, artifact_bytes: int) -> None:
+        total = self.tiers.setdefault(tier, TierTally())
+        total.runs += runs
+        total.events += events
+        total.rows += rows
+        total.artifact_bytes += artifact_bytes
 
 
 def _enforced(
@@ -154,6 +173,7 @@ async def run_tick(
     `stop` ends it the same way; `hook` is the crash-injection seam of the tests.
     """
     global _enforce_refusal_logged
+    set_operation("retention.tick")
     result = TickResult(tick_id=uuid.uuid4(), mode=settings.retention_mode)
     if settings.retention_mode == "off":
         return result
@@ -420,6 +440,13 @@ class _Enforcement:
             )
         result.reports += 1
         result.truncated += 1 if count.truncated else 0
+        result.tally(
+            tier,
+            runs=counts.runs,
+            events=counts.events,
+            rows=counts.rows,
+            artifact_bytes=counts.artifact_bytes,
+        )
 
     async def platform(
         self,
@@ -481,6 +508,13 @@ async def _measure_and_report(
         return
     result.reports += 1
     result.truncated += 1 if count.truncated else 0
+    result.tally(
+        count.tier.value,
+        runs=count.runs,
+        events=count.events,
+        rows=count.rows,
+        artifact_bytes=count.artifact_bytes,
+    )
 
 
 async def _workspace(

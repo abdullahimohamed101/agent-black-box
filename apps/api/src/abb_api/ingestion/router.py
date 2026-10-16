@@ -12,6 +12,7 @@ from abb_api.authz.principal import Principal
 from abb_api.core.errors import AppError, ErrorCategory, ErrorEnvelope
 from abb_api.core.request_context import get_request_id
 from abb_api.ingestion.body import decode_body, read_body, require_json_content_type
+from abb_api.ingestion.observe import IngestObserver
 from abb_api.ingestion.schemas import BatchResponse, EventResponse
 from abb_api.ingestion.service import IngestionService
 from abb_api.quotas.model import Quota, quota_exceeded
@@ -64,7 +65,11 @@ async def _document(request: Request) -> bytes:
 )
 async def ingest_batch(request: Request, principal: Writer) -> BatchResponse:
     service: IngestionService = request.app.state.ingestion
-    return await service.ingest_batch(principal, await _document(request))
+    with IngestObserver(request) as observed:
+        document = await _document(request)
+        response = await service.ingest_batch(principal, document)
+        observed.committed(response, len(document))  # after the commit inside the service
+    return response
 
 
 @router.post(
@@ -76,6 +81,13 @@ async def ingest_batch(request: Request, principal: Writer) -> BatchResponse:
 )
 async def ingest_event(request: Request, principal: Writer) -> EventResponse | JSONResponse:
     service: IngestionService = request.app.state.ingestion
+    with IngestObserver(request) as observed:
+        return await _ingest_one(request, principal, service, observed)
+
+
+async def _ingest_one(
+    request: Request, principal: Principal, service: IngestionService, observed: IngestObserver
+) -> EventResponse | JSONResponse:
     document = await _document(request)
     try:
         event = json.loads(document)
@@ -88,6 +100,8 @@ async def ingest_event(request: Request, principal: Writer) -> EventResponse | J
         ) from None
     result = await service.ingest_batch(principal, json.dumps({"events": [event]}).encode("utf-8"))
     if result.errors:
+        # The event was refused: the endpoint answers 4xx, so this request is not an ack.
+        observed.events_refused(result.errors, count_quota=False)
         failure = result.errors[0]
         if failure.quota is not None:
             raise quota_exceeded(Quota(failure.quota))
@@ -103,6 +117,7 @@ async def ingest_event(request: Request, principal: Writer) -> EventResponse | J
             status_code=status[0],
             details={"issues": [i.model_dump() for i in failure.issues]},
         )
+    observed.committed(result, len(document))
     outcome: Literal["accepted", "duplicate", "conflict"] = (
         "accepted" if result.accepted else "duplicate" if result.duplicates else "conflict"
     )

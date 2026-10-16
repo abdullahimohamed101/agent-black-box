@@ -22,7 +22,7 @@ from abb_api.core.errors import (
     dependency_unavailable,
     is_connectivity_error,
 )
-from abb_api.core.request_context import get_request_id
+from abb_api.core.request_context import get_request_id, set_operation
 from abb_api.ids import public_id
 from abb_api.ingestion.body import batch_invalid
 from abb_api.ingestion.emitter import (
@@ -35,6 +35,7 @@ from abb_api.ingestion.ratelimit import retry_after_seconds
 from abb_api.ingestion.schemas import BatchResponse, EventErrorOut, IssueOut
 from abb_api.ingestion.store import EventResult, PgEventStore, QuotaPolicy
 from abb_api.limits import AsyncRateLimiter
+from abb_api.obs.tracing import span
 from abb_api.quotas.model import QUOTA_EXCEEDED, QUOTA_WORDS, Quota
 from abb_api.quotas.settings import default_limits
 from abb_api.security.redaction import (
@@ -98,6 +99,7 @@ class IngestionService:
         self._quota_defaults = default_limits(settings)
 
     async def ingest_batch(self, principal: Principal, document: bytes) -> BatchResponse:
+        set_operation("ingest.batch")
         if principal.project_id is None:
             raise project_key_required()
         batch_id, raw_events = self._parse_batch(document)
@@ -189,14 +191,17 @@ class IngestionService:
                     if self._settings.quotas_enabled
                     else None
                 )
-                async with self._engine.begin() as conn:
-                    outcome = await PgEventStore(
-                        conn, principal.tenant, summary_delay=self._summary_delay, quota=quota
-                    ).ingest([event for _, event in valid])
+                # Persistence including the commit (leaving `begin()`), and the job it enqueues.
+                with span("ingest.persist", events=len(valid)) as persisted:
+                    async with self._engine.begin() as conn:
+                        outcome = await PgEventStore(
+                            conn, principal.tenant, summary_delay=self._summary_delay, quota=quota
+                        ).ingest([event for _, event in valid])
+                    persisted.set(accepted=outcome.accepted)
             except Exception as exc:
                 if is_connectivity_error(exc) or _is_transient_conflict(exc):
                     logger.warning("ingest unavailable", extra={"error_type": type(exc).__name__})
-                    raise dependency_unavailable() from exc
+                    raise dependency_unavailable(exc) from exc
                 raise
             for (index, _), result in zip(valid, outcome.results, strict=True):
                 if result.status == "rejected":
@@ -245,7 +250,7 @@ class IngestionService:
         except Exception as exc:
             if is_connectivity_error(exc):
                 logger.warning("security settings unavailable")
-                raise dependency_unavailable() from exc
+                raise dependency_unavailable(exc) from exc
             raise
         if size <= _INLINE_REDACTION_BYTES:
             redacted, failed = self._redact_batch(valid, mode)

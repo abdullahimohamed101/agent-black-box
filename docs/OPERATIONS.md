@@ -6,7 +6,7 @@ Operating Agent Black Box itself (spec §43, §104-125). Runbooks live in `docs/
 
 | Process | Command | Notes |
 | --- | --- | --- |
-| API | `uvicorn abb_api.main:app_from_env --factory` | stateless; `/healthz` (liveness, no dependencies), `/readyz` (database, 2.5 s deadline) |
+| API | `uvicorn abb_api.main:app_from_env --factory` | stateless; `/healthz` (liveness, no dependencies), `/readyz` (database, 2.5 s deadline), `/metrics` (only with `ABB_METRICS_TOKEN`) |
 | Worker | `python -m abb_api.worker` | claims background jobs; any number may run; SIGTERM finishes the current batch and exits 0 |
 | Retention | `python -m abb_api.retention run` (one tick: `python -m abb_api.cli retention run-once`) | the data-retention job (ADR-159); own credentials (`ABB_RETENTION_DATABASE_URL`), never in the API's or worker's environment; one at a time (advisory lock); SIGTERM/SIGINT stops at the next batch boundary (not the end of the tick), leaving a run in hand `deleting` with its progress row for the next enforcing tick to finish |
 | Migrations | `alembic upgrade head` (`make migrate`) | run once per release before the new API/worker start; compose does this in the `migrate` service |
@@ -28,6 +28,16 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_ENVIRONMENT`, `ABB_LOG_LEVEL`, `ABB_CORS_ORIGINS` | development, INFO, localhost:3000 | |
 | `ABB_INGEST_MAX_BODY_BYTES` / `ABB_INGEST_MAX_BATCH_EVENTS` | 5 MiB / 1000 | request limits (compressed and decompressed) |
 | `ABB_SESSION_WRITES_PER_MINUTE` | 30 | how many times one person may end sessions (Settings, Sessions) per minute, counted across API processes (Phase 19a step 5, ADR-157). Listing is not limited |
+| `ABB_METRICS_TOKEN` | unset | enables `GET /metrics` on the API (Phase 19c, ADR-165) and is the bearer token for it and for the worker's endpoint. At least 24 characters (`openssl rand -hex 32`), refused at startup if shorter, never logged. Unset: `/metrics` is a plain 404 |
+| `ABB_METRICS_REQUESTS_PER_MINUTE` | 120 | one in-process bucket per API (or worker) process, spent by every request to `/metrics` whatever its token; over it: `429` |
+| `ABB_DB_STATEMENT_TIMEOUT_SECONDS` | 30 | default `statement_timeout` of every API database connection (Phase 19c, ADR-169); 0 = none, at most 3600. A route with its own budget (search, analytics, previews) sets `SET LOCAL statement_timeout`, which wins. A cancelled statement is `504 DATABASE_TIMEOUT`. Migrations, retention, backup and rotation never use it. Behind a transaction-mode pooler that rejects startup parameters set 0 and `ALTER ROLE abb_runtime SET statement_timeout` instead |
+| `ABB_WORKER_DB_STATEMENT_TIMEOUT_SECONDS` | 0 | the worker's own default statement timeout (0 = none: its jobs are long and bounded by leases) |
+| `ABB_DB_BREAKER_ENABLED` / `_THRESHOLD` / `_OPEN_SECONDS` / `_WINDOW_SECONDS` | 1 / 5 / 5 / 30 | the database circuit breaker (below): consecutive checkout failures within the window that open it, and how long it sheds before one probe. `ABB_DB_BREAKER_ENABLED=0` is the kill switch |
+| `ABB_ROLE_CHECK_INTERVAL_SECONDS` | 300 | how often the API and worker repeat the database-role check (KI-183); 0 = off, otherwise at least 5 |
+| `ABB_SESSION_FAIL_ENABLED` / `_WINDOW_SECONDS` / `_PER_ADDRESS` / `_GLOBAL` | 1 / 60 / 30 / 600 | the failed-session-cookie throttle (ADR-169, KI-176): failures per trusted client address (needs `ABB_TRUST_PROXY=1`) and globally per window, shared across API processes; over a budget: `429 SESSION_THROTTLED` with `Retry-After`, answered before any lookup. Valid sessions and sign-in are never refused by it |
+| `ABB_SESSION_FAIL_NEGATIVE_SECONDS` / `_KNOWN_VALID_SECONDS` / `_CACHE_ENTRIES` | 30 / 300 / 10000 | the in-memory helpers: a cookie seen invalid is refused 401 without a lookup for this long; a cookie that authenticated skips the gate for this long (it is still fully authenticated on every request, so revocation is immediate); the bound on each cache |
+| `ABB_SESSION_FAIL_ACTIVE_REFRESH_SECONDS` / `_ACTIVE_CAP` | 60 / 100000 | the background-refreshed set of hash prefixes of usable sessions that lets a session this process has not seen reach its lookup while a window is closed |
+| `ABB_WORKER_METRICS_PORT` / `ABB_WORKER_METRICS_BIND` | unset / `127.0.0.1` | the worker serves the same registry on this port (needs `ABB_METRICS_TOKEN`); off unless the port is set. The bind must be an IP address; Compose does not publish the port |
 | `ABB_QUOTAS_ENABLED` | true | per-project quotas (Phase 19a, ADR-154). `false` is an emergency switch: nothing is checked or counted (the usage figures then go stale) |
 | `ABB_QUOTA_AGENTS` / `_RUNS_PER_DAY` / `_EVENTS_PER_DAY` / `_ARTIFACT_BYTES` | 500 / 50000 / 5000000 / 5368709120 (5 GiB) | the default quota of every project: distinct agents, runs created per UTC day, events accepted per UTC day, total stored artifact bytes. Owners and admins override each per project (Quotas settings page, `PUT /v1/projects/{id}/quotas`). The per-run event cap and the per-artifact size cap (`ABB_ARTIFACT_MAX_BYTES`) are separate and unchanged |
 | `ABB_RETENTION_MODE` | `dry_run` | `off` (the job does nothing), `dry_run` (measures and writes reports, deletes nothing) or `enforce` (deletes, in the order and within the bounds of ADR-160; refused, exit 2, unless `ABB_ARTIFACT_DIR` is an existing directory). Read by the retention process (and shown by the API and by the Retention settings page) |
@@ -138,6 +148,30 @@ Run migrations as the database owner (`ABB_MIGRATION_DATABASE_URL`, alembic) and
 At start the API and worker ask which role they are: a superuser, `BYPASSRLS`, any `UPDATE`/`DELETE`/`TRUNCATE` on `events`, membership in the owner of `events`, or `CREATE` on schema `public` counts as too privileged. In production the process then **refuses to start**
 (the log names only the closed reasons: `superuser`, `bypass_rls`, `events_rewritable`, `events_owner`, `schema_create`; never a role, host or URL); it also refuses when the question cannot be answered (database down at boot), so start order matters: database first. In development, test and staging it logs one warning
 (the dev stack keeps the owner on purpose). If you knowingly run privileged, set `ABB_ALLOW_PRIVILEGED_DB_ROLE=1`; every start then logs a warning with the reasons. Fix a refusal by pointing `ABB_DATABASE_URL` at the runtime role (`docker-compose.yml` shows the pattern).
+
+### Readiness, the database breaker and timeouts (Phase 19c step 3, ADR-169)
+
+`GET /healthz` is liveness: no I/O, green while the process turns. Use it for the container's liveness probe and never as a dependency check. `GET /readyz` is what a load balancer or orchestrator should gate traffic on. It answers `200` or `503` (with `Retry-After`) and
+`{"status": "ready" | "not_ready", "checks": {name: {"status": "ok" | "fail" | "degraded", "reason": code | null}}}`. Reasons are fixed codes, never error text, hosts or paths.
+
+| Check | Fails readiness | Reasons |
+| --- | --- | --- |
+| `database` | yes | `down`, `timeout` (answer later than 2.5 s, pool wait included), `breaker_open` |
+| `schema` | yes, when behind | `behind` (the code needs a migration that has not run), `unreadable` (runtime role cannot read `alembic_version`: migration 0106 not applied), `unchecked`; **`degraded`/`ahead`** when the database is newer than this code (ready: rolling deploys migrate first), `degraded`/`head_unknown` when the migrations are not shipped with the code |
+| `artifacts` | yes | `missing`, `not_writable`, `timeout` (a tiny probe file is written and removed, checked at most every 5 s; the directory is created if absent) |
+| `role` | production only | `privileged_role` (the periodic role check found excess privilege; `degraded` in other environments) |
+| `worker` | never (reported) | `worker_lag` when the oldest due job has waited over 60 s |
+| `retention` | never (reported) | the configured mode: `off`, `dry_run`, `enforce` |
+
+One evaluation is shared by concurrent probes and cached for 2 s, so probing every second from several places is fine. `readiness_check{check}` is 1/0 per failing-capable check and `readiness_flaps_total` counts changes of the overall answer; alert on a check at 0 for a minute, and on flapping.
+
+**Deploying:** run the migrations first, then roll the processes. A process started before its migration reports `not_ready` (`schema: behind`) and receives no traffic; a still-running old process reports `ready` (`ahead`) and keeps serving. After applying 0105 the check is `ok`.
+
+**The database circuit breaker.** After 5 consecutive checkout failures within 30 s an API process sheds: requests that need the database get `503 DEPENDENCY_UNAVAILABLE` with `Retry-After` immediately for 5 s (no pool wait, no connect attempt), then one probe request goes through; its success closes the breaker, its failure reopens it. Slow queries, statement timeouts and application errors never trip it. `/healthz` stays green and `/readyz` shows `database: fail/breaker_open`. Metrics: `db_breaker_state` (0 closed, 1 half-open, 2 open) and `db_breaker_trips_total`; a trip is a page-worthy event (see the database-saturation runbook). Kill switch: `ABB_DB_BREAKER_ENABLED=0`. The state is per process.
+
+**The role re-check.** Every `ABB_ROLE_CHECK_INTERVAL_SECONDS` the API and worker repeat the startup question. A role that *became* privileged (a grant after start) logs one line with the closed reasons, sets `db_role_privileged{reason}`, and in production fails the `role` readiness check; the process is never stopped for it. Fix by revoking the grant (the next check, within the interval, restores readiness) or restarting with the runtime role.
+
+**Statement timeouts.** Every API connection starts with `statement_timeout` = `ABB_DB_STATEMENT_TIMEOUT_SECONDS` (30). A cancelled statement answers `504 DATABASE_TIMEOUT` (retryable, fixed text). Raise it, or set 0, only after confirming which statement is slow (`pg_stat_statements`); budgeted routes are unaffected.
 
 ### Edge: headers, docs, body cap, and running behind a reverse proxy (Phase 19a step 4, ADR-155)
 
@@ -276,12 +310,213 @@ The counters equal what committed: they are updated in the transaction that stor
 The per-day rows are one per active project per day and are pruned after 35 days by the retention job (ADR-160). Ingestion of one project is serialised on its project row for the length of one batch transaction; the measured cost is in `docs/benchmarks/phase-19a-quotas.md`.
 Counting began at the migration (0098): activity before it is not in the first day's figures; existing artifacts were counted from the start.
 
+## Metrics (Phase 19c, ADR-165)
+
+Both long-running processes keep an in-memory registry and expose it in the Prometheus text format. Counters restart at zero when a process restarts; Prometheus handles that. The API process has the HTTP series, the worker the job series; scrape every replica.
+
+**Turn it on.** Generate a token and set it for the API (and the worker if you want its metrics):
+
+```sh
+openssl rand -hex 32 > /etc/abb/metrics-token        # 64 characters; mode 0600, readable by the scraper only
+export ABB_METRICS_TOKEN="$(cat /etc/abb/metrics-token)"
+export ABB_WORKER_METRICS_PORT=9101                   # optional; worker only
+```
+
+**Scrape by hand.**
+
+```sh
+curl -s -H "Authorization: Bearer $(cat /etc/abb/metrics-token)" http://127.0.0.1:8000/metrics | head
+curl -s -H "Authorization: Bearer $(cat /etc/abb/metrics-token)" http://127.0.0.1:9101/metrics | head   # worker
+```
+
+A wrong or missing token is `401` with the standard error body (the same for both), a request over the rate bucket is `429`, and without `ABB_METRICS_TOKEN` the API answers `404` exactly as for any unknown path.
+
+**Scrape with Prometheus.** The token lives in a file, not in the config:
+
+```yaml
+scrape_configs:
+  - job_name: abb-api
+    metrics_path: /metrics
+    authorization:                # Prometheus 2.26+; older: bearer_token_file: /etc/prometheus/abb-metrics-token
+      type: Bearer
+      credentials_file: /etc/prometheus/abb-metrics-token
+    static_configs: [{ targets: ["api:8000"] }]
+  - job_name: abb-worker
+    authorization: { type: Bearer, credentials_file: /etc/prometheus/abb-metrics-token }
+    static_configs: [{ targets: ["worker:9101"] }]
+```
+
+**Do not expose `/metrics` publicly.** It carries no tenant data (every label is a route template, a method, a status or a closed enum; never an id, a slug, a user or an address), but it describes your traffic and capacity. At the reverse proxy, route only the paths you serve (`/v1/*`, `/healthz`) and answer `/metrics` with 404 from the public listener; let the scraper reach the API on the private network. The rate bucket is global to the process, so anyone who can reach the port can spend it and make the real scraper see `429` for up to a minute: the network is the control, the token is the second layer. The worker's port binds to loopback unless `ABB_WORKER_METRICS_BIND` is set (inside a container network a scraper needs `0.0.0.0`); Compose publishes neither port by default.
+
+**Rotate the token.** Change the file and restart the API and worker; update the scraper's file at the same time (a brief 401 gap is expected).
+
+**What is exposed.** Every metric below is declared in `abb_api/obs/catalogue.py` and moves in the place named; a test (`tests/obs/test_catalogue_is_used.py`) fails when a declared metric is not used by any module, and another (`tests/obs/test_operations_doc.py`) fails when this table and the catalogue disagree. A route that matched nothing is labelled `unmatched`; a method outside the standard seven is `other`; every closed label folds an unknown value into `other`. Series are capped (per label and per metric), so hostile traffic cannot grow the scrape. No label is ever an id, a slug, a name, an address, a key or a path.
+
+| Metric | Type | Labels | Meaning | Where it moves |
+|---|---|---|---|---|
+| `abb_build_info` | gauge | version | Always 1; the version label carries the build. | API, worker: when the registry is built |
+| `abb_scrape_database_up` | gauge | - | 1 when the last scrape-time database sample succeeded, 0 when its values are cached. | API and worker: result of the last scrape-time sample |
+| `alert_dead_letters` | gauge | - | Alert notifications that exhausted their retries (sampled at scrape time). | API and worker: sampled at scrape from `alert_notifications` |
+| `alert_deliveries_total` | counter | status, reason | Alert notification delivery results by status and fixed error or skip reason. | worker: alert delivery tick and evaluation (skips) |
+| `alert_destinations` | gauge | state | Alert destinations by state (sampled at scrape time; never their names). | API and worker: sampled at scrape from `alert_destinations` |
+| `artifact_upload_bytes` | histogram | - | Size of stored artifacts. | API: artifact upload router, newly stored artifacts |
+| `artifact_upload_failures_total` | counter | reason | Artifact uploads that were not stored, by reason. | API: artifact upload router |
+| `auth_active_key_refresh_failures_total` | counter | - | Refreshes of the active API key id set that failed (the old set keeps serving). | API: `auth/active_keys.py` |
+| `auth_active_keys` | gauge | - | Size of the active API key id set the throttle consults. | API: `auth/active_keys.py`, after each refresh and key creation |
+| `auth_throttle_blocks_total` | counter | kind | Requests refused by the failed-authentication throttle. | API: `auth/throttle.py`, each 429 AUTH_THROTTLED |
+| `backup_bundle_bytes` | gauge | - | Total size of the last successful backup bundle. | `abb_api.backup create`, textfile |
+| `backup_last_duration_seconds` | gauge | - | Duration of the last successful backup. | `abb_api.backup create`, textfile |
+| `backup_last_success_timestamp_seconds` | gauge | - | Unix time of the newest successful backup known to the textfile; 0 if unknown. | `abb_api.backup create`, textfile |
+| `backup_runs_total` | counter | outcome | Backup runs observed, by outcome. | `abb_api.backup create`, textfile |
+| `body_bytes_in_flight` | gauge | - | Request body bytes currently held in memory. | API: read at scrape from the budget |
+| `body_cap_refusals_total` | counter | reason | Requests refused by the in-flight body byte budget or the body ceiling. | API: `core/body_budget.py` |
+| `db_breaker_state` | gauge | - | Database circuit breaker in this process: 0 closed, 1 half-open (probing), 2 open. | API: `db/breaker.py`, on every transition |
+| `db_breaker_trips_total` | counter | - | Times the database circuit breaker opened. | API: `db/breaker.py` |
+| `db_role_privileged` | gauge | reason | 1 per reason the connected database role is too privileged (periodic re-check). | API, worker: `db/role_check.py` (`RoleMonitor`) |
+| `http_request_duration_seconds` | histogram | method, route | HTTP request duration (until the response is complete) by method and route. | API: `MetricsMiddleware`, once per request |
+| `http_requests_in_flight` | gauge | - | HTTP requests being served right now. | API: `MetricsMiddleware` |
+| `http_requests_total` | counter | method, route, status | HTTP requests by method, matched route template and status code. | API: `MetricsMiddleware` (`obs/http.py`), every request |
+| `ingest_ack_duration_seconds` | histogram | - | Time from the start of an ingestion request to its answer, once per request. | API: ingestion router, once per ingestion request |
+| `ingest_acks_total` | counter | outcome | Ingestion requests by outcome; committed is counted after the commit. | API: ingestion router (`ingestion/observe.py`); `committed` only after the commit |
+| `invitation_only_refusals_total` | counter | - | Sign-ins refused because the installation is invitation-only. | API: error handler (`NO_ACCESS`) |
+| `limiter_database_calls_total` | counter | outcome | Calls the shared limiter made to the database. | API: `limits/counters.py`, each shared-counter call |
+| `limiter_fail_open_total` | counter | scope | Shared limiter decisions made locally because the database was unavailable. | API: `limits/counters.py`, each decision made locally for lack of the database |
+| `otel_export_failures_total` | counter | - | Trace export attempts that failed (a collector that is down never affects requests). | API, worker, retention: the exporter wrapper in `obs/tracing_otel.py` (only with tracing on) |
+| `postgres_pool_wait_seconds` | histogram | - | Time spent waiting for a database connection. | API, worker: every pooled checkout (`db/engine.py`) |
+| `process_start_time_seconds` | gauge | - | Start time of the process, Unix seconds. | API, worker: when the registry is built |
+| `process_uptime_seconds` | gauge | - | Seconds since the process started. | API, worker: computed at scrape |
+| `processor_failures_total` | counter | type | Handler failures by job type (retried or dead-lettered). | worker: every failed attempt (retried, dead-lettered, superseded, no handler) |
+| `quota_refusals_total` | counter | quota | Writes refused because a project quota was reached. | API: error handler (`obs/app_errors.py`) and the batch ingestion router |
+| `readiness_check` | gauge | check | 1 when the named /readyz check passes, 0 when it fails (set when /readyz evaluates). | API: `health/readiness.py`, each evaluation (at most every 2 s) |
+| `readiness_flaps_total` | counter | - | Changes of the overall /readyz answer between ready and not. | API: `health/readiness.py` |
+| `retention_deleted_total` | counter | tier, kind | Data removed by retention, by tier and kind (bytes are artifact file bytes). | retention process (enforce), textfile |
+| `retention_dry_run_candidates` | gauge | tier | What a dry-run tick found it would delete (runs for run tiers, rows otherwise). | retention process (dry run), textfile |
+| `retention_failures_total` | counter | code | Retention failures by fixed code (units: tiers, runs or ticks, see the runbook). | retention process, textfile |
+| `retention_mode` | gauge | mode | 1 for the mode of the newest retention report (the effective mode), else 0. | retention process (textfile) and API/worker scrape (newest report) |
+| `retention_configured_mode` | gauge | mode | 1 for the retention mode this API or worker process is configured with (`ABB_RETENTION_MODE` at its start), else 0. | API and worker (from settings; absent on a process built without a scrape sampler) |
+| `retention_passes_total` | counter | mode | Retention ticks finished, by the mode they ran in. | retention process: `retention/metrics.py`, textfile |
+| `retention_seconds_since_last_pass` | gauge | - | Seconds since the newest retention report was written; NaN when there is none. | API and worker: sampled at scrape from `retention_reports` |
+| `rotation_last_success_timestamp_seconds` | gauge | - | Unix time of the newest successful alert-key rotation; 0 if unknown. | `abb_api.rotate alerts`, textfile |
+| `rotation_runs_total` | counter | outcome | Alert-key rotation runs observed, by outcome. | `abb_api.rotate alerts`, textfile |
+| `search_busy_total` | counter | reason | Searches refused with SEARCH_BUSY, by reason. | API: error handler (`SEARCH_BUSY`) |
+| `search_permits_in_use` | gauge | - | Search permits held by running searches in this process. | API: `SearchGate` |
+| `session_active_handles` | gauge | - | Size of the active session hint set the session throttle consults. | API: `auth/active_keys.py` (reused), after each refresh and sign-in |
+| `session_active_refresh_failures_total` | counter | - | Refreshes of the active session hint set that failed (the old set keeps serving). | API: `auth/active_keys.py` (reused) |
+| `session_revocations_total` | counter | reason | Sign-in sessions ended, by reason. | API: sign-out and the sessions page |
+| `session_throttle_blocks_total` | counter | kind | Requests refused (429) by the failed-session throttle, by the scope that was closed. | API: `auth/session_throttle.py`, each 429 SESSION_THROTTLED |
+| `sse_connections` | gauge | - | Open live-stream (SSE) connections. | API: stream lease acquire and release |
+| `sse_delivery_lag_seconds` | histogram | - | Time from an event being stored to its stream delivery. | API: per event sent on a stream (stored-to-sent) |
+| `telemetry_bytes_received_total` | counter | - | Request body bytes of accepted telemetry batches. | API: ingestion router, body bytes of committed batches |
+| `telemetry_events_received_total` | counter | - | Telemetry events accepted for storage. | API: ingestion router, events newly stored in a committed batch |
+| `telemetry_events_rejected_total` | counter | reason | Telemetry events or batches refused, by reason. | API: ingestion router; one per refused request, or per refused event inside a 202 |
+| `worker_job_duration_seconds` | histogram | type | Time a handler ran, by job type. | worker: handler start to commit or failure |
+| `worker_job_lag_seconds` | gauge | type | Age of the oldest due job that has not started, by job type (sampled at scrape time). | API and worker: sampled at scrape from `outbox_jobs` (15 s cache) |
+| `worker_jobs_pending` | gauge | type | Due jobs waiting to run, by job type (sampled at scrape time). | API and worker: sampled at scrape from `outbox_jobs` (15 s cache) |
+| `worker_jobs_total` | counter | type, outcome | Jobs finished by type and outcome. | worker: `jobs/worker.py`, after the job's transaction ends |
+
+**The service-level indicators (spec §117).** Accepted-event durability is `sum(rate(ingest_acks_total{outcome="committed"}[5m])) / (sum(rate(ingest_acks_total{outcome="committed"}[5m])) + sum(rate(ingest_acks_total{outcome="error"}[5m])))`: `committed` is counted only after the transaction committed, `error` is a request that failed on our side (a 5xx or an unexpected exception, including a commit that failed), and `rejected` (a 4xx, the client's fault) is left out of the ratio. Authentication failures never reach the ingestion handler; they are in `http_requests_total{status="401"}` and `auth_throttle_blocks_total`. Ingestion latency is `ingest_ack_duration_seconds` (one observation per request). Live freshness is `sse_delivery_lag_seconds`. Queue health is `worker_jobs_pending` and `worker_job_lag_seconds` by job type.
+
+**Scrape-time gauges.** `worker_jobs_pending`, `worker_job_lag_seconds`, `alert_dead_letters`, `alert_destinations`, `retention_mode` and `retention_seconds_since_last_pass` describe the database, not the process. They come from four small queries run as the runtime role (no new privilege), at most once every 15 seconds whatever the scrape rate, each under a 2 second statement timeout. A scrape never fails or waits on the database: it waits at most 1.5 seconds for a sample and otherwise serves the last values. `abb_scrape_database_up` is 1 when the last sample succeeded in full and 0 when the gauges above are stale; alert on it being 0 for several minutes. Both the API and the worker serve these gauges, so take them from one job (`max by (type) (...)`) rather than summing. Pending depth saturates at 10 000 due jobs; the lag is exact. `retention_mode` is the mode of the newest retention report (the effective mode, including a kill switch; an `off` retention process writes no report, so after switching it off this gauge keeps the last running mode); `retention_configured_mode` is what the API or worker itself was configured with, which `AbbRetentionStale` uses to stay silent when retention is intentionally off (it assumes the processes share `ABB_RETENTION_MODE`); `retention_seconds_since_last_pass` is NaN until a report exists.
+
+**Backups, key rotation and retention (the textfile collector).** `python -m abb_api.backup create`, `python -m abb_api.rotate alerts` and the retention runner are not scraped, so they write a small Prometheus text file for node_exporter. Give each its own file in the collector's directory with `--metrics-textfile PATH` or `ABB_METRICS_TEXTFILE` (the flag wins):
+
+```sh
+# node_exporter --collector.textfile.directory=/var/lib/node_exporter/textfile
+mkdir -p /var/lib/node_exporter/textfile            # owned by the user that runs the tools; node_exporter only reads
+python -m abb_api.backup create --out /backups/$(date +%F) --metrics-textfile /var/lib/node_exporter/textfile/abb_backup.prom
+python -m abb_api.rotate alerts --metrics-textfile /var/lib/node_exporter/textfile/abb_rotation.prom
+ABB_METRICS_TEXTFILE=/var/lib/node_exporter/textfile/abb_retention.prom python -m abb_api.cli retention run
+```
+
+The file is written to a temporary name in the same directory, fsynced, set to mode 0644 (the collector usually runs as another user) and renamed over the target, so a scrape sees the old file or the new one. It holds only the catalogue metrics the tool owns (`backup_*`, `rotation_*`, the `retention_*` counters and gauges), no path, URL, host or name. Counters and the last-success timestamps are carried over from the previous file, so a failed backup does not erase the last success and counters keep growing across runs. Use one file per tool: two tools writing the same path would replace each other. A file that cannot be written is logged by error class and never fails the backup. The shipped rules alert on `time() - backup_last_success_timestamp_seconds > 36 * 3600` (`AbbBackupTooOld`, ticket: a daily backup missed by more than 12 hours of grace) and `> 72 * 3600` (`AbbBackupVeryOld`, page) and `increase(backup_runs_total{outcome="failed"}[1d]) > 0` (`AbbBackupRunFailed`). A dry-run of `rotate` is not recorded. A backup that is refused for a usage reason (a non-empty output directory) counts as a failed run.
+
+### The ingestion SLO and the shipped rules (Phase 19c step 5, ADR-171)
+
+`deploy/observability/prometheus/rules/slo.yml` implements the spec §117 objective (99.95% of valid authenticated event batches durably accepted over a rolling 30 days) and `ops.yml` holds the operational alerts. Every alert has `severity: page|ticket`, a summary, a description that says why its threshold is what it is, and a `runbook_url` (a path under `docs/runbooks/`; rewrite the prefix in an Alertmanager template to make it a link). The index of symptoms, alerts and dashboard rows is `docs/runbooks/README.md`.
+
+**What the SLI means.** `committed / (committed + error)` over `ingest_acks_total`. `committed` is a request answered 2xx after its transaction committed; `error` failed on our side (5xx, an unexpected exception, a failed commit, an unreachable database); `rejected` (every 4xx) is **not in the ratio**. **Limits:** rate-limited batches, quota refusals and invalid or oversized batches do not spend error budget, so a limit set too low refuses customers silently as far as the SLO goes (watch `AbbIngestionRejectionsHigh` and `AbbQuotaRefusals`); failed authentication never reaches the handler; a request that never arrives (DNS, TLS, the load balancer) is invisible to a server metric, so probe `/readyz` from outside; a `202` with per-event refusals is a committed batch. With no traffic there is no ratio and nothing alerts.
+
+**Burn rates.** Budget = 1 - 0.9995 = 0.05%. 14.4x (0.72%) over 1 h and 5 min pages (2% of the month's budget per hour); 6x (0.3%) over 6 h and 30 min pages (5%); 3x (0.15%) over 1 d and 2 h and 1x (0.05%) over 3 d and 6 h open tickets (10% each). Both windows must exceed the threshold. A test recomputes these constants from the target.
+
+**Tuning.** Edit the number and the `for:` in the rule file; nothing else carries them. Changing the target means changing `abb:ingest_slo:target_ratio` and the four thresholds together (the test fails otherwise). The thresholds in `ops.yml` are defaults for a small installation; each states its reason, and the dashboard shows the signal behind each, so tune them after a few weeks of your own graphs. For a very quiet installation add a minimum request rate before paging on the burn-rate alerts.
+
+**Using your own Prometheus.** Copy `deploy/observability/prometheus/rules/*.yml` into your rule directory and the scrape jobs from `prometheus.yml` (token by `credentials_file`; scrape every API and worker replica). Keep 30 days of retention or the 30-day recording rules will read short. Add the textfile job for backups, rotation and retention (the commented example in `prometheus.yml`).
+
+**Importing the dashboard into an existing Grafana.** Dashboards, Import, upload `deploy/observability/grafana/dashboards/agent-black-box.json`, and pick your Prometheus datasource in the `Prometheus` variable (the dashboard has no fixed datasource uid). It reads the recording rules from `slo.yml`, so load the rules first. Its uid is `agent-black-box`. Every series is aggregate; no panel has a tenant, project or user.
+
+### Local dashboards (Phase 19c step 5, ADR-171)
+
+```sh
+make observability-up        # creates .local/metrics-token on first use, then starts the app profile plus Prometheus and Grafana
+# Grafana    http://127.0.0.1:3001   user admin, password $ABB_GRAFANA_ADMIN_PASSWORD (development default abb_grafana_dev_password)
+# Prometheus http://127.0.0.1:9090
+make observability-down      # stops and removes Prometheus and Grafana (the app stays up)
+```
+
+`make observability-token` creates `.local/metrics-token` with `openssl rand -hex 24` at mode 0600 (`.local/` is git-ignored) and prints nothing; it never overwrites an existing token. `observability-up` passes the token to the API and worker as `ABB_METRICS_TOKEN`, sets `ABB_WORKER_METRICS_PORT=9101` and `ABB_WORKER_METRICS_BIND=0.0.0.0` so Prometheus can reach the worker inside the compose network, and mounts the file read-only into Prometheus, which runs as your user so it can read a 0600 file. Both ports bind to `127.0.0.1`. Grafana has anonymous access and sign-up off; set `ABB_GRAFANA_ADMIN_PASSWORD` before the first start for anything but a private laptop. Prometheus keeps 24 hours in memory and forgets on `down`: the 30-day SLO panels need a real Prometheus. Rules, provisioning and dashboards are mounted read-only from `deploy/observability/`; after editing a rule restart Prometheus (`docker compose --profile observability restart prometheus`). Rotating the token: delete `.local/metrics-token`, run `make observability-up`, and restart the API and worker (`up` recreates them with the new value).
+
+**Checking the shipped assets for real.** `make obs-e2e` (CI job `obs-e2e`, details in `docs/TESTING.md`) starts a real API and worker with a metrics token and then runs these very files in the pinned Prometheus and Grafana images: `promtool check config` and `check rules`, both targets UP, every rule loaded and healthy, every rule and dashboard expression executed, the dashboard provisioned, and `AbbTargetDown` actually firing when the worker is stopped. The same run moves every metric family with known traffic and compares each change with the exact number of requests sent, so a metric that stops moving fails there before it fails you at 3 a.m. Run it after editing a rule, the dashboard or the catalogue. It pulls only the two images named in `docker-compose.yml` and refuses to pull when the container VM has under 3 GB free.
+
+## Logs and tracing (Phase 19c step 4, ADR-170)
+
+### Log lines
+
+One JSON object per line on stdout; `LOG_LEVEL` (`ABB_LOG_LEVEL`) picks the level. Fixed fields on every line, then the fields of the event:
+
+| Field | Meaning |
+|---|---|
+| `timestamp`, `level`, `logger`, `message` | UTC ISO time, level, logger name, a **fixed message** (never built from data) |
+| `service` | `abb-api`, `abb-worker` or `abb-retention` |
+| `request_id` | The request's id (also the `X-Request-ID` response header and the `request_id` of an error body); null outside a request |
+| `trace_id` | Only with tracing on and a span open: the W3C trace id, to open the trace in your collector |
+| `operation` | A stable short name of what was running: `ingest.batch`, `alerts.deliver`, `retention.tick`, `job.<type>` (for example `job.summarize_run`), or `http.<endpoint>` for any other request |
+| `error_type` | The exception **class** name when something failed; never its message |
+| `workspace_id`, `project_id`, `actor_id`, `session_id` | After authentication: opaque ids (`ws_...`, `prj_...`, `key:...`/`user:...`, the first 8 characters of a session id). Never names or slugs |
+| `method`, `route`, `status`, `duration_ms` | The request line: `route` is the matched **template** (`/v1/runs/{run_id}`) or `unmatched`; the raw path and query are not logged. Find a request by `request_id` |
+| `job_id`, `job_type`, `attempt`, `outcome` | Worker lines (`outcome` is `pending`, `done`, `dead_letter`, ...) |
+| `exception` | Only on failures: stack frames (file, line, function, our source line) and exception class names, chain included. No exception message and no local variables |
+
+What is never in a log line, by test: request or event payloads, prompts, attribute values, agent and tool names, paths with ids, query strings, headers, cookies, API keys and tokens, client addresses, e-mail addresses, passphrases, database URLs and passwords, alert destination URLs and response bodies. `tests/obs/test_log_sentinel.py` plants each of them in realistic and hostile traffic (API, worker, alert delivery, retention dry run and enforce, backup/verify/restore) with every logger at DEBUG and fails if one appears; `tests/test_log_hygiene.py` fails any new log call that interpolates data, passes an exception object, asks for a traceback outside a reviewed list, or names a sensitive value. At `LOG_LEVEL=DEBUG` the SQL and wire libraries (`sqlalchemy`, `asyncpg`, `urllib3`, `httpx`) stay quiet, because their debug lines contain parameters and hosts.
+
+Two consequences when you read logs. A failure line tells you *what kind* of error and *where* (the frames), not the error's text: to see the text reproduce it, or look at the `last_error` of a dead-lettered job (stored data, access-controlled), not the log. And log lines carry ids but not names: join the opaque ids against the database.
+
+### Tracing (optional)
+
+Off by default; costs nothing off (no OpenTelemetry module is imported, `span()` returns a shared no-op). To turn it on:
+
+1. Install the extra: `uv sync --extra otel`, or build the image with `docker build --build-arg UV_SYNC_ARGS="--extra otel" -f apps/api/Dockerfile .`
+2. Set, for the API, worker and (if you want its ticks) the retention process:
+
+```
+ABB_OTEL_ENABLED=1
+ABB_OTEL_SAMPLE_RATIO=0.1                      # default; ParentBased(TraceIdRatioBased(ratio))
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-collector.internal:4318
+OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <token>   # a secret; never logged or stored by ABB
+OTEL_EXPORTER_OTLP_TIMEOUT=10                  # seconds
+# OTEL_SERVICE_NAME is not needed: spans are named abb-api, abb-worker, abb-retention
+```
+
+Enabled without the extra, the process refuses to start with a fixed message naming the extra. A collector that is down, slow or rejecting never affects a request or a job: failed exports are swallowed, logged once each as `trace export failed` (exception class only) and counted in `otel_export_failures_total` (alert on it growing). The queue holds 2048 spans; beyond that spans are dropped. On stop the exporter is flushed for at most `ABB_OTEL_SHUTDOWN_TIMEOUT_SECONDS` (5).
+
+What a trace contains (the whole vocabulary; anything else is dropped and counted):
+
+| Span | When | Attributes |
+|---|---|---|
+| `http.request` (server) | every request; a new root, an inbound `traceparent` header is ignored | `http.request.method`, `http.route` (template), `http.response.status_code` |
+| `ingest.persist` | the ingestion transaction including its commit | `abb.events`, `abb.accepted` |
+| `db.checkout` | each database connection checkout (wait, connect, ping) made inside a request or job span; no SQL; background loops are not traced | none |
+| `job.run` | each job execution, a root span **linked** to the span that enqueued it (the link survives the queue as a 55-character `traceparent` in the job payload) | `abb.job.type`, `abb.job.attempt`, `abb.outcome`, `error.type` |
+| `alerts.attempt` | each alert delivery attempt | `abb.alert.destination_type`, `abb.outcome` |
+| `retention.tick` | each retention tick | `abb.retention.mode`, `abb.outcome` |
+
+Not in spans, ever: payloads, event or attribute values, names and slugs, tenant, project, run or key ids, raw paths, query strings, headers, SQL text or parameters, exception messages, alert URLs. Strings are at most 64 characters. Tenant ids are deliberately not attributes. With tracing on, log lines written inside a span also carry `trace_id` (32 hex characters, not sensitive), so a line found by `request_id` leads to its trace. FastAPI's own OpenTelemetry (which would record paths, queries and exception text and auto-export to the same collector) is switched off in the application factory. With sampling at 0.1 about one request in ten is traced; a job whose request was not sampled is sampled independently, so job spans are not always linked to a stored request span.
+
 ## What to watch
 
-Structured JSON logs (one line per request with `request_id`, and `workspace_id`, `project_id`, `key_id` after
-authentication; payloads and secrets are never logged). Messages worth alerting on: `lease lost while running`, `spans left untouched`, `job failed` with
+Structured JSON logs (one line per request with `request_id`, `route` and `status`, and `workspace_id`, `project_id`, `actor_id` after
+authentication; the field table is in Logs and tracing above; payloads, secrets, addresses and raw paths are never logged). Messages worth alerting on: `lease lost while running`, `spans left untouched`, `job failed` with
 `outcome: dead_letter`, `worker loop error`, `conflicting duplicate events ignored`, `authentication unavailable`,
-`ingest unavailable`, `stream listener unavailable`, `stream failed`. Application metrics (spec §116) arrive in Phase 19c; until then use the logs and these queries:
+`ingest unavailable`, `stream listener unavailable`, `stream failed`. Application metrics (spec §116) are in the Metrics section above; these queries are the same facts straight from the database:
 
 ```sql
 -- queue depth and oldest waiting job
@@ -301,11 +536,19 @@ SELECT id, job_type, attempt_count, left(last_error, 120) FROM outbox_jobs WHERE
 - [Dead-lettered jobs](runbooks/dead-letters.md)
 - [Ingestion rejections](runbooks/ingestion-rejections.md)
 - [Live streams](runbooks/stream-issues.md)
+- [Database saturation](runbooks/database-saturation.md): readiness, the breaker, the pool, slow queries, locks, bloat, write rate
+- [The ingestion SLO and burn-rate alerts](runbooks/slo-and-burn-rate.md)
+- [Retention](runbooks/retention.md): failures and staleness
+- [Security operations](runbooks/security-operations.md): what shows each spec §126 signal today, and what is not monitored
 - [Abuse resistance and hardening](runbooks/hardening.md): what each limit, quota and throttle does, what an operator sees when it triggers, reading the counters and audit rows, reverse-proxy guidance, and the Phase 19a upgrade notes (migrations 0097-0099)
 
 - [Backup and restore](runbooks/backup-restore.md): the bundle, scheduling, verifying, the restore procedure and exit codes, the restore drill
 - [Migrations](runbooks/migrations.md): the safe upgrade, rolling back each class, per-migration notes
 - [Secrets](runbooks/secrets.md): every secret and how it rotates (the event-id key does not)
 
-Still to write (Phases 18-19c): database saturation.
+The index by symptom, alert and dashboard row is [runbooks/README.md](runbooks/README.md).
 Recovery targets: with the backup tool above, RPO = the backup interval and RTO = the measured restore time (Phase 19b step 6). The spec §122 targets (RPO <= 15 min, RTO <= 4 h) need managed PostgreSQL with point-in-time recovery, which is not built.
+
+## Pins and audits
+
+Actions are pinned by commit sha and images by digest; Dependabot moves them weekly, `make check-pins` verifies them and `make audit-lockfiles` audits every Python lockfile. To bump or check a pin by hand see [bumping pins](runbooks/bumping-pins.md).

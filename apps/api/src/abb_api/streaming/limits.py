@@ -7,6 +7,7 @@ import threading
 from collections import Counter
 
 from abb_api.core.errors import AppError, ErrorCategory
+from abb_api.obs.catalogue import METRICS, Catalogue
 
 
 def stream_limit(scope: str) -> AppError:
@@ -36,7 +37,8 @@ class StreamLease:
 
 
 class StreamLimiter:
-    def __init__(self, max_total: int, max_per_key: int) -> None:
+    def __init__(self, max_total: int, max_per_key: int, metrics: Catalogue = METRICS) -> None:
+        self._connections = metrics.sse_connections
         self._max_total = max_total
         self._max_per_key = max_per_key
         self._per_key: Counter[str] = Counter()
@@ -55,6 +57,7 @@ class StreamLimiter:
             if self._per_key[key_id] >= self._max_per_key:
                 raise stream_limit(scope)
             self._per_key[key_id] += 1
+        self._connections.inc()
         return StreamLease(self, key_id)
 
     def release(self, key_id: str) -> None:
@@ -62,3 +65,4 @@ class StreamLimiter:
             self._per_key[key_id] -= 1
             if self._per_key[key_id] <= 0:
                 del self._per_key[key_id]
+        self._connections.dec()

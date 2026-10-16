@@ -98,3 +98,12 @@ History is pruned after `ABB_ALERTS_RETENTION_DAYS` (30).
 
 `make alerts-e2e` boots the real stack and local receivers and prints PASS/FAIL per check (see `docs/TESTING.md`). It sets `ABB_ALERTS_TEST_NETWORK_FILE`, which **only** exists for it: never set it
 on a deployment (it is refused unless `ABB_ENVIRONMENT` is `development` or `test`).
+
+## Monitoring
+
+Dashboard row: **Alerts and streams**. Alerts: `AbbAlertDeliveriesFailing` (3 or more failed or dead notifications in 30 minutes), `AbbAlertDeadLetters` (any notification dead for 15 minutes).
+
+- `alert_deliveries_total{status,reason}`: delivery results; `reason` is the fixed vocabulary of the delivery log (`timeout`, `connect_failed`, `blocked_address`, `http_4xx`, `http_5xx`, ...). Skips (`cooldown`, `rate_limited`, `daily_cap`, `destination_paused`) are `status="skipped"`, not failures.
+- `alert_dead_letters`: notifications that exhausted their retries (read from the database at scrape).
+- `alert_destinations{state}`: `active`, `paused`, `failing`; a destination paused by the auto-pause shows here.
+- Delivery is a job: if nothing is delivered and nothing fails, check [worker lag](worker-lag.md#metrics-and-alerts).

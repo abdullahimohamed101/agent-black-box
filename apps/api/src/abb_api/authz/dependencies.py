@@ -23,6 +23,7 @@ from abb_api.auth.service import (
     authenticate_session,
     session_invalid,
 )
+from abb_api.auth.session_throttle import SessionThrottle
 from abb_api.auth.throttle import AuthThrottle
 from abb_api.authz.audit import authorize_audited
 from abb_api.authz.matrix import role_actions, role_own_actions
@@ -108,7 +109,7 @@ async def _guarded(request: Request, work: Callable[[AsyncConnection], Awaitable
     except Exception as exc:
         if is_connectivity_error(exc):
             logger.warning("authentication unavailable", extra={"error_type": type(exc).__name__})
-            raise dependency_unavailable() from exc
+            raise dependency_unavailable(exc) from exc
         raise
 
 
@@ -173,12 +174,26 @@ async def _key_principal(request: Request) -> Principal:
 
 async def _load_session(request: Request) -> SessionContext:
     settings: Settings = request.app.state.settings
-    context: SessionContext = await _guarded(
-        request,
-        lambda conn: authenticate_session(
-            conn, session_cookie(request), request.app.state.clock, idle_window(settings)
-        ),
-    )
+    throttle: SessionThrottle = request.app.state.session_throttle
+    token = session_cookie(request)
+    # Memory only: a throttled request is refused here, before any lookup (ADR-169, KI-176).
+    attempt = throttle.admit(token, client_address(request, trust_proxy=settings.trust_proxy))
+    if attempt is not None and throttle.known_invalid(attempt):
+        # Seen invalid moments ago: the same 401, no lookup, still counted as a failure.
+        raise await throttle.failed(attempt) or session_invalid()
+    try:
+        context: SessionContext = await _guarded(
+            request,
+            lambda conn: authenticate_session(
+                conn, token, request.app.state.clock, idle_window(settings)
+            ),
+        )
+    except AppError as exc:
+        if attempt is not None and exc.code == "SESSION_INVALID":
+            raise (await throttle.failed(attempt) or exc) from None
+        raise
+    if attempt is not None:
+        throttle.succeeded(attempt)
     return context
 
 

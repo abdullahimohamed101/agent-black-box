@@ -11,6 +11,7 @@ import contextlib
 import logging
 import os
 import signal
+import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timedelta
@@ -20,11 +21,22 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from abb_api.clock import Clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.logging import configure_logging
+from abb_api.core.request_context import is_operation_name, operation
 from abb_api.db import create_engine
-from abb_api.db.role_check import PrivilegedDatabaseRole, enforce_role
-from abb_api.jobs.context import reset_job_settings, set_job_settings
+from abb_api.db.role_check import PrivilegedDatabaseRole, RoleMonitor, enforce_role
+from abb_api.jobs.context import (
+    reset_job_metrics,
+    reset_job_settings,
+    set_job_metrics,
+    set_job_settings,
+)
 from abb_api.jobs.handlers import HANDLERS
 from abb_api.jobs.outbox import Job, JobQueue, backoff_seconds
+from abb_api.obs import tracing
+from abb_api.obs.catalogue import METRICS, REGISTRY, Catalogue
+from abb_api.obs.scrape import ScrapeSampler
+from abb_api.obs.server import MetricsServer
+from abb_api.obs.tracing import Span, span, traceparent_in
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +56,9 @@ class Worker:
         *,
         clock: Clock | None = None,
         owner: str | None = None,
+        metrics: Catalogue = METRICS,
     ) -> None:
+        self._metrics = metrics
         self._engine = engine
         self._handlers = handlers
         self._settings = settings
@@ -110,30 +124,63 @@ class Worker:
         logger.info("worker stopped", extra={"owner": self.owner})
 
     async def _process(self, job: Job) -> None:
+        # Every log line of this job, its failure and its retry bookkeeping carry the operation.
+        # The type is ours (a registered handler name); anything else is not trusted as a name.
+        name = f"job.{job.job_type}"
+        with operation(
+            name if job.job_type in self._handlers and is_operation_name(name) else "job.unknown"
+        ):
+            await self._run_job(job)
+
+    async def _run_job(self, job: Job) -> None:
+        # One span per execution. It is a root that *links* to the request that enqueued the job
+        # (a link, not a parent: the job runs later, elsewhere, and may serve many requests).
+        with span(
+            "job.run",
+            link=traceparent_in(job.payload),
+            job_type=job.job_type,
+            attempt=job.attempt_count,
+        ) as traced:
+            await self._execute(job, traced)
+
+    async def _execute(self, job: Job, traced: Span) -> None:
         handler = self._handlers.get(job.job_type)
         if handler is None:
             async with self._engine.begin() as conn:
                 await JobQueue(conn).dead_letter(
                     job, error=f"no handler for job type '{job.job_type}'", now=self._now()
                 )
+            self._metrics.worker_jobs_total.inc(job.job_type, "dead_letter")
+            self._metrics.processor_failures_total.inc(job.job_type)
             logger.error(
                 "job has no handler", extra={"job_id": str(job.id), "job_type": job.job_type}
             )
+            traced.set(outcome="dead_letter")
             return
         heartbeat = asyncio.create_task(self._keep_lease(job))
         settings_token = set_job_settings(self._settings)
+        metrics_token = set_job_metrics(self._metrics)
+        started = time.perf_counter()
         try:
             async with self._engine.begin() as conn:
                 await handler(job, conn)
                 if not await JobQueue(conn).complete(job, self._now()):
                     raise LeaseLostError  # rolls the handler's writes back
+            self._metrics.worker_jobs_total.inc(job.job_type, "succeeded")  # after the commit
+            traced.set(outcome="succeeded")
         except LeaseLostError:
+            self._metrics.worker_jobs_total.inc(job.job_type, "lease_lost")
+            traced.set(outcome="lease_lost")
             logger.warning(
                 "lease lost; leaving the job to its new owner", extra={"job_id": str(job.id)}
             )
         except Exception as exc:
-            await self._record_failure(job, exc)
+            traced.set(outcome=await self._record_failure(job, exc), error_type=type(exc).__name__)
         finally:
+            self._metrics.worker_job_duration_seconds.observe(
+                time.perf_counter() - started, job.job_type
+            )
+            reset_job_metrics(metrics_token)
             reset_job_settings(settings_token)
             heartbeat.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -160,7 +207,8 @@ class Worker:
                     "lease heartbeat failed", extra={"job_id": str(job.id)}, exc_info=True
                 )
 
-    async def _record_failure(self, job: Job, exc: Exception) -> None:
+    async def _record_failure(self, job: Job, exc: Exception) -> str:
+        """Record a failed attempt; returns the outcome (``retried`` or ``dead_letter``, ...)."""
         s = self._settings
         message = f"{type(exc).__name__}: {exc}"
         async with self._engine.begin() as conn:
@@ -173,6 +221,10 @@ class Worker:
                     job.attempt_count, s.worker_backoff_base_seconds, s.worker_backoff_max_seconds
                 ),
             )
+        self._metrics.processor_failures_total.inc(job.job_type)
+        self._metrics.worker_jobs_total.inc(
+            job.job_type, "retried" if outcome == "pending" else outcome
+        )
         log = logger.error if outcome == "dead_letter" else logger.warning
         log(
             "job failed",
@@ -185,26 +237,73 @@ class Worker:
             },
             exc_info=outcome == "dead_letter",
         )
+        return "retried" if outcome == "pending" else str(outcome)
 
 
 async def _main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level, service="abb-worker")
-    engine = create_engine(settings.database_url)
+    tracing.start(settings, service="abb-worker", metrics=METRICS)  # off unless asked (ADR-170)
+    # The worker's own deadline (default none: its jobs are long); the API's does not apply.
+    engine = create_engine(
+        settings.database_url,
+        pool_wait=METRICS.postgres_pool_wait_seconds,
+        statement_timeout_seconds=settings.worker_db_statement_timeout_seconds,
+    )
     try:
-        await enforce_role(engine, settings, service="worker")  # KI-031: may refuse to start
+        startup_reasons = await enforce_role(engine, settings, service="worker")  # KI-031
     except PrivilegedDatabaseRole:
         await engine.dispose()
         raise
+    role_monitor = RoleMonitor(engine, settings, service="worker", initial=startup_reasons)
+    role_monitor.start()  # KI-183: log and metric only; the worker has no readiness endpoint
     worker = Worker(engine, HANDLERS, settings)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)  # finish the current batch, then exit cleanly
+    metrics_server = _start_metrics_server(
+        settings,
+        ScrapeSampler(lambda: engine, METRICS, retention_mode=settings.retention_mode),
+        loop,
+    )
     try:
         await worker.run_forever(stop)
     finally:
+        if metrics_server is not None:
+            metrics_server.stop()
+        await role_monitor.stop()
         await engine.dispose()
+        await asyncio.to_thread(tracing.stop, settings.otel_shutdown_timeout_seconds)
+
+
+def _start_metrics_server(
+    settings: Settings,
+    sampler: ScrapeSampler | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> MetricsServer | None:
+    """Serve the registry on ABB_WORKER_METRICS_PORT; off unless set (Settings requires a token).
+
+    The server runs in its own thread; scrape-time database gauges are sampled on the worker's
+    event loop (the engine belongs to it), with the sampler's own bounded wait.
+    """
+    if settings.worker_metrics_port is None or settings.metrics_token is None:
+        return None
+
+    def sample() -> None:
+        if sampler is not None and loop is not None:
+            asyncio.run_coroutine_threadsafe(sampler.refresh(), loop).result(timeout=5)
+
+    server = MetricsServer(
+        REGISTRY,
+        settings.metrics_token,
+        bind=settings.worker_metrics_bind,
+        port=settings.worker_metrics_port,
+        requests_per_minute=settings.metrics_requests_per_minute,
+        before_render=sample,
+    )
+    server.start()  # a bind failure stops the worker at startup, loudly
+    return server
 
 
 def main() -> None:

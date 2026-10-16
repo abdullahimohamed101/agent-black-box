@@ -39,6 +39,7 @@ from abb_api.alerts.schedule import ensure_prune, request_delivery
 from abb_api.alerts.spend import SpendReader
 from abb_api.alerts.subjects import SubjectLoader
 from abb_api.ids import new_uuid
+from abb_api.jobs.context import job_metrics
 from abb_api.jobs.outbox import OutboxRepository
 from abb_api.tenancy import TenantContext
 
@@ -145,6 +146,7 @@ async def record(
                 continue
             if reason:
                 outcome.skipped += 1
+                job_metrics().alert_deliveries_total.inc("skipped", reason)
             else:
                 outcome.created += 1
                 fired = True

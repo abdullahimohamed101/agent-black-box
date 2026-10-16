@@ -1026,6 +1026,37 @@
         "title": "ChangeRole",
         "type": "object"
       },
+      "CheckOut": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A fixed reason code (for example `behind`, `breaker_open`), never error text.",
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "fail",
+              "degraded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason"
+        ],
+        "title": "CheckOut",
+        "type": "object"
+      },
       "ComparisonOut": {
         "properties": {
           "alignment": {
@@ -6649,13 +6680,19 @@
       },
       "ReadyResponse": {
         "properties": {
-          "database": {
-            "const": "ok",
-            "title": "Database",
-            "type": "string"
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CheckOut"
+            },
+            "description": "`database`, `schema`, `artifacts` and `role` fail readiness; `worker` and `retention` are reported only.",
+            "title": "Checks",
+            "type": "object"
           },
           "status": {
-            "const": "ok",
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -6667,7 +6704,7 @@
         "required": [
           "status",
           "version",
-          "database"
+          "checks"
         ],
         "title": "ReadyResponse",
         "type": "object"
@@ -9954,11 +9991,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/ReadyResponse"
                 }
               }
             },
-            "description": "The database is unreachable."
+            "description": "Not ready: see `checks`."
           }
         },
         "summary": "Readyz",
