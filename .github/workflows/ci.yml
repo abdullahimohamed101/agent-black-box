@@ -201,7 +201,7 @@ jobs:
         run: scripts/stream-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stream-e2e-results
           path: apps/web/test-results
@@ -244,7 +244,7 @@ jobs:
         run: scripts/analytics-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: analytics-e2e-results
           path: apps/web/test-results
@@ -287,7 +287,7 @@ jobs:
         run: scripts/coding-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coding-e2e-results
           path: apps/web/test-results
@@ -332,7 +332,7 @@ jobs:
         run: scripts/auth-https-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: auth-e2e-results
           path: apps/web/test-results
@@ -375,7 +375,7 @@ jobs:
         run: scripts/findings-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: findings-e2e-results
 
@@ -417,7 +417,7 @@ jobs:
         run: scripts/multiagent-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: multiagent-e2e-results
           path: apps/web/test-results
@@ -461,7 +461,7 @@ jobs:
         run: scripts/eval-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: eval-e2e-results
           path: apps/web/test-results
@@ -508,7 +508,7 @@ jobs:
         run: scripts/security-e2e.sh
       - name: Keep Playwright output and server logs on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: security-e2e-results
           path: |
@@ -559,7 +559,7 @@ jobs:
         run: scripts/policy-e2e.sh
       - name: Keep Playwright output and server logs on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: policy-e2e-results
           path: |
@@ -611,7 +611,7 @@ jobs:
         run: scripts/alerts-e2e.sh
       - name: Keep Playwright output and server logs on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: alerts-e2e-results
           path: |
@@ -663,7 +663,7 @@ jobs:
         run: scripts/hardening-e2e.sh
       - name: Keep Playwright output and server logs on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hardening-e2e-results
           path: |
@@ -708,7 +708,7 @@ jobs:
         run: scripts/obs-e2e.sh
       - name: Keep server logs on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: obs-e2e-results
           path: ${{ runner.temp }}/obs-e2e-logs
@@ -758,7 +758,7 @@ jobs:
         run: scripts/retention-e2e.sh
       - name: Keep Playwright output and server logs on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: retention-e2e-results
           path: |
@@ -814,7 +814,7 @@ jobs:
         run: scripts/backup-restore-e2e.sh
       - name: Keep server logs on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: backup-restore-e2e-results
           path: ${{ runner.temp }}/backup-restore-e2e-logs
