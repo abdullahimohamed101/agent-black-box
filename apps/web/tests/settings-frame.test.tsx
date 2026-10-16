@@ -194,3 +194,75 @@ describe("the pieces of the pattern", () => {
     });
   });
 });
+
+// The role matrix (the grants of apps/api/src/abb_api/authz/matrix.py, copied here as data; the API stays the authority): which
+// settings tabs and which Review tabs each of the six roles gets. A tab the permissions do not list is absent, never disabled.
+const EVERYONE = [
+  "workspace.read",
+  "project.read",
+  "member.read",
+  "pricing.read",
+  "retention.read",
+];
+const READ_RUNS = ["run.read", "evaluation.read", "experiment.read"];
+const CONTENT = ["payload.read", "artifact.read"];
+const APPROVALS = ["approval.read", "approval.decide"];
+const MANAGE_ALERTS = ["alert.read", "alert.write", "alert.destination.read"];
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  OWNER: [
+    ...EVERYONE, ...READ_RUNS, ...CONTENT, ...APPROVALS, ...MANAGE_ALERTS,
+    "analytics.read", "project.write", "api_key.read", "api_key.create", "api_key.revoke",
+    "member.write", "member.write_owner", "invite.read", "invite.write", "pricing.write",
+    "audit.read", "billing.read", "policy.read", "policy.write", "retention.write",
+  ],
+  ADMIN: [
+    ...EVERYONE, ...READ_RUNS, ...CONTENT, ...APPROVALS, ...MANAGE_ALERTS,
+    "analytics.read", "project.write", "api_key.read", "api_key.create", "api_key.revoke",
+    "member.write", "invite.read", "invite.write", "pricing.write", "audit.read",
+    "billing.read", "policy.read", "policy.write", "retention.write",
+  ],
+  DEVELOPER: [
+    ...EVERYONE, ...READ_RUNS, ...CONTENT, ...APPROVALS, "alert.read", "policy.read",
+    "analytics.read", "api_key.read", "api_key.create",
+  ],
+  VIEWER: [...EVERYONE, ...READ_RUNS, "alert.read", "analytics.read"],
+  SECURITY: [
+    ...EVERYONE, ...READ_RUNS, ...CONTENT, ...APPROVALS, "alert.read", "policy.read",
+    "analytics.read", "api_key.read", "api_key.revoke", "audit.read",
+  ],
+  BILLING: [...EVERYONE, "analytics.read", "pricing.write", "billing.read"],
+}; // prettier-ignore
+const NINE = [
+  "Members", "Sessions", "API keys", "Policies", "Capture and detectors", "Quotas", "Retention",
+  "Pricing", "Alerts", "Audit log",
+]; // prettier-ignore
+const SETTINGS_TABS: Record<string, string[]> = {
+  OWNER: NINE,
+  ADMIN: NINE,
+  DEVELOPER: ["Members", "Sessions", "API keys", "Policies", "Quotas", "Retention", "Pricing", "Alerts"],
+  VIEWER: ["Members", "Sessions", "Quotas", "Retention", "Pricing", "Alerts"],
+  SECURITY: ["Members", "Sessions", "API keys", "Policies", "Quotas", "Retention", "Pricing", "Alerts", "Audit log"],
+  BILLING: ["Members", "Sessions", "Quotas", "Retention", "Pricing"],
+}; // prettier-ignore
+
+describe("the role matrix", () => {
+  it.each(Object.keys(ROLE_PERMISSIONS))("%s gets exactly its settings tabs", (role) => {
+    expect(settingsTabs("demo", ROLE_PERMISSIONS[role]!).map((t) => t.label)).toEqual(
+      SETTINGS_TABS[role],
+    );
+  });
+  it("Review: approvals need approval.read, security findings need run.read, billing gets neither", () => {
+    const review = (role: string) => {
+      const p = ROLE_PERMISSIONS[role]!;
+      return [
+        ...(p.includes("approval.read") ? ["Approvals"] : []),
+        ...(p.includes("run.read") ? ["Security findings"] : []),
+      ];
+    };
+    expect(review("OWNER")).toEqual(["Approvals", "Security findings"]);
+    expect(review("DEVELOPER")).toEqual(["Approvals", "Security findings"]);
+    expect(review("SECURITY")).toEqual(["Approvals", "Security findings"]);
+    expect(review("VIEWER")).toEqual(["Security findings"]);
+    expect(review("BILLING")).toEqual([]);
+  });
+});

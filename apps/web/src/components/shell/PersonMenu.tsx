@@ -60,19 +60,18 @@ export function PersonMenu({ base }: { base: Base }) {
               {ws.role && <p className="menu-aside">{shell.person.role(titleCase(ws.role))}</p>}
             </div>
           )}
-          <ul className="menu-list">
-            {signedIn && (
+          {!signedIn && <p className="menu-note">{shell.person.none}</p>}
+          {signedIn && (
+            <ul className="menu-list">
               <li>
                 <Link href={`/w/${base.workspace}/settings/sessions`}>{shell.person.sessions}</Link>
               </li>
-            )}
-            {signedIn && (
               <li>
                 {/* A POST: signing out is never a GET (a cross-site link must not be able to do it). */}
                 <SignOutButton className="menu-action" />
               </li>
-            )}
-          </ul>
+            </ul>
+          )}
         </div>
       )}
     </div>

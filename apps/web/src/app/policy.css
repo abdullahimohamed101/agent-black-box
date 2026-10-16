@@ -34,6 +34,10 @@
 .apr-body[data-detail] {
   grid-template-columns: minmax(0, 1fr) 26rem;
 }
+.apr-list {
+  min-width: 0;
+  max-width: 64rem;
+}
 .apr-table td {
   vertical-align: top;
   white-space: nowrap;
@@ -57,7 +61,8 @@
   margin: 0;
   overflow: hidden;
   color: var(--color-text-secondary);
-  font: var(--type-mono-small-weight) var(--type-mono-small-size) / var(--type-mono-small-line) var(--font-mono);
+  font: var(--type-mono-small-weight) var(--type-mono-small-size) / var(--type-mono-small-line)
+    var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -446,7 +451,6 @@ pre.pol-diff {
 .drawer .pol-drawer p {
   margin: 0.2rem 0;
 }
-
 
 /* Phone: tables of the policy tab stack into blocks instead of crushing their text. */
 @media (max-width: 52rem) {

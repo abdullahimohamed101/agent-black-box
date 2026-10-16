@@ -16,7 +16,8 @@ export const review = {
     },
     expired: "Expired",
     loading: "Loading approvals…",
-    loaded: (n: number, end: boolean) => `${n} request${n === 1 ? "" : "s"} loaded${end ? " (end of list)" : ""}`,
+    loaded: (n: number, end: boolean) =>
+      `${n} request${n === 1 ? "" : "s"} loaded${end ? " (end of list)" : ""}`,
     more: "Load more",
     loadingMore: "Loading…",
     foot: "An approval authorises one action, once. Policies apply to agents that ask through the SDK guard.",
@@ -40,7 +41,8 @@ export const review = {
     caption: "Security findings, newest run first",
     heads: { severity: "Severity", finding: "Finding", run: "Run", when: "When" },
     loading: "Loading security findings…",
-    loaded: (n: number, end: boolean) => `${n} finding${n === 1 ? "" : "s"} loaded${end ? " (end of list)" : ""}`,
+    loaded: (n: number, end: boolean) =>
+      `${n} finding${n === 1 ? "" : "s"} loaded${end ? " (end of list)" : ""}`,
     forbiddenWhat: "security findings",
     cleanTitle: "Nothing suspicious found",
     cleanBody: "No security findings in this workspace. These detectors are on:",

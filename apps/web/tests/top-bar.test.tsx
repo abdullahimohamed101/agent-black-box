@@ -144,6 +144,8 @@ describe("application frame", () => {
     await userEvent.setup().click(account);
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
     expect(screen.queryByText("owner@example.test")).toBeNull();
+    // the panel says why it is bare instead of opening an empty box (the temporary links that filled it are gone, KI-279)
+    expect(screen.getByText(shell.person.none)).toBeInTheDocument();
   });
 
   it("works without a workspace provider: brand, the links and the scope as plain text", () => {

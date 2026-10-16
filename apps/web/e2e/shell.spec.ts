@@ -138,20 +138,17 @@ test.describe("1440 px", () => {
     await expect(page.getByRole("button", { name: /^demo \/ Demo project/ })).toBeVisible();
   });
 
-  test("the account menu holds the links that have no top-level place yet", async ({ page }) => {
+  test("the account menu holds no temporary links: Security findings is a tab of Review, Alerts a tab of Settings", async ({
+    page,
+  }) => {
     await page.goto(`${BASE}/runs`);
     await page.getByRole("button", { name: "Account" }).click();
-    await expect(page.getByRole("link", { name: "Alerts" })).toHaveAttribute(
-      "href",
-      "/w/demo/alerts",
-    );
-    await expect(page.getByRole("link", { name: "Security findings" })).toHaveAttribute(
-      "href",
-      "/w/demo/security",
-    );
+    // fixtures have no person: the panel says so instead of opening empty (KI-279 closed in step 5c)
+    await expect(page.locator("#person-panel")).toContainText("Fixture data");
+    await expect(page.locator("#person-panel").getByRole("link")).toHaveCount(0);
     await axe(page);
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("link", { name: "Alerts" })).toHaveCount(0);
+    await expect(page.locator("#person-panel")).toHaveCount(0);
   });
 });
 

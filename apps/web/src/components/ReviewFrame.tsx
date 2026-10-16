@@ -31,11 +31,7 @@ export function ReviewFrame({ children }: { children: React.ReactNode }) {
   const active: ReviewTab = path.startsWith(hrefs.approvals) ? "approvals" : "security";
   const waiting = pending.data ?? 0;
   const items = [
-    ...(canApprovals
-      ? [
-          { id: "approvals" as const, label: review.tabs.approvals },
-        ]
-      : []),
+    ...(canApprovals ? [{ id: "approvals" as const, label: review.tabs.approvals }] : []),
     ...(canSecurity ? [{ id: "security" as const, label: review.tabs.security }] : []),
   ];
   return (

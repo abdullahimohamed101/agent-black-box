@@ -47,6 +47,8 @@ export const shell = {
     /** Menu button label when there is no signed-in person (fixture data). */
     account: "Account",
     signedInAs: "Signed in as",
+    /** The panel of the Account button when the data is fixtures: no person, nothing to sign out of. */
+    none: "Fixture data: no one is signed in.",
     role: (role: string) => `Role: ${role}`,
     sessions: "Sessions",
     signOut: "Sign out",

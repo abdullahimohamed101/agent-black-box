@@ -1,3 +1,4 @@
+import { currentSettingsTab } from "./settings";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
@@ -65,10 +66,7 @@ for (const [width, height] of [
       await expect(tier(page, "run")).toContainText("The run summary and its numbers");
       await expect(page.getByTestId("retention-pass")).toHaveCount(4);
       await expect(page.getByTestId("retention-pass").first()).toContainText("Dry run");
-      await expect(page.getByRole("link", { name: "Retention" }).first()).toHaveAttribute(
-        "aria-current",
-        "page",
-      );
+      await expect(currentSettingsTab(page)).toHaveText("Retention");
       await axe(page);
       expect(errors).toEqual([]);
     });

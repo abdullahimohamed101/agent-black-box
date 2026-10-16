@@ -60,7 +60,12 @@ for (const [width, height] of [
 
     test("workspace page: table, keyboard, deep link, facets and URL", async ({ page }) => {
       await page.goto("/w/demo/security");
-      await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible();
+      // Step 5c: the page is Review; Security findings is its second tab
+      await expect(page.getByRole("heading", { name: "Review", level: 1 })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Security findings" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
       await expect(page.getByTestId("security-row")).toHaveCount(10);
       await noSentinel(page, "main");
       if (width > 800)
@@ -147,7 +152,9 @@ test.describe("settings", () => {
     page,
   }) => {
     await page.goto("/w/demo/settings/security");
-    await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Capture and detectors", level: 1 }),
+    ).toBeVisible();
     const save = page.getByRole("button", { name: "Save changes" });
     await expect(save).toBeDisabled();
     await page.getByRole("radio", { name: /^Full/ }).check();

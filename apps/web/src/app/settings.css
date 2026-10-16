@@ -60,7 +60,8 @@
 .st-section-lede {
   max-width: var(--measure);
   margin: 0 0 var(--space-4);
-  font: var(--type-body-lg-weight) var(--type-body-lg-size) / var(--type-body-lg-line) var(--font-sans);
+  font: var(--type-body-lg-weight) var(--type-body-lg-size) / var(--type-body-lg-line)
+    var(--font-sans);
   color: var(--color-text-secondary);
 }
 .st-section {

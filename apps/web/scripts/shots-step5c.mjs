@@ -77,7 +77,10 @@ const states = [
       await p.getByRole("button", { name: "Save periods" }).click();
       await p.getByRole("button", { name: "Save and shorten" }).click();
       await p.getByTestId("tier-pending").first().waitFor();
-      await p.getByTestId("tier-pending").first().evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await p
+        .getByTestId("tier-pending")
+        .first()
+        .evaluate((el) => el.scrollIntoView({ block: "center" }));
     },
     [1440, 375],
   ],
@@ -123,7 +126,12 @@ for (const scheme of ["light", "dark"]) {
   ]) {
     for (const [name, url, setup, act, widths] of states) {
       if (only && !name.includes(only)) continue;
-      if (widths ? !widths.includes(w) : w === 768 && !/quotas|alerts-rules|approvals$|security$|members/.test(name)) continue;
+      if (
+        widths
+          ? !widths.includes(w)
+          : w === 768 && !/quotas|alerts-rules|approvals$|security$|members/.test(name)
+      )
+        continue;
       const ctx = await browser.newContext({
         viewport: { width: w, height: h },
         colorScheme: scheme,
