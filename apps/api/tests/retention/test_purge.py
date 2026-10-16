@@ -406,6 +406,7 @@ async def final_state(
     }
 
 
+@pytest.mark.timeout(900)  # one full purge per hook call: slow by construction
 async def test_a_crash_after_every_step_of_a_project_purge_is_completed_by_running_it_again(
     engine: AsyncEngine, retention_engine: AsyncEngine, tmp_path: Path
 ) -> None:
@@ -443,7 +444,9 @@ async def test_a_crash_after_every_step_of_a_project_purge_is_completed_by_runni
                     engine, "SELECT count(*) FROM purge_tombstones WHERE state = 'running'"
                 ) in (0, 1)
             code, lines = await run(retention_engine, store, project_request(confirm="p1"))
-            assert code == purge.EXIT_OK, (k, calls[k], lines)
+            # A crash after the last hook is a crash after completion: nothing is left to purge.
+            done = purge.EXIT_REFUSED if calls[k] == "purge:completed" else purge.EXIT_OK
+            assert code == done, (k, calls[k], lines)
         await assert_scope_gone(
             engine, before, "project", ws, pid, root, scope_files=p1.artifact_keys
         )
@@ -467,6 +470,7 @@ async def test_a_crash_after_every_step_of_a_project_purge_is_completed_by_runni
             break
 
 
+@pytest.mark.timeout(900)  # one full purge per hook call: slow by construction
 async def test_a_crash_after_every_step_of_a_workspace_purge_is_completed_by_running_it_again(
     engine: AsyncEngine, retention_engine: AsyncEngine, tmp_path: Path
 ) -> None:
@@ -507,7 +511,8 @@ async def test_a_crash_after_every_step_of_a_workspace_purge_is_completed_by_run
             with pytest.raises(Crash):
                 await run(retention_engine, store, workspace_request(confirm="acme"), hook=hook)
             code, lines = await run(retention_engine, store, workspace_request(confirm="acme"))
-            assert code == purge.EXIT_OK, (k, calls[k], lines)
+            done = purge.EXIT_REFUSED if calls[k] == "purge:completed" else purge.EXIT_OK
+            assert code == done, (k, calls[k], lines)
         await assert_scope_gone(
             engine, before, "workspace", ws, None, root, scope_files=p1.artifact_keys
         )

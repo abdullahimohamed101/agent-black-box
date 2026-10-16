@@ -64,11 +64,12 @@ async def test_the_keys_of_a_purging_project_stop_working_at_once(api: Api) -> N
     projects = await api.get("/v1/projects", token="wide_reader")
     assert alpha_public not in [p["id"] for p in projects.json()["items"]]
 
-    # Setting the column back restores it all: the column is the only switch.
+    # Setting the column back restores the project (keys the throttle already saw refused stay
+    # refused for its short memory, ADR-153, so this looks through a workspace-wide key).
     await set_state(api, "projects", "id = :p", "active", p=alpha)
-    assert (await api.get("/v1/runs", token="reader")).status_code == 200
-    again = await api.post_batch([wire_event(make_run_ids(), 1)], token=WRITER)
-    assert again.status_code == 202
+    again = await api.get("/v1/runs", token="wide_reader")
+    assert run_id in [r["id"] for r in again.json()["items"]]
+    assert (await api.get(f"/v1/runs/{run_id}", token="wide_reader")).status_code == 200
 
 
 async def test_a_purging_workspace_is_a_404_for_its_members_and_its_keys_are_refused(

@@ -287,7 +287,10 @@ async def run_purge(settings: RetentionRunnerSettings, args: argparse.Namespace)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, stop.set)  # stops at the next batch boundary
+        try:
+            loop.add_signal_handler(sig, stop.set)  # stops at the next batch boundary
+        except (RuntimeError, NotImplementedError):  # not the main thread (tests)
+            pass
     try:
         return await purge.execute(
             engine,
