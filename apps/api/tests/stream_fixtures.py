@@ -12,6 +12,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from abb_api.main import create_app
+from abb_api.obs.catalogue import Observability
 from tests.api_fixtures import Api
 from tests.conftest import make_settings, runtime_url
 from tests.ingest_helpers import wire_event
@@ -57,7 +58,13 @@ class _Stream:
             await self._client.aclose()
 
 
-async def serve(api: Api, runtime_database_url: str, **settings: Any) -> AsyncIterator[Live]:
+async def serve(
+    api: Api,
+    runtime_database_url: str,
+    *,
+    observability: Observability | None = None,
+    **settings: Any,
+) -> AsyncIterator[Live]:
     """The same database and keys as `api`, served over a socket with fast stream timings."""
     base = make_settings(runtime_url(runtime_database_url))
     timings = {
@@ -67,7 +74,11 @@ async def serve(api: Api, runtime_database_url: str, **settings: Any) -> AsyncIt
         "stream_overlap_seconds": 30.0,
         "stream_window_check_seconds": 0.2,
     }
-    app = create_app(base.model_copy(update={**timings, **settings}), clock=api.clock)
+    app = create_app(
+        base.model_copy(update={**timings, **settings}),
+        clock=api.clock,
+        **({"observability": observability} if observability is not None else {}),
+    )
     server = uvicorn.Server(
         uvicorn.Config(
             app,

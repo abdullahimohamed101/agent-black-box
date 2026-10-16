@@ -39,3 +39,21 @@ async def scrape(client: httpx.AsyncClient, token: str = TOKEN) -> dict[str, Fam
     response = await client.get("/metrics", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200, response.text
     return parse(response.text)
+
+
+def value(obs: Observability, name: str, **labels: str) -> float:
+    """Current value of one counter or gauge series (0 when it does not exist yet)."""
+    metric = obs.registry.metrics[name]
+    return metric.value(*(labels[n] for n in metric.label_names))  # type: ignore[attr-defined,no-any-return]
+
+
+def observations(obs: Observability, name: str, **labels: str) -> float:
+    """How many observations a histogram series has."""
+    metric = obs.registry.metrics[name]
+    counts, _ = metric.snapshot(*(labels[n] for n in metric.label_names))  # type: ignore[attr-defined]
+    return float(sum(counts))
+
+
+def total(obs: Observability, name: str) -> float:
+    """The sum over every series of a counter (to assert that nothing else moved)."""
+    return sum(number for _, _, number in obs.registry.metrics[name].collect())
