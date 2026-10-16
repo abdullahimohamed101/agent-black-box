@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: agent-black-box
+    orgId: 1
+    folder: Agent Black Box
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,0 +1,12 @@
+# Provisioned datasource for the local profile. The uid is referenced by nothing in the dashboard
+# (it uses a ${datasource} variable), so importing the dashboard into another Grafana works with
+# whichever Prometheus datasource you pick.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: abb-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
