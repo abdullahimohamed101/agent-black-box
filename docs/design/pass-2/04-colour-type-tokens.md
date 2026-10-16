@@ -275,8 +275,8 @@ the old screens keep working.
 | `--border` | aliased | `--color-border-subtle` | 90 |  |
 | `--border-strong` | aliased | `--color-border-strong` | 19 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
 | `--ink` | aliased | `--color-text-primary` | 22 |  |
-| `--fg` | deleted in step 5 | `--color-text-primary` | 38 | ADR-111 alias of --ink |
-| `--fg-2` | deleted in step 5 | `--color-text-primary` | 12 | no role between ink and ink-2 |
+| `--fg` | deleted in step 5 | `--color-text-primary` | 37 | ADR-111 alias of --ink |
+| `--fg-2` | deleted in step 5 | `--color-text-primary` | 11 | no role between ink and ink-2 |
 | `--muted` | aliased | `--color-text-secondary` | 67 |  |
 | `--accent` | aliased | `--color-interactive-default` | 52 |  |
 | `--accent-bg` | deleted in step 5 | `--color-bg-wash` | 2 | the accent fill is removed; the wash is the selection colour |
@@ -293,7 +293,7 @@ the old screens keep working.
 | `--ok` | deleted in step 5 | `--color-legacy-ok` | 5 | green removed; success is a check glyph in ink-2 |
 | `--ok-bg` | deleted in step 5 | `--color-legacy-ok-bg` | 0 | green removed |
 | `--mark` | aliased | `--color-brand-mark` | 1 |  |
-| `--sans` | aliased | `--font-sans` | 23 |  |
+| `--sans` | aliased | `--font-sans` | 22 |  |
 | `--mono` | aliased | `--font-mono` | 48 |  |
 | `--fs-headline` | aliased | `--type-h1-size` | 4 |  |
 | `--fs-title` | aliased | `--type-h2-size` | 8 |  |

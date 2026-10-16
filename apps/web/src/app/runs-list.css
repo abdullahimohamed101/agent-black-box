@@ -286,6 +286,11 @@ button.toggle[aria-pressed="true"] {
 .runs-table td.name {
   min-width: 14rem;
 }
+/* globals.css gives "the second cell" a 12 rem minimum (it was the name); in compare mode the second cell is the status. */
+.runs-table td:nth-child(2):not(.name) {
+  min-width: 0;
+  white-space: nowrap;
+}
 .runs-table tr[data-attention="true"] td {
   vertical-align: top;
   padding-top: var(--space-2);

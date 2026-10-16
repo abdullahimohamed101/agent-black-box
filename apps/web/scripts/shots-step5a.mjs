@@ -33,12 +33,47 @@ const states = [
       );
     },
   ],
-  ["runs-help", "/w/demo/projects/all/runs", async () => {}, async (page) => page.getByRole("button", { name: "Search help" }).click()],
-  ["runs-compare", "/w/demo/projects/all/runs", async () => {}, async (page) => page.getByRole("button", { name: "Compare" }).click()],
-  ["runs-scope", "/w/demo/projects/all/runs", async () => {}, async (page) => page.getByRole("button", { name: /demo \/ All projects/ }).click()],
-  ["runs-account", "/w/demo/projects/all/runs", async () => {}, async (page) => page.getByRole("button", { name: "Account" }).click()],
-  ["runs-menu", "/w/demo/projects/all/runs", async () => {}, async (page) => page.getByRole("button", { name: "Menu" }).click(), [375]],
-  ["runs-search", "/w/demo/projects/all/runs", async () => {}, async (page) => { await page.keyboard.press("/"); await page.keyboard.type("migr"); await page.waitForTimeout(700); }],
+  [
+    "runs-help",
+    "/w/demo/projects/all/runs",
+    async () => {},
+    async (page) => page.getByRole("button", { name: "Search help" }).click(),
+  ],
+  [
+    "runs-compare",
+    "/w/demo/projects/all/runs",
+    async () => {},
+    async (page) => page.getByRole("button", { name: "Compare" }).click(),
+  ],
+  [
+    "runs-scope",
+    "/w/demo/projects/all/runs",
+    async () => {},
+    async (page) => page.getByRole("button", { name: /demo \/ All projects/ }).click(),
+  ],
+  [
+    "runs-account",
+    "/w/demo/projects/all/runs",
+    async () => {},
+    async (page) => page.getByRole("button", { name: "Account" }).click(),
+  ],
+  [
+    "runs-menu",
+    "/w/demo/projects/all/runs",
+    async () => {},
+    async (page) => page.getByRole("button", { name: "Menu" }).click(),
+    [375],
+  ],
+  [
+    "runs-search",
+    "/w/demo/projects/all/runs",
+    async () => {},
+    async (page) => {
+      await page.keyboard.press("/");
+      await page.keyboard.type("migr");
+      await page.waitForTimeout(700);
+    },
+  ],
   ["login", "/login", async () => {}, null, null, authBase],
   ["login-no-access", "/login?error=no_access", async () => {}, null, null, authBase],
   ["invite", "/invite", async () => {}, null, null, authBase],
@@ -50,17 +85,28 @@ const states = [
 ];
 const browser = await chromium.launch({ channel: "chrome" });
 for (const scheme of ["light", "dark"]) {
-  for (const [w, h] of [[1440, 900], [768, 1024], [375, 812]]) {
+  for (const [w, h] of [
+    [1440, 900],
+    [768, 1024],
+    [375, 812],
+  ]) {
     for (const [name, url, setup, act, widths, origin] of states) {
       if (only && !name.includes(only)) continue;
       if (widths ? !widths.includes(w) : w === 768) continue;
-      const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: scheme, reducedMotion: "reduce" });
+      const ctx = await browser.newContext({
+        viewport: { width: w, height: h },
+        colorScheme: scheme,
+        reducedMotion: "reduce",
+      });
       const page = await ctx.newPage();
       await setup(page);
       await page.goto((origin ?? base) + url);
       await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(300);
-      if (act) { await act(page); await page.waitForTimeout(250); }
+      if (act) {
+        await act(page);
+        await page.waitForTimeout(250);
+      }
       await page.screenshot({ path: `${OUT}/step5a-${name}-${w}-${scheme}.png` });
       await ctx.close();
     }

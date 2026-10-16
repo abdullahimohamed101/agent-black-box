@@ -346,7 +346,8 @@
     flex: 1 1 auto;
     min-width: 0;
   }
-  .menu-panel {
+  .menu .menu-panel,
+  .menu-end .menu-panel {
     position: fixed;
     top: calc(var(--layout-topbar) + var(--space-1));
     left: var(--layout-gutter-narrow);
