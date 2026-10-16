@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e backup restore backup-verify rotate-alert-keys
+.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -191,6 +191,13 @@ alerts-e2e:
 # sessions and invitations, alert ports and search fairness, the cost of it all, and a real browser.
 hardening-e2e:
 	pnpm --filter @abb/web build && scripts/hardening-e2e.sh
+
+# Operability (Phase 19c): a real stack with a metrics token, every catalogue family moved by exactly the traffic driven, readiness and the
+# database breaker against deliberately broken processes, the logs of every process scanned at DEBUG, the shipped Prometheus rules and Grafana
+# dashboard run by the pinned images (an alert really fires), tracing into a local OTLP receiver, and the cost of metrics and tracing.
+# Needs Postgres on 5433, Docker and uv; pulls only the two images pinned in docker-compose.yml (and refuses when the VM has under 3 GB free).
+obs-e2e:
+	scripts/obs-e2e.sh
 
 # Evaluations, comparison and experiments: the coding agent twice (baseline, wrong-fix), owner and viewer in a real browser (Phase 11).
 eval-e2e:

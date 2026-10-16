@@ -64,7 +64,9 @@ jobs:
           cache: pnpm
       - name: Install
         run: |
-          (cd apps/api && uv sync --frozen)
+          # The `otel` extra is installed here so tests/obs/test_tracing_otel.py RUNS in CI instead of skipping (KI-237). `uv run`
+          # syncs without removing it. Local installs stay as they were (extras are opt-in).
+          (cd apps/api && uv sync --frozen --extra otel)
           (cd packages/event-schema && uv sync --frozen)
           (cd packages/sdk-python && uv sync --frozen)
           pnpm install --frozen-lockfile
@@ -645,6 +647,49 @@ jobs:
           path: |
             apps/web/test-results
             ${{ runner.temp }}/hardening-e2e-logs
+          if-no-files-found: ignore
+
+  obs-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Operability (Phase 19c): an API with a metrics token and a worker on a least-privilege role, then every metric family moved by exactly the
+    # traffic driven, readiness and the database breaker against deliberately broken processes (an unreachable database and a proxy outage,
+    # schema behind, an unwritable artifact directory, a production role that became privileged), the logs of every process scanned at DEBUG,
+    # the committed Prometheus configuration and rules and the Grafana dashboard run by the pinned images (promtool, every expression, an
+    # AbbTargetDown alert that really fires), optional tracing into a local OTLP receiver (the otel extra in a separate environment) and the
+    # cost of metrics and tracing (scripts/obs-e2e.sh). Only deterministic facts are asserted. About fifteen minutes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          cp .env.example .env
+      - name: Observability end to end
+        env:
+          OBS_E2E_LOG_DIR: ${{ runner.temp }}/obs-e2e-logs
+        run: scripts/obs-e2e.sh
+      - name: Keep server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-e2e-results
+          path: ${{ runner.temp }}/obs-e2e-logs
           if-no-files-found: ignore
 
   containers:

@@ -341,6 +341,14 @@ def gate5() -> None:
         check(all(a["labels"]["job"] != "abb-api" for a in alerts()) and _targets().get("abb-api") == "up", "only the stopped target alerts; abb-api is still UP and silent")
         check(alert["annotations"].get("runbook_url", "").startswith("docs/runbooks/"), "the firing alert carries its runbook_url", runbook=alert["annotations"].get("runbook_url"))
         stop.set()
+    except BaseException:
+        stop.set()
+        # What the containers said (Prometheus and Grafana log no secrets: the token is read from a file, the password is not echoed).
+        for service in ("prometheus", "grafana"):
+            logs = _compose(workdir, "logs", "--no-color", "--tail", "25", service)
+            print(f"  --- {service} container log (last lines) ---\n" + "\n".join((logs.stdout or logs.stderr).splitlines()[-25:]), flush=True)
+        print(_compose(workdir, "ps", "-a").stdout, flush=True)
+        raise
     finally:
         stop.set()
         down = _compose(workdir, "down", "--volumes", "--remove-orphans")

@@ -59,6 +59,14 @@ def _auth_and_headers() -> None:
           "all of them carry the same WWW-Authenticate: Bearer")
     check(all(lib.metrics_token() not in r.text for r in replies.values()), "no 401 body echoes the token")
 
+    # A caller-supplied request id is accepted only when short and plain ([A-Za-z0-9._-], at most 64): that is what a log line may carry
+    # from a header. Anything else is replaced, so no header text can ride into a log line through it (gate 4 scans for the sentinel).
+    plain_id = httpx.get(f"{api}/healthz", headers={"X-Request-ID": "caller-id-123.abc"}, timeout=15).headers.get("x-request-id")
+    odd_id = httpx.get(f"{api}/healthz", headers={"X-Request-ID": "has space:and=punctuation"}, timeout=15).headers.get("x-request-id")
+    long_id = httpx.get(f"{api}/healthz", headers={"X-Request-ID": "a" * 65}, timeout=15).headers.get("x-request-id")
+    check(plain_id == "caller-id-123.abc" and (odd_id or "").startswith("req_") and (long_id or "").startswith("req_"),
+          "request ids: a plain caller id (<= 64 of [A-Za-z0-9._-]) is kept for correlation; a spaced, punctuated or over-long one is replaced by a generated req_ id",
+          plain=plain_id, replaced_odd=(odd_id or "")[:4], replaced_long=(long_id or "")[:4])
     good = lib.scrape_raw(api)
     check(good.status_code == 200, "the correct token gets 200", status=good.status_code)
     check(good.headers.get("content-type", "").startswith("text/plain; version=0.0.4"), "the content type is the Prometheus text format 0.0.4",
@@ -120,7 +128,7 @@ def _hostile_flood_and_tenant_text() -> None:
     run = lib.run_ids()
     sent = lib.ingest(api, key, [lib.event(run, 1, agent=marks["agent"].lower()),
                                  {**lib.event(run, 2, agent=marks["agent"].lower()), "attributes": {"tool.name": "shell", "note": marks["attr"]}}],
-                      extra_headers={"User-Agent": marks["ua"], "X-Forwarded-For": "203.0.113.77", "X-Request-ID": marks["header"], "X-Trace": marks["header"]})
+                      extra_headers={"User-Agent": marks["ua"], "X-Forwarded-For": "203.0.113.77", "X-Request-ID": f"{marks['header']} not:a:valid id", "X-Trace": marks["header"]})
     check(sent.status_code == 202, "a planted batch (sentinels in project, agent, attributes and headers) is accepted", status=sent.status_code)
     # Matched routes with hostile path parameters and unmatched paths carrying the sentinels.
     owner.get(f"/v1/runs/{marks['path']}", params={"q": marks["query"]})

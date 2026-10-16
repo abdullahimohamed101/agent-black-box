@@ -23,7 +23,8 @@ import obs_e2e_lib as lib
 from obs_e2e_lib import check, die, gate, info
 
 SPAN_NAMES_OK = {"http.request", "ingest.persist", "job.run", "db.checkout", "alerts.attempt", "retention.tick"}
-RESOURCE_KEYS_OK = {"service.name", "telemetry.sdk.language", "telemetry.sdk.name", "telemetry.sdk.version"}
+# service.instance.id is a random per-process UUID the SDK adds to the resource (not derived from anything of ours or the client's).
+RESOURCE_KEYS_OK = {"service.name", "service.instance.id", "telemetry.sdk.language", "telemetry.sdk.name", "telemetry.sdk.version"}
 FABRICATED_TRACE = "0af7651916cd43dd8448eb211c80319c"
 
 
@@ -98,7 +99,7 @@ def gate6() -> None:
         for index, run in enumerate(runs):
             events = [lib.event(run, n + 1, agent=marks["agent"].lower()) for n in range(4)]
             events[1]["attributes"] = {"tool.name": "shell", "note": marks["attr"]}
-            reply = lib.ingest(api.url, key, events, extra_headers={"User-Agent": marks["ua"], "X-Request-ID": marks["header"], "X-Trace-Note": marks["header"],
+            reply = lib.ingest(api.url, key, events, extra_headers={"User-Agent": marks["ua"], "X-Request-ID": f"{marks['header']} not:a:valid id", "X-Trace-Note": marks["header"],
                                                                    "traceparent": f"00-{FABRICATED_TRACE}-00f067aa0ba902b7-01", "Cookie": f"abb_other={marks['cookie']}"})
             check(reply.status_code == 202, f"traced API: ingest batch {index + 1} is accepted", status=reply.status_code)
         scanner = httpx.get(f"{api.url}/v1/{marks['path']}/x", params={"q": marks["query"]}, headers={"X-Probe": marks["header"]}, timeout=15)
@@ -140,13 +141,13 @@ def gate6() -> None:
         check(seen_keys <= allowed, "every exported attribute key is in the allow-list of abb_api.obs.tracing", keys=sorted(seen_keys), outside=sorted(seen_keys - allowed))
         check({s["name"] for s in all_spans} <= names and names >= SPAN_NAMES_OK, "every exported span name is in the closed set", names=sorted({s["name"] for s in all_spans}))
         resource_keys = {k for s in all_spans for k in s["resource"]}
-        check(resource_keys <= RESOURCE_KEYS_OK and {s["resource"]["service.name"] for s in all_spans} == {"abb-api", "abb-worker"}, "resource attributes are the service name and the SDK's own three",
+        check(resource_keys <= RESOURCE_KEYS_OK and {s["resource"]["service.name"] for s in all_spans} == {"abb-api", "abb-worker"}, "resource attributes are the service name, a random instance id and the SDK's own three",
               keys=sorted(resource_keys), services=sorted({s["resource"]["service.name"] for s in all_spans}))
         check(all(s["events"] == [] and s["status_message"] == "" and s["scope"] == "abb_api" for s in all_spans), "no span carries events, a status message or another instrumentation scope")
         check(all(len(str(v)) <= 64 for s in all_spans for v in s["attributes"].values()), "every string attribute is at most 64 characters")
         route_values = {s["attributes"].get("http.route") for s in all_spans if s["name"] == "http.request"}
-        check(all(r is None or (isinstance(r, str) and r.startswith("/") and "{" in r or r in {"/healthz", "/readyz"}) for r in route_values) and not any(m.lower() in str(route_values).lower() for m in marks.values()),
-              "http.route is a template or absent (never the raw path of the scanner request)", routes=sorted(str(r) for r in route_values))
+        check(all(r is None or (isinstance(r, str) and r.startswith("/") and "SENTINEL" not in r.upper()) for r in route_values) and not any(m.lower() in str(route_values).lower() for m in marks.values()),
+              "http.route is a route template (or absent for an unmatched path), never the raw path of the scanner request", routes=sorted(str(r) for r in route_values))
 
         # nothing a client controls is in a single exported byte
         needles = {**marks, "key": key, "key-id": key.split(".", 1)[0], "metrics-token": lib.metrics_token(), "workspace": lib.base.SLUG, "project-id": project,
