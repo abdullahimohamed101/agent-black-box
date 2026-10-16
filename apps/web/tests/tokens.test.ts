@@ -13,7 +13,7 @@ const grounds = ["bg", "surface"];
 describe.each(Object.keys(schemes))("%s scheme tokens", (name) => {
   const t = schemes[name]!;
   it("defines every token the other stylesheets read", () => {
-    for (const k of [...text, ...grounds, "sel", "border", "mark"])
+    for (const k of [...text, ...grounds, "sel", "border"])
       expect(t[k], k).toMatch(/^#[0-9a-f]{6}$/i);
   });
   for (const fg of text)

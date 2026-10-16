@@ -295,7 +295,7 @@ step 5 migrates the readers and deletes the alias; **kept** = unchanged value an
 the old screens keep working.
 
 <!-- tokens:report:aliases:start -->
-46 old custom properties: 19 aliased to a faithful new token, 27 kept unchanged, 0 to be deleted in step 5 (their role is removed, or they alias a removed role).
+45 old custom properties: 18 aliased to a faithful new token, 27 kept unchanged, 0 to be deleted in step 5 (their role is removed, or they alias a removed role).
 
 | Old name | Status | Now | Readers | Note |
 | --- | --- | --- | --- | --- |
@@ -309,7 +309,6 @@ the old screens keep working.
 | `--sel` | aliased | `--color-bg-wash` | 3 |  |
 | `--fail` | aliased | `--color-status-fault` | 8 |  |
 | `--wait` | aliased | `--color-status-caution` | 17 |  |
-| `--mark` | aliased | `--color-brand-mark` | 0 |  |
 | `--sans` | aliased | `--font-sans` | 25 |  |
 | `--mono` | aliased | `--font-mono` | 25 |  |
 | `--fs-headline` | aliased | `--type-h1-size` | 1 |  |

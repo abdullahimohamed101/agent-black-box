@@ -150,10 +150,10 @@ type, event kind, counts, cost), never content, so a viewer reads the same sente
 | Title (h1) | the run's name, else its id | 24/30 600 ink; 20/26 below 900 px |
 | Status and age | glyph and word, then `· 5d ago`; a running run reads `Running · started 2 s ago` | the word is the only red thing here (Failed, Timed out, Blocked); the glyph is decoration |
 | Replay | `Replaying · state at the playhead` replaces the status | unchanged words (`STATUS_AS_OF`) |
-| Go button | **Go to first error** (accessible name unchanged from "Show it"? no: it is now "Go to first error"); tooltip "Jump to the first error (e)" | outline accent, right of the headline; full width and 44 px tall below 600 px |
+| Go button | **Go to first error** (its accessible name was "Show it" before 5b); tooltip "Jump to the first error (e)" | outline accent, right of the headline; full width and 44 px tall below 600 px; only when the run has a first error |
 | Replay button | **Replay**, tooltip "Replay this run (r)" | in the tab row's right group; no drawn key cap |
 | Five figures | Duration, Cost, Tokens (`1,700 in / 160 out`), Retries, Errors | one wrapping line, mono values, ink-2 labels, no red and no amber; in replay Duration reads Elapsed and every figure is the state at the playhead |
-| Details | a disclosure (`Details`) under the figures | opens in place; a `dl` with Run id, Agent, Model, Ordered by, Started, Model calls, Tool calls, Files changed, Agents (when more than one) and, below 600 px, the "after the first error" line |
+| Details | a disclosure button (`Details`, `aria-expanded`) at the right end of the figures line | opens in place; a `dl` with Run id, Agent, Model, Ordered by, Started, Model calls, Tool calls, Files changed, Agents (when more than one) and, below 600 px, Tokens, Retries and the "After the first error" line (the second line of the headline moves here so the headline and the line stay in the first screen); a withheld first error adds "details withheld for your role" |
 
 ### 5.2 The headline sentence
 
@@ -187,8 +187,8 @@ One tab component, `role="tablist"` named "Run views": **Timeline** (count of ev
 arrows, Home and End move and select; the URL keeps `?view=` (`waterfall`, `evidence`, `findings`, `evaluations`; the timeline is
 the absence of the parameter). Old links keep working: `?finding=ID` opens Findings with that finding marked.
 
-Right of the tabs: **Filter**, **Errors only** (timeline only) and **Replay**; Collapse groups is in the Filter menu's neighbour
-as a text button.
+Right of the tabs: **Filter**, **Errors only** (timeline only) and **Replay**; **Collapse groups** (then **Expand groups**) is the
+last item of the Filter popover. On the Waterfall, Evidence, Findings and Evaluations tabs only Replay remains.
 
 ### 5.4 Steps column
 

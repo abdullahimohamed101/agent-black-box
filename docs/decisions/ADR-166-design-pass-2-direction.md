@@ -244,9 +244,9 @@ build brief; each is reversible and the alternative is named.
     and 5d). Plex Mono has no SemiBold file here: its Medium file is registered as weight 600 so a mono word at 600 is real glyphs,
     not a synthetic bold. Four files are preloaded (about 100 KB).
 12. **Aliases deleted** (zero readers after migration): `--surface-2`, `--fg`, `--fg-2`, `--accent-bg`, `--info`, `--bad`,
-    `--fail-bg`, `--bad-bg`, `--warn`, `--wait-bg`, `--warn-bg`, `--ok`, `--ok-bg`, `--cond`, `--serif`, and `color.legacy.*` with them.
+    `--fail-bg`, `--bad-bg`, `--warn`, `--wait-bg`, `--warn-bg`, `--ok`, `--ok-bg`, `--cond`, `--serif`, `--mark` (its readers use `--color-brand-mark`), and `color.legacy.*` with them.
     Kept (still read by 5c and 5d screens): `--bg`, `--surface`, `--border`, `--border-strong`, `--ink`, `--muted`, `--accent`,
-    `--sel`, `--fail`, `--wait`, `--mark`, `--fs-*`, `--ease-out`, `--top-h`.
+    `--sel`, `--fail`, `--wait`, `--fs-*`, `--ease-out`, `--top-h` (reader counts after 5b: --muted 33, --accent 24, --surface 19, --ink 19, --wait 17, --border 37, --border-strong 7, --fail 8, --bg 4, --sel 3, --fs-title 7, --fs-body 7, --ease-out 5, --top-h 4, --fs-headline 1, --fs-small 1).
 13. **Ratchets**: red allow-list 26 to 7 selectors (the status word, the fault line and label, the waterfall line and flag, the
     miniature dash, `:root`, and two TODOs: the Analytics error column for 5c, `.field-error` for 5d); raw colour literals 47 to 0.
 14. **Compare**: the title line "Runs / Compare" (h1 `Compare`), the divergence sentence at the h2 step in ink (600), one mono

@@ -1,6 +1,8 @@
 /** Strings for the run page and Compare (05-microcopy-and-states.md sections 5 and 6). */
 export const run = {
   back: { label: "Runs", name: "Back to runs" },
+  /** The title of a run page that could not load its run (the name is not known). */
+  untitled: "Run",
   tabs: {
     label: "Run views",
     timeline: "Timeline",

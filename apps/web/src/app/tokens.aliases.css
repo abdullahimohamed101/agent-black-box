@@ -13,7 +13,6 @@
   --sel: var(--color-bg-wash);
   --fail: var(--color-status-fault);
   --wait: var(--color-status-caution);
-  --mark: var(--color-brand-mark);
   --fs-headline: var(--type-h1-size);
   --fs-title: var(--type-h2-size);
   --fs-body: var(--type-body-size);

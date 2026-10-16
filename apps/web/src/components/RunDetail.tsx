@@ -611,7 +611,15 @@ export function RunDetail({
         </header>
       </div>
     );
-  if (run.isError) return <ErrorState error={run.error} onRetry={() => void run.refetch()} />;
+  if (run.isError)
+    return (
+      <div className="run-detail app-page">
+        <header className="run-head">
+          <TitleLine href={runsPath(base)} title={copy.untitled} />
+        </header>
+        <ErrorState error={run.error} onRetry={() => void run.refetch()} />
+      </div>
+    );
   const r = run.data;
   const s = r.summary;
   const gone = r.trace_state !== "available" ? r.trace_state : null;
