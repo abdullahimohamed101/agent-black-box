@@ -26,7 +26,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Final, Literal, Protocol
+from typing import Any, Final, Literal, Protocol
 
 OTHER: Final = "other"
 MAX_LABEL_VALUE_LENGTH: Final = 80
@@ -147,6 +147,19 @@ class Metric:
             return self._overflow_key
         return key
 
+    def _resolve(self, values: tuple[str, ...]) -> tuple[str, ...]:
+        """The admitted key for raw label values; call with the lock held.
+
+        Fast path: a stored key is admitted by construction, so raw values that equal one need no
+        validation (one tuple hash instead of a pass over the labels).
+        """
+        store = self._values  # set by each subclass
+        if values in store:
+            return values
+        return self._key(values, store.__contains__)
+
+    _values: dict[tuple[str, ...], Any]
+
     def _series_count(self) -> int:  # pragma: no cover - overridden
         raise NotImplementedError
 
@@ -173,12 +186,12 @@ class Counter(Metric):
         if amount < 0:
             raise ValueError("a counter only goes up")
         with self._lock:
-            key = self._key(label_values, self._values.__contains__)
+            key = self._resolve(label_values)
             self._values[key] = self._values.get(key, 0.0) + amount
 
     def value(self, *label_values: str) -> float:
         with self._lock:
-            key = self._key(label_values, self._values.__contains__)
+            key = self._resolve(label_values)
             return self._values.get(key, 0.0)
 
     def _series_count(self) -> int:
@@ -204,12 +217,12 @@ class Gauge(Metric):
 
     def set(self, value: float, *label_values: str) -> None:
         with self._lock:
-            key = self._key(label_values, self._values.__contains__)
+            key = self._resolve(label_values)
             self._values[key] = float(value)
 
     def inc(self, *label_values: str, amount: float = 1.0) -> None:
         with self._lock:
-            key = self._key(label_values, self._values.__contains__)
+            key = self._resolve(label_values)
             self._values[key] = self._values.get(key, 0.0) + amount
 
     def dec(self, *label_values: str, amount: float = 1.0) -> None:
@@ -223,7 +236,7 @@ class Gauge(Metric):
 
     def value(self, *label_values: str) -> float:
         with self._lock:
-            key = self._key(label_values, self._values.__contains__)
+            key = self._resolve(label_values)
             return self._values.get(key, 0.0)
 
     def clear(self) -> None:
@@ -272,7 +285,7 @@ class Histogram(Metric):
     def observe(self, value: float, *label_values: str) -> None:
         index = bisect_left(self.buckets, value)  # first bound >= value; len() means +Inf
         with self._lock:
-            key = self._key(label_values, self._values.__contains__)
+            key = self._resolve(label_values)
             row = self._values.get(key)
             if row is None:
                 row = self._values[key] = [0.0] * (len(self.buckets) + 2)
@@ -285,7 +298,7 @@ class Histogram(Metric):
     def snapshot(self, *label_values: str) -> tuple[list[float], float]:
         """(non-cumulative bucket counts incl. +Inf, sum) of one series; for tests."""
         with self._lock:
-            key = self._key(label_values, self._values.__contains__)
+            key = self._resolve(label_values)
             row = self._values.get(key) or [0.0] * (len(self.buckets) + 2)
             return list(row[:-1]), row[-1]
 
