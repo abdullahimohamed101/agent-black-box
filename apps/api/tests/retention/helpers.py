@@ -1,12 +1,16 @@
 """Builders for retention tests: runs that ended at a chosen time, with data in every backend."""
 
+import hashlib
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
-from sqlalchemy import insert
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy import insert, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from abb_api.artifacts.service import storage_key
+from abb_api.artifacts.store import LocalFsArtifactStore
 from abb_api.db import tables as t
 from tests.ingest_helpers import Tenant
 
@@ -26,6 +30,8 @@ class SeededRun:
     artifact_bytes: int
     artifacts: int
     other_rows: int  # run-bound rows counted by the trace tier besides events
+    artifact_keys: list[str] = field(default_factory=list)
+    artifact_ids: list[uuid.UUID] = field(default_factory=list)
 
 
 @dataclass
@@ -47,6 +53,8 @@ async def seed_run(
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
     jobs: int = 1,
+    store: LocalFsArtifactStore | None = None,
+    full: bool = False,
 ) -> SeededRun:
     """A run whose end is `ended` (server-side times agree), plus its derived and bound rows."""
     ws, project_id = (
@@ -96,18 +104,37 @@ async def seed_run(
                     agent_slug="a",
                 )
             )
+        keys: list[str] = []
+        ids: list[uuid.UUID] = []
         for size in artifact_sizes:
+            artifact_id = uuid.uuid4()
+            uri = "file://x"
+            if store is not None:
+                body = b"x" * size
+                uri = storage_key(ws, artifact_id, hashlib.sha256(body).digest())
+                await store.put(uri, body)
+            keys.append(uri)
+            ids.append(artifact_id)
             await conn.execute(
                 insert(t.artifacts).values(
                     workspace_id=ws,
-                    id=uuid.uuid4(),
+                    id=artifact_id,
                     run_id=run_id,
                     project_id=project_id,
                     artifact_type="stdout",
-                    storage_uri="file://x",
+                    storage_uri=uri,
                     size_bytes=size,
                     created_at=created,
                 )
+            )
+        if store is not None and artifact_sizes:
+            await conn.execute(
+                text(
+                    "INSERT INTO project_artifact_usage (workspace_id, project_id, bytes_stored) "
+                    "VALUES (:w, :p, :n) ON CONFLICT (workspace_id, project_id) "
+                    "DO UPDATE SET bytes_stored = project_artifact_usage.bytes_stored + :n"
+                ),
+                {"w": ws, "p": project_id, "n": sum(artifact_sizes)},
             )
         for _ in range(jobs):
             await conn.execute(
@@ -115,20 +142,71 @@ async def seed_run(
                     id=uuid.uuid4(),
                     job_type="summarize_run",
                     workspace_id=ws,
-                    dedupe_key=f"{ws}:{run_id}:{uuid.uuid4().hex[:6]}",
+                    dedupe_key=f"{ws}:{run_id}",
                     payload={"run_id": str(run_id)},
                     status="done",
                     updated_at=NOW,
                 )
             )
+        extra = 0
+        if full:
+            extra = await _seed_derived(conn, ws, project_id, run_id, created)
     return SeededRun(
         run_id=run_id,
         events=events,
         spans=spans,
         artifact_bytes=sum(artifact_sizes),
         artifacts=len(artifact_sizes),
-        other_rows=spans + jobs,
+        other_rows=spans + jobs + extra,
+        artifact_keys=keys,
+        artifact_ids=ids,
     )
+
+
+async def _seed_derived(
+    conn: AsyncConnection,
+    ws: uuid.UUID,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    started: datetime,
+) -> int:
+    """One row in every other run-derived table; returns how many rows that is."""
+    await conn.execute(
+        insert(t.cost_calculations).values(
+            workspace_id=ws, event_id=uuid.uuid4(), run_id=run_id, project_id=project_id,
+            agent_slug="a", occurred_at=started, run_started_at=started, input_tokens=1,
+            output_tokens=1, cached_input_tokens=0, source="estimated",
+            estimated_total=Decimal("0.5"),
+        )
+    )  # fmt: skip
+    await conn.execute(
+        insert(t.findings).values(
+            workspace_id=ws, id=uuid.uuid4(), run_id=run_id, project_id=project_id,
+            run_started_at=started, detector="d", detector_version="1", finding_type="f",
+            kind="reliability", severity="warning", confidence=0.5, evidence_event_ids=[],
+            fingerprint=uuid.uuid4().hex + uuid.uuid4().hex, evidence={},
+        )
+    )  # fmt: skip
+    await conn.execute(
+        insert(t.run_findings).values(
+            workspace_id=ws, run_id=run_id, project_id=project_id, detectors_version=1,
+            summary_version_seen=1, ordering_mode_seen="sequence", computed_at=started,
+            event_count_seen=1, truncated=False, finding_count=1,
+        )
+    )  # fmt: skip
+    await conn.execute(
+        insert(t.run_search).values(
+            workspace_id=ws, run_id=run_id, project_id=project_id, started_at=started,
+            summary_version=1, document_hash=b"h",
+        )
+    )  # fmt: skip
+    await conn.execute(
+        insert(t.evaluations).values(
+            workspace_id=ws, id=uuid.uuid4(), run_id=run_id, evaluator_name="e",
+            evaluator_version="1",
+        )
+    )  # fmt: skip
+    return 5
 
 
 async def add_audit(engine: AsyncEngine, workspace: uuid.UUID, age_days: float) -> None:

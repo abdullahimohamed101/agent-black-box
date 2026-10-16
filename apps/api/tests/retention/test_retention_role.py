@@ -22,6 +22,13 @@ SELECT = {
     "run_search", "cost_calculations", "evaluations", "outbox_jobs", "audit_log",
     "rate_limit_counters", "project_usage_daily", "project_artifact_usage", "workspace_members",
     "invitations", "retention_policies", "retention_reports", "retention_tombstones",
+    # Step 2 (migration 0102): the job's own progress, the rollups it rebuilds, the dirty marker.
+    "retention_run_progress", "analytics_dirty", "analytics_runs_daily", "analytics_cost_daily",
+    "analytics_spans_daily", "analytics_latency_daily", "analytics_top_runs",
+}  # fmt: skip
+ROLLUPS = {
+    "analytics_runs_daily", "analytics_cost_daily", "analytics_spans_daily",
+    "analytics_latency_daily", "analytics_top_runs",
 }  # fmt: skip
 SELECT_COLUMNS = {
     ("sessions", "id"), ("sessions", "user_id"), ("sessions", "created_at"),
@@ -33,8 +40,13 @@ DELETE = {
     "events", "spans", "cost_calculations", "findings", "run_findings", "run_search",
     "evaluations", "artifacts", "runs", "outbox_jobs", "audit_log", "rate_limit_counters",
     "project_usage_daily", "sessions", "users", "retention_reports",
+    "retention_run_progress", "analytics_dirty", *ROLLUPS,
 }  # fmt: skip
-INSERT = {"audit_log", "retention_reports", "retention_tombstones"}
+INSERT = {"audit_log", "retention_reports", "retention_tombstones", "retention_run_progress",
+          *ROLLUPS}  # fmt: skip
+UPDATE = {"retention_run_progress"}
+# Column-level, never table-level: the job may change nothing else on these tables.
+UPDATE_COLUMNS = {("runs", "trace_state"), ("project_artifact_usage", "bytes_stored")}
 
 
 async def table_privileges(engine: AsyncEngine, role: str) -> set[tuple[str, str]]:
@@ -55,6 +67,7 @@ async def test_the_retention_role_has_exactly_the_pinned_privileges(engine: Asyn
         {(t, "SELECT") for t in SELECT}
         | {(t, "DELETE") for t in DELETE}
         | {(t, "INSERT") for t in INSERT}
+        | {(t, "UPDATE") for t in UPDATE}
     )
     assert granted == expected
     async with engine.connect() as conn:
@@ -70,6 +83,18 @@ async def test_the_retention_role_has_exactly_the_pinned_privileges(engine: Asyn
             )
         }
     assert columns == SELECT_COLUMNS
+    async with engine.connect() as conn:
+        updates = {
+            (r[0], r[1])
+            for r in await conn.execute(
+                text(
+                    "SELECT table_name, column_name FROM information_schema.column_privileges "
+                    "WHERE grantee = 'abb_retention' AND table_schema = 'public' "
+                    "AND privilege_type = 'UPDATE' AND table_name NOT IN ('retention_run_progress')"
+                )
+            )
+        }
+    assert updates == UPDATE_COLUMNS
 
 
 async def test_the_retention_role_has_nothing_on_credentials_or_configuration(
@@ -79,11 +104,13 @@ async def test_the_retention_role_has_nothing_on_credentials_or_configuration(
     for table in ("api_keys", "server_secrets", "alert_destinations", "alert_rules", "policies",
                   "policy_versions", "approvals", "login_states", "alembic_version"):  # fmt: skip
         assert table not in granted, table
-    # No UPDATE, TRUNCATE or REFERENCES anywhere, and no default privileges for tables to come.
+    # No TRUNCATE or REFERENCES anywhere, UPDATE only on the progress table (and two columns,
+    # pinned above), and no default privileges for tables to come.
     assert not {p for _, p in await table_privileges(engine, "abb_retention")} - {
         "SELECT",
         "DELETE",
         "INSERT",
+        "UPDATE",
     }
     async with engine.connect() as conn:
         defaults = (
@@ -188,6 +215,15 @@ async def test_the_application_role_cannot_erase_history_or_forge_reports(
     [
         "UPDATE events SET status = 'error'",
         "UPDATE runs SET name = 'x'",
+        "UPDATE runs SET status = 'FAILED'",
+        "UPDATE project_artifact_usage SET workspace_id = workspace_id",
+        "UPDATE retention_tombstones SET mode = 'dry_run'",
+        "UPDATE retention_reports SET runs = 0",
+        "UPDATE audit_log SET outcome = 'denied'",
+        "UPDATE analytics_dirty SET version = 0",
+        "INSERT INTO analytics_dirty (workspace_id, day) VALUES (gen_random_uuid(), now())",
+        "INSERT INTO outbox_jobs (id, job_type, workspace_id, dedupe_key) "
+        "VALUES (gen_random_uuid(), 'x', gen_random_uuid(), 'x')",
         "TRUNCATE events",
         "INSERT INTO runs (workspace_id, id, project_id, trace_id, status, started_at) "
         "VALUES (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), "

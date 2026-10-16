@@ -133,7 +133,7 @@ async def test_append_only_tables_are_exactly_the_declared_ones_and_the_rest_are
     )
     # What the retention job reports is written by the retention role only (0101): the
     # application reads it and can neither forge nor erase it.
-    for name in ("retention_reports", "retention_tombstones"):
+    for name in ("retention_reports", "retention_tombstones", "retention_run_progress"):
         row = privileges.pop(name)
         assert (row.can_select, row.can_insert, row.can_update, row.can_delete) == (
             True,

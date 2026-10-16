@@ -33,13 +33,17 @@ class RetentionSettings(BaseSettings):
     retention_run_days: RetentionDays = 365
     retention_audit_days: RetentionDays = 365
     # off: the job does nothing. dry_run (default): it measures and reports, deleting nothing.
-    # enforce: it deletes (not available before Phase 19b step 2; the job refuses).
+    # enforce: it deletes, permanently (ADR-160): take a backup first.
     retention_mode: Literal["off", "dry_run", "enforce"] = "dry_run"
     # Bounds of one tick for one workspace: at most this many runs and this many other rows per
     # tier are considered, and the statement timeout applies to every query of the tick.
     retention_max_runs_per_tick: int = Field(default=2000, ge=1, le=1_000_000)
     retention_max_rows_per_tick: int = Field(default=100_000, ge=1, le=100_000_000)
     retention_statement_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    # Enforcement deletes this many rows per transaction, and gives a run up after this many
+    # failed attempts (until an operator runs `retry-failed`).
+    retention_batch_size: int = Field(default=2000, ge=1, le=100_000)
+    retention_max_attempts: int = Field(default=5, ge=1, le=100)
     # The preview endpoint is cheaper and tighter than a tick (a person is waiting).
     retention_preview_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     retention_preview_max_runs: int = Field(default=5000, ge=1, le=100_000)

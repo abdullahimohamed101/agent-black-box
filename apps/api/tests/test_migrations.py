@@ -564,5 +564,88 @@ def test_0101_adds_the_retention_tables_and_role_and_downgrades_cleanly() -> Non
         down = asyncio.run(facts(url))
         assert asyncio.run(table_names(url)) == before
         assert (down["grants"], down["columns"], down["role"], down["ws"]) == (0, 0, True, 1)
+        alembic(url, "upgrade", "0101")
+        assert asyncio.run(facts(url)) == up
+
+
+def test_0102_adds_the_enforcement_schema_and_downgrades_cleanly() -> None:
+    """Phase 19b step 2: 0101 -> 0102 keeps runs (defaulting to `available`), creates the progress
+    and dirty tables and the job's extra grants; the downgrade removes all of it."""
+
+    async def facts(url: str) -> dict[str, Any]:
+        engine = create_async_engine(url, poolclass=NullPool)
+        async with engine.connect() as conn:
+            grants = (
+                await conn.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.role_table_grants "
+                        "WHERE grantee = 'abb_retention'"
+                    )
+                )
+            ).scalar_one()
+            columns = (
+                await conn.execute(
+                    text(
+                        "SELECT count(*) FROM information_schema.column_privileges "
+                        "WHERE grantee = 'abb_retention'"
+                    )
+                )
+            ).scalar_one()
+        await engine.dispose()
+        return {"grants": grants, "columns": columns}
+
+    new_tables = {"retention_run_progress", "analytics_dirty"}
+    with temporary_database(migrate=False) as url:
+        alembic(url, "upgrade", "0101")
+        before = asyncio.run(facts(url))
+        names = asyncio.run(table_names(url))
+        assert not new_tables & names
+        assert "trace_state" not in asyncio.run(column_names(url, "runs"))
+
+        async def seed() -> None:
+            engine = create_async_engine(url, poolclass=NullPool)
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO workspaces (id, name, slug) "
+                        "VALUES ('00000000-0000-0000-0000-0000000000a1', 'a', 'a')"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "INSERT INTO projects (workspace_id, id, name, slug) VALUES "
+                        "('00000000-0000-0000-0000-0000000000a1', "
+                        "'00000000-0000-0000-0000-0000000000b1', 'p', 'p')"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "INSERT INTO runs (workspace_id, id, project_id, trace_id, status, "
+                        "started_at) VALUES ('00000000-0000-0000-0000-0000000000a1', "
+                        "gen_random_uuid(), '00000000-0000-0000-0000-0000000000b1', "
+                        "gen_random_uuid(), 'SUCCESS', now())"
+                    )
+                )
+            await engine.dispose()
+
+        asyncio.run(seed())
+        alembic(url, "upgrade", "0102")
+        assert new_tables <= asyncio.run(table_names(url))
+        assert "trace_state" in asyncio.run(column_names(url, "runs"))
+        up = asyncio.run(facts(url))
+        assert up["grants"] > before["grants"] and up["columns"] > before["columns"]
+
+        async def states() -> list[str]:
+            engine = create_async_engine(url, poolclass=NullPool)
+            async with engine.connect() as conn:
+                rows = await conn.execute(text("SELECT trace_state FROM runs"))
+                out = [r[0] for r in rows]
+            await engine.dispose()
+            return out
+
+        assert asyncio.run(states()) == ["available"]
+        alembic(url, "downgrade", "0101")
+        assert asyncio.run(table_names(url)) == names
+        assert asyncio.run(facts(url)) == before
         alembic(url, "upgrade", "head")
         assert asyncio.run(facts(url)) == up
