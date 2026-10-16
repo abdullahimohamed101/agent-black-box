@@ -648,5 +648,5 @@ def test_0102_adds_the_enforcement_schema_and_downgrades_cleanly() -> None:
         alembic(url, "downgrade", "0101")
         assert asyncio.run(table_names(url)) == names
         assert asyncio.run(facts(url)) == before
-        alembic(url, "upgrade", "head")
+        alembic(url, "upgrade", "0102")  # not head: 0103 adds a column the table-level grants cover
         assert asyncio.run(facts(url)) == up
