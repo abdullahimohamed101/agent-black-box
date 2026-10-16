@@ -13,14 +13,16 @@ import {
   scoreText,
   type Part,
 } from "@/lib/comparison";
+import { compare } from "@/copy/run";
 import { KIND_LABEL, JUDGE_BADGE } from "@/lib/evaluations";
-import { formatCost, formatInt } from "@/lib/format";
-import { runPath, type Base } from "@/lib/routes";
-import { useComparison } from "@/lib/queries";
+import { formatCost, formatInt, formatRelative } from "@/lib/format";
+import { runPath, runsPath, type Base } from "@/lib/routes";
+import { useComparison, useRun } from "@/lib/queries";
 import { AlignedSteps } from "./AlignedSteps";
 import { TableScroll } from "./TableScroll";
 import { StatusBadge } from "./StatusBadge";
 import { Empty, ErrorState, Loading } from "./States";
+import { TitleLine } from "./TitleLine";
 
 function Notices({ c }: { c: ComparisonOut }) {
   return (
@@ -206,7 +208,8 @@ function Files({ c }: { c: ComparisonOut }) {
   );
 }
 
-function RunLink({
+/** One side of the pair: A or B, the run's name (a link; the id while the name loads), its status, then id, agent and age small. */
+function RunCell({
   base,
   id,
   status,
@@ -215,13 +218,24 @@ function RunLink({
   base: Base;
   id: string;
   status: string;
-  side: string;
+  side: "left" | "right";
 }) {
+  const run = useRun(id).data;
   return (
-    <p data-testid={`${side}-run`}>
-      <span className="muted">{side === "left" ? "A, left run" : "B, right run"} </span>
-      <Link href={runPath(base, id)}>{id}</Link> <StatusBadge status={status as RunStatus} />
-    </p>
+    <div className="compare-cell" data-testid={`${side}-run`}>
+      <p className="compare-cell-head">
+        <span className="compare-side" title={side === "left" ? "Left run" : "Right run"}>
+          {compare.sides[side]}
+        </span>
+        <Link href={runPath(base, id)}>{run?.name ?? id}</Link>
+        <StatusBadge status={status as RunStatus} />
+      </p>
+      <p className="compare-cell-meta muted">
+        <span className="mono">{id}</span>
+        {run?.agent_id && <> · {run.agent_id}</>}
+        {run && <> · {formatRelative(run.started_at)}</>}
+      </p>
+    </div>
   );
 }
 
@@ -280,12 +294,14 @@ function Loaded({ c, base }: { c: ComparisonOut; base: Base }) {
     <>
       <Divergence c={c} />
       <div className="compare-runs">
-        <RunLink base={base} id={c.left.run_id} status={c.left.status} side="left" />
-        <RunLink base={base} id={c.right.run_id} status={c.right.status} side="right" />
+        <RunCell base={base} id={c.left.run_id} status={c.left.status} side="left" />
+        <RunCell base={base} id={c.right.run_id} status={c.right.status} side="right" />
       </div>
       <Notices c={c} />
       <section aria-labelledby={ids[1]}>
-        <h2 id={ids[1]}>Steps</h2>
+        <h2 id={ids[1]} className="sr-only">
+          Steps
+        </h2>
         <AlignedSteps
           rows={c.steps}
           divergence={c.divergence?.index ?? null}
@@ -323,14 +339,13 @@ export function CompareView({ base }: { base: Base }) {
   const q = useComparison(left, right);
   return (
     <div className="compare" data-testid="compare">
-      <h1>Compare runs</h1>
+      <TitleLine href={runsPath(base)} title={compare.title} />
       {!left || !right ? (
-        <Empty title="Pick two runs to compare">
-          Choose two runs in the{" "}
-          <Link href={`/w/${base.workspace}/projects/${base.project}/runs`}>runs list</Link>.
+        <Empty title={compare.pick} motif="none">
+          Choose two runs in the <Link href={runsPath(base)}>runs list</Link>.
         </Empty>
       ) : q.isPending ? (
-        <Loading label="Comparing runs" />
+        <Loading label={compare.loading} />
       ) : q.isError ? (
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
       ) : (

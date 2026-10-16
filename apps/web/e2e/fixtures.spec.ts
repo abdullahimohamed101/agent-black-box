@@ -482,7 +482,7 @@ test("compare: divergence, keyboard, notices and the viewer's metadata-only view
   const SHOTS11 = "../../docs/screenshots/phase-11";
   const url = (b: string) => `${b}/runs/compare?left=${RUN(11)}&right=${RUN(12)}`;
   await page.goto(url(BASE));
-  await expect(page.getByRole("heading", { name: "Compare runs", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Compare", level: 1, exact: true })).toBeVisible();
   await expect(page.getByTestId("compare-deltas")).toBeVisible();
   await page.getByText("All measures").click(); // the summary table sits behind a disclosure now
   await expect(page.getByTestId("compare-summary")).toBeVisible();
