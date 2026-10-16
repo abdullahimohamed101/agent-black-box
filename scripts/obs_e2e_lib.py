@@ -108,16 +108,32 @@ def scrape_raw(url: str = API_URL, token: str | None = None, *, path: str = "/me
     return httpx.get(f"{url}{path}", headers=headers, timeout=15, **kwargs)
 
 
+def note_moved(families: dict[str, Any]) -> None:
+    """Remember which catalogue families showed a non-zero sample in any exposition of the run (the coverage table of the summary).
+    Each stage is its own process, so the set lives in a file."""
+    path = WORK / "moved.json"
+    try:
+        moved = set(json.loads(path.read_text())) if path.exists() else set()
+    except ValueError:
+        moved = set()
+    for name, family in families.items():
+        if any(value == value and value != 0 for _, _, value in family.samples):  # NaN is no movement
+            moved.add(name)
+    path.write_text(json.dumps(sorted(moved)))
+
+
 def scrape(url: str = API_URL) -> dict[str, Any]:
     """The parsed exposition of an API or worker. Fails the gate if it is not a clean 200."""
     response = scrape_raw(url)
     if response.status_code != 200:
         die(f"scrape {url} -> {response.status_code}")
     try:
-        return parse(response.text)
+        families = parse(response.text)
     except AssertionError as error:
         die(f"the exposition of {url} does not parse: {error}")
         raise
+    note_moved(families)
+    return families
 
 
 def value(families: dict[str, Any], family: str, sample: str | None = None, **labels: str) -> float:

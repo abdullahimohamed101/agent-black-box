@@ -61,6 +61,32 @@ def _needles() -> dict[str, str]:
     return {k: v for k, v in needles.items() if len(v) >= 8}
 
 
+# Catalogue families this run does not move, each with the reason and the test that does. A family added to the catalogue that is neither
+# driven here nor listed here fails the run, so "every catalogue metric moves" cannot silently stop being true.
+UNEXERCISED_OK: dict[str, str] = {}
+
+
+def _coverage() -> None:
+    """Which catalogue families showed a non-zero sample in any exposition or textfile of this run."""
+    gate("coverage")
+    from abb_api.obs.catalogue import build_observability  # noqa: PLC0415
+
+    for url in (lib.API_URL, lib.WORKER_URL):
+        try:
+            lib.scrape(url)  # the main stack's final state counts too
+        except SystemExit:
+            pass
+    names = set(build_observability().registry.metrics)
+    moved_path = lib.WORK / "moved.json"
+    moved = set(json.loads(moved_path.read_text())) if moved_path.exists() else set()
+    unexercised = sorted(names - moved)
+    info(catalogue_families=len(names), moved_in_this_run=len(names & moved), not_moved=unexercised)
+    unknown = [n for n in unexercised if n not in UNEXERCISED_OK]
+    stale = [n for n in UNEXERCISED_OK if n in moved]
+    check(not unknown, f"{len(names & moved)} of {len(names)} catalogue families moved in this run; every other one is listed with its reason", not_driven_and_not_listed=unknown)
+    check(not stale, "the list of families this run does not move has no stale entry (a listed family that now moves must be removed)", stale=stale)
+
+
 def summary() -> None:
     gate("gate4-logs")
     needles = _needles()
@@ -147,6 +173,7 @@ def summary() -> None:
     check(not unexpected and not problems.get("traceback"), "no Traceback and no ERROR line outside the reviewed list", errors=dict(errors), unexpected=unexpected,
           tracebacks=problems.get("traceback", [])[:3])
 
+    _coverage()
     rows = [json.loads(line) for line in lib.base.RESULTS.read_text().splitlines() if line.strip()]
     by_gate: dict[str, list[bool]] = {}
     for row in rows:

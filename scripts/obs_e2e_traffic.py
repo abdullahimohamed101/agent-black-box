@@ -22,7 +22,7 @@ TIGHT = {
     "ABB_INGEST_MAX_BATCH_EVENTS": "10", "ABB_INGEST_MAX_BODY_BYTES": "20480", "ABB_ARTIFACT_MAX_BYTES": "20480",
     "ABB_RATE_LIMIT_EVENTS_PER_SECOND": "0.5", "ABB_RATE_LIMIT_BURST_EVENTS": "10",
     "ABB_RATE_LIMIT_BYTES_PER_SECOND": "2048", "ABB_RATE_LIMIT_BURST_BYTES": "20480",
-    "ABB_AUTH_FAIL_PER_CREDENTIAL": "5", "ABB_AUTH_FAIL_WINDOW_SECONDS": "60",
+    "ABB_AUTH_FAIL_PER_CREDENTIAL": "5", "ABB_AUTH_FAIL_WINDOW_SECONDS": "60", "ABB_SESSION_FAIL_GLOBAL": "5", "ABB_SESSION_FAIL_WINDOW_SECONDS": "60",
 }
 
 
@@ -163,8 +163,36 @@ def _refusals() -> None:
         check(unauthorised + throttled == 12 and unauthorised >= 1 and throttled >= 1, "throttle: 12 wrong-secret requests are 401 until the budget (5) is spent, then 429",
               unauthorised=unauthorised, throttled=throttled)
 
+        # --- artifacts: one stored, one over the 20 KiB cap
+        art_project = lib.new_project("obs-artifacts")
+        art_key = lib.new_key(art_project, ["artifacts:write"], "obs-artifacts")
+        lib.remember_secret("api-key-artifacts", art_key)
+        from abb_event_schema.ids import IdKind, new_id  # noqa: PLC0415
+
+        def put_artifact(size: int) -> httpx.Response:
+            line = "build step finished without errors in the sandbox\n"
+            return httpx.put(f"{base_url}/v1/artifacts/{new_id(IdKind.ARTIFACT)}", content=(line * (size // len(line) + 1)).encode()[:size], timeout=30,
+                             params={"run_id": str(new_id(IdKind.RUN)), "kind": "stdout"}, headers={**lib.bearer(art_key), "content-type": "text/plain"})
+
+        stored, too_big = put_artifact(1024), put_artifact(30000)
+        check(stored.status_code in (200, 201) and too_big.status_code == 413, "artifacts: a 1 KiB artifact is stored, a 30 000-byte one is 413", statuses=[stored.status_code, too_big.status_code])
+
+        # --- failed session cookies: a flood of well-formed but unknown cookies closes the installation-wide window
+        import secrets as _secrets  # noqa: PLC0415
+
+        cookie_answers = [httpx.get(f"{base_url}/v1/me", cookies={"abb_session": _secrets.token_urlsafe(32)}, timeout=30) for _ in range(12)]
+        cookie_401, cookie_429 = (sum(1 for a in cookie_answers if a.status_code == c) for c in (401, 429))
+        check(cookie_401 + cookie_429 == 12 and cookie_401 >= 1 and cookie_429 >= 1, "session throttle: 12 unknown cookies are 401 until the window (5) closes, then 429",
+              unauthorised=cookie_401, throttled=cookie_429)
+
         delta.refresh()
         d = delta.d
+        check(d("session_throttle_blocks_total") == cookie_429, "session throttle: session_throttle_blocks moved by exactly the 429s answered", observed=d("session_throttle_blocks_total"), answered=cookie_429)
+        check(d("artifact_upload_bytes", "artifact_upload_bytes_count") == 1 and d("artifact_upload_failures_total", reason="too_large") == 1,
+              "artifacts: artifact_upload_bytes counted the one stored artifact and artifact_upload_failures{too_large} the one refused", stored=d("artifact_upload_bytes", "artifact_upload_bytes_count"),
+              refused=d("artifact_upload_failures_total", reason="too_large"))
+        check(d("limiter_database_calls_total", outcome="ok") >= 1 and d("limiter_database_calls_total", outcome="error") == 0, "limiter: the shared limiter's database calls were counted, none failed",
+              ok=d("limiter_database_calls_total", outcome="ok"))
         # --- the deltas, against what the script knows it did
         expected_events_accepted = mixed_accepted + 3 + 10  # the mixed batch, the quota batch (3 of 6), the rate-limit burst
         check(d("telemetry_events_received_total") == expected_events_accepted, f"refusals: events_received counts only accepted events ({mixed_accepted} + 3 + 10)",
@@ -281,8 +309,9 @@ def _sessions() -> None:
 
 
 def _textfile_values(path: Path) -> dict[str, Any]:
-    text = path.read_text()
-    return lib.parse(text)
+    families = lib.parse(path.read_text())
+    lib.note_moved(families)
+    return families
 
 
 def _tool(module: str, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -372,6 +401,19 @@ def _backup() -> None:
     check(mode == 0o644, "backup: the textfile is written with mode 0644 (the collector reads it as another user)", mode=oct(mode))
 
 
+def _rotation() -> None:
+    textfile = lib.WORK / "rotation.prom"
+    done = _tool("abb_api.rotate", "alerts", "--metrics-textfile", str(textfile), env={})
+    check(done.returncode == 0, "rotation: `rotate alerts` (converge, no new key) exits 0", exit_code=done.returncode, stderr=done.stderr[-160:])
+    families = _textfile_values(textfile)
+    import time  # noqa: PLC0415
+
+    stamp = lib.value(families, "rotation_last_success_timestamp_seconds")
+    check(lib.value(families, "rotation_runs_total", outcome="succeeded") == 1 and 0 < time.time() - stamp < 3600, "rotation: rotation_runs{succeeded} = 1 and a last-success timestamp of this run",
+          age_seconds=round(time.time() - stamp))
+    check(set(families) <= {"rotation_last_success_timestamp_seconds", "rotation_runs_total"}, "rotation: the textfile carries only the rotation families", extra=sorted(set(families) - {"rotation_last_success_timestamp_seconds", "rotation_runs_total"}))
+
+
 def gate2() -> None:
     gate("gate2-traffic")
     project, key = _ingest_happy_path()
@@ -381,4 +423,5 @@ def gate2() -> None:
     _sessions()
     _retention(project, key)
     _backup()
+    _rotation()
     lib.finish()
