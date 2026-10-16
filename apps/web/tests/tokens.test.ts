@@ -1,51 +1,9 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { contrast, themes } from "./tokenCss";
 
-// D16: contrast is a test, not a scratch script. Parses the :root blocks of globals.css (light, then the dark media block)
-// and asserts every text role on the backgrounds it is drawn on is at least 4.5:1 (WCAG AA for body text).
-const css = readFileSync(path.join(__dirname, "../src/app/globals.css"), "utf8");
-
-// Values are a hex colour or an alias `var(--other)` (the old names point at the Phase 22 semantic tokens).
-function vars(block: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const m of block.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6}|var\(--[a-z0-9-]+\))\s*;/g))
-    out[m[1]!] = m[2]!;
-  return out;
-}
-function resolve(raw: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const k of Object.keys(raw)) {
-    let v = raw[k]!;
-    for (let i = 0; i < 5 && v.startsWith("var("); i++) v = raw[v.slice(6, -1)] ?? v;
-    out[k] = v;
-  }
-  return out;
-}
-function rootBlock(src: string): string {
-  const start = src.indexOf(":root {");
-  const end = src.indexOf("\n}", start);
-  return src.slice(start, end);
-}
-const dark = css.indexOf("@media (prefers-color-scheme: dark)");
-const light = vars(rootBlock(css));
-const darkOnly = vars(rootBlock(css.slice(dark)));
-const schemes: Record<string, Record<string, string>> = {
-  light: resolve(light),
-  dark: resolve({ ...light, ...darkOnly }),
-};
-
-function lum(hex: string): number {
-  const [r, g, b] = [1, 3, 5].map((i) => {
-    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  }) as [number, number, number];
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-function contrast(a: string, b: string): number {
-  const [x, y] = [lum(a), lum(b)];
-  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
-}
+// D16: contrast is a test, not a scratch script. Reads the custom properties through tests/tokenCss.ts (generated tokens, then
+// the alias layer, then globals.css; design pass 2 moved the values out of globals.css) and asserts every text role on the backgrounds it is drawn on is at least 4.5:1 (WCAG AA for body text).
+const schemes = themes();
 
 const text = ["fg", "fg-2", "muted", "accent", "ok", "warn", "bad"];
 const grounds = ["bg", "surface", "surface-2"];

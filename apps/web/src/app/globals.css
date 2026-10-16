@@ -1,36 +1,11 @@
-/* Design tokens (docs/design/ui-direction.md, ADR-111). Semantic names first; the old names other stylesheets read stay as
-   aliases: --bg --fg --muted --border --accent --surface --sel --ok --bad --warn --info --bad-bg --warn-bg.
-   Light is the default; dark follows the system. Red (--fail) means failure and nothing else (tests/tokens-use.test.ts). */
+/* Design tokens: the colour, type, space, radius and motion tokens are GENERATED from design-tokens/tokens.json into
+   tokens.generated.css (new names) and tokens.aliases.css (the pre-pass-2 names: --bg --surface --ink --muted --accent --fail
+   --wait ...). Both load before this file (layout.tsx). What stays here is what has no token yet: the frame sizes and the
+   legacy --t-* durations that tests/motion-contract.test.ts reads. Red (--fail) is the fault line and the failed word only
+   (tests/tokens-red.test.ts; ADR-166). Light is the default; dark follows the system. */
 :root {
   color-scheme: light dark;
-  --bg: #eef1f4;
-  --surface: #ffffff;
-  --surface-2: #f5f7f9;
-  --border: #d3d9e0;
-  --border-strong: #b9c2cc;
-  --ink: #171b21;
-  --fg: var(--ink);
-  --fg-2: #2f3845;
-  --muted: #566272;
-  /* interaction accent: links, focus, selection, controls. Never a status. */
-  --accent: #2a5f8f;
-  --accent-bg: #e1ebf5;
-  --sel: #e6eef6;
-  /* failure: the only red in the product */
-  --fail: #b3261e;
-  --fail-bg: #fbe7e5;
-  /* retry and waiting: amber */
-  --wait: #8a5a00;
-  --wait-bg: #fff1d1;
-  --ok: #1b7a3a;
-  --ok-bg: #e2f5e8;
-  --bad: var(--fail);
-  --bad-bg: var(--fail-bg);
-  --warn: var(--wait);
-  --warn-bg: var(--wait-bg);
-  --info: var(--accent);
-  --mark: #d9650f;
-  --rail-w: 14rem;
+  --rail-w: 14rem; /* deleted in step 5a with the rail */
   --top-h: 2.75rem;
   --ctx-w: 18rem;
   --insp-w: 26rem;
@@ -38,12 +13,6 @@
   --t-base: 180ms;
   --t-slow: 400ms;
   --t-land: 600ms;
-  --ease-out: cubic-bezier(0.2, 0, 0, 1);
-  /* type scale: headline is the failure line (Plex Serif); the rest is Sans/Mono at 13px body */
-  --fs-headline: 1.5rem;
-  --fs-title: 1.125rem;
-  --fs-body: 0.8125rem;
-  --fs-small: 0.75rem;
 }
 /* One switch for all motion: every duration below comes from these tokens. */
 @media (prefers-reduced-motion: reduce) {
@@ -54,37 +23,11 @@
     --t-land: 0ms;
   }
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12161b;
-    --surface: #1a2027;
-    --surface-2: #222932;
-    --border: #2e3641;
-    --border-strong: #3c4654;
-    --ink: #e8ecf1;
-    --fg-2: #c5cdd6;
-    --muted: #a3adb9;
-    --accent: #7db3e6;
-    --accent-bg: #1b2b3b;
-    --sel: #1f3040;
-    --fail: #ff8a80;
-    --fail-bg: #3b1d1b;
-    --wait: #ffcb6b;
-    --wait-bg: #3a2c0f;
-    --ok: #5fcf84;
-    --ok-bg: #16301f;
-    --mark: #ff7a1a;
-  }
-}
 body {
-  /* Defined here, not on :root: next/font puts its family variables on the body element. */
-  --sans:
-    var(--font-plex-sans), "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    sans-serif;
+  /* --sans and --mono are aliases generated into tokens.aliases.css (body-scoped: next/font puts its variables on body).
+     --cond and --serif are DEPRECATED (ADR-166): the faces are still loaded and used until step 5 deletes their last reader. */
   --cond: var(--font-plex-cond), "IBM Plex Sans Condensed", var(--sans);
   --serif: var(--font-plex-serif), "IBM Plex Serif", ui-serif, Georgia, serif;
-  --mono:
-    var(--font-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   margin: 0;
   background: var(--bg);
   color: var(--fg);

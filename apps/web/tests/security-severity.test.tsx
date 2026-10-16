@@ -2,12 +2,12 @@ import { render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { contrast, themes as themeVars } from "./tokenCss";
 import { SecuritySeverityMark } from "@/components/SecuritySeverity";
 import { securitySeverityMeta } from "@/lib/security";
 
 // Phase 13 D5 / ADR-111: severity is a shield glyph and a word, never a new hue and never red.
 const css = readFileSync(path.join(__dirname, "../src/app/security.css"), "utf8");
-const globals = readFileSync(path.join(__dirname, "../src/app/globals.css"), "utf8");
 
 describe("severity glyph and word", () => {
   it.each([
@@ -37,26 +37,7 @@ describe("severity glyph and word", () => {
   });
 });
 
-function block(src: string): Record<string, string> {
-  const start = src.indexOf(":root {");
-  const body = src.slice(start, src.indexOf("\n}", start));
-  const out: Record<string, string> = {};
-  for (const m of body.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6}|var\(--[a-z0-9-]+\))\s*;/g))
-    out[m[1]!] = m[2]!;
-  return out;
-}
-const dark = globals.indexOf("@media (prefers-color-scheme: dark)");
-const light = block(globals);
-const themes = { light, dark: { ...light, ...block(globals.slice(dark)) } };
-const lum = (hex: string) => {
-  const [r, g, b] = [1, 3, 5].map((i) => {
-    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  }) as [number, number, number];
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-};
-const contrast = (a: string, b: string) =>
-  (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+const themes = themeVars() as Record<"light" | "dark", Record<string, string>>;
 
 describe("severity colours", () => {
   it("security.css reads no red and no other new hue", () => {

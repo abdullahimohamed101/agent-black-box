@@ -1,49 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { contrast, themes as themeVars } from "./tokenCss";
 
 // Phase 14 stylesheet (policy.css): no red, no motion, and every text/background pair it draws is at least 4.5:1 in both
 // themes. tokens-use.test.ts and motion-contract.test.ts already read every file in src/app; this pins the specifics.
 const read = (f: string) => readFileSync(path.join(__dirname, "../src/app", f), "utf8");
 const policy = read("policy.css").replace(/\/\*[\s\S]*?\*\//g, ""); // comments name the rules they follow
-const globals = read("globals.css");
-
-function block(src: string): Record<string, string> {
-  const start = src.indexOf(":root {");
-  const body = src.slice(start, src.indexOf("\n}", start));
-  const out: Record<string, string> = {};
-  for (const m of body.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6}|var\(--[a-z0-9-]+\))\s*;/g))
-    out[m[1]!] = m[2]!;
-  return out;
-}
-const resolve = (raw: Record<string, string>) =>
-  Object.fromEntries(
-    Object.keys(raw).map((k) => {
-      let v = raw[k]!;
-      for (let i = 0; i < 5 && v.startsWith("var("); i++) v = raw[v.slice(6, -1)] ?? v;
-      return [k, v];
-    }),
-  );
-const light = block(globals);
-const themes = {
-  light: resolve(light),
-  dark: resolve({
-    ...light,
-    ...block(globals.slice(globals.indexOf("@media (prefers-color-scheme: dark)"))),
-  }),
-};
-const lum = (hex: string) => {
-  const [r, g, b] = [1, 3, 5].map((i) => {
-    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  }) as [number, number, number];
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-};
-const contrast = (a: string, b: string) => {
-  const [x, y] = [lum(a), lum(b)];
-  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
-};
-
+const themes = themeVars() as Record<"light" | "dark", Record<string, string>>;
 describe("policy.css", () => {
   it("never reads the failure colour (a denial is a policy outcome, not a failed run)", () => {
     expect(policy).not.toMatch(/--(fail|bad)\b/);

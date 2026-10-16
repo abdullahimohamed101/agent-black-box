@@ -1,0 +1,165 @@
+/* generated: do not edit. Source: apps/web/design-tokens/tokens.json (primitives, semantic tokens, type, space, radius, motion).
+   Regenerate with `pnpm --filter @abb/web tokens:build`; `tokens:check` fails when this file is stale. */
+/* Light is the default; dark follows the system (prefers-color-scheme), exactly as before: the app has no theme switch. */
+:root {
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #f6f8fa;
+  --color-neutral-100: #e2e5e8;
+  --color-neutral-150: #dbdee2;
+  --color-neutral-200: #bfc5ca;
+  --color-neutral-300: #9fa5ac;
+  --color-neutral-400: #80878f;
+  --color-neutral-450: #727880;
+  --color-neutral-500: #5c646f;
+  --color-neutral-600: #494d54;
+  --color-neutral-700: #2f3339;
+  --color-neutral-800: #1d2229;
+  --color-neutral-850: #1b2025;
+  --color-neutral-900: #101419;
+  --color-accent-50: #d9eafc;
+  --color-accent-100: #e6eef6;
+  --color-accent-200: #b4d5f8;
+  --color-accent-300: #7db3e6;
+  --color-accent-600: #2a5f8f;
+  --color-accent-700: #164c7e;
+  --color-accent-800: #0b3c67;
+  --color-accent-900: #1f3040;
+  --color-red-300: #ff8a80;
+  --color-red-600: #b3261e;
+  --color-amber-300: #ffcb6b;
+  --color-amber-700: #8a5a00;
+  --color-orange-400: #ff7a1a;
+  --color-orange-600: #d9650f;
+  --color-bg-canvas: var(--color-neutral-50);
+  --color-bg-raised: var(--color-neutral-0);
+  --color-bg-wash: var(--color-accent-100);
+  --color-text-primary: var(--color-neutral-800);
+  --color-text-secondary: var(--color-neutral-500);
+  --color-text-disabled: var(--color-neutral-300);
+  --color-text-inverse: var(--color-neutral-50);
+  --color-text-link: var(--color-accent-600);
+  --color-border-subtle: var(--color-neutral-150);
+  --color-border-default: var(--color-neutral-150);
+  --color-border-strong: var(--color-neutral-200);
+  --color-border-control: var(--color-neutral-400);
+  --color-interactive-default: var(--color-accent-600);
+  --color-interactive-hover: var(--color-accent-700);
+  --color-interactive-active: var(--color-accent-800);
+  --color-interactive-disabled: var(--color-neutral-200);
+  --color-status-fault: var(--color-red-600);
+  --color-status-caution: var(--color-amber-700);
+  --color-status-success: var(--color-text-secondary);
+  --color-status-running: var(--color-interactive-default);
+  --color-brand-mark: var(--color-orange-600);
+  --color-legacy-surface-2: #f5f7f9;
+  --color-legacy-ok: #1b7a3a;
+  --color-legacy-ok-bg: #e2f5e8;
+  --color-legacy-wait-bg: #fff1d1;
+  --color-legacy-fault-bg: #fbe7e5;
+  --weight-regular: 400;
+  --weight-strong: 600;
+  --tracking-none: 0;
+  --measure: 72ch;
+  --type-display-size: 2rem;
+  --type-display-line: 2.5rem;
+  --type-display-weight: var(--weight-strong);
+  --type-display-tracking: var(--tracking-none);
+  --type-h1-size: 1.5rem;
+  --type-h1-line: 1.875rem;
+  --type-h1-weight: var(--weight-strong);
+  --type-h1-tracking: var(--tracking-none);
+  --type-h2-size: 1.125rem;
+  --type-h2-line: 1.5rem;
+  --type-h2-weight: var(--weight-strong);
+  --type-h2-tracking: var(--tracking-none);
+  --type-h3-size: 0.875rem;
+  --type-h3-line: 1.25rem;
+  --type-h3-weight: var(--weight-strong);
+  --type-h3-tracking: var(--tracking-none);
+  --type-body-lg-size: 0.875rem;
+  --type-body-lg-line: 1.25rem;
+  --type-body-lg-weight: var(--weight-regular);
+  --type-body-lg-tracking: var(--tracking-none);
+  --type-body-size: 0.8125rem;
+  --type-body-line: 1.25rem;
+  --type-body-weight: var(--weight-regular);
+  --type-body-tracking: var(--tracking-none);
+  --type-small-size: 0.75rem;
+  --type-small-line: 1rem;
+  --type-small-weight: var(--weight-regular);
+  --type-small-tracking: var(--tracking-none);
+  --type-mono-size: 0.8125rem;
+  --type-mono-line: 1.25rem;
+  --type-mono-weight: var(--weight-regular);
+  --type-mono-tracking: var(--tracking-none);
+  --type-mono-small-size: 0.75rem;
+  --type-mono-small-line: 1rem;
+  --type-mono-small-weight: var(--weight-regular);
+  --type-mono-small-tracking: var(--tracking-none);
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --radius-none: 0;
+  --radius-control: 0.25rem;
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 180ms;
+  --motion-duration-slow: 400ms;
+  --motion-duration-land: 600ms;
+  --motion-duration-fault-draw: 280ms;
+  --motion-duration-inspector: 160ms;
+  --motion-easing-out: cubic-bezier(0.2, 0, 0, 1);
+  --layout-gutter: 1.5rem;
+  --layout-gutter-narrow: 1rem;
+  --layout-section-gap: 2rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg-canvas: var(--color-neutral-900);
+    --color-bg-raised: var(--color-neutral-850);
+    --color-bg-wash: var(--color-accent-900);
+    --color-text-primary: var(--color-neutral-100);
+    --color-text-secondary: var(--color-neutral-300);
+    --color-text-disabled: var(--color-neutral-600);
+    --color-text-inverse: var(--color-neutral-900);
+    --color-text-link: var(--color-accent-300);
+    --color-border-subtle: var(--color-neutral-700);
+    --color-border-default: var(--color-neutral-700);
+    --color-border-strong: var(--color-neutral-600);
+    --color-border-control: var(--color-neutral-450);
+    --color-interactive-default: var(--color-accent-300);
+    --color-interactive-hover: var(--color-accent-200);
+    --color-interactive-active: var(--color-accent-50);
+    --color-interactive-disabled: var(--color-neutral-600);
+    --color-status-fault: var(--color-red-300);
+    --color-status-caution: var(--color-amber-300);
+    --color-brand-mark: var(--color-orange-400);
+    --color-legacy-surface-2: #222932;
+    --color-legacy-ok: #5fcf84;
+    --color-legacy-ok-bg: #16301f;
+    --color-legacy-wait-bg: #3a2c0f;
+    --color-legacy-fault-bg: #3b1d1b;
+  }
+}
+/* Zero motion under reduce: durations collapse here, and the legacy --t-* tokens do the same in globals.css. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-fast: 0ms;
+    --motion-duration-base: 0ms;
+    --motion-duration-slow: 0ms;
+    --motion-duration-land: 0ms;
+    --motion-duration-fault-draw: 0ms;
+    --motion-duration-inspector: 0ms;
+  }
+}
+/* Font stacks live on body, not :root: next/font puts its family variables on the body element. */
+body {
+  --font-sans:
+    var(--font-plex-sans), "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-mono:
+    var(--font-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
