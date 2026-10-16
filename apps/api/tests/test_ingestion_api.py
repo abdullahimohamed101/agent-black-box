@@ -495,7 +495,7 @@ async def test_logs_contain_neither_credentials_nor_event_content(
         json.loads(formatter.format(r)) for r in caplog.records if r.name == "abb_api.request"
     ]
     ingest_line = next(
-        line for line in request_lines if line["path"] == BATCH and line["status"] == 202
+        line for line in request_lines if line["route"] == BATCH and line["status"] == 202
     )
     assert ingest_line["workspace_id"].startswith("ws_") and ingest_line["actor_id"].startswith(
         "key:"
