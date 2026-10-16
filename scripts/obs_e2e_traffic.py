@@ -79,7 +79,17 @@ def _ingest_happy_path() -> tuple[str, str]:
     # The worker derives the runs. The oracle is the queue table: one outbox row completes per successful execution.
     lib.poll("the worker finished every job of this traffic", _derivation_idle, timeout=90)
     done = _count("select count(*) from outbox_jobs where status = 'done'") - done_before
-    worker.refresh()
+
+    # The worker counts a success AFTER the job's transaction commits (by design: a failed commit
+    # must never count), so the queue table can be one row ahead of the counters for a moment.
+    # That is an eventual fact: wait, bounded and generous, for the counters to catch up, then
+    # assert exact equality. If they never do, the poll fails the run, naming what is missing.
+    def _counters_caught_up() -> bool:
+        worker.refresh()
+        return (worker.d("worker_jobs_total", outcome="succeeded") == done
+                and worker.d("worker_job_duration_seconds", "worker_job_duration_seconds_count") == done)
+
+    lib.poll("the worker's success counters caught up with the completed queue rows", _counters_caught_up, timeout=60)
     check(done >= batches and worker.d("worker_jobs_total", outcome="succeeded") == done,
           "worker: worker_jobs{outcome=succeeded} moved by exactly the jobs completed in the queue table", completed_rows=done,
           observed=worker.d("worker_jobs_total", outcome="succeeded"))
