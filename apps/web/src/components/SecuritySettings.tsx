@@ -14,7 +14,8 @@ import {
   type CaptureMode,
 } from "@/lib/security";
 import { SecuritySeverityMark } from "./SecuritySeverity";
-import { ActionError } from "./SettingsKit";
+import { settings } from "@/copy/settings";
+import { ActionError, Lede, StatusLine } from "./SettingsKit";
 import { Empty, ErrorState, Loading } from "./States";
 import { useCan, useWorkspace } from "./WorkspaceProvider";
 import "../app/security.css";
@@ -38,18 +39,17 @@ export function SecuritySettings() {
   const q = useSecuritySettings(picked);
   return (
     <div className="sec-settings">
-      <div className="page-head">
-        <h1>Security</h1>
-        <p className="muted">
-          Capture mode, detectors and allowed hosts for one project. Every change is written to the{" "}
-          <AuditLink />.
-        </p>
-      </div>
+      <Lede>
+        {settings.security.ledeLead}
+        <AuditLink />.
+      </Lede>
       {ws.projects.length === 0 ? (
-        <Empty title="No projects yet">Settings appear once an agent reports a project.</Empty>
+        <Empty title="No projects yet" motif="none">
+          Settings appear once an agent reports a project.
+        </Empty>
       ) : (
         <>
-          <p>
+          <p className="st-scope">
             <label htmlFor={pickerId}>Project </label>
             <select
               id={pickerId}
@@ -226,13 +226,14 @@ function SettingsForm({
                 {h}
                 <button
                   type="button"
+                  className="danger"
                   aria-label={`Remove ${h}`}
                   onClick={() => {
                     setSaved(false);
                     setAllow(allow.filter((x) => x !== h));
                   }}
                 >
-                  <span aria-hidden="true">×</span>
+                  Remove
                 </button>
               </li>
             ))}
@@ -272,13 +273,13 @@ function SettingsForm({
       </fieldset>
 
       <button type="submit" className="primary" disabled={!dirty || save.isPending}>
-        {save.isPending ? "Saving…" : "Save changes"}
+        {save.isPending ? settings.saving : "Save changes"}
       </button>
-      <div className="sec-status" role="status" aria-live="polite" data-testid="save-status">
+      <StatusLine testId="save-status">
         {saved && !dirty
           ? "Saved. Changes apply to new events now. Existing runs are re-analysed in the background; recent runs first."
           : ""}
-      </div>
+      </StatusLine>
       {apiMessage ? (
         <p role="alert" className="notice" data-state="error">
           {apiMessage}
