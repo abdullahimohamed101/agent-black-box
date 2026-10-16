@@ -48,6 +48,29 @@ class JsonFormatter(logging.Formatter):
 
 _MAX_FRAMES = 25
 _MAX_CHAIN = 5
+_MAX_GROUP_MEMBERS = 10
+_MAX_GROUP_DEPTH = 3
+
+
+def _group_members(exc: BaseException, depth: int = 1) -> str:
+    """Class names of an exception group's members, e.g. ``[ValueError, ExceptionGroup[KeyError]]``.
+
+    Bounded in members and depth; never a message (the group's own text and each member's can
+    quote a payload value). A task group failure is otherwise just "ExceptionGroup".
+    """
+    members = getattr(exc, "exceptions", None)
+    if not isinstance(members, tuple):
+        return ""
+    shown = []
+    for member in members[:_MAX_GROUP_MEMBERS]:
+        name = type(member).__qualname__
+        if depth < _MAX_GROUP_DEPTH and isinstance(getattr(member, "exceptions", None), tuple):
+            name += _group_members(member, depth + 1)
+        shown.append(name)
+    more = len(members) - _MAX_GROUP_MEMBERS
+    if more > 0:
+        shown.append(f"+{more} more")
+    return "[" + ", ".join(shown) + "]"
 
 
 def safe_traceback(exc: BaseException) -> str:
@@ -63,7 +86,7 @@ def safe_traceback(exc: BaseException) -> str:
         seen.add(id(current))
         frames = traceback.extract_tb(current.__traceback__)[-_MAX_FRAMES:]
         text = "".join(traceback.format_list(frames))
-        parts.append(f"{text}{type(current).__qualname__}\n")
+        parts.append(f"{text}{type(current).__qualname__}{_group_members(current)}\n")
         implicit = None if current.__suppress_context__ else current.__context__
         current = current.__cause__ or implicit
     return "\n".join(reversed(parts)).rstrip()

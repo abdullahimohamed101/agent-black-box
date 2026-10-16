@@ -92,6 +92,28 @@ def test_safe_traceback_is_bounded() -> None:
     assert text.count("File ") <= 25
 
 
+def test_exception_group_members_are_named_without_their_messages() -> None:
+    nested = ExceptionGroup(f"inner {SECRET}", [KeyError(SECRET), OSError(SECRET)])
+    group = ExceptionGroup(
+        f"outer {SECRET}",
+        [ValueError(SECRET), TypeError(SECRET), nested] + [RuntimeError(SECRET) for _ in range(20)],
+    )
+    text = safe_traceback(group)
+    assert SECRET not in text
+    for name in ("ValueError", "TypeError", "KeyError", "OSError"):
+        assert name in text
+    assert text.count("RuntimeError") <= 10  # bounded: at most ten members are named
+
+
+def test_exception_group_nesting_is_bounded() -> None:
+    inner: BaseException = ValueError(SECRET)
+    for _ in range(8):
+        inner = ExceptionGroup(SECRET, [inner])
+    text = safe_traceback(inner)
+    assert SECRET not in text
+    assert len(text) < 2000
+
+
 def test_an_explicit_error_type_wins() -> None:
     record = logging.LogRecord("abb_api.x", logging.INFO, __file__, 1, "m", (), None)
     record.error_type = "Custom"
