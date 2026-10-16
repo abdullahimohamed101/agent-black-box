@@ -215,7 +215,7 @@ function Policy({
               <p className="muted retention-removes">{meta.removes}</p>
               {waiting && (
                 <p className="retention-pending" data-testid="tier-pending">
-                  <span aria-hidden="true">⏳ </span>
+                  <span aria-hidden="true">❙❙ </span>
                   {waiting}{" "}
                   {editable && cancel && (
                     <button

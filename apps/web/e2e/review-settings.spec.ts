@@ -299,9 +299,12 @@ test.describe("a role that can read but not change gets one sentence, not a disa
     test(`viewer: ${slug}`, async ({ page }) => {
       await page.goto(`/w/viewer-only/settings/${slug}`);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      await expect(page.locator("main").getByRole("note").first()).toContainText(
-        /Owners and admins|Your role can read/,
-      );
+      await expect(
+        page
+          .locator("main")
+          .getByRole("note")
+          .filter({ hasText: /Owners and admins|Your role can read/ }),
+      ).toHaveCount(1);
       await expect(page.locator("main button:disabled, main input:disabled")).toHaveCount(0);
       await axe(page);
     });

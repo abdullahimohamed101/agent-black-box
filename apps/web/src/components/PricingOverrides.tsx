@@ -108,7 +108,7 @@ function OverrideForm() {
   return (
     <>
       <form
-        className="form"
+        className="form form-pairs"
         onSubmit={(e) => {
           e.preventDefault();
           create.mutate({
@@ -126,7 +126,7 @@ function OverrideForm() {
           });
         }}
       >
-        <label className="field">
+        <label className="field wide">
           Model pattern
           <input
             required
@@ -181,7 +181,7 @@ function OverrideForm() {
           <input type="datetime-local" value={f.valid_from} onChange={set("valid_from")} />
           <FieldError message={errors.valid_from} />
         </label>
-        <label className="field">
+        <label className="field wide">
           Note
           <input value={f.note} maxLength={500} onChange={set("note")} />
           <FieldError message={errors.note} />

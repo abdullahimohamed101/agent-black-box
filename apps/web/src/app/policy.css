@@ -475,7 +475,8 @@ pre.pol-diff {
     padding: var(--space-3) 0;
     border-bottom: 1px solid var(--color-border-subtle);
   }
-  .apr-table td {
+  .apr-table tbody td {
+    min-width: 0;
     padding: var(--space-1) 0;
     border: 0;
     height: auto;

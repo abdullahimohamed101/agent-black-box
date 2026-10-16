@@ -80,8 +80,9 @@
   gap: var(--space-2) var(--space-4);
   margin-bottom: var(--space-2);
 }
-.st .st-section h2,
-.st .st-section-head h2 {
+/* .st.st beats the legacy ".page:not(:has(> .run-detail)) h2" rule of globals.css (Analytics and Experiments still read it, 5d). */
+.st.st .st-section h2,
+.st.st .st-section-head h2 {
   margin: 0;
   font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
 }
@@ -89,8 +90,8 @@
   margin: var(--space-4) 0 var(--space-1);
   font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
 }
-.st .muted,
-.st .help {
+.st.st .muted,
+.st.st .help {
   color: var(--color-text-secondary);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
@@ -125,6 +126,17 @@
   justify-items: start;
   max-width: 32rem;
   margin: var(--space-3) 0 var(--space-4);
+}
+/* A long form in two columns from 600 px: short fields side by side, long ones across. */
+.st .form.form-pairs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 40rem;
+  column-gap: var(--space-4);
+}
+.st .form-pairs .field.wide,
+.st .form-pairs > button,
+.st .form-pairs > .field-error {
+  grid-column: 1 / -1;
 }
 .st .field {
   display: grid;
@@ -331,6 +343,9 @@
   .st .form,
   .st form.st-form {
     max-width: none;
+  }
+  .st .form.form-pairs {
+    grid-template-columns: minmax(0, 1fr);
   }
   .st button.primary,
   .st .form > button {
