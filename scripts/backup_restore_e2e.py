@@ -324,6 +324,10 @@ def compose_backup(src_db: str, artifacts: Path, work: Path) -> dict[str, Any]:
         print("  SKIP [drill-compose] Docker is not available on this machine; the compose backup service path is NOT exercised here", flush=True)
         results["compose"] = {"skipped": "docker unavailable"}
         return results["compose"]
+    # The container runs as uid 10001, not as the person running this script: it must be able to read the artifact directory and
+    # to traverse the (private) temporary directory that holds this run. In a real compose stack the artifact volume is owned by that uid.
+    subprocess.run(["chmod", "-R", "a+rX", str(artifacts)], check=False)  # noqa: S603, S607
+    work.chmod(0o711)
     out_dir = work / "compose-backups"
     out_dir.mkdir()
     out_dir.chmod(0o777)  # the container runs as uid 10001 (docker-compose.yml, runbook): the directory must be writable by it
@@ -437,11 +441,11 @@ def drill() -> None:
     import asyncpg  # noqa: PLC0415
 
     async def make_nonempty() -> None:
-        admin(f'create database "{nonempty}"')
         conn = await asyncpg.connect(lib.plain(url_for(nonempty)))
         await conn.execute("create table leftovers (id int)")
         await conn.close()
 
+    admin(f'create database "{nonempty}"')
     asyncio.run(make_nonempty())
     code, _, err, _ = module("abb_api.backup", "restore", str(plain_bundle), env=restore_env(nonempty, WORK / "artifacts-nonempty"))
     check(code == 3 and public_table_count(nonempty) == 1, "restoring into a NON-EMPTY database is refused (exit 3) and leaves it untouched", exit=code)
