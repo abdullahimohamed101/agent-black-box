@@ -82,15 +82,21 @@ async def _capped(conn: AsyncConnection, where: Select[Any], cap: int) -> tuple[
 
 
 async def expired_runs(
-    conn: AsyncConnection, workspace_id: uuid.UUID, cutoff: datetime, cap: int
+    conn: AsyncConnection,
+    workspace_id: uuid.UUID,
+    cutoff: datetime,
+    cap: int,
+    *,
+    trace_pending: bool = False,
 ) -> tuple[list[uuid.UUID], bool]:
-    """The oldest runs that ended before `cutoff` (at most `cap`) and whether more exist."""
-    rows = await conn.execute(
-        select(t.runs.c.id)
-        .where(t.runs.c.workspace_id == workspace_id, RUN_ENDED_AT < cutoff)
-        .order_by(RUN_ENDED_AT, t.runs.c.id)
-        .limit(cap + 1)
-    )
+    """The oldest runs that ended before `cutoff` (at most `cap`) and whether more exist.
+
+    `trace_pending` leaves out runs whose trace detail is already gone (nothing left to delete).
+    """
+    query = select(t.runs.c.id).where(t.runs.c.workspace_id == workspace_id, RUN_ENDED_AT < cutoff)
+    if trace_pending:
+        query = query.where(t.runs.c.trace_state != "expired")
+    rows = await conn.execute(query.order_by(RUN_ENDED_AT, t.runs.c.id).limit(cap + 1))
     ids = [r[0] for r in rows]
     return ids[:cap], len(ids) > cap
 
@@ -137,7 +143,9 @@ async def _artifacts(
 async def _trace(
     conn: AsyncConnection, workspace_id: uuid.UUID, cutoff: datetime, limits: Limits
 ) -> TierCount:
-    ids, truncated = await expired_runs(conn, workspace_id, cutoff, limits.max_runs)
+    ids, truncated = await expired_runs(
+        conn, workspace_id, cutoff, limits.max_runs, trace_pending=True
+    )
     events = await _count(
         conn,
         select(func.count()).where(

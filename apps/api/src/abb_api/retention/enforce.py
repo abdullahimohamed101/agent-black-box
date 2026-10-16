@@ -561,25 +561,7 @@ class Enforcer(Batcher):
         # this transaction and `expired` after it, with nothing in between.
         await self.control.checkpoint()
         async with self._tx() as conn:
-            for table in inv.DETAIL_BATCHED:
-                final = await conn.execute(
-                    text(
-                        f"DELETE FROM {table} WHERE workspace_id = :w AND run_id = :r"  # noqa: S608
-                    ),
-                    params,
-                )
-                if table == "events":
-                    counts.events += int(final.rowcount)
-                else:
-                    counts.rows += int(final.rowcount)
-            await conn.execute(
-                text(
-                    "DELETE FROM outbox_jobs WHERE workspace_id = :w AND dedupe_key = :k "
-                    "AND job_type = ANY(:types)"
-                ),
-                {"w": workspace_id, "k": self._job_key(workspace_id, run_id),
-                 "types": list(inv.RUN_BOUND_JOB_TYPES)},
-            )  # fmt: skip
+            await self._remaining_detail(conn, workspace_id, run_id, counts)
             await conn.execute(
                 update(t.runs)
                 .where(t.runs.c.workspace_id == workspace_id, t.runs.c.id == run_id)
@@ -588,12 +570,39 @@ class Enforcer(Batcher):
             await _tombstone(conn, workspace_id, run_id, "trace")
             await _set_flag(conn, workspace_id, progress, "detail_done")
 
+    async def _remaining_detail(
+        self, conn: AsyncConnection, workspace_id: uuid.UUID, run_id: uuid.UUID, counts: Counts
+    ) -> None:
+        """Whatever detail is left (the tail the batches did not reach, or a late arrival)."""
+        params = {"w": workspace_id, "r": run_id}
+        for table in inv.DETAIL_BATCHED:
+            final = await conn.execute(
+                text(
+                    f"DELETE FROM {table} WHERE workspace_id = :w AND run_id = :r"  # noqa: S608
+                ),
+                params,
+            )
+            if table == "events":
+                counts.events += int(final.rowcount)
+            else:
+                counts.rows += int(final.rowcount)
+        jobs = await conn.execute(
+            text(
+                "DELETE FROM outbox_jobs WHERE workspace_id = :w AND dedupe_key = :k "
+                "AND job_type = ANY(:types)"
+            ),
+            {"w": workspace_id, "k": self._job_key(workspace_id, run_id),
+             "types": list(inv.RUN_BOUND_JOB_TYPES)},
+        )  # fmt: skip
+        counts.rows += int(jobs.rowcount)
+
     async def _record(self, workspace_id: uuid.UUID, progress: Progress, counts: Counts) -> None:
         run_id = progress.run_id
         await self.control.checkpoint()
         async with self._tx() as conn:
-            # RESTRICT guards the events: a late event that slipped in fails this step loudly (and
-            # is retried after the next trace pass) rather than being cascaded away.
+            # A late event that slipped in after the detail step goes with the record: RESTRICT
+            # would otherwise fail this step for good (the detail step is already done).
+            await self._remaining_detail(conn, workspace_id, run_id, counts)
             gone = await conn.execute(
                 delete(t.runs).where(t.runs.c.workspace_id == workspace_id, t.runs.c.id == run_id)
             )
