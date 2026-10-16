@@ -183,6 +183,54 @@ services:
       timeout: 3s
       retries: 10
 
+  # Local dashboards (Phase 19c, docs/OPERATIONS.md "Local dashboards"): `make observability-up`. Both bind to
+  # loopback only. The metrics token is read from a file (`make observability-token` creates .local/metrics-token,
+  # mode 0600, which is never committed); the stack never has the token in a config file or an argument. Tags are
+  # pinned to a version; digest pinning is done with the other images (Phase 19c step 7).
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ["observability"]
+    # Runs as the invoking user so it can read the 0600 token file (make sets these from `id`). The time series
+    # live in memory (tmpfs) and are gone on `down`: this is a local view, not a monitoring system of record.
+    user: "${ABB_OBS_UID:-65534}:${ABB_OBS_GID:-65534}"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=24h
+      - --web.listen-address=:9090
+    tmpfs:
+      - /prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./deploy/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/prometheus/rules:/etc/prometheus/rules:ro
+      - ./.local/metrics-token:/etc/prometheus/abb-metrics-token:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    profiles: ["observability"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_ADMIN_USER: admin
+      # A development default for a loopback-only port. Set ABB_GRAFANA_ADMIN_PASSWORD for anything else.
+      GF_SECURITY_ADMIN_PASSWORD: ${ABB_GRAFANA_ADMIN_PASSWORD:-abb_grafana_dev_password}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   pgdata:
   artifacts:
+  grafana-data:

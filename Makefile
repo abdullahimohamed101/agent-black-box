@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e backup restore backup-verify rotate-alert-keys
+.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -212,3 +212,21 @@ integrations-test:
 
 integrations-e2e:
 	scripts/integrations-e2e.sh
+
+# Local dashboards (docs/OPERATIONS.md "Local dashboards"): Prometheus on 127.0.0.1:9090, Grafana on 127.0.0.1:3001.
+# The token file is created once (mode 0600, git-ignored) and nothing is printed; it is passed to the API and worker
+# as ABB_METRICS_TOKEN and mounted read-only into Prometheus.
+OBS_TOKEN := .local/metrics-token
+observability-token:
+	@mkdir -p .local && chmod 700 .local
+	@test -s $(OBS_TOKEN) || (umask 077 && openssl rand -hex 24 > $(OBS_TOKEN))
+	@chmod 600 $(OBS_TOKEN)
+
+observability-up: observability-token
+	@ABB_METRICS_TOKEN="$$(cat $(OBS_TOKEN))" ABB_WORKER_METRICS_PORT=9101 ABB_WORKER_METRICS_BIND=0.0.0.0 \
+	  ABB_OBS_UID="$$(id -u)" ABB_OBS_GID="$$(id -g)" \
+	  docker compose --profile app --profile observability up -d --build
+	@echo "Grafana http://127.0.0.1:3001 (user admin), Prometheus http://127.0.0.1:9090"
+
+observability-down:
+	docker compose --profile observability rm -sf prometheus grafana
