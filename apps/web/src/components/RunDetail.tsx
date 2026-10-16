@@ -233,9 +233,11 @@ export function RunDetail({
   // (no paging, polling, stream or context queries) and nothing of it is shown. The first events page is requested
   // alongside the run, as before, so the header does not wait for a second round trip on every run page.
   const available = traceAvailable(run.data?.trace_state);
+  // Known not to be stored: the run has loaded and says so. Before that the page behaves as it always did.
+  const traceGone = run.data !== undefined && !available;
   const eventCount = num(run.data?.summary["event_count"]) ?? undefined;
   const active = run.data ? isActive(run.data.status) : true;
-  const ev = useRunEvents(runId, active, !run.data || available);
+  const ev = useRunEvents(runId, active, !traceGone);
   const {
     hasNextPage,
     isFetchingNextPage,
@@ -248,8 +250,8 @@ export function RunDetail({
   // pageCount is a dependency so a page that lands without an observed `isFetchingNextPage` toggle still triggers the next.
   const pageCount = ev.data?.pages.length ?? 0;
   useEffect(() => {
-    if (available && hasNextPage && !isFetchingNextPage && !evError) void fetchNextPage();
-  }, [available, hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
+    if (!traceGone && hasNextPage && !isFetchingNextPage && !evError) void fetchNextPage();
+  }, [traceGone, hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
 
   const restEvents = useMemo(() => ev.data?.pages.flatMap((p) => p.items) ?? [], [ev.data]);
   const restComplete = ev.isSuccess && !hasNextPage;
@@ -261,7 +263,7 @@ export function RunDetail({
     reconcile: () => void refetchEvents(),
     onEnd: () => void refetchRun(),
   });
-  const events = available ? stream.events : NO_EVENTS;
+  const events = traceGone ? NO_EVENTS : stream.events;
   const streaming =
     stream.state === "connecting" || stream.state === "live" || stream.state === "reconnecting";
 
@@ -270,7 +272,7 @@ export function RunDetail({
   const seen = useRef<string | null>(null);
   const marker = run.data ? `${eventCount ?? ""}|${run.data.status}` : null;
   useEffect(() => {
-    if (marker == null || streaming || !available) return;
+    if (marker == null || streaming || traceGone) return;
     if (
       seen.current !== null &&
       seen.current !== marker &&
@@ -279,7 +281,7 @@ export function RunDetail({
       void refetchEvents();
     }
     seen.current = marker;
-  }, [marker, active, streaming, available, refetchEvents, run.data?.status]);
+  }, [marker, active, streaming, traceGone, refetchEvents, run.data?.status]);
 
   // Timeline or waterfall, kept in the URL (`?view=waterfall`) so a link to the waterfall is shareable.
   const pathname = usePathname();
