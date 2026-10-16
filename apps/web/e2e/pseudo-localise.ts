@@ -180,15 +180,21 @@ export function layoutProblems(page: Page) {
     // 3. Overlap: text boxes and controls that cover each other.
     // Text that an ancestor clips (an ellipsis, a scroll region) is not seen outside that ancestor: judge what is painted.
     const clipped = (el: Element, r: DOMRect) => {
-      let l = r.left,
-        t = r.top,
-        rt = r.right,
-        b = r.bottom;
+      let l = r.left;
+      let t = r.top;
+      let rt = r.right;
+      let b = r.bottom;
       for (let p: Element | null = el; p && p !== document.body; p = p.parentElement) {
         const s = getComputedStyle(p);
         const pr = p.getBoundingClientRect();
-        if (s.overflowX !== "visible") ((l = Math.max(l, pr.left)), (rt = Math.min(rt, pr.right)));
-        if (s.overflowY !== "visible") ((t = Math.max(t, pr.top)), (b = Math.min(b, pr.bottom)));
+        if (s.overflowX !== "visible") {
+          l = Math.max(l, pr.left);
+          rt = Math.min(rt, pr.right);
+        }
+        if (s.overflowY !== "visible") {
+          t = Math.max(t, pr.top);
+          b = Math.min(b, pr.bottom);
+        }
       }
       return new DOMRect(l, t, Math.max(0, rt - l), Math.max(0, b - t));
     };
