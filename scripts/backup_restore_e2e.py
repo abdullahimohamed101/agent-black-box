@@ -104,8 +104,9 @@ def backup_env(db_name: str, artifacts: Path) -> dict[str, str]:
 
 
 def restore_env(db_name: str, artifacts: Path) -> dict[str, str]:
-    return {"ABB_RESTORE_DATABASE_URL": url_for(db_name), "ABB_ARTIFACT_DIR": str(artifacts),
-            "ABB_RUNTIME_DB_PASSWORD": RUNTIME_PASSWORD}  # unused by the login below, but proves the password hook does not break a restore
+    # No ABB_RUNTIME_DB_PASSWORD / ABB_RETENTION_DB_PASSWORD: the restore's `alembic upgrade` would set them on the CLUSTER roles
+    # abb_runtime / abb_retention, which this drill shares with the developer's other databases. The drill's login is its own role.
+    return {"ABB_RESTORE_DATABASE_URL": url_for(db_name), "ABB_ARTIFACT_DIR": str(artifacts)}
 
 
 def api_env(artifacts: Path) -> dict[str, str | None]:
