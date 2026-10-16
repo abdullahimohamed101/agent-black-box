@@ -21,8 +21,8 @@ from tests.api_fixtures import WEB_ORIGIN, Api, build_api
 from tests.auth_helpers import add_member, mint_session
 from tests.conftest import UNREACHABLE_DATABASE_URL, make_settings
 from tests.ingest_helpers import make_run_ids, wire_event
-from tests.limits.helpers import generous_local, pooled, room_in_window
-from tests.obs.helpers import TOKEN, observations, total, value
+from tests.limits.helpers import pooled, room_in_window
+from tests.obs.helpers import TOKEN, total, value
 from tests.obs.parser import parse, sample_value
 from tests.test_auth_throttle import probe, throttle_settings, unknown_key, wrong_secret
 
@@ -293,7 +293,7 @@ async def test_search_busy_by_reason_and_permits_in_use(
         api.app.state.search_gate = gate
         release = asyncio.Event()
 
-        async def hold() -> None:
+        async def hold(gate: SearchGate = gate, release: asyncio.Event = release) -> None:
             async with gate.request(uuid.uuid4(), "key:someone"):
                 await release.wait()
 
