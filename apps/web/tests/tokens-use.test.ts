@@ -2,6 +2,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+// ADR-111 / ADR-166: red means failure and nothing else (design pass 2 tightens it to the fault line and the failed word:
+// tests/tokens-colour-rules.test.ts pins the token side and a ratchet on this list's length; step 5 shrinks it). The old and
+// the new token names are both policed.
 // ADR-111: red means failure and nothing else. Any rule that reads --fail, --bad or their -bg tints must be on this allowlist
 // of failure selectors; a new use needs a new entry here, which is the review point.
 // Every stylesheet in src/app, not a hand-picked list: a new file is covered the day it is added (review P2-2).
@@ -57,7 +60,11 @@ describe("red is for failure only", () => {
   for (const f of FILES) {
     const src = readFileSync(path.join(DIR, f), "utf8");
     for (const r of rules(src))
-      if (/var\(--(fail|bad)(-bg)?\b|color-mix\([^)]*--(fail|bad)\b/.test(r.body))
+      if (
+        /var\(--(fail|bad|color-status-fault|color-legacy-fault-bg)(-bg)?\b|color-mix\([^)]*--(fail|bad|color-status-fault)\b/.test(
+          r.body,
+        )
+      )
         uses.push(`${f}: ${r.selector}`);
   }
   it("reads every stylesheet, the Phase 22 ones included", () => {

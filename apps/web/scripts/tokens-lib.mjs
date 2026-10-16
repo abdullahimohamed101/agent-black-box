@@ -210,10 +210,10 @@ export function computeContrast(tokens) {
 
 // ---- red-ish detection (the "one red line" rule) ------------------------------------------------------------------------
 
-/** Hue 340..40 degrees with visible chroma: the family the direction reserves for the fault line and the failed word. */
+/** Hue 340..40 degrees with any visible chroma (tints included): the family the direction reserves for the fault line and the failed word. */
 export function isRedish(hex) {
   const { C, H } = hexToOklch(hex);
-  return C >= 0.08 && (H >= 340 || H <= 40);
+  return C >= 0.012 && (H >= 340 || H <= 40);
 }
 
 export const themes = ["light", "dark"];
@@ -246,7 +246,6 @@ export function customPropertyInventory() {
   const files = [
     ...walkFiles(path.join(ROOT, "src"), [".css", ".ts", ".tsx"]),
     ...walkFiles(path.join(ROOT, "e2e"), [".ts"]),
-    ...walkFiles(path.join(ROOT, "tests"), [".ts", ".tsx"]),
   ].filter((f) => !/tokens\.(generated|aliases)\.css$/.test(f));
   const text = files.map((f) => readFileSync(f, "utf8")).join("\n");
   const readers = (name) => text.split(`var(--${name}`).length - 1;
