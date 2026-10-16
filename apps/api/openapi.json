@@ -7899,6 +7899,17 @@
             "title": "Trace Id",
             "type": "string"
           },
+          "trace_state": {
+            "default": "available",
+            "description": "Whether the run's trace detail (events, spans, findings, cost lines) is still stored. `deleting`: the retention job is removing it; `expired`: it is gone and only this record remains. Events, spans and findings are then empty, never partial.",
+            "enum": [
+              "available",
+              "deleting",
+              "expired"
+            ],
+            "title": "Trace State",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",

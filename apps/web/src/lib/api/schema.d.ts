@@ -4656,6 +4656,13 @@ export interface components {
             /** Trace Id */
             trace_id: string;
             /**
+             * Trace State
+             * @description Whether the run's trace detail (events, spans, findings, cost lines) is still stored. `deleting`: the retention job is removing it; `expired`: it is gone and only this record remains. Events, spans and findings are then empty, never partial.
+             * @default available
+             * @enum {string}
+             */
+            trace_state: "available" | "deleting" | "expired";
+            /**
              * Updated At
              * Format: date-time
              */
