@@ -67,6 +67,9 @@ ALERT_DESTINATION_READ: Final = "alert.destination.read"
 # configured by signed-in people, and nothing in the API can start the retention job.
 RETENTION_READ: Final = "retention.read"
 RETENTION_WRITE: Final = "retention.write"
+# Changing the AUDIT tier's period is for owners only (the audit log is what shows who changed the
+# policy): checked inside the route once the request is known to change that tier.
+RETENTION_AUDIT_WRITE: Final = "retention.audit.write"
 
 # Names reserved for later phases and granted to nobody; none at the moment.
 RESERVED_ACTIONS: Final[frozenset[str]] = frozenset()
@@ -80,7 +83,7 @@ ALL_ACTIONS: Final = frozenset(
         EVALUATION_LABEL, EVALUATOR_WRITE, EXPERIMENT_READ, EXPERIMENT_WRITE, POLICY_READ,
         POLICY_WRITE, POLICY_DECIDE, APPROVAL_USE, APPROVAL_READ, APPROVAL_DECIDE,
         POLICY_FAIL_MODES, ALERT_READ, ALERT_WRITE, ALERT_DESTINATION_READ, RETENTION_READ,
-        RETENTION_WRITE,
+        RETENTION_WRITE, RETENTION_AUDIT_WRITE,
     }
 ) | RESERVED_ACTIONS  # fmt: skip
 

@@ -193,25 +193,37 @@ async def _run(
     )
 
 
+def audit_expired(workspace_id: uuid.UUID, cutoff: datetime, now: datetime) -> list[Any]:
+    """The audit rows the tier removes: older than `cutoff`, except the retention rows (the record
+    of policy changes and of deletions), which are kept for `POLICY_RECORD_DAYS` regardless."""
+    exempt = now - timedelta(days=m.POLICY_RECORD_DAYS)
+    a = t.audit_log
+    return [
+        a.c.workspace_id == workspace_id,
+        a.c.occurred_at < cutoff,
+        or_(
+            ~a.c.action.startswith(m.POLICY_RECORD_PREFIX, autoescape=True),
+            a.c.occurred_at < exempt,
+        ),
+    ]
+
+
 async def _audit(
-    conn: AsyncConnection, workspace_id: uuid.UUID, cutoff: datetime, limits: Limits
+    conn: AsyncConnection,
+    workspace_id: uuid.UUID,
+    cutoff: datetime,
+    limits: Limits,
+    now: datetime,
 ) -> TierCount:
     n, truncated = await _capped(
         conn,
-        select(literal(1)).where(
-            t.audit_log.c.workspace_id == workspace_id, t.audit_log.c.occurred_at < cutoff
-        ),
+        select(literal(1)).where(*audit_expired(workspace_id, cutoff, now)),
         limits.max_rows,
     )
     return TierCount(m.ReportTier.AUDIT, rows=n, truncated=truncated, cutoff=cutoff)
 
 
-_MEASURES = {
-    m.Tier.ARTIFACTS: _artifacts,
-    m.Tier.TRACE: _trace,
-    m.Tier.RUN: _run,
-    m.Tier.AUDIT: _audit,
-}
+_MEASURES = {m.Tier.ARTIFACTS: _artifacts, m.Tier.TRACE: _trace, m.Tier.RUN: _run}
 
 
 async def measure_tier(
@@ -220,8 +232,11 @@ async def measure_tier(
     tier: m.Tier,
     cutoff: datetime,
     limits: Limits,
+    now: datetime,
 ) -> TierCount:
     """What a tier of one workspace would lose if everything older than `cutoff` went."""
+    if tier is m.Tier.AUDIT:
+        return await _audit(conn, workspace_id, cutoff, limits, now)
     return await _MEASURES[tier](conn, workspace_id, cutoff, limits)
 
 
@@ -322,4 +337,11 @@ async def measure_platform(conn: AsyncConnection, now: datetime, limits: Limits)
     return TierCount(m.ReportTier.PLATFORM, rows=total, truncated=truncated)
 
 
-__all__ = ["Limits", "TierCount", "measure_operational", "measure_platform", "measure_tier"]
+__all__ = [
+    "Limits",
+    "TierCount",
+    "audit_expired",
+    "measure_operational",
+    "measure_platform",
+    "measure_tier",
+]

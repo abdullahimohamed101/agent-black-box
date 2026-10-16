@@ -65,12 +65,16 @@ class Pruner(Batcher):
         async with self._tx() as conn:
             await insert_audit(conn, workspace_id, tier, details)
 
-    async def purge_audit(self, workspace_id: uuid.UUID, cutoff: datetime) -> int:
-        """Entries of this workspace older than `cutoff`; one summary entry per batch."""
+    async def purge_audit(self, workspace_id: uuid.UUID, cutoff: datetime, now: datetime) -> int:
+        """Entries of this workspace older than `cutoff`; one summary entry per batch. The
+        `retention.*` entries (policy changes, deletion summaries) wait until they are
+        `POLICY_RECORD_DAYS` old whatever the policy says (the same rule as the preview)."""
         total = 0
+        exempt = now - timedelta(days=m.POLICY_RECORD_DAYS)
         sql = text(
             "WITH d AS (DELETE FROM audit_log WHERE ctid = ANY(ARRAY("
             "SELECT ctid FROM audit_log WHERE workspace_id = :w AND occurred_at < :cutoff "
+            "AND (action NOT LIKE 'retention.%' OR occurred_at < :exempt) "
             "ORDER BY occurred_at LIMIT :n)) RETURNING occurred_at) "
             "SELECT count(*), min(occurred_at), max(occurred_at) FROM d"
         )
@@ -78,7 +82,10 @@ class Pruner(Batcher):
             await self.control.checkpoint()
             async with self._tx() as conn:
                 n, oldest, newest = (
-                    await conn.execute(sql, {"w": workspace_id, "cutoff": cutoff, "n": self._batch})
+                    await conn.execute(
+                        sql,
+                        {"w": workspace_id, "cutoff": cutoff, "exempt": exempt, "n": self._batch},
+                    )
                 ).one()
                 if n:
                     await insert_audit(

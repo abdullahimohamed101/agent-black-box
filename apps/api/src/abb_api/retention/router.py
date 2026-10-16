@@ -92,14 +92,18 @@ async def get_retention(
         '`"forever"` keeps it for good; `null` returns it to the environment default. Artifacts '
         "cannot outlast trace detail, nor trace detail the run record. Owners and admins only. "
         "Each changed tier writes one audit entry (`retention.policy.update`: the tier, the old "
-        "and the new value). Shortening a period deletes nothing by itself: the retention job "
-        "applies the policy, and in dry-run mode (the default) only reports what it would delete."
+        "and the new value, and when it takes effect). A shortening takes effect after the grace "
+        "period (`grace_hours`); until then the longer period is enforced, and saving the "
+        "previous value again cancels it. Lengthening is immediate. Only an owner may change the "
+        "audit tier (403 for an admin), whose minimum is `audit_floor_days`. Shortening deletes "
+        "nothing by itself: the retention job applies the policy, and in dry-run mode (the "
+        "default) only reports what it would delete."
     ),
 )
 async def put_retention(
     workspace_id: str, body: s.RetentionPolicyIn, request: Request, principal: Admin
 ) -> s.RetentionPolicyOut:
-    return await _service(request).update(principal, workspace_id, body)
+    return await _service(request).update(principal, workspace_id, body, request)
 
 
 @router.get(

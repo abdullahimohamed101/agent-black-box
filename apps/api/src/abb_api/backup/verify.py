@@ -25,7 +25,9 @@ def verify_bundle(bundle: Path, passphrase: bytes | None) -> dict[str, Any]:
         enc = manifest["encryption"]
         try:
             key = crypto.mac_key(
-                passphrase, bytes.fromhex(enc["mac_salt"]), int(enc["mac_iterations"])
+                passphrase,
+                bytes.fromhex(enc["mac_salt"]),
+                crypto.checked_iterations(enc["mac_iterations"]),
             )
             ok = hmac.compare_digest(
                 manifest_mac(key, manifest), str(manifest.get("manifest_mac", ""))

@@ -70,11 +70,6 @@ async def _rows(engine: AsyncEngine, sql: str, ws: uuid.UUID) -> list[Any]:
         return [tuple(r) for r in await conn.execute(text(sql), {"w": ws})]
 
 
-async def _rows(engine: AsyncEngine, sql: str, ws: uuid.UUID) -> list[Any]:
-    async with engine.connect() as conn:
-        return [tuple(r) for r in await conn.execute(text(sql), {"w": ws})]
-
-
 async def test_a_run_updated_after_selection_is_left_alone(
     engine: AsyncEngine, retention_engine: AsyncEngine, tmp_path: Path
 ) -> None:

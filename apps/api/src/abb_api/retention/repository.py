@@ -6,7 +6,8 @@ Every statement carries the workspace (INV-3).
 """
 
 import uuid
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import select, text
@@ -14,7 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
-from abb_api.retention.model import FOREVER, Tier, TierSetting
+from abb_api.retention.model import FOREVER, Pending, Tier, TierSetting
 from abb_api.tenancy import TenantContext
 
 
@@ -23,6 +24,8 @@ class StoredPolicy:
     settings: dict[Tier, TierSetting]
     updated_at: datetime | None
     updated_by: str | None
+    # Shortenings that have not taken effect (a row exists while `effective_at` is set).
+    pending: dict[Tier, Pending] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -64,6 +67,14 @@ class PolicyRepository:
             },
             row["updated_at"],
             row["updated_by"],
+            {
+                tier: Pending(
+                    setting_from(row[f"{tier.value}_prev_days"], row[f"{tier.value}_prev_forever"]),
+                    row[f"{tier.value}_effective_at"],
+                )
+                for tier in Tier
+                if row[f"{tier.value}_effective_at"] is not None
+            },
         )
 
     async def ensure_row(self, updated_by: str) -> None:
@@ -74,11 +85,21 @@ class PolicyRepository:
             .on_conflict_do_nothing(index_elements=["workspace_id"])
         )
 
-    async def write(self, settings: dict[Tier, TierSetting], updated_by: str) -> None:
+    async def write(
+        self,
+        settings: dict[Tier, TierSetting],
+        pending: Mapping[Tier, Pending],
+        updated_by: str,
+    ) -> None:
         values: dict[str, object] = {}
         for tier, setting in settings.items():
             values[f"{tier.value}_forever"] = setting == FOREVER
             values[f"{tier.value}_days"] = None if setting in (None, FOREVER) else setting
+            waiting = pending.get(tier)
+            previous = None if waiting is None else waiting.previous
+            values[f"{tier.value}_prev_forever"] = previous == FOREVER
+            values[f"{tier.value}_prev_days"] = None if previous in (None, FOREVER) else previous
+            values[f"{tier.value}_effective_at"] = None if waiting is None else waiting.effective_at
         await self._conn.execute(
             t.retention_policies.update()
             .where(t.retention_policies.c.workspace_id == self._ws)

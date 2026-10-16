@@ -119,7 +119,10 @@ async def test_api_keys_and_anonymous_callers_have_no_access(make_api: MakeApi) 
     ("body", "tier", "reason"),
     [
         ({"trace": 6}, "trace", "below_floor"),
-        ({"audit": 0}, "audit", "below_floor"),
+        # The audit tier's own minimum is 90 days (review P2-2); "0" would collide with the "90"
+        # in the message, so the number checked for repetition is 3.
+        ({"audit": 3}, "audit", "below_floor"),
+        ({"audit": 30}, "audit", "below_floor"),
         ({"run": -5}, "run", "below_floor"),
         ({"run": 36501}, "run", "above_ceiling"),
         ({"artifacts": 100}, "artifacts", "order"),  # the trace default is 90

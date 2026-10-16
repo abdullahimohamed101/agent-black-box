@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,7 @@ async def enforce(
     monotonic: Callable[[], float] | None = None,
     stop: Any = None,
     budget: float = 3600.0,
+    now: datetime = NOW,
 ) -> TickResult:
     extra: dict[str, Any] = {"monotonic": monotonic} if monotonic else {}
     return await run_tick(
@@ -56,7 +58,7 @@ async def enforce(
         cfg or enforcing(),
         budget_seconds=budget,
         keep_reports=50,
-        now=lambda: NOW,
+        now=lambda: now,
         store=store,
         hook=hook,
         mode_probe=mode_probe,
