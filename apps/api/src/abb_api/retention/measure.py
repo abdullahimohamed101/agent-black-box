@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from abb_api.db import tables as t
 from abb_api.limits.scopes import GLOBAL_WORKSPACE
+from abb_api.retention import inventory as inv
 from abb_api.retention import model as m
 
 RUN_ENDED_AT = func.least(
@@ -151,13 +152,18 @@ async def _trace(
                 table.c.workspace_id == workspace_id, _in_runs(table.c.run_id, ids)
             ),
         )
-    # Run-bound background jobs name their run in the payload (summaries, findings, evaluations).
+    # Run-bound background jobs are keyed `<workspace>:<run>` (summaries, findings, evaluations);
+    # the same predicate the deletion uses, so a dry run counts what enforcement removes.
     rows += await _count(
         conn,
         select(func.count()).where(
             t.outbox_jobs.c.workspace_id == workspace_id,
-            t.outbox_jobs.c.payload["run_id"].astext
-            == any_(bindparam("run_texts", [str(i) for i in ids], type_=PG_ARRAY(SaText))),
+            t.outbox_jobs.c.job_type
+            == any_(bindparam("job_types", list(inv.RUN_BOUND_JOB_TYPES), type_=PG_ARRAY(SaText))),
+            t.outbox_jobs.c.dedupe_key
+            == any_(
+                bindparam("job_keys", [f"{workspace_id}:{i}" for i in ids], type_=PG_ARRAY(SaText))
+            ),
         ),
     )
     return TierCount(
@@ -242,12 +248,13 @@ async def measure_operational(
     return TierCount(m.ReportTier.OPERATIONAL, rows=total, truncated=truncated)
 
 
-async def measure_platform(conn: AsyncConnection, now: datetime, limits: Limits) -> TierCount:
-    """Dead sessions, people who never joined a workspace and expired global counters."""
-    s, u, c = t.sessions, t.users, t.rate_limit_counters
-    grace = now - timedelta(days=m.SESSION_GRACE_DAYS)
+def stranger_predicate(now: datetime) -> Any:
+    """People who signed in on an invitation and never joined: no membership, no open invitation,
+    no live session, nothing that references them. One predicate for the count and the delete, so
+    a reference that appears after the count is honoured when the row is removed (KI-194)."""
+    s, u = t.sessions, t.users
     members, invites, members_by = t.workspace_members, t.invitations, t.workspace_members.alias()
-    stranger = and_(
+    return and_(
         u.c.created_at < now - timedelta(days=m.STRANGER_DAYS),
         not_(_exists(members.c.user_id == u.c.id)),
         not_(_exists(members_by.c.invited_by == u.c.id)),
@@ -260,6 +267,14 @@ async def measure_platform(conn: AsyncConnection, now: datetime, limits: Limits)
             )
         ),
         not_(_exists(or_(invites.c.invited_by == u.c.id, invites.c.accepted_by == u.c.id))),
+        not_(
+            _exists(
+                s.c.user_id == u.c.id,
+                s.c.revoked_at.is_(None),
+                s.c.expires_at > now,
+                s.c.idle_expires_at > now,
+            )
+        ),
         not_(_exists(t.evaluations.c.requested_by == u.c.id)),
         not_(
             _exists(
@@ -270,6 +285,13 @@ async def measure_platform(conn: AsyncConnection, now: datetime, limits: Limits)
             )
         ),
     )
+
+
+async def measure_platform(conn: AsyncConnection, now: datetime, limits: Limits) -> TierCount:
+    """Dead sessions, people who never joined a workspace and expired global counters."""
+    s, c = t.sessions, t.rate_limit_counters
+    grace = now - timedelta(days=m.SESSION_GRACE_DAYS)
+    stranger = stranger_predicate(now)
     queries = [
         select(literal(1)).where(
             or_(s.c.expires_at < grace, s.c.idle_expires_at < grace, s.c.revoked_at < grace)

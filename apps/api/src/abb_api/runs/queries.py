@@ -75,6 +75,7 @@ class RunRecord:
     metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    trace_state: str = "available"
     search: SearchRowData | None = None
 
 
@@ -107,6 +108,7 @@ _COLUMNS = (
     t.runs.c.metadata,
     t.runs.c.created_at,
     t.runs.c.updated_at,
+    t.runs.c.trace_state,
 )
 
 

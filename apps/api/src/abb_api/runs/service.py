@@ -157,6 +157,7 @@ def _run_out(
         security_findings=security,
         first_error=_first_error(summary),
         matched=matched_out(search, record.search) if search is not None else None,
+        trace_state=record.trace_state,  # type: ignore[arg-type]
     )
 
 

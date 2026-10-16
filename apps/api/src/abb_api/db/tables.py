@@ -330,9 +330,23 @@ runs = Table(
     Column("tool_spans_ok", Integer, nullable=False, server_default="0"),
     Column("llm_spans_finished", Integer, nullable=False, server_default="0"),
     Column("llm_spans_ok", Integer, nullable=False, server_default="0"),
+    # Whether the run's trace detail (events, spans, findings, ...) is still there: `deleting` while
+    # the retention job removes it, `expired` once it has (the record stays; ADR-160). Written by
+    # the retention role only, in practice (it holds UPDATE on this column alone).
+    Column("trace_state", Text, nullable=False, server_default="available"),
     PrimaryKeyConstraint("workspace_id", "id"),
     ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
     CheckConstraint(_in("status", RUN_STATUSES), name="ck_runs_status"),
+    CheckConstraint(
+        _in("trace_state", ("available", "deleting", "expired")), name="ck_runs_trace_state"
+    ),
+    # The retention job resumes the runs it left half deleted (a handful at most).
+    Index(
+        "ix_runs_trace_deleting",
+        "workspace_id",
+        "id",
+        postgresql_where=text("trace_state = 'deleting'"),
+    ),
     CheckConstraint(_in("ordering_mode", ORDERING_MODES), name="ck_runs_ordering_mode"),
     Index("ix_runs_project_started", "workspace_id", "project_id", text("started_at DESC"), "id"),
     Index("ix_runs_status_started", "workspace_id", "status", text("started_at DESC"), "id"),
@@ -1612,4 +1626,66 @@ retention_tombstones = Table(
         _in("tier", ("artifacts", "trace", "run")), name="ck_retention_tombstones_tier"
     ),
     CheckConstraint(_in("mode", RETENTION_MODES), name="ck_retention_tombstones_mode"),
+)
+
+
+# Where the retention job is with one run and tier (ADR-160): one row per (run, tier) from the moment
+# the job starts removing it until every backend is done, then the row is deleted (the tombstone
+# stays). A crash at any point leaves the flags that were reached, and the next tick resumes there.
+# `project_id` and `started_day` outlive the run record, so the rollup of the day can still be
+# rebuilt after the record is gone. `failure_code` is a fixed code, never an error text.
+retention_run_progress = Table(
+    "retention_run_progress",
+    metadata,
+    Column(
+        "workspace_id",
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("tier", Text, nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("started_day", Date),
+    Column("artifacts_done", Boolean, nullable=False, server_default=text("false")),
+    Column("search_done", Boolean, nullable=False, server_default=text("false")),
+    Column("detail_done", Boolean, nullable=False, server_default=text("false")),
+    Column("record_done", Boolean, nullable=False, server_default=text("false")),
+    Column("analytics_done", Boolean, nullable=False, server_default=text("false")),
+    Column("attempts", Integer, nullable=False, server_default=text("0")),
+    Column("failure_code", Text),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("updated_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "run_id", "tier"),
+    CheckConstraint(_in("tier", ("artifacts", "trace", "run")), name="ck_retention_progress_tier"),
+    CheckConstraint("attempts >= 0", name="ck_retention_progress_attempts"),
+    CheckConstraint(
+        "failure_code IS NULL OR "
+        + _in("failure_code", ("artifact_store", "database", "timeout", "internal")),
+        name="ck_retention_progress_failure",
+    ),
+    CheckConstraint(
+        "tier = 'artifacts' OR started_day IS NOT NULL", name="ck_retention_progress_day"
+    ),
+    Index("ix_retention_progress_open", "workspace_id", "tier", "created_at"),
+)
+
+# A change to a workspace-day that its analytics rollup has to absorb (KI-057, ADR-160): the writer
+# bumps `version` in the transaction that changes the data; the refresh job records the version it
+# read before it started and, when it finishes, only marks `refreshed_version` if no writer bumped
+# it meanwhile (compare-and-set). A bump it did not see makes the job queue another refresh.
+analytics_dirty = Table(
+    "analytics_dirty",
+    metadata,
+    Column(
+        "workspace_id",
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("day", Date, nullable=False),
+    Column("version", BigInteger, nullable=False, server_default="0"),
+    Column("refreshed_version", BigInteger, nullable=False, server_default="0"),
+    PrimaryKeyConstraint("workspace_id", "day"),
+    CheckConstraint("refreshed_version <= version", name="ck_analytics_dirty_versions"),
 )
