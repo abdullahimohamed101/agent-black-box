@@ -38,4 +38,4 @@ holds a per-workspace advisory lock that ingestion never takes; the project row 
 quiet window, or raise the tick interval; `docs/runbooks/retention.md` says how.
 
 What this does **not** show: a database with tens of millions of events (index maintenance and vacuum pressure from deleting at that scale are not measured here), many concurrent writers, or a database that is already near its
-connection limit. KI-225 records that CI does not track the figure.
+connection limit. KI-250 records that CI does not track the figure.
