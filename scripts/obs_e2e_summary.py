@@ -22,7 +22,7 @@ SERVICES = {"abb-api", "abb-worker", "abb-retention"}
 # uvicorn prints these itself (not through our JSON formatter); nothing it prints carries request data (its access log is off).
 PLAIN_ALLOWED = re.compile(
     r"^(INFO|WARNING):\s+(Invalid HTTP request received\.|Started server process \[\d+\]|Waiting for application (startup|shutdown)\.|Application (startup|shutdown) complete\.|"
-    r"Uvicorn running on http://127\.0\.0\.1:\d+ \(Press CTRL\+C to quit\)|Shutting down|Finished server process \[\d+\])$"
+    r"Uvicorn running on http://(127\.0\.0\.1|0\.0\.0\.0):\d+ \(Press CTRL\+C to quit\)|Shutting down|Finished server process \[\d+\])$"
 )
 # Keys a log line must never carry: anything that could hold a header, body, cookie, query, URL or client address.
 FORBIDDEN_KEYS = {"path", "query", "url", "headers", "header", "cookie", "cookies", "authorization", "body", "payload", "client", "client_ip", "remote_addr", "remote_address",
