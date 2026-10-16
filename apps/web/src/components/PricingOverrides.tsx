@@ -5,7 +5,7 @@ import { fieldErrors } from "@/lib/api/client";
 import { useCan, useWorkspace } from "./WorkspaceProvider";
 import { useCreateOverride, usePrices, useRebuildCosts } from "@/lib/admin";
 import { settings } from "@/copy/settings";
-import { ActionError, FieldError, Lede, Section, StatusLine, when } from "./SettingsKit";
+import { ActionError, FieldError, Lede, ReadOnly, Section, StatusLine, when } from "./SettingsKit";
 import { Empty, ErrorState, Loading } from "./States";
 
 export function PricingOverrides() {
@@ -61,6 +61,7 @@ export function PricingOverrides() {
             </table>
           </div>
         )}
+        {!canWrite && !prices.isPending && !prices.error && <ReadOnly testId="pricing-readonly" />}
       </Section>
       {canWrite && (
         <Section title={c.addTitle}>

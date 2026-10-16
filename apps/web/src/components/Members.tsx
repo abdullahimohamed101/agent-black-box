@@ -12,7 +12,7 @@ import {
   useRemoveMember,
   useRevokeInvitation,
 } from "@/lib/admin";
-import { ActionError, FieldError, Lede, Section, TwoStep, when } from "./SettingsKit";
+import { ActionError, FieldError, Lede, ReadOnly, Section, TwoStep, when } from "./SettingsKit";
 import { Empty, ErrorState, Loading } from "./States";
 import { useCan, useWorkspace } from "./WorkspaceProvider";
 
@@ -103,6 +103,9 @@ export function Members() {
           </div>
         )}
         <ActionError error={change.error ?? remove.error} />
+        {!canWrite && !members.isPending && !members.error && (
+          <ReadOnly testId="members-readonly" />
+        )}
       </Section>
 
       {canSeeInvites && (

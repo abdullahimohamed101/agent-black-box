@@ -267,7 +267,8 @@ for (const role of ["viewer", "billing"] as const)
   test(`@gate6 ${role}: 'Not available for your role' on Approvals and Policies, and 403 from the APIs`, async () => {
     const page = await signedIn(role, `/w/${WS}/approvals`);
     await expect(page.getByText("Not available for your role")).toBeVisible();
-    await expect(page.getByRole("link", { name: /^Approvals/ })).toHaveCount(0);
+    // Step 5c: Approvals is a tab of Review; a role that may not read approvals has no such tab.
+    await expect(page.getByRole("tab", { name: "Approvals" })).toHaveCount(0);
     await page.goto(`/w/${WS}/settings/policies`);
     await expect(page.getByText("Not available for your role")).toBeVisible();
     const headers = await workspaceHeader(page);
@@ -459,7 +460,7 @@ test("@ui a developer reads policies (read only) and sees the approvals page; bi
   await expect(dev.getByRole("button", { name: "Publish" })).toHaveCount(0);
   await dev.goto(`/w/${WS}/approvals`);
   await expect(approvalRows(dev).first()).toBeVisible();
-  await expect(dev.getByRole("link", { name: /^Approvals/ }).first()).toBeVisible();
+  await expect(dev.getByRole("tab", { name: "Approvals" })).toBeVisible();
   const billing = await signedIn("billing", POLICIES());
   await expect(billing.getByText("Not available for your role")).toBeVisible();
 });

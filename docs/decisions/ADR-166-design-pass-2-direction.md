@@ -256,6 +256,76 @@ build brief; each is reversible and the alternative is named.
     prefixes and the toolbar is a sticky scrolling row of 44 px buttons. The Steps h2 is visually hidden. The run names come from
     `useRun` for each side (two small extra reads; the comparison API has no names).
 
+## Step 5c decisions (Review, Alerts under Settings, the one Settings pattern; 2026-10-16)
+
+Decided by the assistant under the same standing rule where `03-screens-and-wireframes.md` left a choice or disagreed with the
+build brief; each is reversible and the alternative is named.
+
+1. **Review is a route group, not a new route.** `app/w/[workspace]/(review)/layout.tsx` holds the shell and `ReviewFrame` (the h1
+   "Review", the waiting count, the shared `Tabs`); `approvals/` and `security/` move under the group and keep their addresses
+   (`/w/{ws}/approvals`, `?state=`, `?approval=`, `/w/{ws}/security`, `?severity=` and the rest). Choosing a tab is a `router.push` to
+   the other route; the tab list lives in the shared layout so it keeps focus while the page below changes. A tab the role may not
+   read is absent; a role that reads neither gets no tab list and the page's own "Not available for your role". The top-bar link
+   still goes to Approvals when readable, else Security findings. Alternative: one client page switching a `?tab=` parameter
+   (rejected: it changes the two addresses people already have saved and the Approvals deep links).
+2. **Counts.** The only count in the title line is "N waiting" (pending approvals; the same request the bar polls). The Approvals tab
+   carries no count (the number would appear three times: bar, title, tab) and the Pending chip carries it, as `03` draws; the
+   chip reads the cache and never makes a request of its own (`useCachedPendingCount`), so the Decided tab still does not poll. The
+   Security findings tab has no count: a number needs a request of its own and the list says how many are loaded.
+3. **Approvals list is five columns** (Request, Risk, State, Requested, Time left). Run link, project and policy are in the request
+   panel (they were in both). The panel is a column from 1024 px with a hairline on its left (no card) and replaces the list below
+   that width (an overlay would leave the covered list in the tab order); its Close button is the "Back". Approve is the page's one
+   filled button, Deny is outline with caution text (a denial is not a failure, ADR-141), and the two-step confirm sentences and
+   buttons ("Confirm approve") are kept as they were: the wording is tied to the API's semantics and to e2e specs. On a phone each
+   request is a wrapping block (capability, resource, then risk, state, age and time left on one line) and the decide buttons are
+   44 px and full width.
+4. **Security findings**: the facets and list are the Runs list's classes (not forked); the Project column is dropped (the scope
+   control and the Project facet say it). Severity stays glyph and word (shield filled and 600 for Critical, outline caution for
+   High, ink-2 below). Order: the API's runs-newest-first order is kept, and within one run the most severe finding comes first
+   (`mostSevereFirst`), so the order reads without colour; it never moves a finding across runs, so a "Load more" page boundary
+   cannot reorder what is on screen. Alternative: sort the whole list by severity (rejected: pagination would lie).
+5. **One Settings page.** `SettingsFrame` (in `settings/layout.tsx`) renders the shared `TitleLine` ("Settings /" link, then the
+   tab's name as the one h1), the grouped section list and one content column (60 rem; prose 72 ch). Alternative: h1 "Settings"
+   with the tab as an h2 (`03` section 7): rejected because the title line is already the pattern of the run page and Compare and
+   gives each tab a real document title. Sections are h2 (18/24), rows h3; a tab never has a fourth level.
+6. **Sections are stacked, not label-and-control columns.** `03` describes a 192 px label column beside a control column; the tabs
+   hold tables (members, keys, audit, prices, rules) that need the full 960 px, so each section is a hairline band with its heading,
+   one sentence, the work and (last) the one filled button. The label-over-field rule applies to every form. Alternative: the
+   two-column form for short forms only (rejected: two layouts again).
+7. **Grouped list and its fold.** People: Members, Sessions; Access: API keys, Policies, Capture and detectors; Limits: Quotas,
+   Retention, Pricing; Notify: Alerts; Record: Audit log. The Security tab is renamed "Capture and detectors" (route
+   `/settings/security` unchanged) so it is never confused with Review's Security findings. Below 900 px one button, "Section:
+   Quotas", opens the same list (one DOM list, CSS decides); `03` put the disclosure on the title line, but the title line already
+   names the tab, so the button is the first row under it. The top bar's Settings link lands on the first tab the role may read
+   (`firstSettingsHref`), not always Members.
+8. **Tables on a phone become blocks** with the column's name before each value. The names are copied from the table's own
+   `thead` to `data-label` by a `MutationObserver` in the frame (attributes only), so no table repeats its heads by hand and a new
+   column is labelled for free; below 600 px `.table-wrap` tables are `display: block`. Quotas, Approvals, Security findings and the
+   policy tables have their own block layouts.
+9. **Destructive actions are two steps in place** (`TwoStep`): Remove a member, Revoke an invitation and Revoke an API key (new:
+   one press before), Sign out everywhere else, Remove an allowed host (one step: it only edits the draft until Save). Alert rule
+   and destination Delete ("Delete NAME" then "Keep"), destination rotate and a retention shortening ("Save and shorten") already
+   had a second step and keep it. Ending one session is one step (it signs one device out and the list says so). Destructive
+   buttons are caution text with no fill; Escape or Cancel goes back and returns focus.
+10. **Errors are ink.** A field error is one sentence under the field with the word "Error:" before it (a 600 weight, never red);
+    a failed write is the shared notice line with the API's sentence and request id. The red allow-list is 7 to 6 selectors
+    (`.field-error` is gone; the Analytics error column is the last non-fault red, 5d).
+11. **Quotas** are hairline rows (name and default, usage in mono, a 4 px bar, glyph and word, the override field in the row). Near
+    limit (from 80 %) is caution text and a caution bar; at the limit is ink 600 and an ink bar (it was caution: `03` says a limit
+    reached is not a fault and not a warning, it is a state). The input keeps its accessible name (the quota's name) so the row's
+    visible label is its label.
+12. **Read-only roles get one sentence**, not a disabled form: "Your role can read this but not change it. Owners and admins can."
+    (Members, API keys, Pricing; Quotas, Retention and Policies keep their own tested sentences).
+13. **Alerts**: `/w/{ws}/settings/alerts?tab=rules|destinations|history`; `/w/{ws}/alerts` is a redirect page that keeps every query
+    parameter. The sub-tabs are the shared `Tabs` (`tabs-ruled`) with the URL's `?tab=` as before; the signing-secret panel, its
+    leave guard, send-test and the previews are unchanged. The person menu loses the temporary Security findings and Alerts entries
+    (KI-279 closed).
+14. **Empty states** on every 5c screen are one headline and one sentence with no drawing (`Empty motif="none"`).
+15. **Aliases deleted**: `--bg`, `--surface` (it collapses into canvas), `--border-strong`, `--ink`, `--muted`, `--accent`, `--sel`,
+    `--fail`, `--wait`, `--fs-title`, `--fs-body`, `--ease-out`, `--top-h`, `--sans`. Kept for 5d (read only by `analytics.css`):
+    `--border` (1), `--mono` (2), `--fs-headline` (1), `--fs-small` (1). The contrast tests are written in colour roles
+    (`roles()` in `tests/tokenCss.ts`) that read the real token names; the pairs and thresholds are unchanged.
+
 ## Consequences
 
 - Steps 2 and 3 use this ADR and `01-direction.md` as the rubric; step 4 implements the tokens and type; step 5 the screens.

@@ -118,7 +118,7 @@ test("an owner sees the captured payload", async () => {
 test("settings: an invitation link and an API key token are each shown once", async () => {
   const { page } = owner;
   await page.goto(`/w/${A}/settings/members`);
-  await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Members", level: 1 })).toBeVisible(); // the h2 "Members" is the section
   await expect(page.getByRole("cell", { name: new RegExp(OWNER) })).toBeVisible();
   await page.locator("form.form").getByRole("textbox").fill(INVITEE);
   await page.locator("form.form").getByRole("combobox").selectOption("DEVELOPER");

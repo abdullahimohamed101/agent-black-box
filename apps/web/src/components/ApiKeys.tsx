@@ -5,7 +5,7 @@ import { fieldErrors } from "@/lib/api/client";
 import { KEY_SCOPES, type KeyScope } from "@/lib/api/types";
 import { useApiKeys, useCreateKey, useRevokeKey } from "@/lib/admin";
 import { settings } from "@/copy/settings";
-import { ActionError, FieldError, Lede, Section, TwoStep, when } from "./SettingsKit";
+import { ActionError, FieldError, Lede, ReadOnly, Section, TwoStep, when } from "./SettingsKit";
 import { Empty, ErrorState, Loading } from "./States";
 import { useCan, useWorkspace } from "./WorkspaceProvider";
 
@@ -77,6 +77,11 @@ export function ApiKeys() {
           </div>
         )}
         <ActionError error={revoke.error} />
+        {!canCreate &&
+          !canRevokeAny &&
+          !ws.ownPermissions.includes("api_key.revoke") &&
+          !keys.isPending &&
+          !keys.error && <ReadOnly testId="keys-readonly" />}
       </Section>
       {canCreate && (
         <Section title={c.createTitle} lede={c.createLede}>
