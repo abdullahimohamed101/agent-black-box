@@ -85,6 +85,27 @@ def test_a_hostile_or_damaged_file_is_ignored_when_seeding(tmp_path: Path) -> No
     assert cat.http_requests_total.value("GET", "/", "200") == 0, "not the tool's metric"
 
 
+def test_absurd_and_non_finite_seed_values_are_refused(tmp_path: Path) -> None:
+    # A writable textfile directory is a trust boundary: 1e308 would make a counter useless
+    # forever (every later increment is lost to float precision), inf/nan would poison rate().
+    target = tmp_path / "x.prom"
+    target.write_text(
+        'backup_runs_total{outcome="succeeded"} 1e308\n'
+        'backup_runs_total{outcome="failed"} +Inf\n'
+        'backup_runs_total{outcome="other"} NaN\n'
+        "backup_bundle_bytes 1e308\n"
+        "backup_last_duration_seconds NaN\n"
+        "backup_last_success_timestamp_seconds 1700000000\n"
+    )
+    cat = TextfileMetrics(target, BACKUP_METRICS).catalogue
+    assert cat.backup_runs_total.value("succeeded") == 0
+    assert cat.backup_runs_total.value("failed") == 0
+    assert cat.backup_runs_total.value("other") == 0
+    assert cat.backup_bundle_bytes.value() == 0
+    assert cat.backup_last_duration_seconds.value() == 0
+    assert cat.backup_last_success_timestamp_seconds.value() == 1_700_000_000  # sane: kept
+
+
 def test_path_comes_from_the_flag_first_then_the_environment() -> None:
     assert textfile_path("/a/b.prom", {"ABB_METRICS_TEXTFILE": "/c.prom"}) == Path("/a/b.prom")
     assert textfile_path(None, {"ABB_METRICS_TEXTFILE": "/c.prom"}) == Path("/c.prom")

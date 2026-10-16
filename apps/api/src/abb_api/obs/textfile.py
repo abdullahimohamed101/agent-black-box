@@ -32,6 +32,7 @@ from abb_api.obs.metrics import Counter, Gauge
 logger = logging.getLogger(__name__)
 
 ENV_VAR: Final = "ABB_METRICS_TEXTFILE"
+MAX_SEEDED_VALUE: Final = 1e15  # above this a counter can no longer count (float precision)
 MAX_FILE_BYTES: Final = 256 * 1024  # a tool's own file is a few KiB; refuse to seed from more
 
 BACKUP_METRICS: Final = frozenset(
@@ -108,7 +109,7 @@ def seed(observability: Observability, path: Path, names: Collection[str]) -> No
             number = float(raw_value)
         except ValueError:
             continue
-        if math.isinf(number) or (math.isnan(number) and isinstance(metric, Counter)):
+        if not math.isfinite(number) or abs(number) > MAX_SEEDED_VALUE:
             continue
         values = tuple(found[n] for n in metric.label_names)
         if isinstance(metric, Counter):

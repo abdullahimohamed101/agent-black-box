@@ -2,10 +2,11 @@
 
 The worker has no web framework, so it serves the same registry with ``http.server``. One route
 (``GET /metrics``), the same bearer token as the API, loopback by default, and hard bounds: a
-socket timeout per connection, a cap on concurrent connections (extra ones are closed at once),
-a total wall-clock deadline per connection (a client sending a byte every few seconds resets the
-socket timeout forever, but not this), the stdlib's own request-line and header limits, no request body read, and the same global rate
-bucket as the API route. Nothing about the caller is logged.
+socket timeout per connection, a total wall-clock deadline per connection (a client sending a
+byte every few seconds restarts the socket timeout forever, but not the deadline), a cap on
+concurrent connections (extra ones are closed at once), the stdlib's own request-line and header
+limits, no request body read, and the same global rate bucket as the API route. Nothing about the
+caller is logged.
 """
 
 import contextlib
