@@ -193,7 +193,7 @@ Counting began at the migration (0098): activity before it is not in the first d
 Structured JSON logs (one line per request with `request_id`, and `workspace_id`, `project_id`, `key_id` after
 authentication; payloads and secrets are never logged). Messages worth alerting on: `lease lost while running`, `spans left untouched`, `job failed` with
 `outcome: dead_letter`, `worker loop error`, `conflicting duplicate events ignored`, `authentication unavailable`,
-`ingest unavailable`, `stream listener unavailable`, `stream failed`. Application metrics (spec §116) arrive in Phase 19; until then use the logs and these queries:
+`ingest unavailable`, `stream listener unavailable`, `stream failed`. Application metrics (spec §116) arrive in Phase 19c; until then use the logs and these queries:
 
 ```sql
 -- queue depth and oldest waiting job

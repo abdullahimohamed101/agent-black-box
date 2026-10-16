@@ -55,7 +55,7 @@ ingestion edge | control plane | database/object storage | human approvers.
   bytes (a 100 MB gzip bomb is rejected without being expanded, tested by peak memory); only gzip/identity encodings and
   `application/json` are accepted; validation errors never echo submitted values; NUL characters and lone surrogates are rejected
   at the boundary (PostgreSQL cannot store them); unhandled errors return a generic 500 without internals.
-- Response headers (implemented): every response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`; full secure-header policy is Phase 19.
+- Response headers (implemented): every response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`; the full secure-header policy (strict CSP, frame denial, referrer policy, HSTS on https) landed in Phase 19a (ADR-155).
 - Denial of service (partly implemented): per-project token buckets in front of a PostgreSQL-backed shared limiter (Phase 19a step 1, ADR-152: the
   ingestion, artifact, sign-in-start, policy, approval-decision and alert budgets hold across API processes; it fails open to the per-process
   bucket when the database cannot answer, so a database outage is also a limiter outage), bounded batches, bounded cursors and page sizes,
