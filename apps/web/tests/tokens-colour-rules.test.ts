@@ -14,18 +14,12 @@ const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "");
 const LITERAL =
   /#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|\brgba?\([^)]*\)|\bhsla?\([^)]*\)|\boklch\([^)]*\)/g;
 
-// TODO(KI-271, step 5): move the syntax-highlight colours (globals.css .tok-*), the var() fallbacks and the mask stop to tokens
-// (color.syntax.*); move the waterfall categorical palette to color.data.* and desaturate it under the fault line (ADR-071).
-const RAW_COLOUR_ALLOWED: Record<string, number> = {
-  "globals.css": 12, // .tok-* syntax colours (4 light, 4 dark), two var(--accent, #2457c5) fallbacks, var(--bad, #b3261e), a #000 mask stop
-  "waterfall.css": 35, // --wf-* data palette, light and dark, plus one box-shadow rgb()
-};
-// TODO(KI-272, step 5): none of these may stay. The two red fallbacks and the waterfall error lane become color.status.fault;
-// the magenta agent colours (hue ~350) move to a non-red hue when the data palette is rebuilt.
-const RED_LITERALS_ALLOWED: Record<string, number> = {
-  "globals.css": 1, // var(--bad, #b3261e) fallback
-  "waterfall.css": 4, // --wf-error-c (#b3261e, #ff8a80) and --wf-a5 (#92205f, #ff8fc3)
-};
+// Step 5b moved the syntax-highlight colours to color.syntax.* and the waterfall palette to color.data.* (desaturated, none
+// red-ish), and dropped the var() fallbacks: no stylesheet carries a colour literal any more (KI-271). The allow-lists stay as
+// exact objects so a new literal fails the test; they were { globals.css: 12, waterfall.css: 35 } and { globals.css: 1,
+// waterfall.css: 4 } before 5b.
+const RAW_COLOUR_ALLOWED: Record<string, number> = {};
+const RED_LITERALS_ALLOWED: Record<string, number> = {};
 
 describe("no raw colour outside the token files", () => {
   const counts: Record<string, number> = {};
@@ -48,6 +42,7 @@ describe("no raw colour outside the token files", () => {
     expect(redCounts).toEqual(RED_LITERALS_ALLOWED);
     for (const f of Object.keys(RED_LITERALS_ALLOWED))
       expect(RAW_COLOUR_ALLOWED[f]).toBeGreaterThan(0);
+    expect(Object.keys(RED_LITERALS_ALLOWED)).toEqual([]);
   });
   it("components do not carry inline colour literals", () => {
     const src = path.join(__dirname, "../src");
@@ -114,6 +109,6 @@ describe("the one red line (tokens)", () => {
       .slice(src.indexOf("const ALLOWED"), src.indexOf("];", src.indexOf("const ALLOWED")))
       .split("\n")
       .filter((l) => /^\s+\//.test(l));
-    expect(entries.length).toBeLessThanOrEqual(26); // 32 before step 5a (the runs list, notices and states shed their red)
+    expect(entries.length).toBeLessThanOrEqual(7); // 32 before step 5a, 26 after it (runs list, notices), 7 after 5b (the run page)
   });
 });

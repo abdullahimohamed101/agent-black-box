@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunDetail } from "@/components/RunDetail";
 import { RunHeadline } from "@/components/RunHeadline";
@@ -37,16 +39,12 @@ const readyModel = (f: ReturnType<typeof failureRetryRun>, status?: string) =>
     eventsComplete: true,
   });
 
-describe("headline crossfade (spec 2)", () => {
-  it("does not fade on first render, fades once per change of state, not on a re-render", () => {
+describe("the headline does not animate (design pass 2 removed the crossfade)", () => {
+  it("never carries a fade marker: not on first render, not on a change of state, not on a re-render", () => {
     const f = failureRetryRun();
     const failed = readyModel(f);
     const recovered = readyModel(f, "SUCCESS");
     const { container, rerender } = render(
-      <RunHeadline kind={failed.kind} variant="ready" model={failed} onGo={() => undefined} />,
-    );
-    expect(container.querySelector(".hl")).not.toHaveAttribute("data-fade");
-    rerender(
       <RunHeadline kind={failed.kind} variant="ready" model={failed} onGo={() => undefined} />,
     );
     expect(container.querySelector(".hl")).not.toHaveAttribute("data-fade");
@@ -59,17 +57,20 @@ describe("headline crossfade (spec 2)", () => {
       />,
     );
     expect(failed.kind).not.toBe(recovered.kind);
-    expect(container.querySelector(".hl")).toHaveAttribute("data-fade");
+    expect(container.querySelector(".hl")).not.toHaveAttribute("data-fade");
+    expect(readFileSync(path.join(__dirname, "../src/app/run-motion.css"), "utf8")).not.toMatch(
+      /headline-in|\.hl\[data-fade/,
+    );
   });
 
-  it("a focused Go button keeps focus through a change of state, and the fade still replays (review P3-9)", () => {
+  it("a focused Go button keeps focus through a change of state (review P3-9)", () => {
     const f = failureRetryRun();
     const failed = readyModel(f);
     const recovered = readyModel(f, "SUCCESS");
-    const { container, rerender } = render(
+    const { rerender } = render(
       <RunHeadline kind={failed.kind} variant="ready" model={failed} onGo={() => undefined} />,
     );
-    const go = screen.getByRole("button", { name: "Show it" });
+    const go = screen.getByRole("button", { name: "Go to first error" });
     go.focus();
     rerender(
       <RunHeadline
@@ -79,14 +80,11 @@ describe("headline crossfade (spec 2)", () => {
         onGo={() => undefined}
       />,
     );
-    expect(screen.getByRole("button", { name: "Show it" })).toBe(go);
+    expect(screen.getByRole("button", { name: "Go to first error" })).toBe(go);
     expect(go).toHaveFocus();
-    const first = container.querySelector(".hl")!.getAttribute("data-fade");
     rerender(
       <RunHeadline kind={failed.kind} variant="ready" model={failed} onGo={() => undefined} />,
     );
-    // a second change flips the marker, which restarts the CSS animation without remounting
-    expect(container.querySelector(".hl")!.getAttribute("data-fade")).not.toBe(first);
     expect(go).toHaveFocus();
   });
 
@@ -109,8 +107,8 @@ describe("the fault line's entrance (spec 1)", () => {
     const work = container.querySelector(".work")!;
     await waitFor(() => expect(work).toHaveAttribute("data-fault-intro"));
     await waitFor(() => expect(work).not.toHaveAttribute("data-fault-intro"), { timeout: 2000 });
-    await user.click(screen.getByRole("radio", { name: /Waterfall/ }));
-    await user.click(screen.getByRole("radio", { name: /Timeline/ }));
+    await user.click(screen.getByRole("tab", { name: /Waterfall/ }));
+    await user.click(screen.getByRole("tab", { name: /Timeline/ }));
     await new Promise((r) => setTimeout(r, 60));
     expect(work).not.toHaveAttribute("data-fault-intro");
   });
@@ -126,18 +124,19 @@ describe("the fault line's entrance (spec 1)", () => {
 });
 
 describe("the jump outline (spec 3)", () => {
-  it("is red for the first error (Go) and the accent for any other evidence", async () => {
+  it("lands on the first error (Go) and on any other evidence (Show evidence, from the Findings tab)", async () => {
     stubApi();
     const user = userEvent.setup();
     const { run } = withFindings(failingChainRun());
     const { container } = renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
-    await user.click(await screen.findByRole("button", { name: "Show it" }));
+    await user.click(await screen.findByRole("button", { name: "Go to first error" }));
     await waitFor(() => expect(container.querySelector('[data-landed="error"]')).not.toBeNull());
     await waitFor(() => expect(container.querySelector("[data-landed]")).toBeNull(), {
       timeout: 2000,
     });
-    await user.click(screen.getAllByRole("button", { name: "Show evidence" })[0]!);
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
+    await user.click((await screen.findAllByRole("button", { name: "Show evidence" }))[0]!);
     await waitFor(() => expect(container.querySelector('[data-landed="evidence"]')).not.toBeNull());
   });
 });
@@ -150,7 +149,7 @@ describe("the inspector's exit (spec 4)", () => {
     const { run } = failureRetryRun();
     const { container } = renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
-    await user.click(await screen.findByRole("button", { name: "Show it" }));
+    await user.click(await screen.findByRole("button", { name: "Go to first error" }));
     const drawer = await screen.findByRole("dialog");
     expect(drawer).not.toHaveAttribute("data-closing");
     await user.click(screen.getByRole("button", { name: "Close details" }));
@@ -176,7 +175,7 @@ describe("the inspector's exit (spec 4)", () => {
     const { run } = failureRetryRun();
     const { container } = renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
-    await user.click(await screen.findByRole("button", { name: "Show it" }));
+    await user.click(await screen.findByRole("button", { name: "Go to first error" }));
     await screen.findByRole("dialog");
     await user.click(screen.getByRole("button", { name: "Close details" }));
     expect(container.querySelector(".drawer")).toBeNull();

@@ -12,15 +12,18 @@ vi.mock("next/navigation", () => ({
 }));
 afterEach(() => vi.unstubAllGlobals());
 
-describe("findings in the context panel (Phase 22 D3)", () => {
-  it("the closed Context button counts the findings; each finding is one line with the way to its evidence", async () => {
+// Phase 22 D3 put findings in a context column behind a "Context" button; design pass 2 (ADR-166) makes them the Findings tab.
+describe("findings in the Findings tab (design pass 2)", () => {
+  it("the tab counts the findings; each finding is one line with the way to its evidence", async () => {
     stubApi();
+    const user = userEvent.setup();
     const { run } = withFindings(failingChainRun());
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
-    const toggle = screen.getByRole("button", { name: /^Context/ });
-    expect(await screen.findByTestId("context-summary")).toHaveTextContent("· 2 findings");
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    const tab = screen.getByRole("tab", { name: "Findings" });
+    expect(await within(tab).findByText("2")).toBeInTheDocument(); // the count is decoration beside the name
+    expect(tab).toHaveAttribute("aria-selected", "false");
+    await user.click(tab);
     const lines = await screen.findAllByTestId("finding");
     expect(lines).toHaveLength(2);
     for (const li of lines) {
@@ -36,36 +39,42 @@ describe("findings in the context panel (Phase 22 D3)", () => {
     expect(screen.getByRole("heading", { level: 3, name: /^Probable: / })).toBeInTheDocument();
   });
 
-  it("two clicks from the run page: Context, then the finding, shows its evidence", async () => {
+  it("two clicks from the run page: the Findings tab, then the finding, shows its evidence in the timeline", async () => {
     stubApi();
     const user = userEvent.setup();
     const { run } = withFindings(failingChainRun());
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
-    await user.click(screen.getByRole("button", { name: /^Context/ })); // click 1
+    await user.click(screen.getByRole("tab", { name: "Findings" })); // click 1
     const chain = (await screen.findAllByTestId("finding")).find(
       (i) => i.dataset.type === "failure_chain",
     )!;
     await user.click(within(chain).getByRole("button", { name: "Show evidence" })); // click 2
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("shell.command");
-    expect(screen.getByRole("option", { selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("option", { selected: true })).toBeInTheDocument();
   });
 
-  it("health sits in a closed disclosure; an analysed run with nothing wrong says so", async () => {
+  it("an analysed run with nothing wrong says so, and the health dimensions are no longer on the page", async () => {
     stubApi();
+    const user = userEvent.setup();
     const { run } = withFindings(successRun());
     const { container } = renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
     expect(await screen.findByTestId("findings-empty")).toHaveTextContent("Nothing wrong found.");
-    expect(container.querySelector("details.health-disclosure")).not.toHaveAttribute("open");
-    expect(screen.queryByTestId("context-summary")).toBeNull();
+    expect(container.querySelector("details.health-disclosure, [data-testid=health]")).toBeNull();
+    expect(screen.queryByText(/Health/)).toBeNull();
+    expect(within(screen.getByRole("tab", { name: "Findings" })).queryByText(/^\d+$/)).toBeNull();
   });
 
-  it("a run with one finding says '1 finding'", async () => {
+  it("a run with one finding counts 1 in the tab", async () => {
     stubApi();
     const { run } = withFindings(loopingRun());
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
-    expect(await screen.findByTestId("context-summary")).toHaveTextContent("· 1 finding");
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    const tab = screen.getByRole("tab", { name: "Findings" });
+    expect(await within(tab).findByText("1")).toBeInTheDocument();
   });
 });

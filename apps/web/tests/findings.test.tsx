@@ -42,18 +42,14 @@ function renderPanel(body: RunFindingsOut | (() => Response), runActive = false)
 }
 
 describe("Findings panel", () => {
-  it("shows loading, then health dimensions with their rule and inputs and the findings", async () => {
+  it("shows loading, then the findings; the health dimensions are not on the page (ADR-166: API only)", async () => {
     renderPanel(looping.findings!);
     expect(screen.getByRole("status")).toHaveTextContent("Loading findings");
-    const health = await screen.findByTestId("health");
-    expect(within(health).getByText("Overall:")).toBeInTheDocument();
-    const loops = health.querySelector('[data-dimension="loops"]') as HTMLElement;
-    expect(loops).toHaveTextContent("Warning");
-    expect(loops).toHaveTextContent("A probable loop, a reported loop or identical requests");
-    expect(loops).toHaveTextContent("findings: 1");
-    expect(health.querySelector('[data-dimension="reliability"]')).toHaveTextContent("OK");
+    expect(await screen.findAllByTestId("finding")).toHaveLength(1);
+    expect(screen.queryByTestId("health")).toBeNull();
+    expect(document.querySelector("[data-dimension], .health-disclosure")).toBeNull();
     // no numeric score anywhere
-    expect(health.textContent).not.toMatch(/\d+\s*\/\s*100/);
+    expect(document.body.textContent).not.toMatch(/\d+\s*\/\s*100/);
   });
 
   it("labels a heuristic finding Probable in words and a typed fact Observed", async () => {
@@ -100,7 +96,7 @@ describe("Findings panel", () => {
     expect(within(f).getByLabelText("Pattern")).toHaveTextContent("bulk_import");
   });
 
-  it("says No findings for an analysed run without any, and keeps healthy dimensions", async () => {
+  it("says No findings for an analysed run without any", async () => {
     const ok = withFindings(successRun());
     renderPanel(ok.findings!);
     expect(await screen.findByTestId("findings-empty")).toHaveTextContent("Nothing wrong found.");
@@ -127,29 +123,15 @@ describe("Findings panel", () => {
     expect(document.querySelector('[data-state="' + status + '"]')).not.toBeNull();
   });
 
-  it("does not present a failed analysis as healthy: the API's no_data dimensions are shown as such", async () => {
-    const base = looping.findings!;
-    const failed = withState(
-      base,
-      { status: "failed" },
-      {
-        health: {
-          overall: "ok",
-          dimensions: base.health.dimensions.map((d) =>
-            d.name === "loops"
-              ? { ...d, status: "no_data", rule: "The latest analysis failed.", finding_ids: [] }
-              : d,
-          ),
-        },
-      },
+  it("does not present a failed analysis as healthy: it says the analysis failed and lists the last findings", async () => {
+    renderPanel(withState(looping.findings!, { status: "failed" }));
+    expect(await screen.findByTestId("findings-state")).toHaveTextContent(
+      "The latest analysis failed and needs an operator.",
     );
-    renderPanel(failed);
-    const loops = await screen.findByTestId("health");
-    const dim = loops.querySelector('[data-dimension="loops"]') as HTMLElement;
-    expect(dim).toHaveTextContent("No data");
-    expect(dim).toHaveTextContent("The latest analysis failed.");
-    // the previous findings are still listed
+    // the previous findings are still listed, and nothing on the panel calls the run healthy or OK
     expect(screen.getAllByTestId("finding")).toHaveLength(1);
+    expect(screen.queryByTestId("health")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/healthy|\bOK\b/);
   });
 
   it("says when only the first events of a huge run were analysed", async () => {
@@ -205,26 +187,30 @@ describe("Findings panel", () => {
 });
 
 describe("RunDetail with findings", () => {
-  it("is a single panel after the banner; Show evidence selects the event and opens the drawer", async () => {
+  it("Show evidence, from the Findings tab, shows the event in the timeline and opens the drawer", async () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={looping.run.id} base={BASE} live={false} />);
+    await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
     const finding = await screen.findByTestId("finding");
     expect(finding).toHaveTextContent("Probable: the agent may be looping");
-    await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
     await user.click(within(finding).getByRole("button", { name: "Show evidence" }));
     const drawer = await screen.findByRole("dialog");
     expect(drawer).toHaveTextContent("tool.call.completed");
-    expect(screen.getByRole("option", { selected: true })).toHaveTextContent("tool.call.completed");
+    expect(await screen.findByRole("option", { selected: true })).toHaveTextContent(
+      "tool.call.completed",
+    );
   });
 
   it("clears a filter that hides the cited event", async () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={looping.run.id} base={BASE} live={false} />);
-    const finding = await screen.findByTestId("finding");
     await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
     await user.click(screen.getByLabelText("Errors only"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
+    const finding = await screen.findByTestId("finding");
     await user.click(within(finding).getByRole("button", { name: "Show evidence" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByLabelText("Errors only")).not.toBeChecked();
@@ -240,8 +226,9 @@ describe("RunDetail with findings", () => {
     });
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={looping.run.id} base={BASE} live={false} />);
-    const finding = await screen.findByTestId("finding");
     await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("3 of 3"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
+    const finding = await screen.findByTestId("finding");
     await user.click(within(finding).getByRole("button", { name: "Show evidence" }));
     const drawer = await screen.findByRole("dialog");
     expect(drawer).toHaveTextContent("tool.call.completed");
@@ -257,8 +244,9 @@ describe("RunDetail with findings", () => {
     });
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={looping.run.id} base={BASE} live={false} />);
-    const finding = await screen.findByTestId("finding");
     await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
+    const finding = await screen.findByTestId("finding");
     await user.click(within(finding).getByRole("button", { name: "Show evidence" }));
     // loaded events still win: the event is in the timeline, so no notice and a drawer
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
@@ -275,8 +263,9 @@ describe("RunDetail with findings", () => {
     });
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={failing.run.id} base={BASE} live={false} />);
-    const finding = await screen.findByTestId("finding");
     await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
+    const finding = await screen.findByTestId("finding");
     await user.click(within(finding).getAllByRole("button", { name: "Show evidence" })[0]!);
     const notice = await screen.findByTestId("event-notice");
     expect(notice).toHaveTextContent("could not be loaded");
@@ -285,11 +274,11 @@ describe("RunDetail with findings", () => {
     expect(screen.queryByTestId("event-notice")).toBeNull();
   });
 
-  it("the first-error Show it button still works through the shared jump", async () => {
+  it("the first-error Go button still works through the shared jump", async () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={failing.run.id} base={BASE} live={false} />);
-    await user.click(await screen.findByRole("button", { name: "Show it" }));
+    await user.click(await screen.findByRole("button", { name: "Go to first error" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 });

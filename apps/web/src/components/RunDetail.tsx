@@ -515,7 +515,10 @@ export function RunDetail({
     } else setDrawerEventId(row.event.event_id);
   };
 
-  const jumpTo = (eventId: string, tone: "error" | "evidence" = "evidence") => {
+  const jumpTo = (eventId: string, tone: "error" | "evidence" = "evidence", stay = false) => {
+    // "Show evidence" from the Findings or Evaluations tab shows the event in the run: the timeline, with the row marked
+    // (a deep link from the workspace Security page stays on Findings and opens the inspector there).
+    if (!stay && (view === "findings" || view === "evaluations")) changeView("timeline");
     // In replay a jump moves the playhead there: the state so far always includes the event being shown.
     if (replay.mode) replay.seekToId(eventId);
     flashLanded(eventId, tone);
@@ -573,7 +576,7 @@ export function RunDetail({
     const target = securityLine(hit).target;
     later(() => {
       changeViewRef.current("findings");
-      if (target) jumpRef.current(target);
+      if (target) jumpRef.current(target, "evidence", true);
     }, 0);
   }, [focusId, deepFindings, later]);
 
@@ -596,7 +599,7 @@ export function RunDetail({
     });
 
   const poll = active || run.data?.summary_state === "processing";
-  const findingCounts = useFindingCounts(runId, poll);
+  const findingCounts = useFindingCounts(runId, poll, available);
   const story = useMemo(() => buildStory(shown), [shown]);
   const hasStory = isCodingRun(shown) && story.length > 0;
 
@@ -786,18 +789,22 @@ export function RunDetail({
             <dt>{copy.detailsList.started}</dt>
             <dd>{formatTimestamp(r.started_at)}</dd>
           </div>
-          <div className="phone-only">
-            <dt>{copy.figures.tokens}</dt>
-            <dd>
-              {rs
-                ? `${formatInt(rs.inputTokens)} in / ${formatInt(rs.outputTokens)} out`
-                : `${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`}
-            </dd>
-          </div>
-          <div className="phone-only">
-            <dt>{copy.figures.retries}</dt>
-            <dd>{formatInt(retries)}</dd>
-          </div>
+          {phone && (
+            <>
+              <div className="phone-only">
+                <dt>{copy.figures.tokens}</dt>
+                <dd>
+                  {rs
+                    ? `${formatInt(rs.inputTokens)} in / ${formatInt(rs.outputTokens)} out`
+                    : `${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`}
+                </dd>
+              </div>
+              <div className="phone-only">
+                <dt>{copy.figures.retries}</dt>
+                <dd>{formatInt(retries)}</dd>
+              </div>
+            </>
+          )}
           <div>
             <dt>{copy.detailsList.modelCalls}</dt>
             <dd>{formatInt(rs ? rs.counts.modelCalls : num(s["llm_calls"]))}</dd>

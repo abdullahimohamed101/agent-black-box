@@ -3,8 +3,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // ADR-111 / ADR-166: red means failure and nothing else (design pass 2 tightens it to the fault line and the failed word:
-// tests/tokens-colour-rules.test.ts pins the token side and a ratchet on this list's length; step 5 shrinks it; 5a: 32 to 26). The old and
-// the new token names are both policed.
+// tests/tokens-colour-rules.test.ts pins the token side and a ratchet on this list's length; 32 before 5a, 26 after 5a, 7 after 5b:
+// the run page's tinted rows, red headline, red counts, red finding bars, red drawer section and the red landing outline are gone).
+// The old and the new token names are both policed.
 // ADR-111: red means failure and nothing else. Any rule that reads --fail, --bad or their -bg tints must be on this allowlist
 // of failure selectors; a new use needs a new entry here, which is the review point.
 // Every stylesheet in src/app, not a hand-picked list: a new file is covered the day it is added (review P2-2).
@@ -13,32 +14,13 @@ const FILES = readdirSync(DIR)
   .filter((f) => f.endsWith(".css"))
   .sort();
 const ALLOWED: RegExp[] = [
-  /^\.stat\[data-tone="bad"\]/,
   /^\.badge\[data-status="(FAILED|TIMED_OUT|BLOCKED)"\]/, // the status word of a run
-  /^\.tag-bad$/,
-  /^\.live-bar\[data-tone="bad"\]/,
-  /^\.tl-row\[data-(first-)?error\]/,
-  /^\.drawer\[data-error\]/,
-  /^\.drawer-error/,
-  /^\.drawer \.drawer-error/,
-  /^\.story li\[data-tone="bad"\]/,
-  /^\.column-fill\[data-tone="bad"\]/,
-  /^\.field-error$/,
-  /^\.findings-state\[data-tone="bad"\]/,
-  /^\.finding\[data-severity="critical"\]/,
+  /^\.tl-fault(-label|::before)?$/, // the fault line (its ::before is the line itself) and its label
+  /^\.wf-fault-(line|flag)/, // the same cut across the waterfall's lanes, and its flag
   /^\.run-fail-dash$/, // the miniature fault line before a failure sentence in the runs list (step 5a)
-  /^\.evaluation-error$/,
-  /^\.compare-table \.delta\[data-tone="bad"\]/,
-  /^\.agent-item\[data-error\]/,
-  /^\.wf-row\[data-(first-)?error\]/,
-  /^\.wf-lane-bar\[data-error\]/,
-  /^\.hl\[data-kind="failed"\] \.hl-lead$/,
-  /^\.tl-fault(-label|::before)?$/, // the fault line (its ::before is the line itself) and its label (Phase 22 step 4)
-  /^\.(tl|wf)-row\[data-landed="error"\]::after$/, // the outline that fades after a jump to the first error (step 6)
-  /^\.tl-row\[data-after-fault\]/, // the tint below the fault
-  /^\.wf-fault-(line|region|flag)/,
-  /^\.replay-fault$/, // the first-error mark on the replay scrub bar (Phase 12 step 2)
   /^:root$/, // token definitions and aliases
+  /^\.column-fill\[data-tone="bad"\]/, // TODO(5c): the Analytics chart's error column, the last chart that paints a failure red
+  /^\.field-error$/, // TODO(5d): a form field's validation message (Settings pages)
 ];
 
 function rules(src: string): { selector: string; body: string }[] {
@@ -72,7 +54,7 @@ describe("red is for failure only", () => {
       expect(FILES).toContain(f);
   });
   it("finds the failure rules at all", () => {
-    expect(uses.length).toBeGreaterThan(10);
+    expect(uses.length).toBeGreaterThanOrEqual(8);
   });
   it("every rule that reads --fail/--bad is a failure selector", () => {
     const stray = uses.filter((u) => {

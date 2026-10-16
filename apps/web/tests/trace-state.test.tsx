@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Analytics } from "@/components/Analytics";
@@ -41,9 +42,10 @@ describe("a run whose trace the retention policy removed", () => {
     );
     expect(notice).toHaveAttribute("role", "note");
     expect(screen.getByRole("heading", { level: 1, name: "Nightly revenue report" })).toBeVisible();
-    // the numbers of the record are still there
-    expect(screen.getByText("Tool calls").closest("div")).toHaveTextContent("1");
+    // the numbers of the record are still there: the five readouts, and the rest one click away in Details
     expect(screen.getByText("Tokens").closest("div")).toHaveTextContent("1,200 in / 180 out");
+    await userEvent.setup().click(screen.getByRole("button", { name: /^Details/ }));
+    expect(screen.getByText("Tool calls").closest("div")).toHaveTextContent("1");
     // no tabs, no empty or error state of the trace
     expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.queryByRole("button", { name: /Replay/ })).toBeNull();

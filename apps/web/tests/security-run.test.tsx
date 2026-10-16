@@ -29,7 +29,7 @@ describe("security on the run page (Phase 13 D5)", () => {
     const chip = await screen.findByTestId("security-chip");
     expect(chip).toHaveTextContent("6 security findings");
     expect(chip).toHaveAccessibleName(/6 security findings \(most severe: Critical\)/);
-    expect(chip.closest(".run-title")).not.toBeNull();
+    expect(chip.closest(".title-line")).not.toBeNull();
   });
 
   it("has no chip for a run without security findings", async () => {
@@ -40,28 +40,28 @@ describe("security on the run page (Phase 13 D5)", () => {
     expect(screen.queryByTestId("security-chip")).toBeNull();
   });
 
-  it("the chip opens the Context column on the Security group (keyboard works)", async () => {
+  it("the chip opens the Findings tab on the Security group (keyboard works)", async () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={leaked().run.id} base={BASE} />);
     const chip = await screen.findByTestId("security-chip");
-    await screen.findByTestId("security-group");
-    expect(screen.getByRole("button", { name: /^Context/ })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    const tab = screen.getByRole("tab", { name: "Findings" });
+    expect(tab).toHaveAttribute("aria-selected", "false");
     chip.focus();
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("button", { name: /^Context/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    await screen.findByTestId("security-group");
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(document.getElementById("security-h")),
     );
-    expect(document.activeElement).toBe(document.getElementById("security-h"));
   });
 
   it("the Security group sits above the reliability findings and lists one line per finding", async () => {
     stubApi();
+    const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={leaked().run.id} base={BASE} />);
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
     const group = await screen.findByTestId("security-group");
     const lines = await within(group).findAllByTestId("security-finding");
     expect(lines).toHaveLength(6);
@@ -77,22 +77,26 @@ describe("security on the run page (Phase 13 D5)", () => {
     expect(screen.queryAllByTestId("finding")).toHaveLength(0);
   });
 
-  it("'Show evidence' opens the event the finding cites", async () => {
+  it("'Show evidence' shows the event the finding cites, in the timeline", async () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={leaked().run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
-    await user.click(screen.getByRole("button", { name: /^Context/ }));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
     const lines = await screen.findAllByTestId("security-finding");
     const file = lines.find((l) => l.textContent?.includes("usually holds secrets"))!;
     await user.click(within(file).getByRole("button", { name: "Show evidence" }));
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("file.read");
+    expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("a finding with no event link says so instead of offering a button", async () => {
     stubApi();
+    const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={exportLogs().run.id} base={BASE} />);
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
     const lines = await screen.findAllByTestId("security-finding");
     const cred = lines.find(
       (l) => l.dataset.severity === "critical" && l.textContent?.includes("credential"),
@@ -101,10 +105,12 @@ describe("security on the run page (Phase 13 D5)", () => {
     expect(cred).toHaveTextContent("No event to show");
   });
 
-  it("the Context button counts security findings first: 'Context · 6 security'", async () => {
+  it("the Findings tab counts the findings, security ones included", async () => {
     stubApi();
     renderWithQuery(<RunDetail runId={leaked().run.id} base={BASE} />);
-    expect(await screen.findByTestId("context-summary")).toHaveTextContent("· 6 security");
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    const tab = screen.getByRole("tab", { name: "Findings" });
+    expect(await within(tab).findByText("6")).toBeInTheDocument();
   });
 
   it("an analysed run with nothing suspicious says so and names the detectors that are on", async () => {
@@ -112,6 +118,8 @@ describe("security on the run page (Phase 13 D5)", () => {
     const user = userEvent.setup();
     const clean = fixtureRuns().find((f) => f.run.name === "Fix login session expiry")!;
     renderWithQuery(<RunDetail runId={clean.run.id} base={BASE} />);
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
     const box = await screen.findByTestId("security-clean");
     expect(box).toHaveTextContent("Nothing suspicious found");
     expect(calls.some((c) => c.includes("/security/detectors"))).toBe(false); // fetched only when opened
@@ -120,7 +128,7 @@ describe("security on the run page (Phase 13 D5)", () => {
     expect(await within(box).findByText("Secret file read")).toBeInTheDocument();
   });
 
-  it("?finding= opens the column, marks the finding and shows its evidence", async () => {
+  it("?finding= opens the Findings tab, marks the finding and shows its evidence", async () => {
     stubApi();
     const f = leaked();
     const target = f.findings!.items.find((i) => i.detector === "sec.risky_git")!;
@@ -132,10 +140,10 @@ describe("security on the run page (Phase 13 D5)", () => {
       return el!;
     });
     expect(marked.getAttribute("data-finding-id")).toBe(target.id);
-    // The column opens on the render after the finding is marked: wait for it instead of racing it (a flake under load).
+    // The tab opens on the render after the finding is marked: wait for it instead of racing it (a flake under load).
     await vi.waitFor(() =>
-      expect(screen.getByRole("button", { name: /^Context/ })).toHaveAttribute(
-        "aria-pressed",
+      expect(screen.getByRole("tab", { name: "Findings" })).toHaveAttribute(
+        "aria-selected",
         "true",
       ),
     );
@@ -187,7 +195,10 @@ describe("a finding renders only the API's known fields", () => {
 
   it("a real fixture finding list never shows the content its events hold", async () => {
     stubApi();
+    const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={leaked().run.id} base={BASE} />);
+    await screen.findByRole("listbox", { name: /Run timeline/ });
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
     const group = await screen.findByTestId("security-group");
     await within(group).findAllByTestId("security-finding");
     for (const s of SECURITY_SENTINELS) expect(group.textContent).not.toContain(s);

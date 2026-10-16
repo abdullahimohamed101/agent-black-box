@@ -452,38 +452,24 @@ pre {
   color: var(--wait);
 }
 .tok-kw {
-  color: #5b21b6;
-  font-weight: 600;
+  color: var(--color-syntax-keyword);
+  font-weight: var(--weight-strong);
 }
 .tok-str {
-  color: #116329;
+  color: var(--color-syntax-string);
 }
 .tok-num {
-  color: #8a4600;
+  color: var(--color-syntax-number);
 }
 .tok-com {
-  color: var(--muted);
+  color: var(--color-text-secondary);
   font-style: italic;
 }
 .tok-fn {
-  color: #0a4fa3;
+  color: var(--color-syntax-function);
 }
 .tok-op {
-  color: var(--muted);
-}
-@media (prefers-color-scheme: dark) {
-  .tok-kw {
-    color: #d2a8ff;
-  }
-  .tok-str {
-    color: #7ee787;
-  }
-  .tok-num {
-    color: #ffa657;
-  }
-  .tok-fn {
-    color: #79c0ff;
-  }
+  color: var(--color-text-secondary);
 }
 /* Analytics: bars and columns are built from elements, never from trace-derived HTML. */
 .toolbar {
@@ -534,7 +520,7 @@ h3 {
 .bar-fill {
   display: block;
   height: 100%;
-  background: var(--accent, #2457c5);
+  background: var(--accent);
 }
 .bar-value {
   text-align: right;
@@ -561,11 +547,11 @@ h3 {
 .column-fill {
   display: block;
   width: 100%;
-  background: var(--accent, #2457c5);
+  background: var(--accent);
   border-radius: 2px 2px 0 0;
 }
 .column-fill[data-tone="bad"] {
-  background: var(--bad, #b3261e);
+  background: var(--bad);
 }
 /* Figures shown while the next window or project is loading are dimmed and announced. */
 [data-stale="true"] > :not(.updating) {

@@ -352,7 +352,7 @@ test.describe("acceptance 6: the playhead is the URL", () => {
     await expect(play(page)).toBeVisible(); // opens paused
     await page.reload();
     await expect(scrub(page)).toHaveValue("6");
-    await page.getByRole("radio", { name: "Waterfall" }).check();
+    await page.getByRole("tab", { name: "Waterfall" }).click();
     await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("waterfall");
     expect(new URL(page.url()).searchParams.get("t")).toBe(id(6));
     await seekTo(page, 8);
@@ -499,7 +499,7 @@ test.describe("375 px", () => {
     await openRun(page, BASE, FAILED);
     const ctx = (await page.getByRole("button", { name: /^Context/ }).boundingBox())!;
     const rep = (await replayButton(page).boundingBox())!;
-    const tab = (await page.getByRole("radio", { name: "Timeline" }).locator("..").boundingBox())!;
+    const tab = (await page.getByRole("tab", { name: "Timeline" }).locator("..").boundingBox())!;
     expect(Math.abs(rep.y - ctx.y)).toBeLessThan(4);
     expect(rep.y).toBeLessThan(tab.y + tab.height);
     expect(rep.x + rep.width).toBeLessThanOrEqual(375);
@@ -510,9 +510,9 @@ test.describe("375 px", () => {
     await enterReplay(page);
     await seekTo(page, errIdx);
     expect(await overflowX(page)).toBeLessThanOrEqual(0);
-    await page.getByRole("radio", { name: "Waterfall" }).check();
+    await page.getByRole("tab", { name: "Waterfall" }).click();
     expect(await overflowX(page)).toBeLessThanOrEqual(0);
-    await page.getByRole("radio", { name: "Evidence" }).check();
+    await page.getByRole("tab", { name: "Evidence" }).click();
     expect(await overflowX(page)).toBeLessThanOrEqual(0);
   });
 });
@@ -540,7 +540,7 @@ test.describe("axe", () => {
       await check("inspector");
       await page.keyboard.press("Escape");
       await seekTo(page, failed.events.length - 1);
-      await page.getByRole("radio", { name: "Waterfall" }).check();
+      await page.getByRole("tab", { name: "Waterfall" }).click();
       await check("waterfall");
     });
   }

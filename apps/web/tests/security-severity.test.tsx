@@ -63,15 +63,10 @@ describe("severity colours", () => {
   });
 });
 
-import { contextSummary, securityCountText } from "@/lib/security";
+import { securityCountText } from "@/lib/security";
 describe("wording", () => {
   it("counts in the singular for one", () => {
     expect(securityCountText(1)).toBe("1 security finding");
     expect(securityCountText(2)).toBe("2 security findings");
-  });
-  it("the Context summary keeps the reliability wording and adds security first", () => {
-    expect(contextSummary(0, 2)).toBe("2 findings");
-    expect(contextSummary(2, 1)).toBe("2 security, 1 finding");
-    expect(contextSummary(1, 0)).toBe("1 security");
   });
 });

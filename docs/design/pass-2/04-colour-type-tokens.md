@@ -94,6 +94,24 @@ what is rendered and what every contrast number below is computed on.
 | `color.legacy.ok-bg` | `--color-legacy-ok-bg` | `#e2f5e8` | `#16301f` | DELETED IN STEP 5 |
 | `color.legacy.wait-bg` | `--color-legacy-wait-bg` | `#fff1d1` | `#3a2c0f` | DELETED IN STEP 5: amber tint |
 | `color.legacy.fault-bg` | `--color-legacy-fault-bg` | `#fbe7e5` | `#3b1d1b` | DELETED IN STEP 5: red tint (the one red line forbids fills) |
+| `color.data.llm` | `--color-data-llm` | `#72649b` | `#9c8dca` | waterfall lane: model calls |
+| `color.data.tool` | `--color-data-tool` | `#46729e` | `#6d9dce` | waterfall lane: tool calls |
+| `color.data.shell` | `--color-data-shell` | `#846b34` | `#b89a5a` | waterfall lane: shell commands |
+| `color.data.agent` | `--color-data-agent` | `#407754` | `#69a980` | waterfall lane: agents |
+| `color.data.db` | `--color-data-db` | `#357a82` | `#56a7b0` | waterfall lane: database |
+| `color.data.neutral` | `--color-data-neutral` | `#676f7a` | `#9099a5` | waterfall lane: custom and other |
+| `color.data.agent-0` | `--color-data-agent-0` | `#2a5885` | `#85b6e9` | agent chip 0 in the waterfall and the timeline (text, 4.5:1; none is red-ish) |
+| `color.data.agent-1` | `--color-data-agent-1` | `#2e5f3a` | `#87c293` | agent chip 1 in the waterfall and the timeline (text, 4.5:1; none is red-ish) |
+| `color.data.agent-2` | `--color-data-agent-2` | `#714d1d` | `#ddae77` | agent chip 2 in the waterfall and the timeline (text, 4.5:1; none is red-ish) |
+| `color.data.agent-3` | `--color-data-agent-3` | `#594a82` | `#b5a6e5` | agent chip 3 in the waterfall and the timeline (text, 4.5:1; none is red-ish) |
+| `color.data.agent-4` | `--color-data-agent-4` | `#115d65` | `#70c0c9` | agent chip 4 in the waterfall and the timeline (text, 4.5:1; none is red-ish) |
+| `color.data.agent-5` | `--color-data-agent-5` | `#575d24` | `#b5bf7b` | agent chip 5 in the waterfall and the timeline (text, 4.5:1; none is red-ish) |
+| `color.data.agent-6` | `--color-data-agent-6` | `#4e5661` | `#a9b2be` | agent chip 6 in the waterfall and the timeline (text, 4.5:1; none is red-ish) |
+| `color.data.agent-7` | `--color-data-agent-7` | `#71462e` | `#e2a989` | agent chip 7 in the waterfall and the timeline (text, 4.5:1; none is red-ish) |
+| `color.syntax.keyword` | `--color-syntax-keyword` | `#5b21b6` | `#d2a8ff` | code keyword |
+| `color.syntax.string` | `--color-syntax-string` | `#116329` | `#7ee787` | code string |
+| `color.syntax.number` | `--color-syntax-number` | `#8a4600` | `#ffa657` | code number |
+| `color.syntax.function` | `--color-syntax-function` | `#0a4fa3` | `#79c0ff` | code function name |
 <!-- tokens:report:semantic:end -->
 
 Status colours: the direction removes every fill, so there is no "background variant" of a status colour (the prompt's
@@ -162,6 +180,28 @@ selected row and the filled button.
 | `status.fault` on `legacy.fault-bg` (legacy) | 5.50 | 6.68 | 4.5:1 (AA) | pass | no | legacy red tint, until step 5 |
 | `status.caution` on `legacy.wait-bg` (legacy) | 5.29 | 9.05 | 4.5:1 (AA) | pass | dark only | legacy amber tint (removed diff lines), until step 5 |
 | `legacy.ok` on `bg.raised` (legacy) | 5.40 | 8.39 | 4.5:1 (AA) | pass | dark only | legacy green word, until step 5 |
+| `data.llm` on `bg.canvas` | 4.92 | 6.23 | 3:1 (AA, graphics) | pass | yes | waterfall bar (graphics, 3:1) |
+| `data.tool` on `bg.canvas` | 4.74 | 6.48 | 3:1 (AA, graphics) | pass | yes | waterfall bar (graphics, 3:1) |
+| `data.shell` on `bg.canvas` | 4.77 | 6.87 | 3:1 (AA, graphics) | pass | yes | waterfall bar (graphics, 3:1) |
+| `data.agent` on `bg.canvas` | 4.95 | 6.68 | 3:1 (AA, graphics) | pass | yes | waterfall bar (graphics, 3:1) |
+| `data.db` on `bg.canvas` | 4.63 | 6.65 | 3:1 (AA, graphics) | pass | yes | waterfall bar (graphics, 3:1) |
+| `data.neutral` on `bg.canvas` | 4.77 | 6.41 | 3:1 (AA, graphics) | pass | yes | waterfall bar (graphics, 3:1) |
+| `data.agent-0` on `bg.canvas` | 6.96 | 8.68 | 4.5:1 (AA) | pass | dark only | agent chip text |
+| `data.agent-1` on `bg.canvas` | 7.01 | 8.95 | 4.5:1 (AA) | pass | yes | agent chip text |
+| `data.agent-2` on `bg.canvas` | 7.09 | 9.15 | 4.5:1 (AA) | pass | yes | agent chip text |
+| `data.agent-3` on `bg.canvas` | 7.23 | 8.41 | 4.5:1 (AA) | pass | yes | agent chip text |
+| `data.agent-4` on `bg.canvas` | 7.10 | 8.87 | 4.5:1 (AA) | pass | yes | agent chip text |
+| `data.agent-5` on `bg.canvas` | 6.58 | 9.42 | 4.5:1 (AA) | pass | dark only | agent chip text |
+| `data.agent-6` on `bg.canvas` | 6.98 | 8.62 | 4.5:1 (AA) | pass | dark only | agent chip text |
+| `data.agent-7` on `bg.canvas` | 7.54 | 9.04 | 4.5:1 (AA) | pass | yes | agent chip text |
+| `syntax.keyword` on `bg.canvas` | 8.44 | 9.49 | 4.5:1 (AA) | pass | yes | code highlighting |
+| `syntax.keyword` on `bg.raised` | 8.98 | 8.43 | 4.5:1 (AA) | pass | yes | code highlighting in a raised surface |
+| `syntax.string` on `bg.canvas` | 6.94 | 12.03 | 4.5:1 (AA) | pass | dark only | code highlighting |
+| `syntax.string` on `bg.raised` | 7.39 | 10.68 | 4.5:1 (AA) | pass | yes | code highlighting in a raised surface |
+| `syntax.number` on `bg.canvas` | 6.67 | 9.54 | 4.5:1 (AA) | pass | dark only | code highlighting |
+| `syntax.number` on `bg.raised` | 7.10 | 8.47 | 4.5:1 (AA) | pass | yes | code highlighting in a raised surface |
+| `syntax.function` on `bg.canvas` | 7.42 | 9.50 | 4.5:1 (AA) | pass | yes | code highlighting |
+| `syntax.function` on `bg.raised` | 7.89 | 8.44 | 4.5:1 (AA) | pass | yes | code highlighting in a raised surface |
 <!-- tokens:report:contrast:end -->
 
 ### 2.5 Dark mode: where it is not a simple inversion
@@ -265,56 +305,54 @@ step 5 migrates the readers and deletes the alias; **kept** = unchanged value an
 the old screens keep working.
 
 <!-- tokens:report:aliases:start -->
-65 old custom properties: 19 aliased to a faithful new token, 31 kept unchanged, 15 to be deleted in step 5 (their role is removed, or they alias a removed role).
+61 old custom properties: 19 aliased to a faithful new token, 27 kept unchanged, 15 to be deleted in step 5 (their role is removed, or they alias a removed role).
 
 | Old name | Status | Now | Readers | Note |
 | --- | --- | --- | --- | --- |
-| `--bg` | aliased | `--color-bg-canvas` | 9 |  |
-| `--surface` | aliased | `--color-bg-raised` | 54 | collapses into canvas in step 5 (tables and panels sit directly on it) |
-| `--surface-2` | deleted in step 5 | `--color-legacy-surface-2` | 7 | removed role |
-| `--border` | aliased | `--color-border-subtle` | 90 |  |
-| `--border-strong` | aliased | `--color-border-strong` | 19 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
-| `--ink` | aliased | `--color-text-primary` | 22 |  |
-| `--fg` | deleted in step 5 | `--color-text-primary` | 37 | ADR-111 alias of --ink |
-| `--fg-2` | deleted in step 5 | `--color-text-primary` | 11 | no role between ink and ink-2 |
-| `--muted` | aliased | `--color-text-secondary` | 67 |  |
-| `--accent` | aliased | `--color-interactive-default` | 52 |  |
-| `--accent-bg` | deleted in step 5 | `--color-bg-wash` | 2 | the accent fill is removed; the wash is the selection colour |
-| `--sel` | aliased | `--color-bg-wash` | 14 |  |
-| `--info` | deleted in step 5 | `--color-interactive-default` | 3 | removed role |
-| `--fail` | aliased | `--color-status-fault` | 11 |  |
-| `--bad` | deleted in step 5 | `--color-status-fault` | 21 | ADR-111 alias of --fail |
-| `--fail-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 2 | no red fill (one red line) |
-| `--bad-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 2 | no red fill (one red line) |
-| `--wait` | aliased | `--color-status-caution` | 27 |  |
-| `--warn` | deleted in step 5 | `--color-status-caution` | 10 | ADR-111 alias of --wait |
-| `--wait-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 7 | caution is text only, no fill |
-| `--warn-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 1 | caution is text only, no fill |
-| `--ok` | deleted in step 5 | `--color-legacy-ok` | 5 | green removed; success is a check glyph in ink-2 |
+| `--bg` | aliased | `--color-bg-canvas` | 4 |  |
+| `--surface` | aliased | `--color-bg-raised` | 26 | collapses into canvas in step 5 (tables and panels sit directly on it) |
+| `--surface-2` | deleted in step 5 | `--color-legacy-surface-2` | 6 | removed role |
+| `--border` | aliased | `--color-border-subtle` | 46 |  |
+| `--border-strong` | aliased | `--color-border-strong` | 8 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
+| `--ink` | aliased | `--color-text-primary` | 20 |  |
+| `--fg` | deleted in step 5 | `--color-text-primary` | 10 | ADR-111 alias of --ink |
+| `--fg-2` | deleted in step 5 | `--color-text-primary` | 2 | no role between ink and ink-2 |
+| `--muted` | aliased | `--color-text-secondary` | 36 |  |
+| `--accent` | aliased | `--color-interactive-default` | 24 |  |
+| `--accent-bg` | deleted in step 5 | `--color-bg-wash` | 0 | the accent fill is removed; the wash is the selection colour |
+| `--sel` | aliased | `--color-bg-wash` | 3 |  |
+| `--info` | deleted in step 5 | `--color-interactive-default` | 0 | removed role |
+| `--fail` | aliased | `--color-status-fault` | 6 |  |
+| `--bad` | deleted in step 5 | `--color-status-fault` | 2 | ADR-111 alias of --fail |
+| `--fail-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 0 | no red fill (one red line) |
+| `--bad-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 0 | no red fill (one red line) |
+| `--wait` | aliased | `--color-status-caution` | 24 |  |
+| `--warn` | deleted in step 5 | `--color-status-caution` | 1 | ADR-111 alias of --wait |
+| `--wait-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 6 | caution is text only, no fill |
+| `--warn-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 0 | caution is text only, no fill |
+| `--ok` | deleted in step 5 | `--color-legacy-ok` | 2 | green removed; success is a check glyph in ink-2 |
 | `--ok-bg` | deleted in step 5 | `--color-legacy-ok-bg` | 0 | green removed |
-| `--mark` | aliased | `--color-brand-mark` | 1 |  |
-| `--sans` | aliased | `--font-sans` | 22 |  |
-| `--mono` | aliased | `--font-mono` | 48 |  |
-| `--fs-headline` | aliased | `--type-h1-size` | 4 |  |
-| `--fs-title` | aliased | `--type-h2-size` | 8 |  |
-| `--fs-body` | aliased | `--type-body-size` | 12 |  |
-| `--fs-small` | aliased | `--type-small-size` | 10 |  |
-| `--ease-out` | aliased | `--motion-easing-out` | 8 |  |
-| `--cond` | deleted in step 5 | (defined in globals.css, unchanged) | 26 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
-| `--serif` | deleted in step 5 | (defined in globals.css, unchanged) | 5 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
-| `--t-fast` | kept | (defined in globals.css, unchanged) | 2 | motion contract (tests/motion-contract.test.ts reads globals.css); motion.duration.* are the new names, step 5 aliases these |
-| `--t-base` | kept | (defined in globals.css, unchanged) | 1 | as --t-fast |
+| `--mark` | aliased | `--color-brand-mark` | 0 |  |
+| `--sans` | aliased | `--font-sans` | 15 |  |
+| `--mono` | aliased | `--font-mono` | 25 |  |
+| `--fs-headline` | aliased | `--type-h1-size` | 1 |  |
+| `--fs-title` | aliased | `--type-h2-size` | 7 |  |
+| `--fs-body` | aliased | `--type-body-size` | 7 |  |
+| `--fs-small` | aliased | `--type-small-size` | 1 |  |
+| `--ease-out` | aliased | `--motion-easing-out` | 5 |  |
+| `--cond` | deleted in step 5 | (defined in globals.css, unchanged) | 8 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
+| `--serif` | deleted in step 5 | (defined in globals.css, unchanged) | 3 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
+| `--t-fast` | kept | (defined in globals.css, unchanged) | 0 | motion contract (tests/motion-contract.test.ts reads globals.css); motion.duration.* are the new names, step 5 aliases these |
+| `--t-base` | kept | (defined in globals.css, unchanged) | 0 | as --t-fast |
 | `--t-slow` | kept | (defined in globals.css, unchanged) | 0 | as --t-fast |
 | `--t-land` | kept | (defined in globals.css, unchanged) | 1 | as --t-fast |
-| `--top-h` | aliased | `--layout-topbar` | 3 |  |
-| `--ctx-w` | kept | (unchanged) | 2 |  |
+| `--top-h` | aliased | `--layout-topbar` | 4 |  |
 | `--illus-accent` | kept | (unchanged) | 2 |  |
-| `--insp-w` | kept | (unchanged) | 1 |  |
+| `--insp-w` | kept | (unchanged) | 3 |  |
 | `--pol-lh` | kept | (unchanged) | 3 |  |
 | `--t-exit` | kept | (unchanged) | 1 | motion contract duration |
 | `--t-fault` | kept | (unchanged) | 2 | motion contract duration |
 | `--t-panel` | kept | (unchanged) | 1 | motion contract duration |
-| `--tone` | kept | (unchanged) | 1 | component-local, set per state |
 | `--wf-a0` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-a1` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-a2` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
@@ -326,13 +364,11 @@ the old screens keep working.
 | `--wf-agent` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-custom` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-db` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
-| `--wf-error-c` | kept | (unchanged) | 2 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-label-w` | kept | (unchanged) | 3 | layout width |
 | `--wf-llm` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-meta-w` | kept | (unchanged) | 3 | layout width |
 | `--wf-other` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-shell` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
-| `--wf-timeout-c` | kept | (unchanged) | 2 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-tool` | kept | (unchanged) | 2 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 <!-- tokens:report:aliases:end -->
 

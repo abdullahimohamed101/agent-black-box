@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { FindingOut, RunOut } from "@/lib/api/types";
 import {
   type DetectorOut,
-  contextSummary,
   securityCountText,
   securityLine,
   securitySeverityMeta,
@@ -169,11 +168,10 @@ export function SecurityFindings({
   );
 }
 
-/** Counts for the Context button and the folded strip: security and reliability findings of the same query. */
-export function useFindingCounts(runId: string, poll: boolean) {
-  const items = useRunFindings(runId, poll).data?.items ?? [];
+/** Counts for the Findings tab: security and reliability findings of the same query (not asked for once the trace is gone). */
+export function useFindingCounts(runId: string, poll: boolean, enabled = true) {
+  const items = useRunFindings(runId, poll, enabled).data?.items ?? [];
   const { security, reliability } = splitFindings(items);
   return { security: security.length, reliability: reliability.length };
 }
 
-export { contextSummary };

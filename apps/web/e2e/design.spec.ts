@@ -326,11 +326,11 @@ test.describe("run work area", () => {
     page,
   }) => {
     await page.goto(`${BASE}/runs/${RUN(7)}`);
-    await page.getByRole("radio", { name: "Waterfall" }).check();
+    await page.getByRole("tab", { name: "Waterfall" }).click();
     await expect(page.getByTestId("waterfall")).toBeVisible();
     const h = (await page.locator(".wf-scroll").boundingBox())!.height;
     expect(h).toBeGreaterThan(250);
-    await expect(page.getByRole("radio", { name: "Waterfall" })).toBeChecked();
+    await expect(page.getByRole("tab", { name: "Waterfall" })).toHaveAttribute("aria-selected", "true");
   });
 
   test("the 10,000-event run: bounded rows in both views, the page still does not scroll", async ({
@@ -342,7 +342,7 @@ test.describe("run work area", () => {
     await list.focus();
     await page.keyboard.press("End");
     expect(await page.getByRole("option").count()).toBeLessThan(80);
-    await page.getByRole("radio", { name: "Waterfall" }).check();
+    await page.getByRole("tab", { name: "Waterfall" }).click();
     await expect(page.getByTestId("waterfall")).toBeVisible();
     expect(await page.locator('.wf-scroll [role="row"]').count()).toBeLessThanOrEqual(80);
     const m = await page.evaluate(() => [
@@ -457,7 +457,7 @@ test.describe("evidence view", () => {
     await page.goto(`${BASE}/runs/${RUN(11)}?view=evidence`);
     const region = page.getByRole("region", { name: "Captured artifacts" });
     await expect(region.getByRole("row")).toHaveCount(1 + 4); // header, two diffs, stdout and stderr of the one failed command
-    await expect(page.getByRole("radio", { name: "Evidence" })).toBeChecked();
+    await expect(page.getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
     await axe(page);
     await region
       .getByRole("button", { name: /^Open diff/ })
@@ -484,7 +484,7 @@ test.describe("evidence view", () => {
   test("a viewer's evidence view never shows the API's placeholder", async ({ page }) => {
     await withArtifacts(page);
     await page.goto(`/w/viewer-only/projects/all/runs/${RUN(7)}?view=evidence`);
-    await expect(page.getByRole("radio", { name: "Evidence" })).toBeChecked();
+    await expect(page.getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
     await page.waitForTimeout(300);
     const text = await page.locator("body").innerText();
     expect(text).not.toContain("[withheld]");
@@ -588,7 +588,7 @@ test.describe("motion", () => {
       await page.waitForTimeout(100);
       expect(await animations(page)).toBe(0);
       expect(await drawer.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
-      await page.getByRole("radio", { name: "Waterfall" }).check();
+      await page.getByRole("tab", { name: "Waterfall" }).click();
       await page.waitForTimeout(100);
       expect(await animations(page)).toBe(0);
     });
@@ -686,9 +686,9 @@ test.describe("motion", () => {
       expect(await started(page)).toEqual(["fault-draw-x"]);
       await page.getByLabel("Errors only").check();
       await page.getByLabel("Errors only").uncheck();
-      await page.getByRole("radio", { name: "Waterfall" }).check();
+      await page.getByRole("tab", { name: "Waterfall" }).click();
       await expect(page.getByTestId("waterfall")).toBeVisible();
-      await page.getByRole("radio", { name: "Timeline", exact: false }).first().check();
+      await page.getByRole("tab", { name: "Timeline", exact: false }).first().click();
       await page.waitForTimeout(400);
       expect(await started(page)).toEqual(["fault-draw-x"]);
     });
@@ -817,7 +817,7 @@ test.describe("polish: toolbar, story, agents, context strip and view tabs", () 
 
   test("the view tabs show counts without changing their names", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await expect(page.getByRole("radio", { name: "Timeline", exact: true })).toBeChecked();
+    await expect(page.getByRole("tab", { name: "Timeline", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".seg-count").first()).toHaveText("15");
   });
 });

@@ -77,9 +77,13 @@ function stub(viewer: boolean, edit?: Edit) {
   );
 }
 
+/** A figure of the run: one of the five readouts, or one that moved into Details (files changed). */
 const figure = (label: string) => {
-  const dl = document.querySelector('dl[aria-label="Run summary"]') as HTMLElement;
-  return within(dl).getByText(label, { selector: "dt" }).closest(".stat")!.querySelector("dd")!;
+  const dt = [
+    ...document.querySelectorAll('dl[aria-label="Run summary"] dt, #run-details dt'),
+  ].find((d) => d.textContent === label);
+  if (!dt) throw new Error(`no readout named ${label}`);
+  return dt.parentElement!.querySelector("dd")!;
 };
 const scrub = () => screen.getByRole("slider", { name: "Replay position" });
 const seek = (i: number) => fireEvent.change(scrub(), { target: { value: String(i) } });

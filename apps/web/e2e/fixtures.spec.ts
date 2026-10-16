@@ -276,7 +276,7 @@ test("multi-agent waterfall: lanes, nesting under skew, critical path, synchroni
   await page.goto(`${BASE}/runs/${RUN(7)}`);
   await openContext(page);
   await expect(page.getByTestId("agent-tree")).toContainText("Agents (5)");
-  await page.getByRole("radio", { name: "Waterfall" }).check();
+  await page.getByRole("tab", { name: "Waterfall" }).click();
   await expect(page).toHaveURL(/view=waterfall/);
   const grid = page.getByRole("treegrid");
   await expect(grid).toBeVisible();
@@ -318,14 +318,14 @@ test("multi-agent waterfall: lanes, nesting under skew, critical path, synchroni
   const selectedSpanText = await grid
     .locator('[role="row"][aria-selected="true"] .wf-name')
     .innerText();
-  await page.getByRole("radio", { name: "Timeline" }).check();
+  await page.getByRole("tab", { name: "Timeline" }).click();
   await expect(page.getByRole("option", { selected: true })).toBeVisible();
   await expect(page).not.toHaveURL(/view=waterfall/);
   expect(selectedSpanText.length).toBeGreaterThan(0);
   await axe(page);
 
   // the first-error jump lands in whichever view is active
-  await page.getByRole("radio", { name: "Waterfall" }).check();
+  await page.getByRole("tab", { name: "Waterfall" }).click();
   await page.getByRole("button", { name: "Show it" }).click();
   await expect(page.getByRole("dialog")).toContainText("HttpError");
   await expect(grid.locator('[role="row"][aria-selected="true"]')).toContainText("search_docs");
@@ -344,7 +344,7 @@ test("agent filter narrows the timeline and dims the waterfall", async ({ page }
     expect.arrayContaining(["reviewer"]),
   );
   expect(new Set(await page.locator(".tl-agent").allInnerTexts())).toEqual(new Set(["reviewer"]));
-  await page.getByRole("radio", { name: "Waterfall" }).check();
+  await page.getByRole("tab", { name: "Waterfall" }).click();
   expect(await page.locator('[role="row"][data-dim]').count()).toBeGreaterThan(0);
 });
 
@@ -353,7 +353,7 @@ test("a deep link to the waterfall works and the failure run's root span is fini
 }) => {
   await page.goto(`${BASE}/runs/${RUN(2)}?view=waterfall`);
   await expect(page.getByRole("treegrid")).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Waterfall" })).toBeChecked();
+  await expect(page.getByRole("tab", { name: "Waterfall" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("treegrid")).not.toContainText("no end recorded");
   await expect(page.getByRole("treegrid")).toContainText("error");
 });
