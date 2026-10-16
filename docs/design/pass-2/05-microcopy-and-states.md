@@ -35,7 +35,7 @@ exclamation marks, no apology.
 | Search results footer | Show all in the runs list | |
 | Search states | Searching… / No runs match this search. | the error sentences are unchanged from the existing component (they never repeat the search text) |
 | Person button | the email; "Account" when there is no person (fixture data) | |
-| Person panel | Signed in as, the email, "Role: Owner", links Sessions and Alerts, button Sign out | Alerts sits here until the Settings batch moves it under Settings |
+| Person panel | Signed in as, the email, "Role: Owner", link Sessions, button Sign out (step 5c removed the temporary Security findings and Alerts links); with fixture data and no person: "Fixture data: no one is signed in." | |
 | Sign-out failure | Sign-out failed; you may still be signed in. | `role=alert`, unchanged |
 
 Page title line (replaces the breadcrumb): the h1 is the only "where am I". The Runs page title is `Runs`.
@@ -261,14 +261,14 @@ Strings: `apps/web/src/copy/review.ts` (`review`). Review is one page with two t
 | --- | --- | --- |
 | Title (h1) | Review | |
 | Count (right of the title) | `3 waiting` | pending approvals; hidden at zero, absent when the person cannot read approvals |
-| Tab list | label "Review sections": **Approvals** (the pending count beside it, decoration) and **Security findings** | the shared Tabs component; a tab the person cannot read is absent; both absent shows the shared "Not available for your role" |
+| Tab list | label "Review sections": **Approvals** and **Security findings** (no counts on the tabs: the number is in the title line and on the Pending chip) | the shared Tabs component; a tab the person cannot read is absent; both absent shows no tab list and the page's own "Not available for your role" |
 | Foot of Approvals | An approval authorises one action, once. Policies apply to agents that ask through the SDK guard. | small, ink-2 |
 
 ### 7.2 Approvals
 
 | Element | Copy |
 | --- | --- |
-| State tabs (chip density, label "Approval state") | Pending, Decided, All |
+| State tabs (chip density, label "Approval state") | Pending (with the waiting count beside it, decoration), Decided, All |
 | Column heads | Request, Risk, State, Requested, Time left |
 | Row | capability (mono, 600, the link that opens the panel), the resource under it (mono, small, ink-2); risk as shield glyph and word (R4 filled and 600, R3 outline in caution text, below that ink-2); state as glyph and word (`‖ Waiting` caution, `✓ Approved` ink-2, `Denied` ink 600 with an outline glyph, `Expired` caution); time left `5 h 59 min`, `Expired` at zero |
 | List count | `3 requests loaded (end of list)` / `20 requests loaded` |

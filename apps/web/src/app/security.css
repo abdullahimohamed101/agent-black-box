@@ -6,13 +6,13 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  font: 600 0.75rem/1.3 var(--font-sans);
+  font: 600 var(--type-small-size)/1.3 var(--font-sans);
   white-space: nowrap;
   color: var(--color-text-secondary);
 }
 .sec-sev[data-tone="ink"] {
   color: var(--color-text-primary);
-  font-weight: 700;
+  font-weight: var(--weight-strong);
 }
 .sec-sev[data-tone="wait"] {
   color: var(--color-text-primary);
@@ -118,7 +118,7 @@
 .sec-detectors > summary {
   cursor: pointer;
   color: var(--color-text-secondary);
-  font-size: 0.72rem;
+  font-size: var(--type-small-size);
 }
 .sec-detectors > summary:hover {
   color: var(--color-text-primary);
@@ -129,7 +129,7 @@
   margin: 0.3rem 0 0;
   padding: 0;
   list-style: none;
-  font-size: 0.75rem;
+  font-size: var(--type-small-size);
 }
 .sec-detector-list li {
   display: flex;
@@ -142,7 +142,7 @@
 }
 .sec-detector-state {
   color: var(--color-text-secondary);
-  font-size: 0.72rem;
+  font-size: var(--type-small-size);
 }
 
 /* The workspace Security page. */
@@ -164,7 +164,7 @@
 .sec-count {
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--type-small-size);
 }
 .sec-count-line {
   margin: var(--space-2) 0 0;
