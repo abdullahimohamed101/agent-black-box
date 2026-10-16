@@ -15,7 +15,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-interactive-default);
   outline-offset: -2px;
   pointer-events: none;
 }
@@ -39,11 +39,11 @@
     }
   }
   .work[data-fault-intro] .tl-fault::before {
-    animation: fault-draw-x var(--t-fault) var(--ease-out) backwards;
+    animation: fault-draw-x var(--t-fault) var(--motion-easing-out) backwards;
   }
   .work[data-fault-intro] .wf-fault-line {
     transform-origin: top;
-    animation: fault-draw-y var(--t-fault) var(--ease-out) backwards;
+    animation: fault-draw-y var(--t-fault) var(--motion-easing-out) backwards;
   }
 
   /* (3) Jumping to an event: the outline fades once over 600 ms in the accent colour. */
@@ -54,7 +54,7 @@
   }
   .tl-row[data-landed]::after,
   .wf-row[data-landed]::after {
-    animation: land-fade var(--t-land) var(--ease-out) forwards;
+    animation: land-fade var(--t-land) var(--motion-easing-out) forwards;
   }
 
   /* (4) The inspector slides 8 px and fades in over 160 ms; closing is shorter and softer (100 ms, 4 px). */
@@ -71,9 +71,9 @@
     }
   }
   .drawer {
-    animation: inspector-in var(--t-panel) var(--ease-out) backwards;
+    animation: inspector-in var(--t-panel) var(--motion-easing-out) backwards;
   }
   .drawer[data-closing] {
-    animation: inspector-out var(--t-exit) var(--ease-out) forwards;
+    animation: inspector-out var(--t-exit) var(--motion-easing-out) forwards;
   }
 }

@@ -3,24 +3,10 @@
 /* The pre-pass-2 custom property names, as aliases of the new tokens, so every screen keeps working until its batch of step 5 rebuilds it (5b deleted the aliases nothing reads any more).
    Status of each name (aliased, kept, deleted in step 5) is listed in docs/design/pass-2/04-colour-type-tokens.md. */
 :root {
-  --bg: var(--color-bg-canvas);
-  --surface: var(--color-bg-raised);
   --border: var(--color-border-subtle);
-  --border-strong: var(--color-border-strong);
-  --ink: var(--color-text-primary);
-  --muted: var(--color-text-secondary);
-  --accent: var(--color-interactive-default);
-  --sel: var(--color-bg-wash);
-  --fail: var(--color-status-fault);
-  --wait: var(--color-status-caution);
   --fs-headline: var(--type-h1-size);
-  --fs-title: var(--type-h2-size);
-  --fs-body: var(--type-body-size);
   --fs-small: var(--type-small-size);
-  --ease-out: var(--motion-easing-out);
-  --top-h: var(--layout-topbar);
 }
 body {
-  --sans: var(--font-sans);
   --mono: var(--font-mono);
 }

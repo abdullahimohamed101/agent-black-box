@@ -99,7 +99,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: var(--fail);
+  background: var(--color-status-fault);
   transform-origin: left center;
 }
 /* The label is cut into the line over the empty end of the detail column (left of duration and status), on the canvas colour. */
@@ -110,7 +110,7 @@
   transform: translateY(-50%);
   padding: 0 var(--space-2);
   background: var(--color-bg-canvas);
-  color: var(--fail);
+  color: var(--color-status-fault);
   font: var(--weight-strong) var(--type-small-size) / 14px var(--font-sans);
   white-space: nowrap;
 }
@@ -142,7 +142,7 @@
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: var(--fail);
+  background: var(--color-status-fault);
 }
 .wf-fault-strip {
   flex: none;
@@ -165,16 +165,16 @@
   display: flex;
   align-items: center;
   padding: 0 var(--space-2);
-  border-left: 2px solid var(--fail);
+  border-left: 2px solid var(--color-status-fault);
   background: var(--color-bg-canvas);
-  color: var(--fail);
+  color: var(--color-status-fault);
   font: var(--weight-strong) var(--type-small-size) / 1 var(--font-sans);
   white-space: nowrap;
 }
 .wf-fault-flag[data-side="left"] {
   transform: translateX(-100%);
   border-left: 0;
-  border-right: 2px solid var(--fail);
+  border-right: 2px solid var(--color-status-fault);
 }
 
 /* Filter: a button and a popover; Errors only and Collapse groups sit beside it. */

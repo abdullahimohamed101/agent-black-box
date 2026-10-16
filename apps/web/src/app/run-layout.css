@@ -9,7 +9,7 @@
 .run-detail {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - var(--top-h));
+  height: calc(100dvh - var(--layout-topbar));
   overflow: hidden;
 }
 
@@ -200,7 +200,7 @@ button.quiet:hover:not(:disabled) {
 /* The inspector: a column from 1280 px (canvas, a hairline on its left, its own scroll), an overlay below. */
 .drawer {
   position: fixed;
-  inset: var(--top-h) 0 0 auto;
+  inset: var(--layout-topbar) 0 0 auto;
   z-index: 3;
   width: min(var(--insp-w), 100%);
   min-height: 0;
@@ -353,7 +353,7 @@ button.quiet:hover:not(:disabled) {
   }
   .run-detail > .replay {
     position: sticky;
-    top: var(--top-h);
+    top: var(--layout-topbar);
   }
 }
 .run-detail > .replay {

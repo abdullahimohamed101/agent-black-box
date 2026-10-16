@@ -401,18 +401,18 @@ pre.pol-diff {
   display: inline-flex;
   align-items: baseline;
   gap: 0.3rem;
-  color: var(--ink);
+  color: var(--color-text-primary);
   font-weight: 600;
 }
 .tl-pol[data-tone="wait"] .pol-glyph {
-  color: var(--wait);
+  color: var(--color-status-caution);
 }
 .tl-pol[data-tone="muted"] {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .tl-pol-why {
   margin-left: 0.35rem;
-  color: var(--muted);
+  color: var(--color-text-secondary);
   font-weight: 400;
 }
 .tl-prov {

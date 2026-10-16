@@ -180,17 +180,6 @@
   background: var(--color-bg-wash);
   border-color: var(--color-interactive-default);
 }
-.field-error {
-  display: block;
-  color: var(--color-text-primary);
-  font-size: var(--type-body-size);
-  line-height: var(--type-body-line);
-}
-.field-error::before {
-  content: "Error: ";
-  font-weight: var(--weight-strong);
-}
-
 /* ---- buttons: outline by default; one filled primary per section; row actions as text ---- */
 .st button.primary {
   min-height: var(--layout-control);
@@ -198,13 +187,6 @@
 }
 .st button:not(.primary):not(.link-button):not(.st-nav-toggle) {
   min-height: var(--layout-control);
-}
-.st button.danger,
-button.danger {
-  border-color: var(--color-border-control);
-  background: none;
-  color: var(--color-status-caution);
-  font-weight: var(--weight-strong);
 }
 .st td button,
 .st-two-step button {

@@ -295,32 +295,18 @@ step 5 migrates the readers and deletes the alias; **kept** = unchanged value an
 the old screens keep working.
 
 <!-- tokens:report:aliases:start -->
-45 old custom properties: 18 aliased to a faithful new token, 27 kept unchanged, 0 to be deleted in step 5 (their role is removed, or they alias a removed role).
+31 old custom properties: 4 aliased to a faithful new token, 27 kept unchanged, 0 to be deleted in step 5 (their role is removed, or they alias a removed role).
 
 | Old name | Status | Now | Readers | Note |
 | --- | --- | --- | --- | --- |
-| `--bg` | aliased | `--color-bg-canvas` | 4 |  |
-| `--surface` | aliased | `--color-bg-raised` | 19 | collapses into canvas in step 5 (tables and panels sit directly on it) |
-| `--border` | aliased | `--color-border-subtle` | 44 |  |
-| `--border-strong` | aliased | `--color-border-strong` | 7 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
-| `--ink` | aliased | `--color-text-primary` | 19 |  |
-| `--muted` | aliased | `--color-text-secondary` | 33 |  |
-| `--accent` | aliased | `--color-interactive-default` | 24 |  |
-| `--sel` | aliased | `--color-bg-wash` | 3 |  |
-| `--fail` | aliased | `--color-status-fault` | 8 |  |
-| `--wait` | aliased | `--color-status-caution` | 17 |  |
-| `--sans` | aliased | `--font-sans` | 25 |  |
-| `--mono` | aliased | `--font-mono` | 25 |  |
+| `--border` | aliased | `--color-border-subtle` | 1 |  |
+| `--mono` | aliased | `--font-mono` | 2 |  |
 | `--fs-headline` | aliased | `--type-h1-size` | 1 |  |
-| `--fs-title` | aliased | `--type-h2-size` | 7 |  |
-| `--fs-body` | aliased | `--type-body-size` | 7 |  |
 | `--fs-small` | aliased | `--type-small-size` | 1 |  |
-| `--ease-out` | aliased | `--motion-easing-out` | 5 |  |
 | `--t-fast` | kept | (defined in globals.css, unchanged) | 0 | motion contract (tests/motion-contract.test.ts reads globals.css); motion.duration.* are the new names, step 5 aliases these |
 | `--t-base` | kept | (defined in globals.css, unchanged) | 0 | as --t-fast |
 | `--t-slow` | kept | (defined in globals.css, unchanged) | 0 | as --t-fast |
 | `--t-land` | kept | (defined in globals.css, unchanged) | 1 | as --t-fast |
-| `--top-h` | aliased | `--layout-topbar` | 4 |  |
 | `--illus-accent` | kept | (unchanged) | 2 |  |
 | `--insp-w` | kept | (unchanged) | 3 |  |
 | `--pol-lh` | kept | (unchanged) | 3 |  |

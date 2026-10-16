@@ -79,17 +79,17 @@
   align-items: center;
   margin: 0 0 0.35rem;
   font-size: 0.78rem;
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .compare-pick {
   width: 2rem;
 }
 tr[data-picked="true"] {
-  background: var(--sel);
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--color-bg-wash);
+  box-shadow: inset 3px 0 0 var(--color-interactive-default);
 }
 .button-link {
-  border: 1px solid var(--accent);
+  border: 1px solid var(--color-interactive-default);
   border-radius: 4px;
   padding: 0.2rem 0.6rem;
 }
@@ -315,7 +315,7 @@ tr[data-picked="true"] {
   }
   .aligned-toolbar {
     position: sticky;
-    top: var(--top-h);
+    top: var(--layout-topbar);
     z-index: 2;
     flex-wrap: nowrap;
     overflow-x: auto;

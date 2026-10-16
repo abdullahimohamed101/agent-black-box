@@ -23,9 +23,9 @@
 body {
   /* --sans and --mono are aliases generated into tokens.aliases.css (body-scoped: next/font puts its variables on body). */
   margin: 0;
-  background: var(--bg);
+  background: var(--color-bg-canvas);
   color: var(--color-text-primary);
-  font: 13px/1.45 var(--sans);
+  font: 13px/1.45 var(--font-sans);
   font-variant-numeric: tabular-nums;
 }
 .num,
@@ -44,7 +44,7 @@ body {
 .step-label,
 pre,
 code {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
 }
 main {
   max-width: 56rem;
@@ -52,10 +52,10 @@ main {
   padding: 2rem 1rem;
 }
 .muted {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .panel {
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 6px;
   padding: 0.75rem 1rem;
   margin-top: 1.5rem;
@@ -70,7 +70,7 @@ button {
   cursor: pointer;
 }
 button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-interactive-default);
   outline-offset: 2px;
 }
 * {
@@ -88,10 +88,10 @@ button:focus-visible {
   white-space: nowrap;
 }
 a {
-  color: var(--accent);
+  color: var(--color-interactive-default);
 }
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-interactive-default);
   outline-offset: 2px;
 }
 /* The application frame (top bar, navigation, scope, person menu) lives in shell.css. */
@@ -109,14 +109,14 @@ h2 {
   flex-wrap: wrap;
   margin: 0.75rem 0;
   padding: 0;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 .stat {
   min-width: 6rem;
   margin-right: 1.25rem;
   padding: 0.5rem 1.25rem 0.55rem 0;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--color-border-subtle);
 }
 .stat:last-child {
   margin-right: 0;
@@ -129,13 +129,13 @@ h2 {
 }
 .stat dd {
   margin: 0.05rem 0 0;
-  font: 600 1.05rem/1.25 var(--mono);
+  font: 600 1.05rem/1.25 var(--font-mono);
   overflow-wrap: anywhere;
 }
 .stat small {
   display: block;
-  font: 400 0.75rem/1.35 var(--sans);
-  color: var(--muted);
+  font: 400 0.75rem/1.35 var(--font-sans);
+  color: var(--color-text-secondary);
 }
 .id {
   font-size: 0.75rem;
@@ -157,7 +157,7 @@ th,
 td {
   text-align: left;
   padding: 0.25rem 0.6rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-border-subtle);
   white-space: nowrap;
 }
 /* Column heads are small ink-2 sentence-case labels in every table of the app (ADR-166: no upper case, no tracking); row heads
@@ -173,7 +173,7 @@ tbody th {
   font-weight: 600;
 }
 tbody tr:hover {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--color-bg-wash) 50%, transparent);
 }
 caption {
   text-align: left;
@@ -228,7 +228,7 @@ td.name {
   white-space: nowrap;
 }
 .tag-warn {
-  color: var(--wait);
+  color: var(--color-status-caution);
 }
 .state {
   padding: var(--space-4) 0;
@@ -242,8 +242,8 @@ td.name {
   display: inline-block;
   width: 0.9em;
   height: 0.9em;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
+  border: 2px solid var(--color-border-subtle);
+  border-top-color: var(--color-interactive-default);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   vertical-align: -0.1em;
@@ -276,7 +276,7 @@ fieldset {
 }
 legend {
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--color-text-secondary);
   padding: 0;
   margin-bottom: 0.2rem;
   float: left;
@@ -286,15 +286,15 @@ legend {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--color-border-strong);
   border-radius: 4px;
   padding: 0.15rem 0.6rem;
   font-size: 0.82rem;
   cursor: pointer;
 }
 .chip:has(input:checked) {
-  background: var(--sel);
-  border-color: var(--accent);
+  background: var(--color-bg-wash);
+  border-color: var(--color-interactive-default);
 }
 select {
   max-width: 100%; /* a long option never makes a phone scroll sideways */
@@ -303,9 +303,9 @@ input[type="text"],
 select {
   font: inherit;
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 4px;
-  background: var(--bg);
+  background: var(--color-bg-canvas);
   color: var(--color-text-primary);
 }
 /* One notice style (ADR-166): a sentence, no bar, no fill. A notice leads with a small "i" mark (decorative: empty alt text);
@@ -347,7 +347,7 @@ select {
   padding: 0.6rem 0;
   background: none;
   border: 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--color-border-subtle);
   border-radius: 0;
 }
 .withheld {
@@ -366,7 +366,7 @@ select {
   font-size: 0.82rem;
 }
 .fields dt {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .fields dd {
   margin: 0;
@@ -375,8 +375,8 @@ select {
 pre {
   margin: 0;
   padding: 0.6rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--color-bg-canvas);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 4px;
   overflow: auto;
   max-height: 20rem;
@@ -391,8 +391,8 @@ pre {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--color-bg-canvas);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 4px;
   padding: 0.5rem;
   font-size: 0.8rem;
@@ -403,7 +403,7 @@ pre {
   overflow-wrap: anywhere;
 }
 .diff {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 0.8rem;
 }
 .diff-path {
@@ -411,7 +411,7 @@ pre {
   padding: 0.2rem 0;
 }
 .diff [role="group"] {
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 4px;
   overflow: auto;
   max-height: 32rem;
@@ -435,17 +435,17 @@ pre {
   background: color-mix(in srgb, var(--color-interactive-default) 14%, transparent);
 }
 .diff-del {
-  background: color-mix(in srgb, var(--wait) 16%, transparent);
+  background: color-mix(in srgb, var(--color-status-caution) 16%, transparent);
 }
 .diff-meta {
-  color: var(--muted);
-  background: var(--surface);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-canvas);
 }
 .diff-add-n {
   color: var(--color-text-primary);
 }
 .diff-del-n {
-  color: var(--wait);
+  color: var(--color-status-caution);
 }
 .tok-kw {
   color: var(--color-syntax-keyword);
@@ -475,8 +475,8 @@ pre {
   margin: 0.5rem 0;
 }
 .toolbar button[aria-pressed="true"] {
-  background: var(--sel);
-  border-color: var(--accent);
+  background: var(--color-bg-wash);
+  border-color: var(--color-interactive-default);
   color: var(--color-text-primary);
 }
 h3 {
@@ -509,14 +509,14 @@ h3 {
 }
 .bar-track {
   height: 0.65rem;
-  background: var(--border);
+  background: var(--color-border-subtle);
   border-radius: 3px;
   overflow: hidden;
 }
 .bar-fill {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: var(--color-interactive-default);
 }
 .bar-value {
   text-align: right;
@@ -530,7 +530,7 @@ h3 {
   align-items: flex-end;
   gap: 4px;
   height: 7rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 .column {
   /* Grow to share the row, but a lone day must not become one slab. */
@@ -543,11 +543,11 @@ h3 {
 .column-fill {
   display: block;
   width: 100%;
-  background: var(--accent);
+  background: var(--color-interactive-default);
   border-radius: 2px 2px 0 0;
 }
 .column-fill[data-tone="bad"] {
-  background: var(--fail);
+  background: var(--color-status-fault);
 }
 /* Figures shown while the next window or project is loading are dimmed and announced. */
 [data-stale="true"] > :not(.updating) {
@@ -583,43 +583,34 @@ button[disabled] {
   opacity: 0.55;
   cursor: not-allowed;
 }
+/* A destructive action: caution text, no fill, never red (red is a failed run, ADR-166). */
 button.danger {
-  border-color: var(--wait);
-  color: var(--wait);
+  border-color: var(--color-border-control);
+  background: none;
+  color: var(--color-status-caution);
+  font-weight: var(--weight-strong);
 }
+/* A field's error: one ink sentence under the field with the word "Error:" before it, never red (ADR-166). */
+.field-error {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+.field-error::before {
+  content: "Error: ";
+  font-weight: var(--weight-strong);
+}
+
 .field input,
 .field select,
 .field textarea {
   font: inherit;
   padding: 0.25rem 0.4rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 4px;
-  background: var(--bg);
+  background: var(--color-bg-canvas);
   color: var(--color-text-primary);
-}
-.subnav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin: 0 0 0.9rem;
-  border-bottom: 1px solid var(--border);
-}
-.subnav a {
-  text-decoration: none;
-  padding: 0.5rem 0.85rem;
-  font: 600 0.8rem/1 var(--sans);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-.subnav a:hover {
-  color: var(--color-text-primary);
-}
-.subnav a[aria-current="page"] {
-  color: var(--color-text-primary);
-  border-bottom-color: var(--accent);
 }
 .form {
   display: flex;
@@ -634,15 +625,11 @@ button.danger {
   gap: 0.2rem;
   font-size: 0.85rem;
 }
-.field-error {
-  color: var(--fail);
-  font-size: 0.8rem;
-}
 .secret {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   overflow-wrap: anywhere;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--color-bg-canvas);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   margin: 0.4rem 0;
@@ -651,7 +638,7 @@ button.danger {
   background: none;
   border: none;
   padding: 0;
-  color: var(--accent);
+  color: var(--color-interactive-default);
   text-decoration: none;
   cursor: pointer;
   font: inherit;

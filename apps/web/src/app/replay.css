@@ -46,7 +46,7 @@
   display: inline-flex;
 }
 .replay-speed button {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   border-radius: 0;
   margin-left: -1px;
 }

@@ -132,7 +132,7 @@
   font-weight: 600;
 }
 .wf-scroll:focus-visible .wf-row[data-selected] {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-interactive-default);
   outline-offset: -2px;
 }
 .wf-lane {
@@ -273,7 +273,7 @@
   overflow: hidden;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  color: var(--muted);
+  color: var(--color-text-secondary);
   font-size: 0.8rem;
 }
 .wf-axis-meta {
@@ -303,7 +303,7 @@
   gap: 0.5rem;
 }
 .wf-tip dt {
-  color: var(--muted);
+  color: var(--color-text-secondary);
   min-width: 4.5rem;
 }
 .wf-tip dd {

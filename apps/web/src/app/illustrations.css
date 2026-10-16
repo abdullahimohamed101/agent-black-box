@@ -3,8 +3,8 @@
   display: block;
   width: 5.5rem;
   height: auto;
-  color: var(--muted);
-  --illus-accent: var(--accent);
+  color: var(--color-text-secondary);
+  --illus-accent: var(--color-interactive-default);
   flex: none;
 }
 .illus .illus-accent {
