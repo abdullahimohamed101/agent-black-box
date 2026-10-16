@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from abb_event_schema.ids import IdKind
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, literal, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -41,9 +41,16 @@ class StoredApiKey:
     last_used_at: datetime | None
     expires_at: datetime | None
     revoked_at: datetime | None
+    # Its project (or its whole workspace) is being purged (ADR-163): the key stops working at
+    # once, before its row is deleted. Only the unscoped lookup computes it.
+    purging: bool = False
 
     def is_active(self, now: datetime) -> bool:
-        return self.revoked_at is None and (self.expires_at is None or self.expires_at > now)
+        return (
+            self.revoked_at is None
+            and not self.purging
+            and (self.expires_at is None or self.expires_at > now)
+        )
 
 
 @dataclass(frozen=True)
@@ -82,7 +89,28 @@ def _stored(row: Any) -> StoredApiKey:
         last_used_at=row.last_used_at,
         expires_at=row.expires_at,
         revoked_at=row.revoked_at,
+        purging=bool(getattr(row, "purging", False)),
     )
+
+
+def _purging_expression() -> Any:
+    """True when the key's project or workspace is being purged (one indexed probe each)."""
+    p, w = t.projects, t.workspaces
+    in_project = (
+        select(literal(1))
+        .where(
+            p.c.workspace_id == t.api_keys.c.workspace_id,
+            p.c.id == t.api_keys.c.project_id,
+            p.c.purge_state == "purging",
+        )
+        .exists()
+    )
+    in_workspace = (
+        select(literal(1))
+        .where(w.c.id == t.api_keys.c.workspace_id, w.c.purge_state == "purging")
+        .exists()
+    )
+    return or_(in_project, in_workspace).label("purging")
 
 
 class ApiKeyLookup:
@@ -93,7 +121,9 @@ class ApiKeyLookup:
 
     async def find(self, key_id: str) -> StoredApiKey | None:
         row = (
-            await self._conn.execute(select(*_COLUMNS).where(t.api_keys.c.key_id == key_id))
+            await self._conn.execute(
+                select(*_COLUMNS, _purging_expression()).where(t.api_keys.c.key_id == key_id)
+            )
         ).first()
         return _stored(row) if row else None
 

@@ -59,6 +59,8 @@ def _rejection_reason(
         return "bad_secret"
     if stored.revoked_at is not None:
         return "revoked"
+    if stored.purging:
+        return "purging"  # ADR-163: the same uniform 401 as every other cause
     if stored.expires_at is not None and stored.expires_at <= now:
         return "expired"
     return None

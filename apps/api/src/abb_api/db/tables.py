@@ -89,6 +89,10 @@ workspaces = Table(
     Column("name", Text, nullable=False),
     Column("slug", Text, nullable=False, unique=True),
     _ts("created_at", nullable=False, default_now=True),
+    # `purging` while an owner-run purge removes the workspace (ADR-163): it reads as not found.
+    Column("purge_state", Text, nullable=False, server_default="active"),
+    CheckConstraint(_in("purge_state", ("active", "purging")), name="ck_workspaces_purge_state"),
+    Index("ix_workspaces_purging", "id", postgresql_where=text("purge_state = 'purging'")),
 )
 
 users = Table(
@@ -238,6 +242,16 @@ projects = Table(
     _ts("created_at", nullable=False, default_now=True),
     PrimaryKeyConstraint("workspace_id", "id"),
     UniqueConstraint("workspace_id", "slug", name="uq_projects_workspace_slug"),
+    # `purging` while an owner-run purge removes the project (ADR-163): keys are refused and the
+    # project reads as not found.
+    Column("purge_state", Text, nullable=False, server_default="active"),
+    CheckConstraint(_in("purge_state", ("active", "purging")), name="ck_projects_purge_state"),
+    Index(
+        "ix_projects_purging",
+        "workspace_id",
+        "id",
+        postgresql_where=text("purge_state = 'purging'"),
+    ),
 )
 
 agents = Table(
@@ -1692,4 +1706,56 @@ analytics_dirty = Table(
     Column("refreshed_version", BigInteger, nullable=False, server_default="0"),
     PrimaryKeyConstraint("workspace_id", "day"),
     CheckConstraint("refreshed_version <= version", name="ck_analytics_dirty_versions"),
+)
+
+# A platform-level record of each purge request (ADR-163): ids, a hash of the typed slug, counts per
+# table, the steps done. No foreign keys, no names, no content: it outlives the project or
+# workspace it describes, and while `running` it is the resume state of the purge.
+purge_tombstones = Table(
+    "purge_tombstones",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("scope", Text, nullable=False),
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("scope_hash", Text, nullable=False),
+    Column("state", Text, nullable=False, server_default="running"),
+    Column("tool_version", Text, nullable=False),
+    Column("steps_done", PG_ARRAY(Text), nullable=False, server_default=text("'{}'")),
+    Column("counts", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column(
+        "user_candidates", PG_ARRAY(UUID(as_uuid=True)), nullable=False, server_default=text("'{}'")
+    ),
+    Column("attempts", Integer, nullable=False, server_default=text("0")),
+    Column("failure_code", Text),
+    _ts("requested_at", nullable=False, default_now=True),
+    _ts("completed_at"),
+    CheckConstraint(_in("scope", ("project", "workspace")), name="ck_purge_tombstones_scope"),
+    CheckConstraint(
+        "(scope = 'project') = (project_id IS NOT NULL)", name="ck_purge_tombstones_project"
+    ),
+    CheckConstraint(_in("state", ("running", "completed")), name="ck_purge_tombstones_state"),
+    CheckConstraint(
+        "(state = 'completed') = (completed_at IS NOT NULL)", name="ck_purge_tombstones_done"
+    ),
+    CheckConstraint(
+        "failure_code IS NULL OR "
+        + _in("failure_code", ("artifact_store", "database", "timeout", "internal")),
+        name="ck_purge_tombstones_failure",
+    ),
+    CheckConstraint("attempts >= 0", name="ck_purge_tombstones_attempts"),
+    Index("ix_purge_tombstones_workspace", "workspace_id"),
+    Index(
+        "uq_purge_running_project",
+        "workspace_id",
+        "project_id",
+        unique=True,
+        postgresql_where=text("state = 'running' AND scope = 'project'"),
+    ),
+    Index(
+        "uq_purge_running_workspace",
+        "workspace_id",
+        unique=True,
+        postgresql_where=text("state = 'running' AND scope = 'workspace'"),
+    ),
 )

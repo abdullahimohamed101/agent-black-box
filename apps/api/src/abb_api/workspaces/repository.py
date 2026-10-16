@@ -58,11 +58,16 @@ class MembershipRepository:
 
     async def role_of(self, user_id: uuid.UUID) -> str | None:
         """The user's role in this workspace, or None if they are not a member."""
+        # A workspace being purged has no members as far as every caller can tell (ADR-163): the
+        # answer is the same "not a member" as for an unknown workspace.
         row = (
             await self._conn.execute(
-                select(t.workspace_members.c.role).where(
+                select(t.workspace_members.c.role)
+                .join(t.workspaces, t.workspaces.c.id == t.workspace_members.c.workspace_id)
+                .where(
                     t.workspace_members.c.workspace_id == self._tenant.workspace_id,
                     t.workspace_members.c.user_id == user_id,
+                    t.workspaces.c.purge_state == "active",
                 )
             )
         ).first()
@@ -382,7 +387,7 @@ async def memberships_of(conn: AsyncConnection, user_id: uuid.UUID) -> list[Memb
             t.workspace_members.c.role,
         )
         .join(t.workspaces, t.workspaces.c.id == t.workspace_members.c.workspace_id)
-        .where(t.workspace_members.c.user_id == user_id)
+        .where(t.workspace_members.c.user_id == user_id, t.workspaces.c.purge_state == "active")
         .order_by(t.workspaces.c.slug)
     )
     return [MembershipOfUser(r.workspace_id, r.slug, r.name, r.role) for r in rows]
