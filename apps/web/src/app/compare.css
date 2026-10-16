@@ -5,14 +5,12 @@
 .evaluation-list {
   list-style: none;
   padding: 0;
-  margin: 0.5rem 0;
+  margin: var(--space-2) 0;
   display: grid;
-  gap: 0.5rem;
 }
 .evaluation {
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.6rem 0.8rem;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border-subtle);
 }
 .evaluation-head {
   display: flex;
@@ -22,7 +20,7 @@
 }
 .evaluation-head h4 {
   margin: 0;
-  font-size: 1rem;
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
   overflow-wrap: anywhere;
 }
 .evaluation-result,
@@ -34,9 +32,6 @@
 .evaluation-error {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-.evaluation-error {
-  color: var(--bad);
 }
 .evaluation-facts {
   margin: 0.25rem 0;

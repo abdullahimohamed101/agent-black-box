@@ -28,22 +28,21 @@
   flex: none;
 }
 
-/* The chip beside the status in the run's identity line: quiet, a button, opens the Security group. */
+/* The chip beside the status in the run's title line: quiet, a button, opens the Security group of the Findings tab. */
 .sec-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.05rem 0.45rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
   background: transparent;
-  color: var(--fg-2);
-  font: 500 0.75rem/1.4 var(--sans);
+  color: var(--color-text-secondary);
+  font: var(--type-body-weight) var(--type-body-size) / var(--type-body-line) var(--font-sans);
   white-space: nowrap;
 }
 .sec-chip:hover {
-  background: var(--surface);
-  border-color: var(--border-strong);
+  color: var(--color-text-primary);
+  text-decoration: underline;
 }
 .sec-chip[data-tone="ink"] .sec-shield {
   color: var(--ink);
@@ -55,9 +54,9 @@
   color: var(--muted);
 }
 
-/* The Security group in the context column. */
+/* The Security group at the top of the Findings tab: a hairline list like the reliability findings. */
 .security-group {
-  margin: 0 0 0.75rem;
+  margin: 0 0 var(--space-6);
 }
 .security-group h2:focus {
   outline: none;
@@ -68,16 +67,13 @@
 }
 .sec-list {
   display: grid;
-  gap: 0.35rem;
-  margin: 0.25rem 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 .sec-item {
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border-subtle);
 }
 .sec-item[data-focus] {
   outline: 2px solid var(--accent);
@@ -87,37 +83,34 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.25rem 0.5rem;
+  gap: var(--space-1) var(--space-3);
 }
 .sec-item-head h3 {
-  flex: 1 1 9rem;
+  flex: 1 1 14rem;
   min-width: 0;
   margin: 0;
-  font-size: 0.8rem;
-  font-weight: 500;
-  line-height: 1.3;
+  font: var(--type-body-weight) var(--type-body-size) / var(--type-body-line) var(--font-sans);
 }
 .sec-item-head button {
   flex: none;
-  padding: 0.05rem 0.45rem;
-  font-size: 0.7rem;
+  font-size: var(--type-small-size);
 }
 .sec-rule {
-  margin: 0.2rem 0 0;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  color: var(--muted);
+  margin: var(--space-1) 0 0;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  color: var(--color-text-secondary);
 }
 .sec-none {
-  font-size: 0.72rem;
-  color: var(--muted);
+  font-size: var(--type-small-size);
+  color: var(--color-text-secondary);
 }
 .sec-clean {
-  margin: 0.25rem 0;
-  color: var(--muted);
+  margin: var(--space-1) 0;
+  color: var(--color-text-secondary);
 }
 .sec-clean > p {
-  margin: 0.25rem 0 0;
+  margin: var(--space-1) 0 0;
 }
 .sec-detectors {
   margin: 0.3rem 0 0;
@@ -150,13 +143,6 @@
 .sec-detector-state {
   color: var(--muted);
   font-size: 0.72rem;
-}
-
-/* The strip count for security findings: a shield and a number. Decoration (aria-hidden); the title spells it out. */
-.strip-count[data-security] {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.1rem;
 }
 
 /* The workspace Security page. */

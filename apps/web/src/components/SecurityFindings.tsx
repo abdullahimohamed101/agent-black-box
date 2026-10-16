@@ -70,7 +70,7 @@ export function SecurityChip({
       className="sec-chip"
       data-testid="security-chip"
       data-tone={m.tone}
-      aria-controls="run-context"
+      aria-controls="run-tabs-panel"
       onClick={onOpen}
     >
       <ShieldGlyph filled={m.style === "filled"} />

@@ -1,4 +1,6 @@
-/* ---- Phase 22 step 6: the run page's motion layer (the one file where anything moves). ----
+/* ---- Phase 22 step 6, trimmed in design pass 2: the run page's motion layer (the one file where anything moves). Three cues stay:
+   the fault line draws once, a jump lands with an outline that fades, the inspector slides in. The headline fade and the live-row
+   rise are gone (ADR-166). ----
    Language: 100-280 ms, ease-out cubic-bezier(0.2, 0, 0, 1), transform and opacity only, no springs, no bounce, no loops.
    Every animation is inside the `no-preference` gate, so a person who asks for reduced motion gets the final states and
    nothing else; the only rule outside it is the static outline that stands in for the fading one. tests/motion-contract.test.ts
@@ -17,11 +19,6 @@
   outline-offset: -2px;
   pointer-events: none;
 }
-.tl-row[data-landed="error"]::after,
-.wf-row[data-landed="error"]::after {
-  outline-color: var(--fail);
-}
-
 @media (prefers-reduced-motion: no-preference) {
   :root {
     --t-exit: 100ms;
@@ -49,26 +46,7 @@
     animation: fault-draw-y var(--t-fault) var(--ease-out) backwards;
   }
 
-  /* (2) A change of state in the headline (running to failed) fades the new one in over 120 ms. */
-  @keyframes headline-in {
-    from {
-      opacity: 0;
-    }
-  }
-  @keyframes headline-in-b {
-    from {
-      opacity: 0;
-    }
-  }
-  /* Two names for the same fade, so a second change restarts it without remounting the headline. */
-  .hl[data-fade="a"] {
-    animation: headline-in var(--t-fast) var(--ease-out) backwards;
-  }
-  .hl[data-fade="b"] {
-    animation: headline-in-b var(--t-fast) var(--ease-out) backwards;
-  }
-
-  /* (3) Jumping to an event: the outline fades once over 600 ms (red for the first error, the accent otherwise). */
+  /* (3) Jumping to an event: the outline fades once over 600 ms in the accent colour. */
   @keyframes land-fade {
     to {
       opacity: 0;
@@ -97,18 +75,5 @@
   }
   .drawer[data-closing] {
     animation: inspector-out var(--t-exit) var(--ease-out) forwards;
-  }
-
-  /* (5) A row that arrives on the live stream fades in over 180 ms with a 4 px rise. The cells move, not the row: the
-     virtualised row is positioned with its own transform. All arrivals start together, never staggered. */
-  @keyframes row-arrive {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-  }
-  .tl-row[data-arrived] > *,
-  .wf-row[data-arrived] > * {
-    animation: row-arrive var(--t-base) var(--ease-out) backwards;
   }
 }

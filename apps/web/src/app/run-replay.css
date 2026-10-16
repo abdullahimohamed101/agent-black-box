@@ -1,88 +1,9 @@
-/* ---- Phase 12 step 3: replay on the run page. Tokens only; no animation or transition (replay updates are instant, so
-   the zero-motion contract has nothing to gate here). The one motion cue, the fault line drawing in at the first error,
-   is the Phase 22 one in run-motion.css and stays gated there. Red is not used: failure colour belongs to the existing
-   failure selectors, and the first-error mark on the scrub bar is in replay.css. ---- */
+/* ---- Phase 12 step 3, restyled in design pass 2: replay on the run page. Tokens only; no animation or transition (replay
+   updates are instant, so the zero-motion contract has nothing to gate here). The one motion cue, the fault line drawing in at
+   the first error, is the Phase 22 one in run-motion.css and stays gated there. Nothing here is red. ---- */
 
-.pane-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.replay-toggle kbd {
-  margin-left: 0.35rem;
-  font: 500 0.7rem/1 var(--mono);
-  text-transform: none;
-  letter-spacing: 0;
-  padding: 0.1rem 0.3rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 3px;
-  color: var(--muted);
-}
-.replay-toggle[aria-pressed="true"] kbd {
-  color: var(--fg-2);
-}
-.replay-status {
-  font: 400 var(--fs-small) / 1.3 var(--mono);
-  color: var(--fg-2);
-}
-.replay-ctx-note,
-.replay-note {
-  margin: 0;
-  padding: 0.4rem 0.75rem;
-  font: 400 var(--fs-small) / 1.3 var(--sans);
-}
-
-/* The row at the playhead and the agent that emitted it: a mark on the leading edge, no fill and no colour of failure. */
+/* The row at the playhead: a mark on the leading edge, no fill. */
 .tl-row[data-current],
 .wf-row[data-current] {
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-.agent-item[data-current] {
-  box-shadow: inset 3px 0 0 var(--accent);
-  background: var(--sel);
-}
-
-/* The transport is docked under the header: in the fixed-height frame it is a flex item that never scrolls away; in the
-   stacked phone layout (the page scrolls) it sticks under the top bar so the controls stay in reach. */
-.run-detail > .replay {
-  flex: none;
-  z-index: 4;
-}
-@media (max-width: 52rem), (max-height: 36rem) {
-  .run-detail > .replay {
-    position: sticky;
-    top: var(--top-h);
-  }
-  .pane-head {
-    flex-wrap: wrap;
-    padding-block: 0.25rem;
-  }
-  .pane-actions {
-    margin-left: auto;
-  }
-}
-
-/* A 375 px phone: the view tabs, Context and Replay share one row, as the tabs and Context did before replay, so the
-   page is no taller than it was (e2e/five-second.spec.ts keeps the fault line in the first screen). The tab counts are
-   decoration and the key hint means nothing without a keyboard; both give way. */
-@media (max-width: 26rem) {
-  .pane-head {
-    flex-wrap: nowrap;
-    padding-block: 0;
-  }
-  .pane-head .seg-item {
-    padding: 0 0.3rem;
-    letter-spacing: 0;
-    white-space: nowrap;
-  }
-  .pane-head .seg {
-    flex-wrap: nowrap;
-  }
-  .pane-head .seg-count,
-  .replay-toggle kbd {
-    display: none;
-  }
-  .pane-actions {
-    gap: 0.25rem;
-  }
+  box-shadow: inset 2px 0 0 var(--color-interactive-default);
 }

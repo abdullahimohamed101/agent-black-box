@@ -1,0 +1,390 @@
+/* ---- The run page's work area (design pass 2, batch 5b): header, tab row, then Steps | pane | inspector filling the viewport
+   under the top bar. Narrower than 1100 px the Steps column is one strip above the pane; narrower than 1280 px the inspector is
+   an overlay from the right (a full-screen sheet below 600 px); a phone or a very short window makes the page a document again
+   (the lists keep a fixed height, virtualisation needs a definite one). Tokens only. ---- */
+.shell main.page:has(> .run-detail) {
+  padding: 0;
+  max-width: none;
+}
+.run-detail {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--top-h));
+  overflow: hidden;
+}
+
+/* Tab row: the one tab component on the left, the page's few controls on the right, a hairline below. */
+.pane-head {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 var(--space-4);
+  margin-top: var(--space-4);
+  padding: 0 var(--layout-gutter);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.pane-head .tabs {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: calc(-1 * var(--space-3));
+}
+.pane-tools,
+.tl-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  min-width: 0;
+}
+.pane-tools {
+  margin-left: auto;
+  padding: var(--space-1) 0;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+button.quiet {
+  border-color: transparent;
+  color: var(--color-text-secondary);
+}
+button.quiet:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+}
+.replay-toggle[aria-pressed="true"] {
+  background: var(--color-bg-wash);
+  border-color: var(--color-interactive-default);
+}
+
+/* The work area. */
+.work {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+@media (min-width: 68.75rem) and (min-height: 36rem) {
+  .work {
+    display: grid;
+    /* One row of the container's height: an auto row would grow with a tall inspector and stretch the lists. */
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .work[data-steps="open"] {
+    grid-template-columns: 12rem minmax(0, 1fr);
+  }
+  .steps {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .pane {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .work[data-steps="open"] .pane {
+    grid-column: 2;
+  }
+}
+@media (min-width: 80rem) and (min-height: 36rem) {
+  .work[data-inspector="open"] {
+    grid-template-columns: minmax(0, 1fr) var(--insp-w);
+  }
+  .work[data-inspector="open"][data-steps="open"] {
+    grid-template-columns: 12rem minmax(0, 1fr) var(--insp-w);
+  }
+}
+
+/* Steps: the agent's story and, with more than one agent, who they are. A column from 1100 px, a strip below. */
+.steps {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--space-4) var(--space-4) var(--layout-gutter);
+  border-right: 1px solid var(--color-border-subtle);
+}
+.steps h2 {
+  margin: var(--space-3) 0 var(--space-2);
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
+}
+.steps-strip {
+  margin: 0 calc(-1 * var(--space-4)) 0 calc(-1 * var(--layout-gutter));
+}
+.steps-strip > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--layout-control);
+  padding: 0 var(--layout-gutter);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.steps-strip[open] > summary {
+  color: var(--color-text-primary);
+}
+.steps-strip > :not(summary) {
+  padding: 0 var(--layout-gutter) var(--space-3);
+  max-height: 40dvh;
+  overflow: auto;
+}
+@media (max-width: 68.74rem), (max-height: 35.99rem) {
+  .steps {
+    flex: none;
+    padding: 0 var(--layout-gutter);
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+    overflow: visible;
+  }
+}
+
+/* The pane: one of the five views. */
+.pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  container-type: inline-size;
+}
+.pane > .notice,
+.pane > .state {
+  flex: none;
+  margin: var(--space-2) var(--layout-gutter);
+}
+.pane-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pane-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4) var(--layout-gutter);
+}
+.pane-scroll > section {
+  max-width: 56rem;
+  margin: 0 0 var(--space-6);
+}
+.pane-scroll h2 {
+  margin: 0 0 var(--space-2);
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
+}
+.pane-foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 var(--space-4);
+  min-height: 1.75rem;
+  padding: 0 var(--layout-gutter);
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}
+.pane-foot p {
+  margin: 0;
+}
+@media (max-width: 56.24rem) {
+  .pane-foot .keys {
+    display: none;
+  }
+}
+
+/* The inspector: a column from 1280 px (canvas, a hairline on its left, its own scroll), an overlay below. */
+.drawer {
+  position: fixed;
+  inset: var(--top-h) 0 0 auto;
+  z-index: 3;
+  width: min(var(--insp-w), 100%);
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--space-4) var(--space-4);
+  background: var(--color-bg-raised);
+  border-left: 1px solid var(--color-border-strong);
+}
+@media (max-width: 37.4375rem) {
+  .drawer {
+    width: 100%;
+    border-left: 0;
+  }
+}
+@media (min-width: 80rem) and (min-height: 36rem) {
+  .drawer {
+    position: static;
+    grid-row: 1;
+    grid-column: -2 / -1;
+    width: auto;
+    background: var(--color-bg-canvas);
+    border-left: 1px solid var(--color-border-subtle);
+  }
+}
+.drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0 calc(-1 * var(--space-4));
+  padding: var(--space-3) var(--space-4);
+  background: inherit;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.drawer h2 {
+  margin: 0;
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.drawer > p.muted {
+  margin: var(--space-2) 0 0;
+  font: var(--type-mono-small-weight) var(--type-mono-small-size) / var(--type-mono-small-line)
+    var(--font-mono);
+}
+.drawer h3 {
+  margin: var(--space-4) 0 var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
+}
+.drawer > section:first-of-type h3 {
+  margin-top: var(--space-3);
+}
+/* "What went wrong": the first section on an error event. A heading and a sentence, no tint, no bar, no red. */
+.drawer-error p {
+  margin: 0 0 var(--space-2);
+}
+.insp-resize {
+  display: none;
+}
+@media (min-width: 80rem) and (min-height: 36rem) {
+  .work[data-inspector="open"] .insp-resize {
+    display: block;
+    grid-column: -2 / -1;
+    grid-row: 1;
+    justify-self: start;
+    width: 7px;
+    margin-left: -3px;
+    z-index: 2;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .insp-resize:hover,
+  .insp-resize:focus-visible {
+    background: var(--color-interactive-default);
+    opacity: 0.55;
+  }
+}
+
+/* Evidence: the run's artifacts, a table that scrolls inside the pane. */
+.evidence {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.evidence:focus-visible {
+  outline-offset: -2px;
+}
+.evidence table {
+  font-size: var(--type-body-size);
+}
+.evidence th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-bg-canvas);
+}
+.evidence td {
+  padding: var(--space-1) var(--space-3);
+  height: 36px; /* ROW_HEIGHT in EvidenceList.tsx: the virtualizer's fixed row size */
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+.evidence tr.evidence-pad td {
+  padding: 0;
+  border: 0;
+}
+.evidence td.evidence-what {
+  min-width: 0;
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+.evidence td.evidence-source {
+  font: var(--type-mono-small-weight) var(--type-mono-small-size) / var(--type-mono-small-line)
+    var(--font-mono);
+}
+.evidence tr[data-selected] td {
+  background: var(--color-bg-wash);
+}
+.evidence tr[data-selected] td:first-child {
+  box-shadow: inset 2px 0 0 var(--color-interactive-default);
+}
+.evidence .state {
+  margin: var(--space-3);
+}
+
+/* Stacked mode: a phone, a tablet or a very short window. The run page is a scrolling document again; the lists keep a fixed
+   height and the replay transport sticks under the top bar. */
+@media (max-width: 52rem), (max-height: 36rem) {
+  .run-detail {
+    height: auto;
+    overflow: visible;
+  }
+  .work {
+    display: flex;
+    flex-direction: column;
+  }
+  .timeline {
+    flex: none;
+    height: min(68vh, 44rem);
+  }
+  .pane-head {
+    padding: 0 var(--layout-gutter-narrow);
+  }
+  .run-detail > .replay {
+    position: sticky;
+    top: var(--top-h);
+  }
+}
+.run-detail > .replay {
+  flex: none;
+  z-index: 4;
+}
+@media (max-width: 37.4375rem) {
+  .pane-head {
+    margin-top: var(--space-2);
+  }
+  .pane-tools {
+    width: 100%;
+    margin-left: 0;
+  }
+  .pane-head .tabs {
+    margin-left: calc(-1 * var(--space-3));
+    flex-basis: 100%;
+  }
+  .steps,
+  .pane-scroll,
+  .pane-foot {
+    padding-left: var(--layout-gutter-narrow);
+    padding-right: var(--layout-gutter-narrow);
+  }
+  .steps-strip {
+    margin-left: calc(-1 * var(--layout-gutter-narrow));
+    margin-right: calc(-1 * var(--layout-gutter-narrow));
+  }
+  .steps-strip > summary,
+  .steps-strip > :not(summary) {
+    padding-left: var(--layout-gutter-narrow);
+    padding-right: var(--layout-gutter-narrow);
+  }
+}

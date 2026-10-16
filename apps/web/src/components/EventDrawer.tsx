@@ -110,7 +110,7 @@ export function EventDrawer({
 
       {err && (
         <section aria-labelledby="d-err" className="drawer-error">
-          <h3 id="d-err">✕ Error</h3>
+          <h3 id="d-err">What went wrong</h3>
           <p>{msg ?? "This event reports a failure without a message."}</p>
           <Fields
             rows={[

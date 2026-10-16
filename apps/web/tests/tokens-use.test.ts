@@ -14,7 +14,7 @@ const FILES = readdirSync(DIR)
   .sort();
 const ALLOWED: RegExp[] = [
   /^\.stat\[data-tone="bad"\]/,
-  /^\.badge\[data-tone="bad"\]/,
+  /^\.badge\[data-status="(FAILED|TIMED_OUT|BLOCKED)"\]/, // the status word of a run
   /^\.tag-bad$/,
   /^\.live-bar\[data-tone="bad"\]/,
   /^\.tl-row\[data-(first-)?error\]/,

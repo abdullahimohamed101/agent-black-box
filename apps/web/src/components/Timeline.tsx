@@ -4,21 +4,18 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatOffset, formatDuration } from "@/lib/format";
 import { isPolicyService, policyEventLabel, PROVENANCE_TEXT } from "@/lib/policy";
+import { useMedia } from "@/lib/useMedia";
 import { useTimers } from "@/lib/useTimers";
 import { agentChip } from "@/lib/waterfall";
-import {
-  CLASS_LABELS,
-  describe,
-  eventClass,
-  faultRowIndex,
-  isError,
-  isRetry,
-  type Row,
-} from "@/lib/timeline";
+import { run } from "@/copy/run";
+import { describe, faultRowIndex, isError, isRetry, type Row } from "@/lib/timeline";
 import "../app/run-timeline.css";
 import "../app/policy.css";
 
-const ROW_HEIGHT = 36;
+/** One line on a wide pane; two lines (type, then detail) on a phone (run-timeline.css, the container query at 599 px). */
+const ROW_HEIGHT = 32;
+const ROW_HEIGHT_PHONE = 48;
+const PHONE = "(max-width: 599px)";
 
 type Props = {
   rows: readonly Row[];
@@ -52,8 +49,25 @@ const rowId = (key: string) => `tl-${key}`;
 /** A success says nothing: its status stays in the DOM for assistive tech but is not drawn (the fault line is the signal). */
 const quiet = (status: string | null | undefined) =>
   status == null || status === "" || status === "success";
-const StatusText = ({ text, silent }: { text: string; silent: boolean }) =>
-  silent ? <span className="sr-only">{text}</span> : <>{text}</>;
+/** An error is a plain marker in ink (the fault line and the status words carry the red); a retry is a quiet caution token. */
+const StatusText = ({
+  text,
+  silent,
+  kind,
+}: {
+  text: string;
+  silent: boolean;
+  kind?: "error" | "retry";
+}) =>
+  silent ? (
+    <span className="sr-only">{text}</span>
+  ) : kind ? (
+    <span className="tl-flag" data-kind={kind}>
+      {text}
+    </span>
+  ) : (
+    <>{text}</>
+  );
 
 /**
  * Virtualized: only the rows in (and near) the viewport are in the DOM, so a 10,000-event run costs the same as a
@@ -78,15 +92,23 @@ export function Timeline({
   onSpace,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rowHeight = useMedia(PHONE) ? ROW_HEIGHT_PHONE : ROW_HEIGHT;
   // TanStack Virtual returns unmemoizable functions; the React Compiler skips this component, which is acceptable here.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virt = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: 12,
     initialRect: { width: 900, height: 600 },
   });
+
+  // A change of row height (a window crossing the phone width) invalidates the sizes the virtualizer cached.
+  useEffect(() => {
+    virt.measure();
+    // virt is stable per instance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowHeight]);
 
   // The live edge: new rows scroll into view only while the reader is already at the bottom. Anyone who has scrolled
   // away keeps the list exactly where it is and gets a "N new events" control instead.
@@ -147,7 +169,7 @@ export function Timeline({
     scrollRef.current?.setAttribute("data-nav", "keyboard");
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const cur = selectedIndex < 0 ? -1 : selectedIndex;
-    const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 400) / ROW_HEIGHT) - 1);
+    const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 400) / rowHeight) - 1);
     switch (e.key) {
       case "j":
       case "ArrowDown":
@@ -210,11 +232,9 @@ export function Timeline({
               className="tl-fault"
               aria-hidden="true"
               data-top={faultIndex === 0 || undefined}
-              style={{ top: faultIndex * ROW_HEIGHT }}
+              style={{ top: faultIndex * rowHeight }}
             >
-              <span className="tl-fault-label">
-                first error{faultStep == null ? "" : ` · step ${faultStep}`}
-              </span>
+              <span className="tl-fault-label">{run.fault(faultStep)}</span>
             </div>
           )}
           {virt.getVirtualItems().map((v) => {
@@ -226,7 +246,7 @@ export function Timeline({
               top: 0,
               left: 0,
               width: "100%",
-              height: ROW_HEIGHT,
+              height: rowHeight,
               transform: `translateY(${v.start}px)`,
             };
             if (row.kind === "group") {
@@ -258,8 +278,10 @@ export function Timeline({
                   <span className="tl-off">
                     {formatOffset(Date.parse(row.first.occurred_at) - t0)}
                   </span>
-                  <span className="tl-class">{row.collapsed ? "▸" : "▾"} Group</span>
                   <span className="tl-sum">
+                    <span className="tl-chev" aria-hidden="true">
+                      {row.collapsed ? "▸" : "▾"}
+                    </span>
                     {row.label} <span className="muted">({row.count} events)</span>
                   </span>
                   <span className="tl-dur">{formatDuration(row.durationMs)}</span>
@@ -267,6 +289,7 @@ export function Timeline({
                     <StatusText
                       text={row.hasError ? "✕ error" : (row.status ?? "")}
                       silent={!row.hasError && quiet(row.status)}
+                      kind={row.hasError ? "error" : undefined}
                     />
                   </span>
                 </div>
@@ -274,7 +297,7 @@ export function Timeline({
             }
             const e = row.event;
             const err = isError(e);
-            const cls = eventClass(e.event_type);
+            const retry = isRetry(e);
             const pol = policyEventLabel(e);
             return (
               <div
@@ -293,7 +316,7 @@ export function Timeline({
                 data-after-fault={(faultIndex >= 0 && v.index > faultIndex) || undefined}
                 data-indented={row.indented || undefined}
                 data-policy={pol ? (pol.tone === "wait" ? "wait" : "outcome") : undefined}
-                data-retry={isRetry(e) || undefined}
+                data-retry={retry || undefined}
                 data-arrived={newIds?.has(e.event_id) || undefined}
                 data-landed={(e.event_id === landedId && landedTone) || undefined}
                 style={style}
@@ -303,12 +326,8 @@ export function Timeline({
                 }}
               >
                 <span className="tl-off">{formatOffset(Date.parse(e.occurred_at) - t0)}</span>
-                <span className="tl-class" data-class={cls}>
-                  {CLASS_LABELS[cls]}
-                </span>
                 <span className="tl-sum">
                   {e.event_id === firstErrorId && <span className="sr-only">First error </span>}
-                  {isRetry(e) && <span className="tag tag-warn">Retry </span>}
                   {showAgent && <span className="tl-agent">{agentChip(e.agent_id)}</span>}
                   <span className="tl-type">{e.event_type}</span>{" "}
                   {pol ? (
@@ -333,10 +352,15 @@ export function Timeline({
                 </span>
                 <span className="tl-dur">{formatDuration(e.duration_ms)}</span>
                 <span className="tl-status">
-                  <StatusText
-                    text={err ? `✕ ${e.status ?? "failed"}` : (e.status ?? "")}
-                    silent={!err && quiet(e.status)}
-                  />
+                  {retry && !err ? (
+                    <StatusText text={`↻ ${run.marker.retry}`} silent={false} kind="retry" />
+                  ) : (
+                    <StatusText
+                      text={err ? `✕ ${e.status ?? "failed"}` : (e.status ?? "")}
+                      silent={!err && quiet(e.status)}
+                      kind={err ? "error" : undefined}
+                    />
+                  )}
                 </span>
               </div>
             );

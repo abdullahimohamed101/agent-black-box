@@ -56,6 +56,24 @@
   --color-legacy-ok-bg: #e2f5e8;
   --color-legacy-wait-bg: #fff1d1;
   --color-legacy-fault-bg: #fbe7e5;
+  --color-data-llm: #72649b;
+  --color-data-tool: #46729e;
+  --color-data-shell: #846b34;
+  --color-data-agent: #407754;
+  --color-data-db: #357a82;
+  --color-data-neutral: #676f7a;
+  --color-data-agent-0: #2a5885;
+  --color-data-agent-1: #2e5f3a;
+  --color-data-agent-2: #714d1d;
+  --color-data-agent-3: #594a82;
+  --color-data-agent-4: #115d65;
+  --color-data-agent-5: #575d24;
+  --color-data-agent-6: #4e5661;
+  --color-data-agent-7: #71462e;
+  --color-syntax-keyword: #5b21b6;
+  --color-syntax-string: #116329;
+  --color-syntax-number: #8a4600;
+  --color-syntax-function: #0a4fa3;
   --weight-regular: 400;
   --weight-strong: 600;
   --tracking-none: 0;
@@ -145,6 +163,24 @@
     --color-legacy-ok-bg: #16301f;
     --color-legacy-wait-bg: #3a2c0f;
     --color-legacy-fault-bg: #3b1d1b;
+    --color-data-llm: #9c8dca;
+    --color-data-tool: #6d9dce;
+    --color-data-shell: #b89a5a;
+    --color-data-agent: #69a980;
+    --color-data-db: #56a7b0;
+    --color-data-neutral: #9099a5;
+    --color-data-agent-0: #85b6e9;
+    --color-data-agent-1: #87c293;
+    --color-data-agent-2: #ddae77;
+    --color-data-agent-3: #b5a6e5;
+    --color-data-agent-4: #70c0c9;
+    --color-data-agent-5: #b5bf7b;
+    --color-data-agent-6: #a9b2be;
+    --color-data-agent-7: #e2a989;
+    --color-syntax-keyword: #d2a8ff;
+    --color-syntax-string: #7ee787;
+    --color-syntax-number: #ffa657;
+    --color-syntax-function: #79c0ff;
   }
 }
 /* Zero motion under reduce: durations collapse here, and the legacy --t-* tokens do the same in globals.css. */

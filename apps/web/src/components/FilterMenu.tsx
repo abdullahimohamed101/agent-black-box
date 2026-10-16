@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { run } from "@/copy/run";
 import { CLASS_LABELS, CLASS_ORDER, type EventClass } from "@/lib/timeline";
 import "../app/run-timeline.css";
 
@@ -13,11 +14,14 @@ export function FilterMenu({
   classes,
   onToggle,
   onReset,
+  groups,
 }: {
   /** null = every class is shown. */
   classes: ReadonlySet<EventClass> | null;
   onToggle: (c: EventClass) => void;
   onReset: () => void;
+  /** Collapse or expand every group of the timeline (design pass 2: it lives here, not beside the filter). */
+  groups?: { collapsed: boolean; disabled: boolean; onToggle: () => void };
 }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -91,6 +95,16 @@ export function FilterMenu({
         <button type="button" className="filter-reset" disabled={hidden === 0} onClick={onReset}>
           Show all classes
         </button>
+        {groups && (
+          <button
+            type="button"
+            className="filter-reset"
+            disabled={groups.disabled}
+            onClick={groups.onToggle}
+          >
+            {groups.collapsed ? run.toolbar.expand : run.toolbar.collapse}
+          </button>
+        )}
       </div>
     </div>
   );

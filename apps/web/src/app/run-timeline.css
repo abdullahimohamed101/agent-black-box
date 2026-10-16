@@ -1,8 +1,91 @@
-/* ---- Phase 22 step 4: the fault line. A 2px line at the first error on the timeline (across the rows) and the waterfall
-   (across the lanes). Above it everything is quiet; below it the recovery path carries a faint tint, retries in amber. Static:
-   the entrance is in run-motion.css. Red is only ever the failure, so every --fail use here is a failure selector in tokens-use.test.ts. ---- */
+/* ---- The timeline and the fault line (design pass 2, batch 5b). Rows are plain: offset, event (mono type and detail), duration,
+   status. No tinted rows, no class column, no left bars. The ONE red mark of the page is the 2 px fault line at the first error,
+   on the timeline (across the rows) and the waterfall (across the lanes), with its label cut into the line. Static: the entrance
+   is in run-motion.css. Every --fail use here is a failure selector in tests/tokens-use.test.ts. Tokens only. ---- */
+.timeline {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.tl-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) 4.5rem 6.5rem;
+  gap: var(--space-3);
+  align-items: center;
+  padding: 0 var(--layout-gutter);
+  font-size: var(--type-body-size);
+  border-bottom: 1px solid var(--color-border-subtle);
+  cursor: pointer;
+}
+.tl-row[data-indented] {
+  padding-left: calc(var(--layout-gutter) + var(--space-4));
+}
+.tl-row[data-selected] {
+  background: var(--color-bg-wash);
+  box-shadow: inset 2px 0 0 var(--color-interactive-default);
+}
+.timeline:focus-visible .tl-row[data-selected] {
+  outline: 2px solid var(--color-interactive-default);
+  outline-offset: -2px;
+}
+/* Row hover is an instant background change (no transition, so nothing blends while the list scrolls). */
+.tl-row:not([data-selected]):hover,
+.wf-row:not([data-selected]):hover {
+  background-color: var(--color-bg-raised);
+}
+.tl-off,
+.tl-dur {
+  font-family: var(--font-mono);
+  font-size: var(--type-body-size);
+  color: var(--color-text-secondary);
+}
+.tl-dur {
+  text-align: right;
+}
+.tl-sum,
+.tl-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-type {
+  font-family: var(--font-mono);
+}
+.tl-desc {
+  color: var(--color-text-secondary);
+}
+.tl-group {
+  font-weight: var(--weight-strong);
+}
+.tl-group .muted,
+.tl-group .tl-off,
+.tl-group .tl-dur {
+  font-weight: var(--weight-regular);
+}
+.tl-chev {
+  display: inline-block;
+  width: var(--space-4);
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-regular);
+}
+.tl-agent {
+  margin-right: var(--space-2);
+  color: var(--color-text-secondary);
+  font: var(--type-mono-small-weight) var(--type-mono-small-size) / 1 var(--font-mono);
+}
+.tl-sum .tag {
+  margin-right: var(--space-2);
+}
+/* The markers are words: "error" in ink 600 (the fault line and the status word carry the colour), "retry" a quiet caution token. */
+.tl-flag[data-kind="error"] {
+  font-weight: var(--weight-strong);
+}
+.tl-flag[data-kind="retry"] {
+  color: var(--color-status-caution);
+}
 
-/* Timeline: the line sits on the top edge of the first-error row (or of the group that holds it). */
+/* The fault line sits on the top edge of the first-error row (or of the group that holds it). The line itself is a
+   pseudo-element so the entrance (run-motion.css) can scale it without squashing the label. */
 .tl-fault {
   position: absolute;
   left: 0;
@@ -12,7 +95,6 @@
   margin-top: -1px;
   pointer-events: none;
 }
-/* The line itself is a pseudo-element so the entrance (run-motion.css) can scale it without squashing the label. */
 .tl-fault::before {
   content: "";
   position: absolute;
@@ -20,46 +102,21 @@
   background: var(--fail);
   transform-origin: left center;
 }
-/* The label straddles the line at the right: the status column above it is empty (successes are silent), and a 12px chip
-   fits between the text lines of the two rows (36px rows, ~19px text centred in each). */
+/* The label is cut into the line over the empty end of the detail column (left of duration and status), on the canvas colour. */
 .tl-fault-label {
   position: absolute;
-  right: 0.6rem;
+  right: calc(var(--layout-gutter) + 11.5rem);
   top: 1px;
   transform: translateY(-50%);
-  padding: 0 0.4rem;
-  border-radius: 3px;
-  background: var(--fail);
-  color: var(--surface);
-  font: 500 0.625rem / 12px var(--mono);
+  padding: 0 var(--space-2);
+  background: var(--color-bg-canvas);
+  color: var(--fail);
+  font: var(--weight-strong) var(--type-small-size) / 14px var(--font-sans);
   white-space: nowrap;
 }
 .tl-fault[data-top] .tl-fault-label {
   top: 2px;
   transform: none;
-  border-radius: 0 0 3px 3px;
-}
-
-/* Rows: quiet by default (muted class, regular weights); the first-error row is marked by the line and its error tint, not an outline. */
-.timeline .tl-row[data-first-error] {
-  outline: 0;
-}
-.tl-row .tl-class {
-  color: var(--muted);
-}
-.tl-row:not([data-error], [data-retry], [data-after-fault]) .tl-type {
-  color: var(--fg-2);
-}
-.tl-group:not([data-error], [data-after-fault]) {
-  font-weight: 500;
-  color: var(--fg-2);
-}
-/* Below the fault: the recovery path reads as one region. Low specificity so selection and hover still win. */
-.tl-row[data-after-fault]:where(:not([data-selected]):not([data-error])) {
-  background: color-mix(in srgb, var(--fail-bg) 38%, transparent);
-}
-.tl-row[data-after-fault][data-retry]:where(:not([data-selected])) {
-  background: color-mix(in srgb, var(--wait-bg) 80%, transparent);
 }
 
 /* Waterfall: the same cut across the lanes at the first-error time. The layer repeats the row grid so its middle column is the track. */
@@ -68,8 +125,8 @@
   inset: 0;
   display: grid;
   grid-template-columns: var(--wf-label-w) minmax(0, 1fr) var(--wf-meta-w);
-  gap: 0.6rem;
-  padding: 0 0.6rem;
+  gap: var(--space-3);
+  padding: 0 var(--layout-gutter);
   pointer-events: none;
 }
 .wf-fault-layer[data-part="line"] {
@@ -87,73 +144,59 @@
   margin-left: -1px;
   background: var(--fail);
 }
-.wf-fault-region {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
-  background: color-mix(in srgb, var(--fail-bg) 40%, transparent);
-}
 .wf-fault-strip {
   flex: none;
   display: grid;
   grid-template-columns: var(--wf-label-w) minmax(0, 1fr) var(--wf-meta-w);
-  gap: 0.6rem;
-  height: 1.1rem;
-  padding: 0 0.6rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  gap: var(--space-3);
+  height: 1.25rem;
+  padding: 0 var(--layout-gutter);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 .wf-fault-strip-track {
   position: relative;
   overflow: hidden;
 }
+/* The flag on the waterfall's ruler: the label in fault-coloured text, cut into the line by the canvas behind it. */
 .wf-fault-flag {
   position: absolute;
   top: 0;
   bottom: 0;
   display: flex;
   align-items: center;
-  padding: 0 0.45rem;
+  padding: 0 var(--space-2);
   border-left: 2px solid var(--fail);
-  background: var(--fail);
-  color: var(--surface);
-  font: 500 0.6875rem / 1 var(--mono);
+  background: var(--color-bg-canvas);
+  color: var(--fail);
+  font: var(--weight-strong) var(--type-small-size) / 1 var(--font-sans);
   white-space: nowrap;
-  border-radius: 0 3px 3px 0;
 }
 .wf-fault-flag[data-side="left"] {
   transform: translateX(-100%);
   border-left: 0;
   border-right: 2px solid var(--fail);
-  border-radius: 3px 0 0 3px;
 }
 
-/* Toolbar: Filter (a popover), Errors only and Collapse groups, left-aligned and small. */
-.pane .toolbar.tl-toolbar {
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 0.6rem;
-  overflow: visible;
-}
+/* Filter: a button and a popover; Errors only and Collapse groups sit beside it. */
 .filter-menu {
   position: relative;
 }
 .filter-button {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 .filter-button[data-active] {
-  border-color: var(--accent);
+  border-color: var(--color-interactive-default);
 }
 .filter-count {
-  min-width: 1.1rem;
-  padding: 0 0.3rem;
-  border-radius: 3px;
-  background: var(--accent-bg);
-  color: var(--accent);
-  font: 500 0.6875rem / 1.3 var(--mono);
+  min-width: var(--space-4);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-wash);
+  color: var(--color-interactive-default);
+  font: var(--type-mono-small-weight) var(--type-mono-small-size) / var(--type-mono-small-line)
+    var(--font-mono);
   text-align: center;
 }
 .filter-caret {
@@ -161,15 +204,15 @@
 }
 .filter-panel {
   position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  top: calc(100% + var(--space-1));
+  right: 0;
   z-index: 20;
   display: grid;
   min-width: 14rem;
-  padding: 0.35rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  background: var(--surface);
+  padding: var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-raised);
   white-space: nowrap;
 }
 .filter-panel[hidden] {
@@ -178,33 +221,70 @@
 .filter-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   min-height: 1.75rem;
-  padding: 0 0.4rem;
-  border-radius: 3px;
-  font-size: var(--fs-body);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 .filter-item:hover {
-  background: var(--sel);
+  background: var(--color-bg-wash);
 }
 .filter-reset {
-  margin-top: 0.3rem;
-  font-size: var(--fs-small);
+  margin-top: var(--space-1);
+  font-size: var(--type-small-size);
 }
 
 /* Live edge: when the reader has scrolled away from the bottom, new events do not move the list; this says how many came. */
-.pane-body {
-  position: relative;
-}
 .tl-new {
   position: absolute;
   left: 50%;
-  bottom: 0.75rem;
+  bottom: var(--space-3);
   transform: translateX(-50%);
   z-index: 4;
-  padding: 0.25rem 0.75rem;
-  border-color: var(--accent);
-  background: var(--surface);
-  font-size: 0.75rem;
+  padding: var(--space-1) var(--space-3);
+  border-color: var(--color-interactive-default);
+  background: var(--color-bg-raised);
+  font-size: var(--type-small-size);
+}
+
+/* The rows adapt to the pane's own width, which is narrow whenever the inspector is open, not to the viewport's. On a phone a
+   row is two lines (offset and type, then the detail), 48 px, with duration and status in the right-hand column. */
+@container (max-width: 37.4375rem) {
+  .tl-row {
+    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+    grid-template-rows: 1.25rem 1.25rem;
+    align-content: center;
+    gap: 0 var(--space-3);
+    padding: 0 var(--layout-gutter-narrow);
+  }
+  .tl-off {
+    grid-row: 1;
+    align-self: start;
+  }
+  .tl-sum {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    white-space: normal;
+    overflow: hidden;
+  }
+  .tl-type,
+  .tl-desc {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tl-dur {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .tl-status {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+  }
+  .tl-fault-label {
+    right: var(--layout-gutter-narrow);
+  }
 }

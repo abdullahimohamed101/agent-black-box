@@ -5,7 +5,6 @@
    (tests/tokens-red.test.ts; ADR-166). Light is the default; dark follows the system. */
 :root {
   color-scheme: light dark;
-  --ctx-w: 18rem;
   --insp-w: 26rem;
   --t-fast: 120ms;
   --t-base: 180ms;
@@ -31,14 +30,6 @@ body {
   color: var(--fg);
   font: 13px/1.45 var(--sans);
   font-variant-numeric: tabular-nums;
-}
-h1,
-h2,
-h3,
-.stat dt,
-th,
-.subnav {
-  font-family: var(--cond);
 }
 .num,
 .tl-off,
@@ -137,9 +128,8 @@ h2 {
   border-right: 0;
 }
 .stat dt {
-  font: 500 0.75rem/1.3 var(--cond);
-  letter-spacing: 0.01em;
-  color: var(--muted);
+  font: var(--type-small-weight) var(--type-small-size) / var(--type-small-line) var(--font-sans);
+  color: var(--color-text-secondary);
 }
 .stat dd {
   margin: 0.05rem 0 0;
@@ -151,51 +141,6 @@ h2 {
   font: 400 0.75rem/1.35 var(--sans);
   color: var(--muted);
 }
-.stat[data-tone="bad"] dd {
-  color: var(--bad);
-}
-.stat[data-tone="warn"] dd {
-  color: var(--warn);
-}
-
-/* ---- Run header: instrument panel over the work area ---- */
-.run-head {
-  padding: 0.75rem 1.25rem 0;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-.run-head .stats {
-  margin: 0.6rem 0 0;
-  border-bottom: 0;
-}
-/* A value or label never breaks inside itself; when the row is too narrow whole readouts wrap to the next line. */
-.run-head .stat dt,
-.run-head .stat dd {
-  white-space: nowrap;
-  overflow-wrap: normal;
-}
-@media (min-width: 80rem) {
-  /* Nine readouts fit one row from 1280: tighter gutters, no wrapping orphan. */
-  .run-head .stats {
-    flex-wrap: nowrap;
-  }
-  .run-head .stat {
-    min-width: 0;
-    margin-right: 0.85rem;
-    padding-right: 0.85rem;
-  }
-}
-.run-title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 0.75rem;
-}
-.run-title h1 {
-  margin: 0;
-  font: 600 1.375rem/1.2 var(--cond);
-  overflow-wrap: anywhere;
-}
 .id {
   font-size: 0.75rem;
   overflow-wrap: anywhere;
@@ -204,42 +149,6 @@ h2 {
   margin: 0.4rem 0 0;
   font-size: 0.9375rem;
 }
-.linkish {
-  padding: 0.1rem 0.35rem;
-  margin: -0.1rem 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-}
-.linkish:hover {
-  text-decoration: underline;
-}
-.linkish kbd {
-  margin-left: 0.15rem;
-  padding: 0 0.3rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-.live-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem 1rem;
-  align-items: center;
-  margin: 0.5rem 0 0;
-  padding: 0.3rem 0;
-  border-top: 1px solid var(--border);
-}
-.shell main.page:has(> .run-detail) {
-  padding: 0;
-}
-.run-head .notice {
-  margin: 0.5rem 0 0;
-}
-
 .table-wrap {
   overflow-x: auto;
 }
@@ -255,15 +164,14 @@ td {
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-/* Column heads are small-caps labels in every table of the app; row heads stay ordinary text. */
+/* Column heads are small ink-2 sentence-case labels in every table of the app (ADR-166: no upper case, no tracking); row heads
+   stay ordinary text. */
 thead th,
 th[scope="col"] {
-  padding-block: 0.35rem;
-  font: 600 0.66rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border-bottom-color: var(--border-strong);
+  padding-block: var(--space-1);
+  font: var(--type-small-weight) var(--type-small-size) / var(--type-small-line) var(--font-sans);
+  color: var(--color-text-secondary);
+  border-bottom-color: var(--color-border-strong);
 }
 tbody th {
   font-weight: 500;
@@ -273,10 +181,9 @@ tbody tr:hover {
 }
 caption {
   text-align: left;
-  padding: 0 0 0.35rem;
-  font: 500 0.75rem/1.3 var(--cond);
-  letter-spacing: 0.01em;
-  color: var(--muted);
+  padding: 0 0 var(--space-1);
+  font: var(--type-small-weight) var(--type-small-size) / var(--type-small-line) var(--font-sans);
+  color: var(--color-text-secondary);
 }
 td:nth-child(2),
 td.name {
@@ -286,8 +193,8 @@ td.name {
 .num {
   text-align: right;
 }
-/* One status grammar (ADR-111, ADR-166): a glyph and a word, no outline and no fill. Failed, timed out and blocked are the one
-   red word (600); waiting is caution text; running is an accent dot with the word in ink; success and the neutral states
+/* One status grammar (ADR-111, ADR-166): a glyph and a word, no outline and no fill. A run's Failed, timed out and blocked are the one
+   red word (600, by data-status: any other "bad" badge, a critical finding or a failed test, is ink at 600); waiting is caution text; running is an accent dot with the word in ink; success and the neutral states
    are ink-2 (success is a check, not green). Glyph and word, never colour alone. */
 .badge {
   display: inline-flex;
@@ -301,8 +208,12 @@ td.name {
   color: var(--color-text-secondary);
 }
 .badge[data-tone="bad"] {
-  color: var(--color-status-fault);
   font-weight: var(--weight-strong);
+}
+.badge[data-status="FAILED"],
+.badge[data-status="TIMED_OUT"],
+.badge[data-status="BLOCKED"] {
+  color: var(--color-status-fault);
 }
 .badge[data-tone="warn"] {
   color: var(--color-status-caution);
@@ -319,9 +230,6 @@ td.name {
   line-height: var(--type-small-line);
   color: var(--color-text-secondary);
   white-space: nowrap;
-}
-.tag-bad {
-  color: var(--bad);
 }
 .tag-warn {
   color: var(--warn);
@@ -450,378 +358,6 @@ select {
   padding: var(--space-2) 0;
   color: var(--color-text-secondary);
 }
-.live-conn {
-  font-weight: 600;
-}
-.live-partial {
-  color: var(--warn);
-}
-.live-bar[data-tone="bad"] .live-now {
-  color: var(--bad);
-}
-/* ---- Run work area: context column | pane | inspector, filling the viewport under the header ---- */
-.run-detail {
-  display: flex;
-  flex-direction: column;
-  height: calc(100dvh - var(--top-h));
-  overflow: hidden;
-}
-.run-head {
-  flex: none;
-}
-.pane-head {
-  flex: none;
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0 1.25rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-.seg {
-  display: flex;
-  gap: 0.25rem;
-}
-.seg-item {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 0.85rem;
-  min-height: 2.25rem;
-  font: 600 0.8rem/1 var(--cond);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  cursor: pointer;
-}
-.seg-item:hover {
-  color: var(--fg);
-}
-.seg-item:has(input:checked) {
-  color: var(--fg);
-  border-bottom-color: var(--accent);
-}
-.seg-item:has(input:focus-visible) {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-/* The native radio fills the tab at zero opacity: still a real, visible-to-assistive-tech control, drawn by its label. */
-.seg-item input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-.context-toggle {
-  align-self: center;
-  font: 600 0.72rem/1.4 var(--cond);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.context-toggle[aria-pressed="true"] {
-  background: var(--sel);
-  border-color: var(--accent);
-}
-.work {
-  --ctx-w: 18rem;
-  flex: 1 1 auto;
-  min-height: 0;
-  display: grid;
-  /* One row of the container's height: an auto row would grow with a tall inspector or context and stretch the lists. */
-  grid-template-rows: minmax(0, 1fr);
-  grid-template-columns: var(--ctx-w) minmax(0, 1fr);
-}
-.work[data-inspector="open"] {
-  grid-template-columns: var(--ctx-w) minmax(0, 1fr) var(--insp-w);
-}
-.work[data-context="closed"] {
-  --ctx-w: 2.25rem;
-}
-.context {
-  min-height: 0;
-  overflow: auto;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-}
-.context:focus-visible {
-  outline-offset: -2px;
-}
-.context-body {
-  padding: 0 1rem 1rem;
-}
-.context-strip {
-  display: none;
-  width: 100%;
-  height: 100%;
-  padding: 0.6rem 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-}
-.strip-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.6rem;
-}
-.strip-label {
-  writing-mode: vertical-rl;
-  font: 600 0.72rem/1 var(--cond);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.strip-count {
-  min-width: 1.35rem;
-  padding: 0.05rem 0.25rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  font: 500 0.68rem/1.3 var(--mono);
-  text-align: center;
-  color: var(--fg);
-}
-.strip-count[data-tone="warn"] {
-  background: var(--warn-bg);
-  border-color: var(--warn);
-  color: var(--warn);
-}
-.seg-count {
-  margin-left: 0.4rem;
-  font: 400 0.68rem/1 var(--mono);
-  letter-spacing: 0;
-  color: var(--muted);
-}
-.context-strip:hover {
-  color: var(--fg);
-  background: var(--sel);
-}
-.work[data-context="closed"] .context-strip {
-  display: block;
-}
-.work[data-context="closed"] .context-body {
-  display: none;
-}
-/* Each context section is a labelled band, not a card: a hairline above and a small-caps label. */
-.context-body > section {
-  margin: 0;
-  padding: 0.85rem 0;
-  border-top: 1px solid var(--border);
-}
-.context-body > section:first-child {
-  border-top: 0;
-}
-.context-body h2 {
-  margin: 0 0 0.45rem;
-  font: 500 0.75rem/1.3 var(--cond);
-  letter-spacing: 0.01em;
-  color: var(--muted);
-}
-.context-body h3 {
-  font-size: 0.85rem;
-}
-.pane {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  container-type: inline-size;
-  background: var(--bg);
-}
-.pane .toolbar {
-  flex: none;
-  margin: 0;
-  padding: 0.5rem 0.75rem;
-  gap: 0.4rem 0.75rem;
-  align-items: center;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-.pane > .notice,
-.pane > .state {
-  flex: none;
-  margin: 0.5rem 0.75rem;
-}
-.pane-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.pane-foot {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 0 1rem;
-  padding: 0.3rem 0.75rem;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  font-size: 0.75rem;
-}
-.pane-foot p {
-  margin: 0;
-}
-.pane-foot kbd {
-  padding: 0 0.3rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  font-size: 0.7rem;
-}
-.timeline {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  background: var(--bg);
-}
-.tl-row {
-  display: grid;
-  grid-template-columns: 4.2rem 8.5rem minmax(0, 1fr) 4.5rem 6rem;
-  gap: 0.6rem;
-  align-items: center;
-  padding: 0 0.6rem;
-  font-size: 0.84rem;
-  border-bottom: 1px solid var(--border);
-  cursor: pointer;
-}
-.tl-row[data-indented] {
-  padding-left: 1.6rem;
-}
-.tl-row[data-selected] {
-  background: var(--sel);
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-.tl-row[data-error] {
-  background: var(--bad-bg);
-  box-shadow: inset 3px 0 0 var(--bad);
-}
-.tl-row[data-first-error] {
-  outline: 2px solid var(--bad);
-  outline-offset: -2px;
-}
-.tl-row[data-retry] {
-  box-shadow: inset 3px 0 0 var(--warn);
-}
-.timeline:focus-visible .tl-row[data-selected] {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-.tl-group {
-  font-weight: 600;
-}
-.tl-off,
-.tl-dur {
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-}
-.tl-dur {
-  text-align: right;
-}
-.tl-class,
-.tl-sum,
-.tl-status {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tl-type {
-  font-family: var(--mono);
-  font-size: 0.8rem;
-}
-.tl-desc {
-  color: var(--muted);
-}
-/* The inspector is the work area's right-hand pane: flush against the edge, a hairline on its left, its own scroll. */
-.drawer {
-  grid-column: 3;
-  grid-row: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 0 1rem 1rem;
-  background: var(--surface);
-  border-left: 1px solid var(--border);
-}
-.drawer[data-error] {
-  border-left-color: var(--bad);
-}
-.drawer-head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  align-items: center;
-  margin: 0 -1rem;
-  padding: 0.6rem 1rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-.drawer h2 {
-  margin: 0;
-  font: 600 1rem/1.3 var(--mono);
-  overflow-wrap: anywhere;
-}
-.drawer > p.muted {
-  margin: 0.5rem 0 0;
-  font: 400 0.75rem/1.4 var(--mono);
-}
-.drawer h3 {
-  margin: 1.1rem 0 0.35rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--border);
-  font: 500 0.75rem/1.3 var(--cond);
-  letter-spacing: 0.01em;
-  color: var(--muted);
-}
-.drawer > section:first-of-type h3 {
-  margin-top: 0.9rem;
-}
-.drawer-error {
-  --tone: var(--bad);
-  margin-top: 0.75rem;
-  padding: 0.1rem 0.75rem 0.5rem;
-  background: var(--bad-bg);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--tone);
-  border-radius: 4px;
-}
-.drawer .drawer-error h3 {
-  margin: 0.5rem 0 0.25rem;
-  padding: 0;
-  border: 0;
-  font: 600 0.8rem/1.3 var(--cond);
-  letter-spacing: 0.06em;
-  color: var(--bad);
-}
-.drawer-error p {
-  margin: 0 0 0.4rem;
-}
-.insp-resize {
-  display: none;
-}
-.work[data-inspector="open"] .insp-resize {
-  display: block;
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: start;
-  width: 7px;
-  margin-left: -3px;
-  z-index: 2;
-  cursor: col-resize;
-  touch-action: none;
-}
-.insp-resize:hover,
-.insp-resize:focus-visible {
-  background: var(--accent);
-  opacity: 0.55;
-}
 .fields {
   margin: 0;
   display: grid;
@@ -849,126 +385,6 @@ pre {
   overflow: auto;
   max-height: 20rem;
   font-size: 0.78rem;
-}
-/* The rows adapt to the pane's own width, which is narrow whenever the inspector is open, not to the viewport's. */
-@container (max-width: 40rem) {
-  .tl-row {
-    grid-template-columns: 3.6rem minmax(0, 1fr) 4rem;
-  }
-  .tl-class,
-  .tl-status {
-    display: none;
-  }
-}
-/* Stacked mode: a phone or a very short window. The run page is a scrolling document again, the lists keep a fixed
-   height (virtualisation needs a definite one) and the inspector is an overlay under the top bar. */
-@media (max-width: 52rem), (max-height: 36rem) {
-  .run-detail {
-    height: auto;
-    overflow: visible;
-  }
-  .work,
-  .work[data-inspector="open"] {
-    display: flex;
-    flex-direction: column;
-  }
-  /* The timeline comes first on a phone; the context follows it. */
-  .pane {
-    order: 1;
-  }
-  .context {
-    order: 2;
-    overflow: visible;
-    border-right: 0;
-    border-top: 1px solid var(--border);
-  }
-  .strip-body {
-    flex-direction: row;
-    justify-content: center;
-  }
-  .strip-label {
-    writing-mode: horizontal-tb;
-  }
-  .timeline {
-    flex: none;
-    height: min(68vh, 44rem);
-  }
-  .pane-foot .keys {
-    display: none;
-  }
-  .drawer {
-    grid-column: auto;
-    grid-row: auto;
-    position: fixed;
-    inset: var(--top-h) 0 0 0;
-    z-index: 3;
-    border-left: 0;
-  }
-  .work[data-inspector="open"] .insp-resize {
-    display: none;
-  }
-  .pane-head {
-    padding: 0 0.75rem;
-  }
-}
-
-/* ---- Phase 6: coding-agent views ---- */
-.story ol {
-  list-style: decimal;
-  margin: 0.25rem 0 0;
-  padding-left: 1.6rem;
-  display: grid;
-  gap: 0.1rem;
-}
-/* One marker per step: the number. The tone glyph is redundant with the label's words ("fail", "Retry #1") and
-   with its colour, and drawing both read as "1. • Model". */
-.story li::marker {
-  font: 400 0.72rem var(--mono);
-  color: var(--muted);
-}
-.story-glyph {
-  display: none;
-}
-.story li button {
-  all: unset;
-  box-sizing: border-box;
-  cursor: pointer;
-  /* Flex, not block: the label and detail must be separate boxes, or the button's accessible name loses the space
-     between them ("Readapp/session.py") and the specs that find a step by its name stop matching. */
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.45rem;
-  align-items: baseline;
-  width: 100%;
-  padding: 0.12rem 0.35rem;
-  border-radius: 4px;
-  line-height: 1.4;
-}
-.story li button:hover {
-  background: var(--sel);
-}
-.story li button:focus-visible {
-  outline: 2px solid var(--accent);
-}
-.story-label {
-  font-weight: 600;
-}
-.story li[data-tone="bad"] .story-label,
-.story li[data-tone="bad"] .story-glyph {
-  color: var(--bad);
-}
-.story li[data-tone="ok"] .story-label,
-.story li[data-tone="ok"] .story-glyph {
-  color: var(--ok);
-}
-.story li[data-tone="warn"] .story-label,
-.story li[data-tone="warn"] .story-glyph {
-  color: var(--warn);
-}
-.story-detail {
-  color: var(--muted);
-  font-size: 0.88rem;
-  overflow-wrap: anywhere;
 }
 .artifact {
   margin: 0.5rem 0;
@@ -1069,7 +485,6 @@ pre {
     color: #79c0ff;
   }
 }
-
 /* Analytics: bars and columns are built from elements, never from trace-derived HTML. */
 .toolbar {
   display: flex;
@@ -1152,7 +567,6 @@ h3 {
 .column-fill[data-tone="bad"] {
   background: var(--bad, #b3261e);
 }
-
 /* Figures shown while the next window or project is loading are dimmed and announced. */
 [data-stale="true"] > :not(.updating) {
   opacity: 0.55;
@@ -1160,7 +574,6 @@ h3 {
 .updating {
   margin: 0.25rem 0;
 }
-
 /* ---- Phase 15: sign-in, workspace switcher, settings ---- */
 a.button,
 button.primary {
@@ -1212,7 +625,7 @@ button.danger {
 .subnav a {
   text-decoration: none;
   padding: 0.5rem 0.85rem;
-  font: 600 0.8rem/1 var(--cond);
+  font: 600 0.8rem/1 var(--sans);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1252,107 +665,6 @@ button.danger {
   padding: 0.4rem 0.6rem;
   margin: 0.4rem 0;
 }
-
-/* ---- Phase 10: findings and health ---- */
-.findings {
-  margin: 1rem 0;
-}
-.findings-state[data-tone="bad"] {
-  color: var(--bad);
-}
-.findings-state[data-tone="warn"] {
-  color: var(--warn);
-}
-.health-overall {
-  margin: 0.5rem 0;
-}
-.health-dims {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 0.5rem;
-  margin: 0.5rem 0 1rem;
-}
-.health-dim {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  padding: 0.5rem 0.75rem;
-}
-.health-dim dt {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-.health-dim dd {
-  margin: 0.15rem 0 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-}
-.health-rule {
-  font-size: 0.9rem;
-}
-.health-inputs {
-  font-size: 0.78rem;
-  overflow-wrap: anywhere;
-}
-.finding-list {
-  list-style: none;
-  margin: 0.5rem 0;
-  padding: 0;
-  display: grid;
-  gap: 0.6rem;
-}
-.finding {
-  border: 1px solid var(--border);
-  border-left-width: 4px;
-  border-radius: 6px;
-  padding: 0.6rem 0.8rem;
-  background: var(--surface);
-  overflow-wrap: anywhere;
-}
-.finding[data-severity="critical"] {
-  border-left-color: var(--bad);
-}
-.finding[data-severity="warning"] {
-  border-left-color: var(--warn);
-}
-.finding[data-severity="info"] {
-  border-left-color: var(--info);
-}
-.finding-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 0.5rem;
-}
-.finding-head h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-.finding p {
-  margin: 0.4rem 0;
-}
-.finding .chips {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin: 0.4rem 0;
-  padding: 0;
-}
-.chip-static {
-  cursor: default;
-}
-.finding-steps ol {
-  margin: 0.25rem 0 0.5rem;
-  padding-left: 1.5rem;
-  display: grid;
-  gap: 0.15rem;
-}
-.finding-foot {
-  font-size: 0.78rem;
-}
 .link-button {
   background: none;
   border: none;
@@ -1376,188 +688,6 @@ td a {
 .table-wrap {
   position: relative;
 }
-
-/* ---- Run page: compact forms of the shared sections inside the 18rem context column and the pane toolbar ---- */
-.pane .toolbar {
-  flex-wrap: nowrap;
-  overflow: hidden;
-}
-/* One row: the class chips scroll sideways inside their own group; "Errors only" and "Collapse groups" stay pinned. */
-.pane .toolbar fieldset {
-  flex: 1 1 0;
-  min-width: 0;
-  flex-wrap: nowrap;
-  gap: 0.3rem;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  padding-bottom: 2px;
-}
-.pane .toolbar > :not(fieldset) {
-  flex: none;
-  white-space: nowrap;
-  font-size: 0.72rem;
-  padding-block: 0.1rem;
-}
-/* A hint that the chips scroll: the right edge fades out. */
-.pane .toolbar fieldset {
-  mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
-}
-@container (max-width: 40rem) {
-  /* Too narrow for one row: the chips wrap onto their own row instead of scrolling under a fade with a half chip. */
-  .pane .toolbar {
-    flex-wrap: wrap;
-  }
-  .pane .toolbar fieldset {
-    flex: 1 1 100%;
-    flex-wrap: wrap;
-    overflow: visible;
-    mask-image: none;
-  }
-  /* Keeps the group's accessible name while giving the chips the room. */
-  .pane .toolbar legend {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-}
-.pane .toolbar legend {
-  float: left;
-  margin: 0 0.4rem 0 0;
-  white-space: nowrap;
-  font: 600 0.66rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.pane .toolbar .chip {
-  flex: none;
-  white-space: nowrap;
-  padding: 0.02rem 0.4rem;
-  font-size: 0.72rem;
-}
-.tl-sum .tag {
-  margin-right: 0.4rem;
-}
-.context-body .findings-state {
-  margin: 0 0 0.4rem;
-  font-size: 0.78rem;
-}
-.context-body .health-overall {
-  margin: 0 0 0.4rem;
-  font-size: 0.78rem;
-}
-.context-body .health-dims {
-  display: block;
-  margin: 0 0 0.5rem;
-}
-.context-body .health-dim {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.1rem 0.5rem;
-  align-items: center;
-  padding: 0.3rem 0;
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  background: none;
-}
-.context-body .health-dim dt {
-  font-size: 0.8rem;
-  color: var(--fg);
-}
-.context-body .health-dim dd {
-  display: contents;
-}
-.context-body .health-dim .badge {
-  grid-column: 2;
-  grid-row: 1;
-}
-.context-body .health-rule,
-.context-body .health-inputs {
-  grid-column: 1 / -1;
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-.context-body .health-inputs {
-  font-size: 0.7rem;
-}
-.context-body .finding {
-  padding: 0.5rem 0.6rem;
-  font-size: 0.8rem;
-}
-.context-body .finding-head h3 {
-  font-size: 0.85rem;
-}
-.context-body .evaluation-start,
-.context-body .verdict-form {
-  flex-direction: column;
-  align-items: stretch;
-  max-width: none;
-}
-.context-body .verdict-form textarea {
-  min-height: 4rem;
-}
-.context-body .state {
-  margin: 0.25rem 0;
-  padding: 0.5rem 0.75rem;
-}
-
-/* ---- Evidence view: the artifacts of the run, a dense table that scrolls inside the pane ---- */
-.evidence {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  background: var(--bg);
-}
-.evidence:focus-visible {
-  outline-offset: -2px;
-}
-.evidence table {
-  font-size: 0.8rem;
-}
-.evidence th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 0.35rem 0.75rem;
-  background: var(--surface);
-  font: 600 0.66rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.evidence td {
-  padding: 0.3rem 0.75rem;
-  height: 36px; /* ROW_HEIGHT in EvidenceList.tsx: the virtualizer's fixed row size */
-  box-sizing: border-box;
-  white-space: nowrap;
-}
-.evidence tr.evidence-pad td {
-  padding: 0;
-  border: 0;
-}
-.evidence td.evidence-what {
-  min-width: 0;
-  max-width: 28rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: var(--mono);
-}
-.evidence td.evidence-source {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-}
-.evidence tr[data-selected] td {
-  background: var(--sel);
-}
-.evidence tr[data-selected] td:first-child {
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-.evidence .state {
-  margin: 0.75rem;
-}
-
 /* ---- Page title line (design pass 2): one h1 per document page, 24/30 Sans ---- */
 .page-head {
   display: flex;
@@ -1584,8 +714,7 @@ td a {
   margin: 0 0 var(--space-3);
 }
 .page:not(:has(> .run-detail)) h2 {
-  font: 600 0.95rem/1.3 var(--cond);
-  letter-spacing: 0.02em;
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
   margin: 1.25rem 0 0.4rem;
 }
 .page:not(:has(> .run-detail)) .stats {
@@ -1594,39 +723,6 @@ td a {
 .page:not(:has(> .run-detail)) .muted {
   font-size: 0.8rem;
 }
-
-/* ---- Phone: readouts as an even grid, tabs on one row ---- */
-@media (max-width: 52rem) {
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
-    gap: 0 0.75rem;
-  }
-  .stat,
-  .stat:last-child {
-    min-width: 0;
-    margin: 0;
-    padding: 0.4rem 0;
-    border-right: 0;
-  }
-  .run-head .stat:nth-child(3) {
-    grid-column: span 2;
-  }
-  .pane-head {
-    gap: 0.25rem;
-  }
-  .seg {
-    gap: 0;
-  }
-  .seg-item {
-    padding: 0 0.55rem;
-    letter-spacing: 0.03em;
-  }
-  .context-toggle {
-    padding-inline: 0.5rem;
-  }
-}
-
 /* ---- Document pages: table links, tags beside names ---- */
 tbody th a {
   text-decoration: none;
@@ -1637,17 +733,4 @@ tbody th a:focus-visible {
 }
 td .tag {
   margin-left: 0.5rem;
-}
-
-/* ---- Motion: the page's own rules are static. Everything that moves lives in run-motion.css, inside a
-   `prefers-reduced-motion: no-preference` gate (Phase 22 step 6; tests/motion-contract.test.ts enforces it). ---- */
-/* Row hover is an instant background change (no transition, so nothing blends while the list scrolls). */
-.tl-row:not([data-selected], [data-error]):hover,
-.wf-row:not([data-selected], [data-error]):hover {
-  background-color: var(--surface);
-}
-/* The live glyph is a static green dot while the event stream is connected: a steady dot, not a loop. */
-.live-bar[data-stream="live"] .live-glyph {
-  display: inline-block;
-  color: var(--ok);
 }

@@ -1,0 +1,46 @@
+/* The one tab component (ADR-166): sentence-case labels, an accent underline on the selected tab, a hairline under the list.
+   No fill, no upper case, no letter-spacing. The selected tab is ink with the underline, the others ink-2 (one weight, so
+   selecting a tab never moves its neighbours). Tabs scroll sideways when the row is too narrow, never wrap. */
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font: var(--type-body-weight) var(--type-body-size) / var(--type-body-line) var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--color-text-primary);
+}
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--color-interactive-default);
+  color: var(--color-text-primary);
+}
+.tab:focus-visible {
+  outline: 2px solid var(--color-interactive-default);
+  outline-offset: -2px;
+}
+.tab-count {
+  font: var(--type-mono-small-weight) var(--type-mono-small-size) / var(--type-mono-small-line)
+    var(--font-mono);
+  color: var(--color-text-secondary);
+}
