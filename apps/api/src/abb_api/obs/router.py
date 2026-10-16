@@ -46,4 +46,5 @@ async def metrics(request: Request) -> Response:
         raise _too_many(wait)
     if not state.metrics_auth.allows(request.headers.get("authorization")):
         raise unauthorized()
+    await state.scrape_sampler.refresh()  # bounded, cached, never raises (obs/scrape.py)
     return Response(state.observability.registry.render(), media_type=CONTENT_TYPE)

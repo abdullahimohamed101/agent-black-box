@@ -11,6 +11,7 @@ import json
 import logging
 import socket
 import threading
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Final
 
@@ -103,6 +104,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif not owner.auth.allows(self.headers.get("Authorization")):
             self._reply(401, _UNAUTHORIZED, "application/json", WWW_Authenticate="Bearer")
         else:
+            owner.prepare()
             self._reply(200, owner.registry.render().encode(), CONTENT_TYPE)
 
     def _method_not_allowed(self) -> None:
@@ -120,8 +122,10 @@ class MetricsServer:
         bind: str = "127.0.0.1",
         port: int,
         requests_per_minute: int = 120,
+        before_render: Callable[[], None] | None = None,
     ) -> None:
         self.registry = registry
+        self._before_render = before_render
         self.auth = MetricsAuth(token)
         self.limiter = InMemoryRateLimiter(
             events_per_second=requests_per_minute / 60,
@@ -133,6 +137,15 @@ class MetricsServer:
         self._port = port
         self._server: _Server | None = None
         self._thread: threading.Thread | None = None
+
+    def prepare(self) -> None:
+        """Refresh scrape-time gauges (the worker bridges to its event loop). Never raises."""
+        if self._before_render is None:
+            return
+        try:
+            self._before_render()
+        except Exception as exc:  # a scrape must not fail on the database
+            logger.warning("worker scrape sample failed", extra={"error_class": type(exc).__name__})
 
     @property
     def port(self) -> int:

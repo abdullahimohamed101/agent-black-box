@@ -22,7 +22,7 @@ import re
 import threading
 import time
 from bisect import bisect_left
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from types import TracebackType
@@ -239,6 +239,19 @@ class Gauge(Metric):
             key = self._resolve(label_values)
             return self._values.get(key, 0.0)
 
+    def replace(self, items: Mapping[tuple[str, ...], float]) -> None:
+        """Set the whole series set at once (scrape-time gauges): a series not in ``items`` goes.
+
+        Atomic with respect to a concurrent render, which sees the old set or the new one.
+        """
+        with self._lock:
+            fresh: dict[tuple[str, ...], float] = {}
+            self._values = fresh  # the lock is held: nobody sees it half filled
+            for values, number in items.items():
+                fresh[self._key(values, fresh.__contains__)] = float(number)
+            if not self.labels:
+                fresh.setdefault((), 0.0)
+
     def clear(self) -> None:
         """Forget all series (a scrape-time gauge that is re-set whole, so stale series vanish)."""
         with self._lock:
@@ -418,10 +431,15 @@ class Registry:
     def series_total(self) -> int:
         return sum(m.series_count() for m in self._metrics.values())
 
-    def render(self) -> str:
-        """Prometheus text format 0.0.4; metrics and series in a deterministic order."""
+    def render(self, only: Collection[str] | None = None) -> str:
+        """Prometheus text format 0.0.4; metrics and series in a deterministic order.
+
+        ``only`` restricts the output to those metrics (the textfile writers).
+        """
         lines: list[str] = []
         for name in sorted(self._metrics):
+            if only is not None and name not in only:
+                continue
             metric = self._metrics[name]
             lines.append(f"# HELP {name} {escape_help(metric.help)}")
             lines.append(f"# TYPE {name} {metric.type}")

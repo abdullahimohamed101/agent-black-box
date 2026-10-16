@@ -13,6 +13,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from abb_api.core.request_context import get_request_id
+from abb_api.obs.app_errors import count_app_error
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,10 @@ def error_response(error: AppError) -> JSONResponse:
 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
-    async def _app_error(_: Request, exc: AppError) -> JSONResponse:
+    async def _app_error(request: Request, exc: AppError) -> JSONResponse:
+        observability = getattr(request.app.state, "observability", None)
+        if observability is not None:  # a refusal that is also a metric (obs/app_errors.py)
+            count_app_error(observability.catalogue, exc.code, exc.details)
         return error_response(exc)
 
     @app.exception_handler(RequestValidationError)

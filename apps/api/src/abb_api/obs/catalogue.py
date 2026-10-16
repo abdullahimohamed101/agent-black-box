@@ -54,24 +54,78 @@ LIMITER_SCOPES = (
 )
 RETENTION_TIERS = ("artifacts", "trace", "run", "audit", "operational", "platform")
 QUOTAS = ("agents", "runs_per_day", "events_per_day", "artifact_bytes")
+# Why telemetry was refused. A request-level refusal counts once; a per-event refusal inside an
+# accepted (202) batch counts once per event. Authentication failures never reach the handler (the
+# credential check runs first): they are in http_requests_total and auth_throttle_blocks_total.
 INGEST_REJECT_REASONS = (
     "invalid",
     "too_large",
     "rate_limited",
     "quota_exceeded",
     "unauthorized",
-    "busy",
+    "unavailable",
+    "redaction_failed",
+    "reserved",
+    "conflict",
+    "schema_unsupported",
+)
+# `ingest_acks_total`: committed = answered 2xx after the commit; rejected = the client's fault
+# (4xx); error = our fault (5xx or an unexpected exception). Accepted-event durability is
+# committed / (committed + error).
+INGEST_ACK_OUTCOMES = ("committed", "rejected", "error")
+ARTIFACT_FAILURE_REASONS = (
+    "invalid",
+    "too_large",
+    "rate_limited",
+    "quota_exceeded",
+    "conflict",
+    "store_unavailable",
     "unavailable",
 )
-JOB_OUTCOMES = ("succeeded", "retried", "dead_letter", "lease_lost")
+JOB_OUTCOMES = ("succeeded", "retried", "dead_letter", "lease_lost", "superseded")
 ALERT_STATUSES = ("pending", "delivered", "failed", "dead", "skipped")
+# The fixed vocabulary of alerts/outbound.py error codes and the skip reasons of the schema; "none"
+# for a delivery that carried neither.
+ALERT_REASONS = (
+    "none",
+    "timeout",
+    "connect_failed",
+    "dns_failed",
+    "tls_failed",
+    "blocked_address",
+    "blocked_port",
+    "http_3xx",
+    "http_4xx",
+    "http_5xx",
+    "bad_response",
+    "smtp_failed",
+    "config_unreadable",
+    "internal_error",
+    "cooldown",
+    "destination_paused",
+    "destination_deleted",
+    "rule_deleted",
+    "rate_limited",
+    "daily_cap",
+)
+ALERT_DESTINATION_STATES = ("active", "paused", "failing")
 SEARCH_BUSY_REASONS = ("actor_limit", "workspace_share", "process_full")
 BODY_CAP_REASONS = ("budget", "ceiling", "timeout")
-SESSION_REVOCATION_REASONS = ("logout", "revoke_one", "revoke_others", "member_removed", "expired")
-INGEST_ACK_OUTCOMES = ("success", "failure")
+# Reachable ones only: a session ends passively when it expires, and the CLI is another process.
+SESSION_REVOCATION_REASONS = ("logout", "revoke_one", "revoke_others")
 CALL_OUTCOMES = ("ok", "error")
 BACKUP_OUTCOMES = ("succeeded", "failed")
 THROTTLE_KINDS = ("address", "credential", "global")
+RETENTION_MODES = ("off", "dry_run", "enforce")
+RETENTION_DELETED_KINDS = ("runs", "events", "rows", "bytes")
+# Fixed failure codes of a retention tick (retention/metrics.py maps TickResult onto them).
+RETENTION_FAILURE_CODES = (
+    "measure_error",
+    "step_failed",
+    "refused",
+    "budget_exhausted",
+    "tick_crashed",
+)
 
 # A job type is a handler name; there are a handful, and a cap protects against a bad value.
 JOB_TYPE_CAP = 32
@@ -106,28 +160,39 @@ class Catalogue:
     postgres_pool_wait_seconds: Histogram
     artifact_upload_failures_total: Counter
     artifact_upload_bytes: Histogram
+    # scrape-time database sampling (obs/scrape.py)
+    abb_scrape_database_up: Gauge
     # controls: limiter and throttle
     limiter_fail_open_total: Counter
     limiter_database_calls_total: Counter
     auth_throttle_blocks_total: Counter
     auth_active_keys: Gauge
+    auth_active_key_refresh_failures_total: Counter
     # quotas, body cap
     quota_refusals_total: Counter
     body_cap_refusals_total: Counter
     body_bytes_in_flight: Gauge
     # retention
-    retention_batches_total: Counter
-    retention_deleted_rows_total: Counter
+    retention_passes_total: Counter
+    retention_deleted_total: Counter
     retention_failures_total: Counter
     retention_dry_run_candidates: Gauge
-    # backups
+    retention_mode: Gauge
+    retention_seconds_since_last_pass: Gauge
+    # backups and key rotation (written to a textfile by their own processes)
     backup_last_success_timestamp_seconds: Gauge
+    backup_last_duration_seconds: Gauge
+    backup_bundle_bytes: Gauge
     backup_runs_total: Counter
+    rotation_last_success_timestamp_seconds: Gauge
+    rotation_runs_total: Counter
     # alerts
     alert_deliveries_total: Counter
     alert_dead_letters: Gauge
+    alert_destinations: Gauge
     # search, sessions, invitations
     search_busy_total: Counter
+    search_permits_in_use: Gauge
     session_revocations_total: Counter
     invitation_only_refusals_total: Counter
 
@@ -180,11 +245,12 @@ def build_catalogue(registry: Registry, *, version: str = __version__) -> Catalo
         ),
         ingest_acks_total=r.counter(
             "ingest_acks_total",
-            "Ingestion acknowledgements (a success is counted after the commit).",
+            "Ingestion requests by outcome; committed is counted after the commit.",
             [closed("outcome", *INGEST_ACK_OUTCOMES)],
         ),
         ingest_ack_duration_seconds=r.histogram(
-            "ingest_ack_duration_seconds", "Time from ingestion request to acknowledgement."
+            "ingest_ack_duration_seconds",
+            "Time from the start of an ingestion request to its answer, once per request.",
         ),
         worker_jobs_pending=r.gauge(
             "worker_jobs_pending",
@@ -192,7 +258,9 @@ def build_catalogue(registry: Registry, *, version: str = __version__) -> Catalo
             [capped("type", JOB_TYPE_CAP)],
         ),
         worker_job_lag_seconds=r.gauge(
-            "worker_job_lag_seconds", "Age of the oldest due job that has not started."
+            "worker_job_lag_seconds",
+            "Age of the oldest due job that has not started, by job type (sampled at scrape time).",
+            [capped("type", JOB_TYPE_CAP)],
         ),
         worker_jobs_total=r.counter(
             "worker_jobs_total",
@@ -217,7 +285,9 @@ def build_catalogue(registry: Registry, *, version: str = __version__) -> Catalo
             "postgres_pool_wait_seconds", "Time spent waiting for a database connection."
         ),
         artifact_upload_failures_total=r.counter(
-            "artifact_upload_failures_total", "Artifact uploads that failed after being accepted."
+            "artifact_upload_failures_total",
+            "Artifact uploads that were not stored, by reason.",
+            [closed("reason", *ARTIFACT_FAILURE_REASONS)],
         ),
         artifact_upload_bytes=r.histogram(
             "artifact_upload_bytes", "Size of stored artifacts.", buckets=BYTES_BUCKETS
@@ -240,6 +310,14 @@ def build_catalogue(registry: Registry, *, version: str = __version__) -> Catalo
         auth_active_keys=r.gauge(
             "auth_active_keys", "Size of the active API key id set the throttle consults."
         ),
+        auth_active_key_refresh_failures_total=r.counter(
+            "auth_active_key_refresh_failures_total",
+            "Refreshes of the active API key id set that failed (the old set keeps serving).",
+        ),
+        abb_scrape_database_up=r.gauge(
+            "abb_scrape_database_up",
+            "1 when the last scrape-time database sample succeeded, 0 when its values are cached.",
+        ),
         quota_refusals_total=r.counter(
             "quota_refusals_total",
             "Writes refused because a project quota was reached.",
@@ -253,47 +331,80 @@ def build_catalogue(registry: Registry, *, version: str = __version__) -> Catalo
         body_bytes_in_flight=r.gauge(
             "body_bytes_in_flight", "Request body bytes currently held in memory."
         ),
-        retention_batches_total=r.counter(
-            "retention_batches_total",
-            "Retention delete batches committed.",
-            [closed("tier", *RETENTION_TIERS)],
+        retention_passes_total=r.counter(
+            "retention_passes_total",
+            "Retention ticks finished, by the mode they ran in.",
+            [closed("mode", *RETENTION_MODES)],
         ),
-        retention_deleted_rows_total=r.counter(
-            "retention_deleted_rows_total",
-            "Rows removed by retention.",
-            [closed("tier", *RETENTION_TIERS)],
+        retention_deleted_total=r.counter(
+            "retention_deleted_total",
+            "Data removed by retention, by tier and kind (bytes are artifact file bytes).",
+            [closed("tier", *RETENTION_TIERS), closed("kind", *RETENTION_DELETED_KINDS)],
         ),
         retention_failures_total=r.counter(
             "retention_failures_total",
-            "Retention failures (a failed run or batch).",
-            [closed("tier", *RETENTION_TIERS)],
+            "Retention failures by fixed code (units: tiers, runs or ticks, see the runbook).",
+            [closed("code", *RETENTION_FAILURE_CODES)],
         ),
         retention_dry_run_candidates=r.gauge(
             "retention_dry_run_candidates",
-            "Rows a dry-run tick found it would delete (last tick).",
+            "What a dry-run tick found it would delete (runs for run tiers, rows otherwise).",
             [closed("tier", *RETENTION_TIERS)],
+        ),
+        retention_mode=r.gauge(
+            "retention_mode",
+            "1 for the mode of the newest retention report (the effective mode), else 0.",
+            [closed("mode", *RETENTION_MODES)],
+        ),
+        retention_seconds_since_last_pass=r.gauge(
+            "retention_seconds_since_last_pass",
+            "Seconds since the newest retention report was written; NaN when there is none.",
         ),
         backup_last_success_timestamp_seconds=r.gauge(
             "backup_last_success_timestamp_seconds",
-            "Unix time of the newest successful backup known to this process; 0 if unknown.",
+            "Unix time of the newest successful backup known to the textfile; 0 if unknown.",
+        ),
+        backup_last_duration_seconds=r.gauge(
+            "backup_last_duration_seconds", "Duration of the last successful backup."
+        ),
+        backup_bundle_bytes=r.gauge(
+            "backup_bundle_bytes", "Total size of the last successful backup bundle."
         ),
         backup_runs_total=r.counter(
             "backup_runs_total",
             "Backup runs observed, by outcome.",
             [closed("outcome", *BACKUP_OUTCOMES)],
         ),
+        rotation_last_success_timestamp_seconds=r.gauge(
+            "rotation_last_success_timestamp_seconds",
+            "Unix time of the newest successful alert-key rotation; 0 if unknown.",
+        ),
+        rotation_runs_total=r.counter(
+            "rotation_runs_total",
+            "Alert-key rotation runs observed, by outcome.",
+            [closed("outcome", *BACKUP_OUTCOMES)],
+        ),
         alert_deliveries_total=r.counter(
             "alert_deliveries_total",
-            "Alert notification delivery results by status.",
-            [closed("status", *ALERT_STATUSES)],
+            "Alert notification delivery results by status and fixed error or skip reason.",
+            [closed("status", *ALERT_STATUSES), closed("reason", *ALERT_REASONS)],
         ),
         alert_dead_letters=r.gauge(
-            "alert_dead_letters", "Alert notifications that exhausted their retries."
+            "alert_dead_letters",
+            "Alert notifications that exhausted their retries (sampled at scrape time).",
+        ),
+        alert_destinations=r.gauge(
+            "alert_destinations",
+            "Alert destinations by state (sampled at scrape time; never their names).",
+            [closed("state", *ALERT_DESTINATION_STATES)],
         ),
         search_busy_total=r.counter(
             "search_busy_total",
             "Searches refused with SEARCH_BUSY, by reason.",
             [closed("reason", *SEARCH_BUSY_REASONS)],
+        ),
+        search_permits_in_use=r.gauge(
+            "search_permits_in_use", "Search permits held by running searches in this process."
         ),
         session_revocations_total=r.counter(
             "session_revocations_total",
