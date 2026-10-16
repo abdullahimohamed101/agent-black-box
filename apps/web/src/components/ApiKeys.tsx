@@ -4,7 +4,8 @@ import { useState } from "react";
 import { fieldErrors } from "@/lib/api/client";
 import { KEY_SCOPES, type KeyScope } from "@/lib/api/types";
 import { useApiKeys, useCreateKey, useRevokeKey } from "@/lib/admin";
-import { ActionError, FieldError, when } from "./SettingsKit";
+import { settings } from "@/copy/settings";
+import { ActionError, FieldError, Lede, Section, TwoStep, when } from "./SettingsKit";
 import { Empty, ErrorState, Loading } from "./States";
 import { useCan, useWorkspace } from "./WorkspaceProvider";
 
@@ -14,72 +15,74 @@ export function ApiKeys() {
   const canRevokeAny = useCan("api_key.revoke");
   const keys = useApiKeys(true);
   const revoke = useRevokeKey();
+  const c = settings.apiKeys;
   return (
     <>
-      <div className="page-head">
-        <h1>API keys</h1>
-        <p className="muted">
-          Keys let SDKs and tools send events and read runs. A token is shown once, when the key is
-          created.
-        </p>
-      </div>
-      {canCreate && <CreateKeyForm />}
-      {keys.isPending ? (
-        <Loading label="Loading API keys" />
-      ) : keys.error ? (
-        <ErrorState error={keys.error} onRetry={() => void keys.refetch()} />
-      ) : keys.data.length === 0 ? (
-        <Empty title="No API keys">Create one to connect an agent.</Empty>
-      ) : (
-        <div className="table-wrap">
-          <table>
-            <caption className="sr-only">API keys</caption>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Key id</th>
-                <th>Scopes</th>
-                <th>Project</th>
-                <th>Last used</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {keys.data.map((k) => {
-                const mine = !!ws.user && k.created_by === ws.user.id;
-                // Own-only grants (`own_permissions`) cover keys the person created themselves.
-                const mayRevoke =
-                  canRevokeAny || (mine && ws.ownPermissions.includes("api_key.revoke"));
-                const project = ws.projects.find((p) => p.id === k.project_id);
-                return (
-                  <tr key={k.key_id}>
-                    <td>{k.name ?? <span className="muted">unnamed</span>}</td>
-                    <td className="meta">{k.key_id}</td>
-                    <td>{k.scopes.join(", ")}</td>
-                    <td>{k.project_id ? (project?.name ?? k.project_id) : "workspace"}</td>
-                    <td>{when(k.last_used_at)}</td>
-                    <td>{k.status}</td>
-                    <td>
-                      {mayRevoke ? (
-                        <button
-                          type="button"
-                          className="danger"
-                          aria-label={`Revoke key ${k.name ?? k.key_id}`}
-                          onClick={() => revoke.mutate(k.key_id)}
-                        >
-                          Revoke
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <Lede>{c.lede}</Lede>
+      <Section title={c.listTitle}>
+        {keys.isPending ? (
+          <Loading label="Loading API keys" />
+        ) : keys.error ? (
+          <ErrorState error={keys.error} onRetry={() => void keys.refetch()} />
+        ) : keys.data.length === 0 ? (
+          <Empty title={c.emptyTitle} motif="none">
+            {c.emptyBody}
+          </Empty>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <caption className="sr-only">{c.caption}</caption>
+              <thead>
+                <tr>
+                  <th>{c.heads.name}</th>
+                  <th>{c.heads.keyId}</th>
+                  <th>{c.heads.scopes}</th>
+                  <th>{c.heads.project}</th>
+                  <th>{c.heads.lastUsed}</th>
+                  <th>{c.heads.status}</th>
+                  <th>{c.heads.actions}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keys.data.map((k) => {
+                  const mine = !!ws.user && k.created_by === ws.user.id;
+                  // Own-only grants (`own_permissions`) cover keys the person created themselves.
+                  const mayRevoke =
+                    canRevokeAny || (mine && ws.ownPermissions.includes("api_key.revoke"));
+                  const project = ws.projects.find((p) => p.id === k.project_id);
+                  return (
+                    <tr key={k.key_id}>
+                      <td>{k.name ?? <span className="muted">{c.unnamed}</span>}</td>
+                      <td className="meta">{k.key_id}</td>
+                      <td>{k.scopes.join(", ")}</td>
+                      <td>{k.project_id ? (project?.name ?? k.project_id) : "workspace"}</td>
+                      <td>{when(k.last_used_at)}</td>
+                      <td>{k.status}</td>
+                      <td>
+                        {mayRevoke ? (
+                          <TwoStep
+                            label={settings.confirm.revoke.first}
+                            confirmLabel={settings.confirm.revoke.second}
+                            ariaLabel={`Revoke key ${k.name ?? k.key_id}`}
+                            confirmAriaLabel={`Confirm revoke key ${k.name ?? k.key_id}`}
+                            onConfirm={() => revoke.mutate(k.key_id)}
+                          />
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <ActionError error={revoke.error} />
+      </Section>
+      {canCreate && (
+        <Section title={c.createTitle} lede={c.createLede}>
+          <CreateKeyForm />
+        </Section>
       )}
-      <ActionError error={revoke.error} />
     </>
   );
 }
@@ -151,7 +154,7 @@ function CreateKeyForm() {
           className="primary"
           disabled={create.isPending || scopes.length === 0}
         >
-          {create.isPending ? "Creating…" : "Create key"}
+          {create.isPending ? settings.apiKeys.creating : settings.apiKeys.create}
         </button>
       </form>
       {Object.keys(errors).length === 0 && <ActionError error={create.error} />}
@@ -165,7 +168,7 @@ function CreateKeyForm() {
             {create.data.token}
           </p>
           <button type="button" onClick={() => create.reset()}>
-            I have stored it
+            {settings.apiKeys.stored}
           </button>
         </div>
       )}

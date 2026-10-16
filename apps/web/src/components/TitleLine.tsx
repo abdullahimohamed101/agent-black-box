@@ -9,19 +9,22 @@ import "../app/title-line.css";
 export function TitleLine({
   href,
   title,
+  back = run.back,
   children,
 }: {
   href: string;
   title: string;
+  /** The first level's visible label and accessible name; Runs by default, Settings on a settings tab. */
+  back?: { label: string; name: string };
   children?: React.ReactNode;
 }) {
   return (
     <div className="title-line">
-      <Link className="title-back" href={href} aria-label={run.back.name}>
+      <Link className="title-back" href={href} aria-label={back.name}>
         <span className="title-chev" aria-hidden="true">
           ‹
         </span>
-        {run.back.label}
+        {back.label}
       </Link>
       <span className="title-sep" aria-hidden="true">
         /

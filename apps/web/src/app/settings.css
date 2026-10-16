@@ -1,7 +1,317 @@
-/* Phase 22 consistency pass: the settings sub-navigation takes the product's sentence-case labels (ADR-111); only table
-   column heads keep small caps. Higher specificity than the Phase 21 rule in globals.css so import order cannot matter. */
-nav.subnav a {
-  font: 600 var(--fs-body) / 1.2 var(--sans);
-  letter-spacing: 0;
-  text-transform: none;
+/* THE ONE settings pattern (design pass 2 step 5c, ADR-166; wireframes in docs/design/pass-2/03-screens-and-wireframes.md section 7).
+   The title line, a grouped section list (192 px from 900 px, one folding button below), one content column, sections as hairline
+   bands (h2, one sentence, the work, the one filled button last), labels over fields, tables as hairline lists, status as glyph and
+   word, destructive actions in caution text with a second press in place. Tokens only; nothing here is red; nothing animates.
+   Breakpoints (media queries cannot read custom properties): 56.1875rem = below 900 px, 37.4375rem = below 600 px. */
+
+.st-layout {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr);
+  column-gap: var(--space-8);
+  align-items: start;
+  margin-top: var(--space-6);
+}
+.st-body {
+  min-width: 0;
+  max-width: 60rem;
+}
+
+/* ---- the section list ---- */
+.st-nav {
+  position: sticky;
+  top: calc(var(--layout-topbar) + var(--space-4));
+}
+.st-nav-toggle {
+  display: none;
+}
+.st-group + .st-group {
+  margin-top: var(--space-4);
+}
+.st-group-label {
+  margin: 0 0 var(--space-1);
+  color: var(--color-text-secondary);
+  font: var(--type-small-weight) var(--type-small-size) / var(--type-small-line) var(--font-sans);
+}
+.st-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.st-group a {
+  display: flex;
+  align-items: center;
+  min-height: var(--layout-control);
+  padding: 0 var(--space-2);
+  border-left: 2px solid transparent;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+.st-group a:hover {
+  color: var(--color-text-primary);
+}
+.st-group a[aria-current="page"] {
+  border-left-color: var(--color-interactive-default);
+  color: var(--color-text-primary);
+  font-weight: var(--weight-strong);
+}
+
+/* ---- the tab: lede, sections ---- */
+.st-lede,
+.st-section-lede {
+  max-width: var(--measure);
+  margin: 0 0 var(--space-4);
+  font: var(--type-body-lg-weight) var(--type-body-lg-size) / var(--type-body-lg-line) var(--font-sans);
+  color: var(--color-text-secondary);
+}
+.st-section {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border-subtle);
+}
+.st-lede + .st-section {
+  margin-top: var(--space-6);
+}
+.st-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-2);
+}
+.st .st-section h2,
+.st .st-section-head h2 {
+  margin: 0;
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
+}
+.st h3 {
+  margin: var(--space-4) 0 var(--space-1);
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
+}
+.st .muted,
+.st .help {
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+.st .muted code,
+.st .help code {
+  font-size: var(--type-mono-small-size);
+}
+.st-readonly {
+  max-width: var(--measure);
+  margin: var(--space-3) 0;
+  color: var(--color-text-secondary);
+}
+.st-status {
+  min-height: var(--type-body-line);
+  margin-top: var(--space-2);
+  color: var(--color-text-secondary);
+}
+.st .state {
+  margin: var(--space-4) 0;
+}
+
+/* ---- forms: label over field, helper text under, one primary button last ---- */
+.st .form,
+.st form.st-form {
+  display: grid;
+  gap: var(--space-4);
+  align-items: start;
+  justify-items: start;
+  max-width: 32rem;
+  margin: var(--space-3) 0 var(--space-4);
+}
+.st .field {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  font-size: var(--type-body-size);
+}
+.st .field input:not([type="checkbox"]):not([type="radio"]),
+.st .field select,
+.st .field textarea,
+.st select,
+.st input[type="text"],
+.st input[type="email"],
+.st input[type="number"],
+.st input:not([type]) {
+  min-height: var(--layout-control);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-canvas);
+  color: var(--color-text-primary);
+}
+.st .field input:not([type="checkbox"]):not([type="radio"]),
+.st .field select,
+.st .field textarea {
+  width: 100%;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+}
+.st fieldset {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.st legend {
+  float: none;
+  margin: 0 0 var(--space-1);
+  padding: 0;
+  color: var(--color-text-primary);
+  font: var(--type-body-weight) var(--type-body-size) / var(--type-body-line) var(--font-sans);
+}
+.st fieldset > .chip,
+.st fieldset > label {
+  margin: 0 var(--space-2) var(--space-1) 0;
+}
+.st .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  font-size: var(--type-body-size);
+}
+.st .chip:has(input:checked) {
+  background: var(--color-bg-wash);
+  border-color: var(--color-interactive-default);
+}
+.field-error {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+.field-error::before {
+  content: "Error: ";
+  font-weight: var(--weight-strong);
+}
+
+/* ---- buttons: outline by default; one filled primary per section; row actions as text ---- */
+.st button.primary {
+  min-height: var(--layout-control);
+  padding: var(--space-1) var(--space-4);
+}
+.st button:not(.primary):not(.link-button):not(.st-nav-toggle) {
+  min-height: var(--layout-control);
+}
+.st button.danger,
+button.danger {
+  border-color: var(--color-border-control);
+  background: none;
+  color: var(--color-status-caution);
+  font-weight: var(--weight-strong);
+}
+.st td button,
+.st-two-step button {
+  min-height: var(--layout-control);
+  padding: var(--space-1) var(--space-2);
+  border-color: transparent;
+}
+.st td button:hover,
+.st-two-step button:hover {
+  border-color: var(--color-border-control);
+}
+.st-two-step {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.st-two-step-q {
+  font-size: var(--type-body-size);
+}
+
+/* ---- tables: hairline lists ---- */
+.st table {
+  font-size: var(--type-body-size);
+}
+.st th,
+.st td {
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  white-space: normal;
+  vertical-align: top;
+}
+.st td:nth-child(2) {
+  min-width: 0;
+}
+.st thead th {
+  white-space: nowrap;
+}
+.st .meta {
+  font-size: var(--type-mono-small-size);
+  overflow-wrap: anywhere;
+}
+.st .secret {
+  max-width: 100%;
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: none;
+  font-size: var(--type-mono-size);
+  overflow-wrap: anywhere;
+}
+.st .withheld {
+  max-width: 40rem;
+  margin: var(--space-3) 0;
+  color: var(--color-text-primary);
+}
+
+/* ---- below 900 px: the list folds into one button ---- */
+@media (max-width: 56.1875rem) {
+  .st-layout {
+    display: block;
+    margin-top: var(--space-4);
+  }
+  .st-nav {
+    position: static;
+    margin-bottom: var(--space-4);
+  }
+  .st-nav-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: var(--layout-touch);
+    padding: 0 var(--space-3);
+    border-color: var(--color-border-control);
+    text-align: left;
+  }
+  .st-nav-list {
+    display: none;
+    margin-top: var(--space-1);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-control);
+    background: var(--color-bg-raised);
+  }
+  .st-nav-list[data-open="true"] {
+    display: block;
+  }
+  .st-group a {
+    min-height: var(--layout-touch);
+  }
+}
+
+/* ---- a phone: forms and rows are one column, targets are 44 px ---- */
+@media (max-width: 37.4375rem) {
+  .st .form,
+  .st form.st-form {
+    max-width: none;
+  }
+  .st button.primary,
+  .st .form > button {
+    width: 100%;
+    min-height: var(--layout-touch);
+  }
+  .st td button,
+  .st-two-step button {
+    min-height: var(--layout-touch);
+  }
 }
