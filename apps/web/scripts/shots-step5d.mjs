@@ -48,7 +48,7 @@ const states = [
           json: { error: { code: "ANALYTICS_TIMEOUT", message: "The report took too long." } },
         }),
       ),
-    null,
+    async (p) => p.getByRole("tabpanel").getByRole("alert").waitFor({ timeout: 20000 }),
     [1440, 375],
   ],
   ["experiments", E, null, null],

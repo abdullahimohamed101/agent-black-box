@@ -72,7 +72,7 @@ function ControlBanner({ e }: { e: ExperimentOut }) {
 function Variants({ e }: { e: ExperimentOut }) {
   return (
     <TableScroll label={t.variants.caption}>
-      <table data-testid="variants">
+      <table data-testid="variants" className="ex-stack">
         <thead>
           <tr>
             <th scope="col">{t.variants.heads.variant}</th>
@@ -88,8 +88,8 @@ function Variants({ e }: { e: ExperimentOut }) {
           {e.variants.map((v) => (
             <tr key={v.id} data-role={v.role}>
               <th scope="row">{v.name}</th>
-              <td>{v.role}</td>
-              <td>
+              <td data-label={t.variants.heads.role}>{v.role}</td>
+              <td data-label={t.variants.heads.settings}>
                 <dl className="fields">
                   {configEntries(v.config).map(([k, val]) => (
                     <div key={k}>
@@ -99,12 +99,14 @@ function Variants({ e }: { e: ExperimentOut }) {
                   ))}
                 </dl>
               </td>
-              <td>
+              <td data-label={t.variants.heads.differs}>
                 {v.changed_variables === null
                   ? "—"
                   : v.changed_variables.join(", ") || t.variants.nothing}
               </td>
-              <td className="num">{v.run_count}</td>
+              <td className="num" data-label={t.variants.heads.runs}>
+                {v.run_count}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -380,7 +382,7 @@ function Attached({ e, base, canWrite }: { e: ExperimentOut; base: Base; canWrit
   return (
     <>
       <TableScroll label={t.attached.caption}>
-        <table data-testid="attached-runs">
+        <table data-testid="attached-runs" className="ex-stack">
           <thead>
             <tr>
               <th scope="col">{t.attached.heads.run}</th>
@@ -398,12 +400,12 @@ function Attached({ e, base, canWrite }: { e: ExperimentOut; base: Base; canWrit
                   <th scope="row">
                     <Link href={runPath(base, r.run_id)}>{r.run_id}</Link>
                   </th>
-                  <td>{v?.name ?? "—"}</td>
-                  <td>
+                  <td data-label={t.attached.heads.variant}>{v?.name ?? "—"}</td>
+                  <td data-label={t.attached.heads.status}>
                     <StatusBadge status={r.status as RunStatus} />
                   </td>
-                  <td>{formatTimestamp(r.started_at)}</td>
-                  <td>
+                  <td data-label={t.attached.heads.started}>{formatTimestamp(r.started_at)}</td>
+                  <td data-label={t.attached.heads.actions}>
                     {v?.role === "candidate" && baseline && (
                       <Link href={comparePath(base, baseline, r.run_id)}>{t.attached.compare}</Link>
                     )}{" "}

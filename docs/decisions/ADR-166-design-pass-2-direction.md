@@ -326,6 +326,50 @@ build brief; each is reversible and the alternative is named.
     `--border` (1), `--mono` (2), `--fs-headline` (1), `--fs-small` (1). The contrast tests are written in colour roles
     (`roles()` in `tests/tokenCss.ts`) that read the real token names; the pairs and thresholds are unchanged.
 
+## Step 5d decisions (Analytics, Experiments, the final cleanup; 2026-10-16)
+
+`03-screens-and-wireframes.md` has no wireframe for Analytics or Experiments (its nine priority screens stop at Settings and
+sign-in), so both were derived from the grammar of Runs, Compare, Review and Settings. Decided by the assistant under the standing
+rule; each is reversible and the alternative is named.
+
+1. **Analytics is one page with a tab list**, not three stacked sections: title line (h1 and the one control row, the window,
+   chip density, at its right end), the shared `Tabs` with `?tab=cost|reliability|performance` (Cost when absent), and a panel
+   that opens with ONE sentence in ink at 18/24 600 (as Compare's divergence sentence). Alternative: keep the stacked sections
+   and add a headline to each (rejected: three reports in one scroll is the density the audit counted).
+2. **The figure tiles are gone**, replaced by the sentence (cost: total, per run, per successful run, unpriced calls; reliability:
+   success, failure, timeout and retry rates, zero rates left out; performance: the run median and 95th percentile) and, for
+   latency, a three-row hairline table (Run, Model call, Tool call by p50 and p95). Every number in a tile is still on the page.
+   All three reports are still requested at once, so a tab switch is instant and one failing report never hides the others.
+3. **The wasted-spend panel stays first in Cost**, under the headline. Its two lists were renamed "Wasted by agent" and "Wasted by
+   model" so they are not confused with the cost lists below them.
+4. **The exclusion note** (ADR-161) is the shared notice (`role="note"`, the "i" mark, no bar, no fill) directly under the headline,
+   words unchanged. It is never red.
+5. **Charts are thin marks**: bars are a 4 px hairline track with an ink or neutral fill (square corners), day columns are neutral
+   with the tallest one ink, and the tallest is said in words under the chart ("Highest: 27% of 15 on 2026-10-07"). The failure
+   trend's red column (`data-tone="bad"`) is deleted: a rate of failure is a number, red is a failed run. Bar rows share one set of
+   columns (subgrid), and on a phone the track runs under the label and figure.
+6. **Experiments list** is the title, one supporting sentence and a hairline table; the create form is a hairline section below it.
+   **An experiment** has the title line "Experiments / name", then ONE sentence that names the winner in words (`verdictOf`: higher
+   success rate; a tie is broken by the median cost; a full tie names no one; fewer than two variants with finished runs says there
+   is nothing to compare; the finished-run counts are in the sentence and fewer than 5 says "too few to be sure"; it never says
+   "significant" and never names a cause, which the control notice does), the control notice, a small "Compared" chart (ink for the
+   lead, neutral for the rest, figures beside every bar), then hairline blocks Variants, Metrics, Runs. Below 600 px the Variants and
+   Attached runs tables stack into "column: value" blocks.
+7. **The settings form pattern** (`.st`) is reused for the experiment forms, so labels over fields, the primary button and the
+   controls look as in Settings.
+8. **`Empty` has no motif prop**: drawings remain only on the first-run guide, the not-found page and the not-found and
+   expired-trace error states (not-found is a place that is not there; the others are routine). KI-292 closed.
+9. **Final cleanup**: `tokens.aliases.css`, its generator and its import are deleted (the last four aliases `--border`, `--mono`,
+   `--fs-headline`, `--fs-small` had one reader, `analytics.css`, which was rewritten); the legacy `.page:not(:has(> .run-detail))`
+   h1, h2, stats and muted rules, the readout strip (`.stat`), `.page-head`, `.sec-count`, `.illus-sm`, `.pol-viewer` and
+   `.st-form` are deleted (each grepped; `scripts/dead-css.mjs` lists class names with no reader as an informational report);
+   every off-scale font size, the 6, 3 and 2 px radii and the one `em` size moved to tokens. **The red allow-list is five entries,
+   exactly the fault elements** (the badge status word, `.tl-fault`, `.wf-fault-*`, `.run-fail-dash`, `:root`).
+10. **Guards**: `tests/type-scale.test.ts` fails on a font size that is not a type token (exceptions: the 13 px body base and the
+    20 px phone headings), a weight other than 400 and 600, a radius other than 0, the 4 px control radius or a circle, upper case,
+    letter spacing, an inline style that sets a font or colour, a fault token or a red keyword in a component, or a revived legacy
+    rule; `tokens-colour-rules.test.ts` pins the allow-list length at exactly 5.
+
 ## Consequences
 
 - Steps 2 and 3 use this ADR and `01-direction.md` as the rubric; step 4 implements the tokens and type; step 5 the screens.

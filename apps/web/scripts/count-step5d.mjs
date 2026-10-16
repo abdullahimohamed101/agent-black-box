@@ -1,26 +1,12 @@
-// Design pass 2 step 5c: counts per screen for the report (docs/design/pass-2/01-direction.md A.7 asks for them): regions (landmarks,
+// Design pass 2 steps 5c and 5d (screens come from screens5d.mjs, the whole app): counts per screen for the report (docs/design/pass-2/01-direction.md A.7 asks for them): regions (landmarks,
 // tables, forms, fieldsets, tab lists and any element with its own border box or fill, table cells and list items aside),
 // distinct font sizes, distinct weights, font families, tab lists, interactive targets above 900 px, and elements painted in the
 // fault colour. Usage: node scripts/count-step5c.mjs [baseUrl]. Needs the fixtures server (port 3110).
 import { chromium } from "@playwright/test";
 
 const base = process.argv[2] ?? "http://localhost:3110";
-const S = "/w/demo/settings";
-const screens = [
-  ["review-approvals", "/w/demo/approvals"],
-  ["review-approvals-open", "/w/demo/approvals?approval=apr_00000000000000000000000001"],
-  ["review-security", "/w/demo/security"],
-  ["settings-members", `${S}/members`],
-  ["settings-api-keys", `${S}/api-keys`],
-  ["settings-policies", `${S}/policies`],
-  ["settings-security", `${S}/security`],
-  ["settings-quotas", `${S}/quotas`],
-  ["settings-retention", `${S}/retention`],
-  ["settings-pricing", `${S}/pricing`],
-  ["settings-sessions", `${S}/sessions`],
-  ["settings-alerts", `${S}/alerts`],
-  ["settings-audit", `${S}/audit`],
-];
+import { SCREENS } from "./screens5d.mjs";
+const screens = SCREENS;
 const browser = await chromium.launch({ channel: "chrome" });
 const rows = [];
 for (const [name, url] of screens) {
@@ -90,7 +76,14 @@ for (const [name, url] of screens) {
         )
           regions++;
       }
+      const h1 = document.querySelector("h1");
+      const hb = h1?.getBoundingClientRect();
+      const hs = h1 ? getComputedStyle(h1) : null;
+      const th = document.querySelector("main thead th, main th[scope=col]");
+      const ths = th ? getComputedStyle(th) : null;
       return {
+        h1: h1 ? `${Math.round(hb.x)},${Math.round(hb.y)} ${hs.fontSize}/${hs.fontWeight}` : "none",
+        th: ths ? `${ths.fontSize}/${ths.color}/pl${ths.paddingLeft}` : "none",
         regions,
         sizes: sizes.size,
         sizeList: [...sizes].sort((a, b) => parseFloat(a) - parseFloat(b)).join(" "),
@@ -106,9 +99,9 @@ for (const [name, url] of screens) {
 }
 await browser.close();
 console.log(
-  "screen | regions | font sizes (count) | weights | tab lists | interactive targets | fault-coloured elements",
+  "screen | h1 (x,y size/weight) | table head | regions | font sizes (count) | weights | tab lists | interactive targets | fault-coloured elements",
 );
 for (const [n, r] of rows)
   console.log(
-    `${n} | ${r.regions} | ${r.sizes} [${r.sizeList}] | ${r.weights} | ${r.tablists} | ${r.targets} | ${r.red}`,
+    `${n} | ${r.h1} | ${r.th} | ${r.regions} | ${r.sizes} [${r.sizeList}] | ${r.weights} | ${r.tablists} | ${r.targets} | ${r.red}`,
   );

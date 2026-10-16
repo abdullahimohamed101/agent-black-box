@@ -1,7 +1,7 @@
 # Design pass 2, step 5: microcopy, errors, empty states and loading
 
 Status: batch 5a written 2026-10-16 (shell, navigation, sign-in and no-access pages, the Runs home); batch 5b written 2026-10-16 (sections 5
-and 6: the run page and Compare); batch 5c written 2026-10-16 (sections 7 to 9: Review, the Settings pattern and its tabs, Alerts). Later batches append their sections below (5d Analytics, Experiments). Source prompt: Prompt 1 sections 4 to 7
+and 6: the run page and Compare); batch 5c written 2026-10-16 (sections 7 to 9: Review, the Settings pattern and its tabs, Alerts). batch 5d written 2026-10-16 (sections 10 and 11: Analytics and Experiments). Source prompt: Prompt 1 sections 4 to 7
 (`docs/design/design-pass-2-prompts.md`). Voice from `01-direction.md` (voice cues): sentences, not labels; one verb per button;
 numbers carry units; no upper case shouting; no marketing tone; never echo captured content (names of runs, commands, payload
 text, search text). A string that includes a run, agent or workspace name renders it as a text node and appears only where the
@@ -410,3 +410,101 @@ Strings: `apps/web/src/copy/settings.ts` (`settings.alerts`). Route `/w/{ws}/set
 | Signing secret panel (unchanged words) | Signing secret for NAME. It is shown once and is not kept in this browser. ... **Copy secret**, "I have stored the secret", **Done** (disabled until ticked); leaving the page asks first |
 | History | filters (Destination, Outcome, Rule), table (When, Rule, Destination, Outcome, Attempts), Load more; empty `Nothing has been sent yet` / `No alerts match these filters` |
 | Field errors | the existing fixed sentences of `problemFrom` (for example "Only port 443 is allowed" is the API's reason), shown as the shared field error |
+
+---
+
+## 10. Analytics (batch 5d)
+
+Strings: `apps/web/src/copy/analytics.ts` (`analytics`, and the three headline functions, which are unit-tested). Route
+`/w/{ws}/projects/{p}/analytics?tab=cost|reliability|performance`; Cost when `?tab=` is absent or unknown.
+
+| Element | Copy | Notes |
+| --- | --- | --- |
+| Title (h1) | Analytics | with the window control at the right end of the same row |
+| Window control (group "Time window") | Today, Last 7 days, Last 30 days | chip density, `aria-pressed`; keeps the tab |
+| Tab list (label "Reports") | Cost, Reliability, Performance | the shared Tabs, hairline under the list |
+| Foot (small, ink-2, once) | Windows are whole UTC days; a run counts in the day it started. Percentiles are approximate (about 10%). Cost is in USD; each figure says whether it was reported by the provider, computed from tokens and a versioned price, or estimated by the caller. | the old lede, moved under the report |
+| Updating | Updating… (status, the figures dim) | while the next window loads |
+
+### 10.1 The headline sentence (one per report, 18/24 600 ink, never red)
+
+Derived from the server's figures only; a unit of money or time on every number; the window in words ("today", "in the last 7
+days").
+
+| Report | Pattern | Example |
+| --- | --- | --- |
+| Cost | `TOTAL spent WINDOW, PER_RUN per run and PER_SUCCESS per successful run.` A per-run figure the server did not send is left out. Unpriced calls add: `N model calls have no price and count as $0.` (`1 model call has no price and counts as $0.`) | $22.16 spent in the last 7 days, $1.23 per run and $2.00 per successful run. |
+| Reliability | `S% of finished runs succeeded WINDOW; F% failed and T% timed out.` A rate that rounds to 0% is left out; when both are, `; none failed or timed out.` Then `R% had at least one retry.` when above zero. No finished run: `No runs finished WINDOW.` | 73% of finished runs succeeded in the last 7 days; 27% failed. 33% had at least one retry. |
+| Performance | `Half of runs finished within P50 and 95% within P95 WINDOW.` No timed run: `No timed runs WINDOW.` | Half of runs finished within 11 s and 95% within 5m 04s in the last 7 days. |
+
+### 10.2 Blocks
+
+| Report | Blocks (h2 at h3 size, hairline between) |
+| --- | --- |
+| Cost | Where the money was wasted (the line of mono figures, its one-sentence basis, Wasted by agent, Wasted by model, the unpriced, unknown and rebuilt notes), Daily spend, By agent, By model, Where the cost figures come from, Cost from retries (its basis, `N% of cost came from retries.`, `Initial attempts $X, retries $Y across N runs.`), Most expensive runs (table: Status, Run, Agent, Started, Cost, Retry cost) |
+| Reliability | Failure trend (day columns, `Highest: 27% of 15 on 2026-10-07` in words under them, a table for every day for screen readers), Tool success (Tool, Calls, Success, p95), Retry-heavy runs (as Most expensive runs with Retries) |
+| Performance | Latency (Work: Run, Model call, Tool call; p50, p95), Slow operations (Kind, Name, Calls, p50, p95) |
+
+Bars name the figure beside every mark (`$0.23  failed $0.18 · retries $0.0498`, `1 call`, `5 calls`); a mark is never the only
+carrier.
+
+### 10.3 Notices, empty states, errors, loading
+
+| State | Copy |
+| --- | --- |
+| Exclusion note (ADR-161), under the headline, shared notice style, only when N is above zero | Excludes N run(s) whose trace has expired: THE FIGURES need the trace detail. Run counts, totals and the cost headline include them. (THE FIGURES: the cost by agent, model and source / the tool success rates below / the model and tool latencies and the slow operations) |
+| Runs summarised by an older version (Cost) | N runs were summarised by an older version; per-agent figures, and cost breakdowns for runs that predate pricing, may be missing until their costs are rebuilt. (notice) |
+| Cost, nothing in the window | **No cost recorded in this window** / Model calls with token usage or a cost appear here. (no drawing) |
+| Wasted spend, nothing | **Nothing was wasted in this window** / No run failed or retried with a cost. |
+| A list with no data | No data in this window. / No tool calls in this window. / No retries in this window. / No timed operations in this window. / No runs with cost. |
+| More than the list shows | and N more agents: $X / and N more models: $X / and N more tools (N calls) |
+| Error (one report; the others stay readable) | the shared error of section 4, in that report's tab: **Could not load this data**, the API's sentence, Try again |
+| Loading | Loading cost… / Loading reliability… / Loading performance… / Loading wasted spend… |
+
+---
+
+## 11. Experiments (batch 5d)
+
+Strings: `apps/web/src/copy/experiments.ts` (`experiments`), the verdict in `verdictOf` (`apps/web/src/lib/experiments.ts`).
+
+### 11.1 The list
+
+| Element | Copy |
+| --- | --- |
+| Title (h1) and supporting sentence | **Experiments** / Compare variants of an agent: the same task set run with one thing changed. |
+| Columns | Experiment (name link, its description under it in small ink-2), Task set, Variants, Runs, Created |
+| Empty | **No experiments yet** / Create one below. (for a role that may write) / Nobody has created an experiment. (no drawing) |
+| New experiment (hairline section, settings form pattern) | An experiment compares variants of one agent setup. Declare each variant's settings (model, prompt version); do not put secrets, prompts or paths in them. This product does not run the tasks: you attach runs you already recorded. Fields Name, Project, Description (optional), Task set label (optional), Evaluators used by "Evaluate all"; **Create experiment** (the one filled button), `Creating…`, then `Created. Open "NAME"` |
+| Loading, error | Loading experiments… ; the shared error with Try again |
+
+### 11.2 An experiment
+
+Title line `Experiments / NAME` (the back link's name is "All experiments"; at 375 px `‹ Experiments` on its own line), the description
+as the supporting sentence, `Task set: LABEL` (small, ink-2), `This experiment is archived.` (notice).
+
+### 11.3 The sentence (the winner in words)
+
+One sentence at 18/24 600 ink (`data-testid="experiment-verdict"`, `data-verdict` lead, tie or none), never red, built from the
+API's per-variant metrics only. The two best variants are compared; the sentence says how many finished runs it rests on.
+
+| Case | Sentence |
+| --- | --- |
+| A higher success rate | `A leads on success rate: 80% against 60% for B.` then, when both medians exist and differ, `It also cost less, at a median $0.10 against $0.20.` or `It cost more, at a median $0.17 against $0.14.`, then `Based on 10 finished runs for A and 10 for B.` |
+| Equal success rate, one cheaper | `A and B both succeeded in 90% of runs, and A cost less, at a median $0.10 against $0.30.` then the basis |
+| Equal on both | `No variant leads: A and B both succeeded in 90% of runs.` (`The median cost is the same, $0.30.`) then the basis |
+| Fewer than 5 finished runs in either | the basis is followed by `That is too few to be sure.` |
+| Fewer than two variants have finished runs | `Not enough finished runs to compare yet: attach finished runs to at least two variants.` |
+
+The leading variant's bar is ink and the others neutral; the sentence names the variant, so colour is never the only carrier.
+
+### 11.4 The rest of the page
+
+| Element | Copy |
+| --- | --- |
+| Control notice (shared notice style) | **Controlled:** each candidate changes exactly one setting from the baseline, so a difference in results can be attributed to it. / **Not controlled:** a candidate changes more than one setting (or none), so a difference in results cannot be attributed to a single cause. then `NAME changes: model, prompt`; no candidate: Add a candidate variant to compare against the baseline. |
+| Warnings (list) | `Warning` then the API's code in words: More than one setting differs from the baseline; Runs in this variant used different models; Runs in this variant came from different agents; Some attached runs have no completed evaluation yet (with keys or a count in brackets) |
+| Compared (only when a variant has finished runs) | two small bar lists: Success rate by variant, Median cost by variant, the figure beside every bar |
+| Variants | Variant, Role, Declared settings, Differs from baseline, Runs; **Add a variant** (Name, Role, Declared settings, one key=value per line; helper: Visible to everyone who can see this experiment. No secrets, prompts or paths.; **Add variant**, `Adding…`) |
+| Metrics | `Evaluators: NAME (kind), ….` then the table Measure by variant (Runs (finished), Success rate, Cost mean, median and 95th percentile, Duration likewise, Retry rate, Tool calls mean, Unsuccessful runs, then each evaluator's mean score, pass rate and completed / failed; a model judge is marked `model judge, not ground truth`); **Evaluate all** (outline) with its one-paragraph help (the cap per click, the batch delay, the cost of a model judge), `Starting…`, `Started N evaluation(s) on N run(s).` |
+| Runs | Run, Variant, Status, Started, Actions (**Compare with baseline run**, **Detach**); `No runs are attached yet.`; **Attach a run** (Run, Variant; **Attach run**, `Attaching…`; `Add a variant first.` / `No unattached runs in this project.`) |
+| Errors, loading | the shared errors of section 4 (a missing experiment is Not found); Loading experiment… |

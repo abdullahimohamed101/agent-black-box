@@ -80,7 +80,7 @@
   max-width: 100%;
 }
 .experiments .ex-create {
-  max-width: 32rem;
+  max-width: none;
   margin-top: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border-subtle);
@@ -96,6 +96,44 @@
   margin: var(--space-2) 0;
 }
 @media (max-width: 37.4375rem) {
+  /* A table of rows becomes one block per row: the row's name, then "column: value" lines (the settings tables do the same). */
+  .ex-stack,
+  .ex-stack tbody,
+  .ex-stack tr,
+  .ex-stack th,
+  .ex-stack td {
+    display: block;
+    width: 100%;
+  }
+  .ex-stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .ex-stack tr {
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .ex-stack th,
+  .ex-stack td {
+    padding: var(--space-1) 0;
+    border: 0;
+    white-space: normal;
+  }
+  .ex-stack td[data-label] {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, 7rem) minmax(0, 1fr);
+    gap: var(--space-2);
+    text-align: left;
+  }
+  .ex-stack td[data-label]::before {
+    content: attr(data-label);
+    color: var(--color-text-secondary);
+    font-size: var(--type-small-size);
+    line-height: var(--type-body-line);
+  }
   .experiment-form > button {
     width: 100%;
     min-height: var(--layout-touch);
@@ -117,4 +155,17 @@
 /* Row heads of the metrics table are plain: the figures are the content. */
 .experiment [data-testid="metrics"] tbody th {
   font-weight: var(--weight-regular);
+}
+.experiments .ex-create > * {
+  max-width: 32rem;
+  width: 100%;
+}
+.experiments .ex-create > h2 {
+  max-width: none;
+}
+/* A row's description under its name is a plain sentence, not a heading. */
+.experiments tbody th .muted {
+  font-weight: var(--weight-regular);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
 }

@@ -35,7 +35,7 @@ describe("type steps, weights and radii are tokens", () => {
     const bad = decls(/(?<![\w-])font:\s*([^;}]+)/g).filter(
       (d) =>
         !(
-          /var\(--type-/.test(d.value) ||
+          /var\(--type-[a-z0-9-]+-size\)/.test(d.value) ||
           d.value === "inherit" ||
           (d.file === "globals.css" && d.value.startsWith("13px/1.45"))
         ),
