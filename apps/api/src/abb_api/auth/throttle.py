@@ -46,12 +46,18 @@ from abb_api.core.config import Settings
 from abb_api.core.errors import AppError, ErrorCategory
 from abb_api.ingestion.ratelimit import retry_after_seconds
 from abb_api.limits import Dimension, GuardedLimiter, Scope, SharedCounters
+from abb_api.obs.catalogue import METRICS, Catalogue
 
 logger = logging.getLogger(__name__)
 
 AUDIT_ACTION = "auth.throttled"
 AUDIT_ACTOR = "system:auth-throttle"
 _GLOBAL_KEY = "all"
+_KIND = {
+    Scope.AUTH_FAIL_ADDRESS: "address",
+    Scope.AUTH_FAIL_CREDENTIAL: "credential",
+    Scope.AUTH_FAIL_GLOBAL: "global",
+}
 
 
 def throttled(wait: float) -> AppError:
@@ -163,7 +169,9 @@ class AuthThrottle:
         monotonic: Callable[[], float] = time.monotonic,
         wall: Callable[[], float] = time.time,
         active_keys: ActiveKeyIds | None = None,
+        metrics: Catalogue = METRICS,
     ) -> None:
+        self._metrics = metrics
         self._wall = wall
         self._mono = monotonic
         self._malformed_count = 0
@@ -223,16 +231,16 @@ class AuthThrottle:
             return attempt  # authenticated here recently: the gate is not consulted
         own = self._blocked.remaining(f"{Scope.AUTH_FAIL_CREDENTIAL.value}:{attempt.key_id}")
         if own > 0:
+            self._metrics.auth_throttle_blocks_total.inc("credential")
             raise throttled(own)  # this key id's own budget is spent: refused from memory
-        shared = max(
-            (
-                self._blocked.remaining(f"{scope.value}:{key}")
-                for scope, key in self._targets(attempt)
-                if scope is not Scope.AUTH_FAIL_CREDENTIAL
-            ),
-            default=0.0,
-        )
-        if shared > 0 and not self._is_active(attempt.key_id):
+        closed_scopes = [
+            (self._blocked.remaining(f"{scope.value}:{key}"), scope)
+            for scope, key in self._targets(attempt)
+            if scope is not Scope.AUTH_FAIL_CREDENTIAL
+        ]
+        shared, widest = max(closed_scopes, key=lambda item: item[0], default=(0.0, None))
+        if shared > 0 and widest is not None and not self._is_active(attempt.key_id):
+            self._metrics.auth_throttle_blocks_total.inc(_KIND[widest])
             raise throttled(shared)
         # Open, or closed only by an address / the installation while this is a real key id: on to
         # full authentication, which costs at most `auth_fail_per_credential` lookups for it.
@@ -292,6 +300,9 @@ class AuthThrottle:
                     fresh.append(scope)
             if not tripped:
                 return None
+            self._metrics.auth_throttle_blocks_total.inc(
+                _KIND[max(tripped, key=tripped.__getitem__)]
+            )
             if fresh:
                 await self._note(fresh, attempt.key_id, workspace_id)
             return throttled(max(tripped.values()))

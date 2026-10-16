@@ -26,6 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.limits.scopes import Scope, workspace_for
+from abb_api.obs.catalogue import METRICS, Catalogue
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,9 @@ class SharedCounters:
         prune_batch: int = 1000,
         max_exhausted: int = 10_000,
         monotonic: Callable[[], float] = time.monotonic,
+        metrics: Catalogue = METRICS,
     ) -> None:
+        self._metrics = metrics
         self._engine = engine
         self._timeout = timeout_seconds
         self._backoff = backoff_seconds
@@ -157,12 +160,18 @@ class SharedCounters:
                 return Reservation(0, until - now)
             del self._exhausted[cache_key]
         if now < self._unavailable_until.get(scope.value, 0.0):
+            # Each of these is a decision the caller makes locally for lack of the database; one
+            # increment, no I/O, so nothing is added to the request path.
+            self._metrics.limiter_fail_open_total.inc(scope.value)
             raise SharedLimiterUnavailable
         try:
             count, left = await self._upsert(scope, workspace, key, window_seconds, amount)
         except Exception as exc:
+            self._metrics.limiter_database_calls_total.inc("error")
+            self._metrics.limiter_fail_open_total.inc(scope.value)
             self._note_failure(scope, exc)
             raise SharedLimiterUnavailable from exc
+        self._metrics.limiter_database_calls_total.inc("ok")
         before = count - amount
         granted = max(0, min(amount, limit - before))
         left = max(left, 0.0)

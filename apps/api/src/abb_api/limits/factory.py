@@ -11,17 +11,21 @@ from abb_api.ingestion.ratelimit import InMemoryRateLimiter, RateLimiter
 from abb_api.limits.counters import SharedCounters
 from abb_api.limits.guard import Dimension, GuardedLimiter, window_limit
 from abb_api.limits.scopes import Scope
+from abb_api.obs.catalogue import METRICS, Catalogue
 
 MINUTE = 60
 
 
-def build_counters(engine: AsyncEngine, settings: Settings) -> SharedCounters | None:
+def build_counters(
+    engine: AsyncEngine, settings: Settings, metrics: Catalogue = METRICS
+) -> SharedCounters | None:
     if not settings.limits_shared_enabled:
         return None
     return SharedCounters(
         engine,
         timeout_seconds=settings.limits_timeout_ms / 1000,
         backoff_seconds=settings.limits_backoff_seconds,
+        metrics=metrics,
     )
 
 

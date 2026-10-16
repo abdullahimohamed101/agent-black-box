@@ -23,6 +23,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, TextIO
@@ -43,6 +44,7 @@ from abb_api.backup.manifest import is_encrypted
 from abb_api.backup.pgtools import Conn, parse_url, scrub
 from abb_api.backup.restore import restore_bundle
 from abb_api.backup.verify import verify_bundle
+from abb_api.obs.textfile import BACKUP_METRICS, TextfileMetrics, textfile_path
 
 
 def _add_passphrase_options(parser: argparse.ArgumentParser) -> None:
@@ -59,6 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--out", required=True, type=Path, help="new or empty directory")
     create.add_argument("--artifact-dir", type=Path, help="default: ABB_ARTIFACT_DIR")
     create.add_argument("--encrypt", action="store_true", help="encrypt with a passphrase")
+    create.add_argument(
+        "--metrics-textfile",
+        metavar="PATH",
+        help="write Prometheus metrics (last success time, duration, size) to this file for "
+        "node_exporter's textfile collector; default: ABB_METRICS_TEXTFILE",
+    )
     _add_passphrase_options(create)
     verify = sub.add_parser("verify", help="check a bundle's checksums; touches no database")
     verify.add_argument("bundle", type=Path)
@@ -102,9 +110,26 @@ async def _run(
     args: argparse.Namespace, environ: Mapping[str, str], out: TextIO, err: TextIO
 ) -> int:
     secrets: list[str] = []
+    started = time.monotonic()
+    path = textfile_path(getattr(args, "metrics_textfile", None), environ)
+    textfile = TextfileMetrics(path, BACKUP_METRICS) if args.command == "create" and path else None
 
     def log(event: str, **fields: Any) -> None:
         err.write(json.dumps({"event": event, **fields}, default=str) + "\n")
+
+    def finished(manifest: Mapping[str, Any] | None) -> None:
+        """Record a backup run in the metrics file; never raises and never changes the exit code."""
+        if textfile is None:
+            return
+        cat = textfile.catalogue
+        if manifest is None:
+            cat.backup_runs_total.inc("failed")
+        else:
+            cat.backup_runs_total.inc("succeeded")
+            cat.backup_last_success_timestamp_seconds.set(time.time())
+            cat.backup_last_duration_seconds.set(time.monotonic() - started)
+            cat.backup_bundle_bytes.set(float(manifest["total_bytes"]))
+        textfile.write()
 
     try:
         if args.command == "verify":
@@ -147,6 +172,7 @@ async def _run(
             except BaseException:
                 discard_partial(directory)
                 raise
+            finished(manifest)
             _summary(
                 out,
                 result="ok",
@@ -180,15 +206,18 @@ async def _run(
         )
         return EXIT_OK
     except BackupError as exc:
+        finished(None)
         err.write(f"error: {scrub(exc.message, secrets)}\n")
         return exc.code
     except (SQLAlchemyError, OSError, asyncpg.PostgresError) as exc:
+        finished(None)
         err.write(
             f"error: the database could not be reached or refused the request "
             f"({type(exc).__name__})\n"
         )
         return EXIT_TOOL
     except Exception as exc:  # the class only: a driver message may quote a host or user
+        finished(None)
         err.write(f"error: unexpected failure ({type(exc).__name__})\n")
         return EXIT_UNEXPECTED
 

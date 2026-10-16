@@ -102,6 +102,12 @@ async def list_sessions(request: Request, context: SessionContext) -> SessionLis
     return SessionList(items=[_out(s, context.session.id) for s in found])
 
 
+def _revoked(request: Request, reason: str, count: int = 1) -> None:
+    request.app.state.observability.catalogue.session_revocations_total.inc(
+        reason, amount=float(count)
+    )
+
+
 async def revoke_session(request: Request, context: SessionContext, session_id: str) -> None:
     """Revoke one session of the caller; the one in use is refused (that is signing out)."""
     try:
@@ -116,6 +122,7 @@ async def revoke_session(request: Request, context: SessionContext, session_id: 
     async with _engine(request).begin() as conn:
         if not await SessionRepository(conn).revoke_own(context.user.id, target, _now(request)):
             raise session_not_found()
+    _revoked(request, "revoke_one")
     await _audit(request, context, "session.revoke", resource_id=str(target))
 
 
@@ -126,6 +133,7 @@ async def revoke_other_sessions(request: Request, context: SessionContext) -> Re
             context.user.id, context.session.id, _now(request)
         )
     if count:
+        _revoked(request, "revoke_others", count)
         await _audit(request, context, "session.revoke_others", count=count)
     return RevokedSessions(revoked=count)
 

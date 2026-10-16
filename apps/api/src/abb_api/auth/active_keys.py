@@ -23,6 +23,8 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Iterable
 
+from abb_api.obs.catalogue import METRICS, Catalogue
+
 logger = logging.getLogger(__name__)
 
 Loader = Callable[[int], Awaitable[Iterable[str]]]
@@ -40,7 +42,9 @@ class ActiveKeyIds:
         cap: int = 100_000,
         timeout_seconds: float = LOAD_TIMEOUT_SECONDS,
         retry_seconds: float = RETRY_SECONDS,
+        metrics: Catalogue = METRICS,
     ) -> None:
+        self._metrics = metrics
         self._load = load
         self._refresh = refresh_seconds
         self._cap = cap
@@ -69,6 +73,7 @@ class ActiveKeyIds:
         """A key was created (and committed) by this process: usable at once."""
         if len(self._ids) < self._cap:
             self._ids.add(key_id)
+            self._metrics.auth_active_keys.set(len(self._ids))
         if self._added_during_load is not None:
             self._added_during_load.add(key_id)
 
@@ -80,6 +85,7 @@ class ActiveKeyIds:
                 got = list(await self._load(self._cap + 1))
         except Exception as exc:
             self.failures += 1
+            self._metrics.auth_active_key_refresh_failures_total.inc()
             # Class name only; the loop retries, and the old set (if any) keeps serving.
             logger.warning(
                 "active key ids not refreshed", extra={"error_class": type(exc).__name__}
@@ -100,6 +106,7 @@ class ActiveKeyIds:
         self._ids = set(got) | added
         self._loaded = True
         self.refreshes += 1
+        self._metrics.auth_active_keys.set(len(self._ids))
         return True
 
     def nudge(self) -> None:

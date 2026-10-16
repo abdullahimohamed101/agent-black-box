@@ -70,6 +70,7 @@ from abb_api.obs.access import MetricsAuth
 from abb_api.obs.catalogue import DEFAULT, Observability
 from abb_api.obs.http import MetricsMiddleware
 from abb_api.obs.router import router as metrics_router
+from abb_api.obs.scrape import ScrapeSampler
 from abb_api.policies.api_service import PolicyApiService
 from abb_api.policies.router import router as policies_router
 from abb_api.quotas.router import router as quotas_router
@@ -230,14 +231,15 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        engine = create_engine(settings.database_url)
+        metrics = observability.catalogue
+        engine = create_engine(settings.database_url, pool_wait=metrics.postgres_pool_wait_seconds)
         app.state.engine = engine
         try:
             await enforce_role(engine, settings, service="api")  # KI-031: may refuse to start
         except PrivilegedDatabaseRole:
             await engine.dispose()
             raise
-        counters = build_counters(engine, settings)
+        counters = build_counters(engine, settings, metrics)
         app.state.shared_counters = counters
         ingest_guard = ingest_limiter(
             local_ingest,
@@ -270,8 +272,11 @@ def create_app(
             lambda limit: _load_active_key_ids(engine, clock, limit),
             refresh_seconds=settings.auth_fail_active_keys_refresh_seconds,
             cap=settings.auth_fail_active_keys_cap,
+            metrics=metrics,
         )
-        app.state.auth_throttle = AuthThrottle(settings, counters, engine, active_keys=active_keys)
+        app.state.auth_throttle = AuthThrottle(
+            settings, counters, engine, active_keys=active_keys, metrics=metrics
+        )
         app.state.ingestion = IngestionService(engine, ingest_guard, settings, clock)
         app.state.runs = RunService(
             engine,
@@ -330,7 +335,9 @@ def create_app(
             PostgresAnalyticsStore(engine, timeout_seconds=settings.analytics_timeout_seconds),
             clock,
         )
-        app.state.streams = StreamService(engine, hub, app.state.runs, settings, clock)
+        app.state.streams = StreamService(
+            engine, hub, app.state.runs, settings, clock, metrics=metrics
+        )
         hub.start()
         if settings.auth_fail_enabled:
             await active_keys.start()  # bounded; a failure leaves the set unloaded and retries
@@ -370,7 +377,9 @@ def create_app(
     install_error_handlers(app)
     # Innermost (added first): a body refused for the byte budget (503) is still a CORS-readable,
     # request-ID'd response (ADR-155).
-    app.state.body_budget = BodyBudget(settings.max_body_bytes_in_flight)
+    app.state.body_budget = BodyBudget(
+        settings.max_body_bytes_in_flight, metrics=observability.catalogue
+    )
     app.add_middleware(
         BodyBudgetMiddleware,
         budget=app.state.body_budget,
@@ -395,6 +404,9 @@ def create_app(
     if settings.metrics_token is not None:  # without a token /metrics is a plain 404
         app.state.metrics_auth = MetricsAuth(settings.metrics_token)
         app.state.metrics_limiter = per_minute_bucket(settings.metrics_requests_per_minute)
+        app.state.scrape_sampler = ScrapeSampler(
+            lambda: getattr(app.state, "engine", None), observability.catalogue
+        )
         app.include_router(metrics_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)

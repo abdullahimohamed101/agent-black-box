@@ -17,6 +17,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from typing import Any, TextIO
 
@@ -25,6 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from abb_api.backup.errors import EXIT_OK, EXIT_TOOL, EXIT_UNEXPECTED, EXIT_USAGE
 from abb_api.backup.pgtools import parse_url
+from abb_api.obs.textfile import ROTATION_METRICS, TextfileMetrics, textfile_path
 from abb_api.rotate.alerts import RotationReport, rotate_alerts
 
 _URLS = ("ABB_ROTATION_DATABASE_URL", "ABB_MIGRATION_DATABASE_URL", "ABB_DATABASE_URL")
@@ -39,6 +41,12 @@ def build_parser() -> argparse.ArgumentParser:
     alerts.add_argument("--dry-run", action="store_true", help="report only; write nothing")
     alerts.add_argument("--batch-size", type=int, default=50, help="destinations per page (1-1000)")
     alerts.add_argument("--max", type=int, default=100_000, dest="max_destinations")
+    alerts.add_argument(
+        "--metrics-textfile",
+        metavar="PATH",
+        help="write Prometheus metrics to this file for node_exporter's textfile collector; "
+        "default: ABB_METRICS_TEXTFILE",
+    )
     return parser
 
 
@@ -81,6 +89,18 @@ async def run(argv: Sequence[str], environ: Mapping[str, str], out: TextIO, err:
     def progress(event: str, **fields: Any) -> None:
         err.write(json.dumps({"event": event, **fields}) + "\n")
 
+    path = textfile_path(args.metrics_textfile, environ)
+    textfile = TextfileMetrics(path, ROTATION_METRICS) if path and not args.dry_run else None
+
+    def finished(ok: bool) -> None:
+        """Record the run in the metrics file (a dry run changes nothing and is not recorded)."""
+        if textfile is None:
+            return
+        textfile.catalogue.rotation_runs_total.inc("succeeded" if ok else "failed")
+        if ok:
+            textfile.catalogue.rotation_last_success_timestamp_seconds.set(time.time())
+        textfile.write()
+
     try:
         conn = parse_url(url)
         report = await rotate_alerts(
@@ -92,14 +112,17 @@ async def run(argv: Sequence[str], environ: Mapping[str, str], out: TextIO, err:
             progress=progress,
         )
     except (SQLAlchemyError, OSError, asyncpg.PostgresError) as exc:
+        finished(False)
         err.write(
             "error: the database could not be reached or refused the request "
             f"({type(exc).__name__})\n"
         )
         return EXIT_TOOL
     except Exception as exc:  # the class only
+        finished(False)
         err.write(f"error: unexpected failure ({type(exc).__name__})\n")
         return EXIT_UNEXPECTED
+    finished(not report.failed)
     _summary(report, out)
     return EXIT_FAILED if report.failed else EXIT_OK
 
