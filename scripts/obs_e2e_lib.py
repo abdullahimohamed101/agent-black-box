@@ -171,13 +171,16 @@ def poll(what: str, probe: Callable[[], Any], *, timeout: float = 120.0, every: 
     last: Any = None
     while time.monotonic() < deadline:
         try:
-            last = probe()
-        except (httpx.HTTPError, OSError, AssertionError, KeyError, ValueError) as error:
+            result = probe()
+        except (httpx.HTTPError, OSError, AssertionError, KeyError, ValueError, IndexError) as error:
             last = f"{type(error).__name__}"
-        if last:
-            return last
+        else:
+            if result:
+                return result
+            last = result
         time.sleep(every)
     die(f"never happened within {timeout:.0f} s: {what} (last observation: {last!r})")
+    raise AssertionError  # unreachable: die exits
 
 
 # ------------------------------------------------------------------------------------------------ sentinels and secrets
@@ -223,10 +226,9 @@ def start_worker(name: str, *, python: str | None = None, env: dict[str, str | N
 
 
 def start_server(name: str, port: int, env: dict[str, str | None] | None = None, *, python: str | None = None, wait: bool = True,
-                 log_prefix: str = "api", owner_role: bool = False) -> Proc:
-    """An API process, optionally from another interpreter (the otel environment). Same contract as base.start_api."""
-    if python is None:
-        return base.start_api(name, port, env, wait=wait, log_prefix=log_prefix, owner_role=owner_role)
+                 log_prefix: str = "api", owner_role: bool = False, host: str = "127.0.0.1") -> Proc:
+    """An API process, optionally from another interpreter (the otel environment) or on another interface (`0.0.0.0` only where a
+    container must reach it). Same contract as base.start_api: `env` overrides settings, None unsets one."""
     merged = base._base_env()
     if owner_role:
         merged["ABB_DATABASE_URL"] = os.environ["E2E_OWNER_DB_URL"]
@@ -237,7 +239,7 @@ def start_server(name: str, port: int, env: dict[str, str | None] | None = None,
             merged[key] = val
     log = WORK / f"{log_prefix}-{name}.log"
     popen = subprocess.Popen(  # noqa: S603
-        [python, "-m", "uvicorn", "abb_api.main:app_from_env", "--factory", "--port", str(port), "--host", "127.0.0.1"],
+        [python or str(base.API_PYTHON), "-m", "uvicorn", "abb_api.main:app_from_env", "--factory", "--port", str(port), "--host", host],
         cwd=API_DIR, env=merged, stdout=log.open("wb"), stderr=subprocess.STDOUT, start_new_session=True,
     )
     proc = Proc(name, popen, log, port, {})
