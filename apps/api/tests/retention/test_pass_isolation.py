@@ -73,3 +73,30 @@ async def _rows(engine: AsyncEngine, sql: str, ws: uuid.UUID) -> list[Any]:
 async def _rows(engine: AsyncEngine, sql: str, ws: uuid.UUID) -> list[Any]:
     async with engine.connect() as conn:
         return [tuple(r) for r in await conn.execute(text(sql), {"w": ws})]
+
+
+async def test_a_run_updated_after_selection_is_left_alone(
+    engine: AsyncEngine, retention_engine: AsyncEngine, tmp_path: Path
+) -> None:
+    """Review P2-5: the eligibility re-check happens before any data is touched."""
+    store = make_store(tmp_path)
+    acme = await make_tenant(engine, "acme")
+    run = await seed_run(engine, acme, ended=days_ago(400), events=3, spans=0, jobs=0)
+
+    async def bump(point: str) -> None:
+        if point == "selected":
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("UPDATE runs SET updated_at = :t, completed_at = :t WHERE id = :r"),
+                    {"t": NOW, "r": run.run_id},
+                )
+
+    await enforce(retention_engine, store, enforcing(), hook=bump)
+    assert await scalar(engine, "SELECT count(*) FROM runs WHERE id = :r", r=run.run_id) == 1
+    assert await scalar(engine, "SELECT count(*) FROM events WHERE run_id = :r", r=run.run_id) == 3
+    assert (
+        await scalar(
+            engine, "SELECT count(*) FROM retention_run_progress WHERE run_id = :r", r=run.run_id
+        )
+        == 0
+    )
