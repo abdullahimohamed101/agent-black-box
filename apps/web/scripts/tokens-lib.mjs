@@ -255,7 +255,6 @@ export function customPropertyInventory() {
 
 export function renderSections(tokens) {
   const all = leaves(tokens);
-  const hexOf = (p, theme) => colorHex(tokens, p, theme);
   const sec = {};
 
   // primitives
