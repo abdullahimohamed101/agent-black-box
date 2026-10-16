@@ -159,16 +159,19 @@ export const settings = {
     listTitle: "Your sessions",
   },
   quotas: {
-    lede: "What one project may store. At a limit, new items are refused with a clear code; what the project already has keeps working. Changes to a limit are written to the audit log.",
+    ledeLead:
+      "What one project may store. At a limit, new items are refused with a clear code; what the project already has keeps working. Changes to a limit are written to the ",
     usageTitle: "Usage and limits",
     limit: "Limit",
     near: "Near limit",
   },
   retention: {
-    lede: "How long this workspace keeps its data. Older data is removed by a background job, a run at a time, and every change to these periods is written to the audit log.",
+    ledeLead:
+      "How long this workspace keeps its data. Older data is removed by a background job, a run at a time, and every change to these periods is written to the ",
   },
   security: {
-    lede: "What the server stores, which detectors report and which hosts an agent may contact, for one project. Every change is written to the audit log.",
+    ledeLead:
+      "What the server stores, which detectors report and which hosts an agent may contact, for one project. Every change is written to the ",
   },
   policies: {
     lede: "Rules for what an agent may do. The first rule that matches decides; anything that matches no rule is allowed.",
