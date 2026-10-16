@@ -302,10 +302,19 @@ class _Enforcement:
                 )
                 if control.halted:
                     return
-            started = now()
+            # The rollup refresh has its own row allowance, and a halt of one pass never skips the
+            # later passes: only a real stop (mode, stop, budget) ends the workspace.
             failed = Counts()
-            await self.enforcer.refresh_rollups(workspace_id, failed)
-            result.failed += failed.failed
+            control.begin_pass()
+            try:
+                await self.enforcer.refresh_rollups(workspace_id, failed)
+            except Halt as halt:
+                if halt.reason != "rows":
+                    control.halted = halt.reason
+                    return
+                result.truncated += 1  # days are left for the next tick
+            finally:
+                result.failed += failed.failed
             audit_cutoff = m.cutoff(now(), days[m.Tier.AUDIT])
             if audit_cutoff is not None:
                 started = now()

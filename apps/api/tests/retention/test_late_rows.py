@@ -2,7 +2,6 @@
 
 Reproduced by a hook that inserts the row at the point named after the drain committed."""
 
-import uuid
 from pathlib import Path
 
 from sqlalchemy import text
