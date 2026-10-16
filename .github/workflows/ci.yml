@@ -74,8 +74,30 @@ jobs:
         run: PGPASSWORD=abb_dev_password psql -h localhost -p 5433 -U abb -d abb -c 'CREATE DATABASE abb_test'
       - name: Quality gate (full)
         run: scripts/quality.sh full
-      - name: Dependency audit
-        run: make audit
+      - name: Dependency audit (JavaScript production dependencies; Python lockfiles run in lockfile-audit)
+        run: make audit-pnpm
+
+  pins:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # KI-024: every action pinned by commit sha, every image by digest (scripts/check_pins.py). Reads files only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: scripts/check-pins.sh
+
+  lockfile-audit:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # KI-060: pip-audit over every uv.lock (scripts/audit-lockfiles.sh). A new advisory can fail an unchanged tree; the same script
+    # also runs weekly in .github/workflows/lockfile-audit.yml so that happens on a schedule, not on someone's pull request.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: scripts/audit-lockfiles.sh
 
   sdk:
     needs: changes

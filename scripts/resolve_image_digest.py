@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Print the multi-arch INDEX digest of an image tag, without pulling it (stdlib only).
 
-    scripts/resolve_image_digest.py postgres:16-alpine   ->  postgres:16-alpine@sha256:...
+    scripts/resolve_image_digest.py busybox:1.36   ->  busybox:1.36@sha256:...
 
 Used to pin images (docs/runbooks/bumping-pins.md). Docker Hub, ghcr.io and any registry that
 speaks the Docker token flow and the registry v2 API are supported. The digest is read from the
@@ -66,7 +66,9 @@ def resolve(ref: str) -> str:
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
         raise SystemExit(f"no digest returned for {ref}")
     if "index" not in kind and "list" not in kind:
-        raise SystemExit(f"{ref} is not a multi-arch index ({kind}); refusing to pin a platform digest")
+        raise SystemExit(
+            f"{ref} is not a multi-arch index ({kind}); refusing to pin a platform digest"
+        )
     return f"{ref}@{digest}"
 
 

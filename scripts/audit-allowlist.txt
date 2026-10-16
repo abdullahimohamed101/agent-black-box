@@ -1,0 +1,7 @@
+# Reviewed exceptions for scripts/audit-lockfiles.sh (policy: scripts/audit_policy.py).
+# One per line:   ADVISORY-ID | package | YYYY-MM-DD expiry | reason
+# - The id may be any alias pip-audit reports (PYSEC-, GHSA-, CVE-).
+# - Use it for a finding with no released fix, or one whose fix cannot be taken yet (say why).
+# - Expiry must be within 180 days; an expired entry fails the audit, so the exception gets re-reviewed.
+# - An entry that matches nothing is reported as stale: delete it.
+# No entries today: the audit of every lockfile was clean on the day this file was created.
