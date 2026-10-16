@@ -423,6 +423,31 @@ ABB_METRICS_TEXTFILE=/var/lib/node_exporter/textfile/abb_retention.prom python -
 
 The file is written to a temporary name in the same directory, fsynced, set to mode 0644 (the collector usually runs as another user) and renamed over the target, so a scrape sees the old file or the new one. It holds only the catalogue metrics the tool owns (`backup_*`, `rotation_*`, the `retention_*` counters and gauges), no path, URL, host or name. Counters and the last-success timestamps are carried over from the previous file, so a failed backup does not erase the last success and counters keep growing across runs. Use one file per tool: two tools writing the same path would replace each other. A file that cannot be written is logged by error class and never fails the backup. Alert on `time() - backup_last_success_timestamp_seconds > 100000` (a missed daily backup) and on `increase(backup_runs_total{outcome="failed"}[1d]) > 0`. A dry-run of `rotate` is not recorded. A backup that is refused for a usage reason (a non-empty output directory) counts as a failed run.
 
+### The ingestion SLO and the shipped rules (Phase 19c step 5, ADR-171)
+
+`deploy/observability/prometheus/rules/slo.yml` implements the spec §117 objective (99.95% of valid authenticated event batches durably accepted over a rolling 30 days) and `ops.yml` holds the operational alerts. Every alert has `severity: page|ticket`, a summary, a description that says why its threshold is what it is, and a `runbook_url` (a path under `docs/runbooks/`; rewrite the prefix in an Alertmanager template to make it a link). The index of symptoms, alerts and dashboard rows is `docs/runbooks/README.md`.
+
+**What the SLI means.** `committed / (committed + error)` over `ingest_acks_total`. `committed` is a request answered 2xx after its transaction committed; `error` failed on our side (5xx, an unexpected exception, a failed commit, an unreachable database); `rejected` (every 4xx) is **not in the ratio**. **Limits:** rate-limited batches, quota refusals and invalid or oversized batches do not spend error budget, so a limit set too low refuses customers silently as far as the SLO goes (watch `AbbIngestionRejectionsHigh` and `AbbQuotaRefusals`); failed authentication never reaches the handler; a request that never arrives (DNS, TLS, the load balancer) is invisible to a server metric, so probe `/readyz` from outside; a `202` with per-event refusals is a committed batch. With no traffic there is no ratio and nothing alerts.
+
+**Burn rates.** Budget = 1 - 0.9995 = 0.05%. 14.4x (0.72%) over 1 h and 5 min pages (2% of the month's budget per hour); 6x (0.3%) over 6 h and 30 min pages (5%); 3x (0.15%) over 1 d and 2 h and 1x (0.05%) over 3 d and 6 h open tickets (10% each). Both windows must exceed the threshold. A test recomputes these constants from the target.
+
+**Tuning.** Edit the number and the `for:` in the rule file; nothing else carries them. Changing the target means changing `abb:ingest_slo:target_ratio` and the four thresholds together (the test fails otherwise). The thresholds in `ops.yml` are defaults for a small installation; each states its reason, and the dashboard shows the signal behind each, so tune them after a few weeks of your own graphs. For a very quiet installation add a minimum request rate before paging on the burn-rate alerts.
+
+**Using your own Prometheus.** Copy `deploy/observability/prometheus/rules/*.yml` into your rule directory and the scrape jobs from `prometheus.yml` (token by `credentials_file`; scrape every API and worker replica). Keep 30 days of retention or the 30-day recording rules will read short. Add the textfile job for backups, rotation and retention (the commented example in `prometheus.yml`).
+
+**Importing the dashboard into an existing Grafana.** Dashboards, Import, upload `deploy/observability/grafana/dashboards/agent-black-box.json`, and pick your Prometheus datasource in the `Prometheus` variable (the dashboard has no fixed datasource uid). It reads the recording rules from `slo.yml`, so load the rules first. Its uid is `agent-black-box`. Every series is aggregate; no panel has a tenant, project or user.
+
+### Local dashboards (Phase 19c step 5, ADR-171)
+
+```sh
+make observability-up        # creates .local/metrics-token on first use, then starts the app profile plus Prometheus and Grafana
+# Grafana    http://127.0.0.1:3001   user admin, password $ABB_GRAFANA_ADMIN_PASSWORD (development default abb_grafana_dev_password)
+# Prometheus http://127.0.0.1:9090
+make observability-down      # stops and removes Prometheus and Grafana (the app stays up)
+```
+
+`make observability-token` creates `.local/metrics-token` with `openssl rand -hex 24` at mode 0600 (`.local/` is git-ignored) and prints nothing; it never overwrites an existing token. `observability-up` passes the token to the API and worker as `ABB_METRICS_TOKEN`, sets `ABB_WORKER_METRICS_PORT=9101` and `ABB_WORKER_METRICS_BIND=0.0.0.0` so Prometheus can reach the worker inside the compose network, and mounts the file read-only into Prometheus, which runs as your user so it can read a 0600 file. Both ports bind to `127.0.0.1`. Grafana has anonymous access and sign-up off; set `ABB_GRAFANA_ADMIN_PASSWORD` before the first start for anything but a private laptop. Prometheus keeps 24 hours in memory and forgets on `down`: the 30-day SLO panels need a real Prometheus. Rules, provisioning and dashboards are mounted read-only from `deploy/observability/`; after editing a rule restart Prometheus (`docker compose --profile observability restart prometheus`). Rotating the token: delete `.local/metrics-token`, run `make observability-up`, and restart the API and worker (`up` recreates them with the new value).
+
 ## Logs and tracing (Phase 19c step 4, ADR-170)
 
 ### Log lines
@@ -502,11 +527,15 @@ SELECT id, job_type, attempt_count, left(last_error, 120) FROM outbox_jobs WHERE
 - [Dead-lettered jobs](runbooks/dead-letters.md)
 - [Ingestion rejections](runbooks/ingestion-rejections.md)
 - [Live streams](runbooks/stream-issues.md)
+- [Database saturation](runbooks/database-saturation.md): readiness, the breaker, the pool, slow queries, locks, bloat, write rate
+- [The ingestion SLO and burn-rate alerts](runbooks/slo-and-burn-rate.md)
+- [Retention](runbooks/retention.md): failures and staleness
+- [Security operations](runbooks/security-operations.md): what shows each spec §126 signal today, and what is not monitored
 - [Abuse resistance and hardening](runbooks/hardening.md): what each limit, quota and throttle does, what an operator sees when it triggers, reading the counters and audit rows, reverse-proxy guidance, and the Phase 19a upgrade notes (migrations 0097-0099)
 
 - [Backup and restore](runbooks/backup-restore.md): the bundle, scheduling, verifying, the restore procedure and exit codes, the restore drill
 - [Migrations](runbooks/migrations.md): the safe upgrade, rolling back each class, per-migration notes
 - [Secrets](runbooks/secrets.md): every secret and how it rotates (the event-id key does not)
 
-Still to write (Phases 18-19c): database saturation.
+The index by symptom, alert and dashboard row is [runbooks/README.md](runbooks/README.md).
 Recovery targets: with the backup tool above, RPO = the backup interval and RTO = the measured restore time (Phase 19b step 6). The spec §122 targets (RPO <= 15 min, RTO <= 4 h) need managed PostgreSQL with point-in-time recovery, which is not built.
