@@ -44,19 +44,22 @@ async def mark_dirty(conn: AsyncConnection, tenant: TenantContext, day: date) ->
 
 
 async def begin_refresh(conn: AsyncConnection, tenant: TenantContext, day: date) -> int:
-    """The version this refresh is about to absorb (the row is created at version 0 if absent)."""
-    await conn.execute(
-        insert(D)
-        .values(workspace_id=tenant.workspace_id, day=day)
-        .on_conflict_do_nothing(index_elements=["workspace_id", "day"])
-    )
-    return int(
-        (
-            await conn.execute(
-                select(D.c.version).where(D.c.workspace_id == tenant.workspace_id, D.c.day == day)
-            )
-        ).scalar_one()
-    )
+    """The version this refresh is about to absorb.
+
+    A plain read first: an open writer holds the row's lock, and an upsert (even DO NOTHING) would
+    wait for it. Only when no row exists is it created, at version 0; that insert waits for a
+    writer that is creating the same row, and then reads the version the writer committed.
+    """
+    query = select(D.c.version).where(D.c.workspace_id == tenant.workspace_id, D.c.day == day)
+    version = (await conn.execute(query)).scalar_one_or_none()
+    if version is None:
+        await conn.execute(
+            insert(D)
+            .values(workspace_id=tenant.workspace_id, day=day)
+            .on_conflict_do_nothing(index_elements=["workspace_id", "day"])
+        )
+        version = (await conn.execute(query)).scalar_one()
+    return int(version)
 
 
 async def settle(conn: AsyncConnection, tenant: TenantContext, day: date, seen: int) -> bool:
