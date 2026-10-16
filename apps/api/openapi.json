@@ -20014,6 +20014,16 @@
             },
             "description": "A run was not found, or is not visible to this caller (never reveals other tenants)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "`TRACE_EXPIRED`: a run's trace was removed by retention, so there is nothing to compare."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -20122,7 +20132,7 @@
                 }
               }
             },
-            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+            "description": "A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request."
           },
           "422": {
             "content": {
@@ -20250,7 +20260,7 @@
                 }
               }
             },
-            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+            "description": "A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request."
           },
           "422": {
             "content": {
@@ -21052,7 +21062,7 @@
                 }
               }
             },
-            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+            "description": "A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request."
           },
           "422": {
             "content": {

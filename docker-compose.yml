@@ -114,13 +114,17 @@ services:
 
   # Data retention (ADR-159). Its own environment on purpose: the retention role's URL is never given to the
   # api or the worker, and this service has no ABB_DATABASE_URL. ABB_RETENTION_MODE=dry_run (the default)
-  # only measures and writes reports; enforce is not available before Phase 19b step 2.
+  # only measures and writes reports. ABB_RETENTION_MODE=enforce deletes, permanently (ADR-160): back up first.
+  # Enforcement removes artifact files through the same directory the api writes, so it mounts the same volume.
   retention:
     <<: *api
     profiles: ["app"]
     command: ["python", "-m", "abb_api.retention", "run"]
+    volumes:
+      - artifacts:/data/artifacts
     environment:
       ABB_ENVIRONMENT: development
+      ABB_ARTIFACT_DIR: /data/artifacts
       ABB_RETENTION_DATABASE_URL: postgresql+asyncpg://abb_retention:${ABB_RETENTION_DB_PASSWORD:-abb_retention_dev_password}@postgres:5432/abb
       ABB_RETENTION_MODE: ${ABB_RETENTION_MODE:-dry_run}
     restart: unless-stopped

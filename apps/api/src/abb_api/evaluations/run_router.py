@@ -22,7 +22,10 @@ _ERROR_TEXT: dict[int | str, str] = {
     401: "Missing, malformed, unknown, revoked or expired credentials.",
     403: "The caller lacks the required permission.",
     404: "Not found, or not visible to this caller (never reveals other tenants).",
-    409: "A bound, an archived evaluator or the judge configuration conflicts with the request.",
+    409: (
+        "A bound, an archived evaluator, the judge configuration or an expired trace "
+        "(`TRACE_EXPIRED`) conflicts with the request."
+    ),
     422: "The request is invalid, or the evaluator does not fit the run or the call.",
     503: "A dependency is unavailable; retry with backoff.",
 }

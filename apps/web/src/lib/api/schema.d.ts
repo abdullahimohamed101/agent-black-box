@@ -12375,6 +12375,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description `TRACE_EXPIRED`: a run's trace was removed by retention, so there is nothing to compare. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description A parameter is invalid. */
             422: {
                 headers: {
@@ -12445,7 +12454,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A bound, an archived evaluator or the judge configuration conflicts with the request. */
+            /** @description A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12537,7 +12546,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A bound, an archived evaluator or the judge configuration conflicts with the request. */
+            /** @description A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -13001,7 +13010,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A bound, an archived evaluator or the judge configuration conflicts with the request. */
+            /** @description A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request. */
             409: {
                 headers: {
                     [name: string]: unknown;

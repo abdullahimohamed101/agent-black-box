@@ -35,7 +35,7 @@ from abb_api.evaluations.repository import EvaluationReads, EvaluationRecord
 from abb_api.ids import parse_public_id, public_id
 from abb_api.ingestion.store import PgEventStore
 from abb_api.runs.queries import RunQueries, RunRecord
-from abb_api.runs.service import run_not_found
+from abb_api.runs.service import run_not_found, trace_expired
 
 
 def _step_out(step: Step | None) -> StepOut | None:
@@ -166,6 +166,8 @@ class ComparisonService:
         )
         if record is None:
             raise run_not_found()
+        if record.trace_state != "available":
+            raise trace_expired()  # a comparison of events that are gone would be empty, not true
         return record
 
     async def compare(self, principal: Principal, run_id: str, with_run_id: str) -> ComparisonOut:
