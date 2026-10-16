@@ -11,6 +11,7 @@ import {
   runsPath,
   type Base,
 } from "@/lib/routes";
+import { firstSettingsHref } from "@/lib/settingsNav";
 import { ApprovalsRailCount } from "../ApprovalsRailCount";
 import { useWorkspaceOptional } from "../WorkspaceProvider";
 import { Brand } from "./Brand";
@@ -19,8 +20,9 @@ import { useMenu } from "./useMenu";
 
 /**
  * The brand, the five primary links and (below 900 px) the Menu button that opens them as a panel. DOM order is the focus
- * order: Menu, brand, links. Review leads to the approvals queue when the person may read it and to the security
- * findings otherwise; both routes are unchanged (the Review page itself is the next batch).
+ * order: Menu, brand, links. Review is one page with two tabs (design pass 2 step 5c): the link leads to Approvals when the
+ * person may read them and to Security findings otherwise; both routes are the tabs' URLs. Settings leads to the first tab
+ * the role may read.
  */
 export function PrimaryNav({ base }: { base: Base }) {
   const path = usePathname();
@@ -95,7 +97,10 @@ export function PrimaryNav({ base }: { base: Base }) {
           </li>
           {ws?.mode === "session" && (
             <li>
-              <Link href={`${settings}/members`} aria-current={cur(under(settings))}>
+              <Link
+                href={firstSettingsHref(base.workspace, ws.permissions)}
+                aria-current={cur(under(settings))}
+              >
                 {shell.nav.settings}
               </Link>
             </li>

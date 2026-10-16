@@ -34,6 +34,8 @@ export function Tabs<T extends string>({
   const generated = useId();
   const base = idBase ?? generated;
   const refs = useRef(new Map<T, HTMLButtonElement>());
+  // A list whose current value is not among the items (a role that may not read the open route) is still reachable by keyboard.
+  const reachable = items.some((i) => i.id === value) ? value : items[0]?.id;
   const move = (to: number) => {
     const next = items[(to + items.length) % items.length];
     if (!next) return;
@@ -82,7 +84,7 @@ export function Tabs<T extends string>({
             id={`${base}-tab-${t.id}`}
             aria-selected={selected}
             aria-controls={`${base}-panel`}
-            tabIndex={selected ? 0 : -1}
+            tabIndex={t.id === reachable ? 0 : -1}
             className="tab"
             onClick={() => onChange(t.id)}
           >

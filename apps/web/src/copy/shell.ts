@@ -49,10 +49,6 @@ export const shell = {
     signedInAs: "Signed in as",
     role: (role: string) => `Role: ${role}`,
     sessions: "Sessions",
-    /** Temporary, like Alerts: the Review batch gives Security findings its tab. */
-    security: "Security findings",
-    /** Temporary home for Alerts until the Settings batch moves it under Settings (ADR-166, design pass 2 step 5a). */
-    alerts: "Alerts",
     signOut: "Sign out",
     signOutFailed: "Sign-out failed; you may still be signed in.",
   },

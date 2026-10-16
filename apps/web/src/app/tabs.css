@@ -44,3 +44,23 @@
     var(--font-mono);
   color: var(--color-text-secondary);
 }
+
+/* A hairline under the list, for a list that is not already sitting on one (Review, Alerts). */
+.tabs-ruled {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+/* Chip density (the Approvals state list): the same component, 28 px tall, the selected chip washed and outlined instead of
+   underlined. Still ink-2 until selected, still no upper case. */
+.tabs-chip {
+  gap: var(--space-2);
+}
+.tabs-chip .tab {
+  min-height: 1.75rem;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+}
+.tabs-chip .tab[aria-selected="true"] {
+  border-color: var(--color-interactive-default);
+  background: var(--color-bg-wash);
+}

@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { shell } from "@/copy/shell";
-import { securityPath } from "@/lib/security";
-import { alertsPath, type Base } from "@/lib/routes";
+import type { Base } from "@/lib/routes";
 import { SignOutButton } from "../SignOutButton";
 import { useWorkspaceOptional } from "../WorkspaceProvider";
 import { useMenu } from "./useMenu";
@@ -25,9 +24,9 @@ const Person = () => (
 const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
 
 /**
- * Who is signed in and the links that have no top-level place yet. Sessions belongs here for good. Security findings and
- * Alerts are TEMPORARY entries (design pass 2 step 5a): Review and Settings absorb them in the next batches, and until
- * then they must not be orphaned. Fixture data has no person, so the button reads "Account" and there is no sign-out.
+ * Who is signed in, their sessions and Sign out. (Security findings and Alerts were temporary entries here in step 5a;
+ * Review and Settings absorbed them in 5c, KI-279.) Fixture data has no person, so the button reads "Account" and there is
+ * no sign-out.
  */
 export function PersonMenu({ base }: { base: Base }) {
   const path = usePathname();
@@ -37,8 +36,6 @@ export function PersonMenu({ base }: { base: Base }) {
   const signedIn = ws.mode === "session" && ws.user;
   const email = signedIn ? ws.user!.email : null;
   const name = email ?? shell.person.account;
-  const alerts = alertsPath(base.workspace).split("?")[0]!;
-  const security = securityPath(base.workspace, base.project === "all" ? null : base.project);
   return (
     <div className="menu menu-end" ref={attach} onBlur={onBlur}>
       <button
@@ -64,16 +61,6 @@ export function PersonMenu({ base }: { base: Base }) {
             </div>
           )}
           <ul className="menu-list">
-            {ws.permissions.includes("run.read") && (
-              <li>
-                <Link href={security}>{shell.person.security}</Link>
-              </li>
-            )}
-            {ws.permissions.includes("alert.read") && (
-              <li>
-                <Link href={alerts}>{shell.person.alerts}</Link>
-              </li>
-            )}
             {signedIn && (
               <li>
                 <Link href={`/w/${base.workspace}/settings/sessions`}>{shell.person.sessions}</Link>

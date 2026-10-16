@@ -45,6 +45,7 @@ export function AlertsPage() {
       <Tabs
         label={c.tabsLabel}
         idBase="alerts"
+        className="tabs-ruled"
         items={ALERT_TABS.map((t) => ({ id: t.key, label: c.tabs[t.key] }))}
         value={tab}
         onChange={(t) => go(t)}

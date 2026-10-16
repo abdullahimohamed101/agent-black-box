@@ -2,28 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { settingsNav, type SettingsSlug } from "@/copy/settings";
+import { settingsNav } from "@/copy/settings";
+import { settingsTabs, type SettingsTabInfo } from "@/lib/settingsNav";
 import { useMenu } from "./shell/useMenu";
 import { useWorkspace } from "./WorkspaceProvider";
 import "../app/settings.css";
 
-export type SettingsTabInfo = { slug: SettingsSlug; label: string; href: string; group: string };
+export type { SettingsTabInfo };
 
-/** The tabs this person may open, in nav order (permissions mirror the pages; the API still decides what a request may do). */
+/** The tabs this person may open, in nav order. */
 export function useSettingsTabs() {
   const ws = useWorkspace();
-  return settingsNav.groups.flatMap((g) =>
-    g.tabs
-      .filter((t) => t.needs === null || ws.permissions.includes(t.needs))
-      .map(
-        (t): SettingsTabInfo => ({
-          slug: t.slug,
-          label: t.label,
-          href: `/w/${ws.workspace.slug}/settings/${t.slug}`,
-          group: g.id,
-        }),
-      ),
-  );
+  return settingsTabs(ws.workspace.slug, ws.permissions);
 }
 
 /**
