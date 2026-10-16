@@ -50,9 +50,14 @@ export function ReviewFrame({ children }: { children: React.ReactNode }) {
           onChange={(t) => router.push(hrefs[t])}
         />
       )}
-      <div role="tabpanel" className="review-panel" {...tabIds("review", active)}>
-        {children}
-      </div>
+      {items.length > 0 ? (
+        <div role="tabpanel" className="review-panel" {...tabIds("review", active)}>
+          {children}
+        </div>
+      ) : (
+        // no tab list, so no tabpanel to label (a panel naming a tab that is not there is a broken reference)
+        <div className="review-panel">{children}</div>
+      )}
     </div>
   );
 }

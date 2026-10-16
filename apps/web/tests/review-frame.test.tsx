@@ -66,6 +66,8 @@ describe("the Review frame", () => {
   it("a role that can read neither gets no tab list, but still the title and the page's own explanation", () => {
     mount(frame(), []);
     expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tabpanel")).toBeNull();
+    expect(document.querySelector("[aria-labelledby]")).toBeNull();
     expect(screen.getByRole("heading", { level: 1, name: "Review" })).toBeInTheDocument();
   });
 

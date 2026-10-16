@@ -2,11 +2,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ReviewFrame } from "@/components/ReviewFrame";
 import { SettingsFrame } from "@/components/SettingsFrame";
 import { ReadOnly, Section, TwoStep } from "@/components/SettingsKit";
 import { WorkspaceProvider } from "@/components/WorkspaceProvider";
 import { firstSettingsHref, settingsTabs } from "@/lib/settingsNav";
 import type { WorkspaceContext } from "@/lib/workspace";
+import { mount as mountPolicy, stubPolicyApi } from "./policyHelpers";
 
 // Design pass 2 step 5c: THE ONE settings pattern. The title line is "Settings / <Tab>" (the h1 is the tab's name), the section
 // list is grouped and permission-filtered, one button folds it below 900 px, and a destructive action is two steps in place.
@@ -195,7 +197,7 @@ describe("the pieces of the pattern", () => {
   });
 });
 
-// The role matrix (the grants of apps/api/src/abb_api/authz/matrix.py, copied here as data; the API stays the authority): which
+// The role matrix (a hand transcription of the grants in apps/api/src/abb_api/authz/matrix.py; nothing here checks it against the API, so a change to the matrix must be mirrored by hand; the API stays the authority): which
 // settings tabs and which Review tabs each of the six roles gets. A tab the permissions do not list is absent, never disabled.
 const EVERYONE = [
   "workspace.read",
@@ -251,18 +253,22 @@ describe("the role matrix", () => {
       SETTINGS_TABS[role],
     );
   });
-  it("Review: approvals need approval.read, security findings need run.read, billing gets neither", () => {
-    const review = (role: string) => {
-      const p = ROLE_PERMISSIONS[role]!;
-      return [
-        ...(p.includes("approval.read") ? ["Approvals"] : []),
-        ...(p.includes("run.read") ? ["Security findings"] : []),
-      ];
-    };
-    expect(review("OWNER")).toEqual(["Approvals", "Security findings"]);
-    expect(review("DEVELOPER")).toEqual(["Approvals", "Security findings"]);
-    expect(review("SECURITY")).toEqual(["Approvals", "Security findings"]);
-    expect(review("VIEWER")).toEqual(["Security findings"]);
-    expect(review("BILLING")).toEqual([]);
+  const REVIEW: Record<string, string[]> = {
+    OWNER: ["Approvals", "Security findings"],
+    ADMIN: ["Approvals", "Security findings"],
+    DEVELOPER: ["Approvals", "Security findings"],
+    SECURITY: ["Approvals", "Security findings"],
+    VIEWER: ["Security findings"],
+    BILLING: [],
+  };
+  it.each(Object.keys(REVIEW))("%s gets exactly its Review tabs (ReviewFrame rendered)", (role) => {
+    stubPolicyApi();
+    mountPolicy(
+      <ReviewFrame>
+        <p>the page</p>
+      </ReviewFrame>,
+      ROLE_PERMISSIONS[role]!,
+    );
+    expect(screen.queryAllByRole("tab").map((t) => t.textContent)).toEqual(REVIEW[role]);
   });
 });
