@@ -51,6 +51,7 @@ from abb_api.audit.repository import AuditEntry, AuditRepository
 from abb_api.core.config import Settings
 from abb_api.core.request_context import set_operation
 from abb_api.obs.catalogue import METRICS, Catalogue
+from abb_api.obs.tracing import span
 from abb_api.tenancy import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -278,7 +279,10 @@ async def _attempt(
         attempt=attempt,
         web_origin=settings.web_origin_normalised,
     )
-    return await send_opened(registry, opened, alert)
+    with span("alerts.attempt", destination_type=destination.type) as traced:
+        result = await send_opened(registry, opened, alert)
+        traced.set(outcome="delivered" if result.ok else "failed")
+    return result
 
 
 # ---------------------------------------------------------------- the registry a worker uses

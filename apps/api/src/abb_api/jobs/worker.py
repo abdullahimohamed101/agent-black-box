@@ -32,9 +32,11 @@ from abb_api.jobs.context import (
 )
 from abb_api.jobs.handlers import HANDLERS
 from abb_api.jobs.outbox import Job, JobQueue, backoff_seconds
+from abb_api.obs import tracing
 from abb_api.obs.catalogue import METRICS, REGISTRY, Catalogue
 from abb_api.obs.scrape import ScrapeSampler
 from abb_api.obs.server import MetricsServer
+from abb_api.obs.tracing import Span, span, traceparent_in
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +133,17 @@ class Worker:
             await self._run_job(job)
 
     async def _run_job(self, job: Job) -> None:
+        # One span per execution. It is a root that *links* to the request that enqueued the job
+        # (a link, not a parent: the job runs later, elsewhere, and may serve many requests).
+        with span(
+            "job.run",
+            link=traceparent_in(job.payload),
+            job_type=job.job_type,
+            attempt=job.attempt_count,
+        ) as traced:
+            await self._execute(job, traced)
+
+    async def _execute(self, job: Job, traced: Span) -> None:
         handler = self._handlers.get(job.job_type)
         if handler is None:
             async with self._engine.begin() as conn:
@@ -142,6 +155,7 @@ class Worker:
             logger.error(
                 "job has no handler", extra={"job_id": str(job.id), "job_type": job.job_type}
             )
+            traced.set(outcome="dead_letter")
             return
         heartbeat = asyncio.create_task(self._keep_lease(job))
         settings_token = set_job_settings(self._settings)
@@ -153,13 +167,15 @@ class Worker:
                 if not await JobQueue(conn).complete(job, self._now()):
                     raise LeaseLostError  # rolls the handler's writes back
             self._metrics.worker_jobs_total.inc(job.job_type, "succeeded")  # after the commit
+            traced.set(outcome="succeeded")
         except LeaseLostError:
             self._metrics.worker_jobs_total.inc(job.job_type, "lease_lost")
+            traced.set(outcome="lease_lost")
             logger.warning(
                 "lease lost; leaving the job to its new owner", extra={"job_id": str(job.id)}
             )
         except Exception as exc:
-            await self._record_failure(job, exc)
+            traced.set(outcome=await self._record_failure(job, exc), error_type=type(exc).__name__)
         finally:
             self._metrics.worker_job_duration_seconds.observe(
                 time.perf_counter() - started, job.job_type
@@ -191,7 +207,8 @@ class Worker:
                     "lease heartbeat failed", extra={"job_id": str(job.id)}, exc_info=True
                 )
 
-    async def _record_failure(self, job: Job, exc: Exception) -> None:
+    async def _record_failure(self, job: Job, exc: Exception) -> str:
+        """Record a failed attempt; returns the outcome (``retried`` or ``dead_letter``, ...)."""
         s = self._settings
         message = f"{type(exc).__name__}: {exc}"
         async with self._engine.begin() as conn:
@@ -220,11 +237,13 @@ class Worker:
             },
             exc_info=outcome == "dead_letter",
         )
+        return "retried" if outcome == "pending" else str(outcome)
 
 
 async def _main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level, service="abb-worker")
+    tracing.start(settings, service="abb-worker", metrics=METRICS)  # off unless asked (ADR-170)
     # The worker's own deadline (default none: its jobs are long); the API's does not apply.
     engine = create_engine(
         settings.database_url,
@@ -251,6 +270,7 @@ async def _main() -> None:
             metrics_server.stop()
         await role_monitor.stop()
         await engine.dispose()
+        await asyncio.to_thread(tracing.stop, settings.otel_shutdown_timeout_seconds)
 
 
 def _start_metrics_server(

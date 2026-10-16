@@ -173,6 +173,8 @@ class Catalogue:
     readiness_check: Gauge
     readiness_flaps_total: Counter
     db_role_privileged: Gauge
+    # optional tracing (obs/tracing_otel.py)
+    otel_export_failures_total: Counter
     # scrape-time database sampling (obs/scrape.py)
     abb_scrape_database_up: Gauge
     # controls: limiter and throttle
@@ -362,6 +364,10 @@ def build_catalogue(registry: Registry, *, version: str = __version__) -> Catalo
             "db_role_privileged",
             "1 per reason the connected database role is too privileged (periodic re-check).",
             [closed("reason", *ROLE_REASONS)],
+        ),
+        otel_export_failures_total=r.counter(
+            "otel_export_failures_total",
+            "Trace export attempts that failed (a collector that is down never affects requests).",
         ),
         abb_scrape_database_up=r.gauge(
             "abb_scrape_database_up",

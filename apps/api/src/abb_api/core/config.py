@@ -74,7 +74,27 @@ class RetentionSettings(BaseSettings):
         return self
 
 
-class Settings(RetentionSettings):
+class TracingSettings(BaseSettings):
+    """Optional tracing (Phase 19c, ADR-170): off unless ABB_OTEL_ENABLED=1 and the `otel` extra
+    is installed. The collector's address and headers come from the standard
+    OTEL_EXPORTER_OTLP_* variables, read by the exporter itself and never held (or logged) here.
+    Shared by the API, the worker and the retention process."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="ABB_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    otel_enabled: bool = False
+    otel_sample_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    otel_shutdown_timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+
+    @field_validator("otel_enabled", mode="before")
+    @classmethod
+    def _blank_otel_is_off(cls, value: object) -> object:
+        return False if isinstance(value, str) and not value.strip() else value
+
+
+class Settings(RetentionSettings, TracingSettings):
     """All configuration comes from ABB_* environment variables (or a local .env)."""
 
     model_config = SettingsConfigDict(

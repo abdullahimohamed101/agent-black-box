@@ -67,7 +67,7 @@ def capture_everything() -> Iterator[Captured]:
             logging.getLogger(name).setLevel(level)
 
 
-_PINNED = ("sqlalchemy", "asyncpg", "asyncio", "httpx", "httpcore")
+_PINNED = ("sqlalchemy", "sqlalchemy.engine", "asyncpg", "asyncio", "httpx", "httpcore")
 
 
 def find_leaks(captured: Captured, secrets: set[str]) -> dict[str, int]:

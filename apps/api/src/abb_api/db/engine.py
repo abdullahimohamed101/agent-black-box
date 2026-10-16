@@ -13,6 +13,7 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from abb_api.db.breaker import DbBreaker
 from abb_api.obs.metrics import Histogram
+from abb_api.obs.tracing import span
 
 
 def timed_pool(
@@ -37,7 +38,8 @@ def timed_pool(
                 breaker.before_connect()  # BreakerOpen: no pool wait, no connect attempt
             started = time.perf_counter()
             try:
-                connection = super().connect()
+                with span("db.checkout"):  # wait + connect + ping; no statement, no parameters
+                    connection = super().connect()
             except Exception:
                 if breaker is not None:
                     breaker.record_failure()

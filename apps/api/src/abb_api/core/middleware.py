@@ -13,6 +13,7 @@ from abb_api.core.request_context import (
     set_request_id,
     set_request_scope,
 )
+from abb_api.obs.tracing import HTTP_METHODS, span
 
 logger = logging.getLogger("abb_api.request")
 
@@ -59,19 +60,25 @@ class RequestContextMiddleware:
                     headers["Strict-Transport-Security"] = HSTS
             await send(message)
 
-        try:
-            await self.app(scope, receive, send_wrapper)
-        except Exception:
-            # The route template, never the raw path (it carries ids); the request_id correlates.
-            logger.exception("unhandled error", extra={"route": route_of(scope) or "unmatched"})
-            raise
-        finally:
-            logger.info(
-                "request",
-                extra={
-                    "method": scope.get("method"),
-                    "route": route_of(scope) or "unmatched",
-                    "status": status,
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 2),
-                },
-            )
+        method = scope.get("method")
+        # A new root span per request: an inbound traceparent is client-controlled (it could force
+        # sampling or forge a trace id), so none is read (ADR-170).
+        with span("http.request", method=method if method in HTTP_METHODS else "other") as traced:
+            try:
+                await self.app(scope, receive, send_wrapper)
+            except Exception:
+                # The route template, never the raw path (it carries ids); request_id correlates.
+                logger.exception("unhandled error", extra={"route": route_of(scope) or "unmatched"})
+                raise
+            finally:
+                route = route_of(scope) or "unmatched"
+                traced.set(route=route, status=status)
+                logger.info(
+                    "request",
+                    extra={
+                        "method": scope.get("method"),
+                        "route": route,
+                        "status": status,
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+                    },
+                )

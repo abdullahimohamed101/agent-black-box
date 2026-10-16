@@ -1,5 +1,7 @@
 """Application factory (spec §103: modular monolith). Modules are added as phases land."""
 
+import asyncio
+import inspect
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -69,6 +71,7 @@ from abb_api.limits.factory import (
     minute_limiter,
     per_minute_bucket,
 )
+from abb_api.obs import tracing
 from abb_api.obs.access import MetricsAuth
 from abb_api.obs.catalogue import DEFAULT, Observability
 from abb_api.obs.http import MetricsMiddleware
@@ -222,6 +225,17 @@ async def _load_active_session_handles(engine: AsyncEngine, clock: Clock, limit:
         return [bytes(row[0]).hex() for row in rows]
 
 
+def _library_telemetry_off() -> dict[str, Any]:
+    """FastAPI (0.142+) has its own OpenTelemetry: it records ``url.path`` and ``url.query``, the
+    original input of validation errors and exception messages, and exports to any
+    ``OTEL_EXPORTER_OTLP_*`` collector it finds. None of that may leave this process (INV-5), and
+    our spans are the only ones (ADR-170), so it is switched off whatever the environment says.
+    Older FastAPI has no such parameter."""
+    if "telemetry" not in inspect.signature(FastAPI.__init__).parameters:
+        return {}
+    return {"telemetry": dict(tracing.LIBRARY_INSTRUMENTATION_DISABLED)}
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -250,6 +264,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         metrics = observability.catalogue
+        tracing.start(settings, service="abb-api", metrics=metrics)  # off unless asked (ADR-170)
         breaker = DbBreaker(
             threshold=settings.db_breaker_threshold,
             open_seconds=settings.db_breaker_open_seconds,
@@ -416,6 +431,7 @@ def create_app(
                 await counters.close()
             await hub.stop()
             await engine.dispose()
+            await asyncio.to_thread(tracing.stop, settings.otel_shutdown_timeout_seconds)
 
     if settings.allow_dev_sessions:
         # Never log the flag's effect as a secret; do say loudly that it exists.
@@ -437,6 +453,7 @@ def create_app(
         docs_url="/docs" if docs else None,
         redoc_url="/redoc" if docs else None,
         openapi_url="/openapi.json" if docs else None,
+        **_library_telemetry_off(),
     )
     app.state.settings = settings
     app.state.clock = clock

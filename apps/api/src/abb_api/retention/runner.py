@@ -22,10 +22,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.artifacts.store import ArtifactStore, LocalFsArtifactStore
-from abb_api.core.config import RetentionSettings
+from abb_api.core.config import RetentionSettings, TracingSettings
 from abb_api.core.logging import configure_logging
 from abb_api.db import create_engine
+from abb_api.obs import tracing
+from abb_api.obs.catalogue import METRICS
 from abb_api.obs.textfile import RETENTION_METRICS, TextfileMetrics, textfile_path
+from abb_api.obs.tracing import span
 from abb_api.retention.metrics import record_crash, record_tick
 from abb_api.retention.tick import TickResult, run_tick
 
@@ -36,7 +39,7 @@ class RetentionConfigError(RuntimeError):
     """The runner cannot start safely; the message never contains a credential."""
 
 
-class RetentionRunnerSettings(RetentionSettings):
+class RetentionRunnerSettings(RetentionSettings, TracingSettings):
     """Retention knobs plus the retention role's credentials. Never loaded by the API."""
 
     model_config = SettingsConfigDict(
@@ -206,14 +209,16 @@ async def run_once(
     store = artifact_store_of(settings)
     engine = await _engine(settings)
     try:
-        result = await run_tick(
-            engine,
-            settings,
-            budget_seconds=settings.retention_tick_budget_seconds,
-            keep_reports=settings.retention_reports_keep,
-            store=store,
-            mode_probe=mode_now,
-        )
+        with span("retention.tick", mode=settings.retention_mode) as traced:
+            result = await run_tick(
+                engine,
+                settings,
+                budget_seconds=settings.retention_tick_budget_seconds,
+                keep_reports=settings.retention_reports_keep,
+                store=store,
+                mode_probe=mode_now,
+            )
+            traced.set(outcome="ok")
     finally:
         await engine.dispose()
     logger.info("retention tick finished", extra=_summary(result))
@@ -235,15 +240,17 @@ async def run_forever(
         while not stop.is_set():
             if engine is not None:
                 try:
-                    result = await run_tick(
-                        engine,
-                        settings,
-                        budget_seconds=settings.retention_tick_budget_seconds,
-                        keep_reports=settings.retention_reports_keep,
-                        store=store,
-                        mode_probe=mode_now,
-                        stop=stop,
-                    )
+                    with span("retention.tick", mode=settings.retention_mode) as traced:
+                        result = await run_tick(
+                            engine,
+                            settings,
+                            budget_seconds=settings.retention_tick_budget_seconds,
+                            keep_reports=settings.retention_reports_keep,
+                            store=store,
+                            mode_probe=mode_now,
+                            stop=stop,
+                        )
+                        traced.set(outcome="ok")
                     logger.info("retention tick finished", extra=_summary(result))
                     _finished(textfile, result)
                 except Exception:  # e.g. the database restarted: try again next interval
@@ -370,8 +377,16 @@ def _textfile(args: argparse.Namespace) -> TextfileMetrics | None:
 
 
 async def _run(args: argparse.Namespace, settings: RetentionRunnerSettings) -> int:
-    command = args.command
     configure_logging(settings.log_level, service="abb-retention")
+    tracing.start(settings, service="abb-retention", metrics=METRICS)
+    try:
+        return await _dispatch(args, settings)
+    finally:
+        await asyncio.to_thread(tracing.stop, settings.otel_shutdown_timeout_seconds)
+
+
+async def _dispatch(args: argparse.Namespace, settings: RetentionRunnerSettings) -> int:
+    command = args.command
     if command == "run":
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
