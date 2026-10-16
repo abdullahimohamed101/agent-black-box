@@ -249,7 +249,9 @@ export function TopbarSearch({ base }: { base: Base }) {
                 onClick={() => choose(i)}
               >
                 <StatusBadge status={r.status} />
-                <span className="topbar-option-name">{r.name ?? r.id}</span>
+                <span className="topbar-option-name" title={r.name ?? r.id}>
+                  {r.name ?? r.id}
+                </span>
                 {r.agent_id && <span className="muted topbar-option-agent">{r.agent_id}</span>}
               </div>
             ))}

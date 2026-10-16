@@ -37,7 +37,11 @@ export function CodingSummary({
                 {GLYPH[s.tone]}
               </span>
               <span className="story-label">{s.label}</span>
-              {s.detail && <span className="story-detail">{s.detail}</span>}
+              {s.detail && (
+                <span className="story-detail" title={s.detail}>
+                  {s.detail}
+                </span>
+              )}
             </button>
           </li>
         ))}

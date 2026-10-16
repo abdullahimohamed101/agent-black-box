@@ -49,7 +49,9 @@ export function ScopeControl({ base }: { base: Base }) {
         title={shell.scope.hint}
         onClick={toggle}
       >
-        <span className="scope-text">{label}</span>
+        <span className="scope-text" title={label}>
+          {label}
+        </span>
         <Caret />
       </button>
       {open && (

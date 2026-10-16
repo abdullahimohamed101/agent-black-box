@@ -10,7 +10,9 @@
 }
 .bars {
   /* One set of columns for the whole list (subgrid below), so every track starts and ends at the same place. */
-  grid-template-columns: minmax(5rem, 11rem) minmax(4rem, 1fr) auto;
+  /* The figure column grows to its text and no further than 14 rem; past that its note wraps (a long model name or a longer
+     language), so it never squeezes the label or the track out from under it. */
+  grid-template-columns: minmax(5rem, 11rem) minmax(4rem, 1fr) fit-content(14rem);
   column-gap: var(--space-3);
 }
 .bars li {
@@ -40,7 +42,7 @@
 }
 .bar-value {
   text-align: right;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-family: var(--font-mono);
 }
 .bar-value small {

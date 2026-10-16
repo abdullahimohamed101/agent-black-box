@@ -96,7 +96,9 @@ export function EvidenceList({
                   <td className="evidence-source">
                     {r.eventType} <span className="muted">{at}</span>
                   </td>
-                  <td className="evidence-what">{r.what ?? <span className="muted">—</span>}</td>
+                  <td className="evidence-what" title={r.what ?? undefined}>
+                    {r.what ?? <span className="muted">—</span>}
+                  </td>
                   <td className="num">
                     {r.bytes != null ? (
                       `${formatInt(r.bytes)} bytes`

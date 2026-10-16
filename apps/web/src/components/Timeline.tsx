@@ -278,7 +278,7 @@ export function Timeline({
                   <span className="tl-off">
                     {formatOffset(Date.parse(row.first.occurred_at) - t0)}
                   </span>
-                  <span className="tl-sum">
+                  <span className="tl-sum" title={`${row.label} (${row.count} events)`}>
                     <span className="tl-chev" aria-hidden="true">
                       {row.collapsed ? "▸" : "▾"}
                     </span>
@@ -326,12 +326,20 @@ export function Timeline({
                 }}
               >
                 <span className="tl-off">{formatOffset(Date.parse(e.occurred_at) - t0)}</span>
-                <span className="tl-sum">
+                <span
+                  className="tl-sum"
+                  title={`${e.event_type} ${pol ? [pol.word, pol.detail].filter(Boolean).join(" ") : describe(e)}`}
+                >
                   {e.event_id === firstErrorId && <span className="sr-only">First error </span>}
                   {showAgent && <span className="tl-agent">{agentChip(e.agent_id)}</span>}
-                  <span className="tl-type">{e.event_type}</span>{" "}
+                  <span className="tl-type" title={e.event_type}>
+                    {e.event_type}
+                  </span>{" "}
                   {pol ? (
-                    <span className="tl-desc">
+                    <span
+                      className="tl-desc"
+                      title={[pol.word, pol.detail].filter(Boolean).join(" ")}
+                    >
                       <span className="tl-pol" data-tone={pol.tone}>
                         <span className="pol-glyph" aria-hidden="true">
                           {pol.glyph}
@@ -347,7 +355,9 @@ export function Timeline({
                       {pol.detail && <span className="tl-pol-why">{pol.detail}</span>}
                     </span>
                   ) : (
-                    <span className="tl-desc">{describe(e)}</span>
+                    <span className="tl-desc" title={describe(e)}>
+                      {describe(e)}
+                    </span>
                   )}
                 </span>
                 <span className="tl-dur">{formatDuration(e.duration_ms)}</span>

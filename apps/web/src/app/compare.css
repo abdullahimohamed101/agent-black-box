@@ -259,6 +259,13 @@ tr[data-picked="true"] {
 .aligned-row:focus-visible {
   outline-offset: -2px;
 }
+.aligned-row > * {
+  min-width: 0;
+}
+.aligned-flags .badge {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .aligned-flags {
   display: flex;
   flex-wrap: wrap;

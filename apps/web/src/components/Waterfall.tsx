@@ -558,7 +558,9 @@ export function Waterfall({
                       {n.depth > MAX_INDENT ? ` L${n.depth}` : ""}
                     </span>
                   )}
-                  <span className="wf-name">{label}</span>
+                  <span className="wf-name" title={label}>
+                    {label}
+                  </span>
                   {isAgg && <span className="muted"> (+{row.aggregate.count - 1} spans)</span>}
                 </div>
                 <div role="gridcell" className="wf-track">

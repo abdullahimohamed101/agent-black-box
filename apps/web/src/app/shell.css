@@ -158,8 +158,9 @@
 .menu-trigger[aria-expanded="true"] {
   border-color: var(--color-border-control);
 }
+/* min(): a bare rem cap would replace the 100% above and let a long scope name push the search icon out from under it. */
 .scope-button {
-  max-width: 20rem;
+  max-width: min(20rem, 100%);
 }
 .scope-text,
 .person-text {
@@ -174,7 +175,7 @@
 }
 .person-button {
   color: var(--color-text-secondary);
-  max-width: 14rem;
+  max-width: min(14rem, 100%);
 }
 
 .menu-panel {

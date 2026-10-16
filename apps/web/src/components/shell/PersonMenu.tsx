@@ -47,7 +47,7 @@ export function PersonMenu({ base }: { base: Base }) {
         onClick={toggle}
       >
         <Person />
-        <span className="person-text" aria-hidden="true">
+        <span className="person-text" aria-hidden="true" title={name}>
           {name}
         </span>
       </button>

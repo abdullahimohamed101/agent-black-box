@@ -105,7 +105,12 @@ function RunRows({
 }) {
   const h = t.runRows.heads;
   return (
-    <div className="table-wrap">
+    <div
+      className="table-wrap"
+      tabIndex={0}
+      role="region"
+      aria-label={extra === "cost" ? t.cost.expensiveCaption : t.reliability.retryHeavyCaption}
+    >
       <table>
         <caption className="sr-only">
           {extra === "cost" ? t.cost.expensiveCaption : t.reliability.retryHeavyCaption}
@@ -307,7 +312,7 @@ function ReliabilityReport({
           </Block>
           <Block title={k.tools}>
             {r.tools.length ? (
-              <div className="table-wrap">
+              <div className="table-wrap" tabIndex={0} role="region" aria-label={k.toolsCaption}>
                 <table>
                   <caption className="sr-only">{k.toolsCaption}</caption>
                   <thead>
@@ -372,7 +377,7 @@ function PerformanceReport({
           <Headline>{performanceHeadline(p.run, days)}</Headline>
           <ExpiredTraceNote runs={p.excluded_expired_traces} what={t.expiredWhat.performance} />
           <Block title={k.latency}>
-            <div className="table-wrap">
+            <div className="table-wrap" tabIndex={0} role="region" aria-label={k.latencyCaption}>
               <table>
                 <caption className="sr-only">{k.latencyCaption}</caption>
                 <thead>
@@ -400,7 +405,7 @@ function PerformanceReport({
           </Block>
           <Block title={k.slow}>
             {p.slow_operations.length ? (
-              <div className="table-wrap">
+              <div className="table-wrap" tabIndex={0} role="region" aria-label={k.slowCaption}>
                 <table>
                   <caption className="sr-only">{k.slowCaption}</caption>
                   <thead>
