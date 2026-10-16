@@ -17,13 +17,22 @@ from abb_api.ingestion.ratelimit import InMemoryRateLimiter
 from abb_api.limits import Scope, SharedCounters, SharedLimiterUnavailable
 from abb_api.obs.catalogue import Observability, build_observability
 from abb_api.search.reads import SearchGate
-from tests.api_fixtures import WEB_ORIGIN, Api, build_api
+from tests.api_fixtures import WEB_ORIGIN, Api, Tick, build_api
 from tests.auth_helpers import add_member, mint_session
 from tests.conftest import UNREACHABLE_DATABASE_URL, make_settings
+from tests.fake_oidc import FakeOidc
 from tests.ingest_helpers import make_run_ids, wire_event
 from tests.limits.helpers import pooled, room_in_window
 from tests.obs.helpers import TOKEN, total, value
 from tests.obs.parser import parse, sample_value
+from tests.test_auth_sessions import (
+    CLIENT_ID,
+    ISSUER,
+    REDIRECT,
+    Browser,
+    oidc_settings,
+    refused_sign_in,
+)
 from tests.test_auth_throttle import probe, throttle_settings, unknown_key, wrong_secret
 
 MIB = 1024 * 1024
@@ -345,3 +354,39 @@ async def test_session_revocations_count_logout_one_and_others(
         await api.client.post("/v1/auth/logout", headers=cookie(tokens[0]))
         assert value(obs, "session_revocations_total", reason="logout") == 1
         assert total(obs, "session_revocations_total") == 5
+
+
+# ------------------------------------------------------------------ invitation-only
+
+
+@pytest.fixture
+def fake() -> FakeOidc:
+    return FakeOidc(issuer=ISSUER, client_id=CLIENT_ID, redirect_uris=(REDIRECT,), clock=Tick())
+
+
+@pytest.fixture
+async def oidc_app(
+    database_url: str, runtime_database_url: str, engine: AsyncEngine, fake: FakeOidc
+) -> AsyncIterator[tuple[Api, Observability]]:
+    obs = build_observability()
+    assert isinstance(fake.clock, Tick)
+    async for api in build_api(
+        database_url,
+        engine,
+        settings=oidc_settings(database_url, metrics_token=TOKEN),
+        clock=fake.clock,
+        app_options={"oidc_transport": fake.transport(), "observability": obs},
+    ):
+        yield api, obs
+
+
+async def test_a_sign_in_without_an_invitation_counts_one_refusal_and_an_invited_one_none(
+    oidc_app: tuple[Api, Observability], fake: FakeOidc
+) -> None:
+    api, obs = oidc_app
+    for n in range(3):
+        refused = await refused_sign_in(api, fake, f"stranger{n}@example.com")
+        assert refused.status_code == 403 and refused.json()["error"]["code"] == "NO_ACCESS"
+    assert value(obs, "invitation_only_refusals_total") == 3
+    assert (await Browser(api, fake).sign_in("friend@example.com")).status_code == 302
+    assert value(obs, "invitation_only_refusals_total") == 3, "an invited person is not a refusal"

@@ -23,6 +23,12 @@ async def observed(
         metrics_token=TOKEN,
         artifact_dir=str(tmp_path / "store"),
         artifact_max_bytes=4096,
+        # Real (small) failed-auth budgets, so hostile traffic can reach every throttle scope.
+        trust_proxy=True,
+        auth_fail_per_address=40,
+        auth_fail_per_credential=3,
+        auth_fail_global=60,
+        limits_block_divisor=1000,
     )
     async for api in build_api(
         database_url, engine, settings=settings, app_options={"observability": obs}

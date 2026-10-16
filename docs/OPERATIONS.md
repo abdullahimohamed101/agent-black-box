@@ -313,14 +313,82 @@ scrape_configs:
 
 **Rotate the token.** Change the file and restart the API and worker; update the scraper's file at the same time (a brief 401 gap is expected).
 
-**What is exposed (step 1).** `http_requests_total{method,route,status}`, `http_request_duration_seconds{method,route}`, `http_requests_in_flight`, `process_start_time_seconds`, `process_uptime_seconds`, `abb_build_info{version}`; the catalogue also declares (and later steps increment) the telemetry, worker, stream, dependency and control families listed in `abb_api/obs/catalogue.py`. A route that matched nothing is labelled `unmatched`; a method outside the standard seven is `other`. Series are capped (per label and per metric), so hostile traffic cannot grow the scrape.
+**What is exposed.** Every metric below is declared in `abb_api/obs/catalogue.py` and moves in the place named; a test (`tests/obs/test_catalogue_is_used.py`) fails when a declared metric is not used by any module, and another (`tests/obs/test_operations_doc.py`) fails when this table and the catalogue disagree. A route that matched nothing is labelled `unmatched`; a method outside the standard seven is `other`; every closed label folds an unknown value into `other`. Series are capped (per label and per metric), so hostile traffic cannot grow the scrape. No label is ever an id, a slug, a name, an address, a key or a path.
+
+| Metric | Type | Labels | Meaning | Where it moves |
+|---|---|---|---|---|
+| `abb_build_info` | gauge | version | Always 1; the version label carries the build. | API, worker: when the registry is built |
+| `abb_scrape_database_up` | gauge | - | 1 when the last scrape-time database sample succeeded, 0 when its values are cached. | API and worker: result of the last scrape-time sample |
+| `alert_dead_letters` | gauge | - | Alert notifications that exhausted their retries (sampled at scrape time). | API and worker: sampled at scrape from `alert_notifications` |
+| `alert_deliveries_total` | counter | status, reason | Alert notification delivery results by status and fixed error or skip reason. | worker: alert delivery tick and evaluation (skips) |
+| `alert_destinations` | gauge | state | Alert destinations by state (sampled at scrape time; never their names). | API and worker: sampled at scrape from `alert_destinations` |
+| `artifact_upload_bytes` | histogram | - | Size of stored artifacts. | API: artifact upload router, newly stored artifacts |
+| `artifact_upload_failures_total` | counter | reason | Artifact uploads that were not stored, by reason. | API: artifact upload router |
+| `auth_active_key_refresh_failures_total` | counter | - | Refreshes of the active API key id set that failed (the old set keeps serving). | API: `auth/active_keys.py` |
+| `auth_active_keys` | gauge | - | Size of the active API key id set the throttle consults. | API: `auth/active_keys.py`, after each refresh and key creation |
+| `auth_throttle_blocks_total` | counter | kind | Requests refused by the failed-authentication throttle. | API: `auth/throttle.py`, each 429 AUTH_THROTTLED |
+| `backup_bundle_bytes` | gauge | - | Total size of the last successful backup bundle. | `abb_api.backup create`, textfile |
+| `backup_last_duration_seconds` | gauge | - | Duration of the last successful backup. | `abb_api.backup create`, textfile |
+| `backup_last_success_timestamp_seconds` | gauge | - | Unix time of the newest successful backup known to the textfile; 0 if unknown. | `abb_api.backup create`, textfile |
+| `backup_runs_total` | counter | outcome | Backup runs observed, by outcome. | `abb_api.backup create`, textfile |
+| `body_bytes_in_flight` | gauge | - | Request body bytes currently held in memory. | API: read at scrape from the budget |
+| `body_cap_refusals_total` | counter | reason | Requests refused by the in-flight body byte budget or the body ceiling. | API: `core/body_budget.py` |
+| `http_request_duration_seconds` | histogram | method, route | HTTP request duration (until the response is complete) by method and route. | API: `MetricsMiddleware`, once per request |
+| `http_requests_in_flight` | gauge | - | HTTP requests being served right now. | API: `MetricsMiddleware` |
+| `http_requests_total` | counter | method, route, status | HTTP requests by method, matched route template and status code. | API: `MetricsMiddleware` (`obs/http.py`), every request |
+| `ingest_ack_duration_seconds` | histogram | - | Time from the start of an ingestion request to its answer, once per request. | API: ingestion router, once per ingestion request |
+| `ingest_acks_total` | counter | outcome | Ingestion requests by outcome; committed is counted after the commit. | API: ingestion router (`ingestion/observe.py`); `committed` only after the commit |
+| `invitation_only_refusals_total` | counter | - | Sign-ins refused because the installation is invitation-only. | API: error handler (`NO_ACCESS`) |
+| `limiter_database_calls_total` | counter | outcome | Calls the shared limiter made to the database. | API: `limits/counters.py`, each shared-counter call |
+| `limiter_fail_open_total` | counter | scope | Shared limiter decisions made locally because the database was unavailable. | API: `limits/counters.py`, each decision made locally for lack of the database |
+| `postgres_pool_wait_seconds` | histogram | - | Time spent waiting for a database connection. | API, worker: every pooled checkout (`db/engine.py`) |
+| `process_start_time_seconds` | gauge | - | Start time of the process, Unix seconds. | API, worker: when the registry is built |
+| `process_uptime_seconds` | gauge | - | Seconds since the process started. | API, worker: computed at scrape |
+| `processor_failures_total` | counter | type | Handler failures by job type (retried or dead-lettered). | worker: every failed attempt (retried, dead-lettered, superseded, no handler) |
+| `quota_refusals_total` | counter | quota | Writes refused because a project quota was reached. | API: error handler (`obs/app_errors.py`) and the batch ingestion router |
+| `retention_deleted_total` | counter | tier, kind | Data removed by retention, by tier and kind (bytes are artifact file bytes). | retention process (enforce), textfile |
+| `retention_dry_run_candidates` | gauge | tier | What a dry-run tick found it would delete (runs for run tiers, rows otherwise). | retention process (dry run), textfile |
+| `retention_failures_total` | counter | code | Retention failures by fixed code (units: tiers, runs or ticks, see the runbook). | retention process, textfile |
+| `retention_mode` | gauge | mode | 1 for the mode of the newest retention report (the effective mode), else 0. | retention process (textfile) and API/worker scrape (newest report) |
+| `retention_passes_total` | counter | mode | Retention ticks finished, by the mode they ran in. | retention process: `retention/metrics.py`, textfile |
+| `retention_seconds_since_last_pass` | gauge | - | Seconds since the newest retention report was written; NaN when there is none. | API and worker: sampled at scrape from `retention_reports` |
+| `rotation_last_success_timestamp_seconds` | gauge | - | Unix time of the newest successful alert-key rotation; 0 if unknown. | `abb_api.rotate alerts`, textfile |
+| `rotation_runs_total` | counter | outcome | Alert-key rotation runs observed, by outcome. | `abb_api.rotate alerts`, textfile |
+| `search_busy_total` | counter | reason | Searches refused with SEARCH_BUSY, by reason. | API: error handler (`SEARCH_BUSY`) |
+| `search_permits_in_use` | gauge | - | Search permits held by running searches in this process. | API: `SearchGate` |
+| `session_revocations_total` | counter | reason | Sign-in sessions ended, by reason. | API: sign-out and the sessions page |
+| `sse_connections` | gauge | - | Open live-stream (SSE) connections. | API: stream lease acquire and release |
+| `sse_delivery_lag_seconds` | histogram | - | Time from an event being stored to its stream delivery. | API: per event sent on a stream (stored-to-sent) |
+| `telemetry_bytes_received_total` | counter | - | Request body bytes of accepted telemetry batches. | API: ingestion router, body bytes of committed batches |
+| `telemetry_events_received_total` | counter | - | Telemetry events accepted for storage. | API: ingestion router, events newly stored in a committed batch |
+| `telemetry_events_rejected_total` | counter | reason | Telemetry events or batches refused, by reason. | API: ingestion router; one per refused request, or per refused event inside a 202 |
+| `worker_job_duration_seconds` | histogram | type | Time a handler ran, by job type. | worker: handler start to commit or failure |
+| `worker_job_lag_seconds` | gauge | type | Age of the oldest due job that has not started, by job type (sampled at scrape time). | API and worker: sampled at scrape from `outbox_jobs` (15 s cache) |
+| `worker_jobs_pending` | gauge | type | Due jobs waiting to run, by job type (sampled at scrape time). | API and worker: sampled at scrape from `outbox_jobs` (15 s cache) |
+| `worker_jobs_total` | counter | type, outcome | Jobs finished by type and outcome. | worker: `jobs/worker.py`, after the job's transaction ends |
+
+**The service-level indicators (spec §117).** Accepted-event durability is `sum(rate(ingest_acks_total{outcome="committed"}[5m])) / (sum(rate(ingest_acks_total{outcome="committed"}[5m])) + sum(rate(ingest_acks_total{outcome="error"}[5m])))`: `committed` is counted only after the transaction committed, `error` is a request that failed on our side (a 5xx or an unexpected exception, including a commit that failed), and `rejected` (a 4xx, the client's fault) is left out of the ratio. Authentication failures never reach the ingestion handler; they are in `http_requests_total{status="401"}` and `auth_throttle_blocks_total`. Ingestion latency is `ingest_ack_duration_seconds` (one observation per request). Live freshness is `sse_delivery_lag_seconds`. Queue health is `worker_jobs_pending` and `worker_job_lag_seconds` by job type.
+
+**Scrape-time gauges.** `worker_jobs_pending`, `worker_job_lag_seconds`, `alert_dead_letters`, `alert_destinations`, `retention_mode` and `retention_seconds_since_last_pass` describe the database, not the process. They come from four small queries run as the runtime role (no new privilege), at most once every 15 seconds whatever the scrape rate, each under a 2 second statement timeout. A scrape never fails or waits on the database: it waits at most 1.5 seconds for a sample and otherwise serves the last values. `abb_scrape_database_up` is 1 when the last sample succeeded in full and 0 when the gauges above are stale; alert on it being 0 for several minutes. Both the API and the worker serve these gauges, so take them from one job (`max by (type) (...)`) rather than summing. Pending depth saturates at 10 000 due jobs; the lag is exact. `retention_mode` is the mode of the newest retention report (the effective mode, including a kill switch); `retention_seconds_since_last_pass` is NaN until a report exists.
+
+**Backups, key rotation and retention (the textfile collector).** `python -m abb_api.backup create`, `python -m abb_api.rotate alerts` and the retention runner are not scraped, so they write a small Prometheus text file for node_exporter. Give each its own file in the collector's directory with `--metrics-textfile PATH` or `ABB_METRICS_TEXTFILE` (the flag wins):
+
+```sh
+# node_exporter --collector.textfile.directory=/var/lib/node_exporter/textfile
+mkdir -p /var/lib/node_exporter/textfile            # owned by the user that runs the tools; node_exporter only reads
+python -m abb_api.backup create --out /backups/$(date +%F) --metrics-textfile /var/lib/node_exporter/textfile/abb_backup.prom
+python -m abb_api.rotate alerts --metrics-textfile /var/lib/node_exporter/textfile/abb_rotation.prom
+ABB_METRICS_TEXTFILE=/var/lib/node_exporter/textfile/abb_retention.prom python -m abb_api.cli retention run
+```
+
+The file is written to a temporary name in the same directory, fsynced, set to mode 0644 (the collector usually runs as another user) and renamed over the target, so a scrape sees the old file or the new one. It holds only the catalogue metrics the tool owns (`backup_*`, `rotation_*`, the `retention_*` counters and gauges), no path, URL, host or name. Counters and the last-success timestamps are carried over from the previous file, so a failed backup does not erase the last success and counters keep growing across runs. Use one file per tool: two tools writing the same path would replace each other. A file that cannot be written is logged by error class and never fails the backup. Alert on `time() - backup_last_success_timestamp_seconds > 100000` (a missed daily backup) and on `increase(backup_runs_total{outcome="failed"}[1d]) > 0`. A dry-run of `rotate` is not recorded. A backup that is refused for a usage reason (a non-empty output directory) counts as a failed run.
 
 ## What to watch
 
 Structured JSON logs (one line per request with `request_id`, and `workspace_id`, `project_id`, `key_id` after
 authentication; payloads and secrets are never logged). Messages worth alerting on: `lease lost while running`, `spans left untouched`, `job failed` with
 `outcome: dead_letter`, `worker loop error`, `conflicting duplicate events ignored`, `authentication unavailable`,
-`ingest unavailable`, `stream listener unavailable`, `stream failed`. Application metrics (spec §116) are being added in Phase 19c (the registry and HTTP series exist, see Metrics above; the domain families follow); until they are complete use the logs and these queries:
+`ingest unavailable`, `stream listener unavailable`, `stream failed`. Application metrics (spec §116) are in the Metrics section above; these queries are the same facts straight from the database:
 
 ```sql
 -- queue depth and oldest waiting job

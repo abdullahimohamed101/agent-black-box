@@ -1,4 +1,4 @@
-"""Metrics for short-lived processes, as a Prometheus textfile (Phase 19c step 2, ADR-166).
+"""Metrics for short-lived processes, as a Prometheus textfile (Phase 19c step 2, ADR-168).
 
 `backup`, `rotate` and the retention runner are not scraped: a backup lives for minutes and the
 others have no HTTP port. They write a small file that node_exporter's textfile collector exposes

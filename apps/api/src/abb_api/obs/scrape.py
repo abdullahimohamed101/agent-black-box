@@ -1,4 +1,4 @@
-"""Gauges that are read from the database at scrape time (Phase 19c step 2, ADR-165/ADR-166).
+"""Gauges that are read from the database at scrape time (Phase 19c step 2, ADR-165, ADR-168).
 
 Queue depth, the age of the oldest due job, dead letters, destination states and the retention
 heartbeat describe the *database*, not this process. They are sampled here, never on a request path,
@@ -9,7 +9,7 @@ and never in a way that can make a scrape fail or hang:
 - The sample runs in its own task. A scrape waits for it at most ``wait_seconds`` and otherwise
   serves what was cached, with ``abb_scrape_database_up`` at 0 until a sample succeeds again.
 - Every statement runs with a server-side ``statement_timeout`` and the whole sample under an
-  ``asyncio`` deadline; every query is bounded by a partial index or a LIMIT (see ADR-166 for the
+  ``asyncio`` deadline; every query is bounded by a partial index or a LIMIT (see ADR-168 for the
   plans). No tenant data leaves the database: only counts, ages and fixed words.
 - A statement that fails keeps its previous values (the other statements still update), and the
   gauge reports 0 until all of them succeed in the same sample.
@@ -39,7 +39,7 @@ WAIT_SECONDS: Final = 1.5  # how long one scrape waits for a sample before servi
 STATEMENT_TIMEOUT_MS: Final = 2000
 DEADLINE_SECONDS: Final = 8.0  # connection acquisition (pool 5 s, connect 3 s) plus the statements
 # The pending-job query looks at this many due jobs, oldest first: depth saturates there, the lag
-# stays exact for the oldest type (ADR-166).
+# stays exact for the oldest type (ADR-168).
 DUE_JOBS_LOOKAHEAD: Final = 10_000
 
 _DUE_JOBS = text(
