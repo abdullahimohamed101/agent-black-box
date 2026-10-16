@@ -27,6 +27,68 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
 - Every test has a 90 s timeout so a deadlock fails fast. Security-relevant logic is **mutation-checked** during review
   (change the code, confirm a test fails); tests that survive a mutant are strengthened, not kept.
 
+### Running the API suite in parallel (opt-in, ADR-164)
+
+The default is unchanged: `make test-api` (or `cd apps/api && uv run pytest -q`) runs the whole suite serially against the Compose
+database on port 5433, and CI does the same. Parallel runs are for local feedback only.
+
+```bash
+make test-db-up          # throwaway Postgres on 127.0.0.1:5434 (tmpfs, fsync off); idempotent
+make test-api-fast       # pytest -n 2 against it; N=3 make test-api-fast to choose another count
+make test-db-down        # removes the container and its data
+```
+
+Or by hand: `ABB_TEST_DATABASE_URL=postgresql+asyncpg://abb:abb_dev_password@localhost:5434/abb_test uv run pytest -q -n 3`
+(`-n auto` is a poor choice on a laptop: it starts one worker per host core, far more than the Docker VM can serve).
+
+**Why a separate database server.** The suite is bound by I/O waits in the Docker VM, not CPU: every test truncates all tables, and
+Postgres spends its time in `DataFileImmediateSync`. The VM here has 2 CPUs and 4 GB. `fsync=off` on tmpfs removes that wait. The
+`testdb` service (compose profile `testdb`, container `abb-pg-test`) has its own tmpfs data and shares nothing with the dev volume;
+its data is lost on every restart by design, it uses up to 2 GB of the VM's memory as tmpfs, and nothing but tests may use it.
+`make test-api-fast` refuses to run (with a message) if it is not up. xdist also works against 5433, but gains less (see below).
+
+**Measurements. PENDING: to be measured on a quiet machine by the maintainer** (serial vs `-n 2/3/4`, three consecutive full
+parallel runs with the same test count as the serial run, and the recommended N; `make test-api-fast` defaults to `N=2`,
+the VM's CPU count, until then). Numbers actually observed so far, all with 3,692 tests, a Colima VM of 2 CPUs / 4 GB, and *other
+suites running on the same VM at the same time* (host load average 4 to 20), so they are indicative only, not a benchmark:
+
+| Run | Server | Result | Wall (pytest) |
+| --- | --- | --- | --- |
+| serial | 5433 (Compose, durable) | 3,692 passed | 28 min 57 s (load about 4) |
+| `-n 2` | 5433 | 3,691 passed, 1 failed (a timing race, fixed since) | 16 min 3 s |
+| `-n 2` | 5434 (tmpfs, fsync off) | 3,692 passed | 18 min 51 s (heavily shared) |
+| `-n 3` | 5434 | 3,692 passed | 10 min 56 s |
+| `-n 4` | 5434 | collection error (gzip ids, fixed since); not re-run | none |
+
+The 5434 `-n 2` run was slowed by neighbours; do not read `-n 3` faster than `-n 2` as a law. The conclusion that holds is that
+the suite is I/O-bound rather than CPU-bound, which is why the fsync-off server exists.
+
+**How workers stay apart.** Each worker is a separate process with its own session fixtures. A worker's scratch database is named
+`abb_test_<worker>_<random>` (`gw0`, `gw1`, ...; `main` for a serial run) and its login role `abb_rt_test_<worker>_<random>`; both
+are dropped when the worker finishes. Test servers (TLS receiver, SMTP sink) bind port 0 and temp directories come from `tempfile`,
+so nothing is fixed. The one cluster-wide object, the `abb_runtime` role that migration 0007 creates, is provisioned under a
+Postgres advisory lock before any migration runs (a concurrent `CREATE ROLE` fails with a unique violation the migration does not
+catch), and test migrations are run without `ABB_RUNTIME_DB_PASSWORD` so they never alter that shared role. Test ids must be the
+same in every worker, so parametrized values must not contain the clock or random data (a gzip header carries the current second:
+use `mtime=0`).
+
+**Caveats.** No test is marked `xdist_group`; none needed serialising. Tests that count connections or sessions in
+`pg_stat_activity` must filter on `datname = current_database()`. Timing-sensitive tests can still flake on a saturated VM; a
+failure under `-n` should be re-run serially before it is believed or blamed. Up to two suites at once on 5434 are fine
+(`max_connections=300`).
+
+**Cleaning leftovers.** A killed run can leave `abb_test_*` databases and `abb_rt_test_*` roles behind. On 5434 `make test-db-down`
+removes everything. On a shared server, list first, then drop only databases of the pattern that have no connections (this
+snippet never touches a database in use, so another person's running suite is safe):
+
+```bash
+psql "postgresql://abb:abb_dev_password@localhost:5433/postgres" -Atc \
+  "SELECT datname FROM pg_database d WHERE (datname ~ '^abb_test_[a-z0-9]+_[0-9a-f]{10}$' OR datname ~ '^abb_test_[0-9a-f]{12}$')
+   AND NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.datname = d.datname)"   # review this list
+# then, for each name you accept:  psql ... -c 'DROP DATABASE "<name>"'   (no WITH (FORCE))
+# roles:  SELECT rolname FROM pg_roles WHERE rolname ~ '^abb_rt_test_' AND NOT EXISTS (SELECT 1 FROM pg_stat_activity WHERE usename = rolname)
+```
+
 ### Web (Phase 4)
 - **Vitest + Testing Library** (`apps/web/tests`): pure timeline/dashboard/format logic, the read proxy (allowlist, key never forwarded
   to the browser, upstream auth failure mapped to 502), the fixture API (cursor paging, filters), and components (run detail, runs list,
