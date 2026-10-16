@@ -1,6 +1,7 @@
 """The retention policy API (ADR-159): roles, validation, audit, isolation and rate limits."""
 
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -179,9 +180,9 @@ async def test_null_returns_a_tier_to_the_default_and_forever_to_a_number(
     api = await make_api()
     owner = await person(api, "owner@acme.test", "OWNER")
     await api.client.put(path(api), json={"audit": "forever"}, headers=owner)
-    again = await api.client.put(path(api), json={"audit": 30}, headers=owner)
+    again = await api.client.put(path(api), json={"audit": 120}, headers=owner)
     assert (tiers(again.json())["audit"]["days"], tiers(again.json())["audit"]["forever"]) == (
-        30,
+        120,
         False,
     )
     reset = await api.client.put(path(api), json={"audit": None}, headers=owner)
@@ -203,10 +204,13 @@ async def test_each_changed_tier_is_audited_with_the_old_and_new_value_only(
     await api.client.put(path(api), json={"trace": 60}, headers=owner)  # unchanged: no row
     await api.client.put(path(api), json={"audit": None}, headers=owner)
     rows = await audit(api.engine)
+    # Every row also says when the change takes effect: now for a lengthening, after the grace
+    # period (24 hours) for a shortening.
+    now, later = NOW.isoformat(), (NOW + timedelta(hours=24)).isoformat()
     assert [r.details for r in rows] == [
-        {"tier": "trace", "old": "default", "new": 60},
-        {"tier": "audit", "old": "default", "new": "forever"},
-        {"tier": "audit", "old": "forever", "new": "default"},
+        {"tier": "trace", "old": "default", "new": 60, "effective_at": later},
+        {"tier": "audit", "old": "default", "new": "forever", "effective_at": now},
+        {"tier": "audit", "old": "forever", "new": "default", "effective_at": later},
     ]
     assert all(
         r.outcome == "allowed"
