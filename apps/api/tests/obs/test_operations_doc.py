@@ -62,3 +62,17 @@ def test_worker_lag_and_stream_thresholds_in_the_runbooks_are_the_rules() -> Non
     assert f"oldest due job over {lag_high.group(1)} s" in worker
     assert f"(over {lag_severe.group(1)} s, page)" in worker
     assert f"{streams.group(1)} or more open streams" in stream
+
+
+def test_quota_refusals_alert_is_a_sustained_rate_not_any_single_refusal() -> None:
+    groups: list[dict[str, Any]] = yaml.safe_load(RULES.read_text())["groups"]
+    rule = next(r for g in groups for r in g["rules"] if r.get("alert") == "AbbQuotaRefusals")
+    expr = " ".join(str(rule["expr"]).split())
+    assert expr.startswith("sum by (quota) (rate(quota_refusals_total[")
+    assert "increase(" not in expr
+    threshold = float(expr.rsplit(">", 1)[1])
+    assert threshold > 0  # "> 0" would be any single refusal
+    assert str(rule["for"]) not in {"0m", "0s", "0"}
+    assert rule["labels"]["severity"] == "ticket"
+    runbook = (RUNBOOKS / "hardening.md").read_text()
+    assert f"over {threshold} a second" in runbook

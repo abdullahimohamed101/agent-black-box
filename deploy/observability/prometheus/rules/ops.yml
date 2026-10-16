@@ -312,17 +312,20 @@ groups:
           runbook_url: docs/runbooks/hardening.md#monitoring-metrics-and-alerts
 
       - alert: AbbQuotaRefusals
-        expr: sum by (quota) (increase(quota_refusals_total[30m])) > 0
-        for: 0m
+        expr: sum by (quota) (rate(quota_refusals_total[15m])) > 0.02
+        for: 15m
         labels:
           severity: ticket
         annotations:
-          summary: "A project reached its quota: {{ $labels.quota }}"
+          summary: "Writes are being refused at a sustained rate by a project quota: {{ $labels.quota }}"
           description: >-
-            Writes were refused because a project reached its {{ $labels.quota }} quota in the last
-            30 minutes. A customer is losing data or uploads until the quota is raised. Quota
-            refusals are client-class errors and do not spend the SLO error budget. The refusing
-            project is deliberately not a label (see the audit log and Settings, Quotas).
+            More than 0.02 refusals a second (about 18 in 15 minutes, counted per refused event or
+            upload) for 15 minutes because projects keep hitting their {{ $labels.quota }} quota.
+            A single refusal is the quota doing its job (ADR-154) and does not alert; a sustained
+            rate means an agent is retrying into a closed limit and its data is being dropped until
+            the quota is raised or the agent fixed. Quota refusals are client-class errors and do
+            not spend the SLO error budget. The refusing project is deliberately not a label (see
+            the audit log and Settings, Quotas).
           runbook_url: docs/runbooks/hardening.md#monitoring-metrics-and-alerts
 
       - alert: AbbBodyCapRefusals

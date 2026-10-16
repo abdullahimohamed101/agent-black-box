@@ -164,7 +164,7 @@ The counters are aggregate: they say *that* a limit triggered and which kind, ne
 | Shared limiter | `limiter_fail_open_total{scope}`, `limiter_database_calls_total{outcome}` | `AbbLimiterFailingOpen` (any fail-open for 5 minutes), `AbbLimiterDatabaseErrors` |
 | Failed-auth throttle | `auth_throttle_blocks_total{kind}` | `AbbAuthThrottleBlocks` (50 in 10 minutes) |
 | Failed-session throttle | `session_throttle_blocks_total{kind}` | `AbbSessionThrottleBlocks` |
-| Project quotas | `quota_refusals_total{quota}` | `AbbQuotaRefusals` (any in 30 minutes) |
+| Project quotas | `quota_refusals_total{quota}` | `AbbQuotaRefusals` (a sustained rate: over 0.02 a second for 15 minutes; one refusal is the quota working, ADR-154) |
 | Body-bytes cap | `body_cap_refusals_total{reason}`, `body_bytes_in_flight` | `AbbBodyCapRefusals` |
 | Role check | `db_role_privileged{reason}` | `AbbPrivilegedDatabaseRole` ([security operations](security-operations.md#privileged-database-role)) |
 | Search fair share | `search_busy_total{reason}`, `search_permits_in_use` | `AbbSearchBusy` |
