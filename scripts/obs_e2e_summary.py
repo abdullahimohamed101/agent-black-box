@@ -14,6 +14,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 import obs_e2e_lib as lib
 from obs_e2e_lib import check, gate, info
 
@@ -63,7 +65,17 @@ def _needles() -> dict[str, str]:
 
 # Catalogue families this run does not move, each with the reason and the test that does. A family added to the catalogue that is neither
 # driven here nor listed here fails the run, so "every catalogue metric moves" cannot silently stop being true.
-UNEXERCISED_OK: dict[str, str] = {}
+UNEXERCISED_OK: dict[str, str] = {
+    "body_bytes_in_flight": "an instantaneous gauge, non-zero only while large bodies overlap; tests/obs/test_control_metrics.py, and hardening-e2e gate 4 drives the real flood",
+    "body_cap_refusals_total": "needs a flood of concurrent large bodies against a small byte budget; tests/obs/test_control_metrics.py and hardening-e2e gate 4 (KI-261)",
+    "invitation_only_refusals_total": "needs a browser-less OIDC sign-in by an uninvited person (the fake provider); tests/obs/test_control_metrics.py and hardening-e2e gate 5 (KI-261)",
+    "limiter_fail_open_total": "needs the database to fail inside the shared limiter while authentication still works; tests/obs/test_control_metrics.py (KI-261)",
+    "retention_failures_total": "needs a failing retention step or an unreadable inventory; tests/retention/test_metrics.py (KI-261)",
+    "search_busy_total": "needs search fairness exhausted (permits per actor); tests/obs/test_control_metrics.py and hardening-e2e gate 6 (KI-261)",
+    "search_permits_in_use": "an instantaneous gauge, non-zero only while a search runs; tests/obs/test_control_metrics.py (KI-261)",
+    "sse_connections": "needs an open live-stream consumer; tests/obs/test_platform_metrics.py and stream-e2e.sh (KI-261)",
+    "sse_delivery_lag_seconds": "needs events delivered to an open live stream; tests/obs/test_platform_metrics.py and stream-e2e.sh (KI-261)",
+}
 
 
 def _coverage() -> None:
@@ -74,7 +86,7 @@ def _coverage() -> None:
     for url in (lib.API_URL, lib.WORKER_URL):
         try:
             lib.scrape(url)  # the main stack's final state counts too
-        except SystemExit:
+        except (SystemExit, httpx.HTTPError):  # the main worker is stopped by the tracing gate
             pass
     names = set(build_observability().registry.metrics)
     moved_path = lib.WORK / "moved.json"
