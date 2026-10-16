@@ -47,3 +47,9 @@ The extra adds `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http` (an
 - `mypy` is clean with and without the extra (an override for the optional names; no per-line ignores).
 - Metric `otel_export_failures_total` is in the catalogue and the OPERATIONS table. It reaches `/metrics` of the API and worker; the standalone retention process records it in its own registry only (not in its textfile).
 - Open: an inbound-trace opt-in for SDK stitching, trace-id exemplars on histograms, and a collector alert rule (KI to file).
+
+## Amendments (Phase 19c adversarial review)
+
+- **`safe_traceback` names exception group members (P3-7).** A task-group failure used to render as the bare class `ExceptionGroup`, hiding which errors it held. It now appends the member class names (at most 10 members, nested to depth 3, "+N more" beyond), never a message: `ExceptionGroup[ValueError, KeyError]`.
+- **The log hygiene scan follows aliases and wrappers (P3-10).** A name bound to a logger method (`emit = logger.warning`, including either branch of a conditional) is checked like a direct logger call, and a call to a helper named `_log`, `_log_*` or `log_*` whose first argument is not a string literal is flagged as `wrapper-message`. Limit: a wrapper with another name, or a logger passed through a function argument, is still invisible to a syntax scan; the runtime sentinel tests (ADR-170) remain the backstop.
+

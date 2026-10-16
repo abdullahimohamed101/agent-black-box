@@ -14,6 +14,7 @@ The event data itself is safe: streams only read what ingestion already committe
      default 30) and the page asks for a new sign-in instead of reconnecting forever. `403 PERMISSION_DENIED`: the role lost `run.read`.
    - `404`: the run is not visible to that person or key (other project or workspace, or `X-ABB-Workspace` names a workspace they are not in).
    - `429 STREAM_LIMIT`: see step 4.
+   - `429 SESSION_THROTTLED` (with `Retry-After`): not a stream limit. While the failed-session throttle's window is closed, a session created on another API process within the last 60 s is refused once and succeeds on retry (KI-233); the browser's automatic reconnect retries it. Check `session_throttle_blocks_total` and the `session lookups throttled` log line; if it persists, look for a flood of bad cookies (see [hardening](hardening.md)) rather than at the stream settings.
    - `503`/connection refused: API down or database unreachable; fix `/readyz` first, streams resume by themselves.
 3. **Reconnect loop / stream closes every few seconds**: a proxy or load balancer between web and API is buffering or cutting idle
    connections. The API sends a keepalive comment every 15 s (`ABB_STREAM_KEEPALIVE_SECONDS`) and `X-Accel-Buffering: no`; set the proxy's

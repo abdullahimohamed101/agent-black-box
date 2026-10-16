@@ -27,6 +27,10 @@ CI ran third-party actions by moving tags and pulled base images by moving tags,
 - **Allow-list without expiry.** Rejected: silent permanent exceptions.
 - **Run `pnpm audit` for dev dependencies too.** Unchanged (KI-010).
 
+## Amendment (Phase 19c adversarial review)
+
+`uvx pip-audit==<version>` pins pip-audit itself but resolves pip-audit's own dependency tree at run time, so those transitive dependencies are not pinned or hash-checked. Blast radius: the audit job has `contents: read`, writes only a local report, and holds no secret, so a hostile transitive release could at worst forge or hide a finding, not reach the repository or the images. The follow-up is a hashed lock for the tool (`uvx --with-requirements` against a `requirements.txt` with hashes, bumped with the version), which needs network access to generate and was not produced here (KI-268). Nothing in the shipped scripts changed.
+
 ## Consequences
 
 Updates are now PRs that must be reviewed; a wrong pin only shows when CI runs (KI-267). The audit tool's version and one helper-script digest are hand-bumped (KI-265). The checker reads text, so run-time-built image names and OS packages are not covered (KI-266). A new advisory can fail an unchanged tree; that is the point of the weekly run.

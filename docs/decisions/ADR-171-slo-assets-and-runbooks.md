@@ -34,3 +34,11 @@ The metrics exist (steps 1-4), but an operator still had to invent the queries, 
 - Image tags are pinned to a version; digests are pinned with the other images in step 7.
 - The assets are validated by tests and `docker compose config`; a real Prometheus and Grafana run is step 6 (`obs-e2e`).
 - Open (KI to file): a backup that is never scheduled is invisible; no metrics for bloat, analytics load or the spec 126 signals; 30-day SLO panels need a Prometheus with 30 days of retention.
+
+## Amendments (Phase 19c adversarial review)
+
+- **`AbbRetentionStale` reads the configured mode (P3-4).** `retention_mode` is the mode of the newest retention *report*, and a retention process configured `off` writes none, so the first rule (`unless retention_mode{mode="off"}`) fired three hours after retention was switched off. The API and worker now export `retention_configured_mode{mode}` from their settings (`ABB_RETENTION_MODE`), and the rule is silent when it is `off`. This assumes the API, worker and retention process share `ABB_RETENTION_MODE` (one `.env`, as the compose file and OPERATIONS describe); if only the retention process is switched off, the API and worker must be restarted with it too, or the alert silenced (KI-269). Rejected: reading the retention process's textfile `retention_mode` (an `off` forever-loop never writes it, and it is a different scrape job).
+- **`AbbQuotaRefusals` is rate based (P3-9).** Quota refusals are the quota working (ADR-154), so "any refusal in 30 minutes" ticketed ordinary use. The rule is now `rate(quota_refusals_total[15m]) > 0.02` for 15 minutes (about 18 refusals in 15 minutes, counted per refused event or upload), still a ticket.
+- **Documentation numbers are tied to the rules (P3-3).** `docs/OPERATIONS.md` quoted a 100000 second backup-age alert while the shipped rule is 36 hours; a test now parses the thresholds of the backup, worker-lag and stream alerts from `ops.yml` and requires the runbooks and OPERATIONS to state the same numbers.
+- **The breaker alert wording** follows ADR-169's amendment: repeated trips mean the database or network flaps, not a busy pool.
+
