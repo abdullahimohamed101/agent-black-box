@@ -392,6 +392,9 @@ legend {
   background: var(--sel);
   border-color: var(--accent);
 }
+select {
+  max-width: 100%; /* a long option never makes a phone scroll sideways */
+}
 input[type="text"],
 select {
   font: inherit;

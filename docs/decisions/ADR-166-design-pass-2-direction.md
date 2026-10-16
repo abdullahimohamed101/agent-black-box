@@ -144,6 +144,52 @@ Decided by the assistant under the same standing rule; each is reversible and th
     unchanged except `tokens-contrast.test.ts` "matches the plan's base colours", which pinned the old canvas and surface
     (`#eef1f4/#ffffff`, `#12161b/#1a2027`) and now pins the new ones (`#f6f8fa/#ffffff`, `#101419/#1b2025`).
 
+## Step 5a decisions (shell, sign-in pages, Runs home; 2026-10-16)
+
+Decided by the assistant under the same standing rule where `02-ia-and-flows.md` and `03-screens-and-wireframes.md` left a choice or
+disagreed with the build brief; each is reversible and the alternative is named.
+
+1. **Below 900 px: the Menu button holds the five links; the scope control stays in the bar.** `03` draws the five links in the bar at
+   768 and puts the scope on the title line at 375; `02` and the brief say "below 900 the links collapse into a Menu button" and "the
+   mobile top region must not stack bands". Followed `02` and the brief: at 375 the bar is Menu, the brand mark, the scope (truncating),
+   search and the person icon, one 44 px band; the brand name returns at 600 px. Alternative: scope on its own line (a second band).
+2. **Search is one icon button at every width.** The field takes the bar's place while open (the `/` key and the button), so the bar
+   stays calm at 1024 where five links, the scope and a 22 rem field do not fit. The drawn `/` key cap is gone (tooltip and
+   `aria-keyshortcuts` name it). Alternative: an always-open field narrowed to 12 rem.
+3. **Review leads to Approvals when the person may read it, else Security findings; both routes are unchanged.** The two queues become
+   tabs in 5c. Until then Security findings (and Alerts) are TEMPORARY entries in the person menu so nothing is orphaned (KI-279).
+4. **The person menu exists in fixture mode as "Account"** (the temporary links only, no email, no sign-out), and Settings stays
+   session-only as before. Alternative: hide the menu in fixture mode (Alerts and Security findings would be unreachable there).
+5. **Needs attention is the first facet, not a page button.** It is the legacy multi-status parameter (`?status=FAILED,TIMED_OUT,BLOCKED`),
+   unchanged, and shows as one chip (`status: failed, timed out, blocked`). The facets are a disclosure that is closed below 900 px
+   (`03` says open at 600 to 899: a wall of chips above the list at 768 is the convolution the pass removes), so on a phone and a tablet
+   the preset folds away with them.
+6. **One filter field, no Search button.** Enter commits (the phone keyboard says "Search"); a `?` button opens the grammar and the
+   fields the API allows. URL parameters are unchanged (`q`, `status`, `agent`, `range`); an agent text that is not a valid slug is a
+   chip that says so. "Clear filters" stays as the one reset (the zero-result state has no second one).
+7. **The 7-day sentence** reads `Last 7 days: 12 runs, 73% succeeded, 4 failed, $22.16 spent, 3 in progress.` from the same aggregate
+   the Overview used (`/v1/analytics/summary`); zero is said in words ("none failed"), and below 600 px only the runs and failures
+   clauses remain. "In progress" (queued, running or waiting) replaces `03`'s "running now" because that is what the aggregate counts.
+   The sentence is silent while loading, on error and with no runs (the list speaks).
+8. **Row anatomy:** status glyph and word (check, cross, circle-slash, dot, double bar, dash, dotted circle), the run name 600 only on
+   failed rows, the failure line with the 16 x 2 px dash, findings by weight (critical bold, the rest regular). Duration drops below
+   1280 px, Agent and Duration move under the name below 900 px, rows are blocks below 600 px (CSS only, same markup).
+9. **One notice style everywhere it is shared:** the tone-bar and fill rule for `.state`, `.notice`, `.withheld`, `.search-problem`,
+   `.search-notice` and `.evaluation[data-state="failed"]` is now "no bar, no fill", with a small "i" mark on notices. This reaches
+   the screens of later batches early on purpose (one rule, not five). Routine empty and error states drop their drawing
+   (`Empty motif="none"`, `ErrorState` keeps the tape only for not-found); the first-run guide and not-found keep theirs.
+10. **Shared primitives moved to tokens now:** every `button` boundary reads `--color-border-control` (KI-274, partly), the filled
+    button and `.badge` use the new grammar, document-page `h1` is Plex Sans 24/30 (the Condensed h1 stays on the run page until 5b),
+    `select` is `max-width: 100%`. Tokens added: `layout.topbar`, `layout.control`, `layout.touch`; `--top-h` is now an alias of
+    `layout.topbar`; `--rail-w` is deleted.
+11. **Copy lives in typed modules** (`apps/web/src/copy/shell.ts`, `auth.ts`, `runs.ts`, `states.ts`) beside the spec
+    `docs/design/pass-2/05-microcopy-and-states.md`; later batches add their own module and section. The app had no strings
+    pattern before (copy was inline), so this is new.
+12. **Red allow-list: 32 to 26 selectors** (`tests/tokens-use.test.ts`, ratchet in `tests/tokens-colour-rules.test.ts`): removed the
+    filled status chip, the red error state, the red search problem and caret, the failed evaluation panel, the red error count and
+    the red failure sentence; added the miniature dash. Raw colour literals are unchanged (12 in `globals.css`, 35 in
+    `waterfall.css`: no rebuilt screen read them).
+
 ## Consequences
 
 - Steps 2 and 3 use this ADR and `01-direction.md` as the rubric; step 4 implements the tokens and type; step 5 the screens.

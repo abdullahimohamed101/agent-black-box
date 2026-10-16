@@ -214,7 +214,7 @@ test.describe("top-bar search", () => {
     await box.focus();
     await page.keyboard.type("a/b");
     await expect(box).toHaveValue("a/b");
-    await expect(combo).not.toBeFocused();
+    await expect(combo).toBeHidden(); // the bar's field stays closed: the key was typed, not taken
   });
 
   test("Enter goes to the runs list with ?q=, also from the runs list itself", async ({ page }) => {

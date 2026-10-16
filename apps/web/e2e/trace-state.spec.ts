@@ -22,6 +22,25 @@ async function axe(page: Page) {
 /** The page's alerts, without Next's empty route announcer. */
 const alerts = (page: Page) => page.locator("[role=alert]:not(#__next-route-announcer__)");
 
+/**
+ * The two retained runs are served by the fixtures API only for `agent_id=report-agent` (src/fixtures/api.ts). The runs list
+ * has one search field now and no Agent input (design pass 2), and a typed `agent:report-agent` is a `q` term, which the
+ * fixtures answer from the default runs; so the list's `q` is turned back into the `agent_id` request, and the person's
+ * action is the same one: narrow the list to that agent.
+ */
+async function listRetainedRuns(page: Page) {
+  await page.route("**/api/abb/v1/runs?*", (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("q") !== "agent:report-agent") return route.fallback();
+    url.searchParams.delete("q");
+    url.searchParams.set("agent_id", "report-agent");
+    return route.continue({ url: url.toString() });
+  });
+  const box = page.getByRole("searchbox", { name: "Search runs" });
+  await box.fill("agent:report-agent");
+  await box.press("Enter");
+}
+
 function watchConsole(page: Page): string[] {
   const seen: string[] = [];
   page.on("console", (m) => {
@@ -81,7 +100,7 @@ for (const [width, height] of [
 
     test("the runs list marks them and keeps them openable", async ({ page }) => {
       await page.goto("/w/demo/projects/all/runs");
-      await page.getByPlaceholder("e.g. coding-agent").fill("report-agent");
+      await listRetainedRuns(page);
       const markers = page.getByTestId("trace-marker");
       await expect(markers).toHaveCount(2);
       await expect(markers.first()).toContainText(/Trace expired|Trace being removed/);
@@ -138,7 +157,7 @@ test.describe("reduced motion", () => {
 test.describe("keyboard", () => {
   test("the runs list marker's run opens from the keyboard", async ({ page }) => {
     await page.goto("/w/demo/projects/all/runs");
-    await page.getByPlaceholder("e.g. coding-agent").fill("report-agent");
+    await listRetainedRuns(page);
     await expect(page.getByTestId("trace-marker")).toHaveCount(2);
     await page.getByRole("link", { name: "Nightly revenue report" }).focus();
     await page.keyboard.press("Enter");
@@ -169,7 +188,7 @@ for (const scheme of ["light", "dark"] as const)
         fullPage: true,
       });
       await page.goto("/w/demo/projects/all/runs");
-      await page.getByPlaceholder("e.g. coding-agent").fill("report-agent");
+      await listRetainedRuns(page);
       await expect(page.getByTestId("trace-marker")).toHaveCount(2);
       await settleAnimations(page);
       await page.screenshot({ path: `${SHOTS}/runs-list-markers-${width}-${scheme}.png` });
