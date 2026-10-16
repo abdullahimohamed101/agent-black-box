@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { openTab, settleAnimations } from "./motion";
 
 // Phase 13 step 3 (fixtures mode): security findings on the run page, the workspace Security page, the settings page.
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
@@ -40,9 +40,7 @@ for (const [width, height] of [
       await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
       const chip = page.getByTestId("security-chip");
       await expect(chip).toHaveText("6 security findings (most severe: Critical)");
-      await expect(page.getByRole("button", { name: /^Context/ })).toHaveText(
-        "Context · 6 security",
-      );
+      await expect(page.getByRole("tab", { name: "Findings" })).toHaveText("Findings6");
       await chip.click();
       const group = page.getByTestId("security-group");
       await expect(group).toBeVisible();
@@ -181,10 +179,10 @@ test.describe("viewer", () => {
   }) => {
     await page.goto(`/w/viewer-only/projects/all/runs/${RUN(14)}`);
     await expect(page.getByTestId("security-chip")).toHaveText(/6 security findings/);
-    await openContext(page);
+    await openTab(page, "Findings");
     const lines = page.getByTestId("security-finding");
     await expect(lines).toHaveCount(6);
-    await noSentinel(page, "#run-context");
+    await noSentinel(page, "#run-tabs-panel");
     await lines
       .filter({ hasText: "usually holds secrets" })
       .getByRole("button", { name: "Show evidence" })

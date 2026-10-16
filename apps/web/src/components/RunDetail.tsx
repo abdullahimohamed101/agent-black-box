@@ -703,7 +703,8 @@ export function RunDetail({
           <RunHeadline
             kind={kind}
             variant="ready"
-            model={afterLine ? { ...shownModel, detail: "" } : shownModel}
+            model={shownModel}
+            detailElsewhere={!!afterLine}
             onGo={jumpToError}
           />
         )}
@@ -831,7 +832,10 @@ export function RunDetail({
           {afterLine && (
             <div>
               <dt>{copy.detailsList.after}</dt>
-              <dd data-testid="headline-detail">{afterLine}</dd>
+              <dd data-testid="headline-detail">
+                {afterLine}
+                {shownModel.failure?.withheld && " · details withheld for your role"}
+              </dd>
             </div>
           )}
         </dl>

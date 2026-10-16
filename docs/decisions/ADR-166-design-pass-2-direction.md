@@ -190,6 +190,72 @@ disagreed with the build brief; each is reversible and the alternative is named.
     the red failure sentence; added the miniature dash. Raw colour literals are unchanged (12 in `globals.css`, 35 in
     `waterfall.css`: no rebuilt screen read them).
 
+## Step 5b decisions (run page and Compare; 2026-10-16)
+
+Decided by the assistant under the same standing rule where `03-screens-and-wireframes.md` left a choice or disagreed with the
+build brief; each is reversible and the alternative is named.
+
+1. **Five readouts: Duration, Cost, Tokens, Retries, Errors.** From the audit's nine (duration, cost, tokens, model calls, tool
+   calls, retries, errors, files changed, agents): the two things a failed run is judged by (retries, errors) and the three a
+   finished run is judged by (time, money, volume). Model calls, tool calls, files changed and agents move into Details with the
+   seven identity items (id, agent, model, ordering, started). No readout is coloured (the red count and the amber retries are
+   gone). Below 600 px tokens and then retries leave the line and join Details, as `03` says ("the figures lose tokens first").
+   Alternative: keep model and tool calls on the line (`01` says five, `03`'s wireframe shows five).
+2. **Details is a button with `aria-expanded` and a region, not a `<details>`.** The toggle sits at the right end of the figures
+   line and the content opens under it; a native disclosure would have moved the toggle when it opened. The Steps strip below
+   1100 px is a native `<details>` (its summary is the whole row).
+3. **The headline is a sentence with a full stop**, composed in `runHeadline.ts` from the same facts as before (Phase 22,
+   SUMMARY_VERSION 6): `Failed at step 8 after 6.5 s: shell command completed, error.` replaces `Failed at step 8 (+6.5 s): ...`
+   (the parenthesis was a log string, not a sentence); running, waiting, success, recovered and cancelled follow the table in
+   `05-microcopy-and-states.md` section 5.2. The second line (retries, time and cost after the first error, total) stays, in
+   small ink-2 type, because the cost of the failure is the Phase 22 acceptance; below 600 px it moves into Details so the line
+   stays in the first screen. Alternative: drop the second line (rejected: it is the "what did the failure cost" answer).
+4. **Go to first error is the one outline button of the header** (accent border, no fill, no drawn key cap; `e` stays, named in
+   the tooltip and `aria-keyshortcuts`). Its accessible name changed from "Show it": e2e and unit specs follow.
+5. **One tab component, `Tabs`**: `role="tablist"` of buttons with roving tabindex, automatic activation on arrow keys (Left,
+   Right, Home, End), `aria-selected`, `aria-controls` the panel; counts are decoration (`aria-hidden`). The run page's panel is
+   the pane (`role="tabpanel"`). 5c and 5d use the same component for Review, Alerts and Settings. `?view=` keeps working and
+   gains `findings` and `evaluations`; `?finding=` opens the Findings tab. The old radio tabs (`.seg-item`) and `ViewSwitch` are
+   deleted.
+6. **Findings and Evaluations are tabs; the Context column and its toggle are gone.** The left column is Steps (the coding story)
+   and, for a run with more than one agent, Agents (the filter): absent for a run with neither. Health dimensions are not shown
+   anywhere (ADR decision 6, API untouched). The Findings tab holds the Security group above the reliability findings, as one
+   hairline list each. "Show evidence" from Findings or Evaluations switches to the timeline so the row is selected and marked;
+   the deep link `?finding=` stays on Findings and opens the inspector there. Alternative: stay on the tab (rejected: the landing
+   outline and the selection live on the timeline).
+7. **Layout breakpoints.** Steps is a column from 1100 px (and 576 px of height) and a one-row strip above the pane below that;
+   the inspector is a column from 1280 px and an overlay from the right below it (a full-screen sheet below 600 px); the page is a
+   scrolling document below 832 px or 576 px of height, as before (the fixed-height `.run-detail` and the page padding 0 are kept
+   and tested). Timeline rows are 32 px (36 before) and 48 px on a phone (two lines: offset and type, then the detail).
+8. **The fault line**: 2 px, the label ("First error, step 8") in fault-coloured text cut into the line by the canvas colour, over the
+   empty end of the detail column (left of duration and status) so it does not collide with the row's own marker. On a failed run
+   page the red elements are exactly two: the line with its label and the status word.
+   The jump outline is accent for the first error too (it was red), the replay scrub bar's first-error tick is ink, the waterfall's
+   error bars are ink hatching and timeouts caution hatching, severity "Critical" and failed tests are ink 600 (`.badge[data-tone=bad]`
+   is no longer red; only a run's status badge is, by `data-status`).
+9. **Rows**: no tinted rows, no class column, no left bars. An error is the word "✕ error" in ink 600 in the status column, a retry
+   a caution "↻ retry" token, the selected row accent wash with a 2 px accent edge. Collapse groups moved into the Filter popover
+   (`01` Part C 18). Keyboard shortcuts are unchanged; the key hints are one plain sentence in the foot from 900 px.
+10. **Waterfall colours** are `color.data.*` tokens (six lane hues and eight agent hues, OKLCH, chroma 0.02 to 0.09, none
+    red-ish: the magenta agent colour became an olive; bar fills are at least 3:1 and chip text at least 4.5:1 in both themes,
+    computed in `tokens.json`'s `$contrast`). Syntax colours are `color.syntax.*`. No stylesheet carries a colour literal any more.
+11. **Fonts**: Condensed, Serif and Sans Medium files, `--cond`, `--serif` and every 500 weight are deleted (11 remaining readers in
+    `alerts.css`, `policy.css`, `security.css`, `settings.css` were migrated to Sans/600; those screens keep their layouts until 5c
+    and 5d). Plex Mono has no SemiBold file here: its Medium file is registered as weight 600 so a mono word at 600 is real glyphs,
+    not a synthetic bold. Four files are preloaded (about 100 KB).
+12. **Aliases deleted** (zero readers after migration): `--surface-2`, `--fg`, `--fg-2`, `--accent-bg`, `--info`, `--bad`,
+    `--fail-bg`, `--bad-bg`, `--warn`, `--wait-bg`, `--warn-bg`, `--ok`, `--ok-bg`, `--cond`, `--serif`, and `color.legacy.*` with them.
+    Kept (still read by 5c and 5d screens): `--bg`, `--surface`, `--border`, `--border-strong`, `--ink`, `--muted`, `--accent`,
+    `--sel`, `--fail`, `--wait`, `--mark`, `--fs-*`, `--ease-out`, `--top-h`.
+13. **Ratchets**: red allow-list 26 to 7 selectors (the status word, the fault line and label, the waterfall line and flag, the
+    miniature dash, `:root`, and two TODOs: the Analytics error column for 5c, `.field-error` for 5d); raw colour literals 47 to 0.
+14. **Compare**: the title line "Runs / Compare" (h1 `Compare`), the divergence sentence at the h2 step in ink (600), one mono
+    delta line, two cells (A and B: the run name as the link, status, then id, agent and age small, a hairline between), the
+    aligned steps with a 2 px ink rule at the divergence, changed rows 600 on both sides, no tint, no coloured bars; the
+    "First outcome difference" flag is ink 600. Below 832 px the cells stack; below 640 px a step is a block with `A` and `B`
+    prefixes and the toolbar is a sticky scrolling row of 44 px buttons. The Steps h2 is visually hidden. The run names come from
+    `useRun` for each side (two small extra reads; the comparison API has no names).
+
 ## Consequences
 
 - Steps 2 and 3 use this ADR and `01-direction.md` as the rubric; step 4 implements the tokens and type; step 5 the screens.

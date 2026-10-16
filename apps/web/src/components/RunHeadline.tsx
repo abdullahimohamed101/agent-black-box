@@ -11,7 +11,14 @@ import "../app/run-header.css";
 export type HeadlineProps =
   | { kind: HeadlineKind; variant: "skeleton"; label?: string }
   | { kind: HeadlineKind; variant: "error"; onRetry: () => void }
-  | { kind: HeadlineKind; variant: "ready"; model: HeadlineModel; onGo: () => void };
+  | {
+      kind: HeadlineKind;
+      variant: "ready";
+      model: HeadlineModel;
+      onGo: () => void;
+      /** The facts after the first error are shown elsewhere (Details, on a phone): this frame omits its second line. */
+      detailElsewhere?: boolean;
+    };
 
 const ERROR_TEXT: Record<HeadlineKind, string> = {
   failed: "Could not load the details of this failure.",
@@ -101,10 +108,22 @@ export function RunHeadline(props: HeadlineProps) {
       ) : (
         lead
       )}
-      <p className="hl-detail" data-testid="headline-detail" data-pending={m.pending || undefined}>
-        {m.pending ? <span className="hl-bar hl-bar-mono" aria-hidden="true" /> : m.detail}
-        {m.failure?.withheld && <span className="hl-note"> · details withheld for your role</span>}
-      </p>
+      {!props.detailElsewhere && (
+        <p
+          className="hl-detail"
+          data-testid="headline-detail"
+          data-pending={m.pending || undefined}
+        >
+          {m.pending ? <span className="hl-bar hl-bar-mono" aria-hidden="true" /> : m.detail}
+          {m.failure?.withheld && (
+            <span className="hl-note">
+              {m.detail || m.pending
+                ? " · details withheld for your role"
+                : "Details withheld for your role"}
+            </span>
+          )}
+        </p>
+      )}
     </div>
   );
 }

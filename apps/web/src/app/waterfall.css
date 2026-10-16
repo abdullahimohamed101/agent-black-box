@@ -320,3 +320,17 @@
     display: none;
   }
 }
+/* A phone: the label and meta columns give the track more room, the axis shows every other tick, and the fault flag may overhang
+   the (empty) cells beside the ruler's track instead of being cut at its edge. */
+@container (max-width: 37.4375rem) {
+  .waterfall {
+    --wf-label-w: minmax(5.5rem, 34%);
+    --wf-meta-w: 3.5rem;
+  }
+  .wf-tick:nth-child(even) {
+    display: none;
+  }
+  .waterfall .wf-fault-strip-track {
+    overflow: visible;
+  }
+}

@@ -152,7 +152,7 @@ test.describe("acceptance 7: the success test (D5)", () => {
       const x = expectedAt(failed, errIdx);
       await expect(scrub(page)).toHaveValue(String(errIdx));
       await expect(page.getByTestId("first-error")).toHaveText(
-        /^First error at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout\s+Go\s+e$/,
+        /^First error at step \d+ after 6\.2 s: run_migration, ConnectionTimeout\.\s*Go to first error$/,
       );
       expect(await figure(page, "Cost")).toBe(formatCost(x.cost));
       expect(await figure(page, "Retries")).toBe(String(x.retries));
@@ -493,15 +493,16 @@ test.describe("375 px", () => {
     expect(await overflowX(page)).toBeLessThanOrEqual(0);
   });
 
-  test("the Replay button shares the tabs\' row, so replay does not make the page taller", async ({
+  test("the Replay button is in the tab row's tools, beside Filter, so replay does not make the page taller", async ({
     page,
   }) => {
     await openRun(page, BASE, FAILED);
-    const ctx = (await page.getByRole("button", { name: /^Context/ }).boundingBox())!;
+    const filter = (await page.getByRole("button", { name: /^Filter/ }).boundingBox())!;
     const rep = (await replayButton(page).boundingBox())!;
-    const tab = (await page.getByRole("tab", { name: "Timeline" }).locator("..").boundingBox())!;
-    expect(Math.abs(rep.y - ctx.y)).toBeLessThan(4);
-    expect(rep.y).toBeLessThan(tab.y + tab.height);
+    const head = (await page.locator(".pane-head").boundingBox())!;
+    expect(Math.abs(rep.y - filter.y)).toBeLessThan(6);
+    expect(rep.y).toBeGreaterThanOrEqual(head.y);
+    expect(rep.y + rep.height).toBeLessThanOrEqual(head.y + head.height + 1);
     expect(rep.x + rep.width).toBeLessThanOrEqual(375);
   });
 
@@ -554,7 +555,7 @@ test.describe("the other runs", () => {
     await openRun(page, BASE, ok.run.id);
     await enterReplay(page);
     await seekTo(page, ok.events.length - 1);
-    await expect(page.getByTestId("headline")).toHaveText(/^Completed · step \d+ · replay$/);
+    await expect(page.getByTestId("headline")).toHaveText(/^Completed at step \d+, replay\.$/);
     expect(await figure(page, "Cost")).toBe(
       formatCost(ok.run.summary["estimated_cost_usd"] as number),
     );
@@ -562,7 +563,7 @@ test.describe("the other runs", () => {
     await expect(page.locator(".tl-fault")).toHaveCount(0);
   });
 
-  test("Show it in replay moves the playhead to the first error", async ({ page }) => {
+  test("Go to first error in replay moves the playhead to the first error", async ({ page }) => {
     await openRun(page, BASE, FAILED);
     await enterReplay(page);
     await seekTo(page, errIdx);

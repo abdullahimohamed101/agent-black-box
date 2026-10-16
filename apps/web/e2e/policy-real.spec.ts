@@ -146,7 +146,9 @@ for (const variant of ["approve", "deny"] as const)
       await settleAnimations(page);
       await page.screenshot({ path: `${SHOTS}/real-run-waiting.png`, fullPage: false });
     }
-    await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
+    await expect(page.getByTestId("headline")).toContainText(
+      /^Waiting for approval of github\.push/,
+    );
     const detail = page.getByTestId("headline-detail");
     await expect(detail).toContainText(/\d+ (min|s|h)/);
     const banner = page.getByTestId("approval-banner");
@@ -435,11 +437,13 @@ test("@ui real dry-run sample links open the recorded event (?event=)", async ()
 test("@ui a run waiting on a live approval shows the real time left; a viewer reads the same words without it", async () => {
   const ui = shared().ui as UiShared;
   const page = await signedIn("admin", runUrl(ui.run));
-  await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
+  await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval of github\.push/);
   await expect(page.getByTestId("headline-detail")).toContainText(/\d+ (h|min|s)( \d+ min)? left/);
   await expect(page.getByTestId("approval-banner")).toContainText(/· \d+ (h|min|s)/);
   const viewer = await signedIn("viewer", runUrl(ui.run));
-  await expect(viewer.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
+  await expect(viewer.getByTestId("headline")).toContainText(
+    /^Waiting for approval of github\.push/,
+  );
   await expect(viewer.getByTestId("headline-detail")).not.toContainText("left");
   await expect(viewer.getByTestId("approval-banner")).toContainText(
     "Someone with approval rights decides this request.",

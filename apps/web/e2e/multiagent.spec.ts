@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
 
 // Runs only through scripts/multiagent-e2e.sh: the multi-agent example (threads, an asyncio task and a subprocess whose
@@ -18,7 +18,6 @@ const open = async (page: Page, view = "waterfall") => {
   await page.goto(
     `/w/${workspace()}/projects/all/runs/${runId}${view === "waterfall" ? "?view=waterfall" : ""}`,
   );
-  await openContext(page); // the context column (agent tree) starts closed (Phase 22 D3)
   await expect(page.getByTestId(view === "waterfall" ? "waterfall" : "agent-tree")).toBeVisible();
 };
 const rowOf = (page: Page, agent: string) =>
@@ -83,7 +82,7 @@ test.describe("as the workspace owner", () => {
     );
     await tree.getByRole("button", { name: /^researcher/ }).click(); // toggles the filter off
     await page.getByRole("tab", { name: "Waterfall" }).click();
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.getByRole("button", { name: "Go to first error" }).click();
     await expect(
       page.getByRole("treegrid").locator('[role="row"][aria-selected="true"]'),
     ).toContainText("search_docs");

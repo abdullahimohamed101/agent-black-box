@@ -25,7 +25,7 @@ test("a really ingested failed run explains itself", async ({ page }) => {
     "file.read",
     "llm.request.completed",
   ]);
-  await page.getByRole("button", { name: "Show it" }).click();
+  await page.getByRole("button", { name: "Go to first error" }).click();
   await expect(page.getByRole("dialog")).toContainText("TestFailure");
   await settleAnimations(page);
   const bad = (

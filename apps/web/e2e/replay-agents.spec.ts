@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import { BASE, FAILED, MULTI, enterReplay, openRun, seekTo, transport } from "./replay";
-import { openContext } from "./motion";
 import { multiAgentRun } from "../src/fixtures/runs";
 
 // Acceptance 9 (fixtures build): on the multi-agent run, whose tester's clock runs behind (so its timestamps go backwards
@@ -51,7 +50,6 @@ test("spans appear when the playhead reaches them and open ones grow", async ({ 
 test("the agent tree highlights the agent that emitted the current event", async ({ page }) => {
   await openRun(page, BASE, MULTI);
   await enterReplay(page);
-  await openContext(page);
   const tree = page.getByTestId("agent-tree");
   const seen = new Set<string>();
   for (const i of [0, 4, 9, 14, 20, 28, multi.events.length - 1]) {

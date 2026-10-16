@@ -72,7 +72,10 @@ for (const [width, height] of [
       await expect(notice).toContainText(
         "The trace of this run was removed by the retention policy; the run summary and its numbers remain.",
       );
-      await expect(page.getByLabel("Run summary")).toContainText("Tool calls");
+      await expect(page.getByLabel("Run summary")).toContainText("Tokens");
+      // the rest of the numbers of the record are one click away, in Details
+      await page.getByRole("button", { name: /^Details/ }).click();
+      await expect(page.locator("#run-details")).toContainText("Tool calls");
       await expect(page.getByRole("tab")).toHaveCount(0);
       await expect(page.getByRole("button", { name: /Replay/ })).toHaveCount(0);
       await expect(page.getByText("This run has no events yet.")).toHaveCount(0);

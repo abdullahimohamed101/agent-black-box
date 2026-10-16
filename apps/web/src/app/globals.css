@@ -43,8 +43,7 @@ body {
 .query-chip,
 .step-label,
 pre,
-code,
-kbd {
+code {
   font-family: var(--mono);
 }
 main {

@@ -120,7 +120,7 @@ test.describe("arrival", () => {
 test.describe("other empty states", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("top-bar search with no match is a sentence; a run without evaluations still shows the motif", async ({
+  test("top-bar search with no match is a sentence; a run without evaluations says so without a drawing", async ({
     page,
   }) => {
     await page.goto(`${BASE}/runs`);
@@ -136,11 +136,12 @@ test.describe("other empty states", () => {
     await page.screenshot({ path: `${SHOTS}/search-no-results-1440-light.png` });
 
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    // The context column (findings, evaluations) may start closed; open it as a person would.
-    const toggle = page.getByRole("button", { name: /^Context/ });
-    if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+    // Evaluations is a tab now; a routine empty state is a statement with no drawing (ADR-166: drawings stay on the first-run
+    // guide and not-found only).
+    await page.getByRole("tab", { name: "Evaluations" }).click();
     const ev = page.locator('[data-state="empty"]').first();
     await expect(ev).toBeVisible();
-    await expect(ev.locator("svg.illus")).toHaveCount(1);
+    await expect(ev).toContainText("No evaluations yet");
+    await expect(ev.locator("svg.illus")).toHaveCount(0);
   });
 });

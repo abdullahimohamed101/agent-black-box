@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { openTab, settleAnimations } from "./motion";
 
 const BASE = "/w/demo/projects/all";
 // Fixture runs: ten earlier ones, the two coding-agent runs (Phase 11) and the blocked run (Phase 22 review P1-3).
@@ -117,7 +117,7 @@ test("failed run: headline, first error, drawer, keyboard navigation and focus r
   await page.keyboard.press("e");
   const drawer = page.getByRole("dialog");
   await expect(drawer).toContainText("ConnectionTimeout");
-  await expect(drawer.getByRole("heading", { name: /Error/ })).toBeVisible();
+  await expect(drawer.getByRole("heading", { name: "What went wrong" })).toBeVisible();
   await expect(drawer.getByRole("button", { name: "Close details" })).toBeFocused();
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/run-failed-drawer.png`, fullPage: true });
@@ -133,6 +133,8 @@ test("filters and groups act on the timeline", async ({ page }) => {
   await page.getByLabel("Errors only").check();
   await expect(page.getByRole("option")).toHaveCount(4);
   await page.getByLabel("Errors only").uncheck();
+  // Collapse groups lives in the Filter popover (design pass 2)
+  await page.getByRole("button", { name: /^Filter/ }).click();
   await page.getByRole("button", { name: "Collapse groups" }).click();
   expect(await page.getByRole("option").count()).toBeLessThan(before);
   await page.getByRole("button", { name: "Expand groups" }).click();
@@ -154,14 +156,14 @@ test("successful and in-progress runs read at a glance", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(4)}`);
   await expect(page.getByTestId("headline")).toContainText("Running");
   await page.goto(`${BASE}/runs/${RUN(5)}`);
-  await expect(page.getByTestId("headline")).toContainText("Awaiting approval");
+  await expect(page.getByTestId("headline")).toContainText("Waiting for approval");
 });
 
 test("looping run shows a probable loop finding whose evidence jump selects the event", async ({
   page,
 }) => {
   await page.goto(`${BASE}/runs/${RUN(8)}`);
-  await openContext(page); // Phase 22 D3: findings live in the context panel, closed by default
+  await openTab(page, "Findings"); // design pass 2: findings are a tab, not a column
   const panel = page.getByTestId("findings");
   await expect(panel.getByRole("heading", { name: "Findings" })).toBeVisible();
   await expect(panel.getByTestId("findings-state")).toContainText("Analysis is current");
@@ -175,8 +177,8 @@ test("looping run shows a probable loop finding whose evidence jump selects the 
   await expect(loop.getByLabel("Pattern")).toBeHidden();
   await loop.getByText("Details", { exact: true }).click();
   await expect(loop.getByLabel("Pattern")).toContainText("tool:search_docs");
-  await panel.getByText(/^Health:/).click();
-  await expect(panel.getByTestId("health")).toContainText("Loops");
+  // the health dimensions are not on the page any more (ADR-166); the API and the findings still carry them
+  await expect(page.getByTestId("health")).toHaveCount(0);
   await expect(page.getByTestId("progress")).toContainText("events shown");
   await loop.getByRole("button", { name: "Show evidence" }).click();
   const drawer = page.getByRole("dialog");
@@ -189,7 +191,7 @@ test("looping run shows a probable loop finding whose evidence jump selects the 
 
 test("failed run: the failure chain lists linked events and each one opens", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(10)}`);
-  await openContext(page);
+  await openTab(page, "Findings");
   const chain = page.getByTestId("finding").filter({ hasText: "the run failed" });
   await chain.getByText("Details", { exact: true }).click();
   await expect(chain).toContainText("Observed");
@@ -203,12 +205,12 @@ test("failed run: the failure chain lists linked events and each one opens", asy
 
 test("analysis states are stated: processing and not analysed", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(4)}`);
-  await openContext(page);
+  await openTab(page, "Findings");
   await expect(page.getByTestId("findings-state")).toContainText("Analysing");
   await page.goto(`${BASE}/runs/${RUN(5)}`);
-  await openContext(page);
+  await openTab(page, "Findings");
   await expect(page.getByTestId("findings-state")).toContainText("Not analysed yet");
-  await expect(page.getByTestId("health")).toContainText("No data");
+  await expect(page.getByTestId("health")).toHaveCount(0);
 });
 
 test("unknown run shows a not-found state", async ({ page }) => {
@@ -274,7 +276,6 @@ test("multi-agent waterfall: lanes, nesting under skew, critical path, synchroni
   page,
 }) => {
   await page.goto(`${BASE}/runs/${RUN(7)}`);
-  await openContext(page);
   await expect(page.getByTestId("agent-tree")).toContainText("Agents (5)");
   await page.getByRole("tab", { name: "Waterfall" }).click();
   await expect(page).toHaveURL(/view=waterfall/);
@@ -326,7 +327,7 @@ test("multi-agent waterfall: lanes, nesting under skew, critical path, synchroni
 
   // the first-error jump lands in whichever view is active
   await page.getByRole("tab", { name: "Waterfall" }).click();
-  await page.getByRole("button", { name: "Show it" }).click();
+  await page.getByRole("button", { name: "Go to first error" }).click();
   await expect(page.getByRole("dialog")).toContainText("HttpError");
   await expect(grid.locator('[role="row"][aria-selected="true"]')).toContainText("search_docs");
   await axe(page);
@@ -334,7 +335,6 @@ test("multi-agent waterfall: lanes, nesting under skew, critical path, synchroni
 
 test("agent filter narrows the timeline and dims the waterfall", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(7)}`);
-  await openContext(page);
   await page
     .getByTestId("agent-tree")
     .getByRole("button", { name: /^reviewer/ })
@@ -411,7 +411,7 @@ test("evaluations: every state, the judge badge, hostile text as text, and the v
     void d.dismiss();
   });
   await page.goto(`${BASE}/runs/${RUN(12)}`);
-  await openContext(page);
+  await openTab(page, "Evaluations");
   const section = page.getByTestId("evaluations");
   await expect(section.getByRole("heading", { name: "Evaluations", level: 2 })).toBeVisible();
   // four latest results and one earlier (failed) one inside "Earlier results"
@@ -430,7 +430,7 @@ test("evaluations: every state, the judge badge, hostile text as text, and the v
 
   // the baseline carries a hostile explanation: it is text, never markup
   await page.goto(`${BASE}/runs/${RUN(11)}`);
-  await openContext(page);
+  await openTab(page, "Evaluations");
   await expect(page.getByTestId("evaluation")).toHaveCount(4);
   await expect(page.getByTestId("explanation").first()).toContainText("<img src=x onerror=");
   expect(await page.locator("[data-testid=evaluations] img").count()).toBe(0);
@@ -442,7 +442,7 @@ test("evaluations: every state, the judge badge, hostile text as text, and the v
 
   // a viewer sees scores and labels, never free text, and no controls
   await page.goto(`/w/viewer-only/projects/all/runs/${RUN(11)}`);
-  await openContext(page);
+  await openTab(page, "Evaluations");
   const viewer = page.getByTestId("evaluations");
   await expect(viewer.getByTestId("evaluation")).toHaveCount(4);
   await expect(viewer.getByTestId("explanation-withheld")).toHaveCount(2);

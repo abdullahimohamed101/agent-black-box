@@ -200,7 +200,7 @@
   text-align: center;
 }
 .filter-caret {
-  font-size: 0.65rem;
+  font-size: var(--type-small-size);
 }
 .filter-panel {
   position: absolute;
