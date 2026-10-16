@@ -166,7 +166,9 @@ NOOP: Final = _NoopSpan()
 class Tracer(Protocol):
     refused_attributes: int
 
-    def start(self, name: str, link: str | None, attributes: dict[str, Any]) -> Span: ...
+    def start(
+        self, name: str, link: str | None, attributes: dict[str, Any], child_only: bool = False
+    ) -> Span: ...
 
     def traceparent(self) -> str | None: ...
 
@@ -180,12 +182,18 @@ class TracingUnavailable(RuntimeError):
     """ABB_OTEL_ENABLED is set but the optional dependencies are not installed."""
 
 
-def span(name: str, /, *, link: str | None = None, **attributes: Any) -> Span:
-    """A span (a context manager), or the shared no-op while tracing is off."""
+def span(
+    name: str, /, *, link: str | None = None, child_only: bool = False, **attributes: Any
+) -> Span:
+    """A span (a context manager), or the shared no-op while tracing is off.
+
+    ``child_only``: record it only inside another span (a database checkout by a background loop
+    would otherwise be a lone root span for every poll).
+    """
     tracer = _tracer
     if tracer is None:
         return NOOP
-    return tracer.start(name, link, attributes)
+    return tracer.start(name, link, attributes, child_only)
 
 
 def current_traceparent() -> str | None:

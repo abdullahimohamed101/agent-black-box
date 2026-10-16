@@ -78,7 +78,15 @@ class CountingExporter(SpanExporter):
 
 
 class _Span:
-    def __init__(self, tracer: "OtelTracer", name: str, link: str | None, attrs: dict[str, Any]):
+    def __init__(
+        self,
+        tracer: "OtelTracer",
+        name: str,
+        link: str | None,
+        attrs: dict[str, Any],
+        child_only: bool,
+    ):
+        self._child_only = child_only
         self._tracer = tracer
         self._name = name
         self._link = link
@@ -92,6 +100,8 @@ class _Span:
             if tracer.strict:
                 raise AssertionError(f"span name refused: {self._name!r}")
             tracer.refused_attributes += 1
+            return self
+        if self._child_only and not trace.get_current_span().get_span_context().is_valid:
             return self
         links = []
         context = parse_context(self._link)
@@ -157,8 +167,10 @@ class OtelTracer:
         self.strict = strict
         self.refused_attributes = 0
 
-    def start(self, name: str, link: str | None, attributes: dict[str, Any]) -> Span:
-        return _Span(self, name, link, attributes)
+    def start(
+        self, name: str, link: str | None, attributes: dict[str, Any], child_only: bool = False
+    ) -> Span:
+        return _Span(self, name, link, attributes, child_only)
 
     def traceparent(self) -> str | None:
         context = trace.get_current_span().get_span_context()

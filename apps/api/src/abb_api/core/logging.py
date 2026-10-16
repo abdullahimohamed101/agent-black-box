@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from abb_api.core.request_context import get_caller, get_operation, get_request_id
+from abb_api.obs.tracing import current_traceparent
 
 # Attributes every LogRecord has; anything else was passed via `extra=` and is emitted as a field.
 _RESERVED = set(vars(logging.makeLogRecord({}))) | {"message", "asctime", "taskName"}
@@ -30,6 +31,9 @@ class JsonFormatter(logging.Formatter):
         operation = get_operation()
         if operation is not None:
             entry["operation"] = operation
+        traceparent = current_traceparent()  # None unless tracing is on and a span is open
+        if traceparent is not None:
+            entry["trace_id"] = traceparent[3:35]  # the 32-hex trace id of "00-<trace>-<span>-<f>"
         entry.update(get_caller())
         for key, value in record.__dict__.items():
             if key not in _RESERVED and not key.startswith("_"):

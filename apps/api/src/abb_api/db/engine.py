@@ -38,7 +38,9 @@ def timed_pool(
                 breaker.before_connect()  # BreakerOpen: no pool wait, no connect attempt
             started = time.perf_counter()
             try:
-                with span("db.checkout"):  # wait + connect + ping; no statement, no parameters
+                with span(
+                    "db.checkout", child_only=True
+                ):  # wait + connect + ping; no statement, no parameters
                     connection = super().connect()
             except Exception:
                 if breaker is not None:

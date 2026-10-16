@@ -80,7 +80,7 @@ ignore_missing_imports = true
 
 # Checked the same with and without the extra: where the packages are absent their names are Any.
 [[tool.mypy.overrides]]
-module = ["abb_api.obs.tracing_otel"]
+module = ["abb_api.obs.tracing_otel", "tests.obs.test_tracing_otel"]
 disallow_subclassing_any = false
 warn_return_any = false
 

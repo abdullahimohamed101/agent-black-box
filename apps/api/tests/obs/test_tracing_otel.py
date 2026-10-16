@@ -5,6 +5,7 @@ quality job installs the extra so these always run there.
 """
 
 import json
+import logging
 import threading
 from collections.abc import Iterator, Sequence
 from typing import Any
@@ -23,6 +24,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 
 from abb_api.alerts.delivery import deliver_due
 from abb_api.alerts.notifiers import build_registry
+from abb_api.core.logging import JsonFormatter
 from abb_api.jobs.outbox import OutboxRepository
 from abb_api.jobs.worker import Worker
 from abb_api.obs import tracing
@@ -140,6 +142,28 @@ async def test_persistence_and_checkout_spans_nest_under_the_request(api: Api, r
     assert request.context.is_valid and request.kind.name == "SERVER"
 
 
+async def test_a_checkout_outside_any_span_is_not_recorded(
+    api: Api, rig: Rig, runtime_database_url: str
+) -> None:
+    from sqlalchemy import text
+
+    from abb_api.db.engine import create_engine
+
+    pool_wait = api.app.state.observability.catalogue.postgres_pool_wait_seconds
+    engine = create_engine(runtime_database_url, pool_wait=pool_wait)  # the timed pool
+    try:
+        async with engine.connect() as conn:  # a background loop: no request, no job span
+            await conn.execute(text("SELECT 1"))
+        with tracing.span("job.run"):  # the same checkout inside a span is recorded
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+    finally:
+        await engine.dispose()
+    (checkout,) = rig.named("db.checkout")
+    (job,) = rig.named("job.run")
+    assert checkout.parent is not None and checkout.parent.span_id == job.context.span_id
+
+
 async def test_an_inbound_traceparent_is_ignored(api: Api, rig: Rig) -> None:
     forged = "00-" + "ee" * 16 + "-" + "ff" * 8 + "-01"
     run = make_run_ids()
@@ -151,6 +175,22 @@ async def test_an_inbound_traceparent_is_ignored(api: Api, rig: Rig) -> None:
     for span in rig.spans:
         assert f"{span.context.trace_id:032x}" != "ee" * 16
     assert all(s.parent is None for s in rig.named("http.request"))
+
+
+def test_log_lines_inside_a_span_carry_the_trace_id_and_only_then(api: Api) -> None:
+    made = make_rig(api.app.state.observability.catalogue)
+    record = logging.LogRecord("abb_api.x", logging.INFO, __file__, 1, "m", (), None)
+    formatter = JsonFormatter("abb-test")
+    assert "trace_id" not in json.loads(formatter.format(record))
+    tracing.install(made.tracer)
+    try:
+        assert "trace_id" not in json.loads(formatter.format(record))  # no span open
+        with tracing.span("job.run"):
+            line = json.loads(formatter.format(record))
+        (finished,) = made.spans
+        assert line["trace_id"] == f"{finished.context.trace_id:032x}"
+    finally:
+        tracing.install(None)
 
 
 # ------------------------------------------------------------------ the job link

@@ -375,6 +375,7 @@ scrape_configs:
 | `invitation_only_refusals_total` | counter | - | Sign-ins refused because the installation is invitation-only. | API: error handler (`NO_ACCESS`) |
 | `limiter_database_calls_total` | counter | outcome | Calls the shared limiter made to the database. | API: `limits/counters.py`, each shared-counter call |
 | `limiter_fail_open_total` | counter | scope | Shared limiter decisions made locally because the database was unavailable. | API: `limits/counters.py`, each decision made locally for lack of the database |
+| `otel_export_failures_total` | counter | - | Trace export attempts that failed (a collector that is down never affects requests). | API, worker, retention: the exporter wrapper in `obs/tracing_otel.py` (only with tracing on) |
 | `postgres_pool_wait_seconds` | histogram | - | Time spent waiting for a database connection. | API, worker: every pooled checkout (`db/engine.py`) |
 | `process_start_time_seconds` | gauge | - | Start time of the process, Unix seconds. | API, worker: when the registry is built |
 | `process_uptime_seconds` | gauge | - | Seconds since the process started. | API, worker: computed at scrape |
@@ -422,10 +423,64 @@ ABB_METRICS_TEXTFILE=/var/lib/node_exporter/textfile/abb_retention.prom python -
 
 The file is written to a temporary name in the same directory, fsynced, set to mode 0644 (the collector usually runs as another user) and renamed over the target, so a scrape sees the old file or the new one. It holds only the catalogue metrics the tool owns (`backup_*`, `rotation_*`, the `retention_*` counters and gauges), no path, URL, host or name. Counters and the last-success timestamps are carried over from the previous file, so a failed backup does not erase the last success and counters keep growing across runs. Use one file per tool: two tools writing the same path would replace each other. A file that cannot be written is logged by error class and never fails the backup. Alert on `time() - backup_last_success_timestamp_seconds > 100000` (a missed daily backup) and on `increase(backup_runs_total{outcome="failed"}[1d]) > 0`. A dry-run of `rotate` is not recorded. A backup that is refused for a usage reason (a non-empty output directory) counts as a failed run.
 
+## Logs and tracing (Phase 19c step 4, ADR-170)
+
+### Log lines
+
+One JSON object per line on stdout; `LOG_LEVEL` (`ABB_LOG_LEVEL`) picks the level. Fixed fields on every line, then the fields of the event:
+
+| Field | Meaning |
+|---|---|
+| `timestamp`, `level`, `logger`, `message` | UTC ISO time, level, logger name, a **fixed message** (never built from data) |
+| `service` | `abb-api`, `abb-worker` or `abb-retention` |
+| `request_id` | The request's id (also the `X-Request-ID` response header and the `request_id` of an error body); null outside a request |
+| `trace_id` | Only with tracing on and a span open: the W3C trace id, to open the trace in your collector |
+| `operation` | A stable short name of what was running: `ingest.batch`, `alerts.deliver`, `retention.tick`, `job.<type>` (for example `job.summarize_run`), or `http.<endpoint>` for any other request |
+| `error_type` | The exception **class** name when something failed; never its message |
+| `workspace_id`, `project_id`, `actor_id`, `session_id` | After authentication: opaque ids (`ws_...`, `prj_...`, `key:...`/`user:...`, the first 8 characters of a session id). Never names or slugs |
+| `method`, `route`, `status`, `duration_ms` | The request line: `route` is the matched **template** (`/v1/runs/{run_id}`) or `unmatched`; the raw path and query are not logged. Find a request by `request_id` |
+| `job_id`, `job_type`, `attempt`, `outcome` | Worker lines (`outcome` is `pending`, `done`, `dead_letter`, ...) |
+| `exception` | Only on failures: stack frames (file, line, function, our source line) and exception class names, chain included. No exception message and no local variables |
+
+What is never in a log line, by test: request or event payloads, prompts, attribute values, agent and tool names, paths with ids, query strings, headers, cookies, API keys and tokens, client addresses, e-mail addresses, passphrases, database URLs and passwords, alert destination URLs and response bodies. `tests/obs/test_log_sentinel.py` plants each of them in realistic and hostile traffic (API, worker, alert delivery, retention dry run and enforce, backup/verify/restore) with every logger at DEBUG and fails if one appears; `tests/test_log_hygiene.py` fails any new log call that interpolates data, passes an exception object, asks for a traceback outside a reviewed list, or names a sensitive value. At `LOG_LEVEL=DEBUG` the SQL and wire libraries (`sqlalchemy`, `asyncpg`, `urllib3`, `httpx`) stay quiet, because their debug lines contain parameters and hosts.
+
+Two consequences when you read logs. A failure line tells you *what kind* of error and *where* (the frames), not the error's text: to see the text reproduce it, or look at the `last_error` of a dead-lettered job (stored data, access-controlled), not the log. And log lines carry ids but not names: join the opaque ids against the database.
+
+### Tracing (optional)
+
+Off by default; costs nothing off (no OpenTelemetry module is imported, `span()` returns a shared no-op). To turn it on:
+
+1. Install the extra: `uv sync --extra otel`, or build the image with `docker build --build-arg UV_SYNC_ARGS="--extra otel" -f apps/api/Dockerfile .`
+2. Set, for the API, worker and (if you want its ticks) the retention process:
+
+```
+ABB_OTEL_ENABLED=1
+ABB_OTEL_SAMPLE_RATIO=0.1                      # default; ParentBased(TraceIdRatioBased(ratio))
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-collector.internal:4318
+OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer <token>   # a secret; never logged or stored by ABB
+OTEL_EXPORTER_OTLP_TIMEOUT=10                  # seconds
+# OTEL_SERVICE_NAME is not needed: spans are named abb-api, abb-worker, abb-retention
+```
+
+Enabled without the extra, the process refuses to start with a fixed message naming the extra. A collector that is down, slow or rejecting never affects a request or a job: failed exports are swallowed, logged once each as `trace export failed` (exception class only) and counted in `otel_export_failures_total` (alert on it growing). The queue holds 2048 spans; beyond that spans are dropped. On stop the exporter is flushed for at most `ABB_OTEL_SHUTDOWN_TIMEOUT_SECONDS` (5).
+
+What a trace contains (the whole vocabulary; anything else is dropped and counted):
+
+| Span | When | Attributes |
+|---|---|---|
+| `http.request` (server) | every request; a new root, an inbound `traceparent` header is ignored | `http.request.method`, `http.route` (template), `http.response.status_code` |
+| `ingest.persist` | the ingestion transaction including its commit | `abb.events`, `abb.accepted` |
+| `db.checkout` | each database connection checkout (wait, connect, ping) made inside a request or job span; no SQL; background loops are not traced | none |
+| `job.run` | each job execution, a root span **linked** to the span that enqueued it (the link survives the queue as a 55-character `traceparent` in the job payload) | `abb.job.type`, `abb.job.attempt`, `abb.outcome`, `error.type` |
+| `alerts.attempt` | each alert delivery attempt | `abb.alert.destination_type`, `abb.outcome` |
+| `retention.tick` | each retention tick | `abb.retention.mode`, `abb.outcome` |
+
+Not in spans, ever: payloads, event or attribute values, names and slugs, tenant, project, run or key ids, raw paths, query strings, headers, SQL text or parameters, exception messages, alert URLs. Strings are at most 64 characters. Tenant ids are deliberately not attributes. With tracing on, log lines written inside a span also carry `trace_id` (32 hex characters, not sensitive), so a line found by `request_id` leads to its trace. FastAPI's own OpenTelemetry (which would record paths, queries and exception text and auto-export to the same collector) is switched off in the application factory. With sampling at 0.1 about one request in ten is traced; a job whose request was not sampled is sampled independently, so job spans are not always linked to a stored request span.
+
 ## What to watch
 
-Structured JSON logs (one line per request with `request_id`, and `workspace_id`, `project_id`, `key_id` after
-authentication; payloads and secrets are never logged). Messages worth alerting on: `lease lost while running`, `spans left untouched`, `job failed` with
+Structured JSON logs (one line per request with `request_id`, `route` and `status`, and `workspace_id`, `project_id`, `actor_id` after
+authentication; the field table is in Logs and tracing above; payloads, secrets, addresses and raw paths are never logged). Messages worth alerting on: `lease lost while running`, `spans left untouched`, `job failed` with
 `outcome: dead_letter`, `worker loop error`, `conflicting duplicate events ignored`, `authentication unavailable`,
 `ingest unavailable`, `stream listener unavailable`, `stream failed`. Application metrics (spec §116) are in the Metrics section above; these queries are the same facts straight from the database:
 

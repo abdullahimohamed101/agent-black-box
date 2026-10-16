@@ -7,10 +7,13 @@ WORKDIR /repo
 COPY packages/event-schema packages/event-schema
 COPY apps/api/pyproject.toml apps/api/uv.lock apps/api/
 WORKDIR /repo/apps/api
+# Optional extras (ADR-170): `--build-arg UV_SYNC_ARGS="--extra otel"` adds OpenTelemetry tracing.
+# The default image has none of it.
+ARG UV_SYNC_ARGS=""
 # Dependencies first (cached), then the application source.
-RUN uv sync --frozen --no-dev --no-editable --no-install-project
+RUN uv sync --frozen --no-dev --no-editable --no-install-project $UV_SYNC_ARGS
 COPY apps/api/src src
-RUN uv sync --frozen --no-dev --no-editable
+RUN uv sync --frozen --no-dev --no-editable $UV_SYNC_ARGS
 
 FROM python:3.12-slim
 # Backup and restore (ADR-162) shell out to pg_dump/pg_restore and, for encrypted bundles, openssl. The client's
