@@ -51,6 +51,8 @@ LIMITER_SCOPES = (
     "auth_fail_credential",
     "auth_fail_global",
     "auth_throttle_audit",
+    "session_fail_address",
+    "session_fail_global",
 )
 RETENTION_TIERS = ("artifacts", "trace", "run", "audit", "operational", "platform")
 QUOTAS = ("agents", "runs_per_day", "events_per_day", "artifact_bytes")
@@ -116,6 +118,11 @@ SESSION_REVOCATION_REASONS = ("logout", "revoke_one", "revoke_others")
 CALL_OUTCOMES = ("ok", "error")
 BACKUP_OUTCOMES = ("succeeded", "failed")
 THROTTLE_KINDS = ("address", "credential", "global")
+SESSION_THROTTLE_KINDS = ("address", "global")
+# The checks /readyz can fail on (health/readiness.py); the ones it only reports are not gauges.
+READINESS_CHECKS = ("database", "schema", "artifacts", "role")
+# Mirrors db/role_check.REASONS; tests pin it.
+ROLE_REASONS = ("superuser", "bypass_rls", "events_rewritable", "events_owner", "schema_create")
 RETENTION_MODES = ("off", "dry_run", "enforce")
 RETENTION_DELETED_KINDS = ("runs", "events", "rows", "bytes")
 # Fixed failure codes of a retention tick (retention/metrics.py maps TickResult onto them).
@@ -160,6 +167,12 @@ class Catalogue:
     postgres_pool_wait_seconds: Histogram
     artifact_upload_failures_total: Counter
     artifact_upload_bytes: Histogram
+    # database safety: breaker, readiness, role re-check (Phase 19c step 3, ADR-169)
+    db_breaker_state: Gauge
+    db_breaker_trips_total: Counter
+    readiness_check: Gauge
+    readiness_flaps_total: Counter
+    db_role_privileged: Gauge
     # scrape-time database sampling (obs/scrape.py)
     abb_scrape_database_up: Gauge
     # controls: limiter and throttle
@@ -168,6 +181,9 @@ class Catalogue:
     auth_throttle_blocks_total: Counter
     auth_active_keys: Gauge
     auth_active_key_refresh_failures_total: Counter
+    session_throttle_blocks_total: Counter
+    session_active_handles: Gauge
+    session_active_refresh_failures_total: Counter
     # quotas, body cap
     quota_refusals_total: Counter
     body_cap_refusals_total: Counter
@@ -313,6 +329,39 @@ def build_catalogue(registry: Registry, *, version: str = __version__) -> Catalo
         auth_active_key_refresh_failures_total=r.counter(
             "auth_active_key_refresh_failures_total",
             "Refreshes of the active API key id set that failed (the old set keeps serving).",
+        ),
+        session_throttle_blocks_total=r.counter(
+            "session_throttle_blocks_total",
+            "Requests refused (429) by the failed-session throttle, by the scope that was closed.",
+            [closed("kind", *SESSION_THROTTLE_KINDS)],
+        ),
+        session_active_handles=r.gauge(
+            "session_active_handles",
+            "Size of the active session hint set the session throttle consults.",
+        ),
+        session_active_refresh_failures_total=r.counter(
+            "session_active_refresh_failures_total",
+            "Refreshes of the active session hint set that failed (the old set keeps serving).",
+        ),
+        db_breaker_state=r.gauge(
+            "db_breaker_state",
+            "Database circuit breaker in this process: 0 closed, 1 half-open (probing), 2 open.",
+        ),
+        db_breaker_trips_total=r.counter(
+            "db_breaker_trips_total", "Times the database circuit breaker opened."
+        ),
+        readiness_check=r.gauge(
+            "readiness_check",
+            "1 when the named /readyz check passes, 0 when it fails (set when /readyz evaluates).",
+            [closed("check", *READINESS_CHECKS)],
+        ),
+        readiness_flaps_total=r.counter(
+            "readiness_flaps_total", "Changes of the overall /readyz answer between ready and not."
+        ),
+        db_role_privileged=r.gauge(
+            "db_role_privileged",
+            "1 per reason the connected database role is too privileged (periodic re-check).",
+            [closed("reason", *ROLE_REASONS)],
         ),
         abb_scrape_database_up=r.gauge(
             "abb_scrape_database_up",

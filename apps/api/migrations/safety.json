@@ -246,6 +246,10 @@
         "purge_tombstones (the record of purges that ran)",
         "purge_state markers"
       ]
+    },
+    "0105": {
+      "class": "reversible",
+      "notes": "Grants the runtime role SELECT on alembic_version (read-only) so /readyz can compare the schema revision with the code's head. The downgrade restores the revoked state."
     }
   }
 }

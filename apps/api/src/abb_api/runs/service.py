@@ -272,7 +272,7 @@ class RunService:
                 record = await RunQueries(conn, principal.tenant, principal.project_id).get(run_id)
         except Exception as exc:
             if is_lock_timeout(exc):  # the project is busy: retryable, like a batch (ADR-154)
-                raise dependency_unavailable() from exc
+                raise dependency_unavailable(exc) from exc
             raise
         assert record is not None
         return _run_out(record, "current"), created

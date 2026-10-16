@@ -1,16 +1,13 @@
-"""Liveness and readiness (spec §106). /healthz has no dependencies; /readyz checks the DB."""
+"""Liveness (no dependencies) and readiness (health/readiness.py); spec §106."""
 
-import logging
 from typing import Literal
 
-from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Request, Response
+from pydantic import BaseModel, Field
 
 from abb_api import __version__
-from abb_api.core.errors import AppError, ErrorCategory, ErrorEnvelope
-from abb_api.db import check_database
+from abb_api.health.readiness import Readiness
 
-logger = logging.getLogger(__name__)
 router = APIRouter(tags=["health"])
 
 
@@ -19,8 +16,20 @@ class HealthResponse(BaseModel):
     version: str
 
 
-class ReadyResponse(HealthResponse):
-    database: Literal["ok"]
+class CheckOut(BaseModel):
+    status: Literal["ok", "fail", "degraded"]
+    reason: str | None = Field(
+        description="A fixed reason code (for example `behind`, `breaker_open`), never error text."
+    )
+
+
+class ReadyResponse(BaseModel):
+    status: Literal["ready", "not_ready"]
+    version: str
+    checks: dict[str, CheckOut] = Field(
+        description="`database`, `schema`, `artifacts` and `role` fail readiness; `worker` and "
+        "`retention` are reported only."
+    )
 
 
 @router.get("/healthz", response_model=HealthResponse)
@@ -31,19 +40,19 @@ async def healthz() -> HealthResponse:
 @router.get(
     "/readyz",
     response_model=ReadyResponse,
-    responses={503: {"description": "The database is unreachable.", "model": ErrorEnvelope}},
+    responses={503: {"description": "Not ready: see `checks`.", "model": ReadyResponse}},
 )
-async def readyz(request: Request) -> ReadyResponse:
-    try:
-        await check_database(request.app.state.engine)
-    except Exception as exc:
-        logger.warning("readiness check failed", extra={"error_type": type(exc).__name__})
-        raise AppError(
-            "DEPENDENCY_UNAVAILABLE",
-            "Database is not reachable.",
-            category=ErrorCategory.DEPENDENCY,
-            status_code=503,
-            retryable=True,
-            details={"dependency": "postgresql"},
-        ) from exc
-    return ReadyResponse(status="ok", version=__version__, database="ok")
+async def readyz(request: Request, response: Response) -> ReadyResponse:
+    readiness: Readiness = request.app.state.readiness
+    report = await readiness.evaluate()
+    if not report.ready:
+        response.status_code = 503
+        response.headers["Retry-After"] = "2"
+    return ReadyResponse(
+        status="ready" if report.ready else "not_ready",
+        version=__version__,
+        checks={
+            name: CheckOut(status=result.status, reason=result.reason)
+            for name, result in report.checks.items()
+        },
+    )

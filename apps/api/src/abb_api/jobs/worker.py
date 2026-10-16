@@ -22,7 +22,7 @@ from abb_api.clock import Clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.logging import configure_logging
 from abb_api.db import create_engine
-from abb_api.db.role_check import PrivilegedDatabaseRole, enforce_role
+from abb_api.db.role_check import PrivilegedDatabaseRole, RoleMonitor, enforce_role
 from abb_api.jobs.context import (
     reset_job_metrics,
     reset_job_settings,
@@ -215,12 +215,19 @@ class Worker:
 async def _main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level, service="abb-worker")
-    engine = create_engine(settings.database_url, pool_wait=METRICS.postgres_pool_wait_seconds)
+    # The worker's own deadline (default none: its jobs are long); the API's does not apply.
+    engine = create_engine(
+        settings.database_url,
+        pool_wait=METRICS.postgres_pool_wait_seconds,
+        statement_timeout_seconds=settings.worker_db_statement_timeout_seconds,
+    )
     try:
-        await enforce_role(engine, settings, service="worker")  # KI-031: may refuse to start
+        startup_reasons = await enforce_role(engine, settings, service="worker")  # KI-031
     except PrivilegedDatabaseRole:
         await engine.dispose()
         raise
+    role_monitor = RoleMonitor(engine, settings, service="worker", initial=startup_reasons)
+    role_monitor.start()  # KI-183: log and metric only; the worker has no readiness endpoint
     worker = Worker(engine, HANDLERS, settings)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -232,6 +239,7 @@ async def _main() -> None:
     finally:
         if metrics_server is not None:
             metrics_server.stop()
+        await role_monitor.stop()
         await engine.dispose()
 
 

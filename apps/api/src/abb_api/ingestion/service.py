@@ -196,7 +196,7 @@ class IngestionService:
             except Exception as exc:
                 if is_connectivity_error(exc) or _is_transient_conflict(exc):
                     logger.warning("ingest unavailable", extra={"error_type": type(exc).__name__})
-                    raise dependency_unavailable() from exc
+                    raise dependency_unavailable(exc) from exc
                 raise
             for (index, _), result in zip(valid, outcome.results, strict=True):
                 if result.status == "rejected":
@@ -245,7 +245,7 @@ class IngestionService:
         except Exception as exc:
             if is_connectivity_error(exc):
                 logger.warning("security settings unavailable")
-                raise dependency_unavailable() from exc
+                raise dependency_unavailable(exc) from exc
             raise
         if size <= _INLINE_REDACTION_BYTES:
             redacted, failed = self._redact_batch(valid, mode)

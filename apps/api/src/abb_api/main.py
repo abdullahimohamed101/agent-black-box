@@ -45,7 +45,8 @@ from abb_api.core.middleware import RequestContextMiddleware
 from abb_api.cost.router import rebuild_router
 from abb_api.cost.router import router as pricing_router
 from abb_api.db import create_engine
-from abb_api.db.role_check import PrivilegedDatabaseRole, enforce_role
+from abb_api.db.breaker import DbBreaker
+from abb_api.db.role_check import PrivilegedDatabaseRole, RoleMonitor, enforce_role
 from abb_api.evaluations.router import router as evaluators_router
 from abb_api.evaluations.run_router import router as run_evaluations_router
 from abb_api.evaluations.runs import RunEvaluationService
@@ -54,6 +55,7 @@ from abb_api.experiments.router import router as experiments_router
 from abb_api.experiments.service import ExperimentService
 from abb_api.findings.router import router as findings_router
 from abb_api.findings.service import FindingsService
+from abb_api.health.readiness import Readiness
 from abb_api.health.router import router as health_router
 from abb_api.ingestion.ratelimit import InMemoryRateLimiter, RateLimiter
 from abb_api.ingestion.router import router as ingestion_router
@@ -232,13 +234,40 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         metrics = observability.catalogue
-        engine = create_engine(settings.database_url, pool_wait=metrics.postgres_pool_wait_seconds)
+        breaker = DbBreaker(
+            threshold=settings.db_breaker_threshold,
+            open_seconds=settings.db_breaker_open_seconds,
+            window_seconds=settings.db_breaker_window_seconds,
+            enabled=settings.db_breaker_enabled,
+            metrics=metrics,
+        )
+        app.state.db_breaker = breaker
+        engine = create_engine(
+            settings.database_url,
+            pool_wait=metrics.postgres_pool_wait_seconds,
+            statement_timeout_seconds=settings.db_statement_timeout_seconds,
+            breaker=breaker,
+        )
         app.state.engine = engine
         try:
-            await enforce_role(engine, settings, service="api")  # KI-031: may refuse to start
+            startup_reasons = await enforce_role(engine, settings, service="api")  # KI-031
         except PrivilegedDatabaseRole:
             await engine.dispose()
             raise
+        role_monitor = RoleMonitor(
+            engine, settings, service="api", initial=startup_reasons, metrics=metrics
+        )
+        app.state.role_monitor = role_monitor
+        local_store = artifact_store is None  # an injected store is not a directory we probe
+        app.state.readiness = Readiness(
+            lambda: engine,
+            settings,
+            breaker=breaker,
+            role=role_monitor,
+            artifacts_dir=settings.artifact_dir if local_store else None,
+            metrics=metrics,
+        )
+        role_monitor.start()
         counters = build_counters(engine, settings, metrics)
         app.state.shared_counters = counters
         ingest_guard = ingest_limiter(
@@ -344,6 +373,7 @@ def create_app(
         try:
             yield
         finally:
+            await role_monitor.stop()
             await active_keys.stop()
             if counters is not None:
                 await counters.close()

@@ -108,7 +108,7 @@ async def _guarded(request: Request, work: Callable[[AsyncConnection], Awaitable
     except Exception as exc:
         if is_connectivity_error(exc):
             logger.warning("authentication unavailable", extra={"error_type": type(exc).__name__})
-            raise dependency_unavailable() from exc
+            raise dependency_unavailable(exc) from exc
         raise
 
 

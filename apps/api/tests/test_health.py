@@ -18,19 +18,22 @@ async def test_healthz_needs_no_database(client_db_down: httpx.AsyncClient) -> N
 async def test_readyz_ok_with_database(client: httpx.AsyncClient) -> None:
     response = await client.get("/readyz")
     assert response.status_code == 200
-    assert response.json()["database"] == "ok"
+    body = response.json()
+    assert body["status"] == "ready"
+    assert body["checks"]["database"] == {"status": "ok", "reason": None}
 
 
-async def test_readyz_503_with_typed_error_when_database_down(
+async def test_readyz_503_with_fixed_reason_codes_when_database_down(
     client_db_down: httpx.AsyncClient,
 ) -> None:
     response = await client_db_down.get("/readyz")
     assert response.status_code == 503
-    error = response.json()["error"]
-    assert error["code"] == "DEPENDENCY_UNAVAILABLE"
-    assert error["retryable"] is True
-    assert error["request_id"] == response.headers["x-request-id"]
-    assert "asyncpg" not in json.dumps(error)  # no internals leak to clients
+    body = response.json()
+    assert body["status"] == "not_ready"
+    assert body["checks"]["database"] == {"status": "fail", "reason": "down"}
+    assert response.headers["x-request-id"]
+    assert "asyncpg" not in json.dumps(body)  # no internals leak to clients
+    assert "127.0.0.1" not in json.dumps(body)  # nor the address it tried
 
 
 async def test_request_id_generated_and_echoed(client: httpx.AsyncClient) -> None:
