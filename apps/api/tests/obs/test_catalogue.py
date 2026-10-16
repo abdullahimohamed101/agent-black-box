@@ -2,6 +2,7 @@
 
 import re
 
+from abb_api.db.role_check import REASONS
 from abb_api.limits.scopes import Scope
 from abb_api.obs import catalogue as c
 from abb_api.obs.catalogue import build_observability
@@ -69,6 +70,11 @@ def test_catalogue_object_and_registry_agree() -> None:
 def test_the_literal_closed_sets_match_their_source_enums() -> None:
     assert set(c.LIMITER_SCOPES) == {s.value for s in Scope}
     assert set(c.RETENTION_TIERS) == {t.value for t in ReportTier}
+    assert c.ROLE_REASONS == REASONS
+    assert c.THROTTLE_KINDS == ("address", "credential", "global")
+    assert set(c.SESSION_THROTTLE_KINDS) <= set(c.THROTTLE_KINDS)  # same vocabulary, fewer scopes
+    session_scopes = {s.value for s in Scope if s.value.startswith("session_fail_")}
+    assert {f"session_fail_{k}" for k in c.SESSION_THROTTLE_KINDS} == session_scopes
 
 
 def test_exposition_parses_back_and_declares_every_metric() -> None:
