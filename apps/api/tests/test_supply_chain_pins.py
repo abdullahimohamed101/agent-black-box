@@ -45,7 +45,7 @@ jobs:
   a:
     services:
       db:
-        image: postgres:16-alpine@{DIGEST}
+        image: dbimg:16-alpine@{DIGEST}
     steps:
       - uses: actions/checkout@{SHA} # v4.4.0
       - uses: ./.github/actions/local
@@ -56,8 +56,8 @@ def test_a_fully_pinned_tree_passes(tmp_path: Path) -> None:
     files = {
         ".github/workflows/ci.yml": PINNED_WORKFLOW,
         "app/Dockerfile": (
-            f"FROM python:3.12-slim@{DIGEST} AS build\n"
-            f"COPY --from=ghcr.io/astral-sh/uv:0.12@{DIGEST} /uv /bin/uv\n"
+            f"FROM pyimg:3.12-slim@{DIGEST} AS build\n"
+            f"COPY --from=reg.test/tool:0.12@{DIGEST} /uv /bin/uv\n"
             f"FROM scratch\nFROM build\nCOPY --from=build /x /y\n"
         ),
         "docker-compose.yml": f"services:\n  p:\n    image: prom/prometheus:v3@{DIGEST}\n",
@@ -73,16 +73,16 @@ def test_a_fully_pinned_tree_passes(tmp_path: Path) -> None:
         (".github/workflows/x.yml", "steps:\n  - uses: actions/checkout@main # main\n"),
         (".github/workflows/x.yml", f"steps:\n  - uses: actions/checkout@{SHA}\n"),
         (".github/workflows/x.yml", "steps:\n  - uses: docker://alpine:3.20\n"),
-        (".github/workflows/x.yml", "s:\n  db:\n    image: postgres:16-alpine\n"),
+        (".github/workflows/x.yml", "s:\n  db:\n    image: dbimg:16-alpine\n"),
         (".github/workflows/x.yml", "jobs:\n  a:\n    container: node:22\n"),
-        ("a/Dockerfile", "FROM python:3.12-slim\n"),
+        ("a/Dockerfile", "FROM pyimg:3.12-slim\n"),
         ("a/Dockerfile", "FROM --platform=linux/amd64 node:22 AS build\n"),
         (
             "a/Dockerfile",
-            f"FROM python:3.12@{DIGEST}\nCOPY --from=ghcr.io/astral-sh/uv:0.12 /uv /uv\n",
+            f"FROM python:3.12@{DIGEST}\nCOPY --from=reg.test/tool:0.12 /uv /uv\n",
         ),
         ("a/Dockerfile", "FROM ${BASE_IMAGE}\n"),
-        ("compose.override.yml", "services:\n  p:\n    image: grafana/grafana:12.1.0\n"),
+        ("compose.override.yml", "services:\n  p:\n    image: dashimg:12.1.0\n"),
         (
             "docker-compose.yml",
             f"services:\n  p:\n    image: x:1  # {DIGEST}\n",
@@ -97,8 +97,8 @@ def test_each_unpinned_shape_fails(tmp_path: Path, rel: str, text: str) -> None:
 
 def test_a_pinned_image_named_again_without_its_digest_fails(tmp_path: Path) -> None:
     files = {
-        "docker-compose.yml": f"services:\n  d:\n    image: postgres:16-alpine@{DIGEST}\n",
-        "scripts/helper.py": 'candidates = ["postgres:16-alpine", "alpine"]\n',
+        "docker-compose.yml": f"services:\n  d:\n    image: dbimg:16-alpine@{DIGEST}\n",
+        "scripts/helper.py": 'candidates = ["dbimg:16-alpine", "alpine"]\n',
     }
     assert _tree(tmp_path, files) == ["scripts/helper.py:1"]
 

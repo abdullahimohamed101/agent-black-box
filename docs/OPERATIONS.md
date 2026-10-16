@@ -547,3 +547,7 @@ SELECT id, job_type, attempt_count, left(last_error, 120) FROM outbox_jobs WHERE
 
 The index by symptom, alert and dashboard row is [runbooks/README.md](runbooks/README.md).
 Recovery targets: with the backup tool above, RPO = the backup interval and RTO = the measured restore time (Phase 19b step 6). The spec §122 targets (RPO <= 15 min, RTO <= 4 h) need managed PostgreSQL with point-in-time recovery, which is not built.
+
+## Pins and audits
+
+Actions are pinned by commit sha and images by digest; Dependabot moves them weekly, `make check-pins` verifies them and `make audit-lockfiles` audits every Python lockfile. To bump or check a pin by hand see [bumping pins](runbooks/bumping-pins.md).

@@ -28,7 +28,7 @@ honest) and the dashboard rows are in `deploy/observability/grafana/dashboards/a
 | Traces are missing | [below](#traces-are-missing) | `AbbOtelExportFailing` | Alerts and streams |
 
 Other runbooks: [sign-in, roles and access](auth-and-access.md), [policies and approvals](policy-and-approvals.md), [security observability](security-observability.md),
-[reliability findings](findings.md), [evaluations](evaluations.md), [migrations](migrations.md), [analytics migrations](analytics-migrations.md), [secrets](secrets.md).
+[reliability findings](findings.md), [evaluations](evaluations.md), [migrations](migrations.md), [analytics migrations](analytics-migrations.md), [secrets](secrets.md), [bumping pins by hand](bumping-pins.md).
 
 ## Metrics are missing or stale
 
