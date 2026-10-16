@@ -67,6 +67,8 @@ services:
       ABB_OIDC_ISSUER: ${ABB_OIDC_ISSUER:-http://localhost:8900}
       ABB_OIDC_CLIENT_ID: ${ABB_OIDC_CLIENT_ID:-abb-dev}
       ABB_OIDC_CLIENT_SECRET: ${ABB_OIDC_CLIENT_SECRET:-}
+      # /metrics exists only when a token (24+ characters) is set (ADR-165). Blank: no endpoint.
+      ABB_METRICS_TOKEN: ${ABB_METRICS_TOKEN:-}
     ports:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:8900:8900" # the fake provider shares this container's network namespace (see fake-oidc)
@@ -107,6 +109,13 @@ services:
     <<: *api
     profiles: ["app"]
     command: ["python", "-m", "abb_api.worker"]
+    environment:
+      <<: *api-env
+      # The worker serves metrics only when a port is set (needs the token too); no port is published
+      # on purpose. Inside the compose network a scraper container needs ABB_WORKER_METRICS_BIND=0.0.0.0.
+      ABB_METRICS_TOKEN: ${ABB_METRICS_TOKEN:-}
+      ABB_WORKER_METRICS_PORT: ${ABB_WORKER_METRICS_PORT:-}
+      ABB_WORKER_METRICS_BIND: ${ABB_WORKER_METRICS_BIND:-127.0.0.1}
     restart: unless-stopped
     depends_on:
       migrate:

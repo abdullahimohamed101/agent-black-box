@@ -6,7 +6,7 @@ Operating Agent Black Box itself (spec §43, §104-125). Runbooks live in `docs/
 
 | Process | Command | Notes |
 | --- | --- | --- |
-| API | `uvicorn abb_api.main:app_from_env --factory` | stateless; `/healthz` (liveness, no dependencies), `/readyz` (database, 2.5 s deadline) |
+| API | `uvicorn abb_api.main:app_from_env --factory` | stateless; `/healthz` (liveness, no dependencies), `/readyz` (database, 2.5 s deadline), `/metrics` (only with `ABB_METRICS_TOKEN`) |
 | Worker | `python -m abb_api.worker` | claims background jobs; any number may run; SIGTERM finishes the current batch and exits 0 |
 | Retention | `python -m abb_api.retention run` (one tick: `python -m abb_api.cli retention run-once`) | the data-retention job (ADR-159); own credentials (`ABB_RETENTION_DATABASE_URL`), never in the API's or worker's environment; one at a time (advisory lock); SIGTERM stops after the current tick |
 | Migrations | `alembic upgrade head` (`make migrate`) | run once per release before the new API/worker start; compose does this in the `migrate` service |
@@ -26,6 +26,9 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_ENVIRONMENT`, `ABB_LOG_LEVEL`, `ABB_CORS_ORIGINS` | development, INFO, localhost:3000 | |
 | `ABB_INGEST_MAX_BODY_BYTES` / `ABB_INGEST_MAX_BATCH_EVENTS` | 5 MiB / 1000 | request limits (compressed and decompressed) |
 | `ABB_SESSION_WRITES_PER_MINUTE` | 30 | how many times one person may end sessions (Settings, Sessions) per minute, counted across API processes (Phase 19a step 5, ADR-157). Listing is not limited |
+| `ABB_METRICS_TOKEN` | unset | enables `GET /metrics` on the API (Phase 19c, ADR-165) and is the bearer token for it and for the worker's endpoint. At least 24 characters (`openssl rand -hex 32`), refused at startup if shorter, never logged. Unset: `/metrics` is a plain 404 |
+| `ABB_METRICS_REQUESTS_PER_MINUTE` | 120 | one in-process bucket per API (or worker) process, spent by every request to `/metrics` whatever its token; over it: `429` |
+| `ABB_WORKER_METRICS_PORT` / `ABB_WORKER_METRICS_BIND` | unset / `127.0.0.1` | the worker serves the same registry on this port (needs `ABB_METRICS_TOKEN`); off unless the port is set. The bind must be an IP address; Compose does not publish the port |
 | `ABB_QUOTAS_ENABLED` | true | per-project quotas (Phase 19a, ADR-154). `false` is an emergency switch: nothing is checked or counted (the usage figures then go stale) |
 | `ABB_QUOTA_AGENTS` / `_RUNS_PER_DAY` / `_EVENTS_PER_DAY` / `_ARTIFACT_BYTES` | 500 / 50000 / 5000000 / 5368709120 (5 GiB) | the default quota of every project: distinct agents, runs created per UTC day, events accepted per UTC day, total stored artifact bytes. Owners and admins override each per project (Quotas settings page, `PUT /v1/projects/{id}/quotas`). The per-run event cap and the per-artifact size cap (`ABB_ARTIFACT_MAX_BYTES`) are separate and unchanged |
 | `ABB_RETENTION_MODE` | `dry_run` | `off` (the job does nothing), `dry_run` (measures and writes reports, deletes nothing) or `enforce` (deletes, in the order and within the bounds of ADR-160; refused, exit 2, unless `ABB_ARTIFACT_DIR` is an existing directory). Read by the retention process (and shown by the API and by the Retention settings page) |
@@ -224,12 +227,54 @@ The counters equal what committed: they are updated in the transaction that stor
 The per-day rows are one per active project per day and are pruned after 35 days by the retention job (ADR-160). Ingestion of one project is serialised on its project row for the length of one batch transaction; the measured cost is in `docs/benchmarks/phase-19a-quotas.md`.
 Counting began at the migration (0098): activity before it is not in the first day's figures; existing artifacts were counted from the start.
 
+## Metrics (Phase 19c, ADR-165)
+
+Both long-running processes keep an in-memory registry and expose it in the Prometheus text format. Counters restart at zero when a process restarts; Prometheus handles that. The API process has the HTTP series, the worker the job series; scrape every replica.
+
+**Turn it on.** Generate a token and set it for the API (and the worker if you want its metrics):
+
+```sh
+openssl rand -hex 32 > /etc/abb/metrics-token        # 64 characters; mode 0600, readable by the scraper only
+export ABB_METRICS_TOKEN="$(cat /etc/abb/metrics-token)"
+export ABB_WORKER_METRICS_PORT=9101                   # optional; worker only
+```
+
+**Scrape by hand.**
+
+```sh
+curl -s -H "Authorization: Bearer $(cat /etc/abb/metrics-token)" http://127.0.0.1:8000/metrics | head
+curl -s -H "Authorization: Bearer $(cat /etc/abb/metrics-token)" http://127.0.0.1:9101/metrics | head   # worker
+```
+
+A wrong or missing token is `401` with the standard error body (the same for both), a request over the rate bucket is `429`, and without `ABB_METRICS_TOKEN` the API answers `404` exactly as for any unknown path.
+
+**Scrape with Prometheus.** The token lives in a file, not in the config:
+
+```yaml
+scrape_configs:
+  - job_name: abb-api
+    metrics_path: /metrics
+    authorization:                # Prometheus 2.26+; older: bearer_token_file: /etc/prometheus/abb-metrics-token
+      type: Bearer
+      credentials_file: /etc/prometheus/abb-metrics-token
+    static_configs: [{ targets: ["api:8000"] }]
+  - job_name: abb-worker
+    authorization: { type: Bearer, credentials_file: /etc/prometheus/abb-metrics-token }
+    static_configs: [{ targets: ["worker:9101"] }]
+```
+
+**Do not expose `/metrics` publicly.** It carries no tenant data (every label is a route template, a method, a status or a closed enum; never an id, a slug, a user or an address), but it describes your traffic and capacity. At the reverse proxy, route only the paths you serve (`/v1/*`, `/healthz`) and answer `/metrics` with 404 from the public listener; let the scraper reach the API on the private network. The rate bucket is global to the process, so anyone who can reach the port can spend it and make the real scraper see `429` for up to a minute: the network is the control, the token is the second layer. The worker's port binds to loopback unless `ABB_WORKER_METRICS_BIND` is set (inside a container network a scraper needs `0.0.0.0`); Compose publishes neither port by default.
+
+**Rotate the token.** Change the file and restart the API and worker; update the scraper's file at the same time (a brief 401 gap is expected).
+
+**What is exposed (step 1).** `http_requests_total{method,route,status}`, `http_request_duration_seconds{method,route}`, `http_requests_in_flight`, `process_start_time_seconds`, `process_uptime_seconds`, `abb_build_info{version}`; the catalogue also declares (and later steps increment) the telemetry, worker, stream, dependency and control families listed in `abb_api/obs/catalogue.py`. A route that matched nothing is labelled `unmatched`; a method outside the standard seven is `other`. Series are capped (per label and per metric), so hostile traffic cannot grow the scrape.
+
 ## What to watch
 
 Structured JSON logs (one line per request with `request_id`, and `workspace_id`, `project_id`, `key_id` after
 authentication; payloads and secrets are never logged). Messages worth alerting on: `lease lost while running`, `spans left untouched`, `job failed` with
 `outcome: dead_letter`, `worker loop error`, `conflicting duplicate events ignored`, `authentication unavailable`,
-`ingest unavailable`, `stream listener unavailable`, `stream failed`. Application metrics (spec §116) arrive in Phase 19c; until then use the logs and these queries:
+`ingest unavailable`, `stream listener unavailable`, `stream failed`. Application metrics (spec §116) are being added in Phase 19c (the registry and HTTP series exist, see Metrics above; the domain families follow); until they are complete use the logs and these queries:
 
 ```sql
 -- queue depth and oldest waiting job
