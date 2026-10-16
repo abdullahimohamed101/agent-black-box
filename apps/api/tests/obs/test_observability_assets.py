@@ -449,6 +449,9 @@ def test_compose_observability_profile() -> None:
                 assert volume.endswith(":ro"), f"{name}: {volume} should be read-only"
     mounts = services["prometheus"]["volumes"]
     assert "./.local/metrics-token:/etc/prometheus/abb-metrics-token:ro" in mounts
+    # Prometheus runs as the invoking (non-root) user, so its in-memory data directory must be world-writable: a recent Docker
+    # mounts a bare tmpfs 0775 root:root and Prometheus panics on /prometheus/queries.active (found by scripts/obs-e2e.sh).
+    assert services["prometheus"]["tmpfs"] == ["/prometheus:mode=1777"]
     env = services["grafana"]["environment"]
     assert env["GF_AUTH_ANONYMOUS_ENABLED"] == "false"
     assert env["GF_USERS_ALLOW_SIGN_UP"] == "false"

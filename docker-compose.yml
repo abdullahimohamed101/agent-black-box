@@ -198,8 +198,10 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=24h
       - --web.listen-address=:9090
+    # mode=1777: a recent Docker mounts a tmpfs 0775 root:root, which the non-root user above cannot write (Prometheus then
+    # panics on /prometheus/queries.active). Found by scripts/obs-e2e.sh, the first thing to run this profile for real.
     tmpfs:
-      - /prometheus
+      - /prometheus:mode=1777
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
