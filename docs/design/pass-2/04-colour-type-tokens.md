@@ -270,31 +270,31 @@ the old screens keep working.
 | Old name | Status | Now | Readers | Note |
 | --- | --- | --- | --- | --- |
 | `--bg` | aliased | `--color-bg-canvas` | 9 |  |
-| `--surface` | aliased | `--color-bg-raised` | 56 | collapses into canvas in step 5 (tables and panels sit directly on it) |
+| `--surface` | aliased | `--color-bg-raised` | 54 | collapses into canvas in step 5 (tables and panels sit directly on it) |
 | `--surface-2` | deleted in step 5 | `--color-legacy-surface-2` | 7 | removed role |
-| `--border` | aliased | `--color-border-subtle` | 91 |  |
-| `--border-strong` | aliased | `--color-border-strong` | 20 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
-| `--ink` | aliased | `--color-text-primary` | 23 |  |
-| `--fg` | deleted in step 5 | `--color-text-primary` | 39 | ADR-111 alias of --ink |
-| `--fg-2` | deleted in step 5 | `--color-text-primary` | 13 | no role between ink and ink-2 |
-| `--muted` | aliased | `--color-text-secondary` | 68 |  |
-| `--accent` | aliased | `--color-interactive-default` | 53 |  |
+| `--border` | aliased | `--color-border-subtle` | 90 |  |
+| `--border-strong` | aliased | `--color-border-strong` | 19 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
+| `--ink` | aliased | `--color-text-primary` | 22 |  |
+| `--fg` | deleted in step 5 | `--color-text-primary` | 38 | ADR-111 alias of --ink |
+| `--fg-2` | deleted in step 5 | `--color-text-primary` | 12 | no role between ink and ink-2 |
+| `--muted` | aliased | `--color-text-secondary` | 67 |  |
+| `--accent` | aliased | `--color-interactive-default` | 52 |  |
 | `--accent-bg` | deleted in step 5 | `--color-bg-wash` | 2 | the accent fill is removed; the wash is the selection colour |
 | `--sel` | aliased | `--color-bg-wash` | 14 |  |
 | `--info` | deleted in step 5 | `--color-interactive-default` | 3 | removed role |
-| `--fail` | aliased | `--color-status-fault` | 13 |  |
+| `--fail` | aliased | `--color-status-fault` | 11 |  |
 | `--bad` | deleted in step 5 | `--color-status-fault` | 21 | ADR-111 alias of --fail |
 | `--fail-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 2 | no red fill (one red line) |
 | `--bad-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 2 | no red fill (one red line) |
-| `--wait` | aliased | `--color-status-caution` | 28 |  |
+| `--wait` | aliased | `--color-status-caution` | 27 |  |
 | `--warn` | deleted in step 5 | `--color-status-caution` | 10 | ADR-111 alias of --wait |
 | `--wait-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 7 | caution is text only, no fill |
 | `--warn-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 1 | caution is text only, no fill |
-| `--ok` | deleted in step 5 | `--color-legacy-ok` | 6 | green removed; success is a check glyph in ink-2 |
+| `--ok` | deleted in step 5 | `--color-legacy-ok` | 5 | green removed; success is a check glyph in ink-2 |
 | `--ok-bg` | deleted in step 5 | `--color-legacy-ok-bg` | 0 | green removed |
 | `--mark` | aliased | `--color-brand-mark` | 1 |  |
-| `--sans` | aliased | `--font-sans` | 24 |  |
-| `--mono` | aliased | `--font-mono` | 49 |  |
+| `--sans` | aliased | `--font-sans` | 23 |  |
+| `--mono` | aliased | `--font-mono` | 48 |  |
 | `--fs-headline` | aliased | `--type-h1-size` | 4 |  |
 | `--fs-title` | aliased | `--type-h2-size` | 8 |  |
 | `--fs-body` | aliased | `--type-body-size` | 12 |  |

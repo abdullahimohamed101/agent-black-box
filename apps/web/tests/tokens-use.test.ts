@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 // ADR-111 / ADR-166: red means failure and nothing else (design pass 2 tightens it to the fault line and the failed word:
-// tests/tokens-colour-rules.test.ts pins the token side and a ratchet on this list's length; step 5 shrinks it). The old and
+// tests/tokens-colour-rules.test.ts pins the token side and a ratchet on this list's length; step 5 shrinks it; 5a: 32 to 26). The old and
 // the new token names are both policed.
 // ADR-111: red means failure and nothing else. Any rule that reads --fail, --bad or their -bg tints must be on this allowlist
 // of failure selectors; a new use needs a new entry here, which is the review point.
@@ -15,11 +15,7 @@ const FILES = readdirSync(DIR)
 const ALLOWED: RegExp[] = [
   /^\.stat\[data-tone="bad"\]/,
   /^\.badge\[data-tone="bad"\]/,
-  /^\.badge\[data-status="(FAILED|TIMED_OUT|BLOCKED)"\]$/,
   /^\.tag-bad$/,
-  /^\.state\[data-state="error"\]/,
-  /^\.search-problem/,
-  /^\.evaluation\[data-state="failed"\]/,
   /^\.live-bar\[data-tone="bad"\]/,
   /^\.tl-row\[data-(first-)?error\]/,
   /^\.drawer\[data-error\]/,
@@ -30,14 +26,12 @@ const ALLOWED: RegExp[] = [
   /^\.field-error$/,
   /^\.findings-state\[data-tone="bad"\]/,
   /^\.finding\[data-severity="critical"\]/,
-  /^\.runs td\.num strong$/,
-  /^\.run-fail-sentence$/, // the runs list's failure line (Phase 22 step 7)
+  /^\.run-fail-dash$/, // the miniature fault line before a failure sentence in the runs list (step 5a)
   /^\.evaluation-error$/,
   /^\.compare-table \.delta\[data-tone="bad"\]/,
   /^\.agent-item\[data-error\]/,
   /^\.wf-row\[data-(first-)?error\]/,
   /^\.wf-lane-bar\[data-error\]/,
-  /^\.search-caret span$/,
   /^\.hl\[data-kind="failed"\] \.hl-lead$/,
   /^\.tl-fault(-label|::before)?$/, // the fault line (its ::before is the line itself) and its label (Phase 22 step 4)
   /^\.(tl|wf)-row\[data-landed="error"\]::after$/, // the outline that fades after a jump to the first error (step 6)

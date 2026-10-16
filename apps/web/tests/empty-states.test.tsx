@@ -56,10 +56,10 @@ describe("Empty and ErrorState carry a motif", () => {
     expect(el).toHaveTextContent("No evaluations yet");
   });
 
-  it("an error and a not-found each get a motif; the alert keeps its words", () => {
+  it("a not-found keeps its motif and a routine error does not (ADR-166: drawings only on first-run and not-found); both keep their words", () => {
     const { rerender } = render(<ErrorState error={new Error("boom")} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Could not load this data");
-    expect(screen.getByRole("alert").querySelector("svg.illus")).not.toBeNull();
+    expect(screen.getByRole("alert").querySelector("svg.illus")).toBeNull();
     rerender(
       <ErrorState error={new ApiRequestError("no such run", 404, "NOT_FOUND", null, false)} />,
     );
@@ -195,7 +195,7 @@ describe("the runs list uses the guide", () => {
     });
     await screen.findByTestId("setup-arrived");
     const user = userEvent.setup();
-    const box = screen.getByRole("searchbox", { name: "Search" });
+    const box = screen.getByRole("searchbox", { name: "Search runs" });
     await user.type(box, "x{Enter}");
     await waitFor(() => expect(screen.queryByTestId("setup-guide")).toBeNull());
     await user.clear(box);

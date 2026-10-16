@@ -3,43 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Analytics } from "@/components/Analytics";
 import { BarList, DayColumns } from "@/components/charts";
-import { Dashboard } from "@/components/Dashboard";
 import { fixtureAnalytics } from "@/fixtures/analytics";
 import { windowFrom } from "@/lib/queries";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
 
 afterEach(() => vi.unstubAllGlobals());
-
-describe("Dashboard (server aggregates, KI-028)", () => {
-  it("reads the analytics summary instead of sampling runs", async () => {
-    const calls = stubApi();
-    renderWithQuery(<Dashboard base={BASE} />);
-    expect(await screen.findByText("Success rate")).toBeVisible();
-    expect(screen.getByText(/runs started in the last 7 days/)).toBeVisible();
-    expect(calls.some((c) => c.startsWith("/api/abb/v1/analytics/summary"))).toBe(true);
-    // the recent tables are small separate requests, never a 200-run sample
-    expect(calls.filter((c) => c.includes("/v1/runs")).every((c) => !c.includes("limit=200"))).toBe(
-      true,
-    );
-    expect(screen.getByRole("link", { name: /analytics/i })).toHaveAttribute(
-      "href",
-      "/w/demo/projects/all/analytics",
-    );
-  });
-
-  it("shows an error with a retry when the aggregate fails", async () => {
-    stubApi({
-      "/analytics/summary": () =>
-        Response.json(
-          { error: { code: "ANALYTICS_TIMEOUT", message: "Too slow.", request_id: "req_1" } },
-          { status: 503 },
-        ),
-    });
-    renderWithQuery(<Dashboard base={BASE} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Too slow.");
-    expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
-  });
-});
 
 describe("Analytics page", () => {
   it("renders cost, retries, reliability and performance sections", async () => {

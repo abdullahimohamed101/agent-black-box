@@ -94,7 +94,7 @@ tell a visitor something the page does not tell today).
 | State | Headline | Body | Action |
 | --- | --- | --- | --- |
 | First time: no runs in this scope (the setup guide replaces the list) | No runs yet | Record one agent run in three steps. This page switches to it when the first event arrives. | the three steps below |
-| Zero results for a filter | No runs match these filters | Try clearing a filter. | Clear filters |
+| Zero results for a filter | No runs match these filters | Try clearing a filter. | none of its own: the "Clear filters" button in the chip row above is the action (one reset control, not two) |
 | Zero results from the top-bar search | No runs match this search. | | Show all in the runs list stays as the footer option |
 
 The setup guide keeps its three steps and behaviour (restyled, no serif):

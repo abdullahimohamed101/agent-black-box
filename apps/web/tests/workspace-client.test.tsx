@@ -151,7 +151,7 @@ describe("invitation token handling (D12)", () => {
     );
     render(<InviteAccept />);
     await userEvent.click(await screen.findByRole("button", { name: "Accept invitation" }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/w/acme/projects/all"));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/w/acme/projects/all/runs"));
     expect(calls[0]!.url).toContain("/api/abb/v1/invitations/accept");
     expect(JSON.parse(calls[0]!.body)).toEqual({ token: TOKEN });
     expect(takeInviteToken()).toBeNull();

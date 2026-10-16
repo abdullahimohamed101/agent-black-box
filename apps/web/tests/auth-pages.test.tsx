@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { auth } from "@/copy/auth";
 import InvitePage from "@/app/invite/page";
+import Home from "@/app/page";
 import LoginPage from "@/app/login/page";
 
 // Phase 22 step 10 (D11): sign-in and invitation are quiet pages inside the product. The auth logic is untouched: these
@@ -147,5 +149,45 @@ describe("invitation page", () => {
     render(<InvitePage />);
     await screen.findByText(/needs an invitation link/);
     expect(screen.queryByText("An invitation to a workspace is waiting for you.")).toBeNull();
+  });
+});
+
+describe("the entry page and the pages outside the shell (design pass 2)", () => {
+  it("a person with a workspace goes straight to its Runs (not the retired Overview)", async () => {
+    me.value = {
+      status: "ok",
+      value: { memberships: [{ workspace: { slug: "acme" } }] },
+    } as never;
+    await expect(Home()).rejects.toThrow("redirect:/w/acme/projects/all/runs");
+  });
+
+  it("a signed-in person with no workspace sees one sentence and a sign-out, no workspace links", async () => {
+    me.value = { status: "ok", value: { memberships: [] } } as never;
+    render(await Home());
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("No workspaces yet");
+    expect(screen.getByText(auth.home.noWorkspaces)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(document.querySelector("main")).toHaveClass("auth-page");
+    expect(screen.queryByRole("navigation")).toBeNull();
+  });
+
+  it("fixture mode opens the runs, and says what the data is", async () => {
+    fixtures.on = true;
+    render(await Home());
+    expect(screen.getByRole("link", { name: auth.home.fixtureOpen })).toHaveAttribute(
+      "href",
+      "/w/default/projects/all/runs",
+    );
+  });
+
+  it("each of the six sign-in notices is the fixed sentence; an unknown key falls back to the generic one", async () => {
+    for (const [key, sentence] of Object.entries(auth.errors)) {
+      document.body.innerHTML = "";
+      await login({ error: key });
+      expect(screen.getByRole("alert")).toHaveTextContent(sentence);
+    }
+    document.body.innerHTML = "";
+    await login({ error: "constructor" });
+    expect(screen.getByRole("alert")).toHaveTextContent(auth.errors.login_failed);
   });
 });

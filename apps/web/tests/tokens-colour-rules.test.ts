@@ -114,6 +114,6 @@ describe("the one red line (tokens)", () => {
       .slice(src.indexOf("const ALLOWED"), src.indexOf("];", src.indexOf("const ALLOWED")))
       .split("\n")
       .filter((l) => /^\s+\//.test(l));
-    expect(entries.length).toBeLessThanOrEqual(32);
+    expect(entries.length).toBeLessThanOrEqual(26); // 32 before step 5a (the runs list, notices and states shed their red)
   });
 });
