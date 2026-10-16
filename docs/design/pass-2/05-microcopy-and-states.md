@@ -1,13 +1,13 @@
 # Design pass 2, step 5: microcopy, errors, empty states and loading
 
-Status: batch 5a written 2026-10-16 (shell, navigation, sign-in and no-access pages, the Runs home). Later batches append their
-sections below (5b Run and Compare, 5c Review, Alerts, Analytics, Experiments, 5d Settings). Source prompt: Prompt 1 sections 4 to 7
+Status: batch 5a written 2026-10-16 (shell, navigation, sign-in and no-access pages, the Runs home); batch 5b written 2026-10-16 (sections 5
+and 6: the run page and Compare). Later batches append their sections below (5c Review, Alerts, Analytics, Experiments, 5d Settings). Source prompt: Prompt 1 sections 4 to 7
 (`docs/design/design-pass-2-prompts.md`). Voice from `01-direction.md` (voice cues): sentences, not labels; one verb per button;
 numbers carry units; no upper case shouting; no marketing tone; never echo captured content (names of runs, commands, payload
 text, search text). A string that includes a run, agent or workspace name renders it as a text node and appears only where the
 person already sees that name.
 
-The strings live in typed modules, one per area, in `apps/web/src/copy/` (`shell.ts`, `auth.ts`, `runs.ts`, `states.ts`). A
+The strings live in typed modules, one per area, in `apps/web/src/copy/` (`shell.ts`, `auth.ts`, `runs.ts`, `states.ts`, and from 5b `run.ts` for the run page and Compare). A
 component and its test import the same constant, so a copy change is one edit.
 
 Vocabulary rules used below: "run" not "trace" for the thing in the list; "scope" is the workspace plus project pair; "Review" is
@@ -133,3 +133,117 @@ sends one; the request id is shown in small type so a person can quote it. Nothi
 | Sign-out failed | | Sign-out failed; you may still be signed in. | none |
 
 Notices (a sentence with a leading glyph, no bar, no fill) use the same words as before; only the treatment changed.
+
+---
+
+## 5. Run page (batch 5b)
+
+Strings: `apps/web/src/copy/run.ts` (`run`). The headline sentences are composed in `apps/web/src/lib/runHeadline.ts` from the
+same facts as before (Phase 22: the stored first error, SUMMARY_VERSION 6); they use event metadata only (tool, model, error
+type, event kind, counts, cost), never content, so a viewer reads the same sentence as an owner.
+
+### 5.1 Title line, headline, figures
+
+| Element | Copy | Notes |
+| --- | --- | --- |
+| Back link | `Runs` then a `/` | accessible name "Back to runs"; the first level of the title line (KI-276); at 375 it is its own 32 px line with a leading chevron |
+| Title (h1) | the run's name, else its id | 24/30 600 ink; 20/26 below 900 px |
+| Status and age | glyph and word, then `· 5d ago`; a running run reads `Running · started 2 s ago` | the word is the only red thing here (Failed, Timed out, Blocked); the glyph is decoration |
+| Replay | `Replaying · state at the playhead` replaces the status | unchanged words (`STATUS_AS_OF`) |
+| Go button | **Go to first error** (accessible name unchanged from "Show it"? no: it is now "Go to first error"); tooltip "Jump to the first error (e)" | outline accent, right of the headline; full width and 44 px tall below 600 px |
+| Replay button | **Replay**, tooltip "Replay this run (r)" | in the tab row's right group; no drawn key cap |
+| Five figures | Duration, Cost, Tokens (`1,700 in / 160 out`), Retries, Errors | one wrapping line, mono values, ink-2 labels, no red and no amber; in replay Duration reads Elapsed and every figure is the state at the playhead |
+| Details | a disclosure (`Details`) under the figures | opens in place; a `dl` with Run id, Agent, Model, Ordered by, Started, Model calls, Tool calls, Files changed, Agents (when more than one) and, below 600 px, the "after the first error" line |
+
+### 5.2 The headline sentence
+
+One sentence, ink, 600, 24/30 (20/26 below 900 px), never red, ended with a full stop. `N` is the step of the first error, `T` the time from
+the run's first event to it. The second line (small, ink-2) keeps the Phase 22 facts: retries, time and cost spent after the
+first error, the total.
+
+| Status | Pattern | Example |
+| --- | --- | --- |
+| Failed, first error known | `Failed at step N after T: SUBJECT[, ERROR TYPE].` | Failed at step 8 after 6.5 s: shell command completed, error. |
+| Failed, first error not located | `Failed after DURATION.` | Failed after 8.8 s. |
+| Timed out | `Timed out at step N after T: SUBJECT.` / `Timed out after DURATION.` | Timed out at step 14 after 30 s: the run's end. |
+| Blocked | `Blocked at step N after T: SUBJECT.` / `Blocked after DURATION.` | Blocked at step 9 after 2.1 s: policy action blocked. |
+| Succeeded after a retry or an error | `Succeeded after N retries.` / `Succeeded after recovering from an error.` | Succeeded after 2 retries. |
+| Succeeded | `Completed in DURATION for COST.` | Completed in 8.8 s for $0.0100. |
+| Running | `Running at step N, last event 2 s ago.` (`Queued at step N.`; before any event `Running.`) | Running at step 6, last event 2 s ago. |
+| Waiting for approval | `Waiting for approval of CAPABILITY at step N.` (`Waiting for approval at step N.` when the capability is unknown) | Waiting for approval of github.push at step 5. |
+| Waiting (other) | `Waiting on SUBJECT at step N.` | Waiting on tool call at step 12. |
+| Cancelled | `Cancelled at step N after DURATION.` | Cancelled at step 9 after 6.5 s. |
+| Replay, before the first error | `Running at step N, replay.` (the outcome is never given away) | Running at step 4, replay. |
+| Replay, first error reached | `First error at step N after T: SUBJECT.` (`Blocked at step N after T: SUBJECT.` for a policy block) | First error at step 8 after 6.5 s: shell command completed, error. |
+
+Headline states that are not sentences: loading holds the frame with two bars and a polite "Loading the run summary"; error says
+"Could not load the details of this failure." (recovery, running, waiting, success and cancelled variants as before) with **Try
+again**; withheld adds " · details withheld for your role" to the second line.
+
+### 5.3 Tabs
+
+One tab component, `role="tablist"` named "Run views": **Timeline** (count of events), **Waterfall**, **Evidence** (count),
+**Findings** (count), **Evaluations**. Counts are decoration (`aria-hidden`), so a tab's name is its plain label. Left and right
+arrows, Home and End move and select; the URL keeps `?view=` (`waterfall`, `evidence`, `findings`, `evaluations`; the timeline is
+the absence of the parameter). Old links keep working: `?finding=ID` opens Findings with that finding marked.
+
+Right of the tabs: **Filter**, **Errors only** (timeline only) and **Replay**; Collapse groups is in the Filter menu's neighbour
+as a text button.
+
+### 5.4 Steps column
+
+Heading **Steps**. The coding-run story, numbered ("Read", "Model", "Edit (modified)", "Command failed (exit 1)", "Retry #1",
+"Tests, attempt 2: fail"); a failed step carries a cross glyph in ink, a retry a caution glyph. For a run with more than one agent
+a second heading **Agents** lists them (the agent filter). The column is absent when a run has neither. Below 1100 px it becomes
+one strip above the pane: `Steps · 6` (a disclosure).
+
+### 5.5 Timeline rows and the fault line
+
+Columns: Offset, Event (mono event type plus the detail), Duration, Status. No class column. No tinted rows. The markers are plain
+text: `error` (ink, 600, with a cross glyph) and `retry` (caution). The first error carries the 2 px fault line and its label on the
+line: **First error, step 8**. The hint line in the foot is a sentence ("j and k move, Enter opens, e jumps to the first error,
+r replays, Esc closes"), shown from 900 px, never as key caps. Foot count: `12 of 12 events shown` (replay appends `, replay`).
+New live events while scrolled away: a text button `3 new events`.
+
+### 5.6 Empty, withheld, error and loading
+
+| State | Headline or sentence | Action |
+| --- | --- | --- |
+| No events yet | This run has no events yet. | none |
+| Filters hide every event | No events match these filters | Clear filters |
+| No findings | Nothing wrong found. (analysis current) / No findings yet. (analysis catching up) | none |
+| No evidence | the existing sentence ("No artifacts were recorded in this run.") | none |
+| No evaluations | the existing Evaluations empty state, without a drawing | the evaluator picker |
+| Withheld content | the shared notice style ("i" mark, no bar, no fill): the existing sentences | none |
+| Trace expired | **Trace expired**: The trace of this run was removed by the retention policy; the run summary and its numbers remain. Events, findings, the waterfall, replay and evaluations are no longer available. | none (fixed sentence, no date) |
+| Trace being removed | **Trace being removed**: The retention policy is removing the trace of this run. Events, findings, the waterfall, replay and evaluations are no longer shown; the run summary and its numbers remain. | none |
+| Comparing an expired run (`TRACE_EXPIRED`) | **Trace expired**: The trace of this run was removed by the retention policy; the run summary and its numbers remain. A comparison or an evaluation needs the trace. | none |
+| Run not found (404) | Not found: This run no longer exists. It may have been removed by the retention policy, or the link may be wrong. | none (no retry for a 404) |
+| Run failed to load (network, 5xx) | Could not load this data: the API's fixed sentence (request id) | Try again |
+| Live connection | `Live`, `Connecting`, `Reconnecting`, `Live updates unavailable, refreshing periodically`; with partial data: "Partial data: some recent events may be missing until the connection recovers." | none |
+| Summary catching up | Summary is updating; figures below may lag the timeline. / Summary failed to update and needs an operator; the timeline is still accurate. | none |
+| Loading | `Loading run…` (skeleton frame), `Loading events…` (polite status), findings and evaluations `Loading findings…`, `Loading evaluations…` | none |
+
+---
+
+## 6. Compare (batch 5b)
+
+Strings: `run.ts` (`compare`).
+
+| Element | Copy |
+| --- | --- |
+| Back link and title | `Runs` `/` **Compare** (h1 `Compare`) |
+| Divergence sentence (h2 size, 18/24 600 ink, never red) | `The runs diverged at step 22: A read app/session.py, B read app/oauth.py.` / `The runs took the same steps.` (`(compared on metadata)` when alignment is metadata-only) |
+| Outcome line | `The first difference in outcome is at step 26.` / `The outcome first differs at the same step.` |
+| Delta line | `Duration -2.2 s, Cost -$0.0309, Calls -3, Files +1` (right minus left, mono, ink-2) |
+| Side cells | `A` and `B`, the run name (link, 600), the status glyph and word, then id, agent and age in small type |
+| Toolbar | `Steps 34, 13 differ` then **Jump to divergence**, **Previous difference**, **Next difference** |
+| Rule label | `Divergence, step 22` on a 2 px ink rule (not red: a fork is not a failure) |
+| Outcome label | `First outcome difference` in ink 600 on the row |
+| Empty side | No step on this side |
+| Folded steps | Show the 18 earlier steps (the same in both runs) |
+| Sections | Summary (disclosure **All measures**), Evaluations, Cost by model, Files |
+| Hint | Arrow keys move between steps; n and p jump to the next and previous difference. (small, ink-2) |
+| Pick state | **Pick two runs to compare** with a link to the runs list |
+| Loading | Comparing runs… |
+| Errors | as section 4; an expired side gets the `TRACE_EXPIRED` note above |
