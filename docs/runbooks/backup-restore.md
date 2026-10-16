@@ -81,3 +81,14 @@ The operator's `.env` and secrets stored outside the database (OIDC client secre
 ## Compose notes
 
 The `backup` service (profile `ops`) connects as the owner and mounts `./backups` (override with `ABB_BACKUP_DIR`) at `/backups`. The container runs as uid 10001: that directory must be writable by it (`chmod 0770` with a matching group, or `chown 10001`). Not yet exercised on the full stack (step 6).
+
+## Monitoring
+
+Dashboard row: **Retention and backups**. Alerts: `AbbBackupTooOld` (36 hours, ticket), `AbbBackupVeryOld` (72 hours, page), `AbbBackupNeverSucceeded`, `AbbBackupRunFailed`.
+
+Backups are not scraped; `python -m abb_api.backup create --metrics-textfile PATH` (or `ABB_METRICS_TEXTFILE`) writes `backup_last_success_timestamp_seconds`, `backup_last_duration_seconds`,
+`backup_bundle_bytes` and `backup_runs_total{outcome}` for node_exporter's textfile collector (OPERATIONS, "Backups, key rotation and retention"). A failed run does not erase the last success.
+
+- Too old: the schedule did not run or runs fail. `systemctl status abb-backup.timer`, the unit log, free space and exit codes (above). Take a backup by hand, then verify it.
+- Never succeeded: the textfile exists but records no success: usually a first run that failed; read the run's output.
+- **A backup that is not scheduled at all writes no file and is not detected** (KI-243). Treat the first scheduled run as part of setup and check the series exists.

@@ -24,3 +24,12 @@ until the next event for them.
 
 `GET /readyz` reports the same signal as a `worker` line (`degraded`/`worker_lag` when the oldest due job has waited over 60 seconds). It never fails readiness: a late worker does not make the API unable to serve. See `docs/OPERATIONS.md`, "Readiness, the database breaker and timeouts".
 
+## Metrics and alerts
+
+Dashboard row: **Worker and jobs**. Alerts: `AbbWorkerLagHigh` (oldest due job over 120 s for 10 minutes, ticket), `AbbWorkerLagSevere` (over 900 s, page), `AbbProcessorFailures`, `AbbScrapeDatabaseDown`.
+
+- `worker_job_lag_seconds{type}`: age of the oldest due job that has not started. This is the signal in step 2 above without SQL. Both the API and the worker export it (it is read from the database), so take the maximum, not the sum.
+- `worker_jobs_pending{type}`: due jobs waiting (saturates at 10 000).
+- `worker_jobs_total{type,outcome}` and `worker_job_duration_seconds{type}`: throughput and handler time; a `retried` rise with a flat `succeeded` is a failing handler (`processor_failures_total{type}`).
+- If `abb_scrape_database_up` is 0 the gauges above are cached: use the SQL in OPERATIONS ("What to watch").
+- No `worker_*` series at all from the worker job: it exports metrics only when `ABB_WORKER_METRICS_PORT` is set; the API's copy of the lag gauges still works.

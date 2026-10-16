@@ -41,3 +41,11 @@ The event data itself is safe: streams only read what ingestion already committe
 
 **Do not** add a second consumer that reads events "to feed streams": the stream reads Postgres by design (ADR-022). If many viewers of one
 hot run make the per-stream query a measured cost (see `docs/benchmarks/phase-5-streaming.md`), that is the trigger for a shared fan-out, via an ADR.
+
+## Metrics and alerts
+
+Dashboard row: **Alerts and streams**. Alerts: `AbbStreamDeliveryLag` (95th percentile stored-to-delivered over 5 s for 10 minutes), `AbbStreamConnectionsNearLimit` (40 or more open streams in a process; the cap is 50).
+
+- `sse_connections`: open streams in this process (step 4's cap). A staircase after a deploy is a reconnect storm.
+- `sse_delivery_lag_seconds`: time from an event being stored to its delivery. About 2 s at the tail with the listener down (step 5's fallback poll); more than that means the database or the process is slow.
+- The listener itself is not a metric (KI-234); use the `pg_stat_activity` query in step 5.

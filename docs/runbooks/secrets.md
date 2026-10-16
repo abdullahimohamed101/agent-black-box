@@ -21,3 +21,8 @@ Notes.
 - `server_secrets` rows are included in every backup bundle and in any copy of the database: **a bundle plus its passphrase is the keys to the installation**. Encrypt bundles at rest.
 - After restoring a backup the alert key row comes back with it, so destinations still open (tested in `tests/backup/test_drill.py`). A backup taken *before* a rotation restores an installation whose blobs are under the old key and whose key table has that row; that is consistent. Do not delete an old alert key row until every backup you may restore from is newer than the rotation, or accept that those backups cannot be used for alerting.
 - The secrets that live outside the database are the operator's to back up; the bundle does not contain them (ADR-162, "not covered").
+
+## Monitoring rotation
+
+Alert `AbbRotationRunFailed` (dashboard row **Retention and backups**): `rotation_runs_total{outcome="failed"}` grew in the last day, written by `python -m abb_api.rotate alerts --metrics-textfile PATH` for node_exporter.
+Rotation is resumable and idempotent, so run it again until it reports `verdict=old_keys_can_be_retired`; delivery keeps working meanwhile. `rotation_last_success_timestamp_seconds` is the time of the last good run.

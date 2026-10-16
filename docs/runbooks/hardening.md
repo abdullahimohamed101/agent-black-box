@@ -153,3 +153,21 @@ Rollback: the migrations downgrade cleanly (tests prove 0097/0098/0099 up and do
 
 Fixed windows allow a burst across a boundary up to twice a limit (KI-174); concurrency caps for streams and approval long polls are per process (KI-017, KI-147); the failed-auth throttle does not cover session cookies (KI-176) or sign-in callbacks (KI-073);
 one project's ingestion is serialised on its quota lock, so a second process stops helping one very hot project (KI-178); the body cap is per process and bounds accounted bytes, not the work after a body is read; a hostile authenticated client can fill the cap with its own legitimate large uploads (KI-182).
+
+## Monitoring (metrics and alerts)
+
+Dashboard row: **Controls: limiter, throttles, quotas, body cap**. Alerts: `AbbLimiterFailingOpen`, `AbbAuthThrottleBlocks`, `AbbSessionThrottleBlocks`, `AbbQuotaRefusals`, `AbbBodyCapRefusals`.
+The counters are aggregate: they say *that* a limit triggered and which kind, never who. For who, use the audit rows and request log lines described above.
+
+| Layer | Metric | Alert |
+| --- | --- | --- |
+| Shared limiter | `limiter_fail_open_total{scope}`, `limiter_database_calls_total{outcome}` | `AbbLimiterFailingOpen` (any fail-open for 5 minutes), `AbbLimiterDatabaseErrors` |
+| Failed-auth throttle | `auth_throttle_blocks_total{kind}` | `AbbAuthThrottleBlocks` (50 in 10 minutes) |
+| Failed-session throttle | `session_throttle_blocks_total{kind}` | `AbbSessionThrottleBlocks` |
+| Project quotas | `quota_refusals_total{quota}` | `AbbQuotaRefusals` (any in 30 minutes) |
+| Body-bytes cap | `body_cap_refusals_total{reason}`, `body_bytes_in_flight` | `AbbBodyCapRefusals` |
+| Role check | `db_role_privileged{reason}` | `AbbPrivilegedDatabaseRole` ([security operations](security-operations.md#privileged-database-role)) |
+| Search fair share | `search_busy_total{reason}`, `search_permits_in_use` | `AbbSearchBusy` |
+
+A fail-open decision means the database was unreachable and the limiter fell back to per-process budgets: the fleet admits up to N times the configured rate until it recovers. Look at
+[database saturation](database-saturation.md#limiter-database-calls) first.
