@@ -316,7 +316,7 @@ def public_table_count(name: str) -> int:
     return asyncio.run(go())
 
 
-def compose_backup(src_db: str, artifacts: Path, work: Path) -> dict[str, Any]:
+def compose_backup(src_db: str, artifacts: Path, work: Path, bundles_dir: Path) -> dict[str, Any]:
     """The compose `backup` service built from the API image: pg_dump/openssl from the Dockerfile's packages, the container's uid
     writing the bundle. Skipped (with the reason printed) ONLY when Docker is not available; a failure is a failure."""
     probe = subprocess.run(["docker", "info"], capture_output=True, text=True, check=False)  # noqa: S603, S607
@@ -324,18 +324,25 @@ def compose_backup(src_db: str, artifacts: Path, work: Path) -> dict[str, Any]:
         print("  SKIP [drill-compose] Docker is not available on this machine; the compose backup service path is NOT exercised here", flush=True)
         results["compose"] = {"skipped": "docker unavailable"}
         return results["compose"]
-    # The container runs as uid 10001, not as the person running this script: it must be able to read the artifact directory and
-    # to traverse the (private) temporary directory that holds this run. In a real compose stack the artifact volume is owned by that uid.
-    subprocess.run(["chmod", "-R", "a+rX", str(artifacts)], check=False)  # noqa: S603, S607
-    work.chmod(0o711)
-    out_dir = work / "compose-backups"
+    # Bind mounts must be paths the Docker daemon can see (Colima and Docker Desktop share the home directory, not the system
+    # temporary directory), so the compose step works in a directory under the repository's git-ignored .local/, with a copy of the
+    # artifact directory (the same bytes the other backups read). The container runs as uid 10001, not as this user: it must be able
+    # to read the copy and to write ./backups; in a real compose stack the artifact volume is owned by that uid.
+    share = ROOT / ".local" / f"backup-drill-{os.getpid()}"
+    shutil.rmtree(share, ignore_errors=True)
+    share.mkdir(parents=True)
+    shutil.copytree(artifacts, share / "artifacts")
+    subprocess.run(["chmod", "-R", "a+rX", str(share / "artifacts")], check=False)  # noqa: S603, S607
+    share.chmod(0o711)
+    out_dir = share / "backups"
     out_dir.mkdir()
-    out_dir.chmod(0o777)  # the container runs as uid 10001 (docker-compose.yml, runbook): the directory must be writable by it
+    out_dir.chmod(0o777)
     owner_url = url_for(src_db).replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal")
     override = work / "compose.override.yml"
+    # A project-private image tag: building must not replace the developer's own agent-black-box-api:local.
     override.write_text(
-        "services:\n  backup:\n    extra_hosts: ['host.docker.internal:host-gateway']\n    volumes:\n"
-        f"      - {artifacts}:/drill/artifacts:ro\n    environment:\n"
+        "services:\n  backup:\n    image: abb-p19b6-drill-backup:local\n    extra_hosts: ['host.docker.internal:host-gateway']\n    volumes:\n"
+        f"      - {share / 'artifacts'}:/drill/artifacts:ro\n    environment:\n"
         f"      ABB_BACKUP_DATABASE_URL: '{owner_url}'\n      ABB_ARTIFACT_DIR: /drill/artifacts\n")
     override.chmod(0o600)
     base = ["docker", "compose", "-p", "abb-p19b6-drill", "-f", str(ROOT / "docker-compose.yml"), "-f", str(override), "--profile", "ops"]
@@ -362,9 +369,18 @@ def compose_backup(src_db: str, artifacts: Path, work: Path) -> dict[str, Any]:
         manifest = json.loads((out_dir / "compose-bundle" / "MANIFEST.json").read_text())
         results["compose"]["manifest_seen_from_host"] = True
         results["compose"]["manifest"] = manifest
+        results["compose"]["row_counts_equal_module_bundle"] = manifest.get("row_counts") == json.loads((bundles_dir / "plain" / "MANIFEST.json").read_text()).get("row_counts")
+        check(results["compose"]["row_counts_equal_module_bundle"], "compose: the container's bundle records the same row counts as the module CLI's")
     except OSError:
         results["compose"]["manifest_seen_from_host"] = False  # Linux: the bundle is 0700 and owned by the container's uid, as designed
     subprocess.run([*base, "down", "--volumes", "--remove-orphans"], capture_output=True, text=True, check=False, env=environment, cwd=ROOT)  # noqa: S603
+    # The bundle is owned by the container's uid (0700): when the host cannot remove it, the same image does.
+    shutil.rmtree(share, ignore_errors=True)
+    if share.exists():
+        subprocess.run(["docker", "run", "--rm", "--user", "root", "--entrypoint", "sh", "-v", f"{share}:/s", "abb-p19b6-drill-backup:local", "-c", "rm -rf /s/backups /s/artifacts"],  # noqa: S603, S607
+                       capture_output=True, text=True, check=False)
+        shutil.rmtree(share, ignore_errors=True)
+    subprocess.run(["docker", "image", "rm", "-f", "abb-p19b6-drill-backup:local"], capture_output=True, text=True, check=False)  # noqa: S603, S607
     return results["compose"]
 
 
@@ -411,7 +427,7 @@ def drill() -> None:
     check(code == 0 and "encrypted=true" in out, "backup create --encrypt: exit 0", exit=code)
     results["backup"].update({"encrypted_seconds": round(enc_seconds, 2), "encrypted_bundle_bytes": dir_size(encrypted)})
     check(b"PGDMP" not in (next(encrypted.glob("database.dump*")).read_bytes()[:16]), "the encrypted database dump does not start with the PostgreSQL archive magic (it is ciphertext)")
-    compose_backup(src, src_artifacts, WORK)
+    compose_backup(src, src_artifacts, WORK, bundles)
 
     # ---------------------------------------------------------------- DESTROY the source
     gate("drill-destroy")

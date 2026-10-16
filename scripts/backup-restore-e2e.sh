@@ -50,7 +50,7 @@ PY
   if [ -n "${BACKUP_RESTORE_E2E_LOG_DIR:-}" ]; then
     mkdir -p "$BACKUP_RESTORE_E2E_LOG_DIR" && for f in "$WORK"/*.log "$WORK"/results.jsonl; do cp "$f" "$BACKUP_RESTORE_E2E_LOG_DIR"/ 2>/dev/null || true; done
   fi
-  rm -rf "$WORK"
+  rm -rf "$WORK" "$root"/.local/backup-drill-* 2>/dev/null || true
 }
 trap cleanup EXIT
 step() { printf '\n==> %s\n' "$*"; }
@@ -101,7 +101,7 @@ grep -q "receivers ready" "$WORK/receivers.log" || fail "receivers did not start
 
 step "the drill (the API and worker are started and stopped by the driver, on the source and then on the restored database)"
 suffix="$(date +%s)$RANDOM"
-export E2E_ROOT="$root" E2E_WORK="$WORK" E2E_STATE="$WORK/state.json" E2E_RESULTS="$WORK/results.jsonl" E2E_ORIGIN="$ABB_WEB_ORIGIN"
+export E2E_NAME=BACKUP-RESTORE-E2E E2E_ROOT="$root" E2E_WORK="$WORK" E2E_STATE="$WORK/state.json" E2E_RESULTS="$WORK/results.jsonl" E2E_ORIGIN="$ABB_WEB_ORIGIN"
 export E2E_WORKSPACE="drill-$suffix" E2E_WORKSPACE2="drill-unused-$suffix" E2E_SUFFIX="$suffix" E2E_ARTIFACT_DIR="$WORK/artifacts-src"
 export E2E_API_PORT="$API_PORT" E2E_CTRL_PORT="$CTRL_PORT" E2E_MAIN_PORT="$MAIN_PORT" E2E_SERVER_URL="$OWNER_URL"
 export E2E_OWNER_DB_URL="$OWNER_URL" E2E_RUNTIME_ROLE="$RUNTIME_ROLE" E2E_RUNTIME_PASSWORD="$RUNTIME_PASSWORD" E2E_OIDC_PORT=0

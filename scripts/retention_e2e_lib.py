@@ -38,6 +38,7 @@ API_PYTHON = H.API_PYTHON
 RESULTS = H.RESULTS
 ARTIFACT_DIR = Path(os.environ.get("E2E_ARTIFACT_DIR", str(WORK / "artifacts")))
 LOCK_WAIT = "Lock"
+NAME = os.environ.get("E2E_NAME", "RETENTION-E2E")
 
 _failures: list[str] = []
 _gate = "setup"
@@ -69,12 +70,12 @@ def info(**evidence: Any) -> None:
 
 def finish() -> None:
     if _failures:
-        print(f"RETENTION-E2E CHECK FAILED [{_gate}]: {len(_failures)} failed: {_failures}", file=sys.stderr)
+        print(f"{NAME} CHECK FAILED [{_gate}]: {len(_failures)} failed: {_failures}", file=sys.stderr)
         raise SystemExit(1)
 
 
 def die(message: str) -> None:
-    print(f"RETENTION-E2E CHECK FAILED [{_gate}]: {message}", file=sys.stderr)
+    print(f"{NAME} CHECK FAILED [{_gate}]: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
