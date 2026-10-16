@@ -32,12 +32,28 @@ def cfg(**kw: object) -> RetentionRunnerSettings:
     return RetentionRunnerSettings.model_validate(kw)
 
 
-def test_the_explicit_retention_url_always_wins() -> None:
+@pytest.fixture
+def hermetic_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The settings class also reads the process environment. CI sets ABB_DATABASE_URL for its
+    other steps, which would satisfy the local-development fallback, so these tests start from an
+    environment that names no database at all and say everything they rely on explicitly."""
+    for name in (
+        "ABB_RETENTION_DATABASE_URL",
+        "ABB_MIGRATION_DATABASE_URL",
+        "ABB_DATABASE_URL",
+        "ABB_ENVIRONMENT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_the_explicit_retention_url_always_wins(hermetic_env: None) -> None:
     for env in ("development", "test", "staging", "production"):
         assert cfg(environment=env, retention_database_url=URL).resolved_url() == URL
 
 
-def test_local_environments_may_reuse_the_owner_url_but_never_production() -> None:
+def test_local_environments_may_reuse_the_owner_url_but_never_production(
+    hermetic_env: None,
+) -> None:
     owner = "postgresql+asyncpg://owner@h/db"
     assert cfg(environment="development", migration_database_url=owner).resolved_url() == owner
     assert cfg(environment="test", database_url=owner).resolved_url() == owner
@@ -46,7 +62,7 @@ def test_local_environments_may_reuse_the_owner_url_but_never_production() -> No
             cfg(environment=env, migration_database_url=owner, database_url=owner).resolved_url()
 
 
-def test_without_any_url_the_runner_refuses() -> None:
+def test_without_any_url_the_runner_refuses(hermetic_env: None) -> None:
     with pytest.raises(RetentionConfigError, match="ABB_RETENTION_DATABASE_URL"):
         cfg(environment="development").resolved_url()
 
