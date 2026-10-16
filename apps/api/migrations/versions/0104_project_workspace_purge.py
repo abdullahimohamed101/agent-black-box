@@ -8,7 +8,7 @@ and the retention role's extra privileges.
 * `purge_tombstones`: a platform-level record, one row per purge request, with NO foreign key (it
   must outlive the workspace it describes) and no names or content: ids, a hash of the typed
   slug, counts per table, the steps done. The same row is the resume state of a running purge.
-  Only the retention role writes it; the application role holds nothing on it.
+  Only the retention role writes it; the application role may only read it.
 * Grants of `abb_retention`, all explicit (its earlier grants stay): `UPDATE (purge_state)` on
   projects and workspaces, `DELETE` on the tables that hold a project's or workspace's rows, and
   for the tables that hold credentials or content ONLY column-level `SELECT` of the key columns
@@ -135,8 +135,9 @@ def upgrade() -> None:
     )
     op.create_index("ix_purge_tombstones_workspace", "purge_tombstones", ["workspace_id"])
 
-    # The application neither reads nor writes the purge record (default privileges gave it all).
-    op.execute(f"REVOKE ALL ON TABLE purge_tombstones FROM {RUNTIME}")
+    # The application may read the record (ids and counts only, like the retention reports) and
+    # can neither forge nor erase it (default privileges gave it everything).
+    op.execute(f"REVOKE INSERT, UPDATE, DELETE ON TABLE purge_tombstones FROM {RUNTIME}")
 
     op.execute(f"GRANT SELECT, INSERT, UPDATE ON purge_tombstones TO {ROLE}")
     op.execute(f"GRANT UPDATE (purge_state) ON projects TO {ROLE}")

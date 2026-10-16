@@ -219,7 +219,8 @@ async def test_the_runtime_role_cannot_write_what_the_job_reports(engine: AsyncE
                 "has_table_privilege('abb_runtime', c.oid, 'UPDATE'), "
                 "has_table_privilege('abb_runtime', c.oid, 'DELETE') "
                 "FROM pg_class c WHERE c.relname IN "
-                "('retention_reports', 'retention_tombstones', 'retention_policies') "
+                "('retention_reports', 'retention_tombstones', 'retention_policies', "
+                "'purge_tombstones') "
                 "AND c.relkind = 'r'"
             )
         )
@@ -227,6 +228,7 @@ async def test_the_runtime_role_cannot_write_what_the_job_reports(engine: AsyncE
     assert privileges == {
         "retention_reports": (True, False, False, False),
         "retention_tombstones": (True, False, False, False),
+        "purge_tombstones": (True, False, False, False),  # readable, never forged or erased
         "retention_policies": (True, True, True, False),  # policies are written, never deleted
     }
 
@@ -256,7 +258,6 @@ async def runtime_engine(
         # (ADR-163), and it can neither read nor forge the record.
         "DELETE FROM projects",
         "DELETE FROM workspaces",
-        "SELECT * FROM purge_tombstones",
         "UPDATE purge_tombstones SET state = 'completed'",
         "INSERT INTO purge_tombstones (id, scope, workspace_id, scope_hash, tool_version) "
         "VALUES (gen_random_uuid(), 'workspace', gen_random_uuid(), 'x', 'x')",

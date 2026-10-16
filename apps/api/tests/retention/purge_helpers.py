@@ -109,7 +109,7 @@ async def seed_project_world(
     agent, evaluator, experiment, variant, rule = (uuid.uuid4() for _ in range(5))
     world.key_id = new_key_id()
     async with engine.begin() as conn:
-        p = {"w": ws, "p": pid}
+        p = {"w": ws, "p": pid, "s": secrets.token_hex(3)}
         await conn.execute(
             text(
                 "INSERT INTO agents (workspace_id, id, project_id, slug) VALUES (:w, :a, :p, 'a')"
@@ -143,21 +143,21 @@ async def seed_project_world(
         await conn.execute(
             text(
                 "INSERT INTO evaluators (workspace_id, id, project_id, name, kind, implementation, "
-                "version) VALUES (:w, :e, :p, 'ev', 'deterministic', 'impl', 1)"
+                "version) VALUES (:w, :e, :p, 'ev-' || :s, 'deterministic', 'impl', 1)"
             ),
             {**p, "e": evaluator},
         )
         await conn.execute(
             text(
                 "INSERT INTO experiments (workspace_id, id, project_id, name) "
-                "VALUES (:w, :x, :p, 'exp')"
+                "VALUES (:w, :x, :p, 'exp-' || :s)"
             ),
             {**p, "x": experiment},
         )
         await conn.execute(
             text(
                 "INSERT INTO experiment_variants (workspace_id, id, experiment_id, name, role) "
-                "VALUES (:w, :v, :x, 'base', 'baseline')"
+                "VALUES (:w, :v, :x, 'base-' || :s, 'baseline')"
             ),
             {**p, "x": experiment, "v": variant},
         )
@@ -171,7 +171,7 @@ async def seed_project_world(
         await conn.execute(
             text(
                 "INSERT INTO policies (workspace_id, id, project_id, name, rule, action) "
-                "VALUES (:w, gen_random_uuid(), :p, 'pol', '{}'::jsonb, 'allow')"
+                "VALUES (:w, gen_random_uuid(), :p, 'pol-' || :s, '{}'::jsonb, 'allow')"
             ),
             p,
         )
@@ -194,7 +194,7 @@ async def seed_project_world(
         await conn.execute(
             text(
                 "INSERT INTO alert_rules (workspace_id, id, project_id, name, trigger, "
-                "created_by, updated_by) VALUES (:w, :r, :p, 'rule', 'run_failed', 't', 't')"
+                "created_by, updated_by) VALUES (:w, :r, :p, 'rule-' || :s, 'run_failed', 't', 't')"
             ),
             {**p, "r": rule},
         )
@@ -466,7 +466,9 @@ async def assert_scope_gone(
                     )
                 ).scalar_one()
             )
-            keep = scope == "project" and table == "retention_tombstones"
+            keep = table == "purge_tombstones" or (
+                scope == "project" and table == "retention_tombstones"
+            )
             if n and not keep and not (table == "projects" and not expect_root_gone):
                 leftovers[table] = n
         # 2. Tables reached only through another table (no project_id column): the inventory's

@@ -53,7 +53,12 @@ CLASSIFICATION: Final[dict[str, Entry]] = {
     # ---- run data: removed run by run through the retention engine (ADR-160), then swept
     "runs": _direct("each run through the whole-run procedure (files, search, detail, record)"),
     "events": _direct("detail step of each run"),
-    "spans": _direct("detail step of each run"),
+    "spans": Entry(
+        Kind.PROJECT,
+        "detail step of each run (selected by run: a span row's project column may be empty)",
+        f"workspace_id = :w AND run_id IN {_RUNS_OF_PROJECT}",
+        _WW,
+    ),
     "cost_calculations": _direct("detail step of each run"),
     "findings": _direct("detail step of each run"),
     "run_findings": _direct("detail step of each run"),
