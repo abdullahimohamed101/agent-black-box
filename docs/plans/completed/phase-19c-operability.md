@@ -1,6 +1,6 @@
 # Phase 19c: Operability (production hardening, part 3 of 3)
 
-Status: Planned (2026-10-16). D1 was confirmed by the user in the grill ("A"); D2-D8 were decided by the assistant using its recommendations under the user's standing instruction for the overnight run (the user was asleep; every decision here is recorded so it can be reversed). Part 3 of Phase 19 (19a abuse resistance is merged; 19b data lifecycle is built and in review). This branch is stacked on `feature/phase-19b-data-lifecycle`; its PR opens against `main` after 19b merges.
+Status: Completed (merged 2026-10-16, PR #207, merge commit 822e2a0; stacked on #206; steps 1-8 built and evidenced below, the adversarial review `phase-19c-code-review.md` (no P0, no P1) is fixed or dispositioned). Planned (2026-10-16). D1 was confirmed by the user in the grill ("A"); D2-D8 were decided by the assistant using its recommendations under the user's standing instruction for the overnight run (the user was asleep; every decision here is recorded so it can be reversed). Part 3 of Phase 19 (19a abuse resistance is merged; 19b data lifecycle is built and in review). This branch is stacked on `feature/phase-19b-data-lifecycle`; its PR opens against `main` after 19b merges.
 Owner: api + scripts + deploy assets + docs. Branch: `feature/phase-19c-operability`.
 Depends on: 19a (limiter, throttle, quotas), 19b (retention, backups), Phase 17 (alert delivery), Phase 5 (stream), job framework.
 Spec refs: §116 (observability), §117 (SLOs), §118 (backpressure), §125 (runbooks), §126 (security operations), §127 (supply chain), §106; INV-8 (OpenTelemetry mapped at the boundary).
@@ -80,3 +80,29 @@ Unit tests for the registry (types, labels, cardinality cap, exposition format) 
   6. Dashboards, rules and runbooks reference only existing metrics, and the real software accepts them: `uv run pytest tests/obs/test_observability_assets.py tests/obs/test_operations_doc.py`; `OBS_E2E_STAGES=5 scripts/obs-e2e.sh` (promtool, every expression, the firing alert).
   7. The pins script and lockfile audits: `scripts/check-pins.sh` (and its failing cases: `cd apps/api && uv run pytest tests/test_supply_chain_pins.py`); `scripts/audit-lockfiles.sh` (8 lockfiles, 286 packages, clean); step 7 progress note below.
   8. Overhead and clean CI: `OBS_E2E_STAGES=7 scripts/obs-e2e.sh` and `docs/benchmarks/phase-19c-obs-e2e.md`; `scripts/quality.sh full` in CI; no existing test weakened (one assertion added to `test_compose_observability_profile`); the Fable review with the security pass is step 8.
+
+## Closing evidence (2026-10-16, merged tree)
+
+The per-step notes and the D9 command list above are the working evidence; the figures below are from the last full runs before the PR and from CI on the PR. Benchmarks: `docs/benchmarks/phase-19c-metrics.md`, `docs/benchmarks/phase-19c-obs-e2e.md`. Runbooks: the §125 set in `docs/runbooks/` (index `docs/runbooks/README.md`). ADRs: ADR-165, ADR-168 to ADR-173 (ADR-164, 166, 167 and 172 are unused numbers). Migration: 0106 (the runtime role reads the schema revision for `/readyz`).
+
+| Gate (D9) | Evidence | Status |
+| --- | --- | --- |
+| 1. `/metrics` authenticated, off without a token, bounded, every family moves | `make obs-e2e` gates 1 and 2; `tests/obs/` | VERIFIED |
+| 2. Readiness reflects real dependency state, liveness stays green | `OBS_E2E_STAGES=3`; `tests/test_readiness.py` | VERIFIED |
+| 3. Breaker sheds fast and recovers | `OBS_E2E_STAGES=3` (proxy outage); `tests/test_db_safety.py` | VERIFIED |
+| 4. No payload, secret or address in logs | the obs-e2e summary scans every process log at DEBUG; `tests/obs/test_log_sentinel.py` | VERIFIED |
+| 5. Optional tracing works, free when off | `OBS_E2E_STAGES=6`; `tests/obs/test_tracing_otel.py` (CI installs the `otel` extra since this phase) | VERIFIED |
+| 6. Dashboards, rules and runbooks reference only existing metrics; real software accepts them | `tests/obs/test_observability_assets.py`; obs-e2e gate 5 with real `promtool`, Prometheus and Grafana | VERIFIED (only `AbbTargetDown` is proven to fire: KI-263) |
+| 7. Pins script and lockfile audits | `scripts/check-pins.sh`, `tests/test_supply_chain_pins.py`, `scripts/audit-lockfiles.sh`; CI jobs `pins` and `lockfile-audit` | VERIFIED (Dependabot config UNVERIFIED (env) until its first scheduled run: KI-267) |
+| 8. Overhead bound, no test weakened, clean CI, review | obs-e2e stage 7 and `docs/benchmarks/phase-19c-obs-e2e.md`; adversarial review `docs/plans/completed/phase-19c-code-review.md` (no P0/P1, two P2 and ten P3 fixed); CI 32 of 32 jobs green on #207 | VERIFIED |
+
+Final figures: full API suite 4,294 passed (4,310 passed and 1 skipped when run the way CI runs it, with the `otel` extra and `ABB_DATABASE_URL` set); `make obs-e2e` 215 of 215 checks with real promtool, Prometheus and Grafana; CI 32 of 32 jobs green on PR #207.
+
+### Notes on the phase
+
+- The obs-e2e check "worker succeeded counter equals completed queue rows" raced (the counter increments after the commit) and was changed to a bounded poll (`b30ab02`).
+- A test-isolation bug (a runner-settings test read the `ABB_DATABASE_URL` that CI sets) failed CI once on #206 and was fixed in `58a6bae`. Lesson: when verifying, emulate CI's environment (`ABB_DATABASE_URL` set, `--extra otel`).
+
+### Open after the phase
+
+KI-220 to KI-223, KI-225 to KI-249, KI-260 to KI-270 are in `docs/KNOWN_ISSUES.md` and filed on GitHub in the close-out PR. Resolved by the phase: KI-024, KI-060, KI-176, KI-183, KI-237.
