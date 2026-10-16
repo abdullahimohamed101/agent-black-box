@@ -60,7 +60,8 @@ async def active_sleepers(engine: AsyncEngine) -> int:
                 await conn.execute(
                     text(
                         "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' "
-                        "AND query LIKE '%pg_sleep%' AND pid <> pg_backend_pid()"
+                        "AND query LIKE '%pg_sleep%' AND pid <> pg_backend_pid() "
+                        "AND datname = current_database()"
                     )
                 )
             ).scalar_one()

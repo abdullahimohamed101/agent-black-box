@@ -37,6 +37,9 @@ SERVER_URL = os.environ.get(
     "ABB_TEST_DATABASE_URL",
     "postgresql+asyncpg://abb:abb_dev_password@localhost:5433/abb_test",
 )
+# "gw0", "gw1", ... under pytest-xdist; "main" for a serial run. Embedded in every scratch database
+# and role name so leftovers can be traced to a worker, and so workers never share one.
+WORKER = os.environ.get("PYTEST_XDIST_WORKER", "main")
 # A port nothing listens on, to exercise the dependency-down path.
 UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://abb:x@127.0.0.1:1/abb_test"
 
@@ -74,13 +77,42 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
     )
 
 
+# Cluster-wide objects are shared by every worker and by every other test run on the same server,
+# so the one created by migration 0007 (`abb_runtime`) is provisioned under an advisory lock
+# before any migration runs. Postgres reports a race between two concurrent CREATE ROLE as a
+# unique violation on pg_authid, which the migration's `duplicate_object` handler does not catch.
+_ROLE_LOCK_KEY = 7_303_907_001
+
+
+async def _ensure_runtime_role() -> None:
+    engine = create_async_engine(_admin_url(), isolation_level="AUTOCOMMIT", poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text(f"SELECT pg_advisory_lock({_ROLE_LOCK_KEY})"))
+            try:
+                await conn.execute(
+                    text(
+                        "DO $$ BEGIN CREATE ROLE abb_runtime NOLOGIN; "
+                        "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+                    )
+                )
+            finally:
+                await conn.execute(text(f"SELECT pg_advisory_unlock({_ROLE_LOCK_KEY})"))
+    finally:
+        await engine.dispose()
+
+
 def alembic(database_url: str, *args: str) -> None:
+    asyncio.run(_ensure_runtime_role())
     subprocess.run(  # noqa: S603
         [sys.executable, "-m", "alembic", "-x", f"url={database_url}", *args],
         cwd=API_DIR,
         check=True,
         capture_output=True,
         text=True,
+        # Never let a test migration ALTER the shared `abb_runtime` role's password: concurrent
+        # workers would race on it ("tuple concurrently updated") and a dev login would change.
+        env={k: v for k, v in os.environ.items() if k != "ABB_RUNTIME_DB_PASSWORD"},
     )
 
 
@@ -100,7 +132,7 @@ async def _admin(statement: str) -> None:
 @contextmanager
 def temporary_database(*, migrate: bool) -> Iterator[str]:
     """A fresh database on the test server; optionally migrated to head. Dropped on exit."""
-    name = f"abb_test_{uuid.uuid4().hex[:12]}"
+    name = f"abb_test_{WORKER}_{uuid.uuid4().hex[:10]}"
     url = make_url(SERVER_URL).set(database=name).render_as_string(hide_password=False)
     asyncio.run(_admin(f'CREATE DATABASE "{name}"'))
     try:
@@ -133,7 +165,7 @@ def database_url() -> Iterator[str]:
 
 # A per-session login role that inherits the migration's `abb_runtime` privileges. The dev stack's
 # own `abb_runtime` role (and its password) is never touched by the tests.
-RUNTIME_ROLE = f"abb_rt_test_{uuid.uuid4().hex[:8]}"
+RUNTIME_ROLE = f"abb_rt_test_{WORKER}_{uuid.uuid4().hex[:8]}"
 RUNTIME_PASSWORD = "abb_runtime_test_only"
 
 

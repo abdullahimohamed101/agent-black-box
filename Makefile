@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e
+.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test test-api test-api-fast lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -44,6 +44,16 @@ test:
 	cd $(SDK) && uv run pytest -q
 	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run pytest -q
 	pnpm --filter @abb/web test
+
+# API suite only, serial (what CI runs).
+test-api:
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run pytest -q
+
+# Opt-in parallel API suite (pytest-xdist; one database per worker). N defaults to 3; see
+# docs/TESTING.md for measurements and caveats. CI stays serial.
+N ?= 3
+test-api-fast:
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run pytest -q -n $(N)
 
 lint:
 	cd $(SCHEMA) && uv run ruff check . && uv run ruff format --check .
