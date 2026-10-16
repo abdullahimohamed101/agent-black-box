@@ -83,7 +83,7 @@ Unit tests for the registry (types, labels, cardinality cap, exposition format) 
 
 ## Closing evidence (2026-10-16, merged tree)
 
-The per-step notes and the D9 command list above are the working evidence; the figures below are from the last full runs before the PR and from CI on the PR. Benchmarks: `docs/benchmarks/phase-19c-metrics.md`, `docs/benchmarks/phase-19c-obs-e2e.md`. Runbooks: the §125 set in `docs/runbooks/` (index `docs/runbooks/README.md`). ADRs: ADR-165, ADR-168 to ADR-173 (ADR-164, 166, 167 and 172 are unused numbers). Migration: 0106 (the runtime role reads the schema revision for `/readyz`).
+The per-step notes and the D9 command list above are the working evidence; the figures below are from the last full runs before the PR and from CI on the PR. Benchmarks: `docs/benchmarks/phase-19c-metrics.md`, `docs/benchmarks/phase-19c-obs-e2e.md`. Runbooks: the §125 set in `docs/runbooks/` (index `docs/runbooks/README.md`). ADRs: ADR-165, ADR-168 to ADR-171 and ADR-173 (ADR-172 was reserved and not needed; ADR-164 belongs to the test-parallelism branch `chore/api-tests-xdist` and ADR-166 to the design pass 2 branch `feature/design-pass-2`, both not yet merged; ADR-167 is held for design). Migration: 0106 (the runtime role reads the schema revision for `/readyz`).
 
 | Gate (D9) | Evidence | Status |
 | --- | --- | --- |
