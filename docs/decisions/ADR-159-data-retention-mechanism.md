@@ -1,6 +1,6 @@
 # ADR-159: Data retention: a separate role and process, dry run first
 
-Status: Accepted (Phase 19b, step 1: the foundation; enforcement follows in step 2). Amends INV-1 (AGENTS.md, spec §62). Deviates from spec §94 in one stated way. Resolves, over steps 1-2, KI-021, KI-040, KI-055, KI-072, KI-103, KI-180, KI-184.
+Status: Accepted (Phase 19b, step 1: the foundation). Enforcement, the order of deletion and the extra grants are ADR-160 (section 4 below is superseded by it; `enforce` is no longer refused). Amends INV-1 (AGENTS.md, spec §62). Deviates from spec §94 in one stated way. Resolves, over steps 1-2, KI-021, KI-040, KI-055, KI-072, KI-103, KI-180, KI-184.
 Date: 2026-10-15
 Phase: 19b
 
