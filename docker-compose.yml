@@ -188,7 +188,7 @@ services:
   # mode 0600, which is never committed); the stack never has the token in a config file or an argument. Tags are
   # kept for readability next to the sha256 digest (scripts/check-pins.sh); Dependabot bumps both.
   prometheus:
-    image: prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
     profiles: ["observability"]
     # Runs as the invoking user so it can read the 0600 token file (make sets these from `id`). The time series
     # live in memory (tmpfs) and are gone on `down`: this is a local view, not a monitoring system of record.
