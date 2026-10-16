@@ -24,6 +24,7 @@ import logging
 from collections.abc import Awaitable, Callable, Iterable
 
 from abb_api.obs.catalogue import METRICS, Catalogue
+from abb_api.obs.metrics import Counter, Gauge
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +44,13 @@ class ActiveKeyIds:
         timeout_seconds: float = LOAD_TIMEOUT_SECONDS,
         retry_seconds: float = RETRY_SECONDS,
         metrics: Catalogue = METRICS,
+        size_gauge: Gauge | None = None,
+        failure_counter: Counter | None = None,
     ) -> None:
-        self._metrics = metrics
+        # The same mechanism holds the active session hints (auth/session_throttle.py), which
+        # report to their own series.
+        self._size = size_gauge or metrics.auth_active_keys
+        self._failed = failure_counter or metrics.auth_active_key_refresh_failures_total
         self._load = load
         self._refresh = refresh_seconds
         self._cap = cap
@@ -73,7 +79,7 @@ class ActiveKeyIds:
         """A key was created (and committed) by this process: usable at once."""
         if len(self._ids) < self._cap:
             self._ids.add(key_id)
-            self._metrics.auth_active_keys.set(len(self._ids))
+            self._size.set(len(self._ids))
         if self._added_during_load is not None:
             self._added_during_load.add(key_id)
 
@@ -85,7 +91,7 @@ class ActiveKeyIds:
                 got = list(await self._load(self._cap + 1))
         except Exception as exc:
             self.failures += 1
-            self._metrics.auth_active_key_refresh_failures_total.inc()
+            self._failed.inc()
             # Class name only; the loop retries, and the old set (if any) keeps serving.
             logger.warning(
                 "active key ids not refreshed", extra={"error_class": type(exc).__name__}
@@ -106,7 +112,7 @@ class ActiveKeyIds:
         self._ids = set(got) | added
         self._loaded = True
         self.refreshes += 1
-        self._metrics.auth_active_keys.set(len(self._ids))
+        self._size.set(len(self._ids))
         return True
 
     def nudge(self) -> None:

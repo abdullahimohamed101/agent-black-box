@@ -101,6 +101,18 @@ def hash_session_token(token: str) -> bytes:
     return hashlib.sha256(token.encode("ascii")).digest()
 
 
+def is_session_token(token: str) -> bool:
+    """Whether a cookie value has the shape of a session token (anything else is refused without
+    a lookup)."""
+    return _SESSION_TOKEN.fullmatch(token) is not None
+
+
+def session_handle(token_hash: bytes) -> str:
+    """A hint of a session for the failed-session throttle (ADR-169): 16 bytes of the stored hash.
+    It is only ever compared in memory, never used to find or to authenticate a session."""
+    return token_hash[:16].hex()
+
+
 def session_invalid() -> AppError:
     # One response for missing, malformed, unknown, expired and revoked sessions.
     return AppError(

@@ -5,6 +5,7 @@ import hmac
 import logging
 import re
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import NoReturn
@@ -113,8 +114,15 @@ class FinishedLogin:
 
 class LoginService:
     def __init__(
-        self, engine: AsyncEngine, oidc: OidcClient, settings: Settings, clock: Clock
+        self,
+        engine: AsyncEngine,
+        oidc: OidcClient,
+        settings: Settings,
+        clock: Clock,
+        *,
+        on_session_created: Callable[[bytes], None] | None = None,
     ) -> None:
+        self._on_session_created = on_session_created
         self._engine = engine
         self._oidc = oidc
         self._settings = settings
@@ -201,6 +209,8 @@ class LoginService:
                 device_hint=device_hint(user_agent),
             )
             await users.record_login(user.id, now)
+        if self._on_session_created is not None:
+            self._on_session_created(hash_session_token(token))  # committed: usable at once
         logger.info(
             "login succeeded",
             extra={"user": public_id(IdKind.USER, user.id), "session": str(created.id)[:8]},

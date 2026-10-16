@@ -333,6 +333,9 @@ scrape_configs:
 | `backup_runs_total` | counter | outcome | Backup runs observed, by outcome. | `abb_api.backup create`, textfile |
 | `body_bytes_in_flight` | gauge | - | Request body bytes currently held in memory. | API: read at scrape from the budget |
 | `body_cap_refusals_total` | counter | reason | Requests refused by the in-flight body byte budget or the body ceiling. | API: `core/body_budget.py` |
+| `db_breaker_state` | gauge | - | Database circuit breaker in this process: 0 closed, 1 half-open (probing), 2 open. | API: `db/breaker.py`, on every transition |
+| `db_breaker_trips_total` | counter | - | Times the database circuit breaker opened. | API: `db/breaker.py` |
+| `db_role_privileged` | gauge | reason | 1 per reason the connected database role is too privileged (periodic re-check). | API, worker: `db/role_check.py` (`RoleMonitor`) |
 | `http_request_duration_seconds` | histogram | method, route | HTTP request duration (until the response is complete) by method and route. | API: `MetricsMiddleware`, once per request |
 | `http_requests_in_flight` | gauge | - | HTTP requests being served right now. | API: `MetricsMiddleware` |
 | `http_requests_total` | counter | method, route, status | HTTP requests by method, matched route template and status code. | API: `MetricsMiddleware` (`obs/http.py`), every request |
@@ -346,6 +349,8 @@ scrape_configs:
 | `process_uptime_seconds` | gauge | - | Seconds since the process started. | API, worker: computed at scrape |
 | `processor_failures_total` | counter | type | Handler failures by job type (retried or dead-lettered). | worker: every failed attempt (retried, dead-lettered, superseded, no handler) |
 | `quota_refusals_total` | counter | quota | Writes refused because a project quota was reached. | API: error handler (`obs/app_errors.py`) and the batch ingestion router |
+| `readiness_check` | gauge | check | 1 when the named /readyz check passes, 0 when it fails (set when /readyz evaluates). | API: `health/readiness.py`, each evaluation (at most every 2 s) |
+| `readiness_flaps_total` | counter | - | Changes of the overall /readyz answer between ready and not. | API: `health/readiness.py` |
 | `retention_deleted_total` | counter | tier, kind | Data removed by retention, by tier and kind (bytes are artifact file bytes). | retention process (enforce), textfile |
 | `retention_dry_run_candidates` | gauge | tier | What a dry-run tick found it would delete (runs for run tiers, rows otherwise). | retention process (dry run), textfile |
 | `retention_failures_total` | counter | code | Retention failures by fixed code (units: tiers, runs or ticks, see the runbook). | retention process, textfile |
@@ -356,7 +361,10 @@ scrape_configs:
 | `rotation_runs_total` | counter | outcome | Alert-key rotation runs observed, by outcome. | `abb_api.rotate alerts`, textfile |
 | `search_busy_total` | counter | reason | Searches refused with SEARCH_BUSY, by reason. | API: error handler (`SEARCH_BUSY`) |
 | `search_permits_in_use` | gauge | - | Search permits held by running searches in this process. | API: `SearchGate` |
+| `session_active_handles` | gauge | - | Size of the active session hint set the session throttle consults. | API: `auth/active_keys.py` (reused), after each refresh and sign-in |
+| `session_active_refresh_failures_total` | counter | - | Refreshes of the active session hint set that failed (the old set keeps serving). | API: `auth/active_keys.py` (reused) |
 | `session_revocations_total` | counter | reason | Sign-in sessions ended, by reason. | API: sign-out and the sessions page |
+| `session_throttle_blocks_total` | counter | kind | Requests refused (429) by the failed-session throttle, by the scope that was closed. | API: `auth/session_throttle.py`, each 429 SESSION_THROTTLED |
 | `sse_connections` | gauge | - | Open live-stream (SSE) connections. | API: stream lease acquire and release |
 | `sse_delivery_lag_seconds` | histogram | - | Time from an event being stored to its stream delivery. | API: per event sent on a stream (stored-to-sent) |
 | `telemetry_bytes_received_total` | counter | - | Request body bytes of accepted telemetry batches. | API: ingestion router, body bytes of committed batches |

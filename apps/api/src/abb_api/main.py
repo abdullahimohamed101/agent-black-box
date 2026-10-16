@@ -31,6 +31,7 @@ from abb_api.auth.login import LoginService
 from abb_api.auth.oidc import OidcClient
 from abb_api.auth.repository import ApiKeyLookup
 from abb_api.auth.router import router as auth_router
+from abb_api.auth.session_throttle import SessionThrottle
 from abb_api.auth.sessions_router import router as sessions_router
 from abb_api.auth.throttle import AuthThrottle
 from abb_api.authz.audit import new_denial_limiter
@@ -206,6 +207,21 @@ async def _load_active_key_ids(engine: AsyncEngine, clock: Clock, limit: int) ->
         return await ApiKeyLookup(conn).active_key_ids(clock(), limit)
 
 
+async def _load_active_session_handles(engine: AsyncEngine, clock: Clock, limit: int) -> list[str]:
+    """One bounded read of the usable sessions' hash prefixes (the session throttle's hint set)."""
+    now = clock()
+    async with engine.begin() as conn:
+        await conn.execute(text("SELECT set_config('statement_timeout', '4000', true)"))
+        rows = await conn.execute(
+            text(
+                "SELECT substr(token_hash, 1, 16) FROM sessions WHERE revoked_at IS NULL "
+                "AND expires_at > :now AND idle_expires_at > :now LIMIT :limit"
+            ),
+            {"now": now, "limit": limit},
+        )
+        return [bytes(row[0]).hex() for row in rows]
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -306,6 +322,18 @@ def create_app(
         app.state.auth_throttle = AuthThrottle(
             settings, counters, engine, active_keys=active_keys, metrics=metrics
         )
+        active_sessions = ActiveKeyIds(
+            lambda limit: _load_active_session_handles(engine, clock, limit),
+            refresh_seconds=settings.session_fail_active_refresh_seconds,
+            cap=settings.session_fail_active_cap,
+            metrics=metrics,
+            size_gauge=metrics.session_active_handles,
+            failure_counter=metrics.session_active_refresh_failures_total,
+        )
+        session_throttle = SessionThrottle(
+            settings, counters, active=active_sessions, metrics=metrics
+        )
+        app.state.session_throttle = session_throttle
         app.state.ingestion = IngestionService(engine, ingest_guard, settings, clock)
         app.state.runs = RunService(
             engine,
@@ -348,7 +376,13 @@ def create_app(
             stale_seconds=settings.eval_stale_seconds,
             judge_provider=settings.judge_provider,
         )
-        app.state.login = LoginService(engine, oidc, settings, clock) if oidc else None
+        app.state.login = (
+            LoginService(
+                engine, oidc, settings, clock, on_session_created=session_throttle.session_created
+            )
+            if oidc
+            else None
+        )
         app.state.artifacts = ArtifactService(
             engine,
             artifact_store or LocalFsArtifactStore(settings.artifact_dir),
@@ -370,10 +404,13 @@ def create_app(
         hub.start()
         if settings.auth_fail_enabled:
             await active_keys.start()  # bounded; a failure leaves the set unloaded and retries
+        if settings.session_fail_enabled:
+            await active_sessions.start()
         try:
             yield
         finally:
             await role_monitor.stop()
+            await active_sessions.stop()
             await active_keys.stop()
             if counters is not None:
                 await counters.close()
