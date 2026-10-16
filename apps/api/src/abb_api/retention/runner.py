@@ -89,10 +89,17 @@ _QUESTION = text(
                   FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                  WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')), false),
       has_schema_privilege(current_user, 'public', 'CREATE'),
-      has_table_privilege(current_user, 'public.api_keys', 'SELECT,INSERT,UPDATE,DELETE')
+      -- Reading or forging a credential. DELETE alone is the purge's privilege (ADR-163): it can
+      -- remove rows but neither read a secret nor mint a key.
+      has_column_privilege(current_user, 'public.api_keys', 'secret_hash', 'SELECT,UPDATE')
+        OR has_table_privilege(current_user, 'public.api_keys', 'INSERT')
         OR has_table_privilege(current_user, 'public.server_secrets', 'SELECT,INSERT,UPDATE,DELETE')
-        OR has_table_privilege(
-             current_user, 'public.alert_destinations', 'SELECT,INSERT,UPDATE,DELETE')
+        OR has_column_privilege(
+             current_user, 'public.alert_destinations', 'config_encrypted', 'SELECT,UPDATE')
+        OR has_column_privilege(
+             current_user, 'public.alert_destinations', 'signing_secret_encrypted',
+             'SELECT,UPDATE')
+        OR has_table_privilege(current_user, 'public.alert_destinations', 'INSERT')
     FROM pg_roles r WHERE r.rolname = current_user
     """
 )
@@ -251,6 +258,52 @@ async def retry_failed(settings: RetentionRunnerSettings) -> int:
         await engine.dispose()
 
 
+def purge_store_of(settings: RetentionRunnerSettings) -> ArtifactStore:
+    """The artifact store a purge deletes through. Unlike enforcement it does not depend on the
+    retention mode (a purge is an explicit action), but it has the same wrong-directory guard."""
+    if not Path(settings.artifact_dir).is_dir():
+        raise RetentionConfigError(
+            "ABB_ARTIFACT_DIR is not an existing directory: a purge would delete artifact "
+            "records and leave the files. Mount the API's artifact directory."
+        )
+    return LocalFsArtifactStore(settings.artifact_dir)
+
+
+async def run_purge(settings: RetentionRunnerSettings, args: argparse.Namespace) -> int:
+    """`purge-project` / `purge-workspace` (ADR-163): dry run unless `--confirm` names the slug."""
+    from abb_api.retention import purge  # imported here: only the operator's process needs it
+
+    scope = purge.WORKSPACE_SCOPE if args.command == "purge-workspace" else purge.PROJECT_SCOPE
+    request = purge.PurgeRequest(
+        scope=scope,
+        workspace_slug=args.workspace,
+        project_slug=getattr(args, "project", None),
+        dry_run=args.dry_run,
+        confirm=args.confirm,
+    )
+    deleting = not request.dry_run and request.confirm is not None
+    store = purge_store_of(settings) if deleting else None
+    engine = await _engine(settings)
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, stop.set)  # stops at the next batch boundary
+        except (RuntimeError, NotImplementedError):  # not the main thread (tests)
+            pass
+    try:
+        return await purge.execute(
+            engine,
+            store,
+            request,
+            batch_size=settings.retention_batch_size,
+            timeout_ms=max(int(settings.retention_statement_timeout_seconds * 1000), 1),
+            stop=stop,
+        )
+    finally:
+        await engine.dispose()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="abb_api.retention", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -259,10 +312,28 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "retry-failed", help="give runs whose retry attempts ran out a fresh set of attempts"
     )
+    for name, what in (("purge-project", "one project"), ("purge-workspace", "a whole workspace")):
+        purge = sub.add_parser(
+            name,
+            help=f"PERMANENTLY delete {what} from every backend (dry run unless --confirm)",
+        )
+        purge.add_argument("--workspace", required=True, help="the workspace slug")
+        if name == "purge-project":
+            purge.add_argument("--project", required=True, help="the project slug")
+        purge.add_argument(
+            "--dry-run", action="store_true", help="print the counts and delete nothing (default)"
+        )
+        purge.add_argument(
+            "--confirm",
+            default=None,
+            help="the exact slug of what is deleted (project slug, or workspace slug); "
+            "without it nothing is deleted",
+        )
     return parser
 
 
-async def _run(command: str, settings: RetentionRunnerSettings) -> int:
+async def _run(args: argparse.Namespace, settings: RetentionRunnerSettings) -> int:
+    command = args.command
     configure_logging(settings.log_level, service="abb-retention")
     if command == "run":
         stop = asyncio.Event()
@@ -274,6 +345,8 @@ async def _run(command: str, settings: RetentionRunnerSettings) -> int:
     if command == "retry-failed":
         print(f"reset={await retry_failed(settings)}")
         return 0
+    if command in ("purge-project", "purge-workspace"):
+        return await run_purge(settings, args)
     result = await run_once(settings)
     summary = _summary(result)
     print(" ".join(f"{k}={v}" for k, v in summary.items()))
@@ -284,7 +357,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(list(argv) if argv is not None else sys.argv[1:])
     try:
         settings = RetentionRunnerSettings()
-        return asyncio.run(_run(args.command, settings))
+        return asyncio.run(_run(args, settings))
     except RetentionConfigError as refusal:
         print(f"error: {refusal}", file=sys.stderr)
         return 2

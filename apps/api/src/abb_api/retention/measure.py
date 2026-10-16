@@ -256,14 +256,19 @@ async def measure_operational(
     return TierCount(m.ReportTier.OPERATIONAL, rows=total, truncated=truncated)
 
 
-def stranger_predicate(now: datetime) -> Any:
+def stranger_predicate(now: datetime, *, min_age_days: int | None = m.STRANGER_DAYS) -> Any:
     """People who signed in on an invitation and never joined: no membership, no open invitation,
     no live session, nothing that references them. One predicate for the count and the delete, so
-    a reference that appears after the count is honoured when the row is removed (KI-194)."""
+    a reference that appears after the count is honoured when the row is removed (KI-194).
+
+    `min_age_days=None` drops the age condition: the workspace purge applies the same rule to the
+    people whose last membership it just removed (ADR-163)."""
     s, u = t.sessions, t.users
     members, invites, members_by = t.workspace_members, t.invitations, t.workspace_members.alias()
     return and_(
-        u.c.created_at < now - timedelta(days=m.STRANGER_DAYS),
+        literal(True)
+        if min_age_days is None
+        else u.c.created_at < now - timedelta(days=min_age_days),
         not_(_exists(members.c.user_id == u.c.id)),
         not_(_exists(members_by.c.invited_by == u.c.id)),
         not_(

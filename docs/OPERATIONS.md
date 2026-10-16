@@ -188,6 +188,52 @@ A person ending a session (or all but the current one) writes `session.revoke` /
 
 *Known limits:* approvals keep their scrubbed arguments (KI-195); artifact files with no row are not swept (KI-196); a late event for an expired or deleted run creates a fresh run (KI-197); the audit entry of a pass is lost if the process dies in it, the tombstones are the authoritative record (KI-200).
 
+### Purging a project or a workspace (Phase 19b step 5, ADR-163)
+
+**This is permanent.** A purge deletes a project (or a whole workspace) from every backend: Postgres rows, artifact files, search entries and analytics rollups. Nothing brings it back except a restore of a backup taken before it, and backups keep the data until they expire (KI-215). **Take a backup bundle first (`python -m abb_api.backup create`) and know where it is.** There is no API endpoint for this and the API process cannot do it; it is run by an operator, in the retention process's environment (`ABB_RETENTION_DATABASE_URL`, and `ABB_ARTIFACT_DIR` pointing at the API's artifact directory, as for enforcement). `ABB_RETENTION_MODE` is irrelevant: a purge is an explicit action.
+
+```
+python -m abb_api.retention purge-project   --workspace <slug> --project <slug> [--dry-run] [--confirm <project-slug>]
+python -m abb_api.retention purge-workspace --workspace <slug>                  [--dry-run] [--confirm <workspace-slug>]
+```
+
+1. **Dry run (the default).** Without `--confirm` nothing is changed. Example:
+
+```
+$ python -m abb_api.retention purge-project --workspace acme --project checkout
+purge-project workspace=acme project=checkout
+postgres, rows per table:
+  agents 3
+  alert_rules 2
+  api_keys 4
+  artifacts 1840
+  events 912344
+  runs 5120
+  spans 40211
+  ...
+artifact store: files=1840 bytes=1403219811
+search index: entries=5120
+rollups: rows=612
+dry run: nothing was deleted
+to purge, run the same command with --confirm checkout (this is permanent: take a backup first)
+```
+
+   Check the numbers are what you expect for that scope and nothing else. For a workspace it also says how many people are tied to it and how many the users rule could remove.
+2. **Purge.** Repeat the command with `--confirm` and the **exact** slug of what is deleted (the project slug for `purge-project`, the workspace slug for `purge-workspace`; case matters). Anything else is refused with exit 2 and nothing is touched.
+
+```
+$ python -m abb_api.retention purge-project --workspace acme --project checkout --confirm checkout
+purge-project: done purge_id=7b0f...; removed (counts when the purge began):
+...
+```
+
+3. **What happens first.** The project (or workspace) is marked `purging` in the same transaction as its purge record. From that moment its API keys answer the uniform `401 API_KEY_INVALID`, ingestion stops, the project and its runs read as not found (a purging workspace is a 404 for its members), and then the data is deleted: every run through the retention engine's procedure (files, search entry, events and derived rows, run record, tombstone, rollups rebuilt), then the project's rules (this resolves KI-170), approvals, policies, agents, keys, counters, and last the project row, in one transaction with the record's completion and one counts-only audit entry (`retention.purge.project`, system actor). A workspace purge does this for every project, then its destinations (with their sealed secrets), invitations, the workspace's audit log, memberships and the workspace row.
+4. **The users rule.** People are platform-level. A workspace purge removes memberships and invitations and deletes a person only if they then have no membership anywhere, no live session, no open invitation elsewhere and nothing that references them; a person who is still a member of another workspace, or is signed in, is kept. The platform's sealing keys (`server_secrets`) are never touched.
+5. **Interrupted or failed.** SIGTERM/SIGINT stops at the next batch (exit 5). A failed step prints a fixed code and exits 4 (`artifact_store`: check the artifact directory and permissions; `database`; `timeout`: lower `ABB_RETENTION_BATCH_SIZE`; `internal`: rows were left that the inventory says must not be, see the log line `purge refused to delete its root` for the table names). **Run the same command again**: it resumes the `running` record and never creates a second. Exit 3 `locked` means a retention tick or another purge holds that workspace; wait for it to finish. Exit 3 `not_found` is also what you get after a purge completed.
+6. **Verify.** The record is `SELECT id, scope, state, requested_at, completed_at, attempts, failure_code, steps_done, counts FROM purge_tombstones ORDER BY requested_at DESC LIMIT 20` (ids, a hash of the typed slug, counts: no names or content). A running one is an unfinished purge. To check that nothing of a project is left, run the dry run again: it answers `not_found`; the test suite's scan (`tests/retention/purge_helpers.py::assert_scope_gone`) does the same for every table with a `project_id` or `workspace_id` column. A workspace's own audit log goes with it; the purge record is what remains, and the per-run tombstones of a purged project (`retention_tombstones`, ids only) stay in its workspace.
+
+*Known limits:* backups taken earlier still hold the data (KI-215); artifact files with no database row are not found (KI-196/KI-216); other per-run read endpoints of a purging project are not filtered until their run is deleted (KI-211); non-run background jobs of a purged project are not removed (KI-214).
+
 ### Backups and restore (Phase 19b step 4, ADR-162)
 
 `python -m abb_api.backup create|verify|restore` (and `make backup`, `make backup-verify`, `make restore`; compose service `backup`, profile `ops`) writes and reads one bundle: a `pg_dump -Fc` taken in a single snapshot, the artifact files copied after it, and a `MANIFEST.json` (schema revision, row counts, SHA-256 of every file and artifact, versions; nothing secret). Optional `--encrypt` (openssl AES-256, PBKDF2, an HMAC over the manifest; passphrase from a file, an environment variable name or a descriptor, never an argument). Bundles are created `0700`/`0600` and an existing non-empty output is refused. **A bundle holds `server_secrets` and is as sensitive as the database: encrypt it at rest.**

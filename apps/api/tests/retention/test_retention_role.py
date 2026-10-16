@@ -25,6 +25,8 @@ SELECT = {
     # Step 2 (migration 0102): the job's own progress, the rollups it rebuilds, the dirty marker.
     "retention_run_progress", "analytics_dirty", "analytics_runs_daily", "analytics_cost_daily",
     "analytics_spans_daily", "analytics_latency_daily", "analytics_top_runs",
+    # Step 5 (migration 0104): the purge record.
+    "purge_tombstones",
 }  # fmt: skip
 ROLLUPS = {
     "analytics_runs_daily", "analytics_cost_daily", "analytics_spans_daily",
@@ -35,18 +37,47 @@ SELECT_COLUMNS = {
     ("sessions", "expires_at"), ("sessions", "idle_expires_at"), ("sessions", "revoked_at"),
     ("users", "id"), ("users", "email"), ("users", "created_at"),
     ("approvals", "requested_by_user_id"), ("approvals", "decided_by_user_id"),
+    # Step 5 (migration 0104): the key columns a purge's WHERE clauses need, nothing else.
+    *{("agents", c) for c in ("workspace_id", "project_id", "id")},
+    *{("agent_versions", c) for c in ("workspace_id", "agent_id", "id")},
+    *{(t, c) for t in ("api_keys", "evaluators", "experiments", "policies", "policy_versions",
+                       "pricing_overrides", "alert_rules", "alert_notifications")
+      for c in ("workspace_id", "project_id", "id")},
+    ("approvals", "workspace_id"), ("approvals", "project_id"), ("approvals", "id"),
+    ("experiment_variants", "workspace_id"), ("experiment_variants", "experiment_id"),
+    ("experiment_runs", "workspace_id"), ("experiment_runs", "experiment_id"),
+    ("alert_rule_destinations", "workspace_id"), ("alert_rule_destinations", "rule_id"),
+    ("alert_destinations", "workspace_id"), ("alert_destinations", "id"),
+    ("project_quota_overrides", "workspace_id"), ("project_quota_overrides", "project_id"),
+    ("project_security_settings", "workspace_id"), ("project_security_settings", "project_id"),
 }  # fmt: skip
+COLUMN_ONLY_TABLES = (
+    "sessions", "users", "approvals", "agents", "agent_versions", "api_keys", "evaluators",
+    "experiments", "experiment_variants", "experiment_runs", "policies", "policy_versions",
+    "pricing_overrides", "alert_rules", "alert_rule_destinations", "alert_destinations",
+    "alert_notifications", "project_quota_overrides", "project_security_settings",
+)  # fmt: skip
 DELETE = {
     "events", "spans", "cost_calculations", "findings", "run_findings", "run_search",
     "evaluations", "artifacts", "runs", "outbox_jobs", "audit_log", "rate_limit_counters",
     "project_usage_daily", "sessions", "users", "retention_reports",
     "retention_run_progress", "analytics_dirty", *ROLLUPS,
+    # Step 5 (migration 0104): what a project or workspace purge deletes row by row.
+    "projects", "workspaces", "agents", "agent_versions", "api_keys", "approvals", "evaluators",
+    "experiments", "policies", "policy_versions", "pricing_overrides", "alert_rules",
+    "alert_destinations", "alert_notifications", "invitations", "workspace_members",
 }  # fmt: skip
 INSERT = {"audit_log", "retention_reports", "retention_tombstones", "retention_run_progress",
-          *ROLLUPS}  # fmt: skip
-UPDATE = {"retention_run_progress"}
+          "purge_tombstones", *ROLLUPS}  # fmt: skip
+UPDATE = {"retention_run_progress", "purge_tombstones"}
 # Column-level, never table-level: the job may change nothing else on these tables.
-UPDATE_COLUMNS = {("runs", "trace_state"), ("project_artifact_usage", "bytes_stored")}
+UPDATE_COLUMNS = {
+    ("runs", "trace_state"), ("project_artifact_usage", "bytes_stored"),
+    ("projects", "purge_state"), ("workspaces", "purge_state"),
+}  # fmt: skip
+# Tables with credentials or content: DELETE and key columns only, never a table-level read.
+DELETE_ONLY = ("api_keys", "alert_destinations", "alert_rules", "policies", "policy_versions",
+               "approvals", "alert_notifications")  # fmt: skip
 
 
 async def table_privileges(engine: AsyncEngine, role: str) -> set[tuple[str, str]]:
@@ -77,9 +108,9 @@ async def test_the_retention_role_has_exactly_the_pinned_privileges(engine: Asyn
                 text(
                     "SELECT table_name, column_name FROM information_schema.column_privileges "
                     "WHERE grantee = 'abb_retention' AND table_schema = 'public' "
-                    "AND privilege_type = 'SELECT' "
-                    "AND table_name IN ('sessions', 'users', 'approvals')"
-                )
+                    "AND privilege_type = 'SELECT' AND table_name = ANY(:tables)"
+                ),
+                {"tables": list(COLUMN_ONLY_TABLES)},
             )
         }
     assert columns == SELECT_COLUMNS
@@ -90,7 +121,8 @@ async def test_the_retention_role_has_exactly_the_pinned_privileges(engine: Asyn
                 text(
                     "SELECT table_name, column_name FROM information_schema.column_privileges "
                     "WHERE grantee = 'abb_retention' AND table_schema = 'public' "
-                    "AND privilege_type = 'UPDATE' AND table_name NOT IN ('retention_run_progress')"
+                    "AND privilege_type = 'UPDATE' "
+                    "AND table_name NOT IN ('retention_run_progress', 'purge_tombstones')"
                 )
             )
         }
@@ -100,10 +132,33 @@ async def test_the_retention_role_has_exactly_the_pinned_privileges(engine: Asyn
 async def test_the_retention_role_has_nothing_on_credentials_or_configuration(
     engine: AsyncEngine,
 ) -> None:
-    granted = {table for table, _ in await table_privileges(engine, "abb_retention")}
-    for table in ("api_keys", "server_secrets", "alert_destinations", "alert_rules", "policies",
-                  "policy_versions", "approvals", "login_states", "alembic_version"):  # fmt: skip
-        assert table not in granted, table
+    granted = await table_privileges(engine, "abb_retention")
+    tables = {table for table, _ in granted}
+    for table in ("server_secrets", "login_states", "alembic_version"):
+        assert table not in tables, table
+    # Credential and content tables: only DELETE (a purge removes the rows of what it purges),
+    # never a table-level read, write or insert; the key columns are pinned above.
+    for table in DELETE_ONLY:
+        assert {p for t, p in granted if t == table} == {"DELETE"}, table
+    async with engine.connect() as conn:
+        secrets = [
+            (table, column)
+            for table, column in (
+                ("api_keys", "secret_hash"),
+                ("alert_destinations", "config_encrypted"),
+                ("alert_destinations", "signing_secret_encrypted"),
+                ("policies", "rule"),
+                ("policy_versions", "document_text"),
+                ("alert_notifications", "payload_json"),
+            )
+            if (
+                await conn.execute(
+                    text("SELECT has_column_privilege('abb_retention', :t, :c, 'SELECT')"),
+                    {"t": table, "c": column},
+                )
+            ).scalar_one()
+        ]
+    assert secrets == []
     # No TRUNCATE or REFERENCES anywhere, UPDATE only on the progress table (and two columns,
     # pinned above), and no default privileges for tables to come.
     assert not {p for _, p in await table_privileges(engine, "abb_retention")} - {
@@ -164,7 +219,8 @@ async def test_the_runtime_role_cannot_write_what_the_job_reports(engine: AsyncE
                 "has_table_privilege('abb_runtime', c.oid, 'UPDATE'), "
                 "has_table_privilege('abb_runtime', c.oid, 'DELETE') "
                 "FROM pg_class c WHERE c.relname IN "
-                "('retention_reports', 'retention_tombstones', 'retention_policies') "
+                "('retention_reports', 'retention_tombstones', 'retention_policies', "
+                "'purge_tombstones') "
                 "AND c.relkind = 'r'"
             )
         )
@@ -172,6 +228,7 @@ async def test_the_runtime_role_cannot_write_what_the_job_reports(engine: AsyncE
     assert privileges == {
         "retention_reports": (True, False, False, False),
         "retention_tombstones": (True, False, False, False),
+        "purge_tombstones": (True, False, False, False),  # readable, never forged or erased
         "retention_policies": (True, True, True, False),  # policies are written, never deleted
     }
 
@@ -197,6 +254,14 @@ async def runtime_engine(
         "VALUES (gen_random_uuid(), gen_random_uuid(), 'trace', 'enforce')",
         "DELETE FROM retention_policies",
         "ALTER ROLE abb_retention LOGIN PASSWORD 'x'",
+        # A compromised API cannot purge: no delete of the roots, the runs, or the purge record
+        # (ADR-163), and it can neither read nor forge the record.
+        "DELETE FROM projects",
+        "DELETE FROM workspaces",
+        "UPDATE purge_tombstones SET state = 'completed'",
+        "INSERT INTO purge_tombstones (id, scope, workspace_id, scope_hash, tool_version) "
+        "VALUES (gen_random_uuid(), 'workspace', gen_random_uuid(), 'x', 'x')",
+        "DELETE FROM purge_tombstones",
     ],
 )
 async def test_the_application_role_cannot_erase_history_or_forge_reports(
@@ -228,8 +293,18 @@ async def test_the_application_role_cannot_erase_history_or_forge_reports(
         "INSERT INTO runs (workspace_id, id, project_id, trace_id, status, started_at) "
         "VALUES (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), "
         "'RUNNING', now())",
-        "DELETE FROM api_keys",
         "SELECT * FROM api_keys",
+        "SELECT secret_hash FROM api_keys",
+        "UPDATE api_keys SET revoked_at = now()",
+        "SELECT config_encrypted FROM alert_destinations",
+        "SELECT rule FROM policies",
+        "SELECT document_text FROM policy_versions",
+        "SELECT payload_json FROM alert_notifications",
+        "UPDATE projects SET name = 'x'",
+        "UPDATE workspaces SET slug = 'x'",
+        "DELETE FROM purge_tombstones",
+        "TRUNCATE purge_tombstones",
+        "ALTER TABLE projects DROP COLUMN purge_state",
         "SELECT * FROM server_secrets",
         "DELETE FROM server_secrets",
         "SELECT * FROM alert_destinations",
@@ -237,8 +312,6 @@ async def test_the_application_role_cannot_erase_history_or_forge_reports(
         "SELECT * FROM approvals",
         "UPDATE retention_policies SET artifacts_days = 7",
         "DELETE FROM retention_policies",
-        "DELETE FROM workspaces",
-        "DELETE FROM projects",
         "SELECT * FROM alembic_version",
         "CREATE TABLE sneaky (id int)",
         "DROP TABLE events",

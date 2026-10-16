@@ -23,6 +23,7 @@
     python -m abb_api.cli create-session --email owner@local.test [--hours 1]   # dev/test only
     python -m abb_api.cli seed            # local development only
     python -m abb_api.cli retention run-once   # one retention tick (ADR-159; own credentials)
+    python -m abb_api.cli retention purge-project|purge-workspace   # ADR-163; dry run default
 
 `create-session` (and the dev owner that `seed` adds) needs ABB_ENVIRONMENT=development|test and
 ABB_ALLOW_DEV_SESSIONS=1; it prints the session cookie value once, to stdout.
