@@ -140,6 +140,7 @@ class Pruner(Batcher):
                 "expires_at < :g OR idle_expires_at < :g OR revoked_at < :g",
                 {"g": grace},
                 point=None,
+                key="id",
             ),
             "counters": await self._drain(
                 "rate_limit_counters",

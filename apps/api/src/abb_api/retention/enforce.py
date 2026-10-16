@@ -692,7 +692,7 @@ async def _set_flag(
             P.c.run_id == progress.run_id,
             P.c.tier == progress.tier.value,
         )
-        .values({name: True}, updated_at=func.now())
+        .values({name: True, "updated_at": func.now()})
     )
 
 

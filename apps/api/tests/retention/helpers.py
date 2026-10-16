@@ -176,14 +176,14 @@ async def _seed_derived(
             workspace_id=ws, event_id=uuid.uuid4(), run_id=run_id, project_id=project_id,
             agent_slug="a", occurred_at=started, run_started_at=started, input_tokens=1,
             output_tokens=1, cached_input_tokens=0, source="estimated",
-            estimated_total=Decimal("0.5"),
+            estimated_total=Decimal("0.5"), total=Decimal("0.5"),
         )
     )  # fmt: skip
     await conn.execute(
         insert(t.findings).values(
             workspace_id=ws, id=uuid.uuid4(), run_id=run_id, project_id=project_id,
             run_started_at=started, detector="d", detector_version="1", finding_type="f",
-            kind="reliability", severity="warning", confidence=0.5, evidence_event_ids=[],
+            kind="deterministic", severity="warning", confidence=0.5, evidence_event_ids=[],
             fingerprint=uuid.uuid4().hex + uuid.uuid4().hex, evidence={},
         )
     )  # fmt: skip

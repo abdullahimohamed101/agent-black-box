@@ -95,17 +95,24 @@ class Batcher:
             yield conn
 
     async def _drain(
-        self, table: str, where: str, params: dict[str, Any], *, point: str | None = "detail_batch"
+        self,
+        table: str,
+        where: str,
+        params: dict[str, Any],
+        *,
+        point: str | None = "detail_batch",
+        key: str = "ctid",
     ) -> int:
         """Delete the rows of `table` matching `where`, a batch per transaction. Returns the count.
 
         `table` and `where` come from the inventory and this package, never from data. The ctid
-        form deletes exactly the batch the sub-select picked.
+        form deletes exactly the batch the sub-select picked. A table the role may read only by
+        column (sessions) names a key column instead: system columns need table-wide SELECT.
         """
         total = 0
         sql = text(
-            f"DELETE FROM {table} WHERE ctid = ANY(ARRAY("  # noqa: S608
-            f"SELECT ctid FROM {table} WHERE {where} LIMIT :batch_size))"
+            f"DELETE FROM {table} WHERE {key} = ANY(ARRAY("  # noqa: S608
+            f"SELECT {key} FROM {table} WHERE {where} LIMIT :batch_size))"
         )
         while True:
             await self.control.checkpoint()
