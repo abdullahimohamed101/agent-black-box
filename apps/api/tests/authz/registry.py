@@ -227,7 +227,9 @@ def _retention(method: str, suffix: str = "") -> Builder:
         workspace = overrides.get("workspace_id", side.workspace_id)
         return RequestSpec(
             method, f"/v1/workspaces/{workspace}/retention{suffix}",
-            content=json.dumps({"audit": 400}).encode() if method == "PUT" else None,
+            # Not the audit tier: changing it needs `retention.audit.write` (owners only), which
+            # test_policy_grace.py covers.
+            content=json.dumps({"artifacts": 20}).encode() if method == "PUT" else None,
             headers=JSON if method == "PUT" else {},
         )  # fmt: skip
 

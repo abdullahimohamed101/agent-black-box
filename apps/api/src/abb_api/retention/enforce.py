@@ -251,6 +251,9 @@ class Enforcer(Batcher):
         counts: Counts,
     ) -> None:
         try:
+            await self._hook("selected")
+            # Eligibility is re-checked under the run's row lock when its progress row is written:
+            # the last point before any data is touched (see ADR-160).
             progress = await self._begin(workspace_id, tier, cutoff, candidate.run_id)
             if progress is None:
                 return

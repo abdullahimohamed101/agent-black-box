@@ -86,14 +86,16 @@ def test_a_new_table_would_fail_the_check() -> None:
 
 
 def test_the_api_process_never_imports_the_purge() -> None:
-    """A compromised API process cannot purge: it does not even load the code (ADR-163)."""
+    """A compromised API process cannot purge or enforce: it does not even load the code
+    (ADR-163): neither the purge, the enforcement engine, the tick, the clean-ups nor the runner."""
     code = (
         "import sys\n"
         "from abb_api.core.config import Settings\n"
         "from abb_api.main import create_app\n"
         "app = create_app(Settings(database_url='postgresql+asyncpg://x@localhost/db'))\n"
-        "bad = [m for m in sys.modules if m.startswith('abb_api.retention.purge') "
-        "or m == 'abb_api.retention.runner']\n"
+        "names = ('purge', 'enforce', 'tick', 'prune', 'batches', 'runner')\n"
+        "bad = [m for m in sys.modules if m.startswith('abb_api.retention.') "
+        "and m.split('.')[2] in names]\n"
         "print(bad)\n"
         "raise SystemExit(1 if bad else 0)\n"
     )

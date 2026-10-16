@@ -692,6 +692,112 @@ jobs:
           path: ${{ runner.temp }}/obs-e2e-logs
           if-no-files-found: ignore
 
+  retention-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Data retention (Phase 19b): a real stack with the retention job as its own database login. Dry run deletes nothing and reports the right
+    # counts, enforcement removes expired data in the documented order (tombstones, trace states, 409 TRACE_EXPIRED, quota counter, rollups),
+    # SIGKILL while the job waits on a row lock held by the test then a rerun reaches the uninterrupted end state, SIGTERM / the mode file /
+    # the per-tick bounds, privileges over real connections, purge-project and purge-workspace, a real browser (Retention page, run pages in
+    # each trace state) and the cost of enforcement (informational timings) (scripts/retention-e2e.sh). Deterministic assertions only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          pnpm install --frozen-lockfile
+          cp .env.example .env
+      - name: Build the web app
+        run: pnpm --filter @abb/web build
+      - name: Retention end to end
+        env:
+          RETENTION_E2E_LOG_DIR: ${{ runner.temp }}/retention-e2e-logs
+        run: scripts/retention-e2e.sh
+      - name: Keep Playwright output and server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retention-e2e-results
+          path: |
+            apps/web/test-results
+            ${{ runner.temp }}/retention-e2e-logs
+          if-no-files-found: ignore
+
+  backup-restore-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # The performed restore drill (Phase 19b): seed a real installation (runs, events, artifacts of known bytes, an alert destination with a
+    # sealed signing secret, a retention policy, quota overrides, sessions), back it up (module CLI, an encrypted bundle, and the compose `backup`
+    # service built from the API image), DESTROY the source, restore into a fresh database and directory, then serve it: same runs, byte-identical
+    # artifacts, the alert secret still opens, identical grants, alembic head; a wrong passphrase / tampered bundle / non-empty targets restore
+    # nothing; an older bundle is upgraded on restore; the alert key rotates (scripts/backup-restore-e2e.sh). Times are recorded, never asserted.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          pnpm install --frozen-lockfile
+          cp .env.example .env
+      - name: Tools the drill shells out to
+        run: |
+          pg_dump --version
+          pg_restore --version
+          openssl version
+          docker compose version
+      - name: Backup and restore drill
+        env:
+          BACKUP_RESTORE_E2E_LOG_DIR: ${{ runner.temp }}/backup-restore-e2e-logs
+        run: scripts/backup-restore-e2e.sh
+      - name: Keep server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-restore-e2e-results
+          path: ${{ runner.temp }}/backup-restore-e2e-logs
+          if-no-files-found: ignore
+
   containers:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'

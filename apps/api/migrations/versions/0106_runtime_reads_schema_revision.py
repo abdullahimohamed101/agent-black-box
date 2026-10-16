@@ -6,15 +6,15 @@ runtime role could not read `alembic_version` (0007 revoked everything on it, a 
 tampering, not secrecy). It gets SELECT only: it still cannot change, insert, delete or truncate
 the revision, so it cannot make the migrations believe a step ran. A revision id is not sensitive.
 
-Revision ID: 0105
-Revises: 0104
+Revision ID: 0106
+Revises: 0105
 Create Date: 2026-10-16
 """
 
 from alembic import op
 
-revision = "0105"
-down_revision = "0104"
+revision = "0106"
+down_revision = "0105"
 branch_labels = None
 depends_on = None
 

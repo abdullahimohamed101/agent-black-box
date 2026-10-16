@@ -249,6 +249,13 @@
     },
     "0105": {
       "class": "reversible",
+      "notes": "Replaces the runtime role's table-level UPDATE on runs, projects and workspaces by column-level UPDATE on the columns the application writes (so it can no longer change trace_state or purge_state), and adds the retention grace-period columns to retention_policies. The downgrade restores the table-level privilege and drops the columns: a shortening still waiting for its effective time would then apply at once.",
+      "downgrade_discards": [
+        "retention_policies.*_prev_days, *_prev_forever, *_effective_at (pending shortenings)"
+      ]
+    },
+    "0106": {
+      "class": "reversible",
       "notes": "Grants the runtime role SELECT on alembic_version (read-only) so /readyz can compare the schema revision with the code's head. The downgrade restores the revoked state."
     }
   }

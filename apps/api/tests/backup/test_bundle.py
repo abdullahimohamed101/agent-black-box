@@ -162,6 +162,32 @@ async def test_tampering_with_an_encrypted_bundle_is_found_by_file_or_by_the_mac
     assert code == 4 and "passphrase is wrong or the bundle was modified" in err
 
 
+@pytest.mark.timeout(120)  # unclamped, the key derivation would run for hours
+@pytest.mark.parametrize("field", ["mac_iterations", "iterations"])
+@pytest.mark.parametrize("value", [2_000_000_000, 1, 0, -5, "many", None])
+async def test_an_unreasonable_key_derivation_cost_in_a_manifest_is_refused(
+    world: World, tmp_path: Path, field: str, value: Any
+) -> None:
+    """Review P3-2: the manifest is read before it is authenticated, so the iteration counts it
+    names are clamped before any key is derived; the refusal is the fixed integrity exit code."""
+    bundle, passphrase_file = await encrypted_bundle(world, tmp_path)
+    manifest = read_json(bundle / "MANIFEST.json")
+    manifest["encryption"][field] = value
+    (bundle / "MANIFEST.json").write_text(json.dumps(manifest))
+    args = ("--passphrase-file", str(passphrase_file))
+    code, _, _ = await run_cli("verify", str(bundle), *args, environ=base_environ())
+    if field == "mac_iterations":
+        assert code == 4
+        return
+    async with scratch_database() as target:
+        restored = tmp_path / "restored"
+        code, _, err = await run_cli(
+            "restore", str(bundle), *args, environ=restore_env(target, restored)
+        )
+        assert code == 4, err
+        assert await tables_in(target) == 0
+
+
 def other_dir(tmp_path: Path) -> Path:
     path = tmp_path / "second"
     path.mkdir()

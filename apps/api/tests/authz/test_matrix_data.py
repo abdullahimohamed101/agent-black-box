@@ -45,7 +45,7 @@ _EVAL_WRITE = {"evaluation.run", "evaluation.label", "evaluator.write", "experim
 _POLICY_READ = {"policy.read", "policy.fail_modes"}
 EXPECTED_ROLE_ACTIONS: dict[str, set[str]] = {
     "OWNER": _EVERYONE | _CONTENT | _EVAL_READ | _EVAL_WRITE | _POLICY_READ | {"policy.write"}
-    | APPROVALS | ALERT_READ | ALERT_MANAGE | {"retention.write"}
+    | APPROVALS | ALERT_READ | ALERT_MANAGE | {"retention.write", "retention.audit.write"}
     | {
         "run.read", "analytics.read", "project.write", "api_key.read", "api_key.create",
         "api_key.revoke", "member.write", "member.write_owner", "invite.read", "invite.write",
@@ -73,6 +73,7 @@ ADMIN_ACTIONS = {
     "invite.write", "api_key.read", "api_key.create", "api_key.revoke", "pricing.write",
     "audit.read", "billing.read", "policy.read", "policy.write", "approval.read",
     "approval.decide", "alert.write", "alert.destination.read", "retention.write", "retention.read",
+    "retention.audit.write",
 }  # fmt: skip
 
 

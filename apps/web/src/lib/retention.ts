@@ -49,6 +49,10 @@ export type Choice = "default" | "days" | "forever";
 export type Draft = { choice: Choice; days: string };
 export type Drafts = Record<TierName, Draft>;
 
+/** The shortest period a tier may be given: the audit log has its own, higher minimum. */
+export const floorOf = (policy: RetentionPolicy, name: TierName): number =>
+  name === "audit" ? policy.audit_floor_days : policy.floor_days;
+
 export const tierOf = (policy: RetentionPolicy, name: TierName): TierPolicy | undefined =>
   policy.tiers.find((t) => t.tier === name);
 
@@ -115,7 +119,7 @@ export function propose(policy: RetentionPolicy, drafts: Drafts): Proposal {
   const effective = {} as Record<TierName, number | null>;
   for (const name of TIER_ORDER) {
     const tier = tierOf(policy, name);
-    const parsed = parseDraft(drafts[name], policy.floor_days);
+    const parsed = parseDraft(drafts[name], floorOf(policy, name));
     if (!parsed.ok) errors[name] = parsed.message;
     else if (tier) effective[name] = effectiveOf(tier, parsed.setting);
   }
@@ -148,10 +152,34 @@ export function changedBody(policy: RetentionPolicy, drafts: Drafts): RetentionP
   const body: RetentionPolicyBody = {};
   for (const name of TIER_ORDER) {
     if (sameAsStored(policy, name, drafts[name])) continue;
-    const parsed = parseDraft(drafts[name], policy.floor_days);
+    const parsed = parseDraft(drafts[name], floorOf(policy, name));
     if (parsed.ok) body[name] = parsed.setting;
   }
   return body;
+}
+
+const dateOf = (iso: string): string =>
+  new Date(iso).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+
+/** The sentence under a tier whose saved shortening has not taken effect yet. */
+export function pendingSentence(tier: TierPolicy): string | null {
+  const p = tier.pending;
+  if (!p) return null;
+  return `This shortening takes effect on ${dateOf(p.effective_at)}; until then the longer period (${describeDays(p.current_forever ? null : p.current_days)}) still applies.`;
+}
+
+/** The request that cancels a pending shortening: saving the period in force is a lengthening, which applies at once. */
+export function cancelBody(tier: TierPolicy): RetentionPolicyBody | null {
+  const p = tier.pending;
+  if (!p) return null;
+  return { [tier.tier]: p.current_forever || p.current_days === null ? "forever" : p.current_days };
+}
+
+/** What a shortening will do and when, for the confirmation question (nothing is deleted before this time). */
+export function graceSentence(policy: RetentionPolicy): string {
+  const h = policy.grace_hours;
+  if (h <= 0) return "A shorter period applies as soon as you save.";
+  return `A shorter period takes effect ${h} hour${h === 1 ? "" : "s"} after you save; until then the longer period still applies, and you can cancel by saving the previous value.`;
 }
 
 /** Tiers whose effective period gets shorter than today's (data older than the new period would be deleted). */
@@ -256,6 +284,12 @@ export function previewSummary(tiers: readonly PreviewTier[]): string {
   const bytes = Math.max(0, ...tiers.map((t) => t.artifact_bytes));
   const bound = tiers.some((t) => t.truncated) ? "at least " : "";
   return `This would remove ${bound}${plural(runs, "run")}, ${plural(events, "event")} and ${formatBytes(bytes)} of artifacts.`;
+}
+
+/** When a previewed shortening would start to apply ("" when it applies at once). */
+export function previewTiming(t: PreviewTier): string {
+  if (!t.effective_at) return "";
+  return `Takes effect on ${dateOf(t.effective_at)}; until then ${describeDays(t.enforced_days)} still applies.`;
 }
 
 /** One report line: what the pass found (dry run) or removed (enforced). */

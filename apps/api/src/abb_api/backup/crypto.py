@@ -26,6 +26,10 @@ from abb_api.backup.errors import EXIT_INTEGRITY, EXIT_REFUSED, EXIT_TOOL, EXIT_
 CIPHER: Final = "aes-256-cbc"
 SCHEME: Final = "openssl-enc-aes-256-cbc-pbkdf2-sha256+hmac-sha256"
 ITERATIONS: Final = 600_000
+# A manifest is read before it is authenticated, so the key-derivation cost it names is hostile
+# input: outside this range the bundle is refused instead of burning CPU for hours.
+MIN_ITERATIONS: Final = 100_000
+MAX_ITERATIONS: Final = 6_000_000
 MIN_PASSPHRASE_BYTES: Final = 12
 MAX_PASSPHRASE_BYTES: Final = 1024
 INTEGRITY_FAILED_MESSAGE: Final = (
@@ -79,6 +83,16 @@ def require_strong(passphrase: bytes) -> None:
         raise BackupError(
             EXIT_USAGE, f"the passphrase must be at least {MIN_PASSPHRASE_BYTES} bytes long"
         )
+
+
+def checked_iterations(value: object) -> int:
+    """The iteration count a manifest names, or ValueError when it is not a sane number."""
+    if isinstance(value, bool) or not isinstance(value, int | str):
+        raise ValueError("iterations")
+    count = int(value)
+    if not MIN_ITERATIONS <= count <= MAX_ITERATIONS:
+        raise ValueError("iterations")
+    return count
 
 
 def mac_key(passphrase: bytes, salt: bytes, iterations: int) -> bytes:

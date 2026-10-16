@@ -65,7 +65,7 @@ async def test_a_database_behind_the_code_is_not_ready(
     runtime_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        readiness, "code_revisions", lambda: CodeRevisions("9999", frozenset({"0105", "9999"}))
+        readiness, "code_revisions", lambda: CodeRevisions("9999", frozenset({"0106", "9999"}))
     )
     async for client in _client(create_app(make_settings(runtime_database_url))):
         status, body = await ready_body(client)
@@ -97,9 +97,9 @@ async def test_unfindable_migrations_degrade_the_schema_check_instead_of_failing
 
 
 def test_judge_revision_cases() -> None:
-    code = CodeRevisions("0105", frozenset({"0104", "0105"}))
-    assert judge_revision("0105", code).status == "ok"
-    assert judge_revision("0104", code).reason == "behind"
+    code = CodeRevisions("0106", frozenset({"0105", "0106"}))
+    assert judge_revision("0106", code).status == "ok"
+    assert judge_revision("0105", code).reason == "behind"
     assert judge_revision(None, code).reason == "behind"
     assert judge_revision("0200", code).reason == "ahead"
 
@@ -107,7 +107,7 @@ def test_judge_revision_cases() -> None:
 async def test_the_code_head_is_the_real_alembic_head() -> None:
     revisions = readiness.code_revisions()
     assert revisions is not None
-    assert revisions.head == "0105"
+    assert revisions.head == "0106"
     assert {"0001", "0104"} <= revisions.known
 
 

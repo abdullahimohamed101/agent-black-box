@@ -248,7 +248,7 @@ class Readiness:
             async with conn.begin_nested():
                 found = (await conn.execute(_REVISION)).scalar()
             schema = judge_revision(found, code)
-        except Exception:  # permission denied for the runtime role before migration 0105
+        except Exception:  # permission denied for the runtime role before migration 0106
             schema = CheckResult("fail", "unreadable")
         try:
             age = (await conn.execute(_OLDEST_DUE)).scalar()

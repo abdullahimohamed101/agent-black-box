@@ -22,7 +22,7 @@ const ctx = (permissions: string[]): WorkspaceContext => ({
   memberships: [],
   projects: [],
 });
-const OWNER = ["retention.read", "retention.write", "audit.read"];
+const OWNER = ["retention.read", "retention.write", "retention.audit.write", "audit.read"];
 const mount = (permissions = OWNER) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -442,5 +442,81 @@ describe("loading and errors", () => {
     const { container } = mount();
     await screen.findByTestId("retention-pass");
     expect(container.querySelector("script, img, iframe")).toBeNull();
+  });
+});
+
+describe("the grace period before a shortening applies", () => {
+  it("tells the person, before saving, that the longer period still applies for a while", async () => {
+    api();
+    const user = userEvent.setup();
+    mount();
+    await screen.findAllByTestId("retention-tier");
+    await user.selectOptions(screen.getByLabelText("Artifacts period"), "days");
+    await user.type(screen.getByLabelText("Artifacts days"), "14");
+    await user.click(screen.getByRole("button", { name: "Save periods" }));
+    expect(await screen.findByTestId("grace-note")).toHaveTextContent(
+      "takes effect 24 hours after you save; until then the longer period still applies",
+    );
+  });
+
+  it("shows the effective date and the period still in force, and cancels by saving it", async () => {
+    api();
+    const user = userEvent.setup();
+    mount();
+    await screen.findAllByTestId("retention-tier");
+    await user.selectOptions(screen.getByLabelText("Trace detail period"), "days");
+    await user.type(screen.getByLabelText("Trace detail days"), "60");
+    await user.click(screen.getByRole("button", { name: "Save periods" }));
+    await user.click(await screen.findByRole("button", { name: "Save and shorten" }));
+    const pending = await within(tier("trace")).findByTestId("tier-pending");
+    expect(pending).toHaveTextContent(
+      "This shortening takes effect on 2026-10-16 09:30 UTC; until then the longer period (90 days) still applies.",
+    );
+    expect(await screen.findByTestId("save-status")).toHaveTextContent("takes effect after");
+    await user.click(within(pending).getByRole("button", { name: "Cancel this shortening" }));
+    await waitFor(() => expect(puts()).toHaveLength(2));
+    expect(puts()[1]!.body).toEqual({ trace: 90 }); // the period in force: a lengthening, immediate
+    await waitFor(() => expect(within(tier("trace")).queryByTestId("tier-pending")).toBeNull());
+  });
+
+  it("shows both periods in a preview of a shortening", async () => {
+    api();
+    const user = userEvent.setup();
+    mount();
+    await screen.findAllByTestId("retention-tier");
+    await user.selectOptions(screen.getByLabelText("Trace detail period"), "days");
+    await user.type(screen.getByLabelText("Trace detail days"), "60");
+    await user.click(screen.getByRole("button", { name: /Preview/ }));
+    const preview = await screen.findByTestId("retention-preview");
+    expect(
+      within(preview).getByText(/Takes effect on 2026-10-16 09:30 UTC; until then/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("the audit log tier", () => {
+  it("is read-only for an admin, with a plain explanation and the minimum", async () => {
+    api();
+    mount(["retention.read", "retention.write", "audit.read"]);
+    await screen.findAllByTestId("retention-tier");
+    expect(screen.queryByLabelText("Audit log period")).toBeNull();
+    expect(screen.getByLabelText("Trace detail period")).toBeInTheDocument();
+    expect(within(tier("audit")).getByTestId("audit-owner-only")).toHaveTextContent(
+      "Only an owner can change how long the audit log is kept",
+    );
+    expect(within(tier("audit")).getByTestId("tier-value")).toHaveTextContent("365 days");
+  });
+
+  it("holds the audit log to its own minimum, without echoing the value", async () => {
+    api();
+    const user = userEvent.setup();
+    mount();
+    await screen.findAllByTestId("retention-tier");
+    await user.selectOptions(screen.getByLabelText("Audit log period"), "days");
+    await user.type(screen.getByLabelText("Audit log days"), "30");
+    await user.click(screen.getByRole("button", { name: "Save periods" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("at least 90 days");
+    expect(puts()).toHaveLength(0);
   });
 });

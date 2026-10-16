@@ -293,7 +293,12 @@ async def restore_bundle(
         if is_encrypted(manifest):
             assert passphrase is not None
             openssl = crypto.openssl_path(environ)
-            iterations = int(manifest["encryption"]["iterations"])
+            try:
+                iterations = crypto.checked_iterations(manifest["encryption"]["iterations"])
+            except (KeyError, ValueError, TypeError):
+                raise BackupError(
+                    EXIT_INTEGRITY, "the manifest names an unusable key-derivation cost"
+                ) from None
             for label, stored, plain in (
                 ("database", dump_path, work / DUMP_NAME),
                 ("artifacts", tar_path, work / ARTIFACTS_NAME),

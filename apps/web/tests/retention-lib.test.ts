@@ -5,6 +5,10 @@ import {
   draftsOf,
   formatBytes,
   parseDraft,
+  pendingSentence,
+  cancelBody,
+  graceSentence,
+  previewTiming,
   previewParams,
   previewSentence,
   previewSummary,
@@ -13,6 +17,7 @@ import {
   retentionError,
   shortened,
   type PreviewTier,
+  type TierPolicy,
   type RetentionPolicy,
   type RetentionReport,
 } from "@/lib/retention";
@@ -21,6 +26,8 @@ const policy = (over: Partial<Record<string, [number | null, "default" | "worksp
   ({
     mode: "dry_run",
     floor_days: 7,
+    audit_floor_days: 90,
+    grace_hours: 24,
     updated_at: null,
     updated_by: null,
     tiers: (
@@ -35,6 +42,57 @@ const policy = (over: Partial<Record<string, [number | null, "default" | "worksp
       return { tier, days, forever: days === null, source, default_days: def };
     }),
   }) as RetentionPolicy;
+
+describe("the audit log's own minimum and the grace period", () => {
+  it("applies the audit minimum to the audit tier only", () => {
+    const p = policy();
+    const d = draftsOf(p);
+    d.audit = { choice: "days", days: "60" };
+    expect(propose(p, d)).toEqual({
+      ok: false,
+      errors: { audit: "Keep data for at least 90 days." },
+    });
+    d.audit = { choice: "days", days: "90" };
+    d.artifacts = { choice: "days", days: "7" };
+    expect(propose(p, d).ok).toBe(true);
+    expect(changedBody(p, d)).toEqual({ artifacts: 7, audit: 90 });
+  });
+  const waiting: TierPolicy = {
+    tier: "trace",
+    days: 60,
+    forever: false,
+    source: "workspace",
+    default_days: 90,
+    pending: { effective_at: "2026-10-16T09:30:00Z", current_days: 90, current_forever: false },
+  };
+  it("says when a saved shortening takes effect and which period still applies", () => {
+    expect(pendingSentence(waiting)).toBe(
+      "This shortening takes effect on 2026-10-16 09:30 UTC; until then the longer period (90 days) still applies.",
+    );
+    expect(pendingSentence({ ...waiting, pending: null })).toBeNull();
+  });
+  it("cancels by saving the period in force (a lengthening, which applies at once)", () => {
+    expect(cancelBody(waiting)).toEqual({ trace: 90 });
+    const forever: TierPolicy = {
+      ...waiting,
+      pending: { effective_at: "2026-10-16T09:30:00Z", current_days: null, current_forever: true },
+    };
+    expect(cancelBody(forever)).toEqual({ trace: "forever" });
+    expect(cancelBody({ ...waiting, pending: null })).toBeNull();
+  });
+  it("words the waiting time, or its absence", () => {
+    expect(graceSentence(policy())).toContain("24 hours after you save");
+    expect(graceSentence({ ...policy(), grace_hours: 0 })).toBe(
+      "A shorter period applies as soon as you save.",
+    );
+  });
+  it("shows both periods in a preview", () => {
+    expect(previewTiming(tier({ effective_at: "2026-10-16T09:30:00Z", enforced_days: 90 }))).toBe(
+      "Takes effect on 2026-10-16 09:30 UTC; until then 90 days still applies.",
+    );
+    expect(previewTiming(tier({}))).toBe("");
+  });
+});
 
 describe("parseDraft", () => {
   it("accepts the default, forever and whole days from the floor", () => {
@@ -114,6 +172,7 @@ const tier = (over: Partial<PreviewTier>): PreviewTier => ({
   tier: "trace",
   days: 30,
   forever: false,
+  enforced_days: 30,
   cutoff: null,
   runs: 12,
   events: 340,

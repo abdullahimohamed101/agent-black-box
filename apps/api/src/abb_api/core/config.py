@@ -48,6 +48,12 @@ class RetentionSettings(BaseSettings):
     # The preview endpoint is cheaper and tighter than a tick (a person is waiting).
     retention_preview_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     retention_preview_max_runs: int = Field(default=5000, ge=1, le=100_000)
+    # A shortened period takes effect after this many hours; until then the longer one applies
+    # (ADR-159 amendment). 0: at once.
+    retention_grace_hours: int = Field(default=24, ge=0, le=720)
+    # The audit log is the record of who changed the policy, so it has its own, higher minimum
+    # (the other tiers keep RETENTION_FLOOR_DAYS).
+    retention_audit_floor_days: int = Field(default=90, ge=RETENTION_FLOOR_DAYS, le=36500)
 
     @model_validator(mode="after")
     def _retention_defaults_are_a_valid_policy(self) -> "RetentionSettings":
@@ -65,6 +71,9 @@ class RetentionSettings(BaseSettings):
                     f"retention_{tier}_days must be 'forever' or "
                     f"{RETENTION_FLOOR_DAYS}-{RETENTION_CEILING_DAYS} days"
                 )
+        audit = self.retention_audit_days
+        if isinstance(audit, int) and audit < self.retention_audit_floor_days:
+            raise ValueError("retention_audit_days must not be below retention_audit_floor_days")
         # A run record is deleted last, so it can never be kept for less time than the trace
         # detail, nor the trace detail for less than the artifacts (ADR-159).
         for inner, outer in (("artifacts", "trace"), ("trace", "run")):

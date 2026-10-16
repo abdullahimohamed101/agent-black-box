@@ -5,15 +5,18 @@ nor delete anything. The preview measures what the *current or a proposed* polic
 within a statement timeout and the per-tier bounds, without saving or changing anything.
 """
 
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
 from abb_event_schema.ids import IdKind
+from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.audit.repository import AuditEntry, AuditRepository
+from abb_api.authz import actions
+from abb_api.authz.audit import authorize_audited
 from abb_api.authz.principal import Principal
 from abb_api.clock import Clock
 from abb_api.core.config import RETENTION_FLOOR_DAYS, Settings
@@ -40,9 +43,10 @@ def workspace_not_found() -> AppError:
     )
 
 
-def policy_invalid(error: m.RetentionInvalid) -> AppError:
+def policy_invalid(error: m.RetentionInvalid, audit_floor: int = RETENTION_FLOOR_DAYS) -> AppError:
+    floor = m.floor_of(error.tier, audit_floor)
     messages = {
-        "below_floor": f"Retention must be at least {RETENTION_FLOOR_DAYS} days (or forever).",
+        "below_floor": f"Retention must be at least {floor} days (or forever).",
         "above_ceiling": "Retention is longer than the permitted maximum.",
         "order": (
             "Artifacts cannot be kept longer than trace detail, nor trace detail longer than the "
@@ -122,23 +126,58 @@ class RetentionApiService:
         if wait is not None:
             raise _rate_limited(wait)
 
-    def _view(
-        self, stored: m.TierSetting | None, tier: m.Tier, days: int | None
-    ) -> s.TierPolicyOut:
+    @property
+    def _audit_floor(self) -> int:
+        return self._settings.retention_audit_floor_days
+
+    def _validate(
+        self, merged: dict[m.Tier, m.TierSetting], changed: list[m.Tier]
+    ) -> dict[m.Tier, int | None]:
+        """The saved choices must be a valid policy. The audit minimum applies to a value being
+        changed, not to one saved before the minimum existed (the job enforces it, KI-254), so such
+        a workspace can still edit its other tiers."""
+        try:
+            days = m.validate(self._defaults, merged)
+            if m.Tier.AUDIT in changed:
+                m.check_setting(m.Tier.AUDIT, merged[m.Tier.AUDIT], self._audit_floor)
+        except m.RetentionInvalid as error:
+            raise policy_invalid(error, self._audit_floor) from None
+        return days
+
+    def _grace(self) -> timedelta:
+        return timedelta(hours=self._settings.retention_grace_hours)
+
+    def _view(self, policy: Any, tier: m.Tier, now: datetime) -> s.TierPolicyOut:
+        setting = policy.settings[tier]
+        days = m.days_of(self._defaults, tier, setting)
+        waiting = m.active(policy.pending.get(tier), now)
+        pending = None
+        if waiting is not None:
+            current = m.enforced_days(
+                self._defaults, tier, setting, waiting, now, self._audit_floor
+            )
+            pending = s.PendingShorteningOut(
+                effective_at=waiting.effective_at,
+                current_days=current,
+                current_forever=current is None,
+            )
         return s.TierPolicyOut(
             tier=tier.value,
             days=days,
             forever=days is None,
-            source="default" if stored is None else "workspace",
+            pending=pending,
+            source="default" if setting is None else "workspace",
             default_days=self._defaults[tier],
         )
 
     def _policy_out(self, policy: Any) -> s.RetentionPolicyOut:
-        days = m.effective(self._defaults, policy.settings)
+        now = self._clock().astimezone(UTC)
         return s.RetentionPolicyOut(
-            tiers=[self._view(policy.settings[tier], tier, days[tier]) for tier in m.TIERS],
+            tiers=[self._view(policy, tier, now) for tier in m.TIERS],
             mode=self._settings.retention_mode,
             floor_days=RETENTION_FLOOR_DAYS,
+            audit_floor_days=self._audit_floor,
+            grace_hours=self._settings.retention_grace_hours,
             updated_at=policy.updated_at,
             updated_by=policy.updated_by,
         )
@@ -149,7 +188,7 @@ class RetentionApiService:
             return self._policy_out(await PolicyRepository(conn, principal.tenant).get())
 
     async def update(
-        self, principal: Principal, workspace: str, body: s.RetentionPolicyIn
+        self, principal: Principal, workspace: str, body: s.RetentionPolicyIn, request: Request
     ) -> s.RetentionPolicyOut:
         self._own_workspace(principal, workspace)
         await self._throttle(principal, preview=False)
@@ -159,21 +198,34 @@ class RetentionApiService:
             if tier.value in body.model_fields_set
         }
         actor = Actor.of(principal)
+        now = self._clock().astimezone(UTC)
         async with self._engine.begin() as conn:
             repo = PolicyRepository(conn, principal.tenant)
             await repo.ensure_row(actor.id[:128])
             before = await repo.get(lock=True)
             merged = {**before.settings, **given}
-            try:
-                m.validate(self._defaults, merged)
-            except m.RetentionInvalid as error:
-                raise policy_invalid(error) from None
             changed = [tier for tier in m.Tier if before.settings[tier] != merged[tier]]
-            if changed:
-                await repo.write(merged, actor.id[:128])
+            self._validate(merged, changed)
+            if m.Tier.AUDIT in changed:
+                # The audit log shows who changed the policy: only an owner may change its period.
+                await authorize_audited(request, principal, actions.RETENTION_AUDIT_WRITE)
+            pending = {
+                tier: waiting
+                for tier in m.Tier
+                if (
+                    waiting := m.plan_pending(
+                        self._defaults, tier, before.settings[tier], before.pending.get(tier),
+                        merged[tier], now, self._grace(), self._audit_floor,
+                    )
+                )
+                is not None
+            }  # fmt: skip
+            if changed or before.pending.keys() != pending.keys():
+                await repo.write(merged, pending, actor.id[:128])
                 audit = AuditRepository(conn, principal.tenant)
                 for tier in changed:
-                    # The tier and the two values: the whole of what changed.
+                    waiting = pending.get(tier)
+                    # The tier, the two values and when it takes effect: the whole of what changed.
                     await audit.append(
                         AuditEntry(
                             actor_kind=actor.kind,
@@ -185,6 +237,9 @@ class RetentionApiService:
                                 "tier": tier.value,
                                 "old": _audit_value(before.settings[tier]),
                                 "new": _audit_value(merged[tier]),
+                                "effective_at": (
+                                    waiting.effective_at if waiting else now
+                                ).isoformat(),
                             },
                         )
                     )
@@ -207,25 +262,37 @@ class RetentionApiService:
         try:
             async with self._engine.begin() as conn:
                 await conn.execute(text(f"SET LOCAL statement_timeout = {timeout_ms}"))
-                stored = (await PolicyRepository(conn, principal.tenant).get()).settings
-                merged = {**stored, **proposed}
-                try:
-                    days = m.validate(self._defaults, merged)
-                except m.RetentionInvalid as error:
-                    raise policy_invalid(error) from None
+                policy = await PolicyRepository(conn, principal.tenant).get()
+                merged = {**policy.settings, **proposed}
+                days = self._validate(
+                    merged, [t for t in proposed if merged[t] != policy.settings[t]]
+                )
                 out: list[s.PreviewTierOut] = []
                 for tier in tiers:
+                    # The same rule as a save: what would be enforced now, and from when the
+                    # shorter period would apply.
+                    waiting = m.plan_pending(
+                        self._defaults, tier, policy.settings[tier], policy.pending.get(tier),
+                        merged[tier], now, self._grace(), self._audit_floor,
+                    )  # fmt: skip
+                    enforced = m.enforced_days(
+                        self._defaults, tier, merged[tier], waiting, now, self._audit_floor
+                    )
                     cutoff = m.cutoff(now, days[tier])
                     count = (
                         None
                         if cutoff is None
-                        else await measure_tier(conn, principal.workspace_id, tier, cutoff, limits)
+                        else await measure_tier(
+                            conn, principal.workspace_id, tier, cutoff, limits, now
+                        )
                     )
                     out.append(
                         s.PreviewTierOut(
                             tier=tier.value,
                             days=days[tier],
                             forever=days[tier] is None,
+                            enforced_days=enforced,
+                            effective_at=waiting.effective_at if waiting else None,
                             cutoff=cutoff,
                             runs=count.runs if count else 0,
                             events=count.events if count else 0,
@@ -242,7 +309,10 @@ class RetentionApiService:
             as_of=now,
             proposed=bool(proposed),
             tiers=out,
-            note="Nothing is deleted by a preview. Tiers are counted separately, not added.",
+            note=(
+                "Nothing is deleted by a preview. Tiers are counted separately, not added. "
+                "Counts are for the new period once it takes effect."
+            ),
         )
 
     async def reports(

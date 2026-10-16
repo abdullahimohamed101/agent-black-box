@@ -41,7 +41,7 @@ from abb_api.retention.measure import (
     measure_tier,
 )
 from abb_api.retention.prune import Pruner
-from abb_api.retention.repository import policy_of
+from abb_api.retention.repository import StoredPolicy, policy_of
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,15 @@ class TickResult:
         total.events += events
         total.rows += rows
         total.artifact_bytes += artifact_bytes
+
+
+def _enforced(
+    defaults: dict[m.Tier, int | None], policy: StoredPolicy, now: datetime, audit_floor: int
+) -> dict[m.Tier, int | None]:
+    """The periods the job applies now: the saved choices must be a valid policy, and a shortening
+    that waits for its effective time is not applied yet (the longer period still is)."""
+    m.validate(defaults, policy.settings)  # the stored floor; the audit minimum is applied below
+    return m.enforced(defaults, policy.settings, policy.pending, now, audit_floor)
 
 
 async def _workspace_order(conn: AsyncConnection) -> list[uuid.UUID]:
@@ -180,6 +189,7 @@ async def run_tick(
     limits = Limits(settings.retention_max_runs_per_tick, settings.retention_max_rows_per_tick)
     timeout_ms = max(int(settings.retention_statement_timeout_seconds * 1000), 1)
     defaults = m.defaults_of(settings)
+    audit_floor = settings.retention_audit_floor_days
 
     async def static_mode() -> str:
         return settings.retention_mode
@@ -232,13 +242,14 @@ async def run_tick(
                     break
                 if runner is not None:
                     await runner.workspace(
-                        lock_conn, workspace_id, defaults, timeout_ms, keep_reports, result, now
-                    )
+                        lock_conn, workspace_id, defaults, audit_floor, timeout_ms, keep_reports,
+                        result, now
+                    )  # fmt: skip
                     if runner.enforcer.control.halted:
                         break
                     continue
                 await _workspace(
-                    engine, workspace_id, defaults, limits, timeout_ms, keep_reports,
+                    engine, workspace_id, defaults, audit_floor, limits, timeout_ms, keep_reports,
                     result, now,
                 )  # fmt: skip
             if runner is not None:
@@ -266,6 +277,7 @@ class _Enforcement:
         lock_conn: AsyncConnection,
         workspace_id: uuid.UUID,
         defaults: dict[m.Tier, int | None],
+        audit_floor: int,
         timeout_ms: int,
         keep: int,
         result: TickResult,
@@ -284,9 +296,9 @@ class _Enforcement:
         try:
             result.workspaces += 1
             async with engine.connect() as conn:
-                stored = (await policy_of(conn, workspace_id)).settings
+                policy = await policy_of(conn, workspace_id)
             try:
-                days = m.validate(defaults, stored)
+                days = _enforced(defaults, policy, now(), audit_floor)
             except m.RetentionInvalid as error:
                 result.errors += 1
                 logger.warning(
@@ -322,17 +334,26 @@ class _Enforcement:
                 )
                 if control.halted:
                     return
-            started = now()
+            # The rollup refresh has its own row allowance, and a halt of one pass never skips the
+            # later passes: only a real stop (mode, stop, budget) ends the workspace.
             failed = Counts()
-            await self.enforcer.refresh_rollups(workspace_id, failed)
-            result.failed += failed.failed
+            control.begin_pass()
+            try:
+                await self.enforcer.refresh_rollups(workspace_id, failed)
+            except Halt as halt:
+                if halt.reason != "rows":
+                    control.halted = halt.reason
+                    return
+                result.truncated += 1  # days are left for the next tick
+            finally:
+                result.failed += failed.failed
             audit_cutoff = m.cutoff(now(), days[m.Tier.AUDIT])
             if audit_cutoff is not None:
                 started = now()
                 control.begin_pass()
                 audit = Counts()
                 try:
-                    audit.rows = await self.pruner.purge_audit(workspace_id, audit_cutoff)
+                    audit.rows = await self.pruner.purge_audit(workspace_id, audit_cutoff, now())
                 except Halt as halt:
                     audit.halted = halt.reason
                     if halt.reason != "rows":
@@ -500,6 +521,7 @@ async def _workspace(
     engine: AsyncEngine,
     workspace_id: uuid.UUID,
     defaults: dict[m.Tier, int | None],
+    audit_floor: int,
     limits: Limits,
     timeout_ms: int,
     keep: int,
@@ -508,9 +530,9 @@ async def _workspace(
 ) -> None:
     result.workspaces += 1
     async with engine.connect() as conn:
-        stored = (await policy_of(conn, workspace_id)).settings
+        policy = await policy_of(conn, workspace_id)
     try:
-        days = m.validate(defaults, stored)
+        days = _enforced(defaults, policy, now(), audit_floor)
     except m.RetentionInvalid as error:
         # A saved policy that the current defaults make invalid: measure nothing for it.
         result.errors += 1
@@ -527,7 +549,7 @@ async def _workspace(
         async def measure(
             c: AsyncConnection, tier: m.Tier = tier, cutoff: datetime = cutoff
         ) -> TierCount:
-            return await measure_tier(c, workspace_id, tier, cutoff, limits)
+            return await measure_tier(c, workspace_id, tier, cutoff, limits, now())
 
         await _measure_and_report(
             engine, result, workspace_id=workspace_id, label=tier.value, timeout_ms=timeout_ms,

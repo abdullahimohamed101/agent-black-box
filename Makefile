@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e backup restore backup-verify rotate-alert-keys
+.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -198,6 +198,17 @@ hardening-e2e:
 # Needs Postgres on 5433, Docker and uv; pulls only the two images pinned in docker-compose.yml (and refuses when the VM has under 3 GB free).
 obs-e2e:
 	scripts/obs-e2e.sh
+
+# Data retention (Phase 19b): a real stack with the retention job as its own database login. Dry run deletes nothing, enforcement removes expired
+# data in order, a crash (SIGKILL) mid-run is finished by a rerun, the kill switch and bounds, privileges, purge commands, a real browser, and the
+# cost of enforcement (informational). Deterministic assertions only (docs/benchmarks/phase-19b-retention-e2e.md).
+retention-e2e:
+	pnpm --filter @abb/web build && scripts/retention-e2e.sh
+
+# The performed restore drill (Phase 19b): seed, back up (module CLI, encrypted, compose service), destroy, restore, serve, upgrade an older bundle,
+# rotate the alert key. Needs pg_dump, pg_restore and openssl on the PATH, and Docker for the compose step (docs/benchmarks/phase-19b-restore-drill.md).
+backup-restore-e2e:
+	scripts/backup-restore-e2e.sh
 
 # Evaluations, comparison and experiments: the coding agent twice (baseline, wrong-fix), owner and viewer in a real browser (Phase 11).
 eval-e2e:

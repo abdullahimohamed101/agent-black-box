@@ -483,13 +483,19 @@ class Purger(Enforcer):
         await self._hook("purge:artifacts")
         await self._analytics(ws, project_id)
         await self._hook("purge:analytics")
+        await self._project_rows(ws, project_id)
+
+    async def _project_rows(
+        self, ws: uuid.UUID, project_id: uuid.UUID, *, hooks: bool = True
+    ) -> None:
         for table, key in inv.PROJECT_DRAINS:
             where = inv.CLASSIFICATION[table].project_where
             assert where is not None
             await self._delete_where(
                 table, key, where, {"w": ws, "p": project_id, "pk": str(project_id)}
             )
-            await self._hook(f"purge:{table}")
+            if hooks:
+                await self._hook(f"purge:{table}")
 
     async def _runs(self, workspace_id: uuid.UUID, project_id: uuid.UUID) -> None:
         r = t.runs
@@ -653,9 +659,12 @@ class Purger(Enforcer):
 
     async def _finish_project(self, project_id: uuid.UUID) -> None:
         ws = self.target.workspace_id
-        # A request that was in flight when the mark committed may have left a run behind.
+        # A request that was in flight when the mark committed, or a worker job claimed during the
+        # drain, may have left a run or a row behind: drain again BEFORE the fail-closed check, so
+        # a late row is removed and the purge completes (the check below stays fail closed).
         await self._runs(ws, project_id)
         await self._project_artifacts(ws, project_id)
+        await self._project_rows(ws, project_id, hooks=False)
         await self.control.checkpoint()
         async with self._tx() as conn:
             await self._require_empty(conn)
@@ -726,6 +735,7 @@ class Purger(Enforcer):
         the workspace's audit log goes too, the tombstone is the record)."""
         await self._runs(ws, project_id)
         await self._project_artifacts(ws, project_id)
+        await self._project_rows(ws, project_id, hooks=False)
         await self.control.checkpoint()
         async with self._tx() as conn:
             await self._require_empty(conn, Target(PROJECT_SCOPE, ws, "", project_id, ""))
@@ -736,13 +746,14 @@ class Purger(Enforcer):
             )
         await self._hook("purge:project_row")
 
-    async def _workspace_rows(self) -> None:
+    async def _workspace_rows(self, *, hooks: bool = True) -> None:
         ws = self.target.workspace_id
         for table, key in inv.WORKSPACE_DRAINS:
             where = inv.CLASSIFICATION[table].workspace_where
             assert where is not None
             await self._delete_where(table, key, where, {"w": ws})
-            await self._hook(f"purge:{table}")
+            if hooks:
+                await self._hook(f"purge:{table}")
 
     async def _people(self) -> None:
         """The user rule (ADR-163): a person this workspace tied is removed ONLY when they have no
@@ -788,6 +799,11 @@ class Purger(Enforcer):
                     )
 
     async def _finish_workspace(self, ws: uuid.UUID) -> None:
+        # A row that arrived after the recorded `workspace_rows` step (a job claimed during the
+        # drain, a follow-up enqueue, a retention progress row) is drained here, before the
+        # fail-closed check, so the purge never wedges on it.
+        await self._workspace_rows(hooks=False)
+        await self.control.checkpoint()
         async with self._tx() as conn:
             # Late audit rows (a denied request raced the mark) go with the workspace.
             await conn.execute(delete(t.audit_log).where(t.audit_log.c.workspace_id == ws))

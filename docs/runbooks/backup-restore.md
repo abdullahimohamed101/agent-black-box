@@ -68,11 +68,11 @@ A restore loads into a **new, empty database** and a **new or empty artifact dir
 
 If the tool exits 6, or any step after "database loaded" failed, **drop the restored database and remove the artifact directory contents** before retrying; the message says so. Exit 4 with a passphrase message leaves nothing created.
 
-Restore time (RTO) depends on size; the tool prints `seconds=`. The measured drill on the Docker stack is recorded in `docs/benchmarks/` (Phase 19b step 6).
+Restore time (RTO) depends on size; the tool prints `seconds=`. The performed drill measured **1.2 s for a 10 MB bundle and 2.5 s for a 132 MB bundle** on a developer laptop (`docs/benchmarks/phase-19b-restore-drill.md`): indicative, a lower bound, and no claim for your data; re-run the drill on a copy of it (KI-219). **RTO = that restore time plus** creating the empty database, the role logins and passwords you keep outside the bundle, repointing the processes and starting them. **RPO = the backup interval** (no point-in-time recovery).
 
 ## Restore drill (what "performed" means)
 
-Before enabling `ABB_RETENTION_MODE=enforce` perform a drill and keep its output: back up, restore into a scratch database and directory, open a run and an artifact, confirm the alert destination test works, drop the scratch copies. `tests/backup/` does this in CI with seeded data (counts and row content equal, artifacts byte-identical, an alert secret opens, the API serves the restored runs, grants identical).
+Before enabling `ABB_RETENTION_MODE=enforce` perform a drill and keep its output: back up, restore into a scratch database and directory, open a run and an artifact, confirm the alert destination test works, drop the scratch copies. `tests/backup/` does this in the unit suite, and **`make backup-restore-e2e` (`scripts/backup-restore-e2e.sh`, CI job `backup-restore-e2e`) performs it on a real stack**: it seeds an installation through the API, backs it up (module CLI, encrypted, and the compose `backup` service built from the API image), destroys the source, restores into a fresh database and directory, starts the API and worker on it and checks the same runs, byte-identical artifacts, an alert signing secret that still opens (the receiver verifies the HMAC), policy, quotas, sessions, identical grants and the alembic head; it also restores an older-revision bundle (upgraded on restore), proves a wrong passphrase, a tampered bundle and non-empty targets restore nothing, and rotates the alert key. Results and the RPO/RTO statement: `docs/benchmarks/phase-19b-restore-drill.md`. Run it before you turn enforcement on, and again on a copy of your own data.
 
 ## Not in the bundle
 
@@ -80,7 +80,11 @@ The operator's `.env` and secrets stored outside the database (OIDC client secre
 
 ## Compose notes
 
-The `backup` service (profile `ops`) connects as the owner and mounts `./backups` (override with `ABB_BACKUP_DIR`) at `/backups`. The container runs as uid 10001: that directory must be writable by it (`chmod 0770` with a matching group, or `chown 10001`). Not yet exercised on the full stack (step 6).
+The `backup` service (profile `ops`) connects as the owner and mounts `./backups` (override with `ABB_BACKUP_DIR`) at `/backups`. The container runs as uid 10001: that directory must be writable by it (`chmod 0770` with a matching group, or `chown 10001`). **Exercised by the drill (Phase 19b step 6)**: the image builds with `postgresql-client` and `openssl`, and `backup create` / `backup verify` run in the container (PostgreSQL 17 client against a 16 server). What it taught (KI-218): the bundle the container writes is owned by uid 10001 with mode `0700`, so on Linux copy it out with `docker run --rm -v ./backups:/b --user 10001 <image> ...` or `sudo`, not with the host user; the service's default database URL is the compose stack's own `postgres:5432/abb`, set `ABB_BACKUP_DATABASE_URL` (and a read-only mount for `ABB_ARTIFACT_DIR`) to back up anything else; and a bind-mounted directory must be one the Docker daemon can see (Colima and Docker Desktop share the home directory, not the system temp directory).
+
+## Compose pins `ABB_ENVIRONMENT=development` for this service
+
+`docker-compose.yml` sets `ABB_ENVIRONMENT: development` on the `retention` and `backup` services, as on every service of the local stack. In development the retention process may fall back to the owner URL when `ABB_RETENTION_DATABASE_URL` is missing, and warns instead of refusing if its role is privileged. For a deployment other people reach, run these services with `ABB_ENVIRONMENT=production` (override the variable in your own compose file or orchestrator), give the retention job its own `ABB_RETENTION_DATABASE_URL`, and keep the passwords out of the compose file; production then refuses to start without that URL and with a privileged role.
 
 ## Monitoring
 

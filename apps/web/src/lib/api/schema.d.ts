@@ -1558,7 +1558,7 @@ export interface paths {
         get: operations["get_retention_v1_workspaces__workspace_id__retention_get"];
         /**
          * Change a workspace's retention policy
-         * @description Tiers left out stay as they are; a whole number of days (at least 7) sets that tier; `"forever"` keeps it for good; `null` returns it to the environment default. Artifacts cannot outlast trace detail, nor trace detail the run record. Owners and admins only. Each changed tier writes one audit entry (`retention.policy.update`: the tier, the old and the new value). Shortening a period deletes nothing by itself: the retention job applies the policy, and in dry-run mode (the default) only reports what it would delete.
+         * @description Tiers left out stay as they are; a whole number of days (at least 7) sets that tier; `"forever"` keeps it for good; `null` returns it to the environment default. Artifacts cannot outlast trace detail, nor trace detail the run record. Owners and admins only. Each changed tier writes one audit entry (`retention.policy.update`: the tier, the old and the new value, and when it takes effect). A shortening takes effect after the grace period (`grace_hours`); until then the longer period is enforced, and saving the previous value again cancels it. Lengthening is immediate. Only an owner may change the audit tier (403 for an admin), whose minimum is `audit_floor_days`. Shortening deletes nothing by itself: the retention job applies the policy, and in dry-run mode (the default) only reports what it would delete.
          */
         put: operations["put_retention_v1_workspaces__workspace_id__retention_put"];
         post?: never;
@@ -3718,6 +3718,25 @@ export interface components {
             count: number;
         };
         /**
+         * PendingShorteningOut
+         * @description A shortening that has not taken effect: the longer period still applies until then.
+         */
+        PendingShorteningOut: {
+            /**
+             * Current Days
+             * @description The period enforced until then (the longer of the two); null: forever.
+             */
+            current_days: number | null;
+            /** Current Forever */
+            current_forever: boolean;
+            /**
+             * Effective At
+             * Format: date-time
+             * @description When the shorter period starts to apply.
+             */
+            effective_at: string;
+        };
+        /**
          * Percentiles
          * @description Approximate: read from duration histograms with about 10% wide buckets (ADR-043).
          */
@@ -3841,6 +3860,16 @@ export interface components {
             cutoff: string | null;
             /** Days */
             days: number | null;
+            /**
+             * Effective At
+             * @description When the shorter period would start to apply; null: at once.
+             */
+            effective_at?: string | null;
+            /**
+             * Enforced Days
+             * @description The period the job applies right now if this policy were saved (the longer of the old and the new while a shortening waits); null: forever. The counts below are for `days`, once the shortening takes effect.
+             */
+            enforced_days: number | null;
             /** Events */
             events: number;
             /** Forever */
@@ -4252,8 +4281,18 @@ export interface components {
         };
         /** RetentionPolicyOut */
         RetentionPolicyOut: {
+            /**
+             * Audit Floor Days
+             * @description The audit tier's own minimum (owners only).
+             */
+            audit_floor_days: number;
             /** Floor Days */
             floor_days: number;
+            /**
+             * Grace Hours
+             * @description A shortening takes effect after this many hours (0: at once).
+             */
+            grace_hours: number;
             /**
              * Mode
              * @description What the retention job does on this installation (`ABB_RETENTION_MODE`): `dry_run` only measures and reports; `enforce` deletes.
@@ -5035,7 +5074,7 @@ export interface components {
         TierPolicyOut: {
             /**
              * Days
-             * @description Days a run (or audit entry) is kept after it ended; null: kept forever.
+             * @description Days a run (or audit entry) is kept after it ended, as saved; null: kept forever. While `pending` is set the longer `pending.current_days` is what is enforced.
              */
             days: number | null;
             /**
@@ -5045,6 +5084,8 @@ export interface components {
             default_days: number | null;
             /** Forever */
             forever: boolean;
+            /** @description Set while a saved shortening waits for its effective time. */
+            pending?: components["schemas"]["PendingShorteningOut"] | null;
             /**
              * Source
              * @description `workspace` when this workspace chose it, else `default`.
