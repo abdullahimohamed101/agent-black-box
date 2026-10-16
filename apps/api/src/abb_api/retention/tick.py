@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from abb_api.artifacts.store import ArtifactStore
 from abb_api.core.config import RetentionSettings
+from abb_api.core.request_context import set_operation
 from abb_api.db import tables as t
 from abb_api.retention import model as m
 from abb_api.retention.batches import Control, Halt, Hook, no_hook
@@ -163,6 +164,7 @@ async def run_tick(
     `stop` ends it the same way; `hook` is the crash-injection seam of the tests.
     """
     global _enforce_refusal_logged
+    set_operation("retention.tick")
     result = TickResult(tick_id=uuid.uuid4(), mode=settings.retention_mode)
     if settings.retention_mode == "off":
         return result

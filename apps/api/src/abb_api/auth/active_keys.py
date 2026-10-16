@@ -93,9 +93,7 @@ class ActiveKeyIds:
             self.failures += 1
             self._failed.inc()
             # Class name only; the loop retries, and the old set (if any) keeps serving.
-            logger.warning(
-                "active key ids not refreshed", extra={"error_class": type(exc).__name__}
-            )
+            logger.warning("active key ids not refreshed", extra={"error_type": type(exc).__name__})
             return False
         finally:
             added, self._added_during_load = self._added_during_load or set(), None

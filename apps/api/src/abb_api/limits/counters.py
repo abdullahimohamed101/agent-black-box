@@ -224,7 +224,7 @@ class SharedCounters:
             logger.warning(
                 "shared limiter unavailable; failing open to the local limiter",
                 extra={
-                    "error_class": type(exc).__name__,
+                    "error_type": type(exc).__name__,
                     "fail_open_events": self.fail_open_events,
                     "backoff_seconds": self._backoff,
                 },
@@ -262,7 +262,7 @@ class SharedCounters:
             if deleted >= self._prune_batch:
                 self._next_prune = started + 1.0
         except Exception as exc:  # cleanup is never on the critical path; the next interval retries
-            logger.debug("rate limit prune failed", extra={"error_class": type(exc).__name__})
+            logger.debug("rate limit prune failed", extra={"error_type": type(exc).__name__})
         finally:
             self._prune_task = None
 

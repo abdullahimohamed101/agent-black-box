@@ -121,7 +121,7 @@ class ScrapeSampler:
         try:
             up = await self._run()
         except Exception as exc:  # never propagates: a scrape must not fail on the database
-            logger.warning("scrape-time sample failed", extra={"error_class": type(exc).__name__})
+            logger.warning("scrape-time sample failed", extra={"error_type": type(exc).__name__})
         finally:
             self._cat.abb_scrape_database_up.set(1 if up else 0)
             self._task = None
@@ -146,7 +146,7 @@ class ScrapeSampler:
                         ok = False
                         logger.warning(
                             "scrape-time probe failed",
-                            extra={"probe": probe.name, "error_class": type(exc).__name__},
+                            extra={"probe": probe.name, "error_type": type(exc).__name__},
                         )
         return ok
 

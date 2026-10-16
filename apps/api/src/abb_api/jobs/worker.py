@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from abb_api.clock import Clock
 from abb_api.core.config import Settings, get_settings
 from abb_api.core.logging import configure_logging
+from abb_api.core.request_context import is_operation_name, operation
 from abb_api.db import create_engine
 from abb_api.db.role_check import PrivilegedDatabaseRole, RoleMonitor, enforce_role
 from abb_api.jobs.context import (
@@ -121,6 +122,15 @@ class Worker:
         logger.info("worker stopped", extra={"owner": self.owner})
 
     async def _process(self, job: Job) -> None:
+        # Every log line of this job, its failure and its retry bookkeeping carry the operation.
+        # The type is ours (a registered handler name); anything else is not trusted as a name.
+        name = f"job.{job.job_type}"
+        with operation(
+            name if job.job_type in self._handlers and is_operation_name(name) else "job.unknown"
+        ):
+            await self._run_job(job)
+
+    async def _run_job(self, job: Job) -> None:
         handler = self._handlers.get(job.job_type)
         if handler is None:
             async with self._engine.begin() as conn:

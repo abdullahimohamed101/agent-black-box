@@ -216,9 +216,7 @@ class SessionThrottle:
                 )
             return session_throttled(max(tripped.values()))
         except Exception as exc:  # the throttle must never turn a 401 into a 500
-            logger.warning(
-                "session throttle failed open", extra={"error_class": type(exc).__name__}
-            )
+            logger.warning("session throttle failed open", extra={"error_type": type(exc).__name__})
             return None
 
     @staticmethod

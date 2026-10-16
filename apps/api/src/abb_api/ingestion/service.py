@@ -22,7 +22,7 @@ from abb_api.core.errors import (
     dependency_unavailable,
     is_connectivity_error,
 )
-from abb_api.core.request_context import get_request_id
+from abb_api.core.request_context import get_request_id, set_operation
 from abb_api.ids import public_id
 from abb_api.ingestion.body import batch_invalid
 from abb_api.ingestion.emitter import (
@@ -98,6 +98,7 @@ class IngestionService:
         self._quota_defaults = default_limits(settings)
 
     async def ingest_batch(self, principal: Principal, document: bytes) -> BatchResponse:
+        set_operation("ingest.batch")
         if principal.project_id is None:
             raise project_key_required()
         batch_id, raw_events = self._parse_batch(document)

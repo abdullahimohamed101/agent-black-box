@@ -307,7 +307,7 @@ class AuthThrottle:
                 await self._note(fresh, attempt.key_id, workspace_id)
             return throttled(max(tripped.values()))
         except Exception as exc:  # the throttle must never turn a 401 into a 500
-            logger.warning("auth throttle failed open", extra={"error_class": type(exc).__name__})
+            logger.warning("auth throttle failed open", extra={"error_type": type(exc).__name__})
             return None
 
     def _targets(self, attempt: Attempt) -> list[tuple[Scope, str]]:

@@ -61,7 +61,8 @@ async def test_request_log_is_structured_with_request_id(
         response = await client.get("/healthz")
     record = next(r for r in caplog.records if r.name == "abb_api.request")
     assert record.__dict__["status"] == 200
-    assert record.__dict__["path"] == "/healthz"
+    assert record.__dict__["route"] == "/healthz"
+    assert "path" not in record.__dict__  # raw paths carry ids; the template and request_id remain
     assert response.headers["x-request-id"]
 
 

@@ -49,6 +49,7 @@ from abb_api.alerts.repository import (
 )
 from abb_api.audit.repository import AuditEntry, AuditRepository
 from abb_api.core.config import Settings
+from abb_api.core.request_context import set_operation
 from abb_api.obs.catalogue import METRICS, Catalogue
 from abb_api.tenancy import TenantContext
 
@@ -140,6 +141,7 @@ async def deliver_due(
     """One delivery tick. Every notification that reaches a final status or a failed attempt is
     counted once in ``alert_deliveries_total{status,reason}`` (reason: the fixed error code or skip
     reason, "none" for a delivery); a deferral spends no attempt and is not counted."""
+    set_operation("alerts.deliver")
     deliveries = metrics.alert_deliveries_total
     notifications = NotificationRepository(conn, tenant)
     destinations = DestinationRepository(conn, tenant)

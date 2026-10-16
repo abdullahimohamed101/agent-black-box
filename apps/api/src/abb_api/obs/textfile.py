@@ -143,8 +143,6 @@ class TextfileMetrics:
         try:
             write_atomic(self._path, self.observability.registry.render(self._names))
         except Exception as exc:  # a metrics file must never fail a backup
-            logger.warning(
-                "metrics textfile not written", extra={"error_class": type(exc).__name__}
-            )
+            logger.warning("metrics textfile not written", extra={"error_type": type(exc).__name__})
             return False
         return True

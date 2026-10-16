@@ -145,7 +145,7 @@ class MetricsServer:
         try:
             self._before_render()
         except Exception as exc:  # a scrape must not fail on the database
-            logger.warning("worker scrape sample failed", extra={"error_class": type(exc).__name__})
+            logger.warning("worker scrape sample failed", extra={"error_type": type(exc).__name__})
 
     @property
     def port(self) -> int:
