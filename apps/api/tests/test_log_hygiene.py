@@ -72,8 +72,45 @@ def _words(identifier: str) -> set[str]:
     return {w for w in re.split(r"[_\W]+", identifier.lower()) if w}
 
 
-def _is_log_call(node: ast.Call, loggers: set[str]) -> bool:
+def _level_attributes(value: ast.expr, loggers: set[str]) -> list[str]:
+    """The logger level attributes an expression can evaluate to (``logger.warning``, or either
+    branch of ``logger.error if loud else logger.info``); [] for anything else."""
+    if isinstance(value, ast.IfExp):
+        return _level_attributes(value.body, loggers) + _level_attributes(value.orelse, loggers)
+    if isinstance(value, ast.Attribute) and value.attr in LEVELS:
+        owner = value.value
+        if isinstance(owner, ast.Name) and (owner.id in loggers or owner.id == "logging"):
+            return [value.attr]
+        if (
+            isinstance(owner, ast.Call)
+            and isinstance(owner.func, ast.Attribute)
+            and owner.func.attr == "getLogger"
+        ):
+            return [value.attr]
+    return []
+
+
+def _logger_aliases(tree: ast.Module, loggers: set[str]) -> dict[str, set[str]]:
+    """Names bound to a logger method (``emit = logger.warning``) and the levels they can be."""
+    aliases: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            levels = _level_attributes(node.value, loggers)
+            if levels:
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        aliases.setdefault(target.id, set()).update(levels)
+    return aliases
+
+
+def _is_wrapper_name(name: str) -> bool:
+    return name == "_log" or name.startswith(("log_", "_log_"))
+
+
+def _is_log_call(node: ast.Call, loggers: set[str], aliases: dict[str, set[str]]) -> bool:
     func = node.func
+    if isinstance(func, ast.Name) and func.id in aliases:
+        return True
     if isinstance(func, ast.Attribute) and func.attr in LEVELS:
         owner = func.value
         if isinstance(owner, ast.Name):
@@ -102,9 +139,10 @@ def _logger_names(tree: ast.Module) -> set[str]:
 
 
 class _Scan(ast.NodeVisitor):
-    def __init__(self, path: str, loggers: set[str]) -> None:
+    def __init__(self, path: str, loggers: set[str], aliases: dict[str, set[str]]) -> None:
         self.path = path
         self.loggers = loggers
+        self.aliases = aliases
         self.findings: list[Finding] = []
         self._scope: list[str] = []
         self._excepts: list[str] = []
@@ -137,20 +175,34 @@ class _Scan(ast.NodeVisitor):
             self._excepts.pop()
 
     def visit_Call(self, node: ast.Call) -> None:
-        if _is_log_call(node, self.loggers):
+        if _is_log_call(node, self.loggers, self.aliases):
             self._check(node)
+        else:
+            self._check_wrapper(node)
         self.generic_visit(node)
+
+    def _check_wrapper(self, node: ast.Call) -> None:
+        """A helper such as ``self._log(msg)`` or ``log_event(msg)`` hides the logger call, so its
+        message argument must be as fixed as a direct call's."""
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if not _is_wrapper_name(name) or not node.args:
+            return
+        first = node.args[0]
+        if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+            self._add(node, "wrapper-message", f"{name}({ast.unparse(first)[:40]})")
 
     def _check(self, node: ast.Call) -> None:
         func = node.func
-        if isinstance(func, ast.Attribute) and func.attr == "exception":
+        aliased = self.aliases.get(func.id, set()) if isinstance(func, ast.Name) else set()
+        if (isinstance(func, ast.Attribute) and func.attr == "exception") or "exception" in aliased:
             self._add(node, "traceback", "exception()")
         for keyword in node.keywords:
             if keyword.arg == "exc_info" and not (
                 isinstance(keyword.value, ast.Constant) and keyword.value.value in (False, None)
             ):
                 self._add(node, "traceback", "exc_info")
-        level_call = isinstance(func, ast.Attribute) and func.attr == "log"
+        level_call = (isinstance(func, ast.Attribute) and func.attr == "log") or aliased == {"log"}
         message_at = 1 if level_call else 0
         if len(node.args) > message_at:
             message = node.args[message_at]
@@ -221,7 +273,8 @@ class _Scan(ast.NodeVisitor):
 
 def scan_source(path: str, source: str) -> list[Finding]:
     tree = ast.parse(source)
-    visitor = _Scan(path, _logger_names(tree))
+    loggers = _logger_names(tree)
+    visitor = _Scan(path, loggers, _logger_aliases(tree, loggers))
     visitor.visit(tree)
     return visitor.findings
 
@@ -332,3 +385,38 @@ def test_the_scanner_accepts_the_safe_forms() -> None:
         "    logger.info('x', exc_info=False)\n"
     )
     assert scan_source("x.py", source) == []
+
+
+def test_an_aliased_logger_method_is_still_a_logger_call() -> None:
+    header = "import logging\nlogger = logging.getLogger(__name__)\n"
+    aliased = header + "emit = logger.warning\ndef f(v):\n    emit(f'got {v}')\n"
+    assert "message" in _rules(aliased)
+    in_function = header + "def f(v):\n    emit = logger.error\n    emit('x', extra={'body': v})\n"
+    assert "extra-key" in _rules(in_function)
+    conditional = (
+        header + "def f(v, loud):\n    out = logger.error if loud else logger.info\n    out(v)\n"
+    )
+    assert "message" in _rules(conditional)
+    exception_alias = header + "def f():\n    out = logger.exception\n    out('x')\n"
+    assert "traceback" in _rules(exception_alias)
+    getter = "import logging\nemit = logging.getLogger('a').warning\ndef f(v):\n    emit(v)\n"
+    assert "message" in _rules(getter)
+    safe = header + "emit = logger.warning\ndef f():\n    emit('fixed', extra={'n': 1})\n"
+    assert scan_source("x.py", safe) == []
+
+
+def test_a_logging_wrapper_with_a_non_literal_message_is_flagged() -> None:
+    cases = (
+        "class A:\n    def f(self, v):\n        self._log(v)\n",
+        "class A:\n    def f(self, v):\n        self._log(f'x {v}')\n",
+        "def f(v):\n    log_event(v)\n",
+        "def f(v):\n    log_failure('x' + v)\n",
+    )
+    for source in cases:
+        assert "wrapper-message" in _rules(source), source
+    for safe in (
+        "class A:\n    def f(self):\n        self._log('fixed text')\n",
+        "def f():\n    log_event('fixed text', 3)\n",
+        "def f(v):\n    login_user(v)\n    catalog(v)\n",  # names that merely start with "log"
+    ):
+        assert "wrapper-message" not in _rules(safe), safe
