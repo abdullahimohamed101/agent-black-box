@@ -1,6 +1,6 @@
 # ADR-166: Design pass 2 direction ("One Red Line")
 
-Status: Proposed (design pass 2, step 1; written 2026-10-16). Becomes Accepted when step 4 lands the tokens. Amends ADR-110
+Status: Accepted (design pass 2 step 4 landed the tokens, 2026-10-16): accepted by the assistant under the user's standing rule for the overnight run (user asleep); reversible, see alternatives. Written in step 1 as Proposed. Amends ADR-110
 (fonts), ADR-111 (visual direction) and the Phase 21 decisions in `docs/plans/completed/phase-21-ui-shell-and-design-pass.md`
 (D1 frame, D3 rail). Changes no data contract and no API. The number 166 is the one the pipeline reserved
 (`docs/design/design-pass-2-pipeline.md`); ADR-159 to ADR-165 are left free for Phase 19b and 19c.
@@ -79,7 +79,7 @@ readout strips and the key caps; ADR-111's serif failure sentence added a fourth
 | --- | --- |
 | Fault line marks the first error; rows above are quiet | Kept; "rows below carry a faint tint" amended to no tint |
 | Palette hex values | Kept for accent, fail, caution, mark; canvas and ink re-specified in OKLCH (`01-direction.md` B.4); surface collapses into canvas |
-| Old names stay as aliases | Amended: aliases are deleted once `grep` finds no reader (step 4 proves it) |
+| Old names stay as aliases | Amended: aliases are deleted once `grep` finds no reader (step 4 lists every reader count; step 5 deletes) |
 | Red is for failure only; `tokens-use.test.ts` guards it | Kept and tightened: red only for the fault line and the failed word; the allow-list shrinks |
 | Destructive buttons and removed diff lines in amber | Kept |
 | Green stays but is quiet | Amended: green removed |
@@ -91,6 +91,58 @@ readout strips and the key caps; ADR-111's serif failure sentence added a fourth
 | Motion language 120-280 ms, ease-out, transform and opacity, zero under reduce | Kept; two animations removed (headline fade, live-row rise) |
 | Phase 13 severity by shield glyph and weight, never red | Kept |
 | Phase 14 outcomes by glyph and weight; denial is ink; waiting amber | Kept |
+
+## Token decisions (step 4, 2026-10-16)
+
+Decided by the assistant under the same standing rule; each is reversible and the alternative is named.
+
+1. **Source and generator.** `apps/web/design-tokens/tokens.json` (Style Dictionary naming, `value` or `light`/`dark` per leaf,
+   `{path}` references, primitives and semantic layers) is the only source of colour, type, space, radius and motion values.
+   `apps/web/scripts/tokens-build.mjs` (stdlib node, no dependency) generates `src/app/tokens.generated.css` and
+   `src/app/tokens.aliases.css`; `tokens:build`, `tokens:check` (also in `scripts/quality.sh`) and `tokens:report` are pnpm scripts.
+   Alternative rejected: the real Style Dictionary package (a dependency and a config for one output format).
+2. **Theme mechanism unchanged.** The app has no theme switch: light is the default and dark follows `prefers-color-scheme`. The
+   generated file mirrors that exactly (no `[data-theme]` selector was added; the direction bans a theme toggle).
+3. **Hex is rendered, OKLCH is authored.** The direction's OKLCH roles are converted to sRGB hex by `tokens-lib.mjs` and only the
+   hex is emitted, so the contrast numbers are computed on exactly what the browser paints. The direction's "approximately" hexes
+   were rough: converting its own OKLCH gives dark canvas `#101419` (the direction said about `#15191e`, which is L 21 %, not 19 %),
+   light ink `#1d2229` (not `#22272e`), light ink-2 `#5c646f` (not `#626c78`), light canvas `#f6f8fa` (not `#f7f8fa`). OKLCH is the
+   spec, so the converted hex wins; no hue was changed. Kept hex roles (accent, accent-wash, fail, caution, mark, both themes)
+   are unchanged ADR-111 values. Alternative rejected: also emit `oklch()` inside `@supports`, which paints a value the table
+   did not measure.
+4. **One role added: `color.border.control`.** The direction's hairline-strong (L 82 %) is 1.6:1 on the canvas; WCAG 1.4.11 asks
+   3:1 for the boundary of a field. A decorative table rule and a field boundary are different jobs, so `border.strong` stays the
+   direction's value (decorative floor 1.3:1 in the test, never the only cue) and `border.control` (3.4:1 light, 4.2:1 dark) is the
+   field and button boundary. Step 5 moves those readers to it. Alternative rejected: darken hairline-strong to 3:1 everywhere
+   (heavy rules on every table, against "one hairline weight").
+5. **Aliases, not renames.** Every pre-pass-2 custom property keeps its name and resolves to a new token when the mapping is
+   faithful (`--bg`, `--ink`, `--muted`, `--accent`, `--fail`, `--wait`, `--mark`, `--sel`, `--border*`, `--fs-*`, `--sans`,
+   `--mono`, `--ease-out`). `--surface` maps to `color.bg.raised` for now (screens still draw cards); step 5 collapses it into
+   canvas. `--fg-2` maps to ink (no role between ink and ink-2). Removed roles keep a value under `color.legacy.*` (`surface-2`,
+   `ok`, `ok-bg`, `wait-bg`, `fault-bg`) so no screen breaks; they are listed as "deleted in step 5" with their reader counts in
+   `docs/design/pass-2/04-colour-type-tokens.md`. Nothing was deleted in step 4.
+6. **Fonts.** Plex Sans and Plex Mono are the only families in the token set. Condensed and Serif stay declared in `layout.tsx`
+   (screens still render in them until step 5) but are `preload: false`, so a page fetches them only if it uses them. `next/font`
+   preloads per family, not per file, so Sans Medium (500) remains in the preload set until step 5 removes the 500 weight; this
+   amends ADR-110's "all seven are preloaded". Step 5 deletes the two faces, their files and `--cond`/`--serif`.
+7. **The red rule is a test.** `tests/tokens-colour-rules.test.ts` fails if any colour token other than the fault tokens (and the
+   legacy red tint until step 5) resolves to a red-ish hue (OKLCH hue 340 to 40 with chroma), and counts the red-ish literals left
+   in stylesheets. `tests/tokens-use.test.ts` keeps its selector allow-list (ADR-111: "red means failure and nothing else"), now
+   police both the old and the new token names, and the list's length is a ratchet. The direction deliberately tightens ADR-111
+   from "failure" to "the fault line and the failed word"; today's 32 allowed failure selectors (tinted rows, red headline, chip,
+   counts) violate the tightened rule and stay on the list as recorded debt: step 5 removes them and the list shrinks to the fault
+   line and the failed word. No test was deleted for this.
+8. **Raw colour ratchet.** Literal colours outside the token files are counted per stylesheet and may only shrink: 12 in
+   `globals.css` (syntax highlighting, var fallbacks, a mask stop) and 35 in `waterfall.css` (the ADR-071 data palette). The
+   waterfall palette keeps its values in step 4 (moving and desaturating it belongs with the waterfall rebuild in step 5).
+9. **Motion tokens added, `--t-*` kept.** `motion.duration.*` (including the 280 ms fault draw and 160 ms inspector slide) and the
+   easing are generated and zero under reduced motion; the legacy `--t-*` durations stay in `globals.css` because
+   `tests/motion-contract.test.ts` reads them there.
+10. **Tests that changed value, not rule.** `tokens.test.ts`, `tokens-contrast.test.ts`, `policy-css.test.ts` and
+    `security-severity.test.tsx` parsed `globals.css`'s `:root`; the values moved, so they now read the same properties through
+    `tests/tokenCss.ts` (generated tokens, aliases, then globals, as the browser loads them). Every assertion and threshold is
+    unchanged except `tokens-contrast.test.ts` "matches the plan's base colours", which pinned the old canvas and surface
+    (`#eef1f4/#ffffff`, `#12161b/#1a2027`) and now pins the new ones (`#f6f8fa/#ffffff`, `#101419/#1b2025`).
 
 ## Consequences
 
