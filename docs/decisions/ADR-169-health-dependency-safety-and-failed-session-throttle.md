@@ -13,7 +13,7 @@ Phase: 19c
 
 ### 1. Readiness: a closed set of checks with fixed reason codes
 
-`/healthz` stays liveness with no I/O. `/readyz` answers `{status: ready|not_ready, version, checks: {name: {status: ok|fail|degraded, reason}}}`, 200 or 503 (`Retry-After: 2`). Reasons are fixed codes, never error text, a path or a host. **Failing** checks: `database` (`down`, `timeout`, `breaker_open`), `schema` (`behind`, `unreadable`, `unchecked`), `artifacts` (`missing`, `not_writable`, `timeout`), `role` (`privileged_role`, production only). **Reported only**: `worker` (`worker_lag` when the oldest due job has waited over 60 s) and `retention` (the configured mode). The body schema is part of the OpenAPI contract (it replaces the old `{database: ok}` and the error envelope on 503; nothing in the repository consumed either).
+`/healthz` stays liveness with no I/O. `/readyz` answers `{status: ready|not_ready, version, checks: {name: {status: ok|fail|degraded, reason}}}`, 200 or 503 (`Retry-After: 2`). Reasons are fixed codes, never error text, a path or a host. **Failing** checks: `database` (`down`, `timeout`, `breaker_open`; `degraded`/`pool_saturated` when every pool connection is checked out), `schema` (`behind`, `unreadable`, `unchecked`), `artifacts` (`missing`, `not_writable`, `timeout`), `role` (`privileged_role`, production only). **Reported only**: `worker` (`worker_lag` when the oldest due job has waited over 60 s) and `retention` (the configured mode). The body schema is part of the OpenAPI contract (it replaces the old `{database: ok}` and the error envelope on 503; nothing in the repository consumed either).
 
 - **Ahead is ready.** A database whose revision the code does not know (newer) is `degraded`/`ahead` and the process stays ready: rolling deploys migrate first, and the old processes must keep serving until they are replaced (migrations between releases are additive). A database *behind* the code is not ready, so a process started before its migration receives no traffic. If the code cannot find its migrations the check is `degraded`/`head_unknown` rather than failing every probe.
 - **Migration 0106** grants the runtime role `SELECT` on `alembic_version` (0007 had revoked everything on it). Read only: the role still cannot insert, update or delete, so it cannot make the migrations believe a step ran; a revision id is not sensitive. Without the grant the check would be blind; the alternatives (a `SECURITY DEFINER` function, or a second connection string with owner rights in the API) are worse. `test_runtime_role` changed accordingly: reading is allowed, writing is still denied. Until 0106 itself has run the check reports `schema: unreadable`, which is correct: the process is behind.
@@ -30,7 +30,7 @@ Phase: 19c
 
 ### 4. Circuit breaker on database connectivity
 
-In `TimedPool.connect` (the one entry point of every checkout): after `ABB_DB_BREAKER_THRESHOLD` (5) consecutive checkout failures within `ABB_DB_BREAKER_WINDOW_SECONDS` (30) the breaker opens for `ABB_DB_BREAKER_OPEN_SECONDS` (5): a checkout then raises `BreakerOpen` *before* touching the pool (no pool wait, no connect attempt), mapped to the existing `503 DEPENDENCY_UNAVAILABLE` with `Retry-After` set to the time to the next probe. After the open period one probe checkout is let through (half-open; a probe that never reports is replaced after one more period); success closes, failure reopens. Only checkout failures count: slow queries, statement timeouts and application errors happen after a connection was handed out and never do (tested), and a late success or failure from a request that started before it opened is ignored. A saturated pool (pool timeout) does count: shedding is the right response to it. `/healthz` is untouched; `/readyz` reports `database: fail/breaker_open` without touching the pool. Per process and in memory (each process learns from its own traffic within five requests; sharing it through the database would need the database). `ABB_DB_BREAKER_ENABLED=0` is the kill switch. The streaming hub's own listener connection and the worker are not behind it. Metrics `db_breaker_state` (0/1/2) and `db_breaker_trips_total`.
+In `TimedPool.connect` (the one entry point of every checkout): after `ABB_DB_BREAKER_THRESHOLD` (5) consecutive checkout failures within `ABB_DB_BREAKER_WINDOW_SECONDS` (30) the breaker opens for `ABB_DB_BREAKER_OPEN_SECONDS` (5): a checkout then raises `BreakerOpen` *before* touching the pool (no pool wait, no connect attempt), mapped to the existing `503 DEPENDENCY_UNAVAILABLE` with `Retry-After` set to the time to the next probe. After the open period one probe checkout is let through (half-open; a probe that never reports is replaced after one more period); success closes, failure reopens. Only checkout failures count: slow queries, statement timeouts and application errors happen after a connection was handed out and never do (tested), and a late success or failure from a request that started before it opened is ignored. A saturated pool (pool timeout) does **not** count (amended below): the breaker means "the database is unreachable". `/healthz` is untouched; `/readyz` reports `database: fail/breaker_open` without touching the pool. Per process and in memory (each process learns from its own traffic within five requests; sharing it through the database would need the database). `ABB_DB_BREAKER_ENABLED=0` is the kill switch. The streaming hub's own listener connection and the worker are not behind it. Metrics `db_breaker_state` (0/1/2) and `db_breaker_trips_total`.
 
 ### 5. Failed-session throttle (KI-176)
 
@@ -51,3 +51,21 @@ In `TimedPool.connect` (the one entry point of every checkout): after `ABB_DB_BR
 - A rolling deploy can no longer send traffic to a process whose migration has not run, and an outage costs one fast 503 per request after five slow ones instead of a 5 s wait each.
 - Four new operational settings groups; every default preserves behaviour except the 30 s API statement timeout, which can cancel a legitimately slower unbudgeted statement (surfaces as `504 DATABASE_TIMEOUT`; raise or set 0).
 - The readiness body changed shape.
+
+## Amendments (Phase 19c adversarial review)
+
+- **Section 4, what counts (P2-1).** The breaker counts only connectivity failures at checkout
+  (connect refused, DNS, authentication at connect, connect timeout, pre-ping, asyncpg connection
+  errors). It does **not** count `sqlalchemy.exc.TimeoutError` (the pool wait ran out) or statement
+  timeouts. Reason: the first version counted pool timeouts, so a burst of slow queries that held
+  every connection opened the breaker and shed requests that would have been served, and
+  `/readyz` failed and took the instance out of rotation, which moves the load without helping. A
+  pool timeout stays its own per-request 503; a half-open probe that ends in a pool timeout is
+  inconclusive and the next caller probes at once. Pool saturation is diagnosed with
+  `postgres_pool_wait_seconds`. `/readyz` reports `database: degraded/pool_saturated` (ready, not
+  failing) when its own checkout times out while every pool connection is checked out; a timeout
+  with free connections remains `fail/timeout`.
+- **Schema check (P3-5).** A failure to read the code's alembic scripts is `schema: degraded`,
+  `head_unknown`, remembered for 30 s so the scripts are not re-read on every probe; it never
+  reports `database: down`.
+

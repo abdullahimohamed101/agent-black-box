@@ -15,6 +15,7 @@ import pytest
 from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
@@ -197,6 +198,64 @@ async def test_an_unreachable_database_opens_the_breaker(monkeypatch: pytest.Mon
             await checkout(engine)
         assert is_connectivity_error(raised.value)
         assert pool.reached == 2
+    finally:
+        await engine.dispose()
+
+
+async def test_pool_timeouts_never_open_the_breaker(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A saturated pool is not an outage: each waiter gets its own 503 and the others still run.
+    clock, obs = Clock(), build_observability()
+    breaker = breaker_with(clock, obs, threshold=3)
+    reached = 0
+    original = AsyncAdaptedQueuePool.connect
+
+    def connect(pool: AsyncAdaptedQueuePool) -> Any:
+        nonlocal reached
+        reached += 1
+        if reached <= 10:
+            raise PoolTimeoutError("QueuePool limit of size 5 overflow 10 reached")
+        return original(pool)
+
+    monkeypatch.setattr(AsyncAdaptedQueuePool, "connect", connect)
+    engine = create_engine(database_url, breaker=breaker)
+    try:
+        for _ in range(10):  # more than three times the threshold
+            with pytest.raises(PoolTimeoutError):
+                await checkout(engine)
+        assert str(breaker.state) == "closed"
+        assert breaker.trips == 0
+        await checkout(engine)  # not shed: the 11th reaches the pool and succeeds
+    finally:
+        await engine.dispose()
+
+
+async def test_a_pool_timeout_by_the_half_open_probe_lets_the_next_caller_probe(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock, obs = Clock(), build_observability()
+    breaker = breaker_with(clock, obs)
+    for _ in range(3):
+        breaker.record_failure()
+    clock.now += 5
+    original = AsyncAdaptedQueuePool.connect
+    state = {"timeout": True}
+
+    def connect(pool: AsyncAdaptedQueuePool) -> Any:
+        if state["timeout"]:
+            raise PoolTimeoutError("QueuePool limit reached")
+        return original(pool)
+
+    monkeypatch.setattr(AsyncAdaptedQueuePool, "connect", connect)
+    engine = create_engine(database_url, breaker=breaker)
+    try:
+        with pytest.raises(PoolTimeoutError):
+            await checkout(engine)  # the probe: inconclusive, neither success nor failure
+        assert breaker.trips == 1
+        state["timeout"] = False
+        await checkout(engine)  # not shed for another full period: probes again at once
+        assert str(breaker.state) == "closed"
     finally:
         await engine.dispose()
 

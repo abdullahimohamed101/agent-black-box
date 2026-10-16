@@ -15,20 +15,20 @@ Everything below that runs SQL needs a role that can read `pg_stat_*` (the owner
 
 ## Readiness failures
 
-`readiness_check{check="database"}` at 0 with reason `down` or `timeout` is the database; `breaker_open` is this process shedding because of earlier failures. `check="artifacts"` is the
+`readiness_check{check="database"}` at 0 with reason `down` or `timeout` is the database (reason `pool_saturated` is reported as degraded and does not fail readiness: see Connection pool); `breaker_open` is this process shedding because of earlier failures. `check="artifacts"` is the
 artifact directory (missing, not writable: disk full, a mount that went read-only). `check="role"` is [security operations](security-operations.md#privileged-database-role).
 Flapping (`readiness_flaps_total`) is almost always a database answering near the 2.5 s limit: treat it as saturation, not as an outage.
 
 ## Database breaker open
 
-After 5 consecutive checkout failures within 30 s the process stops asking for connections for 5 s, then probes with one request. It is the symptom, not the cause: find why checkouts fail.
+After 5 consecutive connection failures within 30 s the process stops asking for connections for 5 s, then probes with one request. The breaker means "the database is unreachable" (connect refused, DNS, authentication, connect timeout). A saturated pool does not open it: pool waits that time out answer 503 to that request alone and show in `postgres_pool_wait_seconds` (see Connection pool). It is the symptom, not the cause: find why connections fail.
 
 - Database down or restarting: `pg_isready`, the Postgres log, the host. The API recovers by itself within one probe after the database returns.
 - Connection limit reached: `SELECT count(*), state FROM pg_stat_activity GROUP BY 2;` against `SHOW max_connections;`. API replicas times pool size, plus the worker, retention and
   stream listeners, must stay below it. Reduce replicas or pool size, or raise `max_connections` with memory in mind (or put a session-mode pooler in front; transaction-mode poolers break
   `LISTEN` for streams, see [stream issues](stream-issues.md)).
 - Network: the checkout timeout is 3 s to connect; many process hosts failing at once point at the network.
-- Repeated trips that each recover (`AbbDatabaseBreakerTripping`): the pool is at its limit. Look at pool wait below.
+- Repeated trips that each recover (`AbbDatabaseBreakerTripping`): the database or the network flaps, or the server is at `max_connections` and refusing new connections. Check the Postgres log and the connection count above; pool saturation alone does not trip it.
 
 ## Connection pool
 

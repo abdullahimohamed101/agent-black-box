@@ -1,17 +1,19 @@
 """A circuit breaker on database connectivity (Phase 19c step 3, ADR-169).
 
-When the database is down or the pool cannot hand out connections, every request would otherwise
-wait for the connect timeout or the pool timeout (3 to 5 seconds) before answering 503, and the
-waiting requests pile up on the event loop. After `threshold` consecutive checkout failures within
-`window` seconds the breaker opens: for `open_seconds` a checkout fails at once with `BreakerOpen`
-(mapped to 503 DEPENDENCY_UNAVAILABLE with `Retry-After`), before the pool is touched. Then one
-probe checkout is allowed (half-open): its success closes the breaker, its failure reopens it.
+When the database is down, every request would otherwise wait for the connect timeout or the
+pool timeout (3 to 5 seconds) before answering 503, and the waiting requests pile up on the event
+loop. After `threshold` consecutive checkout failures within `window` seconds the breaker opens:
+for `open_seconds` a checkout fails at once with `BreakerOpen` (mapped to 503
+DEPENDENCY_UNAVAILABLE with `Retry-After`), before the pool is touched. Then one probe checkout is
+allowed (half-open): its success closes the breaker, its failure reopens it.
 
-What counts: only a failure of the checkout itself (``Pool.connect``: a new connection, the
-pre-ping, the wait for a free one). A slow query, a statement timeout, a constraint violation or
-any other error after a connection was handed out is not a failure of connectivity and never
-counts; a success while closed resets the count. The breaker is per process (each API process
-learns about an outage from its own traffic, within `threshold` requests) and in memory only.
+What counts: only a connectivity failure of the checkout itself (``Pool.connect``: a new
+connection, the pre-ping). The wait for a free connection timing out (a saturated pool) does not
+count: the database is reachable, that request fails alone. A slow query, a statement timeout, a
+constraint violation or any other error after a connection was handed out is not a failure of
+connectivity and never counts; a success while closed resets the count. The breaker is per process
+(each API process learns about an outage from its own traffic, within `threshold` requests) and in
+memory only.
 
 Single-threaded by design (the event loop), with a lock anyway so a metrics thread can read it.
 """
@@ -103,6 +105,17 @@ class DbBreaker:
                 self._failures = 0
                 self._set("closed")
             # open: a straggler that started before it opened; only the probe may close it
+
+    def release_probe(self) -> None:
+        """A checkout ended inconclusively (a pool timeout): neither a success nor a failure.
+
+        If it was the half-open probe, the next caller may probe at once instead of waiting.
+        """
+        if not self.enabled:
+            return
+        with self._lock:
+            if self._state == "half_open":
+                self._since = self._clock() - self._open_seconds
 
     def record_failure(self) -> None:
         if not self.enabled:

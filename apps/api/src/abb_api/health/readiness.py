@@ -7,7 +7,10 @@ never an error text, a host or a connection string, and merely *reports* a few o
 Fail readiness:
 
 * ``database``  - ``SELECT 1`` answers within its own short statement timeout. Reasons:
-  ``breaker_open`` (the circuit breaker is shedding), ``timeout``, ``down``.
+  ``breaker_open`` (the circuit breaker is shedding: the database is unreachable), ``timeout``,
+  ``down``. A pool with every connection checked out reports ``degraded``/``pool_saturated``,
+  never ``fail``: the database is not known to be down, and taking every instance out of rotation
+  for a busy pool only moves the load (ADR-169 section 4, amended).
 * ``schema``    - the database revision equals the code's alembic head. Reasons: ``behind`` (the
   code needs a migration that has not run: not ready), ``unreadable`` (the runtime role cannot
   read the revision), ``unchecked`` (the database check failed first). A database *ahead* of the
@@ -42,6 +45,7 @@ from typing import Final, Literal
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import text
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from abb_api.core.config import Settings
@@ -57,6 +61,8 @@ DATABASE_DEADLINE_SECONDS: Final = 2.5
 STATEMENT_TIMEOUT_MS: Final = 2000
 ARTIFACT_DEADLINE_SECONDS: Final = 2.0
 WORKER_LAG_DEGRADED_SECONDS: Final = 60.0
+# A failed read of the code's alembic scripts is not retried on every evaluation.
+HEAD_FAILURE_TTL_SECONDS: Final = 30.0
 # The same bounded look at the due jobs as the scrape sampler: oldest first, so the lag is exact.
 _OLDEST_DUE = text(
     "SELECT extract(epoch FROM (now() - min(available_at))) FROM ("
@@ -138,6 +144,16 @@ def judge_revision(found: str | None, code: CodeRevisions | None) -> CheckResult
     )
 
 
+def _pool_saturated(engine: AsyncEngine) -> bool:
+    """Every connection the pool may open is checked out (a queue pool; False for any other)."""
+    pool = engine.pool
+    try:
+        capacity = int(pool.size()) + int(pool._max_overflow)  # type: ignore[attr-defined]
+        return int(pool.checkedout()) >= capacity  # type: ignore[attr-defined]
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 class Readiness:
     def __init__(
         self,
@@ -166,6 +182,7 @@ class Readiness:
         self._flight: asyncio.Task[Report] | None = None
         self._artifact: tuple[float, CheckResult] | None = None
         self._last_ready: bool | None = None
+        self._head_failed_at: float | None = None
         self.evaluations = 0  # for tests: how many times the checks really ran
 
     async def evaluate(self) -> Report:
@@ -233,7 +250,10 @@ class Readiness:
                     schema, worker = await self._after_ping(conn)
         except BreakerOpen:
             return CheckResult("fail", "breaker_open"), unchecked, worker
-        except TimeoutError:
+        except (TimeoutError, PoolTimeoutError):
+            if _pool_saturated(engine):
+                degraded = CheckResult("degraded", "unchecked")
+                return CheckResult("degraded", "pool_saturated"), degraded, worker
             return CheckResult("fail", "timeout"), unchecked, worker
         except Exception as exc:
             logger.warning(
@@ -242,8 +262,22 @@ class Readiness:
             return CheckResult("fail", "down"), unchecked, worker
         return CheckResult("ok"), schema, worker
 
+    async def _code(self) -> CodeRevisions | None:
+        """The code's revisions; a failure reads as unknown (``head_unknown``) and is remembered
+        briefly, so a broken scripts directory costs one attempt per interval, not one per probe."""
+        now = self._mono()
+        failed = self._head_failed_at
+        if failed is not None and now - failed < HEAD_FAILURE_TTL_SECONDS:
+            return None
+        try:
+            return await asyncio.to_thread(code_revisions)
+        except Exception as exc:
+            self._head_failed_at = now
+            logger.warning("readiness head lookup failed", extra={"error_type": type(exc).__name__})
+            return None
+
     async def _after_ping(self, conn: AsyncConnection) -> tuple[CheckResult, CheckResult]:
-        code = await asyncio.to_thread(code_revisions)
+        code = await self._code()
         try:
             async with conn.begin_nested():
                 found = (await conn.execute(_REVISION)).scalar()

@@ -11,8 +11,10 @@ from typing import Any
 import httpx
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from abb_api.db.breaker import DbBreaker
+from abb_api.db.engine import timed_pool
 from abb_api.health import readiness
 from abb_api.health.readiness import CodeRevisions, Readiness, judge_revision
 from abb_api.jobs.outbox import SUMMARIZE_RUN, OutboxRepository
@@ -155,6 +157,81 @@ async def test_a_late_job_degrades_the_worker_line_without_failing_readiness(
         status, body = await ready_body(client)
     assert status == 200
     assert checks(body)["worker"] == {"status": "degraded", "reason": "worker_lag"}
+
+
+async def test_a_failing_revision_lookup_degrades_the_schema_and_not_the_database(
+    runtime_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+
+    def broken() -> CodeRevisions:
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("alembic scripts are unreadable")
+
+    monkeypatch.setattr(readiness, "code_revisions", broken)
+    app = create_app(make_settings(runtime_database_url))
+    async for client in _client(app):
+        status, body = await ready_body(client)
+    assert status == 200
+    assert checks(body)["database"] == {"status": "ok", "reason": None}
+    assert checks(body)["schema"] == {"status": "degraded", "reason": "head_unknown"}
+    assert "unreadable" not in json.dumps(body)
+
+
+async def test_a_failed_revision_lookup_is_not_retried_on_every_evaluation(
+    runtime_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+
+    def broken() -> CodeRevisions:
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(readiness, "code_revisions", broken)
+    clock = Clock()
+    app = create_app(make_settings(runtime_database_url))
+    async for _ in _client(app):
+        probe = Readiness(
+            lambda: app.state.engine,
+            app.state.settings,
+            monotonic=clock,
+            ttl_seconds=0,
+        )
+        for _ in range(5):
+            await probe.evaluate()
+            clock.now += 1
+        assert calls == 1  # cached for a short while
+        clock.now += readiness.HEAD_FAILURE_TTL_SECONDS
+        await probe.evaluate()
+        assert calls == 2
+
+
+async def test_pool_saturation_alone_does_not_fail_readiness_or_open_the_breaker(
+    database_url: str, tmp_path: Path
+) -> None:
+    breaker = DbBreaker(threshold=2)
+    engine = create_async_engine(
+        database_url,
+        poolclass=timed_pool(None, breaker),
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=0.05,
+    )
+    probe = Readiness(lambda: engine, make_settings(database_url), breaker=breaker, ttl_seconds=0)
+    try:
+        async with engine.connect():  # the only connection is held: every waiter times out
+            for _ in range(5):  # more than the threshold
+                report = await probe.evaluate()
+                assert report.ready
+                assert report.checks["database"] == readiness.CheckResult(
+                    "degraded", "pool_saturated"
+                )
+        assert str(breaker.state) == "closed"
+        assert (await probe.evaluate()).checks["database"].status == "ok"
+    finally:
+        await engine.dispose()
 
 
 # ------------------------------------------------------------------ cost and flapping

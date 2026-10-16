@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     create_async_engine,
@@ -30,6 +31,8 @@ def timed_pool(
 
     The same entry point is where the circuit breaker (`db/breaker.py`) watches: it refuses a
     checkout before the pool is touched while open, and learns from the outcome of every other.
+    Only connectivity failures count (connect refused, DNS, auth, pre-ping); a pool timeout does
+    not, so the breaker means "the database is unreachable", never "the pool is busy".
     """
 
     class TimedPool(AsyncAdaptedQueuePool):
@@ -42,6 +45,12 @@ def timed_pool(
                     "db.checkout", child_only=True
                 ):  # wait + connect + ping; no statement, no parameters
                     connection = super().connect()
+            except PoolTimeoutError:
+                # The pool is saturated, which says nothing about reachability: this request gets
+                # its own 503 and must not shed the others (ADR-169 section 4 amendment).
+                if breaker is not None:
+                    breaker.release_probe()
+                raise
             except Exception:
                 if breaker is not None:
                     breaker.record_failure()
