@@ -76,17 +76,26 @@ def revision_known(root: Path, revision: str) -> bool:
         return False
 
 
+# Migrating a restored database is bounded: a migration that has not finished in half an hour is
+# stuck (a lock, an unreachable server), not slow.
+MIGRATION_TIMEOUT_SECONDS: Final = 1800
+
+
 def upgrade_to_head(conn: Conn, root: Path, environ: Mapping[str, str]) -> None:
     env = {k: v for k, v in environ.items() if not k.startswith("PG")}
     env["ABB_MIGRATION_DATABASE_URL"] = conn.url  # never on the command line
-    proc = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=root,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=MIGRATION_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise BackupError(EXIT_TOOL, "alembic upgrade head did not finish in time") from None
     if proc.returncode != 0:
         lines = [x for x in proc.stderr.strip().splitlines() if x.strip()]
         tail = scrub(lines[-1] if lines else "no output", conn.secrets())
