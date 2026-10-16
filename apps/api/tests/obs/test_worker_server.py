@@ -161,3 +161,68 @@ def test_the_worker_starts_the_server_only_when_configured() -> None:
         ).is_success
     finally:
         started.stop()
+
+
+def test_a_byte_at_a_time_client_cannot_hold_a_connection_past_the_total_deadline() -> None:
+    # The per-read timeout resets on every byte; only a wall-clock deadline per connection stops
+    # a client that sends one byte every few seconds from holding one of the eight slots forever.
+    srv = MetricsServer(
+        build_observability().registry, SecretStr(TOKEN), port=0, connection_deadline_seconds=0.4
+    )
+    srv.start()
+    try:
+        with socket.create_connection(("127.0.0.1", srv.port), timeout=5) as sock:
+            closed = False
+            for _ in range(100):  # a byte every 50 ms, far inside the per-read timeout
+                try:
+                    sock.sendall(b"G")
+                except OSError:
+                    closed = True
+                    break
+                time.sleep(0.05)
+                sock.setblocking(False)
+                try:
+                    if sock.recv(1) == b"":
+                        closed = True
+                        break
+                except BlockingIOError:
+                    pass
+                except OSError:
+                    closed = True
+                    break
+                finally:
+                    sock.setblocking(True)
+            assert closed, "the server kept a trickling connection open"
+        # The slot came back: a normal scrape works.
+        assert httpx.get(
+            f"http://127.0.0.1:{srv.port}/metrics", headers={"Authorization": f"Bearer {TOKEN}"}
+        ).is_success
+    finally:
+        srv.stop()
+
+
+def test_the_rate_limiter_accounts_exactly_under_concurrency() -> None:
+    import sys
+
+    srv = MetricsServer(
+        build_observability().registry, SecretStr(TOKEN), port=0, requests_per_minute=500
+    )
+    srv.limiter._monotonic = lambda: 1000.0  # type: ignore[attr-defined]  # no refill: exact
+    accepted = []
+    barrier = threading.Barrier(64)
+
+    def hammer() -> None:
+        barrier.wait()
+        accepted.append(sum(1 for _ in range(20) if not srv.rate_limited()))
+
+    switch = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        threads = [threading.Thread(target=hammer) for _ in range(64)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        sys.setswitchinterval(switch)
+    assert sum(accepted) == 500  # the burst, not a token more

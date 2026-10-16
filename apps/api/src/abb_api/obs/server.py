@@ -3,10 +3,12 @@
 The worker has no web framework, so it serves the same registry with ``http.server``. One route
 (``GET /metrics``), the same bearer token as the API, loopback by default, and hard bounds: a
 socket timeout per connection, a cap on concurrent connections (extra ones are closed at once),
-the stdlib's own request-line and header limits, no request body read, and the same global rate
+a total wall-clock deadline per connection (a client sending a byte every few seconds resets the
+socket timeout forever, but not this), the stdlib's own request-line and header limits, no request body read, and the same global rate
 bucket as the API route. Nothing about the caller is logged.
 """
 
+import contextlib
 import json
 import logging
 import socket
@@ -25,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 CONNECTION_TIMEOUT_SECONDS: Final = 5.0
 MAX_CONCURRENT_CONNECTIONS: Final = 8
+CONNECTION_DEADLINE_SECONDS: Final = 10.0
 
 _UNAUTHORIZED: Final = json.dumps(
     {
@@ -42,6 +45,11 @@ _NOT_FOUND: Final = b'{"error":{"code":"NOT_FOUND","message":"Not found."}}'
 _LIMITED: Final = b'{"error":{"code":"RATE_LIMITED","message":"Too many requests."}}'
 
 
+def _close_socket(sock: Any) -> None:
+    with contextlib.suppress(OSError):
+        sock.shutdown(socket.SHUT_RDWR)
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 16
@@ -51,8 +59,10 @@ class _Server(ThreadingHTTPServer):
         address: tuple[str, int],
         handler: type[BaseHTTPRequestHandler],
         owner: "MetricsServer",
+        deadline_seconds: float = CONNECTION_DEADLINE_SECONDS,
     ) -> None:
         self.owner = owner
+        self._deadline = deadline_seconds
         self._slots = threading.BoundedSemaphore(MAX_CONCURRENT_CONNECTIONS)
         if ":" in address[0]:
             self.address_family = socket.AF_INET6
@@ -65,9 +75,15 @@ class _Server(ThreadingHTTPServer):
         super().process_request(request, client_address)
 
     def process_request_thread(self, request: Any, client_address: Any) -> None:
+        # The per-read socket timeout restarts on every byte; this one does not. Closing the socket
+        # from the timer makes the blocked read in the handler fail, which frees the slot.
+        timer = threading.Timer(self._deadline, _close_socket, args=(request,))
+        timer.daemon = True
+        timer.start()
         try:
             super().process_request_thread(request, client_address)
         finally:
+            timer.cancel()
             self._slots.release()
 
     def handle_error(self, request: Any, client_address: Any) -> None:
@@ -99,7 +115,7 @@ class _Handler(BaseHTTPRequestHandler):
         owner = self.server.owner
         if self.path.split("?", 1)[0] != "/metrics":
             self._reply(404, _NOT_FOUND, "application/json")
-        elif owner.limiter.acquire("metrics", events=1, bytes_=0) is not None:
+        elif owner.rate_limited():
             self._reply(429, _LIMITED, "application/json", Retry_After="5")
         elif not owner.auth.allows(self.headers.get("Authorization")):
             self._reply(401, _UNAUTHORIZED, "application/json", WWW_Authenticate="Bearer")
@@ -123,6 +139,7 @@ class MetricsServer:
         port: int,
         requests_per_minute: int = 120,
         before_render: Callable[[], None] | None = None,
+        connection_deadline_seconds: float = CONNECTION_DEADLINE_SECONDS,
     ) -> None:
         self.registry = registry
         self._before_render = before_render
@@ -133,10 +150,18 @@ class MetricsServer:
             bytes_per_second=1.0,
             burst_bytes=1,
         )
+        self._limiter_lock = threading.Lock()  # one handler thread per connection
+        self._connection_deadline = connection_deadline_seconds
         self._bind = bind
         self._port = port
         self._server: _Server | None = None
         self._thread: threading.Thread | None = None
+
+    def rate_limited(self) -> bool:
+        """Takes one token of the global bucket; True when there was none. Thread-safe: the
+        limiter's read-modify-write is not, and handler threads run concurrently."""
+        with self._limiter_lock:
+            return self.limiter.acquire("metrics", events=1, bytes_=0) is not None
 
     def prepare(self) -> None:
         """Refresh scrape-time gauges (the worker bridges to its event loop). Never raises."""
@@ -153,7 +178,7 @@ class MetricsServer:
         return int(self._server.server_address[1])
 
     def start(self) -> None:
-        self._server = _Server((self._bind, self._port), _Handler, self)
+        self._server = _Server((self._bind, self._port), _Handler, self, self._connection_deadline)
         self._thread = threading.Thread(
             target=self._server.serve_forever,
             kwargs={"poll_interval": 0.2},
