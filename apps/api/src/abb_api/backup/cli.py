@@ -27,10 +27,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, TextIO
 
+import asyncpg
+from sqlalchemy.exc import SQLAlchemyError
+
 from abb_api.backup import crypto
 from abb_api.backup.create import create_bundle, discard_partial, prepare_output
 from abb_api.backup.errors import (
     EXIT_OK,
+    EXIT_TOOL,
     EXIT_UNEXPECTED,
     EXIT_USAGE,
     BackupError,
@@ -178,6 +182,12 @@ async def _run(
     except BackupError as exc:
         err.write(f"error: {scrub(exc.message, secrets)}\n")
         return exc.code
+    except (SQLAlchemyError, OSError, asyncpg.PostgresError) as exc:
+        err.write(
+            f"error: the database could not be reached or refused the request "
+            f"({type(exc).__name__})\n"
+        )
+        return EXIT_TOOL
     except Exception as exc:  # the class only: a driver message may quote a host or user
         err.write(f"error: unexpected failure ({type(exc).__name__})\n")
         return EXIT_UNEXPECTED

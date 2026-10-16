@@ -56,8 +56,10 @@ async def run_cli(*argv: str, environ: Mapping[str, str]) -> tuple[int, str, str
     return code, out.getvalue(), err.getvalue()
 
 
-def write_passphrase(directory: Path, value: str = PASSPHRASE, mode: int = 0o600) -> Path:
-    path = directory / "passphrase"
+def write_passphrase(
+    directory: Path, value: str = PASSPHRASE, mode: int = 0o600, name: str = "passphrase"
+) -> Path:
+    path = directory / name
     path.write_text(value + "\n")
     path.chmod(mode)
     return path
