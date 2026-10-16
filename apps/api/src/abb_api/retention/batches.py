@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 # Names the crash-injection hook is called with, after the thing they name has committed.
 HOOK_POINTS: Final = (
-    "marked",  # progress row written and the run marked deleting
+    "begun",  # progress row written (nothing deleted yet)
+    "marked",  # the run is marked deleting (trace and run tiers, after the artifacts)
     "artifact_batch",  # one batch of artifacts removed (files and rows)
     "artifacts",  # every artifact of the run removed
     "search",  # the search entry removed

@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from sqlalchemy import MetaData
+
 from abb_api.jobs.outbox import DETECT_FINDINGS, EVALUATE_RUN, SUMMARIZE_RUN
 
 
@@ -74,3 +76,19 @@ RUN_REFERENCED_TABLES: Final = ("runs", "events")
 
 def tables_of(kind: Kind) -> tuple[str, ...]:
     return tuple(name for name, entry in CLASSIFICATION.items() if entry.kind is kind)
+
+
+def run_bound_tables(metadata: MetaData) -> set[str]:
+    """Tables that name a run: a `run_id`-like column, or a foreign key to `runs` or `events`."""
+    found: set[str] = set()
+    for table in metadata.tables.values():
+        if any(c.name in RUN_COLUMN_NAMES or c.name.endswith("_run_id") for c in table.columns):
+            found.add(table.name)
+        if any(fk.column.table.name in RUN_REFERENCED_TABLES for fk in table.foreign_keys):
+            found.add(table.name)
+    return found
+
+
+def unclassified(metadata: MetaData) -> set[str]:
+    """Run-bound tables that retention has no classification for (must be empty)."""
+    return run_bound_tables(metadata) - set(CLASSIFICATION)

@@ -167,6 +167,8 @@ class Pruner(Batcher):
                     .limit(max(self.control.max_rows - self.control.rows, 0))
                 )
             ]
+        if ids:
+            await self._hook("strangers_selected")  # test seam: a reference may appear from here
         removed = 0
         for start in range(0, len(ids), self._batch):
             await self.control.checkpoint()

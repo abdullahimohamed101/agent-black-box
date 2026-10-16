@@ -254,7 +254,7 @@ class Enforcer(Batcher):
             progress = await self._begin(workspace_id, tier, cutoff, candidate.run_id)
             if progress is None:
                 return
-            await self._hook("marked")
+            await self._hook("begun")
             await self._steps(workspace_id, progress, counts)
         except Halt:
             raise
@@ -295,7 +295,7 @@ class Enforcer(Batcher):
     async def _begin(
         self, workspace_id: uuid.UUID, tier: m.Tier, cutoff: datetime, run_id: uuid.UUID
     ) -> Progress | None:
-        """The run's progress row, created (and the run marked `deleting`) in one transaction.
+        """The run's progress row, created in one transaction (nothing is deleted or marked yet).
 
         A run that is no longer expired (it was updated after it was selected) is left alone; one
         whose progress row exists is resumed whatever the policy says now (half deleted data is
@@ -347,12 +347,6 @@ class Enforcer(Batcher):
                 )
                 .on_conflict_do_nothing()
             )
-            if tier is not m.Tier.ARTIFACTS and run[2] == "available":
-                await conn.execute(
-                    update(r)
-                    .where(r.c.workspace_id == workspace_id, r.c.id == run_id)
-                    .values(trace_state="deleting")
-                )
             fresh = (
                 (
                     await conn.execute(
@@ -379,6 +373,9 @@ class Enforcer(Batcher):
             if tier is m.Tier.ARTIFACTS:
                 counts.runs += 1
         if not progress.search_done:
+            if tier is not m.Tier.ARTIFACTS:
+                await self._mark_deleting(workspace_id, progress.run_id)
+                await self._hook("marked")
             counts.rows += await self._search(workspace_id, progress.run_id)
             await self._flag(workspace_id, progress, "search_done")
             await self._hook("search")
@@ -392,6 +389,20 @@ class Enforcer(Batcher):
             await self._hook("record")
             counts.runs += 1
         await self.sweep_done(workspace_id)
+
+    async def _mark_deleting(self, workspace_id: uuid.UUID, run_id: uuid.UUID) -> None:
+        """From here a reader sees `trace_state = deleting` until the detail is gone. Done after the
+        artifact step, so a store outage never leaves a whole trace labelled as going."""
+        async with self._tx() as conn:
+            await conn.execute(
+                update(t.runs)
+                .where(
+                    t.runs.c.workspace_id == workspace_id,
+                    t.runs.c.id == run_id,
+                    t.runs.c.trace_state == "available",
+                )
+                .values(trace_state="deleting")
+            )
 
     async def _flag(self, workspace_id: uuid.UUID, progress: Progress, name: str) -> None:
         """Mark a step done (idempotent; the data steps that must commit the mark together with

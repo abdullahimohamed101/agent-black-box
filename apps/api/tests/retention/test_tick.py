@@ -220,7 +220,7 @@ async def test_a_dry_run_tick_deletes_nothing_anywhere(
     assert after["retention_tombstones"] == 0  # unused until enforcement
 
 
-async def test_off_does_nothing_and_enforce_is_refused_without_deleting(
+async def test_off_does_nothing_and_enforce_without_an_artifact_store_is_refused(
     world: tuple[Any, Any],
     engine: AsyncEngine,
     retention_engine: AsyncEngine,
@@ -236,8 +236,7 @@ async def test_off_does_nothing_and_enforce_is_refused_without_deleting(
         second = await tick(retention_engine, settings(retention_mode="enforce"))
     assert first.refused and second.refused and first.reports == second.reports == 0
     assert [r.message for r in caplog.records].count(
-        "ABB_RETENTION_MODE=enforce is not available yet: this release only measures "
-        "(dry_run); nothing was deleted"
+        "ABB_RETENTION_MODE=enforce needs the artifact store; nothing was deleted"
     ) == 1  # logged once per process
     assert await table_counts(engine) == before
 

@@ -229,19 +229,23 @@ async def run_forever(settings: RetentionRunnerSettings, stop: asyncio.Event) ->
             await engine.dispose()
 
 
-async def retry_failed(settings: RetentionRunnerSettings) -> int:
+async def reset_failed(engine: AsyncEngine, max_attempts: int) -> int:
     """Give runs whose attempts ran out a fresh set (after the cause was fixed)."""
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            text(
+                "UPDATE retention_run_progress SET attempts = 0, failure_code = NULL, "
+                "updated_at = now() WHERE attempts >= :max"
+            ),
+            {"max": max_attempts},
+        )
+        return int(result.rowcount)
+
+
+async def retry_failed(settings: RetentionRunnerSettings) -> int:
     engine = await _engine(settings)
     try:
-        async with engine.begin() as conn:
-            result = await conn.execute(
-                text(
-                    "UPDATE retention_run_progress SET attempts = 0, failure_code = NULL, "
-                    "updated_at = now() WHERE attempts >= :max"
-                ),
-                {"max": settings.retention_max_attempts},
-            )
-            return int(result.rowcount)
+        return await reset_failed(engine, settings.retention_max_attempts)
     finally:
         await engine.dispose()
 

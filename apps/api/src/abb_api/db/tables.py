@@ -1629,9 +1629,10 @@ retention_tombstones = Table(
 )
 
 
-# Where the retention job is with one run and tier (ADR-160): one row per (run, tier) from the moment
-# the job starts removing it until every backend is done, then the row is deleted (the tombstone
-# stays). A crash at any point leaves the flags that were reached, and the next tick resumes there.
+# Where the retention job is with one run and tier (ADR-160): one row per (run, tier) from the
+# moment the job starts removing it until every backend is done, then the row is deleted (the
+# tombstone stays). A crash at any point leaves the flags that were reached, and the next tick
+# resumes there.
 # `project_id` and `started_day` outlive the run record, so the rollup of the day can still be
 # rebuilt after the record is gone. `failure_code` is a fixed code, never an error text.
 retention_run_progress = Table(
