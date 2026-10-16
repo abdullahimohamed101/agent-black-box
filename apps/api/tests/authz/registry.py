@@ -38,6 +38,15 @@ PUBLIC: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+# Operator routes: no tenant data, no workspace, no session, no API key. They carry their own
+# bearer token, exist only when configured, and stay out of the OpenAPI document (ADR-165).
+OPERATOR_ONLY: frozenset[tuple[str, str]] = frozenset(
+    {
+        # Only when ABB_METRICS_TOKEN is set; 404 otherwise.
+        ("GET", "/metrics"),
+    }
+)
+
 # Routes that need a signed-in person but no particular workspace and no action.
 SESSION_ONLY: frozenset[tuple[str, str]] = frozenset(
     {

@@ -1,11 +1,12 @@
 """Typed settings, validated once at startup (spec §108: fail fast)."""
 
+import ipaddress
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Retention (Phase 19b, ADR-159). "forever" keeps a tier for good; a number is days after the run
@@ -334,6 +335,33 @@ class Settings(RetentionSettings):
     # events (superuser, owner of the tables, ...; KI-031). 1 accepts that knowingly; a log line
     # records it on every start.
     allow_privileged_db_role: bool = False
+    # Metrics (Phase 19c, ADR-165). `/metrics` exists only when a token is set; it is then served
+    # with `Authorization: Bearer <token>`. The worker serves the same registry on its own port
+    # (off by default), bound to loopback unless the bind address says otherwise.
+    metrics_token: SecretStr | None = None
+    metrics_requests_per_minute: int = Field(default=120, ge=1, le=100_000)
+    worker_metrics_port: int | None = Field(default=None, ge=1, le=65535)
+    worker_metrics_bind: str = "127.0.0.1"
+
+    @field_validator("metrics_token", "worker_metrics_port", mode="before")
+    @classmethod
+    def _blank_means_unset(cls, value: object) -> object:
+        # Compose passes `${VAR:-}` as an empty string when the operator set nothing.
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def _metrics_are_configured_safely(self) -> "Settings":
+        if self.metrics_token is not None and len(self.metrics_token.get_secret_value()) < 24:
+            raise ValueError("metrics_token must be at least 24 characters")
+        if self.worker_metrics_port is not None and self.metrics_token is None:
+            raise ValueError("worker_metrics_port needs metrics_token (the same bearer token)")
+        try:
+            ipaddress.ip_address(self.worker_metrics_bind)
+        except ValueError:
+            raise ValueError("worker_metrics_bind must be an IP address") from None
+        return self
 
     @model_validator(mode="after")
     def _sign_in_is_configured_safely(self) -> "Settings":

@@ -64,7 +64,12 @@ from abb_api.limits.factory import (
     default_ingest_bucket,
     ingest_limiter,
     minute_limiter,
+    per_minute_bucket,
 )
+from abb_api.obs.access import MetricsAuth
+from abb_api.obs.catalogue import DEFAULT, Observability
+from abb_api.obs.http import MetricsMiddleware
+from abb_api.obs.router import router as metrics_router
 from abb_api.policies.api_service import PolicyApiService
 from abb_api.policies.router import router as policies_router
 from abb_api.quotas.router import router as quotas_router
@@ -206,6 +211,7 @@ def create_app(
     artifact_store: ArtifactStore | None = None,
     login_limiter: RateLimiter | None = None,
     oidc_transport: httpx.AsyncBaseTransport | None = None,
+    observability: Observability = DEFAULT,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
@@ -382,7 +388,14 @@ def create_app(
     app.add_middleware(
         RequestContextMiddleware, hsts=is_secure(settings), docs_enabled=settings.docs_enabled
     )
+    # Outermost of all: counts what the inner layers refuse as well (ADR-165).
+    app.add_middleware(MetricsMiddleware, catalogue=observability.catalogue)
+    app.state.observability = observability
     app.include_router(health_router)
+    if settings.metrics_token is not None:  # without a token /metrics is a plain 404
+        app.state.metrics_auth = MetricsAuth(settings.metrics_token)
+        app.state.metrics_limiter = per_minute_bucket(settings.metrics_requests_per_minute)
+        app.include_router(metrics_router)
     app.include_router(auth_router)
     app.include_router(sessions_router)
     app.include_router(ingestion_router)

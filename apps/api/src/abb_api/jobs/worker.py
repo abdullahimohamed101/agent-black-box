@@ -25,6 +25,8 @@ from abb_api.db.role_check import PrivilegedDatabaseRole, enforce_role
 from abb_api.jobs.context import reset_job_settings, set_job_settings
 from abb_api.jobs.handlers import HANDLERS
 from abb_api.jobs.outbox import Job, JobQueue, backoff_seconds
+from abb_api.obs.catalogue import REGISTRY
+from abb_api.obs.server import MetricsServer
 
 logger = logging.getLogger(__name__)
 
@@ -201,10 +203,28 @@ async def _main() -> None:
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)  # finish the current batch, then exit cleanly
+    metrics_server = _start_metrics_server(settings)
     try:
         await worker.run_forever(stop)
     finally:
+        if metrics_server is not None:
+            metrics_server.stop()
         await engine.dispose()
+
+
+def _start_metrics_server(settings: Settings) -> MetricsServer | None:
+    """Serve the registry on ABB_WORKER_METRICS_PORT; off unless set (Settings requires a token)."""
+    if settings.worker_metrics_port is None or settings.metrics_token is None:
+        return None
+    server = MetricsServer(
+        REGISTRY,
+        settings.metrics_token,
+        bind=settings.worker_metrics_bind,
+        port=settings.worker_metrics_port,
+        requests_per_minute=settings.metrics_requests_per_minute,
+    )
+    server.start()  # a bind failure stops the worker at startup, loudly
+    return server
 
 
 def main() -> None:
