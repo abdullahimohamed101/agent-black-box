@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build context is the repository root: docker build -f apps/api/Dockerfile .
 # The API depends on packages/event-schema, so the repo layout is reproduced under /repo.
-FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS build
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS build
 COPY --from=ghcr.io/astral-sh/uv:0.12@sha256:3af4716e991d6956a41e573eab705d0ee08500cd829ed30293eb8472f372c65a /uv /usr/local/bin/uv
 WORKDIR /repo
 COPY packages/event-schema packages/event-schema
@@ -15,7 +15,7 @@ RUN uv sync --frozen --no-dev --no-editable --no-install-project $UV_SYNC_ARGS
 COPY apps/api/src src
 RUN uv sync --frozen --no-dev --no-editable $UV_SYNC_ARGS
 
-FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 # Backup and restore (ADR-162) shell out to pg_dump/pg_restore and, for encrypted bundles, openssl. The client's
 # major version must be at least the server's (the stock stack runs PostgreSQL 16; this base image's client is newer).
 RUN apt-get update \
