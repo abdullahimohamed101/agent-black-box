@@ -17,7 +17,8 @@ describe("policy.css", () => {
   });
   it("draws the removed diff lines in amber and the added ones in ink", () => {
     expect(policy).toMatch(/\.pol-diff \.pol-del \{[^}]*color: var\(--wait\)[^}]*\}/);
-    expect(policy).toMatch(/\.pol-diff \.pol-del \{[^}]*background: var\(--wait-bg\)/);
+    // no amber tint behind a removed line any more (ADR-166: no fills; the --wait-bg alias is gone)
+    expect(policy).not.toMatch(/\.pol-diff \.pol-del \{[^}]*background/);
     expect(policy).toMatch(/\.pol-diff \.pol-add \{[^}]*color: var\(--ink\)[^}]*font-weight: 700/);
   });
   it("uses only tokens for colour, never a raw hex", () => {
@@ -32,12 +33,10 @@ describe("policy.css", () => {
     const t = themes[name];
     const pairs: [string, string, string][] = [
       ["ink", "surface", "outcome words, the rail count, the guarantee note"],
-      ["ink", "surface-2", "added diff lines, the read-only viewer"],
-      ["muted", "surface-2", "line numbers, diff headers"],
-      ["muted", "surface", "muted outcome marks"],
-      ["ink", "wait-bg", "a line number with a problem"],
-      ["wait", "wait-bg", "removed diff lines (amber on its tint)"],
-      ["wait", "surface", "waiting glyphs"],
+      ["muted", "surface", "muted outcome marks, line numbers and diff headers"],
+      ["ink", "bg", "added diff lines, the read-only viewer"],
+      ["wait", "surface", "waiting glyphs and removed diff lines"],
+      ["wait", "bg", "removed diff lines on the page"],
     ];
     for (const [fg, bg, what] of pairs)
       it(`${fg} on ${bg} is at least 4.5:1 (${what})`, () => {

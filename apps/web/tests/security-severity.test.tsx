@@ -51,8 +51,8 @@ describe("severity colours", () => {
       for (let i = 0; i < 4 && v.startsWith("var("); i++) v = t[v.slice(6, -1)]!;
       return v;
     };
-    // Where a severity mark is drawn: the page, cards, the zebra surface, a selected row, and the amber wash.
-    for (const bg of ["bg", "surface", "surface-2", "sel"]) {
+    // Where a severity mark is drawn: the page, the raised surface and a selected row (the zebra surface and the amber wash are gone).
+    for (const bg of ["bg", "surface", "sel"]) {
       it.each(["ink", "muted"])(`the word in %s on ${bg} is at least 4.5:1`, (fg) => {
         expect(contrast(hex(fg), hex(bg))).toBeGreaterThanOrEqual(4.5);
       });
