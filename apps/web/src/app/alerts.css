@@ -31,10 +31,6 @@
   font-weight: var(--weight-strong);
 }
 
-.al-table td,
-.al-table th {
-  vertical-align: top;
-}
 .al-name {
   font-weight: var(--weight-strong);
   overflow-wrap: anywhere;
@@ -63,7 +59,10 @@ td.al-detail {
   gap: var(--space-3);
 }
 .al-row-actions {
-  max-width: 22rem;
+  min-width: 18rem;
+}
+.al-row-actions button {
+  white-space: nowrap;
 }
 
 .al-form {

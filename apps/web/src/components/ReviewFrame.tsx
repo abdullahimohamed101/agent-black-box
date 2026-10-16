@@ -33,11 +33,7 @@ export function ReviewFrame({ children }: { children: React.ReactNode }) {
   const items = [
     ...(canApprovals
       ? [
-          {
-            id: "approvals" as const,
-            label: review.tabs.approvals,
-            count: waiting > 0 ? String(waiting > 99 ? "99+" : waiting) : undefined,
-          },
+          { id: "approvals" as const, label: review.tabs.approvals },
         ]
       : []),
     ...(canSecurity ? [{ id: "security" as const, label: review.tabs.security }] : []),

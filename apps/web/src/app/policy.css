@@ -186,6 +186,18 @@
   }
 }
 
+/* On a phone Approve and Deny are 44 px full-width buttons. */
+@media (max-width: 37.4375rem) {
+  .apr-decide button {
+    width: 100%;
+    min-height: var(--layout-touch);
+  }
+  .apr-actions {
+    display: grid;
+    gap: var(--space-2);
+  }
+}
+
 /* ---- Policies (a tab of Settings) ---- */
 .pol-page {
   max-width: 60rem;
@@ -452,6 +464,10 @@ pre.pol-diff {
     clip-path: inset(50%);
   }
   .apr-table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-3);
     padding: var(--space-3) 0;
     border-bottom: 1px solid var(--color-border-subtle);
   }
@@ -461,6 +477,7 @@ pre.pol-diff {
     height: auto;
   }
   .apr-table td.apr-req {
+    flex-basis: 100%;
     min-width: 0;
   }
   .apr-res {

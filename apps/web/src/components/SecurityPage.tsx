@@ -38,6 +38,25 @@ const subscribeNarrow = (notify: () => void) => {
   return () => m?.removeEventListener("change", notify);
 };
 
+/**
+ * The API lists newest run first. Within one run the most severe finding comes first, so the order reads without colour.
+ * Runs never move relative to each other (a page boundary cannot reorder what is already on screen).
+ */
+function mostSevereFirst<T extends { run_id: string; severity: string }>(rows: readonly T[]): T[] {
+  const rank = (s: string) => {
+    const i = SEVERITY_ORDER.indexOf(s as never);
+    return i < 0 ? SEVERITY_ORDER.length : i;
+  };
+  const out: T[] = [];
+  for (let i = 0; i < rows.length;) {
+    let j = i;
+    while (j < rows.length && rows[j]!.run_id === rows[i]!.run_id) j++;
+    out.push(...rows.slice(i, j).sort((a, b) => rank(a.severity) - rank(b.severity)));
+    i = j;
+  }
+  return out;
+}
+
 type FacetValue = { value: string; label: string | null; count: number };
 
 function FacetGroup({
@@ -141,7 +160,7 @@ export function SecurityPage({ now: nowProp }: { now?: number }) {
   if (!canRead || (q.error instanceof ApiRequestError && q.error.status === 403))
     return <Forbidden what={review.security.forbiddenWhat} />;
 
-  const items = q.data?.pages.flatMap((p) => p.items) ?? [];
+  const items = mostSevereFirst(q.data?.pages.flatMap((p) => p.items) ?? []);
   const facets = q.data?.pages[0]?.facets;
   const filtered = hasSecurityFilters(filters);
   const settled = !q.isPending && !q.isError;
