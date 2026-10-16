@@ -132,6 +132,26 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Backup and restore (ADR-162), run on demand: docker compose --profile ops run --rm backup create --out /backups/<name>
+  # Connects as the database OWNER (it must read every table, including server_secrets): never give this service to
+  # anything that is reachable. Bundles hold server_secrets and are as sensitive as the database: encrypt them
+  # (--encrypt --passphrase-env/--passphrase-file) and keep ./backups private. Restore needs an EMPTY database and
+  # artifact directory, passed per run (ABB_RESTORE_DATABASE_URL, --artifact-dir); see docs/runbooks/backup-restore.md.
+  backup:
+    <<: *api
+    profiles: ["ops"]
+    entrypoint: ["python", "-m", "abb_api.backup"]
+    volumes:
+      - artifacts:/data/artifacts
+      - ${ABB_BACKUP_DIR:-./backups}:/backups
+    environment:
+      ABB_ENVIRONMENT: development
+      ABB_ARTIFACT_DIR: /data/artifacts
+      ABB_BACKUP_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   web:
     profiles: ["app"]
     build:
