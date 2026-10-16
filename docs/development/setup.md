@@ -75,3 +75,5 @@ prompts, tool results, diffs and terminal output in a project, set it to `FULL` 
 `python -m abb_api.cli create-project ... --capture-mode full` or `python -m abb_api.cli set-capture-mode --workspace W --project P --mode full`
 (audited). `make seed` sets the local demo project to `FULL`; the e2e scripts create their projects with `--capture-mode full`. Tests that need payloads
 use `make_tenant`, whose projects are `FULL` unless told otherwise.
+
+Migrations (ADR-162): every new migration must be classified `reversible` or `forward-only` in `apps/api/migrations/safety.json` in the same commit (`tests/test_migration_safety.py` fails otherwise); see `docs/runbooks/migrations.md`. Backup, restore and key rotation: `make backup OUT=...`, `make restore BUNDLE=... ARTIFACT_DIR=...`, `make rotate-alert-keys` (`docs/runbooks/backup-restore.md`). They need `pg_dump`/`pg_restore` (and `openssl` for `--encrypt`) on the PATH, at least as new as the server.

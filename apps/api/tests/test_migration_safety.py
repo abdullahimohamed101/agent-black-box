@@ -54,6 +54,14 @@ def test_every_migration_is_classified_and_nothing_stale_is() -> None:
     )
 
 
+def test_the_runbook_table_lists_every_migration() -> None:
+    runbook = (API_DIR.parents[1] / "docs" / "runbooks" / "migrations.md").read_text()
+    for revision, entry in table().items():
+        match = re.search(rf"^\| {revision} \| (\*\*forward-only\*\*|reversible) \|", runbook, re.M)
+        assert match, f"docs/runbooks/migrations.md has no row for {revision}"
+        assert (match.group(1) == "reversible") == (entry["class"] == "reversible"), revision
+
+
 def test_every_entry_is_well_formed() -> None:
     for revision, entry in table().items():
         assert entry["class"] in CLASSES, revision

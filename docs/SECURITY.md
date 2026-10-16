@@ -248,6 +248,14 @@ small bodies (64 KiB) are always admitted; a body is dropped after 60 s; account
 *API responses*: deny-all CSP, `no-store` on every response (authenticated, session and secret-bearing included), HSTS only when the deployment is https. *Reconnaissance*: `/docs`, `/redoc` and `/openapi.json` are off in production. *INV-1 lost by misconfiguration* (KI-031): the API and worker refuse to start in production as a role that can rewrite events or alter the schema, or when that cannot be verified; the override is explicit and logged on every start; messages never contain a credential.
 Limits (stated plainly): CSP reduces the impact of an injection, it does not prevent one; a reverse proxy that caches HTML or strips headers undoes it; the role check is a start-time check (KI-183).
 
+### Backups, restore and secret rotation (Phase 19b step 4, ADR-162)
+
+- **A backup bundle holds `server_secrets`** (the alert-encryption key and the event-id key) and all captured data: it is as sensitive as the database itself. Bundles are created with mode `0700`/`0600` and the tool refuses a non-empty output; encrypt them at rest (`--encrypt`: openssl AES-256-CBC with PBKDF2 and an HMAC over the manifest; a wrong passphrase or any change fails with one fixed error before decryption) or keep them on encrypted storage. An unencrypted bundle's manifest is not authenticated (checksums detect corruption, not replacement).
+- The passphrase is read from a file (mode 0600 at most), an environment variable name or a descriptor, never an argument; it and connection URLs never reach logs, output or errors (tests scan for planted sentinels). `PGPASSWORD` is set only in the tool child's environment.
+- The tools need the database owner role and are operator-only; the API has no route for them. Restore never drops or overwrites and refuses a non-empty target.
+- Alert-key rotation (`python -m abb_api.rotate alerts`) re-seals with the same associated data, never logs plaintext, and never deletes an old key (the runtime role cannot); retiring a key is a manual owner action after the report says zero blobs reference it. The **event-id key is not rotatable without breaking dedupe** of already-accepted events; the index of every secret and its rotation is `docs/runbooks/secrets.md`.
+- Not in a bundle and therefore the operator's to protect: `.env`, the OIDC client secret, the SMTP password, database role passwords, the backup passphrase.
+
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
 Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); failed API-key authentication is throttled (ADR-153) (KI-019) and projects have quotas (ADR-154) (KI-018, KI-040). The identity provider integration was exercised against the fake

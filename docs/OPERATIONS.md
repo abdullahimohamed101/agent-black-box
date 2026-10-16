@@ -82,14 +82,19 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_ALERTS_RETENTION_DAYS`, `_PRUNE_INTERVAL_SECONDS`, `_PRUNE_BATCH` | 30, 21600, 2000 | finished delivery-log rows (`delivered`, `dead`, `skipped`, `failed`) older than this are deleted in batches; `pending` rows never are |
 | `ABB_WORKER_POLL_INTERVAL_SECONDS`, `_BATCH_SIZE`, `_LEASE_SECONDS`, `_MAX_ATTEMPTS`, `_BACKOFF_BASE_SECONDS`, `_BACKOFF_MAX_SECONDS` | 0.5, 10, 60, 5, 5, 300 | job processing |
 
-### Alert secrets and their key (Phase 17, ADR-150)
+### Alert secrets and their key (Phase 17, ADR-150; rotation tool Phase 19b, ADR-162)
 
 Alert destination targets and webhook signing secrets are stored as AES-256-GCM ciphertext under a key kept in the append-only `server_secrets` table (name `alerts-encryption`),
-created on first use. **Back that table up with the database**: without its row the secrets sealed under it cannot be read (the destinations then fail closed). **Rotation** (planned or after a
-suspected leak of a database read): as the database owner role run
-`INSERT INTO server_secrets (name, secret) VALUES ('alerts-encryption', decode('<64 hex characters from openssl rand -hex 32>', 'hex'));` and restart the API and worker processes (they cache the
-current key). New and re-saved destinations use the new key; existing ones keep opening with their own, so nothing needs re-encrypting; to retire the old key, replace each destination's target (`PATCH` with the `target`; the stored URL is never
-returned, so the owner supplies it again) and rotate webhook signing secrets (`rotate_signing_secret`). Which key sealed a destination: `SELECT id, name, key_id FROM alert_destinations`. Alerts carry no captured content; a destination's masked form is the only display of its target.
+created on first use. **Back that table up with the database** (every bundle of `python -m abb_api.backup` includes it): without its row the secrets sealed under it cannot be read (the destinations then fail closed).
+
+**Rotation** (planned, or after a suspected leak of a database read): `python -m abb_api.rotate alerts --new-key` (as the owner role: `ABB_ROTATION_DATABASE_URL`, else `ABB_MIGRATION_DATABASE_URL`, else `ABB_DATABASE_URL`; `make rotate-alert-keys ROTATE_FLAGS=--new-key`)
+inserts a newer key row and re-seals every destination (target and signing secret) in resumable, bounded batches, each destination in its own transaction with its associated data (purpose, workspace, destination) preserved and the result checked to open to the same plaintext.
+Then **restart the API and worker** (they cache the current key and would otherwise keep sealing under the old one) and run `python -m abb_api.rotate alerts` once more (without `--new-key`) to catch anything sealed meanwhile. The final line is
+`verdict=old_keys_can_be_retired` only when no blob of any destination references a key other than the newest and none failed (exit 1 lists the failed destination ids; fix and rerun, it resumes). `--dry-run` reports what would change and writes nothing. Output is counts and destination ids, never a target or a secret.
+Delivery keeps working during a rotation (old blobs open with their own key until their own commit). **Retiring the old key is a manual owner action** (the runtime role cannot delete from `server_secrets`): only after the report says zero and a bundle taken after the rotation exists,
+`DELETE FROM server_secrets WHERE name = 'alerts-encryption' AND id < <newest id>;` (the foreign key from `alert_destinations.key_id` refuses while any destination still names it). Which key sealed a destination: `SELECT id, name, key_id FROM alert_destinations`.
+The **event-id key** (`server_secrets`, name `event-id`) is the one key that is **not rotatable without breaking deduplication** of already-accepted server-written events; see `docs/runbooks/secrets.md` for what to do if it leaks and for how every other secret rotates.
+Alerts carry no captured content; a destination's masked form is the only display of its target.
 
 ### Reading the alert delivery log and dead letters (Phase 17, ADR-151)
 
@@ -150,7 +155,7 @@ A person ending a session (or all but the current one) writes `session.revoke` /
 
 ### Data retention (Phase 19b steps 1-2, ADR-159, ADR-160)
 
-**State of the feature:** the default mode `dry_run` measures and reports and deletes nothing. `enforce` deletes expired data, **permanently**. There is no undelete: take a backup first, and (once step 4 lands) perform a restore drill before the first enforced tick. Read the dry-run reports for at least one full cycle before switching.
+**State of the feature:** the default mode `dry_run` measures and reports and deletes nothing. `enforce` deletes expired data, **permanently**. There is no undelete: take a backup first, and **perform a restore drill before the first enforced tick** (see "Backups and restore" below; `enforce` should not be switched on until a restore of a recent bundle has been performed and its output kept). Read the dry-run reports for at least one full cycle before switching.
 
 *Provisioning.* Migrations 0101 and 0102 create the role `abb_retention` (`NOLOGIN`) with exactly the grants listed in ADR-159 and ADR-160, pinned by `apps/api/tests/retention/test_retention_role.py`. Give it a login the way the runtime role gets one: set `ABB_RETENTION_DB_PASSWORD` for `alembic upgrade` (compose does, with a dev default), then point the retention process at it with `ABB_RETENTION_DATABASE_URL` (`postgresql+asyncpg://abb_retention:<password>@<host>/<db>`). Never put that URL in the API's or worker's environment. In tests and CI a login role is created `IN ROLE abb_retention`, as for `abb_runtime`. At start the process refuses (production) or warns (elsewhere) if its role is a superuser, an owner, can create in the schema or can touch the credential tables; set `ABB_ALLOW_PRIVILEGED_DB_ROLE=1` only knowingly. **Enforcement also needs the artifact files:** the retention process must see the API's artifact directory (`ABB_ARTIFACT_DIR`; compose mounts the same volume) and refuses to start in `enforce` if that directory does not exist.
 
@@ -158,7 +163,7 @@ A person ending a session (or all but the current one) writes `session.revoke` /
 
 *When to flip modes (the enforce runbook).*
 1. Leave `ABB_RETENTION_MODE=dry_run` (the default). Read `GET /v1/workspaces/<id>/retention/reports` (or the SQL below) after a full tick: the counts are what `enforce` would remove now, per workspace and tier. Use `GET .../retention/preview?trace_days=30` to see the effect of a proposed policy before saving it.
-2. Take a database backup **and** a copy of the artifact directory. Enforcement removes both and cannot bring them back.
+2. Take a backup bundle (`python -m abb_api.backup create`, below; database **and** artifacts in one consistent set), verify it, and **perform a restore drill** from it into a scratch database and directory. Enforcement removes both and cannot bring them back. Run the retention job before the backup in your schedule, not during it.
 3. Set `ABB_RETENTION_MODE=enforce` and restart the retention process. The first tick removes at most `ABB_RETENTION_MAX_RUNS_PER_TICK` runs (2000) and `ABB_RETENTION_MAX_ROWS_PER_TICK` rows (100000) per workspace and tier and stops at the time budget (`ABB_RETENTION_TICK_BUDGET_SECONDS`, 60 s); a backlog drains over ticks (`truncated=true` in the report says there is more).
 4. Watch `retention tick finished` in the log, the reports (`mode = 'enforce'`: counts actually deleted), and `failed=` in the tick summary.
 
@@ -179,6 +184,17 @@ A person ending a session (or all but the current one) writes `session.revoke` /
 *A run's end* is its `completed_at`, or its last update while it has none, clamped between the server's first sight and last update of the run, so a client cannot move its own expiry. A run that is updated after it became eligible but before the job marks it is left alone.
 
 *Known limits:* approvals keep their scrubbed arguments (KI-195); artifact files with no row are not swept (KI-196); a late event for an expired or deleted run creates a fresh run (KI-197); the audit entry of a pass is lost if the process dies in it, the tombstones are the authoritative record (KI-200).
+
+### Backups and restore (Phase 19b step 4, ADR-162)
+
+`python -m abb_api.backup create|verify|restore` (and `make backup`, `make backup-verify`, `make restore`; compose service `backup`, profile `ops`) writes and reads one bundle: a `pg_dump -Fc` taken in a single snapshot, the artifact files copied after it, and a `MANIFEST.json` (schema revision, row counts, SHA-256 of every file and artifact, versions; nothing secret). Optional `--encrypt` (openssl AES-256, PBKDF2, an HMAC over the manifest; passphrase from a file, an environment variable name or a descriptor, never an argument). Bundles are created `0700`/`0600` and an existing non-empty output is refused. **A bundle holds `server_secrets` and is as sensitive as the database: encrypt it at rest.**
+Restore loads only into an empty database and an empty artifact directory, never drops anything, loads the database in one transaction, upgrades an older bundle to the code's head and verifies counts and files; exit codes are fixed (3 refused, 4 integrity, 5 tool, 6 verification, 7 inconsistent backup). Full procedure, scheduling (systemd timer and cron examples), the ordering advice (retention before the backup, not during) and the restore steps: `docs/runbooks/backup-restore.md`.
+
+**RPO = the interval between successful backups; RTO = the measured restore time** (recorded by the Docker-stack drill, Phase 19b step 6). Point-in-time recovery (WAL archiving) is the documented upgrade path when a smaller RPO is needed and is not built. **`ABB_RETENTION_MODE=enforce` requires a performed restore drill first.** Not in a bundle: the operator's `.env` and external secrets (OIDC client secret, SMTP password, role passwords, the passphrase), role logins, PostgreSQL configuration.
+
+### Upgrading and rolling back migrations (Phase 19b step 4, ADR-162)
+
+Every migration is `reversible` or `forward-only` in `apps/api/migrations/safety.json` (a test fails for an unclassified one). Back up, upgrade, verify; roll back reversible ones with `alembic downgrade`, and restore the pre-upgrade backup for forward-only ones: `docs/runbooks/migrations.md` (with per-migration notes on what a downgrade discards and which upgrades are lock-heavy or rewrite data).
 
 ### Project quotas (Phase 19a step 3, ADR-154)
 
@@ -235,5 +251,9 @@ SELECT id, job_type, attempt_count, left(last_error, 120) FROM outbox_jobs WHERE
 - [Live streams](runbooks/stream-issues.md)
 - [Abuse resistance and hardening](runbooks/hardening.md): what each limit, quota and throttle does, what an operator sees when it triggers, reading the counters and audit rows, reverse-proxy guidance, and the Phase 19a upgrade notes (migrations 0097-0099)
 
-Still to write (Phases 18-19): database saturation, backup and restore drill (spec §123).
-Recovery targets: RPO <= 15 min, RTO <= 4 h (spec §122) once managed PostgreSQL with point-in-time recovery is in place.
+- [Backup and restore](runbooks/backup-restore.md): the bundle, scheduling, verifying, the restore procedure and exit codes, the restore drill
+- [Migrations](runbooks/migrations.md): the safe upgrade, rolling back each class, per-migration notes
+- [Secrets](runbooks/secrets.md): every secret and how it rotates (the event-id key does not)
+
+Still to write (Phases 18-19c): database saturation.
+Recovery targets: with the backup tool above, RPO = the backup interval and RTO = the measured restore time (Phase 19b step 6). The spec §122 targets (RPO <= 15 min, RTO <= 4 h) need managed PostgreSQL with point-in-time recovery, which is not built.
