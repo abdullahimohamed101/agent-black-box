@@ -106,7 +106,7 @@ def test_exception_group_members_are_named_without_their_messages() -> None:
 
 
 def test_exception_group_nesting_is_bounded() -> None:
-    inner: BaseException = ValueError(SECRET)
+    inner: Exception = ValueError(SECRET)
     for _ in range(8):
         inner = ExceptionGroup(SECRET, [inner])
     text = safe_traceback(inner)

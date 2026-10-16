@@ -207,7 +207,7 @@ def test_the_rate_limiter_accounts_exactly_under_concurrency() -> None:
     srv = MetricsServer(
         build_observability().registry, SecretStr(TOKEN), port=0, requests_per_minute=500
     )
-    srv.limiter._monotonic = lambda: 1000.0  # type: ignore[attr-defined]  # no refill: exact
+    srv.limiter._monotonic = lambda: 1000.0  # no refill: exact
     accepted = []
     barrier = threading.Barrier(64)
 

@@ -192,7 +192,7 @@ async def test_refusals_from_inner_layers_are_counted_in_the_real_app() -> None:
     assert isinstance(too_big, httpx.Response)
 
 
-class _Orig:
+class _Orig(Exception):
     sqlstate = "57014"
 
 

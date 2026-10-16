@@ -113,4 +113,10 @@ async def test_readyz_is_bounded_when_pool_is_saturated(database_url: str) -> No
         finally:
             for conn in held:
                 await conn.close()
-    assert response.status_code == 503
+    # Bounded: it answered within the readiness deadline, not after the 5 s pool timeout. A busy
+    # pool is not a down database, so it reports degraded and stays ready (ADR-169 amendment).
+    assert response.status_code == 200
+    assert response.json()["checks"]["database"] == {
+        "status": "degraded",
+        "reason": "pool_saturated",
+    }
