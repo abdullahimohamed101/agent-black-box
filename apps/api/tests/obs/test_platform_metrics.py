@@ -203,3 +203,25 @@ async def test_the_scrape_serves_database_gauges_and_every_new_family_parses(
     attempts = sampler.samples
     await api.client.get("/metrics", headers={"Authorization": f"Bearer {TOKEN}"})
     assert sampler.samples == attempts == 1
+
+
+async def test_a_cooldown_suppression_is_a_skipped_delivery_with_its_reason(api: Api) -> None:
+    from datetime import UTC, datetime
+
+    from abb_api.alerts import model as m
+    from abb_api.jobs.context import reset_job_metrics, set_job_metrics
+    from tests.test_alerts_evaluation import destination, evaluate, make_failed_runs, rule
+
+    obs = build_observability()
+    run_ids = await make_failed_runs(api, 2)
+    await rule(api, [await destination(api)], trigger=m.RUN_FAILED, cooldown_seconds=3600)
+    at = datetime(2026, 10, 8, 9, tzinfo=UTC)
+    token = set_job_metrics(obs.catalogue)
+    try:
+        await evaluate(api, run_ids[0], at)
+        assert total(obs, "alert_deliveries_total") == 0, "a pending alert is not a delivery yet"
+        await evaluate(api, run_ids[1], at + timedelta(minutes=10))
+    finally:
+        reset_job_metrics(token)
+    assert value(obs, "alert_deliveries_total", status="skipped", reason="cooldown") == 1
+    assert total(obs, "alert_deliveries_total") == 1
