@@ -50,7 +50,9 @@ for (const [w, h] of [
         await page.screenshot({ path: `${SHOTS}/compare-${w}-${scheme}.png` });
       });
 
-      test("analytics opens with where the money was wasted; the charts stay below", async ({
+      // Step 5d: Analytics is a tab list with a headline sentence per report. The Cost report still opens with where the money was
+      // wasted (right under its headline) and the charts stay below it; the old check compared against an h2 named "Cost".
+      test("analytics opens with its headline, then where the money was wasted; the charts stay below", async ({
         page,
       }) => {
         await page.goto(`${BASE}/analytics`);
@@ -60,9 +62,12 @@ for (const [w, h] of [
         await expect(panel.getByRole("list", { name: "Wasted spend by agent" })).toBeVisible();
         await expect(panel.getByRole("list", { name: "Wasted spend by model" })).toBeVisible();
         const panelY = (await panel.boundingBox())!.y;
-        const costY = (await page.getByRole("heading", { name: "Cost", level: 2 }).boundingBox())!
-          .y;
-        expect(panelY).toBeLessThan(costY);
+        const headlineY = (await page.getByTestId("report-headline").boundingBox())!.y;
+        const dailyY = (await page
+          .getByRole("heading", { name: "Daily spend", level: 2 })
+          .boundingBox())!.y;
+        expect(headlineY).toBeLessThan(panelY);
+        expect(panelY).toBeLessThan(dailyY);
         expect(await overflow(page)).toBeLessThanOrEqual(0);
         await axe(page);
         await page.screenshot({ path: `${SHOTS}/analytics-${w}-${scheme}.png` });

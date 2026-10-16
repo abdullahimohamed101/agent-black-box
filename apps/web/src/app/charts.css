@@ -79,3 +79,19 @@
   font-size: var(--type-small-size);
   line-height: var(--type-small-line);
 }
+
+/* A phone: label and figure share a line (the figure may wrap), the track runs full width under them. */
+@media (max-width: 37.4375rem) {
+  .bars {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .bars .bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .bar-value {
+    max-width: 14rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
