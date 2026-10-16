@@ -9,7 +9,7 @@ import { openContext, settleAnimations } from "./motion";
 const BASE = "/w/demo/projects/all";
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 const ROUTES: [string, string][] = [
-  ["overview", BASE],
+  ["project home (redirects to Runs)", BASE],
   ["runs list", `${BASE}/runs`],
   ["failed run", `${BASE}/runs/${RUN(2)}`],
   ["multi-agent waterfall", `${BASE}/runs/${RUN(7)}?view=waterfall`],
@@ -44,36 +44,34 @@ test.describe("1440x900 frame", () => {
       const box = async (sel: string) => (await page.locator(sel).first().boundingBox())!;
       const width = await page.evaluate(() => document.documentElement.clientWidth);
       const main = await box("main#main");
-      const rail = await box("aside.rail");
       const top = await box("header.topbar");
-      // no centred column: content starts at the rail's edge and ends at the viewport's edge
-      expect(rail).toMatchObject({ x: 0, width: 224 });
-      expect(main.x).toBe(224);
+      // design pass 2: one 44 px top bar across the whole width and no rail; the page starts under it at the left edge
+      expect(top).toMatchObject({ x: 0, y: 0, width, height: 44 });
+      expect(main.x).toBe(0);
       expect(main.x + main.width).toBe(width);
-      expect(top.height).toBe(44);
+      await expect(page.locator(".rail, .switcher, .topbar-crumbs")).toHaveCount(0);
       await expect(page.locator("main#main")).toHaveAttribute("tabindex", "-1");
     });
   }
 
-  test("frame: the sign-in page has no rail", async ({ page }) => {
+  test("frame: the sign-in page has no top bar", async ({ page }) => {
     await page.goto("/login");
     await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
-    await expect(page.locator("aside.rail")).toHaveCount(0);
+    await expect(page.locator("header.topbar")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: /Sign in/ })).toBeVisible();
   });
 
-  test("focus order: skip link, then the rail, then the page", async ({ page }) => {
+  test("focus order: skip link, then the top bar, then the page", async ({ page }) => {
     await page.goto(`${BASE}/runs`);
     await page.keyboard.press("Tab");
     await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
     const order = await page.evaluate(() =>
       [...document.querySelectorAll("a[href], button, summary")]
-        .map((e) => (e.closest("aside.rail") ? "rail" : e.closest("header") ? "top" : "main"))
+        .map((e) => (e.closest("header") ? "top" : "main"))
         .filter((v, i, a) => i === 0 || a[i - 1] !== v),
     );
-    // the skip link sits outside the rail and the top bar; the top bar now holds the global search (Phase 22 step 7),
-    // so the order is skip link, rail, search, page
-    expect(order.slice(0, 4)).toEqual(["main", "rail", "top", "main"]);
+    // the skip link sits outside the top bar, which holds the links, the scope control, the search and the person menu
+    expect(order.slice(0, 3)).toEqual(["main", "top", "main"]);
   });
 
   test("fonts are self-hosted and applied; no request leaves the origin", async ({ page }) => {
@@ -123,17 +121,33 @@ test.describe("375 px", () => {
   for (const [name, url] of ROUTES)
     test(`no horizontal scroll: ${name}`, async ({ page }) => {
       await page.goto(url);
-      await page.evaluate(() => document.fonts.ready);
+      // The shell no longer renders in Plex Sans Condensed, which is not preloaded (ADR-166), so a run page requests that face
+      // only when its own tabs render and `fonts.ready` can resolve before it arrives; with the fallback face the run page's
+      // tab row is 2 px wider. Ask for the deprecated faces explicitly so the measurement is of the page, not of a font race
+      // (step 5b deletes both faces and this line).
+      await page.evaluate(() =>
+        Promise.all([
+          document.fonts.load('600 1rem "IBMPlexSansCondensed"'),
+          document.fonts.load('400 1rem "IBMPlexSerif"'),
+          document.fonts.ready,
+        ]),
+      );
       expect(await overflow(page)).toBeLessThanOrEqual(0);
     });
-  test("the rail is a strip under the top bar and its links stay reachable", async ({ page }) => {
+  test("the top region is one 44 px bar and the links stay reachable through the Menu button", async ({
+    page,
+  }) => {
     await page.goto(`${BASE}/runs`);
-    const rail = (await page.locator("aside.rail").boundingBox())!;
-    expect(rail.x).toBe(0);
-    expect(rail.y).toBe(44);
-    await expect(
-      page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Runs" }),
-    ).toBeInViewport();
+    const top = (await page.locator("header.topbar").boundingBox())!;
+    expect(top).toMatchObject({ x: 0, y: 0, height: 44 });
+    const main = (await page.locator("main#main").boundingBox())!;
+    expect(main.y).toBe(44); // nothing stacked between the bar and the page (the old rail strip and breadcrumb row are gone)
+    const runs = page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Runs" });
+    await expect(runs).toBeHidden();
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(runs).toBeInViewport();
   });
 });
 
@@ -497,22 +511,24 @@ test.describe("runs list", () => {
       .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
     expect(attention.length).toBeGreaterThan(0);
     expect(Math.max(...attention)).toBeLessThanOrEqual(70);
-    const filters = (await page.getByRole("search", { name: "Filter runs" }).boundingBox())!;
-    expect(filters.height).toBeLessThanOrEqual(48);
+    // one field instead of three filtering systems (design pass 2): no filter form, a single 32 px field
+    await expect(page.getByRole("search", { name: "Filter runs" })).toHaveCount(0);
+    const field = (await page.getByRole("searchbox", { name: "Search runs" }).boundingBox())!;
+    expect(field.height).toBeLessThanOrEqual(36);
     const wrap = await page.locator(".table-wrap").evaluate((e) => [e.scrollWidth, e.clientWidth]);
     expect(wrap[0]).toBeLessThanOrEqual(wrap[1]!);
-    // the count line sits in the page head, above the table
-    const head = (await page.locator(".page-head").boundingBox())!;
+    // the count line sits in the chip row under the field, above the table
+    const row = (await page.locator(".chip-row").boundingBox())!;
     const table = (await page.getByRole("table").boundingBox())!;
-    expect(head.y).toBeLessThan(table.y);
-    await expect(page.locator(".page-head")).toContainText(/\d+ runs loaded/);
+    expect(row.y).toBeLessThan(table.y);
+    await expect(page.locator(".chip-row")).toContainText(/\d+ runs loaded/);
   });
 
   test("a search that adds the Matched column still fits without an inner scroll", async ({
     page,
   }) => {
     await page.goto(`${BASE}/runs`);
-    const box = page.getByRole("searchbox", { name: "Search" });
+    const box = page.getByRole("searchbox", { name: "Search runs" });
     await box.fill("tool:run_migration");
     await box.press("Enter");
     await expect(page.getByRole("list", { name: "Search terms" })).toBeVisible();
@@ -522,12 +538,20 @@ test.describe("runs list", () => {
     await expect(page.getByRole("region", { name: "Narrow the results" })).toBeVisible();
   });
 
-  test("the status filter is a segmented toggle that still checks by label", async ({ page }) => {
+  test("the status filter is a facet button that is pressed by label and shows as a chip", async ({
+    page,
+  }) => {
     await page.goto(`${BASE}/runs`);
-    await page.getByLabel("Failed").check();
-    await expect(page.getByLabel("Failed")).toBeChecked();
+    const all = await page.locator("tbody tr").count();
+    const facets = page.getByRole("region", { name: "Narrow the results" });
+    await facets.getByRole("button", { name: "Failed" }).click();
+    await expect(facets.getByRole("button", { name: /^Failed/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
-    await expect(page.locator("tbody tr")).not.toHaveCount(12);
+    await expect(page.getByRole("list", { name: "Search terms" })).toContainText("status:failed");
+    await expect(page.locator("tbody tr")).not.toHaveCount(all);
   });
 });
 

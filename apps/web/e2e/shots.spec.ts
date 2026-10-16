@@ -33,7 +33,7 @@ test.describe("screenshot set", () => {
     await page.goto(`${BASE}/runs`);
     await page.getByRole("table").waitFor();
     await shot(page, "runs-list-1440");
-    const box = page.getByRole("searchbox", { name: "Search" });
+    const box = page.getByRole("searchbox", { name: "Search runs" });
     await box.fill("status:failed");
     await box.press("Enter");
     await page.getByRole("list", { name: "Search terms" }).waitFor();

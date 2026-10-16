@@ -18,12 +18,15 @@ async function axe(page: Page) {
   );
 }
 
-test("dashboard summarises the project", async ({ page }) => {
+test("the project home is Runs: one sentence for the last 7 days, then the list (Overview is merged, design pass 2)", async ({
+  page,
+}) => {
   await page.goto(BASE);
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  await expect(page.getByText("Success rate")).toBeVisible();
-  await expect(page.getByText("Running agents")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Recent failures" })).toBeVisible();
+  await expect(page).toHaveURL(/\/projects\/all\/runs$/); // the old Overview route redirects
+  await expect(page.getByRole("heading", { name: "Runs", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toHaveCount(0);
+  await expect(page.getByTestId("week-sentence")).toContainText(/Last 7 days: \d+ runs, .* failed/);
+  await expect(page.getByRole("link", { name: "Analytics" }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Migrate billing schema" }).first()).toBeVisible();
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/dashboard.png`, fullPage: true });
@@ -34,11 +37,15 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await expect(page.getByRole("table")).toBeVisible();
   const all = await page.locator("tbody tr").count();
   expect(all).toBe(RUN_COUNT);
-  await page.getByLabel("Failed").check();
-  await expect(page).toHaveURL(/status=FAILED/);
+  await page
+    .getByRole("region", { name: "Narrow the results" })
+    .getByRole("button", { name: /^Failed/ })
+    .click();
+  await expect(page).toHaveURL(/q=status%3Afailed/i);
   await expect(page.locator("tbody tr")).toHaveCount(3); // billing migration, failure chain, wrong fix
   await expect(page.locator("tbody tr").first()).toContainText("Failed");
-  await page.getByLabel("Agent").fill("nobody");
+  await page.getByRole("searchbox", { name: "Search runs" }).fill("agent:nobody");
+  await page.getByRole("searchbox", { name: "Search runs" }).press("Enter");
   await expect(page.getByText("No runs match these filters")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect(page.locator("tbody tr")).toHaveCount(RUN_COUNT);
@@ -57,7 +64,7 @@ test("search: chips from the server parse, matched column, facets, refusal and k
 }) => {
   const SHOTS16 = "../../docs/screenshots/phase-16";
   await page.goto(`${BASE}/runs`);
-  const box = page.getByRole("searchbox", { name: "Search" });
+  const box = page.getByRole("searchbox", { name: "Search runs" });
   await box.fill("tool:run_migration");
   await box.press("Enter");
   await expect(page.getByRole("list", { name: "Search terms" })).toContainText(

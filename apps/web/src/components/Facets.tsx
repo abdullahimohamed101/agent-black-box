@@ -6,7 +6,7 @@ import { FACET_FIELDS, facetClickable, fieldTerm, findTerm } from "@/lib/search"
 import { runs as t } from "@/copy/runs";
 import { statusLabel } from "./StatusBadge";
 
-const NARROW = "(max-width: 52rem)";
+const NARROW = "(max-width: 56.1875rem)"; // the same breakpoint as the stacked layout in runs-list.css (900 px)
 const isNarrow = () => window.matchMedia?.(NARROW).matches ?? false;
 const subscribeNarrow = (notify: () => void) => {
   const m = window.matchMedia?.(NARROW);

@@ -311,7 +311,7 @@
 /* A phone: the brand is the mark alone, the scope truncates, every target is 44 px, and the scope and person panels span the
    width under the bar. */
 @media (max-width: 37.4375rem) {
-  .brand-name,
+  .topbar .brand-name,
   .person-text {
     display: none;
   }

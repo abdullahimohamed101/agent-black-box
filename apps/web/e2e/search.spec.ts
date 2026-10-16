@@ -44,7 +44,7 @@ async function person(token: string): Promise<Page> {
 }
 
 async function search(page: Page, q: string) {
-  const box = page.getByRole("searchbox", { name: "Search" });
+  const box = page.getByRole("searchbox", { name: "Search runs" });
   await box.fill(q);
   await box.press("Enter");
 }
@@ -73,7 +73,7 @@ test("an owner finds a run by the text of its command and by its file path", asy
   await page.screenshot({ path: `${SHOTS}/owner-content-search.png`, fullPage: true });
 
   // the owner's help lists the content fields
-  await page.getByText("Search help").click();
+  await page.getByRole("button", { name: "Search help" }).click();
   const fields = page.getByRole("list", { name: "Searchable fields" });
   await expect(fields).toContainText("file:");
   await expect(fields).toContainText("command:");
@@ -88,7 +88,7 @@ test("a viewer who types file: or command: is refused, and nothing else changes"
   const page = await person(viewerSession!);
   await page.goto(RUNS());
   await expect(page.getByText("Auth: payload run")).toBeVisible();
-  await page.getByText("Search help").click();
+  await page.getByRole("button", { name: "Search help" }).click();
   const fields = page.getByRole("list", { name: "Searchable fields" });
   await expect(fields).toContainText("status:");
   await expect(fields).not.toContainText("file:"); // never offered
@@ -144,7 +144,7 @@ test("a viewer's search over captured text finds nothing, exactly like a nonsens
 test("a viewer's metadata search works: chips, facets, keyboard only", async () => {
   const page = await person(viewerSession!);
   await page.goto(RUNS());
-  const box = page.getByRole("searchbox", { name: "Search" });
+  const box = page.getByRole("searchbox", { name: "Search runs" });
   await box.focus();
   await page.keyboard.type("status:success agent:auth-agent");
   await page.keyboard.press("Enter");
@@ -166,7 +166,7 @@ test("a viewer's metadata search works: chips, facets, keyboard only", async () 
   await expect(box).toHaveValue("agent:auth-agent");
 
   // help opens from the keyboard
-  await page.getByText("Search help").focus();
+  await page.getByRole("button", { name: "Search help" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("list", { name: "Searchable fields" })).toBeVisible();
 

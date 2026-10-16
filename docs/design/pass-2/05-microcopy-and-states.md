@@ -78,7 +78,7 @@ tell a visitor something the page does not tell today).
 | Sentence on a phone (< 600 px) | `Last 7 days: 12 runs, 3 failed.` (the success rate, spend and in-progress clauses give way) |
 | Sentence while refreshing | the old sentence stays; a polite status "Updating…" |
 | Sentence when there are no runs in the window | not shown (the setup guide or the empty state speaks instead) |
-| Search field | label "Search runs"; placeholder `Search runs, for example status:failed tool:github "npm test"`; a **?** button named "Search help" |
+| Search field | label "Search runs"; placeholder `Search runs, for example status:failed`; a **?** button named "Search help" |
 | Search help panel | Terms are combined with AND. Prefix a term with - to exclude it, quote phrases, end a value with * for a prefix. Times can be relative, for example started:>=-24h. Then the list of searchable fields from the API |
 | Chips | the typed text of each term with a **Remove** button named "Remove status:failed"; the "Needs attention" preset is the chip `status: failed, timed out, blocked` |
 | Count and reset | `13 runs loaded (end of list)` / `50 runs loaded` and a **Clear filters** button (only when something is filtered) |

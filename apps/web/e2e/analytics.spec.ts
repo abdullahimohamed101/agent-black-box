@@ -34,17 +34,19 @@ const usd = (n: number) => `$${n.toFixed(2)}`;
 const PROJECT = "all"; // `all` is the route form of "no project filter"
 const base = `/w/${workspace()}/projects/${PROJECT}`;
 
-test("dashboard shows whole-window aggregates from the server", async ({ page }) => {
+test("the Runs home states the whole-window aggregates from the server in one sentence", async ({
+  page,
+}) => {
   const w = want();
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto(base);
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  await expect(page.getByText(`All ${w.runs} runs started in the last 7 days`)).toBeVisible();
-  await expect(stat(page, "Success rate")).toContainText("50%");
-  await expect(stat(page, "Cost")).toContainText(usd(w.total_usd));
-  await expect(page.getByRole("heading", { name: "Recent failures" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Cost and reliability analytics/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Runs", level: 1 })).toBeVisible();
+  const sentence = page.getByTestId("week-sentence");
+  await expect(sentence).toContainText(`Last 7 days: ${w.runs} runs`);
+  await expect(sentence).toContainText("50% succeeded");
+  await expect(sentence).toContainText(`${usd(w.total_usd)} spent`);
+  await expect(page.getByRole("link", { name: "Analytics" }).first()).toBeVisible();
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/dashboard.png`, fullPage: true });
   expect(errors).toEqual([]);

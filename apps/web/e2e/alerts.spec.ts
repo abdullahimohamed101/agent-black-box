@@ -34,13 +34,16 @@ for (const [width, height] of [
   test.describe(`${width} px`, () => {
     test.use({ viewport: { width, height } });
 
-    test("rules tab: table in words, rail entry, no console errors, accessible", async ({
+    test("rules tab: table in words, an entry in the account menu, no console errors, accessible", async ({
       page,
     }) => {
       const problems = watch(page);
       await page.goto(PAGE);
       await expect(page.getByRole("heading", { name: "Alerts", level: 1 })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Alerts" }).first()).toBeVisible();
+      // Alerts has no top-level item (it moves under Settings in a later batch): it is reachable from the account menu
+      await page.getByRole("button", { name: "Account" }).click();
+      await expect(page.getByRole("link", { name: "Alerts" })).toBeVisible();
+      await page.keyboard.press("Escape");
       await expect(page.getByTestId("rule-row").first()).toBeVisible();
       await expect(page.getByText("ending failed, timed out")).toBeVisible();
       expect(await noSideScroll(page)).toBe(true);

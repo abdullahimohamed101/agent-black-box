@@ -60,6 +60,10 @@ main.state-page {
   height: var(--space-12);
   color: var(--color-text-secondary);
 }
+.state-page .button-link,
+.auth-page .button-link {
+  text-decoration: none;
+}
 .state-page .state-actions {
   display: flex;
   flex-wrap: wrap;

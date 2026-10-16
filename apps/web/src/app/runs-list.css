@@ -436,7 +436,7 @@ button.toggle[aria-pressed="true"] {
   }
   .runs-table tbody tr {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto auto minmax(0, 1fr);
     column-gap: var(--space-2);
     padding: var(--space-3) 0;
     border-bottom: 1px solid var(--color-border-subtle);
@@ -462,6 +462,7 @@ button.toggle[aria-pressed="true"] {
   .runs-table .c-cost {
     grid-column: 3;
     grid-row: 1;
+    justify-self: end;
   }
   .runs-table .c-run {
     grid-column: 1 / -1;
@@ -481,6 +482,7 @@ button.toggle[aria-pressed="true"] {
   .runs-table .c-pick {
     grid-column: 3;
     grid-row: 2;
+    justify-self: end;
     align-self: start;
     width: var(--layout-touch);
     text-align: right;

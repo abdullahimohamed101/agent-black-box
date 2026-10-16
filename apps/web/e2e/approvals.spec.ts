@@ -28,7 +28,7 @@ for (const [width, height] of [
   test.describe(`${width} px`, () => {
     test.use({ viewport: { width, height } });
 
-    test("list: the rail count, the rows, the tabs as URL state and Load more", async ({
+    test("list: the Review count, the rows, the tabs as URL state and Load more", async ({
       page,
     }) => {
       const problems: string[] = [];
@@ -45,10 +45,10 @@ for (const [width, height] of [
       if (width > 800) {
         const count = page.getByTestId("approvals-count");
         await expect(count).toBeVisible();
-        await expect(page.getByRole("link", { name: /^Approvals/ }).first()).toHaveAttribute(
-          "aria-current",
-          "page",
-        );
+        // the Approvals queue is under Review in the top bar (design pass 2): that link is the current page
+        await expect(
+          page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: /^Review/ }),
+        ).toHaveAttribute("aria-current", "page");
       }
       expect(await noSideScroll(page)).toBe(true);
       // tabs are links that write the URL; back and forward restore it
@@ -217,10 +217,16 @@ test("an error shows a retry", async ({ page }) => {
   await expect(rows(page).first()).toBeVisible();
 });
 
-test("a viewer sees 'Not available for your role' and no rail item", async ({ page }) => {
+test("a viewer sees 'Not available for your role' and a Review link that leads to the security findings, not the queue", async ({
+  page,
+}) => {
   await page.goto("/w/viewer-only/approvals");
   await expect(page.getByText("Not available for your role")).toBeVisible();
-  await expect(page.getByRole("link", { name: /^Approvals/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^Review/ })).toHaveAttribute(
+    "href",
+    "/w/viewer-only/security",
+  );
+  await expect(page.getByTestId("approvals-count")).toHaveCount(0);
   await page.goto("/w/viewer-only/settings/policies");
   await expect(page.getByText("Not available for your role")).toBeVisible();
 });

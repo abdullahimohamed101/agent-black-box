@@ -34,8 +34,3 @@
 .findings-empty .illus {
   margin-bottom: 0.25rem;
 }
-.topbar-note-empty {
-  display: grid;
-  justify-items: start;
-  gap: 0.25rem;
-}

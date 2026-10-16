@@ -72,8 +72,9 @@ test("a signed-out visitor is sent to sign in, signs in through the provider and
   await page.screenshot({ path: `${SHOTS}/login.png` });
 
   await loginAs(page, OWNER);
-  await expect(page).toHaveURL(new RegExp(`/w/${A}/projects/all$`));
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  // the project home redirects to Runs (design pass 2: Overview is merged into Runs)
+  await expect(page).toHaveURL(new RegExp(`/w/${A}/projects/all/runs$`));
+  await expect(page.getByRole("heading", { name: "Runs", level: 1 })).toBeVisible();
   await expect(page.getByText(OWNER)).toBeVisible();
 
   // The cookie is the whole credential and the page's scripts cannot read it.
@@ -90,9 +91,9 @@ test("a person in two workspaces switches between them and sees only the one the
   const { page } = owner;
   await page.goto(`/w/${A}/projects/all/runs`);
   await expect(page.getByText("Auth: payload run")).toBeVisible();
-  await page.getByText("Auth Alpha").first().click(); // the switcher is a <details> disclosure
+  await page.getByRole("button", { name: /^Auth Alpha \// }).click(); // the scope control is a disclosure
   await page.screenshot({ path: `${SHOTS}/workspace-switcher.png` });
-  await page.getByRole("link", { name: "Auth Beta" }).click();
+  await page.getByRole("link", { name: /^Auth Beta/ }).click();
   await expect(page).toHaveURL(new RegExp(`/w/${B}/projects/all`));
   await page.goto(`/w/${B}/projects/all/runs`);
   await expect(page.getByText("Auth: payload run")).toHaveCount(0);
@@ -195,7 +196,7 @@ test("a role downgrade to viewer takes effect at once: metadata stays, content i
   try {
     await viewer.goto(`/w/${A}/projects/all`);
     await loginAs(viewer, INVITEE);
-    await expect(viewer.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await expect(viewer.getByRole("heading", { name: "Runs", level: 1 })).toBeVisible();
     await expect(viewer.getByRole("link", { name: "API keys" })).toHaveCount(0);
 
     // before the downgrade this person holds payload.read: the command and the path are on the page
@@ -327,7 +328,7 @@ test("sessions: a second sign-in is listed, ending it from here signs it out at 
   try {
     await other.goto(`/w/${A}/projects/all`);
     await loginAs(other, OWNER);
-    await expect(other.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await expect(other.getByRole("heading", { name: "Runs", level: 1 })).toBeVisible();
 
     await page.reload();
     await expect(page.getByTestId("session-item")).toHaveCount(2);
@@ -377,6 +378,7 @@ test("sessions: a second sign-in is listed, ending it from here signs it out at 
 test("signing out ends the session: the cookie is gone and workspace pages redirect to sign-in", async () => {
   const { page, context } = owner;
   await page.goto(`/w/${A}/projects/all`);
+  await page.getByRole("button", { name: OWNER }).click(); // the person menu
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login/);
   expect((await cookiesOf(context)).find((c) => c.name === "abb_session")).toBeUndefined();

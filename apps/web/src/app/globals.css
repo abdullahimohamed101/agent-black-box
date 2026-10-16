@@ -315,8 +315,9 @@ td.name {
 }
 .tag {
   display: inline-block;
-  font: 500 0.75rem/1.4 var(--sans);
-  color: var(--fg-2);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
 .tag-bad {
@@ -428,7 +429,7 @@ select {
   width: var(--space-4);
   height: var(--space-4);
   margin-right: var(--space-2);
-  vertical-align: -0.15em;
+  vertical-align: -0.12em;
   border: 1.5px solid var(--color-text-secondary);
   border-radius: var(--radius-control);
   color: var(--color-text-secondary);

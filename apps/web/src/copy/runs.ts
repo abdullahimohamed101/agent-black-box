@@ -15,7 +15,7 @@ export const runs = {
   },
   search: {
     label: "Search runs",
-    placeholder: 'Search runs, for example status:failed tool:github "npm test"',
+    placeholder: "Search runs, for example status:failed",
     help: "Search help",
     helpIntro:
       "Terms are combined with AND. Prefix a term with - to exclude it, quote phrases, end a value with * for a prefix. Times can be relative, for example started:>=-24h.",

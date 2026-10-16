@@ -66,10 +66,10 @@ for (const [width, height] of [
       await expect(page.getByTestId("security-row")).toHaveCount(10);
       await noSentinel(page, "main");
       if (width > 800)
-        await expect(page.getByRole("link", { name: "Security" }).first()).toHaveAttribute(
-          "aria-current",
-          "page",
-        );
+        // Security findings live under Review in the top bar (design pass 2)
+        await expect(
+          page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: /^Review/ }),
+        ).toHaveAttribute("aria-current", "page");
       await axe(page);
       // facets edit the URL; back and forward restore it
       if (width < 800) await page.getByText("Narrow results").click();
@@ -198,7 +198,7 @@ test.describe("viewer", () => {
     await noSentinel(page, "main");
     await page.goto("/w/viewer-only/settings/security");
     await expect(page.getByText("Not available for your role")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Security" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Review/ })).toBeVisible();
   });
 });
 

@@ -27,7 +27,7 @@ export function BrandMark() {
 /** The name gives way to the mark alone on a phone (CSS); the link keeps its name for assistive technology. */
 export function Brand({ href = "/" }: { href?: string }) {
   return (
-    <Link href={href} className="brand">
+    <Link href={href} className="brand" aria-label={shell.brand}>
       <BrandMark />
       <span className="brand-name">{shell.brand}</span>
     </Link>
