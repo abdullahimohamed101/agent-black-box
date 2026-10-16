@@ -60,11 +60,11 @@ describe("the fault line", () => {
   const c = css("run-timeline.css");
   it("is 2 px, red, and its label is the fault colour on the canvas colour", () => {
     expect(/\.tl-fault \{[^}]*height: 2px/.test(c)).toBe(true);
-    expect(/\.tl-fault::before \{[^}]*background: var\(--fail\)/.test(c)).toBe(true);
+    expect(/\.tl-fault::before \{[^}]*background: var\(--color-status-fault\)/.test(c)).toBe(true);
     const label = /\.tl-fault-label \{([^}]*)\}/.exec(c)![1]!;
-    expect(label).toMatch(/color: var\(--fail\)/);
+    expect(label).toMatch(/color: var\(--color-status-fault\)/);
     expect(label).toMatch(/background: var\(--color-bg-canvas\)/);
-    expect(label).not.toMatch(/background: var\(--fail\)/); // no filled chip
+    expect(label).not.toMatch(/background: var\(--color-status-fault\)/); // no filled chip
   });
   it("draws once in 280 ms under no-preference and is not animated at all under reduce", () => {
     const m = strip(readFileSync(path.join(APP, "run-motion.css"), "utf8"));
@@ -116,7 +116,7 @@ describe("the page has one voice", () => {
 describe("the layout contract (03)", () => {
   const c = css("run-layout.css");
   it("keeps the fixed-height page and the zero page padding, and becomes a document below 832 px or 576 px of height", () => {
-    expect(c).toMatch(/\.run-detail \{[^}]*height: calc\(100dvh - var\(--top-h\)\)/);
+    expect(c).toMatch(/\.run-detail \{[^}]*height: calc\(100dvh - var\(--layout-topbar\)\)/);
     expect(c).toMatch(/\.shell main\.page:has\(> \.run-detail\) \{[^}]*padding: 0/);
     expect(c).toMatch(
       /@media \(max-width: 52rem\), \(max-height: 36rem\) \{[^}]*\.run-detail \{[^}]*height: auto/,

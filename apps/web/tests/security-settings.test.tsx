@@ -227,17 +227,17 @@ describe("Security settings", () => {
         <SettingsNav />
       </WorkspaceProvider>,
     );
-    expect(screen.queryByRole("link", { name: "Security" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Capture and detectors" })).toBeNull();
     expect(calls).toHaveLength(0);
   });
 
-  it("the sub-nav lists Security for owners and admins", () => {
+  it("the sub-nav lists Capture and detectors (the Security tab, renamed in step 5c) for owners and admins", () => {
     render(
       <WorkspaceProvider value={ctx(["project.write", "audit.read"])}>
         <SettingsNav />
       </WorkspaceProvider>,
     );
-    expect(screen.getByRole("link", { name: "Security" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Capture and detectors" })).toHaveAttribute(
       "href",
       "/w/acme/settings/security",
     );

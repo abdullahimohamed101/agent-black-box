@@ -78,9 +78,10 @@ describe("application frame", () => {
       "href",
       "/w/demo/projects/all/runs",
     );
+    // Step 5c: Settings lands on the first tab this role can read; a role with only run.read reads just Sessions.
     expect(primary().getByRole("link", { name: "Settings" })).toHaveAttribute(
       "href",
-      "/w/demo/settings/members",
+      "/w/demo/settings/sessions",
     );
   });
 
@@ -91,7 +92,9 @@ describe("application frame", () => {
       ["/w/demo/projects/all/analytics", "Analytics"],
       ["/w/demo/projects/all/experiments/exp_1", "Experiments"],
       ["/w/demo/security", "Review"],
+      ["/w/demo/approvals", "Review"],
       ["/w/demo/settings/quotas", "Settings"],
+      ["/w/demo/settings/alerts", "Settings"],
     ];
     for (const [path, name] of cases) {
       pathname = path;
@@ -118,6 +121,14 @@ describe("application frame", () => {
     expect(primary().getByRole("link", { name: "Review" })).toHaveAttribute(
       "href",
       "/w/demo/security",
+    );
+  });
+
+  it("Settings leads to the first tab the role may read, not always Members", () => {
+    shellOf(ctx({ permissions: ["run.read", "pricing.read"] }));
+    expect(primary().getByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/w/demo/settings/sessions",
     );
   });
 
@@ -314,17 +325,14 @@ describe("the person menu", () => {
       "href",
       "/w/demo/settings/sessions",
     );
-    // temporary homes until the Review and Settings batches (ADR-166): nothing is orphaned
-    expect(screen.getByRole("link", { name: "Alerts" })).toHaveAttribute("href", "/w/demo/alerts");
-    expect(screen.getByRole("link", { name: "Security findings" })).toHaveAttribute(
-      "href",
-      "/w/demo/security",
-    );
+    // The temporary entries of step 5a are gone (KI-279): Security findings is a tab of Review, Alerts a tab of Settings.
+    expect(screen.queryByRole("link", { name: "Alerts" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Security findings" })).toBeNull();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
   });
 
-  it("leaves out the Alerts link without alert.read, and closes on Escape with focus back", async () => {
-    shellOf(ctx());
+  it("has no Alerts entry whatever the role, and closes on Escape with focus back", async () => {
+    shellOf(ctx({ permissions: ["run.read", "alert.read"] }));
     const user = userEvent.setup();
     const button = screen.getByRole("button", { name: "owner@example.test" });
     await user.click(button);

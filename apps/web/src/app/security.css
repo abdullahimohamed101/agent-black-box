@@ -197,8 +197,12 @@
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border-subtle);
 }
+/* A floated legend sits inside the fieldset (not on its top border), and what follows it clears the float. */
+.sec-settings legend + * {
+  clear: both;
+}
 .sec-settings legend {
-  float: none;
+  float: left;
   display: block;
   width: 100%;
   margin: 0 0 var(--space-2);

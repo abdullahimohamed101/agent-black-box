@@ -108,8 +108,11 @@
   margin-top: var(--space-2);
   color: var(--color-text-secondary);
 }
-.st .state {
-  margin: var(--space-4) 0;
+.st .state,
+.st .state[data-state="empty"] {
+  margin: var(--space-2) 0;
+  padding: var(--space-2) 0;
+  border-top: 0;
 }
 
 /* ---- forms: label over field, helper text under, one primary button last ---- */
@@ -157,11 +160,15 @@
   border: 0;
 }
 .st legend {
-  float: none;
+  float: left;
+  width: 100%;
   margin: 0 0 var(--space-1);
   padding: 0;
   color: var(--color-text-primary);
   font: var(--type-body-weight) var(--type-body-size) / var(--type-body-line) var(--font-sans);
+}
+.st legend + * {
+  clear: both;
 }
 .st fieldset > .chip,
 .st fieldset > label {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contrast, themes as themeVars } from "./tokenCss";
+import { contrast, roles, themes as themeVars } from "./tokenCss";
 
 // Phase 22 palette (ADR-111), values moved by design pass 2 (ADR-166): every text/background pair the new semantic tokens are drawn on is at least 4.5:1 in both
 // themes. tokens.test.ts covers the legacy names; this file covers the semantic names and the filled FAILED status.
@@ -13,7 +13,8 @@ const PLAN: Record<string, [string, string]> = {
 };
 
 describe.each(Object.keys(themes))("%s palette", (name) => {
-  const t = themes[name]!;
+  const raw = themes[name]!;
+  const t = roles(raw);
   it("matches the plan's base colours", () => {
     expect([t.bg, t.surface]).toEqual(PLAN[name]);
   });
@@ -26,6 +27,21 @@ describe.each(Object.keys(themes))("%s palette", (name) => {
       });
   it("the aliases nothing reads any more are gone", () => {
     for (const gone of [
+      // deleted in step 5c, once the last stylesheet that read them was rebuilt
+      "bg",
+      "surface",
+      "border-strong",
+      "ink",
+      "muted",
+      "accent",
+      "sel",
+      "fail",
+      "wait",
+      "fs-title",
+      "fs-body",
+      "ease-out",
+      "top-h",
+      "sans",
       "bad",
       "bad-bg",
       "warn",
@@ -42,6 +58,6 @@ describe.each(Object.keys(themes))("%s palette", (name) => {
       "cond",
       "serif",
     ])
-      expect(t[gone], gone).toBeUndefined();
+      expect(raw[gone], gone).toBeUndefined();
   });
 });

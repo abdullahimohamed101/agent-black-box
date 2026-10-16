@@ -67,7 +67,9 @@ const open = (id: string, state = "") => {
 };
 
 describe("the Approvals page list", () => {
-  it("lists pending requests with capability, scrubbed resource, risk, run link, project, time left and policy", async () => {
+  // Step 5c (03 section 4): the list has five columns (Request, Risk, State, Requested, Time left). The run link, the project and
+  // the policy are in the request panel, where the next test and the detail tests below assert them.
+  it("lists pending requests with capability, scrubbed resource, risk, state and time left", async () => {
     stubPolicyApi();
     mount(<ApprovalsPage />);
     const rows = await screen.findAllByTestId("approval-row");
@@ -77,24 +79,28 @@ describe("the Approvals page list", () => {
     expect(first.getByText("origin main")).toBeInTheDocument();
     expect(first.getByText("Risk R3")).toBeInTheDocument();
     expect(first.getByText("Waiting")).toBeInTheDocument();
-    expect(first.getByRole("link", { name: /^…/ }).getAttribute("href")).toMatch(
-      /^\/w\/demo\/projects\/demo\/runs\/run_\w+$/,
-    );
-    expect(first.getByText("Demo project")).toBeInTheDocument();
     expect(first.getByTestId("time-left").textContent).toMatch(
       /^\d+ h( \d+ min)? left$|^\d+ min left$/,
     );
-    expect(first.getByText("approve-push-main")).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Time left" })).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Request",
+      "Risk",
+      "State",
+      "Requested",
+      "Time left",
+    ]);
+    expect(first.queryByText("Demo project")).toBeNull();
+    expect(first.queryByText("approve-push-main")).toBeNull();
     expect(screen.getByText(/6 requests loaded/)).toBeInTheDocument();
   });
 
-  it("tabs are URL state: Decided and All read the API's state, and Load more pages", async () => {
+  // The state list is the shared Tabs component at chip density: role tab, aria-selected, the state is still the URL's ?state=.
+  it("the state tabs are URL state: Decided and All read the API's state, and Load more pages", async () => {
     const calls = stubPolicyApi();
     const user = userEvent.setup();
     mount(<ApprovalsPage />);
     await screen.findAllByTestId("approval-row");
-    await user.click(screen.getByRole("link", { name: "Decided" }));
+    await user.click(screen.getByRole("tab", { name: /^Decided/ }));
     expect(url.search).toBe("state=decided");
     await waitFor(() =>
       expect(
@@ -102,14 +108,14 @@ describe("the Approvals page list", () => {
       ).toBe(true),
     );
     await waitFor(() => expect(screen.getAllByTestId("approval-row")).toHaveLength(25));
-    expect(screen.getByRole("link", { name: "Decided" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("tab", { name: /^Decided/ })).toHaveAttribute("aria-selected", "true");
     const states = screen.getAllByTestId("approval-row").map((r) => r.getAttribute("data-state"));
     expect(states).not.toContain("REQUESTED");
     await user.click(screen.getByRole("button", { name: "Load more" }));
     await waitFor(() => expect(screen.getAllByTestId("approval-row").length).toBeGreaterThan(25));
-    await user.click(screen.getByRole("link", { name: "All" }));
+    await user.click(screen.getByRole("tab", { name: /^All/ }));
     expect(url.search).toBe("state=all");
-    await user.click(screen.getByRole("link", { name: "Pending" }));
+    await user.click(screen.getByRole("tab", { name: /^Pending/ }));
     expect(url.search).toBe("");
   });
 
@@ -118,17 +124,18 @@ describe("the Approvals page list", () => {
     stubPolicyApi();
     mount(<ApprovalsPage />);
     await screen.findAllByTestId("approval-row");
-    expect(screen.getByRole("link", { name: "Decided" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("tab", { name: /^Decided/ })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("shows the empty state with the existing illustration and a skeleton while loading", async () => {
+  it("shows the empty state without an illustration, and a loading status while loading", async () => {
     stubPolicyApi((c) =>
       c.path === "v1/approvals" ? Response.json({ items: [], next_cursor: null }) : undefined,
     );
     mount(<ApprovalsPage />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading approvals");
     expect(await screen.findByText("Nothing is waiting for you")).toBeInTheDocument();
-    expect(screen.getByTestId("approvals-empty").querySelector("svg")).not.toBeNull();
+    // ADR-166: drawings stay on the first-run guide and not-found only.
+    expect(screen.getByTestId("approvals-empty").querySelector("svg")).toBeNull();
   });
 
   it("a failed list offers a retry", async () => {
@@ -492,7 +499,7 @@ describe("hydration safety", () => {
         </WorkspaceProvider>
       </QueryClientProvider>,
     );
-    expect(html).toContain("Approvals");
+    expect(html).toContain("Pending"); // the heading is Review's now; the state list is this page's
     expect(html).not.toMatch(/ago|min left|h left|Expired/);
   });
 });

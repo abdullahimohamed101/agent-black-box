@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { contrast, themes as themeVars } from "./tokenCss";
+import { contrast, ROLE_TOKENS, themes as themeVars } from "./tokenCss";
 import { SecuritySeverityMark } from "@/components/SecuritySeverity";
 import { securitySeverityMeta } from "@/lib/security";
 
@@ -41,13 +41,13 @@ const themes = themeVars() as Record<"light" | "dark", Record<string, string>>;
 
 describe("severity colours", () => {
   it("security.css reads no red and no other new hue", () => {
-    expect(css).not.toMatch(/var\(--(fail|bad)/);
+    expect(css).not.toMatch(/var\(--(fail|bad|color-status-fault)/);
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,6}\b/);
   });
   describe.each(Object.keys(themes) as (keyof typeof themes)[])("%s", (name) => {
     const t = themes[name];
-    const hex = (k: string) => {
-      let v = t[k]!;
+    const hex = (role: string) => {
+      let v = t[ROLE_TOKENS[role as keyof typeof ROLE_TOKENS]]!;
       for (let i = 0; i < 4 && v.startsWith("var("); i++) v = t[v.slice(6, -1)]!;
       return v;
     };

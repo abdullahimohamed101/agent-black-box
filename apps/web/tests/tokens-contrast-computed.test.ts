@@ -34,20 +34,23 @@ describe("computed contrast from tokens.json", () => {
     const tokens = loadTokens();
     for (const theme of ["light", "dark"] as const) {
       for (const [css, token] of [
-        ["ink", "color.text.primary"],
-        ["muted", "color.text.secondary"],
-        ["bg", "color.bg.canvas"],
-        ["surface", "color.bg.raised"],
-        ["fail", "color.status.fault"],
-        ["wait", "color.status.caution"],
-        ["accent", "color.interactive.default"],
-        ["sel", "color.bg.wash"],
+        ["color-text-primary", "color.text.primary"],
+        ["color-text-secondary", "color.text.secondary"],
+        ["color-bg-canvas", "color.bg.canvas"],
+        ["color-bg-raised", "color.bg.raised"],
+        ["color-status-fault", "color.status.fault"],
+        ["color-status-caution", "color.status.caution"],
+        ["color-interactive-default", "color.interactive.default"],
+        ["color-bg-wash", "color.bg.wash"],
       ] as const) {
         const want = computeContrast({
           ...tokens,
           $contrast: [{ fg: token, bg: "color.bg.canvas" }],
         })[0]!.ratio[theme];
-        expect(contrast(t[theme]![css]!, t[theme]!.bg!), `${css} (${theme})`).toBeCloseTo(want, 6);
+        expect(
+          contrast(t[theme]![css]!, t[theme]!["color-bg-canvas"]!),
+          `${css} (${theme})`,
+        ).toBeCloseTo(want, 6);
       }
     }
   });

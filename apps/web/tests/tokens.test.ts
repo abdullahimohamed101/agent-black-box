@@ -1,17 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { contrast, themes } from "./tokenCss";
+import { contrast, roles, themes } from "./tokenCss";
 
 // D16: contrast is a test, not a scratch script. Reads the custom properties through tests/tokenCss.ts (generated tokens, then
 // the alias layer, then globals.css; design pass 2 moved the values out of globals.css) and asserts every text role on the backgrounds it is drawn on is at least 4.5:1 (WCAG AA for body text).
 const schemes = themes();
 
+// Step 5c: the pre-pass-2 alias names are deleted; `roles()` looks each role up under its token name (tests/tokenCss.ts).
 // Step 5b deleted the aliases nothing reads (fg, fg-2, ok, warn, bad, info, surface-2 and the four tints), with their pairs: the
 // roles that remain are ink, muted, accent, wait (caution) and fail, on the page, the raised surface and the selection.
 const text = ["ink", "muted", "accent", "wait", "fail"];
 const grounds = ["bg", "surface"];
 
 describe.each(Object.keys(schemes))("%s scheme tokens", (name) => {
-  const t = schemes[name]!;
+  const t = roles(schemes[name]!);
   it("defines every token the other stylesheets read", () => {
     for (const k of [...text, ...grounds, "sel", "border"])
       expect(t[k], k).toMatch(/^#[0-9a-f]{6}$/i);

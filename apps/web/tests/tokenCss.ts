@@ -87,3 +87,25 @@ export function contrast(a: string, b: string): number {
   const [x, y] = [lum(a), lum(b)];
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
+
+/**
+ * The colour ROLES the contrast tests are written in terms of, read from the real tokens. The pre-pass-2 alias names (--bg,
+ * --ink, --muted, ...) are deleted from the stylesheets (step 5c), so the tests name the roles here and look each one up under
+ * its token name; the pairs and thresholds they assert are unchanged.
+ */
+export const ROLE_TOKENS = {
+  bg: "color-bg-canvas",
+  surface: "color-bg-raised",
+  sel: "color-bg-wash",
+  border: "color-border-subtle",
+  ink: "color-text-primary",
+  muted: "color-text-secondary",
+  accent: "color-interactive-default",
+  fail: "color-status-fault",
+  wait: "color-status-caution",
+} as const;
+export function roles(theme: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(ROLE_TOKENS).map(([role, token]) => [role, theme[token]!]),
+  );
+}

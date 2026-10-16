@@ -19,7 +19,7 @@ import { MANAGE, READER, stubAlertApi } from "./alertsHelpers";
 
 const url = vi.hoisted(() => ({ search: "", subs: new Set<() => void>() }));
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/w/demo/alerts",
+  usePathname: () => "/w/demo/settings/alerts",
   useSearchParams: () => {
     const s = useSyncExternalStore(
       (n) => {
@@ -52,15 +52,31 @@ const tab = (t: string) => {
 };
 
 describe("the Alerts page: tabs and the rules table", () => {
-  it("tabs are links with aria-current, and the tab is the URL", async () => {
+  // Step 5c: Rules, Destinations and History are the shared Tabs component (role tab, aria-selected) inside the Alerts tab of
+  // Settings; the tab is still the URL's ?tab=, and arrow keys move and select as on every other tab list.
+  it("tabs are the shared tab list, and the tab is the URL", async () => {
     stubAlertApi(true);
     const user = userEvent.setup();
     mount(<AlertsPage />, MANAGE);
-    expect(screen.getByRole("link", { name: "Rules" })).toHaveAttribute("aria-current", "page");
-    await user.click(screen.getByRole("link", { name: "History" }));
+    expect(screen.getByRole("tablist", { name: "Alert sections" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Rules" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: "History" }));
     expect(url.search).toBe("tab=history");
-    expect(screen.getByRole("link", { name: "History" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("tab", { name: "History" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findAllByTestId("history-row")).not.toHaveLength(0);
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "alerts-tab-history");
+  });
+
+  it("arrow keys move between the tabs and the URL follows", async () => {
+    stubAlertApi(true);
+    const user = userEvent.setup();
+    mount(<AlertsPage />, MANAGE);
+    screen.getByRole("tab", { name: "Rules" }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(url.search).toBe("tab=destinations");
+    expect(screen.getByRole("tab", { name: "Destinations" })).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(url.search).toBe("tab=history");
   });
 
   it("lists rules with the trigger and filters in words, destinations and last fired", async () => {
