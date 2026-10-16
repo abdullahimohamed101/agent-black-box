@@ -106,7 +106,8 @@ _FINGERPRINT = (
     "UNION ALL SELECT 'colacl ' || c.relname || '.' || a.attname || ' ' || a.attacl::text "
     "FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid "
     "WHERE c.relnamespace = 'public'::regnamespace AND a.attacl IS NOT NULL "
-    "UNION ALL SELECT 'defacl ' || defaclobjtype::text || ' ' || defaclacl::text FROM pg_default_acl"
+    "UNION ALL SELECT 'defacl ' || defaclobjtype::text || ' ' || defaclacl::text "
+    "FROM pg_default_acl"
 )
 
 
