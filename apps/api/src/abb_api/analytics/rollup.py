@@ -40,6 +40,7 @@ RUN_SUMS = (
     "runs", "cost_usd", "retry_cost_usd", "retried_runs", "runs_with_retry_cost", "llm_calls",
     "tool_calls", "retry_count", "retries_unattributed", "files_modified", "unpriced_calls",
     "tool_spans_finished", "tool_spans_ok", "llm_spans_finished", "llm_spans_ok", "unrebuilt_runs",
+    "expired_trace_runs",
 )  # fmt: skip
 L = t.cost_calculations.c
 S = t.spans.c
@@ -103,6 +104,7 @@ def runs_select(ws: uuid.UUID, start: date, end: date, project: uuid.UUID | None
             func.count()
             .filter((R.summary_version > 0) & (R.summary_version < SUMMARY_VERSION))
             .label("unrebuilt_runs"),
+            func.count().filter(R.trace_state == "expired").label("expired_trace_runs"),
         )
         .where(
             R.workspace_id == ws,

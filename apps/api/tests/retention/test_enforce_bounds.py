@@ -14,7 +14,9 @@ import pytest
 from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from abb_api.analytics.postgres import PostgresAnalyticsStore
 from abb_api.analytics.rollup import refresh_day
+from abb_api.analytics.store import AnalyticsScope
 from abb_api.artifacts.store import LocalFsArtifactStore
 from abb_api.db import tables as t
 from abb_api.retention.tick import TICK_LOCK_KEY
@@ -495,6 +497,66 @@ async def test_rollups_of_the_affected_days_exclude_what_was_deleted(
     assert after["spans"] == {d_fresh: 2} and after["cost"] == {d_fresh: 1}
     assert await _day_hash(engine, d_fresh) == fresh_rows  # untouched day: byte-identical
     assert await scalar(engine, "SELECT count(*) FROM retention_run_progress") == 0
+
+
+async def test_run_totals_of_a_day_are_identical_before_and_after_the_trace_tier(
+    engine: AsyncEngine, retention_engine: AsyncEngine, store: LocalFsArtifactStore
+) -> None:
+    """KI-199 (ADR-161): everything derivable from the surviving run record keeps its value; the
+    runs that lack trace detail are counted, and the reports that rest on trace detail say so."""
+    acme = await make_tenant(engine, "acme")
+    run = await seed_run(engine, acme, ended=days_ago(100), full=True, events=2, spans=2)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "UPDATE runs SET cost_usd = 1.5, retry_cost_usd = 0.25, retry_count = 2, "
+                "llm_calls = 3, tool_calls = 4, tool_spans_finished = 4, tool_spans_ok = 3, "
+                "llm_spans_finished = 3, llm_spans_ok = 3, duration_ms = 900 WHERE id = :r"
+            ),
+            {"r": run.run_id},
+        )
+    day = (days_ago(100) - timedelta(minutes=5)).date()
+    await refresh_all(engine, acme, [day])
+    columns = (
+        "SELECT runs, cost_usd, retry_cost_usd, retried_runs, llm_calls, tool_calls, retry_count, "
+        "tool_spans_finished, tool_spans_ok, llm_spans_finished, llm_spans_ok, status "
+        "FROM analytics_runs_daily WHERE day = :d"
+    )
+    async with engine.connect() as conn:
+        before = [tuple(r) for r in (await conn.execute(text(columns), {"d": day})).all()]
+    assert (
+        before
+        and await scalar(
+            engine, "SELECT sum(expired_trace_runs) FROM analytics_runs_daily WHERE day = :d", d=day
+        )
+        == 0
+    )
+
+    result = await enforce(retention_engine, store)
+    assert result.failed == 0
+    async with engine.connect() as conn:
+        after = [tuple(r) for r in (await conn.execute(text(columns), {"d": day})).all()]
+    assert after == before
+    assert (
+        await scalar(
+            engine, "SELECT sum(expired_trace_runs) FROM analytics_runs_daily WHERE day = :d", d=day
+        )
+        == 1
+    )
+
+    scope = AnalyticsScope(
+        tenant=TenantContext(acme.context.workspace_id),
+        start_day=day,
+        end_day=day + timedelta(days=1),
+    )
+    analytics = PostgresAnalyticsStore(engine)
+    cost = await analytics.cost(scope, top=5)
+    assert cost.headline.total_usd == 1.5 and cost.by_day[0].runs == 1
+    assert cost.by_model == [] and cost.excluded_expired_traces == 1
+    assert (await analytics.reliability(scope, top=5)).excluded_expired_traces == 1
+    assert (await analytics.performance(scope, top=5)).excluded_expired_traces == 1
+    summary = await analytics.summary(scope)
+    assert summary.tools.calls == 4 and summary.run_latency.count == 1  # all from the record
 
 
 async def _day_hash(engine: AsyncEngine, day: date) -> tuple[str, ...]:

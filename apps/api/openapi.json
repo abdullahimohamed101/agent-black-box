@@ -1458,6 +1458,11 @@
             "title": "By Source",
             "type": "array"
           },
+          "excluded_expired_traces": {
+            "description": "Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (cost by agent, model and source).",
+            "title": "Excluded Expired Traces",
+            "type": "integer"
+          },
           "expensive_runs": {
             "items": {
               "$ref": "#/components/schemas/ExpensiveRun"
@@ -1486,7 +1491,8 @@
           "by_model_other",
           "by_source",
           "by_project",
-          "expensive_runs"
+          "expensive_runs",
+          "excluded_expired_traces"
         ],
         "title": "CostReport",
         "type": "object"
@@ -5517,6 +5523,11 @@
       },
       "PerformanceReport": {
         "properties": {
+          "excluded_expired_traces": {
+            "description": "Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (model and tool latency).",
+            "title": "Excluded Expired Traces",
+            "type": "integer"
+          },
           "llm": {
             "$ref": "#/components/schemas/Percentiles"
           },
@@ -5542,7 +5553,8 @@
           "run",
           "llm",
           "tool",
-          "slow_operations"
+          "slow_operations",
+          "excluded_expired_traces"
         ],
         "title": "PerformanceReport",
         "type": "object"
@@ -6666,6 +6678,11 @@
       },
       "ReliabilityReport": {
         "properties": {
+          "excluded_expired_traces": {
+            "description": "Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (tool reliability).",
+            "title": "Excluded Expired Traces",
+            "type": "integer"
+          },
           "failure_trend": {
             "items": {
               "$ref": "#/components/schemas/FailureDay"
@@ -6714,7 +6731,8 @@
           "failure_trend",
           "tools",
           "tools_other",
-          "retry_heavy_runs"
+          "retry_heavy_runs",
+          "excluded_expired_traces"
         ],
         "title": "ReliabilityReport",
         "type": "object"

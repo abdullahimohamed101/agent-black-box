@@ -2155,6 +2155,11 @@ export interface components {
             by_project: components["schemas"]["CostByProject"][] | null;
             /** By Source */
             by_source: components["schemas"]["CostBySource"][];
+            /**
+             * Excluded Expired Traces
+             * @description Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (cost by agent, model and source).
+             */
+            excluded_expired_traces: number;
             /** Expensive Runs */
             expensive_runs: components["schemas"]["ExpensiveRun"][];
             headline: components["schemas"]["CostHeadline"];
@@ -3713,6 +3718,11 @@ export interface components {
         };
         /** PerformanceReport */
         PerformanceReport: {
+            /**
+             * Excluded Expired Traces
+             * @description Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (model and tool latency).
+             */
+            excluded_expired_traces: number;
             llm: components["schemas"]["Percentiles"];
             run: components["schemas"]["Percentiles"];
             /** Slow Operations */
@@ -4194,6 +4204,11 @@ export interface components {
         };
         /** ReliabilityReport */
         ReliabilityReport: {
+            /**
+             * Excluded Expired Traces
+             * @description Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (tool reliability).
+             */
+            excluded_expired_traces: number;
             /** Failure Trend */
             failure_trend: components["schemas"]["FailureDay"][];
             rates: components["schemas"]["Rates"];

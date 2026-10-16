@@ -161,6 +161,13 @@ class CostReport(BaseModel):
         description="Only when the query is not limited to one project."
     )
     expensive_runs: list[ExpensiveRun]
+    excluded_expired_traces: int = Field(
+        description=(
+            "Runs in the window whose trace detail the retention policy removed. They still count "
+            "in the run totals and cost headline but not in the figures built from trace detail "
+            "(cost by agent, model and source)."
+        )
+    )
 
 
 class FailureDay(BaseModel):
@@ -201,6 +208,13 @@ class ReliabilityReport(BaseModel):
     tools: list[ToolReliability]
     tools_other: OtherBucket | None
     retry_heavy_runs: list[RetryHeavyRun]
+    excluded_expired_traces: int = Field(
+        description=(
+            "Runs in the window whose trace detail the retention policy removed. They still count "
+            "in the run totals and cost headline but not in the figures built from trace detail "
+            "(tool reliability)."
+        )
+    )
 
 
 class SlowOperation(BaseModel):
@@ -217,6 +231,13 @@ class PerformanceReport(BaseModel):
     llm: Percentiles
     tool: Percentiles
     slow_operations: list[SlowOperation]
+    excluded_expired_traces: int = Field(
+        description=(
+            "Runs in the window whose trace detail the retention policy removed. They still count "
+            "in the run totals and cost headline but not in the figures built from trace detail "
+            "(model and tool latency)."
+        )
+    )
 
 
 class WasteOther(BaseModel):

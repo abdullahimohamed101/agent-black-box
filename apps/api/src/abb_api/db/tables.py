@@ -574,6 +574,9 @@ analytics_runs_daily = _daily(
     _bigint("llm_spans_finished"),
     _bigint("llm_spans_ok"),
     _bigint("unrebuilt_runs"),
+    # Runs whose trace detail the retention job removed (ADR-161): the cost-by-model, span and
+    # latency rollups no longer hold them, so reports say how many they leave out.
+    _bigint("expired_trace_runs"),
     key=("agent_slug", "status"),
 )
 

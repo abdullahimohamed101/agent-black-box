@@ -100,6 +100,7 @@ def test_there_is_a_linear_history_with_the_expected_revisions() -> None:
         "0100",
         "0101",
         "0102",
+        "0103",
     ]
 
 

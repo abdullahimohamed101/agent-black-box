@@ -61,6 +61,7 @@ RUNS_COLS = (
     "retried_runs", "runs_with_retry_cost", "llm_calls", "tool_calls", "retry_count",
     "retries_unattributed", "files_modified", "unpriced_calls", "tool_spans_finished",
     "tool_spans_ok", "llm_spans_finished", "llm_spans_ok", "unrebuilt_runs",
+    "expired_trace_runs",
 )  # fmt: skip
 COST_COLS = (
     "project_id", "day", "agent_slug", "provider", "model", "source", "calls", "total_usd",
@@ -70,6 +71,7 @@ RUN_SUM_FIELDS = (
     "retried_runs", "runs_with_retry_cost", "llm_calls", "tool_calls", "retry_count",
     "retries_unattributed", "files_modified", "unpriced_calls", "tool_spans_finished",
     "tool_spans_ok", "llm_spans_finished", "llm_spans_ok", "unrebuilt_runs",
+    "expired_trace_runs",
 )  # fmt: skip
 SPANS_COLS = ("project_id", "day", "kind", "name", "finished", "ok")
 LATENCY_COLS = ("project_id", "day", "series", "name", "bucket", "n")
@@ -267,6 +269,13 @@ class PostgresAnalyticsStore:
         return _RunTotals((await conn.execute(statement)).all())
 
     @staticmethod
+    async def _expired(conn: AsyncConnection, sources: _Sources) -> int:
+        """Runs of the window whose trace was removed by retention (detail rollups lack them)."""
+        u = sources.runs()
+        total = (await conn.execute(select(func.sum(u.c.expired_trace_runs)))).scalar()
+        return int(total or 0)
+
+    @staticmethod
     async def _latency(
         conn: AsyncConnection,
         sources: _Sources,
@@ -437,6 +446,7 @@ class PostgresAnalyticsStore:
             top_u = sources.top()
             expensive = await self._runs_from_top(conn, scope, top_u, "cost", top)
             return CostReport(
+                excluded_expired_traces=totals.fields["expired_trace_runs"],
                 window=self._window(scope),
                 headline=headline,
                 retries=RetryBreakdown(
@@ -616,6 +626,7 @@ class PostgresAnalyticsStore:
             ]
             hidden = int(tool_totals.names) - len(tool_rows)
             return ReliabilityReport(
+                excluded_expired_traces=totals.fields["expired_trace_runs"],
                 window=self._window(scope),
                 runs=totals.counts,
                 rates=totals.rates,
@@ -688,6 +699,7 @@ class PostgresAnalyticsStore:
             ]
             slow.sort(key=lambda o: (-(o.p95_ms or 0), o.kind, o.name or ""))
             return PerformanceReport(
+                excluded_expired_traces=await self._expired(conn, sources),
                 window=self._window(scope),
                 run=_percentiles(by_series.get("run")),
                 llm=_percentiles(by_series.get("llm")),
