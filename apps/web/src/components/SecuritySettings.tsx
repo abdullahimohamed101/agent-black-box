@@ -14,7 +14,7 @@ import {
   type CaptureMode,
 } from "@/lib/security";
 import { SecuritySeverityMark } from "./SecuritySeverity";
-import { settings } from "@/copy/settings";
+import { settings as copy } from "@/copy/settings";
 import { ActionError, Lede, StatusLine } from "./SettingsKit";
 import { Empty, ErrorState, Loading } from "./States";
 import { useCan, useWorkspace } from "./WorkspaceProvider";
@@ -40,7 +40,7 @@ export function SecuritySettings() {
   return (
     <div className="sec-settings">
       <Lede>
-        {settings.security.ledeLead}
+        {copy.security.ledeLead}
         <AuditLink />.
       </Lede>
       {ws.projects.length === 0 ? (
@@ -273,7 +273,7 @@ function SettingsForm({
       </fieldset>
 
       <button type="submit" className="primary" disabled={!dirty || save.isPending}>
-        {save.isPending ? settings.saving : "Save changes"}
+        {save.isPending ? copy.saving : "Save changes"}
       </button>
       <StatusLine testId="save-status">
         {saved && !dirty

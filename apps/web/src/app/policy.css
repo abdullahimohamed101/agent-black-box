@@ -1,169 +1,133 @@
-/* Policies and approvals (Phase 14, ADR-111). Same grammar as Security: an outcome is a glyph and a word, carried by weight,
-   never a new hue. Waiting and expired are amber (--wait); a denial is ink weight with an outlined glyph, because a denial
-   is a policy outcome and not a failed run. Nothing in this file reads --fail or --bad (tests/tokens-use.test.ts). No
-   animation is added (tests/motion-contract.test.ts). */
+/* Policies and approvals (Phase 14, ADR-111; Review and Settings pattern, design pass 2 step 5c). An outcome is a glyph and a word,
+   carried by weight, never a new hue. Waiting and expired are caution text; a denial is ink weight with an outlined glyph,
+   because a denial is a policy outcome and not a failed run. Nothing in this file reads the fault colour
+   (tests/tokens-use.test.ts). No animation is added (tests/motion-contract.test.ts). */
 
 /* Outcome mark: glyph + word. */
 .pol-mark {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.3rem;
-  font: 600 0.75rem/1.3 var(--sans);
+  gap: var(--space-1);
+  font-weight: var(--weight-strong);
   white-space: nowrap;
-  color: var(--ink);
+  color: var(--color-text-primary);
 }
-.pol-mark[data-tone="wait"] .pol-glyph {
-  color: var(--wait);
+.pol-mark[data-tone="wait"] {
+  color: var(--color-status-caution);
 }
 .pol-mark[data-tone="muted"] {
-  color: var(--muted);
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-regular);
 }
 .pol-glyph {
   flex: none;
-  font-family: var(--sans);
 }
 
-/* ---- Approvals page ---- */
-.apr-tabs ul {
-  display: flex;
-  gap: 0.25rem;
-  margin: 0 0 0.75rem;
-  padding: 0;
-  list-style: none;
-  border-bottom: 1px solid var(--border);
-}
-.apr-tabs a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 2.25rem;
-  padding: 0 0.9rem;
-  border-bottom: 2px solid transparent;
-  color: var(--color-text-primary);
-  font: 600 var(--fs-body) / 1 var(--sans);
-  text-decoration: none;
-}
-.apr-tabs a:hover {
-  background: var(--color-bg-raised);
-}
-.apr-tabs a[aria-current="page"] {
-  border-bottom-color: var(--accent);
-  color: var(--ink);
-  font-weight: 700;
-}
+/* ---- Approvals (a tab of Review): the list, and the request beside it from 1024 px ---- */
 .apr-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
+  gap: var(--space-6);
   align-items: start;
+  margin-top: var(--space-4);
 }
 .apr-body[data-detail] {
-  grid-template-columns: minmax(0, 1fr) minmax(20rem, 26rem);
+  grid-template-columns: minmax(0, 1fr) 26rem;
 }
-/* With a request open the list narrows: the columns the panel repeats (run, project, policy) step aside. */
-.apr-body[data-detail] .apr-table :is(th, td):is(:nth-child(4), :nth-child(5), :nth-child(8)) {
-  display: none;
+.apr-table td {
+  vertical-align: top;
+  white-space: nowrap;
 }
 .apr-table td.apr-req {
   min-width: 11rem;
+  white-space: normal;
 }
 .apr-cap {
-  font-family: var(--mono);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-size);
+  font-weight: var(--weight-strong);
   overflow-wrap: anywhere;
 }
 .apr-cap[aria-current="true"] {
-  color: var(--ink);
+  color: var(--color-text-primary);
   text-decoration-thickness: 2px;
 }
 .apr-res {
-  max-width: 18rem;
-  margin: 0.1rem 0 0;
+  max-width: 22rem;
+  margin: 0;
   overflow: hidden;
-  color: var(--muted);
-  font: 0.72rem/1.35 var(--mono);
+  color: var(--color-text-secondary);
+  font: var(--type-mono-small-weight) var(--type-mono-small-size) / var(--type-mono-small-line) var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.apr-table td.run a {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-}
 .apr-left {
-  font-family: var(--mono);
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-small-size);
   white-space: nowrap;
 }
-.apr-policy {
-  white-space: nowrap;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-}
-.apr-table tbody tr:hover,
-.apr-table tbody tr[data-selected] {
-  background: var(--surface);
+.apr-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-bg-wash) 50%, transparent);
 }
 .apr-table tbody tr[data-selected] {
-  box-shadow: inset 2px 0 0 var(--accent);
+  background: var(--color-bg-wash);
+  box-shadow: inset 2px 0 0 var(--color-interactive-default);
 }
 .apr-empty {
   display: grid;
-  max-width: 36rem;
-  padding: 1rem 0;
+  max-width: var(--measure);
 }
-.apr-empty .state-title {
-  font-family: var(--sans);
-  font-size: var(--fs-title);
+.apr-count-line {
+  margin: var(--space-2) 0 0;
 }
 .apr-foot {
-  max-width: 44rem;
-  margin: 1rem 0 0;
+  max-width: var(--measure);
+  margin: var(--space-6) 0 0;
 }
 
-/* Detail panel. */
+/* The request: a column with a hairline on its left, no card. */
 .apr-detail {
   position: sticky;
-  top: 0.5rem;
-  padding: 0.75rem 1rem 1rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  background: var(--surface);
-  max-height: calc(100dvh - 1.5rem);
+  top: calc(var(--layout-topbar) + var(--space-4));
+  padding: 0 0 var(--space-4) var(--space-6);
+  border-left: 1px solid var(--color-border-subtle);
+  max-height: calc(100dvh - var(--layout-topbar) - var(--space-8));
   overflow: auto;
 }
 .apr-detail-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 .apr-detail-head h2 {
   margin: 0;
-  font: 600 var(--fs-title) / 1.3 var(--mono);
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-mono);
   overflow-wrap: anywhere;
 }
 .apr-detail-head h2:focus {
   outline: none;
 }
 .apr-detail-head h2:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-interactive-default);
   outline-offset: 2px;
 }
 .apr-detail h3 {
-  margin: 0.9rem 0 0.25rem;
-  font: 600 0.8125rem/1.3 var(--sans);
+  margin: var(--space-4) 0 var(--space-1);
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
 }
 .apr-state {
-  margin: 0.4rem 0 0.6rem;
+  margin: var(--space-2) 0 var(--space-3);
 }
 .apr-left-inline {
-  font: 600 0.75rem var(--mono);
+  font: var(--weight-strong) var(--type-mono-small-size) var(--font-mono);
 }
 .apr-fields div {
   display: grid;
-  grid-template-columns: 7.5rem minmax(0, 1fr);
-  gap: 0 0.5rem;
-  padding: 0.2rem 0;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 0 var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--type-body-size);
 }
 .apr-fields dd {
   overflow-wrap: anywhere;
@@ -172,76 +136,90 @@
   max-height: 14rem;
   margin: 0;
   overflow: auto;
-  font-size: 0.75rem;
+  font-size: var(--type-mono-small-size);
 }
 .apr-decide {
   display: grid;
-  gap: 0.5rem;
-  margin: 1rem 0 0;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
 }
 .apr-decide textarea {
   display: block;
   width: 100%;
-  margin-top: 0.2rem;
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-canvas);
+  color: var(--color-text-primary);
+  font: inherit;
 }
 .apr-count {
   display: block;
-  font-family: var(--mono);
-  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-small-size);
 }
 .apr-confirm p {
-  margin: 0 0 0.4rem;
-  font-weight: 600;
+  margin: 0 0 var(--space-2);
+  font-weight: var(--weight-strong);
 }
-.apr-flash {
-  margin-top: 0.75rem;
-}
+.apr-flash,
 .apr-note {
-  margin-top: 0.75rem;
+  margin-top: var(--space-3);
 }
 
-/* ---- Policies settings ---- */
+/* Below 1024 px an open request replaces the list (nothing hides behind an overlay), and its Close returns to the row. */
+@media (max-width: 63.9375rem) {
+  .apr-body[data-detail] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .apr-body[data-detail] .apr-list {
+    display: none;
+  }
+  .apr-detail {
+    position: static;
+    max-height: none;
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+/* ---- Policies (a tab of Settings) ---- */
 .pol-page {
-  max-width: 72rem;
+  max-width: 60rem;
 }
 .pol-guarantee {
-  max-width: 52rem;
-  margin: 0 0 1rem;
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--wait);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--ink);
-  font-weight: 600;
+  max-width: var(--measure);
+  margin: 0 0 var(--space-4);
+  font-weight: var(--weight-strong);
 }
 .pol-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.4rem 1rem;
-  margin: 0 0 0.6rem;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-2);
 }
 .pol-meta {
-  color: var(--muted);
-  font-size: 0.75rem;
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-size);
 }
 .pol-meta code {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
 }
 .pol-editor {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  max-width: 64rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  background: var(--surface);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-canvas);
   --pol-lh: 1.375rem;
 }
 .pol-editor:focus-within {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-interactive-default);
   outline-offset: 1px;
 }
 .pol-editor[data-readonly] {
@@ -250,12 +228,11 @@
 .pol-gutter {
   height: 24rem;
   margin: 0;
-  padding: 0.5rem 0.5rem 0.5rem 0.6rem;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
   overflow: hidden;
-  border-right: 1px solid var(--border);
-  background: var(--color-bg-raised);
-  color: var(--muted);
-  font: 0.75rem/var(--pol-lh) var(--mono);
+  border-right: 1px solid var(--color-border-subtle);
+  color: var(--color-text-secondary);
+  font: var(--type-mono-small-size) / var(--pol-lh) var(--font-mono);
   text-align: right;
   user-select: none;
 }
@@ -264,8 +241,8 @@
   height: var(--pol-lh);
 }
 .pol-gutter span[data-issue] {
-  color: var(--ink);
-  font-weight: 700;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-strong);
 }
 .pol-editor textarea,
 .pol-viewer {
@@ -274,13 +251,13 @@
   width: 100%;
   height: 24rem;
   margin: 0;
-  padding: 0.5rem 0.6rem;
+  padding: var(--space-2) var(--space-3);
   overflow: auto;
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--ink);
-  font: 0.8125rem/var(--pol-lh) var(--mono);
+  color: var(--color-text-primary);
+  font: var(--type-mono-size) / var(--pol-lh) var(--font-mono);
   tab-size: 2;
   white-space: pre;
   resize: vertical;
@@ -289,152 +266,134 @@
   outline: none;
 }
 .pol-status {
-  min-height: 1.4em;
-  margin: 0.4rem 0;
-  font-size: 0.8125rem;
+  min-height: var(--type-body-line);
+  margin: var(--space-2) 0;
+  font-size: var(--type-body-size);
 }
 .pol-issues {
   display: grid;
-  gap: 0.2rem;
-  max-width: 64rem;
-  margin: 0.25rem 0 0.75rem;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 var(--space-3);
   padding: 0;
   list-style: none;
 }
 .pol-issues button {
   display: grid;
   grid-template-columns: 4.5rem minmax(0, 1fr);
-  gap: 0.5rem;
+  gap: var(--space-2);
   width: 100%;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--ink);
-  font: 0.8125rem/1.35 var(--sans);
+  padding: var(--space-1) var(--space-2);
+  border-color: var(--color-border-subtle);
   text-align: left;
 }
-.pol-issues button:hover {
-}
 .pol-issues .pol-pos {
-  font-family: var(--mono);
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-weight: var(--weight-strong);
 }
 .pol-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: flex-end;
-  max-width: 64rem;
-  margin: 0.75rem 0;
+  margin: var(--space-3) 0;
 }
 .pol-actions label {
   display: grid;
-  gap: 0.15rem;
-  font-size: 0.75rem;
+  gap: var(--space-1);
+  font-size: var(--type-body-size);
 }
 .pol-actions .pol-comment {
   flex: 1 1 14rem;
 }
 .pol-actions .pol-comment input {
   width: 100%;
-}
-.pol-section {
-  max-width: 64rem;
-  margin: 1.5rem 0 0;
-}
-.pol-section h2 {
-  margin: 0 0 0.4rem;
-  font: 600 var(--fs-title) / 1.3 var(--sans);
+  min-height: var(--layout-control);
+  padding: var(--space-1) var(--space-2);
 }
 .pol-audit {
-  max-width: 64rem;
-  margin: 0.75rem 0 0;
+  margin: var(--space-6) 0 0;
 }
 .pol-dry dl {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem 1.5rem;
-  margin: 0.4rem 0;
+  gap: var(--space-2) var(--space-6);
+  margin: var(--space-2) 0;
 }
 .pol-dry dl div {
   display: grid;
-  gap: 0.1rem;
+  gap: var(--space-1);
 }
 .pol-dry dt {
-  color: var(--muted);
-  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  font-size: var(--type-small-size);
 }
 .pol-dry dd {
   margin: 0;
-  font: 600 1rem var(--mono);
+  font: var(--weight-strong) var(--type-mono-size) var(--font-mono);
 }
 .pol-dry table {
-  margin: 0.5rem 0;
+  margin: var(--space-2) 0;
 }
 .pol-dry caption {
   display: block;
   width: auto;
-  margin: 0 0 0.25rem;
+  margin: 0 0 var(--space-1);
   text-align: left;
 }
 .pol-dry .num,
 .pol-versions .num {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   text-align: right;
 }
 .pol-versions td.cmt {
   min-width: 10rem;
 }
 .pol-versions tr[data-current] td:first-child {
-  font-weight: 700;
+  font-weight: var(--weight-strong);
 }
 .pol-versions tbody tr[data-open] {
-  background: var(--surface);
-  box-shadow: inset 2px 0 0 var(--accent);
+  background: var(--color-bg-wash);
+  box-shadow: inset 2px 0 0 var(--color-interactive-default);
 }
 .pol-viewer-wrap {
-  margin: 0.75rem 0;
-  padding: 0.6rem 0.8rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  background: var(--surface);
+  margin: var(--space-3) 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
 }
 .pol-viewer-wrap h3 {
-  margin: 0 0 0.4rem;
-  font: 600 0.9375rem/1.3 var(--sans);
+  margin: 0 0 var(--space-2);
 }
 .pol-viewer {
   height: 14rem;
-  padding: 0.4rem 0;
+  padding: var(--space-2) 0;
   background: var(--color-bg-raised);
 }
 pre.pol-diff {
-  max-width: 64rem;
   max-height: 20rem;
-  margin: 0.5rem 0;
-  padding: 0.4rem 0;
+  margin: var(--space-2) 0;
+  padding: var(--space-2) 0;
   overflow: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
   background: var(--color-bg-raised);
-  font: 0.75rem/1.45 var(--mono);
+  font: var(--type-mono-small-size) / var(--type-body-line) var(--font-mono);
   white-space: pre;
 }
 .pol-diff span {
   display: block;
   min-width: max-content;
-  padding: 0 0.6rem;
+  padding: 0 var(--space-3);
 }
 .pol-diff .pol-add {
-  color: var(--ink);
-  font-weight: 700;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-strong);
 }
 .pol-diff .pol-del {
-  color: var(--wait);
+  color: var(--color-status-caution);
 }
 .pol-diff .pol-hunk,
 .pol-diff .pol-head {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 
 /* ---- Run page: policy and approval events ---- */
@@ -476,18 +435,9 @@ pre.pol-diff {
   margin: 0.2rem 0;
 }
 
-/* Phone: each request is a small card instead of a table that would crush its text. */
+
+/* Phone: tables of the policy tab stack into blocks instead of crushing their text. */
 @media (max-width: 52rem) {
-  .apr-body[data-detail] {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .apr-body[data-detail] .apr-list {
-    display: none;
-  }
-  .apr-detail {
-    position: static;
-    max-height: none;
-  }
   .apr-table,
   .apr-table tbody,
   .apr-table tr,
@@ -502,11 +452,11 @@ pre.pol-diff {
     clip-path: inset(50%);
   }
   .apr-table tr {
-    padding: 0.55rem 0;
-    border-bottom: 1px solid var(--border);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   .apr-table td {
-    padding: 0.1rem 0;
+    padding: var(--space-1) 0;
     border: 0;
     height: auto;
   }
@@ -515,9 +465,6 @@ pre.pol-diff {
   }
   .apr-res {
     max-width: 100%;
-  }
-  .pol-editor {
-    grid-template-columns: auto minmax(0, 1fr);
   }
   .pol-gutter,
   .pol-editor textarea {
@@ -546,12 +493,12 @@ pre.pol-diff {
   }
   .pol-dry tr,
   .pol-versions tr {
-    padding: 0.4rem 0;
-    border-bottom: 1px solid var(--border);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   .pol-dry td,
   .pol-versions td {
-    padding: 0.1rem 0;
+    padding: var(--space-1) 0;
     border: 0;
     height: auto;
     text-align: left;

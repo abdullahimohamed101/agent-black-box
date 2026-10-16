@@ -351,7 +351,7 @@ function DecideForm({
           <button
             ref={confirmRef}
             type="submit"
-            className={confirming === "deny" ? "danger" : undefined}
+            className={confirming === "deny" ? "danger" : "primary"}
             disabled={decide.isPending || tooLong}
           >
             {decide.isPending
@@ -368,12 +368,18 @@ function DecideForm({
         <div className="apr-actions">
           <button
             type="button"
+            className="primary"
             onClick={() => setConfirming("approve")}
             disabled={tooLong || !canApprove}
           >
             Approve
           </button>{" "}
-          <button type="button" onClick={() => setConfirming("deny")} disabled={tooLong}>
+          <button
+            type="button"
+            className="danger"
+            onClick={() => setConfirming("deny")}
+            disabled={tooLong}
+          >
             Deny
           </button>
         </div>
