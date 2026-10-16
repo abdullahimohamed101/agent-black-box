@@ -11,7 +11,7 @@ directory and from the rollups. Nothing in the product brings it back; only a re
 ## What the job keeps and for how long
 
 Per workspace, in days after a run ended (the audit log: after the entry). Owners and admins edit them on **Settings, Retention** or with
-`PUT /v1/workspaces/{id}/retention`; the floor is 7 days; "keep forever" is an explicit choice; `artifacts <= trace <= run`.
+`PUT /v1/workspaces/{id}/retention`; the floor is 7 days (90 for the audit log, which only an owner may change); "keep forever" is an explicit choice; `artifacts <= trace <= run`. **A shortening takes effect after `ABB_RETENTION_GRACE_HOURS` (24 by default)**: until then the job enforces the longer of the old and new period, the page says when the shorter one starts, and saving the previous value cancels it; a lengthening is immediate. Audit entries of the policy itself (`retention.*`) are kept 365 days whatever the audit period is.
 
 | Tier | Default | What it removes |
 | --- | --- | --- |
@@ -103,3 +103,8 @@ is a statement, not an assertion: with one-row batches (the worst case for conte
 within the figure recorded there; the CI job asserts only that ingestion kept being accepted with no refusal or 5xx. Production tuning:
 batches of `ABB_RETENTION_BATCH_SIZE` rows (default 2000) and `ABB_RETENTION_STATEMENT_TIMEOUT_SECONDS`; run the job in a quiet window if
 latency matters more than catching up.
+
+## Compose pins `ABB_ENVIRONMENT=development` for this service
+
+`docker-compose.yml` sets `ABB_ENVIRONMENT: development` on the `retention` and `backup` services, as on every service of the local stack. In development the retention process may fall back to the owner URL when `ABB_RETENTION_DATABASE_URL` is missing, and warns instead of refusing if its role is privileged. For a deployment other people reach, run these services with `ABB_ENVIRONMENT=production` (override the variable in your own compose file or orchestrator), give the retention job its own `ABB_RETENTION_DATABASE_URL`, and keep the passwords out of the compose file; production then refuses to start without that URL and with a privileged role.
+
