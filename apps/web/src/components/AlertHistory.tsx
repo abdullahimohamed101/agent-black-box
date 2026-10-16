@@ -113,10 +113,7 @@ export function AlertHistory() {
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
       ) : items.length === 0 ? (
         <div className="al-empty" data-testid="history-empty">
-          <Empty
-            motif="none"
-            title={filtered ? "No alerts match these filters" : "Nothing has been sent yet"}
-          >
+          <Empty title={filtered ? "No alerts match these filters" : "Nothing has been sent yet"}>
             {filtered
               ? "Clear a filter to see more."
               : "When a rule fires, each alert and what happened to it is listed here."}

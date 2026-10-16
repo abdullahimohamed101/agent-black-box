@@ -1,7 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
+import {
+  analytics as t,
+  costHeadline,
+  parseReport,
+  performanceHeadline,
+  reliabilityHeadline,
+  REPORTS,
+  type Report,
+} from "@/copy/analytics";
 import type { ExpensiveRun } from "@/lib/api/types";
 import {
   usePerformanceReport,
@@ -14,9 +24,11 @@ import { formatCost, formatDuration, formatInt, formatRelative } from "@/lib/for
 import { runPath, type Base } from "@/lib/routes";
 import { useProjectId } from "@/components/WorkspaceProvider";
 import { BarList, DayColumns } from "./charts";
+import { Tabs, tabIds } from "./Tabs";
 import { StatusBadge } from "./StatusBadge";
 import { WastePanel } from "./WastePanel";
 import { Empty, ErrorState, Loading } from "./States";
+import "../app/analytics.css";
 
 const pct = (r: number | null | undefined) => (r == null ? "—" : `${Math.round(r * 100)}%`);
 
@@ -24,50 +36,61 @@ const pct = (r: number | null | undefined) => (r == null ? "—" : `${Math.round
 function ExpiredTraceNote({ runs, what }: { runs: number; what: string }) {
   if (runs <= 0) return null;
   return (
-    <p role="note" className="muted" data-testid="expired-traces">
-      Excludes {formatInt(runs)} run{runs === 1 ? "" : "s"} whose trace has expired: {what} need the
-      trace detail. Run counts, totals and the cost headline include them.
+    <p role="note" className="notice" data-testid="expired-traces">
+      {t.expired(runs, what)}
     </p>
   );
 }
 
-function Section({
-  id,
-  title,
+type Query = {
+  isPending: boolean;
+  isPlaceholderData?: boolean;
+  error: unknown;
+  refetch: () => unknown;
+};
+
+/** One report's body: loading, error (with a retry), or the figures, dimmed and announced while the next window loads. */
+function ReportBody({
+  label,
   query,
   children,
 }: {
-  id: string;
-  title: string;
-  query: {
-    isPending: boolean;
-    isPlaceholderData?: boolean;
-    error: unknown;
-    refetch: () => unknown;
-  };
+  label: string;
+  query: Query;
   children: React.ReactNode;
 }) {
+  if (query.isPending) return <Loading label={label} />;
+  if (query.error) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
   return (
-    <section aria-labelledby={id}>
-      <h2 id={id}>{title}</h2>
-      {query.isPending ? (
-        <Loading label={`Loading ${title.toLowerCase()}`} />
-      ) : query.error ? (
-        <ErrorState error={query.error} onRetry={() => void query.refetch()} />
-      ) : (
-        <div
-          aria-busy={query.isPlaceholderData ? "true" : undefined}
-          data-stale={query.isPlaceholderData ? "true" : undefined}
-        >
-          {query.isPlaceholderData && (
-            <p role="status" className="muted updating">
-              Updating…
-            </p>
-          )}
-          {children}
-        </div>
+    <div
+      aria-busy={query.isPlaceholderData ? "true" : undefined}
+      data-stale={query.isPlaceholderData ? "true" : undefined}
+    >
+      {query.isPlaceholderData && (
+        <p role="status" className="muted updating">
+          {t.updating}
+        </p>
       )}
-    </section>
+      {children}
+    </div>
+  );
+}
+
+/** The sentence a report opens with: the one thing to read first, in ink. */
+function Headline({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="report-headline" data-testid="report-headline">
+      {children}
+    </p>
+  );
+}
+
+function Block({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="an-block">
+      <h2>{title}</h2>
+      {children}
+    </div>
   );
 }
 
@@ -80,23 +103,24 @@ function RunRows({
   base: Base;
   extra: "cost" | "retries";
 }) {
+  const h = t.runRows.heads;
   return (
     <div className="table-wrap">
       <table>
         <caption className="sr-only">
-          {extra === "cost" ? "Most expensive runs" : "Runs with the most retries"}
+          {extra === "cost" ? t.cost.expensiveCaption : t.reliability.retryHeavyCaption}
         </caption>
         <thead>
           <tr>
-            <th scope="col">Status</th>
-            <th scope="col">Run</th>
-            <th scope="col">Agent</th>
-            <th scope="col">Started</th>
+            <th scope="col">{h.status}</th>
+            <th scope="col">{h.run}</th>
+            <th scope="col">{h.agent}</th>
+            <th scope="col">{h.started}</th>
             <th scope="col" className="num">
-              {extra === "cost" ? "Cost" : "Retries"}
+              {t.runRows[extra]}
             </th>
             <th scope="col" className="num">
-              Retry cost
+              {h.retryCost}
             </th>
           </tr>
         </thead>
@@ -123,307 +147,282 @@ function RunRows({
   );
 }
 
-export function Analytics({ base }: { base: Base }) {
-  const project = useProjectId(base.project);
-  const [days, setDays] = useState<WindowDays>(7);
-  const cost = useCostReport(project, days);
-  const reliability = useReliabilityReport(project, days);
-  const performance = usePerformanceReport(project, days);
-  const c = cost.data;
-
+function CostReport({
+  base,
+  project,
+  days,
+  query,
+}: {
+  base: Base;
+  project: string | null | undefined;
+  days: WindowDays;
+  query: ReturnType<typeof useCostReport>;
+}) {
+  const c = query.data;
+  const k = t.cost;
   return (
-    <>
-      <div className="page-head">
-        <h1>Analytics</h1>
-        <div className="toolbar" role="group" aria-label="Time window">
-          {WINDOW_OPTIONS.map((d) => (
-            <button key={d} type="button" aria-pressed={d === days} onClick={() => setDays(d)}>
-              {d === 1 ? "Today" : `Last ${d} days`}
-            </button>
-          ))}
-        </div>
-      </div>
-      <p className="muted">
-        Windows are whole UTC days; a run counts in the day it started. Percentiles are approximate
-        (about 10%). Cost is in USD; each figure says whether it was reported by the provider,
-        computed from tokens and a versioned price, or estimated by the caller.
-      </p>
-
-      <WastePanel project={project} days={days} />
-
-      <Section id="cost-h" title="Cost" query={cost}>
-        {c && c.headline.total_usd === 0 && c.by_model.length === 0 ? (
-          <Empty title="No cost recorded in this window">
-            Model calls with token usage or a cost appear here.
-          </Empty>
-        ) : (
-          c && (
-            <>
-              <dl className="stats">
-                <div className="stat">
-                  <dt>Total</dt>
-                  <dd>{formatCost(c.headline.total_usd)}</dd>
-                </div>
-                <div className="stat">
-                  <dt>Per run</dt>
-                  <dd>{formatCost(c.headline.per_run_usd)}</dd>
-                </div>
-                <div className="stat">
-                  <dt>Per successful run</dt>
-                  <dd>{formatCost(c.headline.per_successful_run_usd)}</dd>
-                </div>
-                <div className="stat">
-                  <dt>Unpriced calls</dt>
-                  <dd>{formatInt(c.headline.unpriced_calls)}</dd>
-                </div>
-              </dl>
-              {c.headline.unrebuilt_runs > 0 && (
-                <p role="note" className="muted">
-                  {c.headline.unrebuilt_runs} runs were summarised by an older version; per-agent
-                  figures, and cost breakdowns for runs that predate pricing, may be missing until
-                  their costs are rebuilt.
-                </p>
-              )}
-              <ExpiredTraceNote
-                runs={c.excluded_expired_traces}
-                what="the cost by agent, model and source"
-              />
-              <h3>Daily spend</h3>
+    <ReportBody label={t.loading.cost} query={query}>
+      {c && c.headline.total_usd === 0 && c.by_model.length === 0 ? (
+        <Empty title={k.emptyTitle}>{k.emptyBody}</Empty>
+      ) : (
+        c && (
+          <>
+            <Headline>{costHeadline(c.headline, days)}</Headline>
+            {c.headline.unrebuilt_runs > 0 && (
+              <p role="note" className="notice">
+                {k.unrebuilt(c.headline.unrebuilt_runs)}
+              </p>
+            )}
+            <ExpiredTraceNote runs={c.excluded_expired_traces} what={t.expiredWhat.cost} />
+            <WastePanel project={project} days={days} />
+            <Block title={k.daily}>
               <DayColumns
-                caption="Daily spend"
-                valueHeader="Cost (USD)"
+                caption={k.daily}
+                valueHeader={k.dailyValue}
                 days={c.by_day.map((d) => ({
                   label: d.day,
                   value: d.cost_usd,
                   display: formatCost(d.cost_usd),
                 }))}
               />
-              <div className="two-col">
-                <div>
-                  <h3>By agent</h3>
-                  <BarList
-                    caption="Cost by agent"
-                    bars={c.by_agent.map((a) => ({
-                      label: a.agent,
-                      value: a.cost_usd,
-                      display: formatCost(a.cost_usd),
-                      note: `${formatInt(a.calls)} calls`,
-                    }))}
-                  />
-                  {c.by_agent_other && (
-                    <p className="muted">
-                      and {c.by_agent_other.groups} more agents:{" "}
-                      {formatCost(c.by_agent_other.cost_usd)}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <h3>By model</h3>
-                  <BarList
-                    caption="Cost by model"
-                    bars={c.by_model.map((m) => ({
-                      label: m.model ?? "(unknown model)",
-                      value: m.cost_usd,
-                      display: formatCost(m.cost_usd),
-                      note: m.unpriced_calls
-                        ? `${m.unpriced_calls} unpriced`
-                        : `${formatInt(m.calls)} calls`,
-                    }))}
-                  />
-                  {c.by_model_other && (
-                    <p className="muted">
-                      and {c.by_model_other.groups} more models:{" "}
-                      {formatCost(c.by_model_other.cost_usd)}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <h3>Where the cost figures come from</h3>
+            </Block>
+            <div className="two-col">
+              <Block title={k.byAgent}>
+                <BarList
+                  caption="Cost by agent"
+                  bars={c.by_agent.map((a) => ({
+                    label: a.agent,
+                    value: a.cost_usd,
+                    display: formatCost(a.cost_usd),
+                    note: k.calls(a.calls),
+                  }))}
+                />
+                {c.by_agent_other && (
+                  <p className="muted">
+                    {t.other(
+                      c.by_agent_other.groups,
+                      "agents",
+                      formatCost(c.by_agent_other.cost_usd),
+                    )}
+                  </p>
+                )}
+              </Block>
+              <Block title={k.byModel}>
+                <BarList
+                  caption="Cost by model"
+                  bars={c.by_model.map((m) => ({
+                    label: m.model ?? k.unknownModel,
+                    value: m.cost_usd,
+                    display: formatCost(m.cost_usd),
+                    note: m.unpriced_calls ? k.unpriced(m.unpriced_calls) : k.calls(m.calls),
+                  }))}
+                />
+                {c.by_model_other && (
+                  <p className="muted">
+                    {t.other(
+                      c.by_model_other.groups,
+                      "models",
+                      formatCost(c.by_model_other.cost_usd),
+                    )}
+                  </p>
+                )}
+              </Block>
+            </div>
+            <Block title={k.sources}>
               <BarList
                 caption="Cost by source"
                 bars={c.by_source.map((s) => ({
-                  label: SOURCE_LABEL[s.source] ?? s.source,
+                  label: k.sourceLabel[s.source] ?? s.source,
                   value: s.cost_usd,
                   display: formatCost(s.cost_usd),
-                  note: `${formatInt(s.calls)} calls`,
+                  note: k.calls(s.calls),
                 }))}
               />
-              <h3>Cost from retries</h3>
-              <p className="muted">
-                Estimated: every model call made after a retry of the same operation counts as retry
-                cost.
-              </p>
+            </Block>
+            <Block title={k.retries}>
+              <p className="muted">{k.retriesBasis}</p>
               {c.retries.retry_usd > 0 ? (
-                <>
-                  <p>
-                    {c.retries.retry_share != null && (
-                      <strong>{pct(c.retries.retry_share)} of cost came from retries. </strong>
-                    )}
-                    Initial attempts {formatCost(c.retries.initial_usd)}, retries{" "}
-                    {formatCost(c.retries.retry_usd)} across {c.retries.runs_with_retry_cost} runs.
-                  </p>
-                </>
+                <p>
+                  {c.retries.retry_share != null && (
+                    <strong>{k.retriesShare(pct(c.retries.retry_share))} </strong>
+                  )}
+                  {k.retriesFigures(
+                    formatCost(c.retries.initial_usd),
+                    formatCost(c.retries.retry_usd),
+                    c.retries.runs_with_retry_cost,
+                  )}
+                </p>
               ) : (
-                <p className="muted">No model calls were made after a retry in this window.</p>
+                <p className="muted">{k.retriesNone}</p>
               )}
               {c.retries.retries_unattributed > 0 && (
-                <p className="muted">
-                  {c.retries.retries_unattributed} retries named no operation, so their cost cannot
-                  be attributed.
-                </p>
+                <p className="muted">{k.retriesUnattributed(c.retries.retries_unattributed)}</p>
               )}
-              <h3>Most expensive runs</h3>
+            </Block>
+            <Block title={k.expensive}>
               {c.expensive_runs.length ? (
                 <RunRows runs={c.expensive_runs} base={base} extra="cost" />
               ) : (
-                <p className="muted">No runs with cost.</p>
+                <p className="muted">{k.expensiveNone}</p>
               )}
-            </>
-          )
-        )}
-      </Section>
+            </Block>
+          </>
+        )
+      )}
+    </ReportBody>
+  );
+}
 
-      <Section id="rel-h" title="Reliability" query={reliability}>
-        {reliability.data && (
-          <>
-            <dl className="stats">
-              <div className="stat">
-                <dt>Success rate</dt>
-                <dd>{pct(reliability.data.rates.success_rate)}</dd>
-              </div>
-              <div className="stat">
-                <dt>Failure rate</dt>
-                <dd>{pct(reliability.data.rates.failure_rate)}</dd>
-              </div>
-              <div className="stat">
-                <dt>Timeout rate</dt>
-                <dd>{pct(reliability.data.rates.timeout_rate)}</dd>
-              </div>
-              <div className="stat">
-                <dt>Retry rate</dt>
-                <dd>{pct(reliability.data.rates.retry_rate)}</dd>
-              </div>
-            </dl>
-            <h3>Failure trend</h3>
+function ReliabilityReport({
+  base,
+  days,
+  query,
+}: {
+  base: Base;
+  days: WindowDays;
+  query: ReturnType<typeof useReliabilityReport>;
+}) {
+  const r = query.data;
+  const k = t.reliability;
+  return (
+    <ReportBody label={t.loading.reliability} query={query}>
+      {r && (
+        <>
+          <Headline>{reliabilityHeadline(r.rates, days)}</Headline>
+          <ExpiredTraceNote runs={r.excluded_expired_traces} what={t.expiredWhat.reliability} />
+          <Block title={k.trend}>
             <DayColumns
-              caption="Share of finished runs that failed, timed out or were blocked"
-              valueHeader="Failure rate"
-              days={reliability.data.failure_trend.map((d) => ({
-                label: d.day,
-                value: (d.failure_rate ?? 0) + (d.timeout_rate ?? 0),
-                display: `${pct((d.failure_rate ?? 0) + (d.timeout_rate ?? 0))} of ${d.finished}`,
-                tone: "bad" as const,
-              }))}
+              caption={k.trendCaption}
+              valueHeader={k.trendValue}
+              days={r.failure_trend.map((d) => {
+                const rate = (d.failure_rate ?? 0) + (d.timeout_rate ?? 0);
+                return {
+                  label: d.day,
+                  value: rate,
+                  display: k.trendOf(pct(rate), d.finished),
+                };
+              })}
+              peak={k.trendPeak}
             />
-            <ExpiredTraceNote
-              runs={reliability.data.excluded_expired_traces}
-              what="the tool success rates below"
-            />
-            <h3>Tool success</h3>
-            {reliability.data.tools.length ? (
+          </Block>
+          <Block title={k.tools}>
+            {r.tools.length ? (
               <div className="table-wrap">
                 <table>
-                  <caption className="sr-only">Tool success rate and latency</caption>
+                  <caption className="sr-only">{k.toolsCaption}</caption>
                   <thead>
                     <tr>
-                      <th scope="col">Tool</th>
+                      <th scope="col">{k.heads.tool}</th>
                       <th scope="col" className="num">
-                        Calls
+                        {k.heads.calls}
                       </th>
                       <th scope="col" className="num">
-                        Success
+                        {k.heads.success}
                       </th>
                       <th scope="col" className="num">
-                        p95
+                        {k.heads.p95}
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {reliability.data.tools.map((t) => (
-                      <tr key={t.name}>
-                        <td>{t.name}</td>
-                        <td className="num">{formatInt(t.calls)}</td>
-                        <td className="num">{pct(t.success_rate)}</td>
-                        <td className="num">{formatDuration(t.p95_ms)}</td>
+                    {r.tools.map((tool) => (
+                      <tr key={tool.name}>
+                        <td>{tool.name}</td>
+                        <td className="num">{formatInt(tool.calls)}</td>
+                        <td className="num">{pct(tool.success_rate)}</td>
+                        <td className="num">{formatDuration(tool.p95_ms)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="muted">No tool calls in this window.</p>
+              <p className="muted">{k.toolsNone}</p>
             )}
-            {reliability.data.tools_other && (
-              <p className="muted">
-                and {reliability.data.tools_other.groups} more tools (
-                {formatInt(reliability.data.tools_other.calls)} calls)
-              </p>
+            {r.tools_other && (
+              <p className="muted">{k.toolsOther(r.tools_other.groups, r.tools_other.calls)}</p>
             )}
-            <h3>Retry-heavy runs</h3>
-            {reliability.data.retry_heavy_runs.length ? (
-              <RunRows runs={reliability.data.retry_heavy_runs} base={base} extra="retries" />
+          </Block>
+          <Block title={k.retryHeavy}>
+            {r.retry_heavy_runs.length ? (
+              <RunRows runs={r.retry_heavy_runs} base={base} extra="retries" />
             ) : (
-              <p className="muted">No retries in this window.</p>
+              <p className="muted">{k.retryHeavyNone}</p>
             )}
-          </>
-        )}
-      </Section>
+          </Block>
+        </>
+      )}
+    </ReportBody>
+  );
+}
 
-      <Section id="perf-h" title="Performance" query={performance}>
-        {performance.data && (
-          <>
-            <dl className="stats">
-              <div className="stat">
-                <dt>Run latency p50 / p95</dt>
-                <dd>
-                  {formatDuration(performance.data.run.p50_ms)} /{" "}
-                  {formatDuration(performance.data.run.p95_ms)}
-                </dd>
-              </div>
-              <div className="stat">
-                <dt>Model call p50 / p95</dt>
-                <dd>
-                  {formatDuration(performance.data.llm.p50_ms)} /{" "}
-                  {formatDuration(performance.data.llm.p95_ms)}
-                </dd>
-              </div>
-              <div className="stat">
-                <dt>Tool call p50 / p95</dt>
-                <dd>
-                  {formatDuration(performance.data.tool.p50_ms)} /{" "}
-                  {formatDuration(performance.data.tool.p95_ms)}
-                </dd>
-              </div>
-            </dl>
-            <ExpiredTraceNote
-              runs={performance.data.excluded_expired_traces}
-              what="the model and tool latencies and the slow operations"
-            />
-            <h3>Slow operations</h3>
-            {performance.data.slow_operations.length ? (
+function PerformanceReport({
+  days,
+  query,
+}: {
+  days: WindowDays;
+  query: ReturnType<typeof usePerformanceReport>;
+}) {
+  const p = query.data;
+  const k = t.performance;
+  return (
+    <ReportBody label={t.loading.performance} query={query}>
+      {p && (
+        <>
+          <Headline>{performanceHeadline(p.run, days)}</Headline>
+          <ExpiredTraceNote runs={p.excluded_expired_traces} what={t.expiredWhat.performance} />
+          <Block title={k.latency}>
+            <div className="table-wrap">
+              <table>
+                <caption className="sr-only">{k.latencyCaption}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{k.latencyHeads.kind}</th>
+                    <th scope="col" className="num">
+                      {k.latencyHeads.p50}
+                    </th>
+                    <th scope="col" className="num">
+                      {k.latencyHeads.p95}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(["run", "llm", "tool"] as const).map((kind) => (
+                    <tr key={kind}>
+                      <td>{k.latencyRows[kind]}</td>
+                      <td className="num">{formatDuration(p[kind].p50_ms)}</td>
+                      <td className="num">{formatDuration(p[kind].p95_ms)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Block>
+          <Block title={k.slow}>
+            {p.slow_operations.length ? (
               <div className="table-wrap">
                 <table>
-                  <caption className="sr-only">Slowest operations by p95 duration</caption>
+                  <caption className="sr-only">{k.slowCaption}</caption>
                   <thead>
                     <tr>
-                      <th scope="col">Kind</th>
-                      <th scope="col">Name</th>
+                      <th scope="col">{k.slowHeads.kind}</th>
+                      <th scope="col">{k.slowHeads.name}</th>
                       <th scope="col" className="num">
-                        Calls
+                        {k.slowHeads.calls}
                       </th>
                       <th scope="col" className="num">
-                        p50
+                        {k.slowHeads.p50}
                       </th>
                       <th scope="col" className="num">
-                        p95
+                        {k.slowHeads.p95}
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {performance.data.slow_operations.map((o) => (
+                    {p.slow_operations.map((o) => (
                       <tr key={`${o.kind}/${o.name ?? ""}`}>
                         <td>{o.kind}</td>
-                        <td>{o.name ?? "(all)"}</td>
+                        <td>{o.name ?? k.allNames}</td>
                         <td className="num">{formatInt(o.calls)}</td>
                         <td className="num">{formatDuration(o.p50_ms)}</td>
                         <td className="num">{formatDuration(o.p95_ms)}</td>
@@ -433,18 +432,63 @@ export function Analytics({ base }: { base: Base }) {
                 </table>
               </div>
             ) : (
-              <p className="muted">No timed operations in this window.</p>
+              <p className="muted">{k.slowNone}</p>
             )}
-          </>
-        )}
-      </Section>
-    </>
+          </Block>
+        </>
+      )}
+    </ReportBody>
   );
 }
 
-const SOURCE_LABEL: Record<string, string> = {
-  provider_reported: "Reported by the provider",
-  estimated: "Computed from tokens and prices",
-  client_estimate: "Estimated by the caller",
-  unpriced: "Unpriced (no usable cost)",
-};
+/**
+ * Analytics (design pass 2 step 5d): the title line with the one control row (the window), the shared tab list of the three
+ * reports, and a panel that opens with one sentence in ink. All three reports are requested at once, as before, so a switch of
+ * tab is instant and one failing report never hides the others. The tab is the URL's `?tab=` (Cost when absent).
+ */
+export function Analytics({ base }: { base: Base }) {
+  const project = useProjectId(base.project);
+  const [days, setDays] = useState<WindowDays>(7);
+  const sp = useSearchParams();
+  const [tab, setTab] = useState<Report>(() => parseReport(sp?.get("tab")));
+  const cost = useCostReport(project, days);
+  const reliability = useReliabilityReport(project, days);
+  const performance = usePerformanceReport(project, days);
+
+  const choose = (next: Report) => {
+    setTab(next);
+    const url = new URL(window.location.href);
+    if (next === "cost") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", next);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  };
+
+  return (
+    <div className="analytics">
+      <div className="an-head">
+        <h1>{t.title}</h1>
+        <div className="toolbar" role="group" aria-label={t.windowLabel}>
+          {WINDOW_OPTIONS.map((d) => (
+            <button key={d} type="button" aria-pressed={d === days} onClick={() => setDays(d)}>
+              {t.windowOption(d)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <Tabs
+        label={t.tabsLabel}
+        idBase="analytics"
+        className="tabs-ruled"
+        items={REPORTS.map((r) => ({ id: r, label: t.tabs[r] }))}
+        value={tab}
+        onChange={choose}
+      />
+      <div role="tabpanel" className="an-panel" {...tabIds("analytics", tab)}>
+        {tab === "cost" && <CostReport base={base} project={project} days={days} query={cost} />}
+        {tab === "reliability" && <ReliabilityReport base={base} days={days} query={reliability} />}
+        {tab === "performance" && <PerformanceReport days={days} query={performance} />}
+      </div>
+      <p className="muted an-foot">{t.basis}</p>
+    </div>
+  );
+}

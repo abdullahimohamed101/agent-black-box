@@ -149,7 +149,7 @@ export function AlertRules({
           {dests.isPending ? (
             <Loading label="Loading destinations" />
           ) : noDestinations ? (
-            <Empty motif="none" title="A rule needs somewhere to send alerts">
+            <Empty title="A rule needs somewhere to send alerts">
               Add a destination first, then come back to this rule.
             </Empty>
           ) : (
@@ -170,12 +170,11 @@ export function AlertRules({
       {items.length === 0 ? (
         <div className="al-empty" data-testid="alerts-empty">
           {!canWrite ? (
-            <Empty motif="none" title="No alert rules yet">
+            <Empty title="No alert rules yet">
               Owners and admins can add rules that send an alert when something needs attention.
             </Empty>
           ) : noDestinations ? (
             <Empty
-              motif="none"
               title="Add a destination, then a rule"
               action={
                 <button
@@ -193,7 +192,6 @@ export function AlertRules({
           ) : (
             editing === null && (
               <Empty
-                motif="none"
                 title="Now add a rule"
                 action={
                   <>

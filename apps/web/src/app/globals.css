@@ -103,6 +103,10 @@ h2 {
   font-size: 1.1rem;
   margin: 1.25rem 0 0.5rem;
 }
+h3 {
+  margin: var(--space-4) 0 var(--space-1);
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
+}
 /* ---- Readout strip (Phase 21): value in mono, small-caps label, hairlines instead of tiles ---- */
 .stats {
   display: flex;
@@ -466,88 +470,6 @@ pre {
 }
 .tok-op {
   color: var(--color-text-secondary);
-}
-/* Analytics: bars and columns are built from elements, never from trace-derived HTML. */
-.toolbar {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  margin: 0.5rem 0;
-}
-.toolbar button[aria-pressed="true"] {
-  background: var(--color-bg-wash);
-  border-color: var(--color-interactive-default);
-  color: var(--color-text-primary);
-}
-h3 {
-  font-size: var(--type-body-lg-size);
-  margin: 1rem 0 0.4rem;
-}
-.two-col {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: 1rem;
-}
-.bars {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.3rem;
-}
-.bars li {
-  display: grid;
-  grid-template-columns: minmax(5rem, 11rem) 1fr auto;
-  gap: 0.5rem;
-  align-items: center;
-  font-size: var(--type-body-lg-size);
-}
-.bar-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bar-track {
-  height: 0.65rem;
-  background: var(--color-border-subtle);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.bar-fill {
-  display: block;
-  height: 100%;
-  background: var(--color-interactive-default);
-}
-.bar-value {
-  text-align: right;
-  white-space: nowrap;
-}
-.columns {
-  margin: 0;
-}
-.column-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 7rem;
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-.column {
-  /* Grow to share the row, but a lone day must not become one slab. */
-  flex: 1 1 0;
-  max-width: 3rem;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-}
-.column-fill {
-  display: block;
-  width: 100%;
-  background: var(--color-interactive-default);
-  border-radius: 2px 2px 0 0;
-}
-.column-fill[data-tone="bad"] {
-  background: var(--color-status-fault);
 }
 /* Figures shown while the next window or project is loading are dimmed and announced. */
 [data-stale="true"] > :not(.updating) {

@@ -110,9 +110,7 @@ export function ApprovalsPage({ nowProp }: { nowProp?: number }) {
               <ErrorState error={q.error} onRetry={() => void q.refetch()} />
             ) : items.length === 0 ? (
               <div className="apr-empty" data-testid="approvals-empty">
-                <Empty title={c.empty[tab].title} motif="none">
-                  {c.empty[tab].body}
-                </Empty>
+                <Empty title={c.empty[tab].title}>{c.empty[tab].body}</Empty>
               </div>
             ) : (
               <>

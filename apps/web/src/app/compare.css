@@ -277,17 +277,6 @@ tr[data-picked="true"] {
   padding: 0;
   margin: 0.25rem 0;
 }
-.experiment-form {
-  margin: 1rem 0;
-  display: grid;
-  /* One shrinkable column: an option with a long run id must not widen the form past a phone. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.6rem;
-  max-width: 36rem;
-}
-.experiment-form select {
-  max-width: 100%;
-}
 @media (max-width: 52rem) {
   /* A and B stack on a tablet and a phone; a step is a block: the step number line, then A, then B. */
   .compare-runs {

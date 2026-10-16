@@ -22,7 +22,7 @@ export function PricingOverrides() {
         ) : prices.error ? (
           <ErrorState error={prices.error} onRetry={() => void prices.refetch()} />
         ) : prices.data.length === 0 ? (
-          <Empty title={c.empty} motif="none" />
+          <Empty title={c.empty} />
         ) : (
           <div className="table-wrap" tabIndex={0} role="region" aria-label="Model prices">
             <table>

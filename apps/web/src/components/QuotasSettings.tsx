@@ -43,9 +43,7 @@ export function QuotasSettings() {
         <AuditLink />.
       </Lede>
       {ws.projects.length === 0 ? (
-        <Empty title="No projects yet" motif="none">
-          Quotas appear once an agent reports a project.
-        </Empty>
+        <Empty title="No projects yet">Quotas appear once an agent reports a project.</Empty>
       ) : (
         <Section
           title={settings.quotas.usageTitle}

@@ -1,4 +1,5 @@
 import type { ExperimentOut, VariantIn, VariantMetricsOut, WarningOut } from "./api/types";
+import { experiments } from "@/copy/experiments";
 import { DASH, formatCost, formatDuration } from "./format";
 
 /** Presentation and form rules for experiments. The control check itself is the API's (`controlled`, `changed_variables`). */
@@ -77,4 +78,65 @@ export function parseConfig(text: string): { config: VariantIn["config"]; error:
 export function baselineRunId(e: Pick<ExperimentOut, "variants" | "runs">): string | null {
   const baseline = e.variants.find((v) => v.role === "baseline");
   return e.runs.find((r) => r.variant_id === baseline?.id)?.run_id ?? null;
+}
+
+/** Below this many finished runs in either variant the sentence says the comparison is too thin to rely on. */
+export const SMALL_SAMPLE = 5;
+
+export type Verdict = {
+  kind: "none" | "lead" | "tie";
+  /** The variant that leads; only for `lead`. */
+  leader: string | null;
+  text: string;
+};
+
+/**
+ * The winner in words: which variant did best on success rate, and when that ties, on median cost. Only the API's per-variant
+ * metrics are read; a variant with no finished run takes no part. The comparison is the top two variants, the sentence says
+ * how many finished runs it rests on, and it never claims a cause (the control banner says whether the comparison is controlled).
+ */
+export function verdictOf(e: Pick<ExperimentOut, "variants" | "metrics">): Verdict {
+  const v = experiments.verdict;
+  const by = new Map(e.metrics.map((m) => [m.variant_id, m] as const));
+  const rows = e.variants.flatMap((variant) => {
+    const m = by.get(variant.id);
+    return m && m.finished > 0 && m.success_rate != null ? [{ variant, m }] : [];
+  });
+  if (rows.length < 2) return { kind: "none", leader: null, text: v.none };
+  const cost = (r: (typeof rows)[number]) => r.m.cost_usd.median ?? Number.POSITIVE_INFINITY;
+  const ranked = [...rows].sort(
+    (x, y) => y.m.success_rate! - x.m.success_rate! || cost(x) - cost(y),
+  );
+  const [a, b] = [ranked[0]!, ranked[1]!];
+  const [na, nb] = [a.variant.name, b.variant.name];
+  const basis = v.basis(na, a.m.finished, nb, b.m.finished);
+  const thin = Math.min(a.m.finished, b.m.finished) < SMALL_SAMPLE ? ` ${v.small}` : "";
+  const [ca, cb] = [a.m.cost_usd.median, b.m.cost_usd.median];
+  const costed = ca != null && cb != null;
+  if (a.m.success_rate !== b.m.success_rate) {
+    const costLine = !costed
+      ? ""
+      : ca < cb
+        ? ` ${v.costLess(formatCost(ca), formatCost(cb))}`
+        : ca > cb
+          ? ` ${v.costMore(formatCost(ca), formatCost(cb))}`
+          : "";
+    return {
+      kind: "lead",
+      leader: a.variant.id,
+      text: `${v.leadsOnSuccess(na, pct(a.m.success_rate), nb, pct(b.m.success_rate))}${costLine} ${basis}${thin}`,
+    };
+  }
+  if (costed && ca < cb)
+    return {
+      kind: "lead",
+      leader: a.variant.id,
+      text: `${v.leadsOnCost(na, pct(a.m.success_rate), nb, formatCost(ca), formatCost(cb))} ${basis}${thin}`,
+    };
+  const same = costed && ca === cb ? ` ${v.costSame(formatCost(ca))}` : "";
+  return {
+    kind: "tie",
+    leader: null,
+    text: `${v.tie(na, nb, pct(a.m.success_rate))}${same} ${basis}${thin}`,
+  };
 }

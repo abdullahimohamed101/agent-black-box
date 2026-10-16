@@ -11,24 +11,20 @@ export function Loading({ label = "Loading" }: { label?: string }) {
 }
 
 /**
- * One plain sentence and the next action when there is one. `motif` draws the small trace motif (Phase 22 D9); ADR-166
- * keeps drawings for the first-run guide and not-found only, so a screen that has been rebuilt passes `motif="none"` and
- * the remaining screens drop theirs as their batch lands. The motif is decoration (`aria-hidden`).
+ * One plain sentence and the next action when there is one. An empty state has no drawing (ADR-166 removal 15, final in step
+ * 5d): drawings stay only on the first-run guide, the not-found page and a not-found or expired-trace error.
  */
 export function Empty({
   title,
   children,
-  motif = "trace",
   action,
 }: {
   title: string;
   children?: React.ReactNode;
-  motif?: Motif | "none";
   action?: React.ReactNode;
 }) {
   return (
     <div className="state" data-state="empty">
-      {motif !== "none" && <Motif kind={motif} />}
       <p className="state-title">{title}</p>
       {children && <p className="muted">{children}</p>}
       {action && <div className="state-action">{action}</div>}

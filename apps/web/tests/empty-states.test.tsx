@@ -43,15 +43,16 @@ describe("illustrations", () => {
   });
 });
 
-describe("Empty and ErrorState carry a motif", () => {
-  it("Empty shows the sentence, the motif and the action", () => {
+describe("Empty has no motif; ErrorState keeps one for not-found only", () => {
+  // Step 5d: Empty has no motif prop any more (ADR-166 removal 15, final); it shows the sentence and the action, and no drawing.
+  it("Empty shows the sentence and the action, and never a drawing", () => {
     render(
-      <Empty title="No evaluations yet" motif="tape" action={<button type="button">Start</button>}>
+      <Empty title="No evaluations yet" action={<button type="button">Start</button>}>
         Nobody has evaluated this run.
       </Empty>,
     );
     const el = document.querySelector('[data-state="empty"]')!;
-    expect(el.querySelector("svg.illus")).not.toBeNull();
+    expect(el.querySelector("svg.illus")).toBeNull();
     expect(within(el as HTMLElement).getByRole("button", { name: "Start" })).toBeInTheDocument();
     expect(el).toHaveTextContent("No evaluations yet");
   });

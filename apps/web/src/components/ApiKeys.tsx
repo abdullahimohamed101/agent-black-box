@@ -25,9 +25,7 @@ export function ApiKeys() {
         ) : keys.error ? (
           <ErrorState error={keys.error} onRetry={() => void keys.refetch()} />
         ) : keys.data.length === 0 ? (
-          <Empty title={c.emptyTitle} motif="none">
-            {c.emptyBody}
-          </Empty>
+          <Empty title={c.emptyTitle}>{c.emptyBody}</Empty>
         ) : (
           <div className="table-wrap">
             <table>

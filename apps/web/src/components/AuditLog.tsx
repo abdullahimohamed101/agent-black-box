@@ -18,7 +18,7 @@ export function AuditLog() {
         ) : audit.error ? (
           <ErrorState error={audit.error} onRetry={() => void audit.refetch()} />
         ) : rows.length === 0 ? (
-          <Empty title={c.empty} motif="none" />
+          <Empty title={c.empty} />
         ) : (
           <div className="table-wrap">
             <table>

@@ -226,9 +226,7 @@ export function RunsList({
           <div className="runs-main">
             {echo && <UnindexedNotice count={echo.unindexed} capped={echo.unindexed_capped} />}
             {runs.length === 0 ? (
-              <Empty title={t.empty.noMatchTitle} motif="none">
-                {t.empty.noMatchBody}
-              </Empty>
+              <Empty title={t.empty.noMatchTitle}>{t.empty.noMatchBody}</Empty>
             ) : (
               <>
                 {comparing && (

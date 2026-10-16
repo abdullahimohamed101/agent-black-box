@@ -267,7 +267,6 @@ function PolicyPane({
         {!current.policy && !dirty && canWrite ? (
           <Empty
             title="No policy yet"
-            motif="none"
             action={
               <button type="button" onClick={start}>
                 Start from the example

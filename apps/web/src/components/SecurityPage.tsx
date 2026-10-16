@@ -174,9 +174,7 @@ export function SecurityPage({ now: nowProp }: { now?: number }) {
     <div className="sec-page">
       {settled && items.length === 0 && !filtered ? (
         <div className="sec-empty" data-testid="security-clean">
-          <Empty title={review.security.cleanTitle} motif="none">
-            {review.security.cleanBody}
-          </Empty>
+          <Empty title={review.security.cleanTitle}>{review.security.cleanBody}</Empty>
           {detectors.data ? (
             <DetectorList items={detectors.data} />
           ) : detectors.isError ? (
@@ -264,7 +262,6 @@ export function SecurityPage({ now: nowProp }: { now?: number }) {
             ) : items.length === 0 ? (
               <Empty
                 title={review.security.noneTitle}
-                motif="none"
                 action={
                   <button type="button" onClick={() => set(NO_SECURITY_FILTERS)}>
                     Clear filters

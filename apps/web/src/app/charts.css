@@ -1,0 +1,72 @@
+/* Charts (design pass 2 step 5d): thin marks built from elements, never from telemetry-derived HTML. Bars and columns are ink
+   on a hairline, square-cornered; a mark that leads is ink and the others are the neutral data colour, and the lead is also said
+   in words next to the chart (a mark is never the only carrier). No red: a rate of failure is a number, not a fault. */
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.bars li {
+  display: grid;
+  grid-template-columns: minmax(5rem, 11rem) minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  font-size: var(--type-body-size);
+}
+.bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-track {
+  height: var(--space-1);
+  background: var(--color-border-subtle);
+}
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-data-neutral);
+}
+.bars[data-marks="ink"] .bar-fill,
+.bars li[data-lead="true"] .bar-fill {
+  background: var(--color-text-primary);
+}
+.bar-value {
+  text-align: right;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.bar-value small {
+  font-family: var(--font-sans);
+  font-size: var(--type-small-size);
+}
+.columns {
+  margin: 0;
+}
+.column-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  height: 6rem;
+  border-bottom: 1px solid var(--color-border-strong);
+}
+.column {
+  /* Grow to share the row, but a lone day must not become one slab. */
+  flex: 1 1 0;
+  max-width: 3rem;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.column-fill {
+  display: block;
+  width: 100%;
+  background: var(--color-text-primary);
+}
+.columns figcaption {
+  margin-top: var(--space-1);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}

@@ -341,7 +341,7 @@ export function CompareView({ base }: { base: Base }) {
     <div className="compare" data-testid="compare">
       <TitleLine href={runsPath(base)} title={compare.title} />
       {!left || !right ? (
-        <Empty title={compare.pick} motif="none">
+        <Empty title={compare.pick}>
           Choose two runs in the <Link href={runsPath(base)}>runs list</Link>.
         </Empty>
       ) : q.isPending ? (

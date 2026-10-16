@@ -44,9 +44,7 @@ export function SecuritySettings() {
         <AuditLink />.
       </Lede>
       {ws.projects.length === 0 ? (
-        <Empty title="No projects yet" motif="none">
-          Settings appear once an agent reports a project.
-        </Empty>
+        <Empty title="No projects yet">Settings appear once an agent reports a project.</Empty>
       ) : (
         <>
           <p className="st-scope">

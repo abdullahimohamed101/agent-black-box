@@ -32,7 +32,7 @@ export function SessionsSettings() {
         ) : sessions.isError ? (
           <ErrorState error={sessions.error} onRetry={() => void sessions.refetch()} />
         ) : sessions.data.length === 0 ? (
-          <Empty title="No sessions" motif="none">
+          <Empty title="No sessions">
             You have no working session. Reload the page to sign in again.
           </Empty>
         ) : (

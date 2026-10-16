@@ -38,7 +38,7 @@ export function Members() {
         ) : members.error ? (
           <ErrorState error={members.error} onRetry={() => void members.refetch()} />
         ) : members.data.length === 0 ? (
-          <Empty title={c.empty} motif="none" />
+          <Empty title={c.empty} />
         ) : (
           <div className="table-wrap">
             <table>
@@ -116,7 +116,7 @@ export function Members() {
           ) : invitations.error ? (
             <ErrorState error={invitations.error} onRetry={() => void invitations.refetch()} />
           ) : invitations.data.length === 0 ? (
-            <Empty title={c.invitations.empty} motif="none" />
+            <Empty title={c.invitations.empty} />
           ) : (
             <div className="table-wrap">
               <table>

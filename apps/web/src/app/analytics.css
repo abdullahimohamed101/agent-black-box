@@ -1,29 +1,102 @@
-/* Phase 22 D12: the "Where the money was wasted" panel at the top of the analytics page. Mono figures, no colour:
-   a dollar figure is information, and red is reserved for failure (ADR-111). */
-.waste {
-  margin: 0 0 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border);
+/* Analytics (design pass 2 step 5d, ADR-166): the title line with the one control row, the shared tab list, and a panel that opens
+   with one sentence in ink (18/24, 600, as the divergence sentence of Compare). Below it, hairline-separated blocks with a small
+   heading, hairline tables and thin chart marks. Tokens only; nothing is red and nothing animates. */
+.an-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-3);
 }
-.page .waste h2 {
-  margin-top: 0;
+.an-head h1 {
+  margin: 0;
+  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
 }
+/* The window control: one row of chip-density buttons, the selected one washed and outlined (as the Approvals state list). */
+.an-head .toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+}
+.an-head .toolbar button {
+  min-height: 1.75rem;
+  padding: 0 var(--space-3);
+  border-color: transparent;
+}
+.an-head .toolbar button:hover {
+  border-color: var(--color-border-control);
+}
+.an-head .toolbar button[aria-pressed="true"] {
+  border-color: var(--color-interactive-default);
+  background: var(--color-bg-wash);
+  color: var(--color-text-primary);
+}
+.an-panel {
+  padding-top: var(--space-4);
+}
+.analytics .report-headline {
+  max-width: 48rem;
+  margin: 0 0 var(--space-4);
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.analytics .notice {
+  max-width: var(--measure);
+  margin: 0 0 var(--space-4);
+}
+.analytics .an-block {
+  margin: var(--space-6) 0 0;
+  padding: var(--space-4) 0 0;
+  border-top: 1px solid var(--color-border-subtle);
+  min-width: 0;
+}
+.analytics .an-block h2,
+.analytics .an-block h3 {
+  margin: 0 0 var(--space-2);
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
+}
+.analytics .an-block > p {
+  margin: var(--space-1) 0;
+  max-width: var(--measure);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+.analytics .two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  column-gap: var(--space-8);
+}
+.analytics .an-block .an-block {
+  margin-top: var(--space-4);
+}
+.an-foot {
+  max-width: var(--measure);
+  margin: var(--space-8) 0 0;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}
+/* The wasted-spend block: one line of mono figures under its heading (a dollar figure is information, not a fault). */
 .waste-line {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.2rem 1.25rem;
-  margin: 0.25rem 0;
-  font: 400 0.85rem / 1.6 var(--mono);
-  font-variant-numeric: tabular-nums;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-1) 0 var(--space-2);
+  font: var(--type-mono-weight) var(--type-mono-size) / var(--type-mono-line) var(--font-mono);
 }
 .waste-total {
-  font: 600 var(--fs-headline) / 1.2 var(--mono);
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-mono);
 }
 .waste-line .muted {
-  font-size: var(--fs-small);
+  font-family: var(--font-sans);
 }
 .waste-note {
-  margin: 0 0 0.75rem;
-  max-width: 48rem;
+  max-width: var(--measure);
+}
+.waste .state {
+  margin: var(--space-2) 0;
+  padding: 0;
+  border-top: 0;
 }
