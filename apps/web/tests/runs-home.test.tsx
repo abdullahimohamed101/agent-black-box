@@ -38,13 +38,13 @@ const summary = (over: Partial<AnalyticsSummary["runs"]> = {}, usd = 22.15): Ana
 describe("the 7-day sentence", () => {
   it("is counts in words: runs, the success rate, failures (failed, timed out and blocked together), spend, in progress", () => {
     expect(weekText(weekParts(summary()))).toBe(
-      "Last 7 days: 12 runs, 80% succeeded, 3 failed, $22.15 spent, 2 in progress.",
+      "Last 7 days: 12 runs, 80% succeeded, 3 failed, timed out or were blocked, $22.15 spent, 2 in progress.",
     );
   });
 
   it("says zero in words, drops the in-progress clause at zero, and singularises one run", () => {
     expect(weekText(weekParts(summary({ failed: 0, timed_out: 0, active: 0, success: 10 })))).toBe(
-      "Last 7 days: 12 runs, 100% succeeded, none failed, $22.15 spent.",
+      "Last 7 days: 12 runs, 100% succeeded, none failed, timed out or were blocked, $22.15 spent.",
     );
     expect(
       weekText(
@@ -52,13 +52,15 @@ describe("the 7-day sentence", () => {
           summary({ total: 1, finished: 0, success: 0, failed: 0, timed_out: 0, active: 1 }),
         ),
       ),
-    ).toBe("Last 7 days: 1 run, none failed, $22.15 spent, 1 in progress.");
+    ).toBe(
+      "Last 7 days: 1 run, none failed, timed out or were blocked, $22.15 spent, 1 in progress.",
+    );
   });
 
   it("splits into the pieces a phone keeps (runs and failures) and the pieces it drops", () => {
     const s = weekSentence(weekParts(summary()));
     expect(s.lead).toBe("Last 7 days: 12 runs");
-    expect(s.failed).toBe("3 failed");
+    expect(s.failed).toBe("3 failed, timed out or were blocked");
     expect(s.extra).toEqual(["80% succeeded"]);
     expect(s.tail).toEqual(["$22.15 spent", "2 in progress"]);
   });

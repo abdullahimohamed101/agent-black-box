@@ -52,11 +52,28 @@ describe("report headlines", () => {
         7,
       ),
     ).toBe(
-      "50% of finished runs succeeded in the last 7 days; 25% failed and 25% timed out. 10% had at least one retry.",
+      "50% of finished runs succeeded in the last 7 days; 25% failed or were blocked and 25% timed out. 10% of all runs had at least one retry.",
     );
     expect(
       reliabilityHeadline({ success_rate: 1, failure_rate: 0, timeout_rate: 0, retry_rate: 0 }, 1),
-    ).toBe("100% of finished runs succeeded today; none failed or timed out.");
+    ).toBe("100% of finished runs succeeded today; none failed, were blocked or timed out.");
+    // a rate that only rounds to 0% is not "none"
+    expect(
+      reliabilityHeadline(
+        { success_rate: 0.997, failure_rate: 0.003, timeout_rate: 0.002, retry_rate: 0 },
+        7,
+      ),
+    ).toBe(
+      "100% of finished runs succeeded in the last 7 days; under 1% failed or were blocked and under 1% timed out.",
+    );
+    expect(
+      reliabilityHeadline(
+        { success_rate: 0.99, failure_rate: 0, timeout_rate: 0.004, retry_rate: 0.004 },
+        7,
+      ),
+    ).toBe(
+      "99% of finished runs succeeded in the last 7 days; under 1% timed out. Under 1% of all runs had at least one retry.",
+    );
     expect(
       reliabilityHeadline(
         { success_rate: null, failure_rate: null, timeout_rate: null, retry_rate: null },

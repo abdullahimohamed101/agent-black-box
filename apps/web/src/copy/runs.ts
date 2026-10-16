@@ -121,7 +121,7 @@ const n = (v: number) => v.toLocaleString("en-US");
 
 /**
  * "Last 7 days: 12 runs, 83% succeeded, 3 failed, $22.15 spent, 2 in progress." The optional pieces (`extra`) are the ones a
- * phone drops, so the short form is "Last 7 days: 12 runs, 3 failed." Counts are words: zero says "none failed", not "0".
+ * phone drops, so the short form is "Last 7 days: 12 runs, 3 failed, timed out or were blocked." Counts are words: zero says "none failed", not "0".
  */
 export function weekSentence(p: WeekParts): {
   lead: string;
@@ -132,7 +132,10 @@ export function weekSentence(p: WeekParts): {
   return {
     lead: `${runs.summary.window}: ${n(p.runs)} run${p.runs === 1 ? "" : "s"}`,
     extra: p.succeededPct === null ? [] : [`${p.succeededPct}% succeeded`],
-    failed: p.failed === 0 ? "none failed" : `${n(p.failed)} failed`,
+    failed:
+      p.failed === 0
+        ? "none failed, timed out or were blocked"
+        : `${n(p.failed)} failed, timed out or were blocked`,
     tail: [`${p.spend} spent`, ...(p.active > 0 ? [`${n(p.active)} in progress`] : [])],
   };
 }

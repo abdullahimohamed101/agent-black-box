@@ -74,7 +74,7 @@ tell a visitor something the page does not tell today).
 | Title (h1) | Runs |
 | Compare toggle | Compare (pressed state; no other wording) |
 | 7-day sentence | `Last 7 days: 12 runs, 83% succeeded, 3 failed, $22.15 spent, 2 in progress.` then a link **Analytics** |
-| Sentence at 0 failures | `Last 7 days: 12 runs, 100% succeeded, none failed, $22.15 spent.` (zero is said in words) |
+| Sentence at 0 failures | `Last 7 days: 12 runs, 100% succeeded, none failed, timed out or were blocked, $22.15 spent.` (zero is said in words) |
 | Sentence on a phone (< 600 px) | `Last 7 days: 12 runs, 3 failed.` (the success rate, spend and in-progress clauses give way) |
 | Sentence while refreshing | the old sentence stays; a polite status "Updating…" |
 | Sentence when there are no runs in the window | not shown (the setup guide or the empty state speaks instead) |
@@ -434,7 +434,7 @@ days").
 | Report | Pattern | Example |
 | --- | --- | --- |
 | Cost | `TOTAL spent WINDOW, PER_RUN per run and PER_SUCCESS per successful run.` A per-run figure the server did not send is left out. Unpriced calls add: `N model calls have no price and count as $0.` (`1 model call has no price and counts as $0.`) | $22.16 spent in the last 7 days, $1.23 per run and $2.00 per successful run. |
-| Reliability | `S% of finished runs succeeded WINDOW; F% failed and T% timed out.` A rate that rounds to 0% is left out; when both are, `; none failed or timed out.` Then `R% had at least one retry.` when above zero. No finished run: `No runs finished WINDOW.` | 73% of finished runs succeeded in the last 7 days; 27% failed. 33% had at least one retry. |
+| Reliability | `S% of finished runs succeeded WINDOW; F% failed or were blocked and T% timed out.` A rate of exactly zero is left out; one that only rounds to 0% says `under 1%`; when both are zero, `; none failed, were blocked or timed out.` Then `R% of all runs had at least one retry.` when above zero. No finished run: `No runs finished WINDOW.` | 73% of finished runs succeeded in the last 7 days; 27% failed or were blocked. 33% of all runs had at least one retry. |
 | Performance | `Half of runs finished within P50 and 95% within P95 WINDOW.` No timed run: `No timed runs WINDOW.` | Half of runs finished within 11 s and 95% within 5m 04s in the last 7 days. |
 
 ### 10.2 Blocks

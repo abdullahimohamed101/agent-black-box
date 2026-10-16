@@ -72,7 +72,7 @@ test("analytics page: cost, retries, reliability and performance", async ({ page
   await page.getByRole("tab", { name: "Reliability" }).click();
   const reliability = page.getByRole("tabpanel", { name: "Reliability" });
   await expect(reliability.getByTestId("report-headline")).toContainText(
-    "25% failed and 25% timed out",
+    "25% failed or were blocked and 25% timed out",
   );
   await expect(
     reliability.getByRole("table", { name: "Tool success rate and latency" }),

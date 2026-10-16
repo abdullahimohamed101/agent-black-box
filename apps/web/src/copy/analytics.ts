@@ -7,8 +7,8 @@ export type Report = (typeof REPORTS)[number];
 export const parseReport = (v: string | null | undefined): Report =>
   REPORTS.find((r) => r === v) ?? "cost";
 
-/** A rate that rounds to 0% is left out of a sentence. */
-const shown = (r: number | null | undefined) => r != null && Math.round(r * 100) > 0;
+/** A rate above zero is always said; one that rounds to 0% reads "under 1%", so only a true zero is "none". */
+const some = (r: number | null | undefined) => r != null && r > 0;
 const pct = (r: number | null | undefined) => (r == null ? null : `${Math.round(r * 100)}%`);
 
 /** "today" or "in the last 7 days": the window in words, for the headline sentences. */
@@ -152,19 +152,25 @@ type Rates = {
   timeout_rate: number | null;
   retry_rate: number | null;
 };
-/** "50% of finished runs succeeded in the last 7 days; 25% failed and 25% timed out. 10% had at least one retry." A rate of zero is left out. */
+/**
+ * "50% of finished runs succeeded in the last 7 days; 25% failed or were blocked and 25% timed out. 10% of all runs had at
+ * least one retry." A rate of exactly zero is left out (and "none ..." said when both are); a rate that only rounds to 0% says "under 1%".
+ */
 export function reliabilityHeadline(r: Rates, days: number): string {
   const when = windowPhrase(days);
   const success = pct(r.success_rate);
   if (success === null) return `No runs finished ${when}.`;
+  const part = (r: number | null | undefined) =>
+    Math.round((r ?? 0) * 100) > 0 ? pct(r) : "under 1%";
   const bad = [
-    shown(r.failure_rate) && `${pct(r.failure_rate)} failed`,
-    shown(r.timeout_rate) && `${pct(r.timeout_rate)} timed out`,
+    some(r.failure_rate) && `${part(r.failure_rate)} failed or were blocked`,
+    some(r.timeout_rate) && `${part(r.timeout_rate)} timed out`,
   ].filter((x): x is string => !!x);
   const head = `${success} of finished runs succeeded ${when}`;
-  const mid = bad.length ? `; ${bad.join(" and ")}.` : "; none failed or timed out.";
-  const retry = shown(r.retry_rate) ? pct(r.retry_rate) : null;
-  return retry ? `${head}${mid} ${retry} had at least one retry.` : `${head}${mid}`;
+  const mid = bad.length ? `; ${bad.join(" and ")}.` : "; none failed, were blocked or timed out.";
+  if (!some(r.retry_rate)) return `${head}${mid}`;
+  const retry = Math.round((r.retry_rate ?? 0) * 100) > 0 ? pct(r.retry_rate) : "Under 1%";
+  return `${head}${mid} ${retry} of all runs had at least one retry.`;
 }
 
 /** "Half of runs finished within 5.1 s and 95% within 12 s in the last 7 days." */
