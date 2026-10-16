@@ -1,17 +1,19 @@
 import { ApiRequestError } from "@/lib/api/client";
+import { states } from "@/copy/states";
 import { Motif } from "./illustrations";
 
 export function Loading({ label = "Loading" }: { label?: string }) {
   return (
     <div role="status" className="state" aria-live="polite">
-      <span className="spinner" aria-hidden="true" /> {label}…
+      <span className="spinner" aria-hidden="true" /> {states.loading(label)}
     </div>
   );
 }
 
 /**
- * One plain sentence, the next action when there is one, and the small trace motif (Phase 22 D9). The motif is
- * decoration (`aria-hidden`); the title and sentence carry the meaning.
+ * One plain sentence and the next action when there is one. `motif` draws the small trace motif (Phase 22 D9); ADR-166
+ * keeps drawings for the first-run guide and not-found only, so a screen that has been rebuilt passes `motif="none"` and
+ * the remaining screens drop theirs as their batch lands. The motif is decoration (`aria-hidden`).
  */
 export function Empty({
   title,
@@ -21,12 +23,12 @@ export function Empty({
 }: {
   title: string;
   children?: React.ReactNode;
-  motif?: Motif;
+  motif?: Motif | "none";
   action?: React.ReactNode;
 }) {
   return (
     <div className="state" data-state="empty">
-      <Motif kind={motif} />
+      {motif !== "none" && <Motif kind={motif} />}
       <p className="state-title">{title}</p>
       {children && <p className="muted">{children}</p>}
       {action && <div className="state-action">{action}</div>}
@@ -49,26 +51,52 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
         </p>
       </div>
     );
+  // Signed out (a 401 that reached a screen before the client's redirect did): say so and offer the way back in.
+  if (e?.status === 401)
+    return (
+      <div role="alert" className="state" data-state="error">
+        <p className="state-title">{states.error.signedOut.title}</p>
+        <p className="muted">{states.error.signedOut.body}</p>
+        <p className="state-action">
+          <a className="button" href="/login">
+            {states.error.signedOut.action}
+          </a>
+        </p>
+      </div>
+    );
   // A run that is gone: the API does not say whether retention removed it or it never existed, and neither do we.
   const message =
     e?.code === "RUN_NOT_FOUND" && notFound
-      ? "This run no longer exists. It may have been removed by the retention policy, or the link may be wrong."
+      ? states.error.runGone
       : e
         ? e.message
         : error instanceof Error
           ? error.message
-          : "Unexpected error";
+          : states.error.unexpected;
+  const forbidden = e?.status === 403;
+  const limited = e?.status === 429;
+  const title = notFound
+    ? states.error.notFound
+    : forbidden
+      ? states.error.forbidden.title
+      : limited
+        ? states.error.rateLimited.title
+        : states.error.generic;
   return (
     <div role="alert" className="state" data-state="error">
-      <Motif kind={notFound ? "tape" : "cut"} />
-      <p className="state-title">{notFound ? "Not found" : "Could not load this data"}</p>
+      {notFound && <Motif kind="tape" />}
+      <p className="state-title">{title}</p>
       <p className="muted">
-        {message}
-        {e?.requestId && <> (request {e.requestId})</>}
+        {limited
+          ? e!.retryAfter !== null
+            ? states.error.rateLimited.after(e!.retryAfter)
+            : states.error.rateLimited.soon
+          : message}
+        {e?.requestId && <> ({states.error.request(e.requestId)})</>}
       </p>
-      {onRetry && !notFound && (
+      {onRetry && !notFound && !forbidden && (
         <button type="button" onClick={onRetry}>
-          Try again
+          {states.error.tryAgain}
         </button>
       )}
     </div>

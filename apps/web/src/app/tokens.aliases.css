@@ -32,6 +32,7 @@
   --fs-body: var(--type-body-size);
   --fs-small: var(--type-small-size);
   --ease-out: var(--motion-easing-out);
+  --top-h: var(--layout-topbar);
 }
 body {
   --sans: var(--font-sans);

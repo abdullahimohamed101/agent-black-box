@@ -1,10 +1,12 @@
-import { Dashboard } from "@/components/Dashboard";
+import { redirect } from "next/navigation";
+import { runsPath } from "@/lib/routes";
 
-export default async function ProjectDashboard({
+// Overview is merged into Runs (design pass 2, ADR-166): the project's home is its runs, in the same scope.
+export default async function ProjectHome({
   params,
 }: {
   params: Promise<{ workspace: string; project: string }>;
 }) {
   const { workspace, project } = await params;
-  return <Dashboard base={{ workspace, project }} />;
+  redirect(runsPath({ workspace, project }));
 }

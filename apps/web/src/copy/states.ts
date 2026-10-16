@@ -10,7 +10,10 @@ export const states = {
     unexpected: "Unexpected error",
     runGone:
       "This run no longer exists. It may have been removed by the retention policy, or the link may be wrong.",
-    forbidden: { title: "Not available for your role", body: "Ask a workspace owner if you need access." },
+    forbidden: {
+      title: "Not available for your role",
+      body: "Ask a workspace owner if you need access.",
+    },
     signedOut: {
       title: "You have been signed out",
       body: "Sign in again to pick up where you left off.",

@@ -6,6 +6,7 @@ import { Providers } from "@/components/Providers";
 import "./tokens.generated.css";
 import "./tokens.aliases.css";
 import "./globals.css";
+import "./shell.css";
 import "./waterfall.css";
 import "./search.css";
 import "./compare.css";

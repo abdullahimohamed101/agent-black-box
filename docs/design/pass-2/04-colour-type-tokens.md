@@ -265,48 +265,48 @@ step 5 migrates the readers and deletes the alias; **kept** = unchanged value an
 the old screens keep working.
 
 <!-- tokens:report:aliases:start -->
-67 old custom properties: 18 aliased to a faithful new token, 33 kept unchanged, 16 to be deleted in step 5 (their role is removed, or they alias a removed role).
+65 old custom properties: 19 aliased to a faithful new token, 31 kept unchanged, 15 to be deleted in step 5 (their role is removed, or they alias a removed role).
 
 | Old name | Status | Now | Readers | Note |
 | --- | --- | --- | --- | --- |
-| `--bg` | aliased | `--color-bg-canvas` | 13 |  |
-| `--surface` | aliased | `--color-bg-raised` | 72 | collapses into canvas in step 5 (tables and panels sit directly on it) |
-| `--surface-2` | deleted in step 5 | `--color-legacy-surface-2` | 10 | removed role |
-| `--border` | aliased | `--color-border-subtle` | 118 |  |
-| `--border-strong` | aliased | `--color-border-strong` | 27 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
+| `--bg` | aliased | `--color-bg-canvas` | 9 |  |
+| `--surface` | aliased | `--color-bg-raised` | 56 | collapses into canvas in step 5 (tables and panels sit directly on it) |
+| `--surface-2` | deleted in step 5 | `--color-legacy-surface-2` | 7 | removed role |
+| `--border` | aliased | `--color-border-subtle` | 91 |  |
+| `--border-strong` | aliased | `--color-border-strong` | 20 | faithful (old value was 1.8:1, new 1.6:1); step 5 moves field and button boundaries to color.border.control (3:1) |
 | `--ink` | aliased | `--color-text-primary` | 23 |  |
-| `--fg` | deleted in step 5 | `--color-text-primary` | 56 | ADR-111 alias of --ink |
-| `--fg-2` | deleted in step 5 | `--color-text-primary` | 15 | no role between ink and ink-2 |
-| `--muted` | aliased | `--color-text-secondary` | 90 |  |
-| `--accent` | aliased | `--color-interactive-default` | 81 |  |
-| `--accent-bg` | deleted in step 5 | `--color-bg-wash` | 6 | the accent fill is removed; the wash is the selection colour |
-| `--sel` | aliased | `--color-bg-wash` | 15 |  |
+| `--fg` | deleted in step 5 | `--color-text-primary` | 39 | ADR-111 alias of --ink |
+| `--fg-2` | deleted in step 5 | `--color-text-primary` | 13 | no role between ink and ink-2 |
+| `--muted` | aliased | `--color-text-secondary` | 68 |  |
+| `--accent` | aliased | `--color-interactive-default` | 53 |  |
+| `--accent-bg` | deleted in step 5 | `--color-bg-wash` | 2 | the accent fill is removed; the wash is the selection colour |
+| `--sel` | aliased | `--color-bg-wash` | 14 |  |
 | `--info` | deleted in step 5 | `--color-interactive-default` | 3 | removed role |
-| `--fail` | aliased | `--color-status-fault` | 14 |  |
-| `--bad` | deleted in step 5 | `--color-status-fault` | 26 | ADR-111 alias of --fail |
+| `--fail` | aliased | `--color-status-fault` | 13 |  |
+| `--bad` | deleted in step 5 | `--color-status-fault` | 21 | ADR-111 alias of --fail |
 | `--fail-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 2 | no red fill (one red line) |
-| `--bad-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 3 | no red fill (one red line) |
+| `--bad-bg` | deleted in step 5 | `--color-legacy-fault-bg` | 2 | no red fill (one red line) |
 | `--wait` | aliased | `--color-status-caution` | 28 |  |
-| `--warn` | deleted in step 5 | `--color-status-caution` | 12 | ADR-111 alias of --wait |
+| `--warn` | deleted in step 5 | `--color-status-caution` | 10 | ADR-111 alias of --wait |
 | `--wait-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 7 | caution is text only, no fill |
-| `--warn-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 2 | caution is text only, no fill |
+| `--warn-bg` | deleted in step 5 | `--color-legacy-wait-bg` | 1 | caution is text only, no fill |
 | `--ok` | deleted in step 5 | `--color-legacy-ok` | 6 | green removed; success is a check glyph in ink-2 |
 | `--ok-bg` | deleted in step 5 | `--color-legacy-ok-bg` | 0 | green removed |
-| `--mark` | aliased | `--color-brand-mark` | 3 |  |
+| `--mark` | aliased | `--color-brand-mark` | 1 |  |
 | `--sans` | aliased | `--font-sans` | 24 |  |
-| `--mono` | aliased | `--font-mono` | 57 |  |
-| `--fs-headline` | aliased | `--type-h1-size` | 7 |  |
+| `--mono` | aliased | `--font-mono` | 49 |  |
+| `--fs-headline` | aliased | `--type-h1-size` | 4 |  |
 | `--fs-title` | aliased | `--type-h2-size` | 8 |  |
-| `--fs-body` | aliased | `--type-body-size` | 13 |  |
-| `--fs-small` | aliased | `--type-small-size` | 13 |  |
+| `--fs-body` | aliased | `--type-body-size` | 12 |  |
+| `--fs-small` | aliased | `--type-small-size` | 10 |  |
 | `--ease-out` | aliased | `--motion-easing-out` | 8 |  |
-| `--cond` | deleted in step 5 | (defined in globals.css, unchanged) | 39 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
-| `--serif` | deleted in step 5 | (defined in globals.css, unchanged) | 7 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
+| `--cond` | deleted in step 5 | (defined in globals.css, unchanged) | 26 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
+| `--serif` | deleted in step 5 | (defined in globals.css, unchanged) | 5 | deprecated face (ADR-166): defined in globals.css until its last reader is gone |
 | `--t-fast` | kept | (defined in globals.css, unchanged) | 2 | motion contract (tests/motion-contract.test.ts reads globals.css); motion.duration.* are the new names, step 5 aliases these |
 | `--t-base` | kept | (defined in globals.css, unchanged) | 1 | as --t-fast |
 | `--t-slow` | kept | (defined in globals.css, unchanged) | 0 | as --t-fast |
 | `--t-land` | kept | (defined in globals.css, unchanged) | 1 | as --t-fast |
-| `--rail-w` | deleted in step 5 | (defined in globals.css, unchanged) | 1 | the rail is removed in step 5a |
+| `--top-h` | aliased | `--layout-topbar` | 3 |  |
 | `--ctx-w` | kept | (unchanged) | 2 |  |
 | `--illus-accent` | kept | (unchanged) | 2 |  |
 | `--insp-w` | kept | (unchanged) | 1 |  |
@@ -314,9 +314,7 @@ the old screens keep working.
 | `--t-exit` | kept | (unchanged) | 1 | motion contract duration |
 | `--t-fault` | kept | (unchanged) | 2 | motion contract duration |
 | `--t-panel` | kept | (unchanged) | 1 | motion contract duration |
-| `--tone` | kept | (unchanged) | 3 | component-local, set per state |
-| `--tone-bg` | kept | (unchanged) | 1 | component-local, set per state |
-| `--top-h` | kept | (unchanged) | 9 |  |
+| `--tone` | kept | (unchanged) | 1 | component-local, set per state |
 | `--wf-a0` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-a1` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |
 | `--wf-a2` | kept | (unchanged) | 1 | waterfall data colour (ADR-071); desaturation and token move in step 5 |

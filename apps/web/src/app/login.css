@@ -1,64 +1,84 @@
-/* Phase 22 D11: sign-in and invitation inside the product. A quiet, single-purpose page: the brand mark, one sentence, the
-   button. No card, no gradient, no marketing copy. Tokens only (ADR-111). `main.auth.auth-page` outranks the older
-   `main.auth` card rule in globals.css, which the plain fallback pages (home) still use. */
-main.auth.auth-page {
-  max-width: 26rem;
+/* Sign-in, invitation, "no workspaces", not-found and the error boundary (design pass 2 step 5a, ADR-166): one quiet column on
+   the canvas, a display headline, one sentence, one action. No card, no bar, no fill, no shadow. Tokens only.
+   Phase 22 D11 introduced these as a card; the column is 25 rem wide, centred, 96 px from the top (48 px on a phone). */
+main.auth-page,
+main.state-page {
+  max-width: 25rem;
   margin: 0 auto;
-  /* 1rem side gutter at every width: a phone never gets text against the screen edge. */
-  padding: clamp(2.5rem, 16vh, 8rem) 1rem 2rem;
-  background: none;
-  border: 0;
-  border-radius: 0;
+  padding: calc(var(--space-12) * 2) var(--layout-gutter-narrow) var(--space-8);
   display: grid;
-  gap: 1rem;
+  gap: var(--space-4);
   justify-items: start;
   min-width: 0;
 }
-.auth-page .brand {
-  padding: 0;
-  margin: 0 0 0.75rem;
-  height: auto;
+.auth-page .brand,
+.state-page .brand {
+  margin-bottom: var(--space-4);
 }
-.auth-page h1 {
+.auth-page h1,
+.state-page h1 {
   margin: 0;
-  font: 600 var(--fs-headline) / 1.25 var(--cond);
-  letter-spacing: 0;
+  font-family: var(--font-sans);
+  font-size: var(--type-display-size);
+  line-height: var(--type-display-line);
+  font-weight: var(--type-display-weight);
   overflow-wrap: anywhere;
 }
-.auth-page p {
+.auth-page p,
+.state-page p {
   margin: 0;
   max-width: 100%;
+  font-size: var(--type-body-lg-size);
+  line-height: var(--type-body-lg-line);
   overflow-wrap: anywhere;
 }
 .auth-page .auth-context {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .auth-page .notice {
   width: 100%;
+  padding: 0;
 }
-/* The one action: a full-size target (at least 44 px tall) with a focus ring that shows against both themes. */
+/* The one action: a 36 px filled button (44 px on a phone, full width), focus ring visible in both themes. */
 .auth-page a.button,
 .auth-page button.primary {
   display: inline-flex;
   align-items: center;
-  min-height: 2.75rem;
-  padding: 0.5rem 1.5rem;
-  font-weight: 500;
-}
-.auth-page a.button:focus-visible,
-.auth-page button.primary:focus-visible,
-.auth-page .brand:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  justify-content: center;
+  min-height: calc(var(--space-8) + var(--space-1));
+  min-width: calc(var(--space-12) * 2.5);
+  padding: var(--space-2) var(--space-6);
+  font-weight: var(--weight-strong);
 }
 .auth-page .auth-aside {
-  color: var(--muted);
-  font-size: var(--fs-small);
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
 }
-@media (max-width: 26rem) {
+.state-page .illus {
+  width: auto;
+  height: var(--space-12);
+  color: var(--color-text-secondary);
+}
+.state-page .state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  align-items: center;
+}
+@media (max-width: 37.4375rem) {
+  main.auth-page,
+  main.state-page {
+    padding-top: var(--space-12);
+  }
+  .auth-page h1,
+  .state-page h1 {
+    font-size: 1.75rem;
+    line-height: 2.25rem;
+  }
   .auth-page a.button,
   .auth-page button.primary {
     width: 100%;
-    justify-content: center;
+    min-height: var(--layout-touch);
   }
 }

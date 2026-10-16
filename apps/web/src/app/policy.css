@@ -23,19 +23,6 @@
   font-family: var(--sans);
 }
 
-/* The count beside "Approvals" in the rail. */
-.rail-count {
-  margin-left: auto;
-  min-width: 1.35rem;
-  padding: 0 0.4rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px; /* the design scan allows no pill radius on the main pages */
-  background: var(--surface);
-  color: var(--ink);
-  font: 600 0.72rem/1.35rem var(--mono);
-  text-align: center;
-}
-
 /* ---- Approvals page ---- */
 .apr-tabs ul {
   display: flex;

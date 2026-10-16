@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import type { QueryFieldOut } from "@/lib/api/types";
+import { runs as t } from "@/copy/runs";
 import { MAX_Q_CHARS, type SearchProblem } from "@/lib/search";
 
 /** Where the API said `q` went wrong, drawn under a copy of the text. Text only: the query is never HTML. */
@@ -76,6 +77,11 @@ export function SearchProblemNotice({
   );
 }
 
+/**
+ * The one filter field. Enter commits the text (there is no Search button: the keyboard on a phone says "Search"); the
+ * chips under it and the facets beside it edit the same text. The grammar help is a "?" button that opens a panel, not a
+ * second control row.
+ */
 export function SearchBox({
   value,
   fields,
@@ -89,6 +95,7 @@ export function SearchBox({
 }) {
   const [draft, setDraft] = useState(value);
   const [tooLong, setTooLong] = useState(false);
+  const [help, setHelp] = useState(false);
   const id = useId();
   // The page may replace the query (a chip removed, a facet added): adopt it while rendering, not in an effect.
   const [seen, setSeen] = useState(value);
@@ -110,51 +117,55 @@ export function SearchBox({
     <div className="search">
       <form
         role="search"
-        aria-label="Search runs"
+        aria-label={t.search.label}
         className="search-form"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
         }}
       >
-        <label htmlFor={`${id}-q`}>Search</label>
+        <label htmlFor={`${id}-q`}>{t.search.label}</label>
         <input
           id={`${id}-q`}
           type="search"
+          enterKeyHint="search"
           value={draft}
           autoComplete="off"
           spellCheck={false}
-          placeholder='status:failed tool:github retries:>=2 "npm test"'
-          aria-describedby={`${id}-help`}
+          placeholder={t.search.placeholder}
           aria-invalid={tooLong}
           onChange={(e) => {
             setDraft(e.target.value);
             setTooLong(false);
           }}
         />
-        <button type="submit">Search</button>
-        <details className="search-help">
-          <summary>Search help</summary>
-          <div id={`${id}-help`}>
-            <p className="muted">
-              Terms are combined with AND. Prefix a term with <code>-</code> to exclude it, quote
-              phrases, end a value with <code>*</code> for a prefix. Times can be relative, for
-              example <code>started:&gt;=-24h</code>.
-            </p>
-            {fields ? (
-              <ul className="search-fields" aria-label="Searchable fields">
-                {fields.map((f) => (
-                  <li key={f.name}>
-                    <code>{f.name}:</code> <span className="muted">{f.description}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">Loading the searchable fields…</p>
-            )}
-          </div>
-        </details>
+        <button
+          type="button"
+          className="search-help-button"
+          aria-label={t.search.help}
+          aria-expanded={help}
+          aria-controls={`${id}-help`}
+          onClick={() => setHelp(!help)}
+        >
+          <span aria-hidden="true">?</span>
+        </button>
       </form>
+      {help && (
+        <div id={`${id}-help`} className="search-help">
+          <p className="muted">{t.search.helpIntro}</p>
+          {fields ? (
+            <ul className="search-fields" aria-label={t.search.fieldsLabel}>
+              {fields.map((f) => (
+                <li key={f.name}>
+                  <code>{f.name}:</code> <span className="muted">{f.description}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">{t.search.fieldsLoading}</p>
+          )}
+        </div>
+      )}
       {tooLong && <SearchProblemNotice problem={{ kind: "too-long" }} q={draft} />}
     </div>
   );

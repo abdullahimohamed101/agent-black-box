@@ -115,6 +115,9 @@
   --layout-gutter: 1.5rem;
   --layout-gutter-narrow: 1rem;
   --layout-section-gap: 2rem;
+  --layout-topbar: 2.75rem;
+  --layout-control: 2rem;
+  --layout-touch: 2.75rem;
 }
 @media (prefers-color-scheme: dark) {
   :root {

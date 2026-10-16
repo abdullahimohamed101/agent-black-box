@@ -5,8 +5,6 @@
    (tests/tokens-red.test.ts; ADR-166). Light is the default; dark follows the system. */
 :root {
   color-scheme: light dark;
-  --rail-w: 14rem; /* deleted in step 5a with the rail */
-  --top-h: 2.75rem;
   --ctx-w: 18rem;
   --insp-w: 26rem;
   --t-fast: 120ms;
@@ -77,11 +75,11 @@ main {
 }
 button {
   font: inherit;
-  padding: 0.25rem 0.75rem;
-  border: 1px solid var(--border);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-control);
   background: transparent;
-  color: var(--fg);
-  border-radius: 4px;
+  color: var(--color-text-primary);
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 button:focus-visible {
@@ -109,317 +107,7 @@ a {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.skip {
-  position: absolute;
-  left: -999px;
-  background: var(--bg);
-  padding: 0.5rem;
-  z-index: 10;
-}
-.skip:focus {
-  left: 0.5rem;
-  top: 0.5rem;
-}
-/* ---- Application frame (Phase 21): rail, top bar, full-width main ---- */
-.shell {
-  display: grid;
-  grid-template-columns: var(--rail-w) minmax(0, 1fr);
-  grid-template-rows: var(--top-h) minmax(0, 1fr);
-  min-height: 100dvh;
-}
-.shell main {
-  grid-column: 2;
-  grid-row: 2;
-  min-width: 0;
-  max-width: none;
-  margin: 0;
-  padding: 0;
-}
-.shell main.page {
-  padding: 1rem 1.25rem 2rem;
-}
-.rail {
-  grid-column: 1;
-  grid-row: 1 / 3;
-  position: sticky;
-  top: 0;
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  overflow: visible;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  height: var(--top-h);
-  padding: 0 0.9rem;
-  flex: none;
-  font: 600 0.95rem var(--cond);
-  letter-spacing: 0.01em;
-  color: var(--fg);
-  text-decoration: none;
-  border-bottom: 1px solid var(--border);
-}
-.brand-mark {
-  flex: none;
-  width: 1.5rem;
-  height: 1.5rem;
-  color: var(--fg);
-}
-.scope {
-  flex: none;
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.75rem 0.65rem;
-  border-bottom: 1px solid var(--border);
-}
-.switcher,
-.switcher-static {
-  display: block;
-  padding: 0.3rem 0.6rem 0.4rem;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  min-width: 0;
-}
-.switcher::before,
-.switcher-static::before {
-  content: attr(data-label);
-  display: block;
-  font: 500 0.66rem var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.switcher summary {
-  cursor: pointer;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-.switcher ul {
-  margin: 0.4rem 0 0;
-  padding: 0.3rem 0 0;
-  list-style: none;
-  border-top: 1px solid var(--border);
-}
-.switcher li {
-  padding: 0.2rem 0;
-}
-.switcher a[aria-current="true"] {
-  color: var(--fg);
-  font-weight: 600;
-}
-.nav {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 0.6rem 0.5rem;
-  font-family: var(--cond);
-}
-.nav a {
-  display: flex;
-  align-items: center;
-  min-height: 2rem;
-  padding: 0 0.7rem;
-  border-radius: 4px;
-  border-left: 2px solid transparent;
-  color: var(--fg-2);
-  font-size: 0.9375rem;
-  font-weight: 500;
-  text-decoration: none;
-}
-.nav a:hover {
-  background: var(--surface-2);
-}
-.nav a[aria-current="page"] {
-  background: var(--sel);
-  border-left-color: var(--accent);
-  color: var(--fg);
-  font-weight: 600;
-}
-.rail-foot {
-  flex: none;
-  flex-wrap: wrap;
-  padding: 0.7rem 0.9rem;
-  border-top: 1px solid var(--border);
-}
-.rail-foot span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.who {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: 0.85rem;
-}
-.who form {
-  display: inline;
-}
-.topbar {
-  grid-column: 2;
-  grid-row: 1;
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  height: var(--top-h);
-  padding: 0 1.25rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  min-width: 0;
-}
-.topbar-crumbs {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--cond);
-  font-size: 0.9375rem;
-}
-.topbar-crumbs ol {
-  display: flex;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  white-space: nowrap;
-  min-width: 0;
-}
-.topbar-crumbs li {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--muted);
-}
-.topbar-crumbs li + li::before {
-  content: "/";
-  margin: 0 0.5rem;
-  color: var(--border-strong);
-}
-.topbar-crumbs li[aria-current="page"] {
-  color: var(--fg);
-  font-weight: 600;
-}
-.topbar-crumbs a {
-  color: var(--muted);
-  text-decoration: none;
-}
-.topbar-crumbs a:hover {
-  color: var(--fg);
-  text-decoration: underline;
-}
-.live-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex: none;
-  font: 600 0.6875rem var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.live-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 4px;
-  border: 1.5px solid var(--muted);
-}
-.live-indicator[data-on="true"] {
-  color: var(--fg);
-}
-.live-indicator[data-on="true"] .live-dot {
-  background: var(--mark);
-  border-color: var(--mark);
-}
-/* Pages outside the shell: sign-in, invitation, "no workspaces": a centred card with the brand mark. */
-main.auth {
-  max-width: 26rem;
-  margin: 12vh auto 0;
-  padding: 1.5rem 1.5rem 2rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-main.auth .brand {
-  height: auto;
-  padding: 0 0 1rem;
-  margin-bottom: 0.75rem;
-}
-@media (max-width: 52rem) {
-  .shell {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: var(--top-h) auto minmax(0, 1fr);
-  }
-  /* The rail becomes one scrolling strip under the top bar; the switchers and sign-out stay reachable inside it. */
-  .rail {
-    grid-column: 1;
-    grid-row: 2;
-    position: static;
-    height: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .brand {
-    height: auto;
-    padding: 0 0.5rem 0 0.75rem;
-    border-bottom: 0;
-    white-space: nowrap;
-  }
-  .scope {
-    display: flex;
-    border-bottom: 0;
-    padding: 0.4rem 0.5rem;
-  }
-  .switcher,
-  .switcher-static {
-    white-space: nowrap;
-  }
-  .switcher[open] ul {
-    position: absolute;
-    z-index: 6;
-    min-width: 12rem;
-    margin-top: 0.3rem;
-    padding: 0.4rem 0.75rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-  }
-  /* Brand and switchers on the first row, the links on their own row that scrolls sideways if it must. */
-  .nav {
-    flex: 1 1 100%;
-    flex-direction: row;
-    padding: 0.25rem 0.5rem;
-    overflow-x: auto;
-    border-top: 1px solid var(--border);
-  }
-  .nav a {
-    white-space: nowrap;
-  }
-  .rail-foot {
-    flex: 1 1 100%;
-    padding: 0.4rem 0.75rem;
-  }
-  .topbar,
-  .shell main {
-    grid-column: 1;
-  }
-  .shell main {
-    grid-row: 3;
-  }
-  .shell main.page {
-    padding: 0.75rem 0.75rem 1.5rem;
-  }
-}
-
+/* The application frame (top bar, navigation, scope, person menu) lives in shell.css. */
 h1 {
   font-size: 1.4rem;
   margin: 0.5rem 0;
@@ -598,42 +286,32 @@ td.name {
 .num {
   text-align: right;
 }
-/* One status grammar (ADR-111): a glyph and a word, no outline. Only failure is a filled treatment; amber is retry and waiting;
-   green is quiet; the accent marks something live; grey is neutral. Glyph and word, never colour alone. */
+/* One status grammar (ADR-111, ADR-166): a glyph and a word, no outline and no fill. Failed, timed out and blocked are the one
+   red word (600); waiting is caution text; running is an accent dot with the word in ink; success and the neutral states
+   are ink-2 (success is a check, not green). Glyph and word, never colour alone. */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--space-1);
   padding: 0;
   border: 0;
-  border-radius: 3px;
-  font: 500 0.75rem/1.3 var(--sans);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
   white-space: nowrap;
-  color: var(--fg-2);
-}
-.badge[data-tone="ok"] {
-  color: var(--ok);
+  color: var(--color-text-secondary);
 }
 .badge[data-tone="bad"] {
-  color: var(--fail);
-  font-weight: 600;
-}
-/* The one filled treatment: a run that failed, timed out or was blocked. Findings and flags stay plain red text. */
-.badge[data-status="FAILED"],
-.badge[data-status="TIMED_OUT"],
-.badge[data-status="BLOCKED"] {
-  padding: 0.05rem 0.4rem;
-  color: var(--surface);
-  background: var(--fail);
+  color: var(--color-status-fault);
+  font-weight: var(--weight-strong);
 }
 .badge[data-tone="warn"] {
-  color: var(--wait);
+  color: var(--color-status-caution);
 }
 .badge[data-tone="info"] {
-  color: var(--accent);
+  color: var(--color-text-primary);
 }
-.badge[data-tone="neutral"] {
-  color: var(--muted);
+.badge[data-tone="info"] > [aria-hidden="true"] {
+  color: var(--color-status-running);
 }
 .tag {
   display: inline-block;
@@ -648,11 +326,8 @@ td.name {
   color: var(--warn);
 }
 .state {
-  padding: 1rem 1.25rem;
-  margin: 1rem 0;
-}
-.state[data-state="error"] {
-  --tone: var(--bad);
+  padding: var(--space-4) 0;
+  margin: var(--space-4) 0;
 }
 .state-title {
   font-weight: 600;
@@ -678,7 +353,6 @@ td.name {
     animation: none;
   }
 }
-.filters,
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -717,13 +391,6 @@ legend {
   background: var(--sel);
   border-color: var(--accent);
 }
-.filters label:not(.chip) {
-  display: flex;
-  flex-direction: column;
-  font-size: 0.8rem;
-  color: var(--muted);
-  gap: 0.15rem;
-}
 input[type="text"],
 select {
   font: inherit;
@@ -733,32 +400,39 @@ select {
   background: var(--bg);
   color: var(--fg);
 }
-/* Tone panels: a notice, an empty or error state, withheld content, a search problem. One rule; the tone is a left bar. */
+/* One notice style (ADR-166): a sentence, no bar, no fill. A notice leads with a small "i" mark (decorative: empty alt text);
+   an empty or error state is a statement under a hairline. Nothing here is red. */
 .state,
 .notice,
 .withheld,
 .search-problem,
 .search-notice,
 .evaluation[data-state="failed"] {
-  --tone: var(--border-strong);
-  --tone-bg: var(--surface);
-  background: var(--tone-bg);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--tone);
-  border-radius: 4px;
-  color: var(--fg);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--color-text-primary);
+}
+.state {
+  border-top: 1px solid var(--color-border-subtle);
 }
 .notice,
 .search-notice {
-  --tone: var(--warn);
-  --tone-bg: var(--warn-bg);
-  padding: 0.4rem 0.75rem;
+  padding: var(--space-2) 0;
 }
-.state[data-state="error"],
-.search-problem,
-.evaluation[data-state="failed"] {
-  --tone: var(--bad);
-  --tone-bg: var(--bad-bg);
+.notice::before,
+.search-notice::before {
+  content: "i" / "";
+  display: inline-grid;
+  place-items: center;
+  width: var(--space-4);
+  height: var(--space-4);
+  margin-right: var(--space-2);
+  vertical-align: -0.15em;
+  border: 1.5px solid var(--color-text-secondary);
+  border-radius: var(--radius-control);
+  color: var(--color-text-secondary);
+  font: var(--weight-strong) var(--type-small-size) / 1 var(--font-mono);
 }
 /* An empty state is a statement, not a box: the shell's hairline and small type, no card. */
 .state[data-state="empty"] {
@@ -769,9 +443,8 @@ select {
   border-radius: 0;
 }
 .withheld {
-  --tone: var(--muted);
-  border-style: dashed dashed dashed solid;
-  padding: 0.5rem 0.75rem;
+  padding: var(--space-2) 0;
+  color: var(--color-text-secondary);
 }
 .live-conn {
   font-weight: 600;
@@ -1489,13 +1162,23 @@ a.button,
 button.primary {
   display: inline-block;
   font: inherit;
-  padding: 0.35rem 0.9rem;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--bg);
-  border-radius: 4px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-interactive-default);
+  background: var(--color-interactive-default);
+  color: var(--color-text-inverse);
+  border-radius: var(--radius-control);
   text-decoration: none;
   cursor: pointer;
+}
+a.button:hover,
+button.primary:hover {
+  background: var(--color-interactive-hover);
+  border-color: var(--color-interactive-hover);
+}
+a.button:active,
+button.primary:active {
+  background: var(--color-interactive-active);
+  border-color: var(--color-interactive-active);
 }
 button[disabled] {
   opacity: 0.55;
@@ -1871,21 +1554,21 @@ td a {
   margin: 0.75rem;
 }
 
-/* ---- Runs list: page head, one toolbar row, a dense table ---- */
+/* ---- Page title line (design pass 2): one h1 per document page, 24/30 Sans ---- */
 .page-head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.15rem 0.85rem;
-  margin: 0 0 0.6rem;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-3);
 }
 .page-head h1 {
   margin: 0;
-  font: 600 1.375rem/1.2 var(--cond);
+  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
 }
 .page-head p {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--type-body-size);
 }
 .page-head .toolbar {
   margin: 0;
@@ -1893,8 +1576,8 @@ td a {
 /* Document pages: one head style, one rhythm. */
 .page:not(:has(> .run-detail)) > h1,
 .page:not(:has(> .run-detail)) > div > h1 {
-  font: 600 1.375rem/1.2 var(--cond);
-  margin: 0 0 0.6rem;
+  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
+  margin: 0 0 var(--space-3);
 }
 .page:not(:has(> .run-detail)) h2 {
   font: 600 0.95rem/1.3 var(--cond);
@@ -1906,124 +1589,6 @@ td a {
 }
 .page:not(:has(> .run-detail)) .muted {
   font-size: 0.8rem;
-}
-.toolbar-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 0.9rem;
-  margin: 0 0 0.5rem;
-}
-.toolbar-row fieldset {
-  gap: 0;
-}
-.toolbar-row legend {
-  float: left;
-  margin: 0.25rem 0.5rem 0 0;
-  font: 600 0.66rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.filters .chip {
-  white-space: nowrap;
-}
-.filters fieldset legend + .chip {
-  border-radius: 4px 0 0 4px;
-}
-/* Status filters as one segmented toggle: the native checkbox fills its label at zero opacity, the label is drawn. */
-.filters .chip {
-  position: relative;
-  margin-left: -1px;
-  border-radius: 0;
-  padding: 0.12rem 0.55rem;
-  font-size: 0.75rem;
-  color: var(--fg-2);
-}
-.filters .chip:last-of-type {
-  border-radius: 0 4px 4px 0;
-}
-.filters .chip input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-.filters .chip:has(input:checked) {
-  position: relative;
-  z-index: 1;
-  color: var(--fg);
-  font-weight: 600;
-}
-.filters .chip:has(input:focus-visible) {
-  z-index: 2;
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.filters label:not(.chip) {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.7rem;
-  font-family: var(--cond);
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-.filters input[type="text"],
-.filters select {
-  height: 1.75rem;
-  padding: 0 0.5rem;
-  font-size: 0.8rem;
-  letter-spacing: 0;
-  text-transform: none;
-  background: var(--surface);
-}
-.filters input[type="text"] {
-  width: 11rem;
-}
-.runs table {
-  font-size: 0.8rem;
-}
-.runs th {
-  padding: 0.35rem 0.6rem;
-  font: 600 0.66rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border-strong);
-}
-.runs td {
-  padding: 0.2rem 0.6rem;
-  height: 2rem;
-}
-.runs td.name a {
-  font-weight: 500;
-  color: var(--fg);
-  text-decoration: none;
-}
-.runs td.name a:hover,
-.runs td.name a:focus-visible {
-  color: var(--accent);
-  text-decoration: underline;
-}
-.runs td.name .tag {
-  margin-left: 0.5rem;
-}
-.runs tbody tr:hover {
-  background: var(--surface);
-}
-.runs td.num strong {
-  color: var(--bad);
-  font-weight: 600;
-}
-.runs > button {
-  margin-top: 0.6rem;
-}
-.runs .state {
-  margin: 0.5rem 0;
 }
 
 /* ---- Phone: readouts as an even grid, tabs on one row ---- */

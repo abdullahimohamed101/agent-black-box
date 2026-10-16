@@ -28,32 +28,6 @@
   margin: 0.6rem 0 0;
 }
 
-/* Full-page error and not-found. */
-.state-page {
-  max-width: 34rem;
-  margin: 0 auto;
-  padding: 4rem 1rem;
-  display: grid;
-  gap: 0.75rem;
-  justify-items: start;
-}
-.state-page h1 {
-  font-family: var(--serif);
-  font-weight: 500;
-  font-size: var(--fs-headline);
-  line-height: 1.25;
-  margin: 0.5rem 0 0;
-}
-.state-page p {
-  margin: 0;
-}
-.state-page .state-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  align-items: center;
-}
-
 .illus-sm {
   width: 3.25rem;
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ApiHealth } from "@/components/ApiHealth";
+import { auth } from "@/copy/auth";
 import { fixturesMode } from "@/server/config";
 import { loadMe } from "@/server/session";
 import { Brand } from "@/components/shell/Brand";
@@ -13,12 +14,12 @@ export default async function Home() {
   // Fixture data has no person: keep the plain entry page.
   if (fixturesMode()) {
     return (
-      <main id="main" className="auth auth-page">
+      <main id="main" className="auth-page">
         <Brand />
-        <h1>Agent Black Box</h1>
-        <p className="muted">Flight recorder for AI agents. </p>
+        <h1>{auth.home.fixtureTitle}</h1>
+        <p className="auth-context">{auth.home.fixtureLede}</p>
         <p>
-          <Link href="/w/default/projects/all">Open the dashboard →</Link>
+          <Link href="/w/default/projects/all/runs">{auth.home.fixtureOpen}</Link>
         </p>
         <ApiHealth />
       </main>
@@ -28,25 +29,22 @@ export default async function Home() {
   if (me.status === "unauthenticated") redirect("/login");
   if (me.status === "unavailable") {
     return (
-      <main id="main" className="auth auth-page">
+      <main id="main" className="auth-page">
         <Brand />
-        <h1>Agent Black Box</h1>
+        <h1>{auth.home.fixtureTitle}</h1>
         <p role="alert" className="notice">
-          {me.message} Try again shortly.
+          {me.message} {auth.home.unavailableSuffix}
         </p>
       </main>
     );
   }
   const first = me.status === "ok" ? me.value.memberships[0] : undefined;
-  if (first) redirect(`/w/${first.workspace.slug}/projects/all`);
+  if (first) redirect(`/w/${first.workspace.slug}/projects/all/runs`);
   return (
-    <main id="main" className="auth auth-page">
+    <main id="main" className="auth-page">
       <Brand />
-      <h1>No workspaces yet</h1>
-      <p className="muted">
-        You are signed in, but you are not a member of any workspace. Ask a workspace owner for an
-        invitation link, then open it.
-      </p>
+      <h1>{auth.home.noWorkspacesTitle}</h1>
+      <p className="auth-context">{auth.home.noWorkspaces}</p>
       <SignOutButton />
     </main>
   );
