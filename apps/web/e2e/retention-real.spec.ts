@@ -124,7 +124,9 @@ test("a period below the floor is refused on the page", async () => {
   await page.getByLabel("Artifacts days").fill("3");
   await page.getByRole("button", { name: "Save periods" }).click();
   await expect(
-    page.locator("[role=alert]:not(#__next-route-announcer__)").filter({ hasText: "at least 7 days" }),
+    page
+      .locator("[role=alert]:not(#__next-route-announcer__)")
+      .filter({ hasText: "at least 7 days" }),
   ).toBeVisible();
   await axe(page);
   expect(errors).toEqual([]);
@@ -138,7 +140,7 @@ test("a run page in each trace state: available, being deleted, expired, and gon
 
   await page.goto(runUrl(AVAILABLE!));
   await expect(page.getByTestId("trace-notice")).toHaveCount(0);
-  await expect(page.getByRole("tab").first()).toBeVisible();
+  await expect(page.getByTestId("progress")).toBeVisible();
   await axe(page);
 
   await page.goto(runUrl(DELETING!));

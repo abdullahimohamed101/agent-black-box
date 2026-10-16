@@ -189,7 +189,11 @@ def gate6() -> None:
     text = purge_text(done)
     check(code == 0 and "done" in text, "purge-project --confirm doomed completes (exit 0)", exit=code)
     left = rows_of_project(doomed_project, doomed_runs)
+    # What stays by design (ADR-163): the platform purge record and the per-run tombstones (ids only, no names or content).
+    permanent = {t: left.pop(t) for t in ("purge_tombstones", "retention_tombstones") if t in left}
     check(not left, "zero rows of the project in EVERY table with a project_id or run_id column (information_schema scan)", scanned=len(columns("project_id")) + len(columns("run_id")), before=sum(before_rows.values()), left=left)
+    check(permanent.get("purge_tombstones") == 1 and permanent.get("retention_tombstones", 0) >= len(doomed_runs),
+          "only the permanent records remain: the one purge record and the per-run tombstones (ids only)", permanent=permanent)
     check(not any(lib.file_exists(k) for k in keys_of_files) and keys_of_files, "zero artifact files of the project", files=len(keys_of_files))
     check(lib.files_digest() == {k: v for k, v in before_files.items() if k not in set(keys_of_files)}, "every other artifact file is byte-identical")
     after_outside = outside_digest(doomed_project, None, ws_a)
@@ -200,12 +204,13 @@ def gate6() -> None:
     check(after.status_code == 401 and unknown.status_code == 401 and lib.H.scrub(after.json()) == lib.H.scrub(unknown.json()),
           "the project's API key stops working at once with the uniform 401 (same answer as a key that never existed)", status=after.status_code, code=lib.H.error_code(after))
     check(owner.get(f"/v1/runs/{lib.seeded('doomed')[0].run}").status_code == 404, "API: a run of the purged project is 404")
-    other = httpx.post(f"{base}/v1/events/batch", json={"events": []}, headers=lib.bearer(keys["sibling"]), timeout=30)
-    check(other.status_code in {200, 202}, "the sibling project's key still works", status=other.status_code)
+    _, sibling_events = lib.run_events("sibling-agent")
+    other = httpx.post(f"{base}/v1/events/batch", json={"events": sibling_events}, headers=lib.bearer(keys["sibling"]), timeout=30)
+    check(other.status_code == 202, "the sibling project's key still works (202)", status=other.status_code)
     code, again = lib.run_retention("purge-project", "--workspace", slug_a, "--project", "doomed", name="purge-project-again")
     check(code == 3, "a second purge of the same project says not found (exit 3)", exit=code)
     purge_record = lib.db("select scope, state, completed_at is not null from purge_tombstones where project_id = $1", doomed_project)
-    check(len(purge_record) == 1 and purge_record[0][1] == "done", "one purge record (ids and counts only) survives", record=[tuple(r) for r in purge_record])
+    check(len(purge_record) == 1 and purge_record[0][1] == "completed", "one purge record (ids and counts only) survives", record=[tuple(r) for r in purge_record])
     check(lib.audit_actions(owner).count("retention.purge.project") == 1, "one counts-only audit entry, retention.purge.project")
 
     # ---- purge-workspace
@@ -238,5 +243,5 @@ def gate6() -> None:
     check(c_key.status_code == 401 and c_key.json().get("error", {}).get("code") == unknown_key_reply(base).json().get("error", {}).get("code"),
           "the workspace's API key answers the uniform 401", status=c_key.status_code)
     record = lib.db("select scope, state from purge_tombstones where workspace_id = $1 and scope = 'workspace'", ws_c)
-    check(len(record) == 1 and record[0][1] == "done", "one purge record survives for the workspace", record=[tuple(r) for r in record])
+    check(len(record) == 1 and record[0][1] == "completed", "one purge record survives for the workspace", record=[tuple(r) for r in record])
     lib.finish()
