@@ -1570,6 +1570,11 @@ retention_policies = Table(
         for column in (
             Column(f"{tier}_days", Integer),
             Column(f"{tier}_forever", Boolean, nullable=False, server_default=text("false")),
+            # The value in force before a shortening and when the shortening takes effect
+            # (migration 0105): until then the longer of the two is enforced. NULL: none pending.
+            Column(f"{tier}_prev_days", Integer),
+            Column(f"{tier}_prev_forever", Boolean, nullable=False, server_default=text("false")),
+            _ts(f"{tier}_effective_at"),
         )
     ],
     _ts("updated_at", nullable=False, default_now=True),
@@ -1586,6 +1591,15 @@ retention_policies = Table(
             CheckConstraint(
                 f"NOT {tier}_forever OR {tier}_days IS NULL",
                 name=f"ck_retention_policies_{tier}_forever",
+            ),
+            CheckConstraint(
+                f"{tier}_prev_days IS NULL OR {tier}_prev_days BETWEEN {RETENTION_FLOOR_DAYS} "
+                f"AND {RETENTION_CEILING_DAYS}",
+                name=f"ck_retention_policies_{tier}_prev_days",
+            ),
+            CheckConstraint(
+                f"NOT {tier}_prev_forever OR {tier}_prev_days IS NULL",
+                name=f"ck_retention_policies_{tier}_prev_forever",
             ),
         )
     ],
