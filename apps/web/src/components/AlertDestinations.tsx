@@ -89,7 +89,7 @@ export function AlertDestinations({
         />
       )}
       {canWrite && !adding && items.length > 0 && (
-        <p>
+        <p className="al-add">
           <button type="button" className="primary" onClick={() => setAdding(true)}>
             Add a destination
           </button>
@@ -106,7 +106,7 @@ export function AlertDestinations({
       )}
       {items.length === 0 ? (
         <div className="al-empty" data-testid="alerts-empty">
-          <Empty title="Add a destination, then a rule">
+          <Empty motif="none" title="Add a destination, then a rule">
             Alerts need somewhere to go. Add one above; then make a rule that uses it.
           </Empty>
         </div>

@@ -1,19 +1,21 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { settings } from "@/copy/settings";
 import { ALERT_TABS, parseAlertTab, type AlertTab } from "@/lib/alerts";
 import { AlertDestinations } from "./AlertDestinations";
 import { AlertHistory } from "./AlertHistory";
 import { AlertRules, type Intent } from "./AlertRules";
-import { Forbidden } from "./SettingsKit";
+import { Forbidden, Lede } from "./SettingsKit";
+import { Tabs, tabIds } from "./Tabs";
 import { useCan } from "./WorkspaceProvider";
 import "../app/alerts.css";
 
 /**
- * The workspace Alerts page. The tab is the URL's `?tab=`, so a link opens exactly this view. Owners and admins manage;
- * other roles read rules and history. Alerts are best-effort notifications with at-least-once delivery, and say so.
+ * The Alerts tab of Settings. Rules, Destinations and History are tabs of the shared component, and the tab is the URL's
+ * `?tab=`, so a link opens exactly this view. Owners and admins manage; other roles read rules and history. Alerts are
+ * best-effort notifications with at-least-once delivery, and say so.
  */
 export function AlertsPage() {
   const canRead = useCan("alert.read");
@@ -21,6 +23,7 @@ export function AlertsPage() {
   const sp = useSearchParams();
   const tab = parseAlertTab(sp?.get("tab"));
   const [intent, setIntent] = useState<{ tab: AlertTab; value: Intent } | null>(null);
+  const c = settings.alerts;
 
   const href = (t: AlertTab) => (t === "rules" ? pathname : `${pathname}?tab=${t}`);
   const go = (t: AlertTab, value: Intent = null) => {
@@ -31,52 +34,27 @@ export function AlertsPage() {
   if (!canRead)
     return (
       <div className="al-page">
-        <Head />
+        <Lede>{c.lede}</Lede>
         <Forbidden what="alerts" />
       </div>
     );
   const mine = intent?.tab === tab ? intent.value : null;
   return (
     <div className="al-page">
-      <Head />
-      <nav className="al-tabs" aria-label="Alert sections">
-        <ul>
-          {ALERT_TABS.map((t) => (
-            <li key={t.key}>
-              <Link
-                href={href(t.key)}
-                aria-current={tab === t.key ? "page" : undefined}
-                onClick={(e) => {
-                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                  e.preventDefault();
-                  go(t.key);
-                }}
-              >
-                {t.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
-      {tab === "rules" && <AlertRules go={go} intent={mine} />}
-      {tab === "destinations" && <AlertDestinations go={go} intent={mine} />}
-      {tab === "history" && <AlertHistory />}
-      <p className="muted al-foot">
-        Alerts are notifications that are sent as soon as possible and may arrive more than once.
-        They carry names, ids and counts, never what an agent read, wrote or ran.
-      </p>
-    </div>
-  );
-}
-
-function Head() {
-  return (
-    <div className="page-head">
-      <h1>Alerts</h1>
-      <p className="muted">
-        Tell a person or a channel when a run fails, a security finding appears, an approval needs
-        attention or spend goes over a limit.
-      </p>
+      <Lede>{c.lede}</Lede>
+      <Tabs
+        label={c.tabsLabel}
+        idBase="alerts"
+        items={ALERT_TABS.map((t) => ({ id: t.key, label: c.tabs[t.key] }))}
+        value={tab}
+        onChange={(t) => go(t)}
+      />
+      <div role="tabpanel" className="al-panel" {...tabIds("alerts", tab)}>
+        {tab === "rules" && <AlertRules go={go} intent={mine} />}
+        {tab === "destinations" && <AlertDestinations go={go} intent={mine} />}
+        {tab === "history" && <AlertHistory />}
+      </div>
+      <p className="muted al-foot">{c.foot}</p>
     </div>
   );
 }
