@@ -328,7 +328,7 @@ def compose_backup(src_db: str, artifacts: Path, work: Path, bundles_dir: Path) 
     # temporary directory), so the compose step works in a directory under the repository's git-ignored .local/, with a copy of the
     # artifact directory (the same bytes the other backups read). The container runs as uid 10001, not as this user: it must be able
     # to read the copy and to write ./backups; in a real compose stack the artifact volume is owned by that uid.
-    share = ROOT / ".local" / f"backup-drill-{os.getpid()}"
+    share = Path(os.environ.get("BACKUP_DRILL_SHARE") or ROOT / ".local" / f"backup-drill-{os.getpid()}")
     shutil.rmtree(share, ignore_errors=True)
     share.mkdir(parents=True)
     shutil.copytree(artifacts, share / "artifacts")

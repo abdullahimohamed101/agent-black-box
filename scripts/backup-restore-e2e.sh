@@ -18,6 +18,12 @@ root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"
 set -a; if [ -f ./.env ]; then . ./.env; else . ./.env.example; fi; set +a
 unset ABB_RETENTION_DATABASE_URL ABB_MIGRATION_DATABASE_URL ABB_RETENTION_MODE ABB_BACKUP_DATABASE_URL ABB_RESTORE_DATABASE_URL ABB_ROTATION_DATABASE_URL \
       ABB_RUNTIME_DB_PASSWORD ABB_RETENTION_DB_PASSWORD
+# These scripts DROP and recreate their own databases and roles on the server ABB_DATABASE_URL names: refuse anything but a local one
+# unless the operator says, in so many words, that it is meant (a shared or production server would lose its `abb_p19b6_*` objects).
+case "$(printf '%s' "$ABB_DATABASE_URL" | sed -E 's#^[a-z+]+://([^@/]*@)?(\[[^]]*\]|[^:/?]*).*#\2#')" in
+  localhost|127.0.0.1|'[::1]') ;;
+  *) [ "${ABB_E2E_ALLOW_REMOTE_DATABASE:-}" = "1" ] || { echo "$(basename "$0"): ABB_DATABASE_URL is not a local database; set ABB_E2E_ALLOW_REMOTE_DATABASE=1 to run against it knowingly" >&2; exit 2; } ;;
+esac
 SRC_DB="abb_p19b6_drill_src"; RUNTIME_ROLE="abb_p19b6_drill_rt"
 OWNER_URL="${ABB_DATABASE_URL%/*}/$SRC_DB"
 rand() { LC_ALL=C tr -dc "$1" </dev/urandom | head -c "$2" || true; }
@@ -31,6 +37,8 @@ export ABB_ALERTS_DELIVERY_ENABLED=true ABB_ALERTS_SWEEP_INTERVAL_SECONDS=2 ABB_
 export ABB_ALERTS_WRITES_PER_MINUTE=100000 ABB_ALERTS_TESTS_PER_MINUTE=100000
 export ABB_SMTP_HOST=127.0.0.1 ABB_SMTP_PORT=$SMTP_PORT ABB_SMTP_STARTTLS=false ABB_SMTP_FROM=alerts@abb.example.test
 WORK="$(mktemp -d)"; pids=()
+# The driver's Docker bind-mount directory is named after THIS run, so a cleanup never removes another drill's.
+export BACKUP_DRILL_SHARE="$root/.local/backup-drill-$$"
 export ABB_ALERTS_TEST_NETWORK_FILE="$WORK/net.json"
 export ABB_ALERTS_ALLOWED_PORTS="443,$MAIN_PORT,$SLACK_PORT,$FLAKY_PORT"
 kill_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done; kill "$1" 2>/dev/null || true; }
@@ -50,7 +58,7 @@ PY
   if [ -n "${BACKUP_RESTORE_E2E_LOG_DIR:-}" ]; then
     mkdir -p "$BACKUP_RESTORE_E2E_LOG_DIR" && for f in "$WORK"/*.log "$WORK"/results.jsonl; do cp "$f" "$BACKUP_RESTORE_E2E_LOG_DIR"/ 2>/dev/null || true; done
   fi
-  rm -rf "$WORK" "$root"/.local/backup-drill-* 2>/dev/null || true
+  rm -rf "$WORK" "$BACKUP_DRILL_SHARE" 2>/dev/null || true
 }
 trap cleanup EXIT
 step() { printf '\n==> %s\n' "$*"; }

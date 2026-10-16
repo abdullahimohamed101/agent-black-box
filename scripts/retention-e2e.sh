@@ -24,6 +24,12 @@ set -a; if [ -f ./.env ]; then . ./.env; else . ./.env.example; fi; set +a
 unset ABB_RETENTION_DATABASE_URL ABB_MIGRATION_DATABASE_URL ABB_RETENTION_MODE ABB_BACKUP_DATABASE_URL ABB_RESTORE_DATABASE_URL ABB_ROTATION_DATABASE_URL \
       ABB_RETENTION_ARTIFACTS_DAYS ABB_RETENTION_TRACE_DAYS ABB_RETENTION_RUN_DAYS ABB_RETENTION_AUDIT_DAYS \
       ABB_RUNTIME_DB_PASSWORD ABB_RETENTION_DB_PASSWORD
+# These scripts DROP and recreate their own databases and roles on the server ABB_DATABASE_URL names: refuse anything but a local one
+# unless the operator says, in so many words, that it is meant (a shared or production server would lose its `abb_p19b6_*` objects).
+case "$(printf '%s' "$ABB_DATABASE_URL" | sed -E 's#^[a-z+]+://([^@/]*@)?(\[[^]]*\]|[^:/?]*).*#\2#')" in
+  localhost|127.0.0.1|'[::1]') ;;
+  *) [ "${ABB_E2E_ALLOW_REMOTE_DATABASE:-}" = "1" ] || { echo "$(basename "$0"): ABB_DATABASE_URL is not a local database; set ABB_E2E_ALLOW_REMOTE_DATABASE=1 to run against it knowingly" >&2; exit 2; } ;;
+esac
 DB_NAME="${RETENTION_E2E_DB_NAME:-abb_p19b6_retention}"
 RUNTIME_ROLE="abb_p19b6_ret_runtime"; RETENTION_ROLE="abb_p19b6_ret_job"
 OWNER_URL="${ABB_DATABASE_URL%/*}/$DB_NAME"
