@@ -361,7 +361,7 @@ describe("the winner in words", () => {
     expect(v.kind).toBe("lead");
     expect(v.leader).toBe("b");
     expect(v.text).toBe(
-      "new prompt leads on success rate: 80% against 60% for baseline. It also cost less, at a median $0.10 against $0.20. Based on 10 finished runs for new prompt and 10 for baseline.",
+      "New prompt leads on success rate: 80% against 60% for baseline. It also cost less, at a median $0.10 against $0.20. Based on 10 finished runs for new prompt and 10 for baseline.",
     );
   });
 
@@ -373,7 +373,7 @@ describe("the winner in words", () => {
       ),
     );
     expect(v.leader).toBe("a");
-    expect(v.text).toContain("baseline leads on success rate: 100% against 0% for wrong fix.");
+    expect(v.text).toContain("Baseline leads on success rate: 100% against 0% for wrong fix.");
     expect(v.text).toContain("It cost more, at a median $0.17 against $0.14.");
     expect(v.text).toContain("Based on 1 finished run for baseline and 1 for wrong fix.");
     expect(v.text).toMatch(/too few to be sure\.$/);
@@ -388,7 +388,7 @@ describe("the winner in words", () => {
     );
     expect(cheaper.leader).toBe("b");
     expect(cheaper.text).toContain(
-      "small model and baseline both succeeded in 90% of runs, and small model cost less",
+      "Small model and baseline both succeeded in 90% of runs, and small model cost less",
     );
     const tie = verdictOf(
       exp(mk("a", "baseline", "baseline", 0.9, 8, 0.3), mk("b", "same", "candidate", 0.9, 8, 0.3)),
@@ -399,6 +399,49 @@ describe("the winner in words", () => {
       "No variant leads: baseline and same both succeeded in 90% of runs.",
     );
     expect(tie.text).toContain("The median cost is the same, $0.30.");
+  });
+
+  it("decides on the printed precision: rates that both read 80% and costs that both read $0.0120 are ties", () => {
+    const sameRate = verdictOf(
+      exp(
+        mk("a", "baseline", "baseline", 0.804, 10, 0.3),
+        mk("b", "same", "candidate", 0.801, 10, 0.1),
+      ),
+    );
+    // equal as printed, so the cost breaks the tie rather than "80% against 80%"
+    expect(sameRate.text).not.toMatch(/leads on success rate/);
+    expect(sameRate.leader).toBe("b");
+    expect(sameRate.text).toContain("both succeeded in 80% of runs");
+    const sameCost = verdictOf(
+      exp(
+        mk("a", "baseline", "baseline", 0.8, 10, 0.01201),
+        mk("b", "same", "candidate", 0.8, 10, 0.01204),
+      ),
+    );
+    expect(sameCost.kind).toBe("tie");
+    expect(sameCost.text).toContain("The median cost is the same, $0.0120.");
+    const differs = verdictOf(
+      exp(
+        mk("a", "baseline", "baseline", 0.8, 10, 0.012),
+        mk("b", "other", "candidate", 0.8, 10, 0.014),
+      ),
+    );
+    expect(differs.leader).toBe("a");
+  });
+
+  it("says when it compares two of more than two variants", () => {
+    const three = verdictOf(
+      exp(
+        mk("a", "baseline", "baseline", 0.9, 10, 0.3),
+        mk("b", "one", "candidate", 0.7, 10, 0.1),
+        mk("c", "two", "candidate", 0.5, 10, 0.1),
+      ),
+    );
+    expect(three.text).toContain("It compares the top 2 of 3 variants with finished runs.");
+    const two = verdictOf(
+      exp(mk("a", "baseline", "baseline", 0.9, 10, 0.3), mk("b", "one", "candidate", 0.7, 10, 0.1)),
+    );
+    expect(two.text).not.toContain("top 2 of");
   });
 
   it("says there is not enough to compare when fewer than two variants have finished runs", () => {
@@ -421,6 +464,11 @@ describe("the winner in words", () => {
     const items = within(bars).getAllByRole("listitem");
     expect(items.map((i) => i.textContent)).toEqual(["baseline100%", "wrong fix0%"]);
     expect(items[0]).toHaveAttribute("data-lead", "true");
+    // the leader cost more here, so the cost chart marks the cheaper variant instead
+    const cost = within(screen.getByRole("list", { name: /median cost/i })).getAllByRole(
+      "listitem",
+    );
+    expect(cost.map((i) => i.getAttribute("data-lead"))).toEqual([null, "true"]);
     // the sentence comes before the control notice and the tables
     const banner = screen.getByTestId("control-banner");
     expect(

@@ -80,6 +80,20 @@ export function baselineRunId(e: Pick<ExperimentOut, "variants" | "runs">): stri
   return e.runs.find((r) => r.variant_id === baseline?.id)?.run_id ?? null;
 }
 
+/** A cost as it is printed, as a number, so two costs that read the same compare as equal. */
+const shownCost = (usd: number): number => Number(formatCost(usd).slice(1));
+
+/** The variant with the lowest printed median cost, or null when none is costed or the lowest is shared (the cost chart's mark). */
+export function cheapestOf(rows: { id: string; median: number | null }[]): string | null {
+  const costed = rows.flatMap((r) =>
+    r.median == null ? [] : [{ id: r.id, c: shownCost(r.median) }],
+  );
+  if (costed.length < 2) return null;
+  const low = Math.min(...costed.map((r) => r.c));
+  const at = costed.filter((r) => r.c === low);
+  return at.length === 1 ? at[0]!.id : null;
+}
+
 /** Below this many finished runs in either variant the sentence says the comparison is too thin to rely on. */
 export const SMALL_SAMPLE = 5;
 
@@ -103,40 +117,47 @@ export function verdictOf(e: Pick<ExperimentOut, "variants" | "metrics">): Verdi
     return m && m.finished > 0 && m.success_rate != null ? [{ variant, m }] : [];
   });
   if (rows.length < 2) return { kind: "none", leader: null, text: v.none };
-  const cost = (r: (typeof rows)[number]) => r.m.cost_usd.median ?? Number.POSITIVE_INFINITY;
-  const ranked = [...rows].sort(
-    (x, y) => y.m.success_rate! - x.m.success_rate! || cost(x) - cost(y),
-  );
+  // Decide on what the sentence prints: two rates that both read "80%", or two costs that both read "$0.0120", are a tie.
+  const rate = (r: (typeof rows)[number]) => Math.round(r.m.success_rate! * 100);
+  const cost = (r: (typeof rows)[number]) =>
+    r.m.cost_usd.median == null ? Number.POSITIVE_INFINITY : shownCost(r.m.cost_usd.median);
+  const ranked = [...rows].sort((x, y) => rate(y) - rate(x) || cost(x) - cost(y));
   const [a, b] = [ranked[0]!, ranked[1]!];
   const [na, nb] = [a.variant.name, b.variant.name];
-  const basis = v.basis(na, a.m.finished, nb, b.m.finished);
+  const of = rows.length > 2 ? ` ${v.of(rows.length)}` : "";
+  const basis = `${v.basis(na, a.m.finished, nb, b.m.finished)}${of}`;
   const thin = Math.min(a.m.finished, b.m.finished) < SMALL_SAMPLE ? ` ${v.small}` : "";
   const [ca, cb] = [a.m.cost_usd.median, b.m.cost_usd.median];
   const costed = ca != null && cb != null;
-  if (a.m.success_rate !== b.m.success_rate) {
+  const [sa, sb] = costed ? [shownCost(ca), shownCost(cb)] : [0, 0];
+  const done = (r: Verdict): Verdict => ({
+    ...r,
+    text: r.text.charAt(0).toUpperCase() + r.text.slice(1),
+  });
+  if (rate(a) !== rate(b)) {
     const costLine = !costed
       ? ""
-      : ca < cb
+      : sa < sb
         ? ` ${v.costLess(formatCost(ca), formatCost(cb))}`
-        : ca > cb
+        : sa > sb
           ? ` ${v.costMore(formatCost(ca), formatCost(cb))}`
           : "";
-    return {
+    return done({
       kind: "lead",
       leader: a.variant.id,
       text: `${v.leadsOnSuccess(na, pct(a.m.success_rate), nb, pct(b.m.success_rate))}${costLine} ${basis}${thin}`,
-    };
+    });
   }
-  if (costed && ca < cb)
-    return {
+  if (costed && sa < sb)
+    return done({
       kind: "lead",
       leader: a.variant.id,
       text: `${v.leadsOnCost(na, pct(a.m.success_rate), nb, formatCost(ca), formatCost(cb))} ${basis}${thin}`,
-    };
-  const same = costed && ca === cb ? ` ${v.costSame(formatCost(ca))}` : "";
-  return {
+    });
+  const same = costed && sa === sb ? ` ${v.costSame(formatCost(ca))}` : "";
+  return done({
     kind: "tie",
     leader: null,
     text: `${v.tie(na, nb, pct(a.m.success_rate))}${same} ${basis}${thin}`,
-  };
+  });
 }

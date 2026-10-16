@@ -17,6 +17,7 @@ import {
   num,
   parseConfig,
   pct,
+  cheapestOf,
   verdictOf,
   warningText,
 } from "@/lib/experiments";
@@ -445,6 +446,8 @@ export function ExperimentDetail({ base, experimentId }: { base: Base; experimen
     const m = byVariant.get(v.id);
     return m && m.finished > 0 ? [{ v, m }] : [];
   });
+  // The cost chart marks the cheaper variant: the verdict's leader may be the one that cost more.
+  const cheapest = cheapestOf(rated.map(({ v, m }) => ({ id: v.id, median: m.cost_usd.median })));
   return (
     <div className="experiment st" data-testid="experiment">
       <TitleLine href={experimentsPath(base)} title={e.name} back={t.back} />
@@ -495,7 +498,7 @@ export function ExperimentDetail({ base, experimentId }: { base: Base; experimen
                   label: v.name,
                   value: m.cost_usd.median ?? 0,
                   display: distCost(m.cost_usd).median,
-                  lead: v.id === verdict.leader,
+                  lead: v.id === cheapest,
                 }))}
               />
             </div>

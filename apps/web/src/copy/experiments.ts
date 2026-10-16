@@ -127,6 +127,7 @@ export const experiments = {
     costSame: (c: string) => `The median cost is the same, ${c}.`,
     basis: (a: string, na: number, b: string, nb: number) =>
       `Based on ${runs(na)} for ${a} and ${nb} for ${b}.`,
+    of: (n: number) => `It compares the top 2 of ${n} variants with finished runs.`,
     small: "That is too few to be sure.",
   },
 } as const;
