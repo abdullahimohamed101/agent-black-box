@@ -171,4 +171,4 @@ async def _audit(
                 details=details,
             ),
         )
-    logger.info(action.replace(".", " "), extra={"user": actor, **details})
+    logger.info("session audit", extra={"action": action, "user": actor, **details})
