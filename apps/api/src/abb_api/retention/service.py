@@ -130,6 +130,20 @@ class RetentionApiService:
     def _audit_floor(self) -> int:
         return self._settings.retention_audit_floor_days
 
+    def _validate(
+        self, merged: dict[m.Tier, m.TierSetting], changed: list[m.Tier]
+    ) -> dict[m.Tier, int | None]:
+        """The saved choices must be a valid policy. The audit minimum applies to a value being
+        changed, not to one saved before the minimum existed (the job enforces it, KI-254), so such
+        a workspace can still edit its other tiers."""
+        try:
+            days = m.validate(self._defaults, merged)
+            if m.Tier.AUDIT in changed:
+                m.check_setting(m.Tier.AUDIT, merged[m.Tier.AUDIT], self._audit_floor)
+        except m.RetentionInvalid as error:
+            raise policy_invalid(error, self._audit_floor) from None
+        return days
+
     def _grace(self) -> timedelta:
         return timedelta(hours=self._settings.retention_grace_hours)
 
@@ -190,11 +204,8 @@ class RetentionApiService:
             await repo.ensure_row(actor.id[:128])
             before = await repo.get(lock=True)
             merged = {**before.settings, **given}
-            try:
-                m.validate(self._defaults, merged, self._audit_floor)
-            except m.RetentionInvalid as error:
-                raise policy_invalid(error, self._audit_floor) from None
             changed = [tier for tier in m.Tier if before.settings[tier] != merged[tier]]
+            self._validate(merged, changed)
             if m.Tier.AUDIT in changed:
                 # The audit log shows who changed the policy: only an owner may change its period.
                 await authorize_audited(request, principal, actions.RETENTION_AUDIT_WRITE)
@@ -253,10 +264,9 @@ class RetentionApiService:
                 await conn.execute(text(f"SET LOCAL statement_timeout = {timeout_ms}"))
                 policy = await PolicyRepository(conn, principal.tenant).get()
                 merged = {**policy.settings, **proposed}
-                try:
-                    days = m.validate(self._defaults, merged, self._audit_floor)
-                except m.RetentionInvalid as error:
-                    raise policy_invalid(error, self._audit_floor) from None
+                days = self._validate(
+                    merged, [t for t in proposed if merged[t] != policy.settings[t]]
+                )
                 out: list[s.PreviewTierOut] = []
                 for tier in tiers:
                     # The same rule as a save: what would be enforced now, and from when the

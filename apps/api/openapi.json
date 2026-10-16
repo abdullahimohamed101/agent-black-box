@@ -5483,6 +5483,40 @@
         "title": "PendingCount",
         "type": "object"
       },
+      "PendingShorteningOut": {
+        "description": "A shortening that has not taken effect: the longer period still applies until then.",
+        "properties": {
+          "current_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The period enforced until then (the longer of the two); null: forever.",
+            "title": "Current Days"
+          },
+          "current_forever": {
+            "title": "Current Forever",
+            "type": "boolean"
+          },
+          "effective_at": {
+            "description": "When the shorter period starts to apply.",
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effective_at",
+          "current_days",
+          "current_forever"
+        ],
+        "title": "PendingShorteningOut",
+        "type": "object"
+      },
       "Percentiles": {
         "description": "Approximate: read from duration histograms with about 10% wide buckets (ADR-043).",
         "properties": {
@@ -5781,6 +5815,31 @@
             ],
             "title": "Days"
           },
+          "effective_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the shorter period would start to apply; null: at once.",
+            "title": "Effective At"
+          },
+          "enforced_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The period the job applies right now if this policy were saved (the longer of the old and the new while a shortening waits); null: forever. The counts below are for `days`, once the shortening takes effect.",
+            "title": "Enforced Days"
+          },
           "events": {
             "title": "Events",
             "type": "integer"
@@ -5819,6 +5878,7 @@
           "tier",
           "days",
           "forever",
+          "enforced_days",
           "cutoff",
           "runs",
           "events",
@@ -6807,8 +6867,18 @@
       },
       "RetentionPolicyOut": {
         "properties": {
+          "audit_floor_days": {
+            "description": "The audit tier's own minimum (owners only).",
+            "title": "Audit Floor Days",
+            "type": "integer"
+          },
           "floor_days": {
             "title": "Floor Days",
+            "type": "integer"
+          },
+          "grace_hours": {
+            "description": "A shortening takes effect after this many hours (0: at once).",
+            "title": "Grace Hours",
             "type": "integer"
           },
           "mode": {
@@ -6857,6 +6927,8 @@
           "tiers",
           "mode",
           "floor_days",
+          "audit_floor_days",
+          "grace_hours",
           "updated_at",
           "updated_by"
         ],
@@ -8963,7 +9035,7 @@
                 "type": "null"
               }
             ],
-            "description": "Days a run (or audit entry) is kept after it ended; null: kept forever.",
+            "description": "Days a run (or audit entry) is kept after it ended, as saved; null: kept forever. While `pending` is set the longer `pending.current_days` is what is enforced.",
             "title": "Days"
           },
           "default_days": {
@@ -8981,6 +9053,17 @@
           "forever": {
             "title": "Forever",
             "type": "boolean"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingShorteningOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set while a saved shortening waits for its effective time."
           },
           "source": {
             "description": "`workspace` when this workspace chose it, else `default`.",
@@ -21600,7 +21683,7 @@
         ]
       },
       "put": {
-        "description": "Tiers left out stay as they are; a whole number of days (at least 7) sets that tier; `\"forever\"` keeps it for good; `null` returns it to the environment default. Artifacts cannot outlast trace detail, nor trace detail the run record. Owners and admins only. Each changed tier writes one audit entry (`retention.policy.update`: the tier, the old and the new value). Shortening a period deletes nothing by itself: the retention job applies the policy, and in dry-run mode (the default) only reports what it would delete.",
+        "description": "Tiers left out stay as they are; a whole number of days (at least 7) sets that tier; `\"forever\"` keeps it for good; `null` returns it to the environment default. Artifacts cannot outlast trace detail, nor trace detail the run record. Owners and admins only. Each changed tier writes one audit entry (`retention.policy.update`: the tier, the old and the new value, and when it takes effect). A shortening takes effect after the grace period (`grace_hours`); until then the longer period is enforced, and saving the previous value again cancels it. Lengthening is immediate. Only an owner may change the audit tier (403 for an admin), whose minimum is `audit_floor_days`. Shortening deletes nothing by itself: the retention job applies the policy, and in dry-run mode (the default) only reports what it would delete.",
         "operationId": "put_retention_v1_workspaces__workspace_id__retention_put",
         "parameters": [
           {

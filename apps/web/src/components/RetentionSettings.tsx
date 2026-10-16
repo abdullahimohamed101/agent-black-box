@@ -16,11 +16,16 @@ import {
   TIER_ORDER,
   changedBody,
   describeDays,
+  cancelBody,
   describeTier,
   draftsOf,
+  floorOf,
+  graceSentence,
   isDirty,
+  pendingSentence,
   previewParams,
   previewSentence,
+  previewTiming,
   previewSummary,
   propose,
   reportCounts,
@@ -121,6 +126,7 @@ function Policy({
 }) {
   const ws = useWorkspace();
   const canEdit = useCan("retention.write");
+  const canEditAudit = useCan("retention.audit.write");
   const [drafts, setDrafts] = useState<Drafts>(() => draftsOf(policy));
   const [shown, setShown] = useState(false); // validation messages appear after the first try
   const [confirming, setConfirming] = useState(false);
@@ -188,6 +194,10 @@ function Policy({
           const id = `${base}-${name}`;
           const draft = drafts[name];
           const error = shown ? problems[name] : undefined;
+          const ownerOnly = name === "audit" && !canEditAudit;
+          const editable = canEdit && !ownerOnly;
+          const waiting = pendingSentence(tier);
+          const cancel = cancelBody(tier);
           return (
             <li
               key={name}
@@ -203,7 +213,31 @@ function Policy({
                 </span>
               </div>
               <p className="muted retention-removes">{meta.removes}</p>
-              {canEdit && (
+              {waiting && (
+                <p className="retention-pending" data-testid="tier-pending">
+                  <span aria-hidden="true">⏳ </span>
+                  {waiting}{" "}
+                  {editable && cancel && (
+                    <button
+                      type="button"
+                      disabled={save.isPending}
+                      onClick={() => {
+                        setSaved(false);
+                        save.mutate(cancel);
+                      }}
+                    >
+                      Cancel this shortening
+                    </button>
+                  )}
+                </p>
+              )}
+              {canEdit && ownerOnly && (
+                <p className="muted retention-note" data-testid="audit-owner-only">
+                  Only an owner can change how long the audit log is kept: it is the record of who
+                  changed these periods. Its shortest period is {floorOf(policy, "audit")} days.
+                </p>
+              )}
+              {editable && (
                 <div className="retention-field">
                   <label htmlFor={`${id}-choice`}>{meta.label} period</label>
                   <div className="retention-inputs">
@@ -251,7 +285,8 @@ function Policy({
       </ul>
       <p className="muted retention-note">
         The run record is deleted last, so it is kept at least as long as trace detail, and trace
-        detail at least as long as artifacts. The shortest period is {policy.floor_days} days.
+        detail at least as long as artifacts. The shortest period is {policy.floor_days} days (
+        {policy.audit_floor_days} for the audit log).
       </p>
       {!canEdit ? (
         <p className="muted retention-note" data-testid="retention-readonly">
@@ -297,6 +332,7 @@ function Policy({
                   );
                 })}
               </ul>
+              <p data-testid="grace-note">{graceSentence(policy)}</p>
               <p>
                 {policy.mode === "enforce"
                   ? "The retention job is enforcing, so data older than the new period will be deleted permanently and cannot be restored."
@@ -319,7 +355,9 @@ function Policy({
             data-testid="save-status"
           >
             {saved && !dirty
-              ? "Saved. The retention job applies the new periods on its next pass."
+              ? policy.tiers.some((t) => t.pending)
+                ? "Saved. A shorter period takes effect after its waiting time; until then the longer one still applies."
+                : "Saved. The retention job applies the new periods on its next pass."
               : ""}
           </div>
           {save.isError && (
@@ -356,7 +394,7 @@ function PreviewResult({ data, mode }: { data: RetentionPreview; mode: Retention
       <ul>
         {data.tiers.map((t) => (
           <li key={t.tier} data-tier={t.tier}>
-            <strong>{TIER_META[t.tier].label}.</strong> {previewSentence(t)}
+            <strong>{TIER_META[t.tier].label}.</strong> {previewSentence(t)} {previewTiming(t)}
           </li>
         ))}
       </ul>

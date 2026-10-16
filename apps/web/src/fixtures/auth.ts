@@ -14,6 +14,7 @@ const OWNER_PERMISSIONS = [
   "workspace.read", "evaluation.read", "evaluation.run", "evaluation.label", "evaluator.write",
   "experiment.read", "experiment.write", "approval.read", "approval.decide", "policy.read", "policy.write",
   "alert.read", "alert.write", "alert.destination.read", "retention.read", "retention.write",
+  "retention.audit.write",
 ]; // prettier-ignore
 const VIEWER_PERMISSIONS = [
   "analytics.read", "member.read", "pricing.read", "project.read", "run.read", "workspace.read",

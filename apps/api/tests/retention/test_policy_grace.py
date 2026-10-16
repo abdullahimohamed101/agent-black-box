@@ -217,3 +217,23 @@ async def test_the_record_of_a_policy_change_outlives_the_audit_tier(
         w=ws,
     )
     assert kept == 1
+
+
+async def test_a_workspace_with_an_audit_period_saved_before_the_minimum_can_edit_other_tiers(
+    make_api: MakeApi,
+) -> None:
+    api = await make_api()
+    owner = await person(api, "owner@acme.test", "OWNER")
+    async with api.engine.begin() as conn:  # as 0101 allowed it: 30 days is above the old floor
+        await conn.execute(
+            text(
+                "INSERT INTO retention_policies (workspace_id, audit_days, updated_by) "
+                "VALUES (:w, 30, 'old')"
+            ),
+            {"w": api.tenant.context.workspace_id},
+        )
+    ok = await api.client.put(path(api), json={"trace": 60}, headers=owner)
+    assert ok.status_code == 200, ok.text
+    assert tiers(ok.json())["audit"]["days"] == 30  # shown as saved; the job applies the minimum
+    bad = await api.client.put(path(api), json={"audit": 31}, headers=owner)
+    assert bad.status_code == 422

@@ -129,3 +129,8 @@
 .retention-truncated {
   color: var(--ink);
 }
+
+/* A saved shortening that has not taken effect: words and a glyph, never colour alone, never red. */
+.retention-pending {
+  margin: 0.5rem 0 0;
+}

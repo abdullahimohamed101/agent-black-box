@@ -16,6 +16,8 @@ type Setting = number | "forever";
 const NAMES: readonly Name[] = ["artifacts", "trace", "run", "audit"];
 const DEFAULTS: Record<Name, number> = { artifacts: 30, trace: 90, run: 365, audit: 365 };
 const FLOOR = 7;
+const AUDIT_FLOOR = 90;
+const GRACE_HOURS = 24;
 const CEILING = 36_500;
 const MIB = 1024 ** 2;
 const AT = "2026-10-15T09:30:00Z";
@@ -29,37 +31,78 @@ const err = (status: number, code: string, message: string, category: string): R
 const invalid = (message: string): Reply =>
   err(422, "RETENTION_POLICY_INVALID", message, "VALIDATION");
 
-type State = { stored: Partial<Record<Name, Setting>>; updatedAt: string | null };
+/** A shortening that waits: `previous` is the stored setting it replaced (undefined: the installation default). */
+type Waiting = { previous: Setting | undefined; at: string };
+type State = {
+  stored: Partial<Record<Name, Setting>>;
+  pending: Partial<Record<Name, Waiting>>;
+  updatedAt: string | null;
+};
+const fresh = (): State => ({ stored: {}, pending: {}, updatedAt: null });
 const state = new Map<string, State>();
 export const resetFixtureRetention = (): void => state.clear();
 
-const days = (cur: State, n: Name): number | null => {
-  const s = cur.stored[n];
-  return s === undefined ? DEFAULTS[n] : s === "forever" ? null : s;
+const daysOf = (n: Name, s: Setting | undefined): number | null =>
+  s === undefined ? DEFAULTS[n] : s === "forever" ? null : s;
+const days = (cur: State, n: Name): number | null => daysOf(n, cur.stored[n]);
+const longer = (a: number | null, b: number | null): number | null =>
+  a === null || b === null ? null : Math.max(a, b);
+const isShorter = (next: number | null, than: number | null): boolean =>
+  next !== null && (than === null || next < than);
+const waiting = (cur: State, n: Name): Waiting | undefined => {
+  const w = cur.pending[n];
+  return w && Date.parse(w.at) > Date.parse(AT) ? w : undefined;
 };
+/** What the job applies right now: the longer of the new and the previous period while a shortening waits. */
+const enforced = (cur: State, n: Name): number | null => {
+  const w = waiting(cur, n);
+  return w ? longer(days(cur, n), daysOf(n, w.previous)) : days(cur, n);
+};
+/** The pending shortening a save leaves for one tier (the API's rule: not shorter than enforced applies at once). */
+function nextWaiting(cur: State, n: Name, next: Setting | undefined): Waiting | undefined {
+  if (!isShorter(daysOf(n, next), enforced(cur, n))) return undefined;
+  return (
+    waiting(cur, n) ?? {
+      previous: cur.stored[n],
+      at: new Date(Date.parse(AT) + GRACE_HOURS * 3_600_000).toISOString(),
+    }
+  );
+}
 
 function view(wsId: string): Policy {
-  const cur = state.get(wsId) ?? { stored: {}, updatedAt: null };
+  const cur = state.get(wsId) ?? fresh();
   return {
     tiers: NAMES.map((n) => {
       const d = days(cur, n);
+      const w = waiting(cur, n);
+      const held = enforced(cur, n);
       return {
         tier: n,
         days: d,
         forever: d === null,
+        pending: w
+          ? { effective_at: w.at, current_days: held, current_forever: held === null }
+          : null,
         source: cur.stored[n] === undefined ? "default" : "workspace",
         default_days: DEFAULTS[n],
       };
     }),
     mode: "dry_run",
     floor_days: FLOOR,
+    audit_floor_days: AUDIT_FLOOR,
+    grace_hours: GRACE_HOURS,
     updated_at: cur.updatedAt,
     updated_by: cur.updatedAt ? "usr_00000000000000000000000001" : null,
   };
 }
 
 /** The invented history: 240 daily runs of 12 events and 3 MiB of artifacts each; 5 audit entries a day for 400 days. */
-function measure(name: Name, d: number | null): Preview["tiers"][number] {
+function measure(
+  name: Name,
+  d: number | null,
+  held: number | null,
+  at: string | null,
+): Preview["tiers"][number] {
   const aged = (limit: number) => (d === null ? 0 : Math.max(0, limit - d));
   const runs = name === "audit" ? 0 : aged(240);
   const rows = name === "audit" ? aged(400) * 5 : runs * 5;
@@ -67,6 +110,8 @@ function measure(name: Name, d: number | null): Preview["tiers"][number] {
     tier: name,
     days: d,
     forever: d === null,
+    enforced_days: held,
+    effective_at: at,
     cutoff: d === null ? null : new Date(Date.parse(AT) - d * 86_400_000).toISOString(),
     runs,
     events: runs * 12,
@@ -118,8 +163,9 @@ export function fixtureRetention(
   q: URLSearchParams,
   body: unknown,
   canWrite: boolean,
+  canAudit: boolean = canWrite,
 ): Reply {
-  const cur = state.get(wsId) ?? { stored: {}, updatedAt: null };
+  const cur = state.get(wsId) ?? fresh();
   if (rest === "reports") return { status: 200, body: { items: REPORTS } satisfies Reports };
   if (rest === "preview") {
     const eff = parseQuery(q, cur);
@@ -132,8 +178,16 @@ export function fixtureRetention(
     const out: Preview = {
       as_of: AT,
       proposed: NAMES.some((n) => q.get(`${n}_days`) !== null),
-      tiers: wanted.map((n) => measure(n, eff[n])),
-      note: "Nothing is deleted by a preview. Tiers are counted separately, not added.",
+      tiers: wanted.map((n) => {
+        // The same rule as a save: what would be enforced now, and from when the shorter period applies.
+        const proposed = q.get(`${n}_days`);
+        const setting: Setting | undefined =
+          proposed === null ? cur.stored[n] : proposed === "forever" ? "forever" : Number(proposed);
+        const w = nextWaiting(cur, n, setting);
+        const held = w ? longer(eff[n], daysOf(n, w.previous)) : eff[n];
+        return measure(n, eff[n], held, w ? w.at : null);
+      }),
+      note: "Nothing is deleted by a preview. Tiers are counted separately, not added. Counts are for the new period once it takes effect.",
     };
     return { status: 200, body: out };
   }
@@ -148,23 +202,40 @@ export function fixtureRetention(
     );
   const given = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   const next = { ...cur.stored };
+  const pending = { ...cur.pending };
+  const changed: Name[] = [];
   for (const [key, value] of Object.entries(given)) {
     if (!NAMES.includes(key as Name))
       return err(422, "REQUEST_INVALID", "Unknown tier.", "VALIDATION");
     const n = key as Name;
+    const floor = n === "audit" ? AUDIT_FLOOR : FLOOR;
+    const before = next[n];
     if (value === null) delete next[n];
     else if (value === "forever") next[n] = "forever";
     else if (typeof value === "number" && Number.isInteger(value)) {
-      if (value < FLOOR) return invalid(`Retention must be at least ${FLOOR} days (or forever).`);
+      if (value < floor) return invalid(`Retention must be at least ${floor} days (or forever).`);
       if (value > CEILING) return invalid("Retention is longer than the permitted maximum.");
       next[n] = value;
     } else return invalid("A retention value must be a whole number of days or 'forever'.");
+    if (before !== next[n]) changed.push(n);
   }
-  const merged: State = { stored: next, updatedAt: cur.updatedAt };
+  if (changed.includes("audit") && !canAudit)
+    return err(
+      403,
+      "PERMISSION_DENIED",
+      "Only an owner can change the audit log's period.",
+      "AUTHORIZATION",
+    );
+  const merged: State = { stored: next, pending, updatedAt: cur.updatedAt };
   const order = checkOrder(
     Object.fromEntries(NAMES.map((n) => [n, days(merged, n)])) as Record<Name, number | null>,
   );
   if (order) return invalid(order);
-  state.set(wsId, { stored: next, updatedAt: AT });
+  for (const n of changed) {
+    const w = nextWaiting(cur, n, next[n]);
+    if (w) pending[n] = w;
+    else delete pending[n];
+  }
+  state.set(wsId, { stored: next, pending, updatedAt: AT });
   return { status: 200, body: view(wsId) };
 }

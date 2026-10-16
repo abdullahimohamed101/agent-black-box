@@ -120,6 +120,7 @@ test.describe("editing", () => {
     await expect(confirm).toBeFocused();
     await expect(confirm).toContainText("Artifacts: from 30 days to 14 days");
     await expect(confirm).toContainText("deleted permanently and cannot be restored");
+    await expect(confirm).toContainText("takes effect 24 hours after you save");
     await axe(page);
     await confirm.getByRole("button", { name: "Cancel" }).click();
     await expect(tier(page, "artifacts").getByTestId("tier-value")).toContainText("30 days");
@@ -131,8 +132,25 @@ test.describe("editing", () => {
     await expect(tier(page, "artifacts").getByTestId("tier-value")).toHaveText(
       "14 days (set for this workspace)",
     );
+    // the shorter period waits: the page says when, and which period still applies
+    const pending = tier(page, "artifacts").getByTestId("tier-pending");
+    await expect(pending).toContainText("This shortening takes effect on 2026-10-16 09:30 UTC");
+    await expect(pending).toContainText("the longer period (30 days) still applies");
+    await axe(page);
     await page.reload();
     await expect(page.getByLabel("Artifacts days")).toHaveValue("14");
+    await expect(tier(page, "artifacts").getByTestId("tier-pending")).toBeVisible();
+
+    // cancelling saves the period in force, which is a lengthening and applies at once
+    await tier(page, "artifacts").getByRole("button", { name: "Cancel this shortening" }).click();
+    await expect(tier(page, "artifacts").getByTestId("tier-pending")).toHaveCount(0);
+    await expect(tier(page, "artifacts").getByTestId("tier-value")).toContainText("30 days");
+    await page.getByLabel("Artifacts period").selectOption("days");
+    await page.getByLabel("Artifacts days").fill("14");
+    await save.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Save and shorten" }).click();
+    await expect(tier(page, "artifacts").getByTestId("tier-pending")).toBeVisible();
 
     // back to the default (a longer period than 14: no question)
     await page.getByLabel("Artifacts period").selectOption("default");
