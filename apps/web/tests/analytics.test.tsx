@@ -174,10 +174,13 @@ describe("Where the money was wasted (Phase 22 D12)", () => {
     stubApi();
     renderWithQuery(<Analytics base={BASE} />);
     const line = await screen.findByTestId("waste-line");
-    expect(line).toHaveTextContent(/failed runs \$/);
-    expect(line).toHaveTextContent(/retries \$/);
-    expect(line).toHaveTextContent(/after the first error \$/);
-    expect(line).toHaveTextContent(`(${w.failed.runs})`);
+    // One sentence, the same figures: total and share, failed-run spend (and how much came after the first error), retries.
+    expect(line).toHaveTextContent(/wasted, \d+% of spend\./);
+    expect(line).toHaveTextContent(
+      /\$[\d.,]+ went on \d+ failed runs? \(\$[\d.,]+ of it after the first error\)/,
+    );
+    expect(line).toHaveTextContent(/\$[\d.,]+ on retries in the runs that did not fail\./);
+    expect(line).toHaveTextContent(`${w.failed.runs} failed run`);
     const agents = screen.getByRole("list", { name: "Wasted spend by agent" });
     expect(within(agents).getAllByRole("listitem")).toHaveLength(w.by_agent.length);
     expect(screen.getByRole("list", { name: "Wasted spend by model" })).toBeVisible();

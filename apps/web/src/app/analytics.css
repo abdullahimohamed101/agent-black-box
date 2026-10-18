@@ -77,20 +77,17 @@
   font-size: var(--type-small-size);
   line-height: var(--type-small-line);
 }
-/* The wasted-spend block: one line of mono figures under its heading (a dollar figure is information, not a fault). */
+/* The wasted-spend block: one sentence under its heading, the figures in mono (a dollar figure is information, not a fault). */
 .waste-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-4);
+  max-width: var(--measure);
   margin: var(--space-1) 0 var(--space-2);
-  font: var(--type-mono-weight) var(--type-mono-size) / var(--type-mono-line) var(--font-mono);
+  font: var(--type-body-weight) var(--type-body-size) / var(--type-body-line) var(--font-sans);
 }
 .waste-total {
   font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-mono);
 }
-.waste-line .muted {
-  font-family: var(--font-sans);
+.waste-fig {
+  font-family: var(--font-mono);
 }
 .waste-note {
   max-width: var(--measure);

@@ -39,22 +39,14 @@ export function WastePanel({
           ) : (
             <>
               <p className="waste-line" data-testid="waste-line">
-                <span className="waste-total">{formatCost(w.wasted_usd)}</span>
-                <span className="muted"> wasted</span>
-                <span data-fig="share">
-                  <span className="muted">of spend</span> {pct(w.wasted_share)}
-                </span>
-                <span data-fig="failed">
-                  <span className="muted">failed runs</span> {formatCost(w.failed.spend_usd)} (
-                  {formatInt(w.failed.runs)})
-                </span>
-                <span data-fig="retries">
-                  <span className="muted">retries</span> {formatCost(w.retries.in_other_runs_usd)}
-                </span>
-                <span data-fig="after">
-                  <span className="muted">after the first error</span>{" "}
-                  {formatCost(w.failed.after_first_error_usd)}
-                </span>
+                <span className="waste-total">{formatCost(w.wasted_usd)}</span> was wasted
+                {w.wasted_share == null ? "" : `, ${pct(w.wasted_share)} of spend`}.{" "}
+                <span className="waste-fig">{formatCost(w.failed.spend_usd)}</span> went on{" "}
+                {formatInt(w.failed.runs)} failed {w.failed.runs === 1 ? "run" : "runs"} (
+                <span className="waste-fig">{formatCost(w.failed.after_first_error_usd)}</span> of
+                it after the first error) and{" "}
+                <span className="waste-fig">{formatCost(w.retries.in_other_runs_usd)}</span> on
+                retries in the runs that did not fail.
               </p>
               <p className="muted waste-note">{t.waste.basis}</p>
               <div className="two-col">
