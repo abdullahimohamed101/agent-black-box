@@ -25,6 +25,13 @@ updates:
     groups:
       docker-base-images:
         update-types: [minor, patch]
+    # Runtime majors (python, node) change what the product runs on: upgraded deliberately, with an
+    # ADR and the full test matrix, never by an automatic pull request.
+    ignore:
+      - dependency-name: python
+        update-types: [version-update:semver-major]
+      - dependency-name: node
+        update-types: [version-update:semver-major]
 
   # docker-compose.yml (postgres, prometheus, grafana). Supported by the docker ecosystem.
   - package-ecosystem: docker-compose
@@ -35,6 +42,13 @@ updates:
     groups:
       compose-images:
         update-types: [minor, patch]
+    # postgres majors need a dump/restore of existing volumes; grafana majors change the dashboard
+    # provisioning format. Both are deliberate upgrades.
+    ignore:
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
+      - dependency-name: grafana/grafana
+        update-types: [version-update:semver-major]
 
   # pnpm workspace: one lockfile at the root covers apps/web and packages/event-schema.
   - package-ecosystem: npm
@@ -45,6 +59,12 @@ updates:
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
+    # Toolchain majors are taken when the lint rules and the type checker have been vetted together.
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
 
   # One uv project (own pyproject.toml and uv.lock) per directory.
   - package-ecosystem: uv
