@@ -370,6 +370,15 @@ rule; each is reversible and the alternative is named.
     letter spacing, an inline style that sets a font or colour, a fault token or a red keyword in a component, or a revived legacy
     rule; `tokens-colour-rules.test.ts` pins the allow-list length at exactly 5.
 
+## Review fixes (2026-10-18)
+
+The design review of the built pass led to small corrections, none of which changes a decision above: sentences say what a count
+includes and say "under 1%" for a rate that only rounds to zero; the experiment verdict decides on the precision it prints; a
+chart of fewer than three days prints its values beside slim columns; the wasted-spend readout is one sentence; the Runs
+findings column uses the Security shield; the Settings prefix is plain text; the Pending chip no longer repeats the waiting
+count; the create block of Experiments uses the block-head step. Open items are KI-294 (narrowed) and KI-301..304. Findings
+and outcomes: `docs/plans/completed/design-pass-2-review.md`.
+
 ## Consequences
 
 - Steps 2 and 3 use this ADR and `01-direction.md` as the rubric; step 4 implements the tokens and type; step 5 the screens.
