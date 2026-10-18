@@ -85,9 +85,10 @@
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border-subtle);
 }
+/* One size for a block head in Experiments (an experiment's blocks, its forms and the create block): the h3 step. */
 .experiments .ex-create h2 {
   margin: 0;
-  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
 }
 .evaluate-all {
   margin-top: var(--space-4);
