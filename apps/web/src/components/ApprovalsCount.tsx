@@ -9,7 +9,7 @@ import "../app/policy.css";
  * visible tab only) and renders nothing until the answer arrives, so the server render and the first client render match.
  * A failed read shows nothing rather than a wrong number.
  */
-export function ApprovalsRailCount() {
+export function ApprovalsCount() {
   const q = usePendingCount(true);
   const n = q.data;
   if (n == null || n <= 0) return null;

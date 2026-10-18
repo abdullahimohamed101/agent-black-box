@@ -12,7 +12,8 @@ import {
   type Base,
 } from "@/lib/routes";
 import { firstSettingsHref } from "@/lib/settingsNav";
-import { ApprovalsRailCount } from "../ApprovalsRailCount";
+import { securityPath } from "@/lib/security";
+import { ApprovalsCount } from "../ApprovalsCount";
 import { useWorkspaceOptional } from "../WorkspaceProvider";
 import { Brand } from "./Brand";
 import { LiveIndicator } from "./LiveIndicator";
@@ -33,7 +34,7 @@ export function PrimaryNav({ base }: { base: Base }) {
   const analytics = analyticsPath(base);
   const experiments = experimentsPath(base);
   const approvals = approvalsPath(base.workspace);
-  const security = `/w/${base.workspace}/security`;
+  const security = securityPath(base.workspace);
   const settings = `/w/${base.workspace}/settings`;
 
   const canApprove = !!ws?.permissions.includes("approval.read");
@@ -81,7 +82,7 @@ export function PrimaryNav({ base }: { base: Base }) {
                 aria-current={cur(under(approvals) || under(security))}
               >
                 {shell.nav.review}
-                {canApprove && <ApprovalsRailCount />}
+                {canApprove && <ApprovalsCount />}
               </Link>
             </li>
           )}

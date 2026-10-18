@@ -10,9 +10,9 @@
 .trace-notice p {
   margin: 0;
 }
-.trace-notice-title {
+.trace-notice p.trace-notice-title {
   font-weight: var(--weight-strong);
-  margin-bottom: var(--space-1) !important;
+  margin-bottom: var(--space-1);
 }
 .trace-notice[data-state="deleting"] .trace-notice-title > span:first-child {
   color: var(--color-status-caution);

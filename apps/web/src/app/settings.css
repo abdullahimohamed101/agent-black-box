@@ -80,9 +80,8 @@
   gap: var(--space-2) var(--space-4);
   margin-bottom: var(--space-2);
 }
-/* .st.st beats the legacy ".page:not(:has(> .run-detail)) h2" rule of globals.css (Analytics and Experiments still read it, 5d). */
-.st.st .st-section h2,
-.st.st .st-section-head h2 {
+.st .st-section h2,
+.st .st-section-head h2 {
   margin: 0;
   font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
 }
@@ -90,8 +89,8 @@
   margin: var(--space-4) 0 var(--space-1);
   font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
 }
-.st.st .muted,
-.st.st .help {
+.st .muted,
+.st .help {
   color: var(--color-text-secondary);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);

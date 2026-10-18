@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApprovalsPage } from "@/components/ApprovalsPage";
-import { ApprovalsRailCount } from "@/components/ApprovalsRailCount";
+import { ApprovalsCount } from "@/components/ApprovalsCount";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { resetPolicyFixtures } from "@/fixtures/policies";
 import { WorkspaceProvider } from "@/components/WorkspaceProvider";
@@ -456,7 +456,7 @@ describe("polling", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { unmount } = (await import("@testing-library/react")).render(
       <QueryClientProvider client={client}>
-        <ApprovalsRailCount />
+        <ApprovalsCount />
       </QueryClientProvider>,
     );
     const n = () => calls.filter((c) => c.path === "v1/approvals/pending-count").length;
@@ -481,7 +481,7 @@ describe("polling", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = (await import("@testing-library/react")).render(
       <QueryClientProvider client={client}>
-        <ApprovalsRailCount />
+        <ApprovalsCount />
       </QueryClientProvider>,
     );
     await act(async () => {});
