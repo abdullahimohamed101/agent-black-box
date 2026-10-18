@@ -24,7 +24,10 @@ const states = [
   [
     "analytics-excluded",
     A,
-    patched("**/analytics/cost*", (b) => ({ ...b, excluded_expired_traces: 3 })),
+    patched("**/analytics/cost*", (b) => ({
+      ...b,
+      excluded_expired_traces: 3,
+    })),
     null,
     [1440, 375],
   ],
@@ -46,17 +49,26 @@ const states = [
       page.route("**/analytics/reliability*", (route) =>
         route.fulfill({
           status: 503,
-          json: { error: { code: "ANALYTICS_TIMEOUT", message: "The report took too long." } },
+          json: {
+            error: {
+              code: "ANALYTICS_TIMEOUT",
+              message: "The report took too long.",
+            },
+          },
         }),
       ),
-    async (p) => p.getByRole("tabpanel").getByRole("alert").waitFor({ timeout: 20000 }),
+    async (p) =>
+      p.getByRole("tabpanel").getByRole("alert").waitFor({ timeout: 20000 }),
     [1440, 375],
   ],
   ["experiments", E, null, null],
   [
     "experiments-empty",
     E,
-    (page) => page.route("**/api/abb/v1/experiments*", (r) => r.fulfill({ json: { items: [] } })),
+    (page) =>
+      page.route("**/api/abb/v1/experiments*", (r) =>
+        r.fulfill({ json: { items: [] } }),
+      ),
     null,
     [1440, 375],
   ],
@@ -86,7 +98,9 @@ for (const scheme of ["light", "dark"]) {
       const page = await ctx.newPage();
       if (setup) await setup(page);
       await page.goto(base + url);
-      await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+      await page
+        .waitForLoadState("networkidle", { timeout: 8000 })
+        .catch(() => {});
       await page.waitForTimeout(400);
       if (act) {
         await act(page);

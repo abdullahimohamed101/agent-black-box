@@ -15,8 +15,19 @@ const empty = (pattern, body) => (page) =>
 let made = 0;
 const states = [
   ["review-approvals", "/w/demo/approvals", null, null],
-  ["review-approvals-detail", `/w/demo/approvals?approval=${APR(1)}`, null, null],
-  ["review-approvals-decided", "/w/demo/approvals?state=decided", null, null, [1440]],
+  [
+    "review-approvals-detail",
+    `/w/demo/approvals?approval=${APR(1)}`,
+    null,
+    null,
+  ],
+  [
+    "review-approvals-decided",
+    "/w/demo/approvals?state=decided",
+    null,
+    null,
+    [1440],
+  ],
   [
     "review-approvals-empty",
     "/w/demo/approvals",
@@ -24,7 +35,13 @@ const states = [
     null,
   ],
   ["review-security", "/w/demo/security", null, null],
-  ["review-security-filtered", "/w/demo/security?severity=critical", null, null, [1440]],
+  [
+    "review-security-filtered",
+    "/w/demo/security?severity=critical",
+    null,
+    null,
+    [1440],
+  ],
   [
     "review-security-clean",
     "/w/demo/security",
@@ -49,7 +66,11 @@ const states = [
           ? route.fulfill({
               status: 201,
               json: {
-                key: { key_id: "key_demo", name: "ci-runner", scopes: ["events:write"] },
+                key: {
+                  key_id: "key_demo",
+                  name: "ci-runner",
+                  scopes: ["events:write"],
+                },
                 token: "abb_demo_0000000000000000000000000000000000000000",
               },
             })
@@ -130,7 +151,8 @@ for (const scheme of ["light", "dark"]) {
       if (
         widths
           ? !widths.includes(w)
-          : w === 768 && !/quotas|alerts-rules|approvals$|security$|members/.test(name)
+          : w === 768 &&
+            !/quotas|alerts-rules|approvals$|security$|members/.test(name)
       )
         continue;
       const ctx = await browser.newContext({
@@ -141,13 +163,18 @@ for (const scheme of ["light", "dark"]) {
       const page = await ctx.newPage();
       if (setup) await setup(page);
       await page.goto(base + url);
-      await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+      await page
+        .waitForLoadState("networkidle", { timeout: 8000 })
+        .catch(() => {});
       await page.waitForTimeout(400);
       if (act) {
         await act(page);
         await page.waitForTimeout(300);
       } else await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({ path: `${OUT}/step5c-${name}-${w}-${scheme}.png`, fullPage: false });
+      await page.screenshot({
+        path: `${OUT}/step5c-${name}-${w}-${scheme}.png`,
+        fullPage: false,
+      });
       await ctx.close();
     }
   }

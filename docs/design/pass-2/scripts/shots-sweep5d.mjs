@@ -19,7 +19,9 @@ for (const [name, url] of SCREENS) {
   await page.goto(base + url);
   await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(500);
-  await page.screenshot({ path: `${OUT}/step5d-sweep-${name}-1440-${scheme}.png` });
+  await page.screenshot({
+    path: `${OUT}/step5d-sweep-${name}-1440-${scheme}.png`,
+  });
   await ctx.close();
 }
 await browser.close();

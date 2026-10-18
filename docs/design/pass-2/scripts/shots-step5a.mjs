@@ -15,8 +15,16 @@ const empty = (page) =>
   );
 const states = [
   ["runs", "/w/demo/projects/all/runs", async () => {}],
-  ["runs-filtered", "/w/demo/projects/all/runs?q=status%3Afailed", async () => {}],
-  ["runs-attention", "/w/demo/projects/all/runs?status=FAILED,TIMED_OUT,BLOCKED", async () => {}],
+  [
+    "runs-filtered",
+    "/w/demo/projects/all/runs?q=status%3Afailed",
+    async () => {},
+  ],
+  [
+    "runs-attention",
+    "/w/demo/projects/all/runs?status=FAILED,TIMED_OUT,BLOCKED",
+    async () => {},
+  ],
   ["runs-empty", "/w/demo/projects/all/runs", empty],
   [
     "runs-zero",
@@ -27,7 +35,13 @@ const states = [
           json: {
             items: [],
             next_cursor: null,
-            facets: { status: [], agents: [], tools: [], models: [], event_types: [] },
+            facets: {
+              status: [],
+              agents: [],
+              tools: [],
+              models: [],
+              event_types: [],
+            },
             query: null,
           },
         }),
@@ -50,7 +64,8 @@ const states = [
     "runs-scope",
     "/w/demo/projects/all/runs",
     async () => {},
-    async (page) => page.getByRole("button", { name: /demo \/ All projects/ }).click(),
+    async (page) =>
+      page.getByRole("button", { name: /demo \/ All projects/ }).click(),
   ],
   [
     "runs-account",
@@ -76,9 +91,23 @@ const states = [
     },
   ],
   ["login", "/login", async () => {}, null, null, authBase],
-  ["login-no-access", "/login?error=no_access", async () => {}, null, null, authBase],
+  [
+    "login-no-access",
+    "/login?error=no_access",
+    async () => {},
+    null,
+    null,
+    authBase,
+  ],
   ["invite", "/invite", async () => {}, null, null, authBase],
-  ["no-workspaces-error", "/login?error=rate_limited", async () => {}, null, null, authBase],
+  [
+    "no-workspaces-error",
+    "/login?error=rate_limited",
+    async () => {},
+    null,
+    null,
+    authBase,
+  ],
   ["runs-768", "/w/demo/projects/all/runs", async () => {}, null, [768]],
   ["not-found", "/w/demo/projects/nope/runs", async () => {}],
   ["approvals", "/w/demo/approvals", async () => {}],
@@ -102,13 +131,17 @@ for (const scheme of ["light", "dark"]) {
       const page = await ctx.newPage();
       await setup(page);
       await page.goto((origin ?? base) + url);
-      await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+      await page
+        .waitForLoadState("networkidle", { timeout: 8000 })
+        .catch(() => {});
       await page.waitForTimeout(300);
       if (act) {
         await act(page);
         await page.waitForTimeout(250);
       }
-      await page.screenshot({ path: `${OUT}/step5a-${name}-${w}-${scheme}.png` });
+      await page.screenshot({
+        path: `${OUT}/step5a-${name}-${w}-${scheme}.png`,
+      });
       await ctx.close();
     }
   }

@@ -25,7 +25,8 @@ const withArtifacts = (page) =>
     let k = 0;
     const art = (n) => `artifact://art_${String(n).padStart(26, "0")}`;
     for (const e of body.items ?? []) {
-      if (e.event_type === "file.modified") e.attributes["diff.artifact"] = art(++k);
+      if (e.event_type === "file.modified")
+        e.attributes["diff.artifact"] = art(++k);
       if (e.event_type === "shell.command.failed") {
         e.attributes["shell.stdout_artifact"] = art(++k);
         e.attributes["shell.stdout_bytes"] = 2048;
@@ -73,9 +74,20 @@ const states = [
   ["expired", run(90), null, null],
   ["deleting", run(91), null, null],
   ["not-found", run(999), null, null, [1440, 375]],
-  ["withheld", `/w/viewer-only/projects/all/runs/${RUN(11)}`, null, null, [1440, 375]],
+  [
+    "withheld",
+    `/w/viewer-only/projects/all/runs/${RUN(11)}`,
+    null,
+    null,
+    [1440, 375],
+  ],
   ["compare", `${W}/runs/compare?left=${RUN(11)}&right=${RUN(12)}`, null, null],
-  ["compare-identical", `${W}/runs/compare?left=${RUN(11)}&right=${RUN(11)}`, null, null],
+  [
+    "compare-identical",
+    `${W}/runs/compare?left=${RUN(11)}&right=${RUN(11)}`,
+    null,
+    null,
+  ],
   ["compare-pick", `${W}/runs/compare`, null, null, [1440, 375]],
 ];
 const browser = await chromium.launch({ channel: "chrome" });
@@ -90,7 +102,8 @@ for (const scheme of ["light", "dark"]) {
       if (
         widths
           ? !widths.includes(w)
-          : w === 768 && !["failed", "compare", "failed-waterfall", "running"].includes(name)
+          : w === 768 &&
+            !["failed", "compare", "failed-waterfall", "running"].includes(name)
       )
         continue;
       const ctx = await browser.newContext({
@@ -101,13 +114,17 @@ for (const scheme of ["light", "dark"]) {
       const page = await ctx.newPage();
       if (setup) await setup(page);
       await page.goto(base + url);
-      await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+      await page
+        .waitForLoadState("networkidle", { timeout: 8000 })
+        .catch(() => {});
       await page.waitForTimeout(400);
       if (act) {
         await act(page);
         await page.waitForTimeout(300);
       }
-      await page.screenshot({ path: `${OUT}/step5b-${name}-${w}-${scheme}.png` });
+      await page.screenshot({
+        path: `${OUT}/step5b-${name}-${w}-${scheme}.png`,
+      });
       await ctx.close();
     }
   }

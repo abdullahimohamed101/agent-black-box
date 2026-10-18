@@ -23,7 +23,12 @@ for (const [name, url] of screens) {
       const visible = (el) => {
         const r = el.getBoundingClientRect();
         const s = getComputedStyle(el);
-        return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
+        return (
+          r.width > 0 &&
+          r.height > 0 &&
+          s.visibility !== "hidden" &&
+          s.display !== "none"
+        );
       };
       const probe = document.createElement("i");
       probe.style.color = "var(--color-status-fault)";
@@ -40,7 +45,11 @@ for (const [name, url] of screens) {
       for (const el of document.body.querySelectorAll("*")) {
         if (!visible(el)) continue;
         const s = getComputedStyle(el);
-        if ([...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) {
+        if (
+          [...el.childNodes].some(
+            (n) => n.nodeType === 3 && n.textContent.trim(),
+          )
+        ) {
           sizes.add(s.fontSize);
           weights.add(s.fontWeight);
           families.add(
@@ -50,7 +59,14 @@ for (const [name, url] of screens) {
               .replace(/^var.*/, "mono/sans"),
           );
         }
-        if ([s.color, s.backgroundColor, s.borderTopColor, s.borderBottomColor].includes(red))
+        if (
+          [
+            s.color,
+            s.backgroundColor,
+            s.borderTopColor,
+            s.borderBottomColor,
+          ].includes(red)
+        )
           redEls++;
         const tag = el.tagName.toLowerCase();
         if (
@@ -61,16 +77,22 @@ for (const [name, url] of screens) {
         if (el.getAttribute("role") === "tablist") tablists++;
         const box =
           ["Top", "Right", "Bottom", "Left"].some(
-            (d) => parseFloat(s[`border${d}Width`]) > 0 && s[`border${d}Style`] !== "none",
+            (d) =>
+              parseFloat(s[`border${d}Width`]) > 0 &&
+              s[`border${d}Style`] !== "none",
           ) &&
           !/^(td|th|tr|li|a|button|input|select|textarea|i|span|svg|path|pre|code|kbd|label)$/.test(
             tag,
           );
         const fill =
           s.backgroundColor !== "rgba(0, 0, 0, 0)" &&
-          !/^(html|body|button|a|span|input|select|textarea|svg|path|tr|td|th|li|label)$/.test(tag);
+          !/^(html|body|button|a|span|input|select|textarea|svg|path|tr|td|th|li|label)$/.test(
+            tag,
+          );
         if (
-          /^(nav|header|aside|main|table|form|fieldset|details|dialog)$/.test(tag) ||
+          /^(nav|header|aside|main|table|form|fieldset|details|dialog)$/.test(
+            tag,
+          ) ||
           el.getAttribute("role") === "tablist" ||
           box ||
           fill
@@ -83,11 +105,15 @@ for (const [name, url] of screens) {
       const th = document.querySelector("main thead th, main th[scope=col]");
       const ths = th ? getComputedStyle(th) : null;
       return {
-        h1: h1 ? `${Math.round(hb.x)},${Math.round(hb.y)} ${hs.fontSize}/${hs.fontWeight}` : "none",
+        h1: h1
+          ? `${Math.round(hb.x)},${Math.round(hb.y)} ${hs.fontSize}/${hs.fontWeight}`
+          : "none",
         th: ths ? `${ths.fontSize}/${ths.color}/pl${ths.paddingLeft}` : "none",
         regions,
         sizes: sizes.size,
-        sizeList: [...sizes].sort((a, b) => parseFloat(a) - parseFloat(b)).join(" "),
+        sizeList: [...sizes]
+          .sort((a, b) => parseFloat(a) - parseFloat(b))
+          .join(" "),
         weights: [...weights].sort().join(","),
         families: [...families].join(","),
         tablists,
