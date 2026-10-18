@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Analytics } from "@/components/Analytics";
 import { CompareView } from "@/components/CompareView";
@@ -41,9 +42,10 @@ describe("a run whose trace the retention policy removed", () => {
     );
     expect(notice).toHaveAttribute("role", "note");
     expect(screen.getByRole("heading", { level: 1, name: "Nightly revenue report" })).toBeVisible();
-    // the numbers of the record are still there
-    expect(screen.getByText("Tool calls").closest("div")).toHaveTextContent("1");
+    // the numbers of the record are still there: the five readouts, and the rest one click away in Details
     expect(screen.getByText("Tokens").closest("div")).toHaveTextContent("1,200 in / 180 out");
+    await userEvent.setup().click(screen.getByRole("button", { name: /^Details/ }));
+    expect(screen.getByText("Tool calls").closest("div")).toHaveTextContent("1");
     // no tabs, no empty or error state of the trace
     expect(screen.queryByRole("tab")).toBeNull();
     expect(screen.queryByRole("button", { name: /Replay/ })).toBeNull();
@@ -162,9 +164,13 @@ describe("analytics say what they leave out (ADR-161)", () => {
       "/analytics/performance": () => withN("performance", 3),
     });
     renderWithQuery(<Analytics base={BASE} />);
-    await screen.findByRole("heading", { name: "Slow operations" });
-    await waitFor(() => expect(screen.getAllByTestId("expired-traces")).toHaveLength(3));
-    const notes = screen.getAllByTestId("expired-traces").map((n) => n.textContent ?? "");
+    // Step 5d: each report is a tab, so the three notes are read one tab at a time (same words, same conditions).
+    const note = async (tab: string) => {
+      await userEvent.click(screen.getByRole("tab", { name: tab }));
+      const panel = screen.getByRole("tabpanel", { name: tab });
+      return (await within(panel).findByTestId("expired-traces")).textContent ?? "";
+    };
+    const notes = [await note("Cost"), await note("Reliability"), await note("Performance")];
     expect(notes[0]).toContain("Excludes 3 runs whose trace has expired");
     expect(notes[0]).toContain("cost by agent, model and source");
     expect(notes[1]).toContain("Excludes 1 run whose trace has expired");
@@ -175,7 +181,10 @@ describe("analytics say what they leave out (ADR-161)", () => {
   it("shows no note when nothing is excluded", async () => {
     stubApi();
     renderWithQuery(<Analytics base={BASE} />);
-    await screen.findByRole("heading", { name: "Slow operations" });
-    expect(screen.queryByTestId("expired-traces")).toBeNull();
+    for (const tab of ["Cost", "Reliability", "Performance"]) {
+      await userEvent.click(screen.getByRole("tab", { name: tab }));
+      await within(screen.getByRole("tabpanel", { name: tab })).findByTestId("report-headline");
+      expect(screen.queryByTestId("expired-traces")).toBeNull();
+    }
   });
 });

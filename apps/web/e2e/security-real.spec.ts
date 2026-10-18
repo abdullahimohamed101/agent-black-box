@@ -147,7 +147,12 @@ test("owner: the run page shows the chip and the Security group, and the evidenc
 test("owner: the workspace Security page lists the findings with facets, paging and a deep link", async () => {
   const page = owner;
   await page.goto(`/w/${WS}/security`);
-  await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible();
+  // Step 5c: the page is Review, Security findings is its tab.
+  await expect(page.getByRole("heading", { name: "Review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Security findings" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   const rows = page.getByTestId("security-row");
   await expect(rows).toHaveCount(10); // one page
   const more = page.getByRole("button", { name: "Load more" });
@@ -186,7 +191,9 @@ test("owner: the workspace Security page lists the findings with facets, paging 
 test("owner: the settings page saves a real PUT through the same-origin proxy, a 422 is refused, nothing is echoed", async () => {
   const page = owner;
   await page.goto(`/w/${WS}/settings/security`);
-  await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Capture and detectors", level: 1 }),
+  ).toBeVisible();
   await page.getByLabel("Project", { exact: true }).selectOption({ label: "Full" });
   const save = page.getByRole("button", { name: "Save changes" });
   await expect(save).toBeDisabled();

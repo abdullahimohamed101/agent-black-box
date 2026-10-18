@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { signIn, workspace } from "./session";
 
@@ -27,24 +27,23 @@ async function axe(page: Page) {
   );
 }
 
-/** One headline figure tile, found by its label (tables have headers with the same words). */
-const stat = (scope: Page | Locator, label: string) =>
-  scope.locator(".stat").filter({ hasText: new RegExp(`^${label}`) });
 const usd = (n: number) => `$${n.toFixed(2)}`;
 const PROJECT = "all"; // `all` is the route form of "no project filter"
 const base = `/w/${workspace()}/projects/${PROJECT}`;
 
-test("dashboard shows whole-window aggregates from the server", async ({ page }) => {
+test("the Runs home states the whole-window aggregates from the server in one sentence", async ({
+  page,
+}) => {
   const w = want();
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto(base);
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  await expect(page.getByText(`All ${w.runs} runs started in the last 7 days`)).toBeVisible();
-  await expect(stat(page, "Success rate")).toContainText("50%");
-  await expect(stat(page, "Cost")).toContainText(usd(w.total_usd));
-  await expect(page.getByRole("heading", { name: "Recent failures" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Cost and reliability analytics/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Runs", level: 1 })).toBeVisible();
+  const sentence = page.getByTestId("week-sentence");
+  await expect(sentence).toContainText(`Last 7 days: ${w.runs} runs`);
+  await expect(sentence).toContainText("50% succeeded");
+  await expect(sentence).toContainText(`${usd(w.total_usd)} spent`);
+  await expect(page.getByRole("link", { name: "Analytics" }).first()).toBeVisible();
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/dashboard.png`, fullPage: true });
   expect(errors).toEqual([]);
@@ -54,9 +53,11 @@ test("analytics page: cost, retries, reliability and performance", async ({ page
   const w = want();
   await page.goto(`${base}/analytics`);
   await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
-  const cost = page.getByRole("region", { name: "Cost" });
-  await expect(stat(cost, "Total")).toContainText(usd(w.total_usd));
-  await expect(stat(cost, "Per successful run")).toContainText("$2.25");
+  // Step 5d: the three reports are tabs and each opens with one headline sentence (the figure tiles are gone), so the figures that
+  // were read from tiles are read from the sentence. Same numbers, same expectations. UNVERIFIED here: needs the real-API script.
+  const cost = page.getByRole("tabpanel", { name: "Cost" });
+  await expect(cost.getByTestId("report-headline")).toContainText(`${usd(w.total_usd)} spent`);
+  await expect(cost.getByTestId("report-headline")).toContainText("$2.25 per successful run");
   await expect(cost.getByText(/19% of cost came from retries/)).toBeVisible();
   await expect(
     cost.getByText(/Initial attempts \$6\.25, retries \$1\.50 across 1 runs/),
@@ -68,16 +69,19 @@ test("analytics page: cost, retries, reliability and performance", async ({ page
   );
   await expect(cost.getByRole("table", { name: "Most expensive runs" })).toBeVisible();
 
-  const reliability = page.getByRole("region", { name: "Reliability" });
-  await expect(stat(reliability, "Failure rate")).toContainText("25%");
-  await expect(stat(reliability, "Timeout rate")).toContainText("25%");
+  await page.getByRole("tab", { name: "Reliability" }).click();
+  const reliability = page.getByRole("tabpanel", { name: "Reliability" });
+  await expect(reliability.getByTestId("report-headline")).toContainText(
+    "25% failed or were blocked and 25% timed out",
+  );
   await expect(
     reliability.getByRole("table", { name: "Tool success rate and latency" }),
   ).toContainText("git");
   const retry = reliability.getByRole("table", { name: "Runs with the most retries" });
   await expect(retry).toContainText("$1.50");
 
-  const perf = page.getByRole("region", { name: "Performance" });
+  await page.getByRole("tab", { name: "Performance" }).click();
+  const perf = page.getByRole("tabpanel", { name: "Performance" });
   await expect(
     perf.getByRole("table", { name: "Slowest operations by p95 duration" }),
   ).toBeVisible();
@@ -93,11 +97,12 @@ test("hostile telemetry names render as text and never run", async ({ page }) =>
     await d.dismiss();
   });
   await page.goto(`${base}/analytics`);
-  const cost = page.getByRole("region", { name: "Cost" });
+  const cost = page.getByRole("tabpanel", { name: "Cost" });
   await expect(cost.getByRole("list", { name: "Cost by model" })).toContainText(w.hostile);
+  await page.getByRole("tab", { name: "Reliability" }).click();
   await expect(
     page
-      .getByRole("region", { name: "Reliability" })
+      .getByRole("tabpanel", { name: "Reliability" })
       .getByRole("table", { name: "Tool success rate and latency" }),
   ).toContainText(w.hostile);
   expect(await page.locator("main img, main script").count()).toBe(0);

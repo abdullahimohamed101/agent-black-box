@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { settleAnimations } from "./motion";
 import { signIn, workspace, workspaceHeader } from "./session";
 
 // Runs only through scripts/coding-e2e.sh: the scripted coding agent already wrote its run through the SDK into a
@@ -14,7 +14,6 @@ const SHOTS = "../../docs/screenshots/phase-6";
 
 const open = async (page: Page) => {
   await page.goto(`/w/${workspace()}/projects/all/runs/${runId}`);
-  await openContext(page); // the context column starts closed (Phase 22 D3)
   await expect(page.getByTestId("story")).toBeVisible();
 };
 const step = (page: Page, name: RegExp) =>

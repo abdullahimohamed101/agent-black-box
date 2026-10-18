@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ALL_STATUSES, type QueryTermOut, type RunStatus } from "@/lib/api/types";
+import { type QueryTermOut, type RunStatus } from "@/lib/api/types";
 import { useRuns, useSearchCatalogue } from "@/lib/queries";
 import {
   AGENT_SLUG,
@@ -17,11 +17,13 @@ import { COMPARE_PICKS, compareHref, toggleRun } from "@/lib/compare";
 import { ATTENTION_STATUSES } from "@/lib/runsListRow";
 import type { Base } from "@/lib/routes";
 import { useProjectId } from "@/components/WorkspaceProvider";
+import { runs as t } from "@/copy/runs";
 import { RunsTable } from "./RunsTable";
+import { RunsWeek } from "./RunsWeek";
 import { statusLabel } from "./StatusBadge";
 import { Empty, ErrorState, Loading } from "./States";
 import { Facets } from "./Facets";
-import { QueryChips } from "./QueryChips";
+import { QueryChips, type ExtraChip } from "./QueryChips";
 import { SearchBox, SearchProblemNotice } from "./SearchBox";
 import { UnindexedNotice } from "./UnindexedNotice";
 import { SetupGuide } from "./SetupGuide";
@@ -29,12 +31,6 @@ import { SetupGuide } from "./SetupGuide";
 export type RangeKey = "1h" | "24h" | "7d" | "all";
 export type ListFilters = { q: string; statuses: RunStatus[]; agent: string; range: RangeKey };
 export const DEFAULT_FILTERS: ListFilters = { q: "", statuses: [], agent: "", range: "all" };
-const RANGE_LABEL: Record<RangeKey, string> = {
-  "1h": "Last hour",
-  "24h": "Last 24 hours",
-  "7d": "Last 7 days",
-  all: "All time",
-};
 
 export function RunsList({
   base,
@@ -113,13 +109,29 @@ export function RunsList({
         : { ...filters, q: dropStatusTerms(typed), statuses: [...ATTENTION_STATUSES] },
     );
 
-  const toggle = (s: RunStatus) =>
-    onFilters({
-      ...filters,
-      statuses: filters.statuses.includes(s)
-        ? filters.statuses.filter((x) => x !== s)
-        : [...filters.statuses, s],
-    });
+  // Filters that do not live in the query text still show as chips, so every active filter can be seen and removed: the
+  // "Needs attention" status set (an older link or the preset) and an agent text that is not a valid slug.
+  const extra: ExtraChip[] = [
+    ...(filters.statuses.length > 0
+      ? [
+          {
+            key: "statuses",
+            text: `status: ${filters.statuses.map((s) => statusLabel(s).toLowerCase()).join(", ")}`,
+            onRemove: () => onFilters({ ...filters, statuses: [] }),
+          },
+        ]
+      : []),
+    ...(filters.agent !== ""
+      ? [
+          {
+            key: "agent",
+            text: `agent: ${filters.agent}`,
+            note: agent === "" ? t.search.badAgent : undefined,
+            onRemove: () => onFilters({ ...filters, agent: "" }),
+          },
+        ]
+      : []),
+  ];
 
   // The first-run guide (plan D9) stays on screen once shown, so when the list's own poll brings the first run it can
   // say so and offer the run, instead of the page changing under the person.
@@ -144,94 +156,53 @@ export function RunsList({
   const showTable = !q.isPending && !problem && !q.isError && runs.length > 0;
 
   return (
-    <div className="runs">
-      <div className="page-head">
-        <h1>Runs</h1>
-        {showTable && (
-          <p className="muted" aria-live="polite">
-            {runs.length} run{runs.length === 1 ? "" : "s"} loaded
-            {q.hasNextPage ? "" : " (end of list)"}
-          </p>
-        )}
-        <div className="page-actions">
-          <button
-            type="button"
-            className="toggle"
-            aria-pressed={attentionOn}
-            onClick={toggleAttention}
-            title="Failed, timed out and blocked runs"
-          >
-            Needs attention
-          </button>
-          <button
-            type="button"
-            className="toggle"
-            aria-pressed={comparing}
-            onClick={() => setCompare(!comparing)}
-          >
-            Compare
-          </button>
-        </div>
+    <div className="runs runs-home">
+      <div className="page-title">
+        <h1>{t.title}</h1>
+        <button
+          type="button"
+          className="toggle"
+          aria-pressed={comparing}
+          onClick={() => setCompare(!comparing)}
+        >
+          {t.compare}
+        </button>
       </div>
+      <RunsWeek base={base} />
       <SearchBox
         value={filters.q}
         fields={fields}
         onSubmit={(next) => onFilters({ ...filters, q: next })}
       />
-      {echo && effective !== "" && (
-        <QueryChips q={effective} terms={echo.terms} onRemove={removeTerm} />
-      )}
-      <form
-        className="filters toolbar-row"
-        role="search"
-        aria-label="Filter runs"
-        onSubmit={(e) => e.preventDefault()}
-      >
-        <fieldset>
-          <legend>Status</legend>
-          {ALL_STATUSES.map((s) => (
-            <label key={s} className="chip">
-              <input
-                type="checkbox"
-                checked={filters.statuses.includes(s)}
-                onChange={() => toggle(s)}
-              />
-              {statusLabel(s)}
-            </label>
-          ))}
-        </fieldset>
-        <label>
-          Agent
-          <input
-            type="text"
-            value={filters.agent}
-            placeholder="e.g. coding-agent"
-            aria-invalid={filters.agent !== "" && agent === ""}
-            onChange={(e) => onFilters({ ...filters, agent: e.target.value.trim() })}
+      <div className="chip-row">
+        {((echo && effective !== "") || extra.length > 0) && (
+          <QueryChips
+            q={effective}
+            terms={echo && effective !== "" ? echo.terms : []}
+            onRemove={removeTerm}
+            extra={extra}
           />
-        </label>
-        <label>
-          Started
-          <select
-            value={filters.range}
-            onChange={(e) => onFilters({ ...filters, range: e.target.value as RangeKey })}
-          >
-            {(Object.keys(RANGE_LABEL) as RangeKey[]).map((k) => (
-              <option key={k} value={k}>
-                {RANGE_LABEL[k]}
-              </option>
-            ))}
-          </select>
-        </label>
-        {filtered && (
-          <button type="button" onClick={() => onFilters(DEFAULT_FILTERS)}>
-            Clear filters
-          </button>
         )}
-      </form>
+        <div className="chip-row-end">
+          {showTable && (
+            <span className="muted" aria-live="polite">
+              {t.count(runs.length, !q.hasNextPage)}
+            </span>
+          )}
+          {filtered && (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => onFilters(DEFAULT_FILTERS)}
+            >
+              {t.search.clear}
+            </button>
+          )}
+        </div>
+      </div>
 
       {q.isPending ? (
-        <Loading label="Loading runs" />
+        <Loading label={t.loading} />
       ) : problem ? (
         <SearchProblemNotice problem={problem} q={effective} onRetry={() => void q.refetch()} />
       ) : q.isError ? (
@@ -250,32 +221,31 @@ export function RunsList({
             q={effective}
             terms={terms}
             onToggle={toggleTerm}
+            attention={{ on: attentionOn, toggle: toggleAttention }}
           />
           <div className="runs-main">
             {echo && <UnindexedNotice count={echo.unindexed} capped={echo.unindexed_capped} />}
             {runs.length === 0 ? (
-              <Empty title="No runs match these filters" motif="cut">
-                Try clearing a filter.
-              </Empty>
+              <Empty title={t.empty.noMatchTitle}>{t.empty.noMatchBody}</Empty>
             ) : (
               <>
                 {comparing && (
                   <div className="compare-bar" data-testid="compare-bar">
                     <span role="status">
                       {picked.length === 0
-                        ? `Tick ${COMPARE_PICKS} runs to compare them.`
-                        : `${picked.length} of ${COMPARE_PICKS} runs picked.`}
+                        ? t.compareBar.none(COMPARE_PICKS)
+                        : t.compareBar.some(picked.length, COMPARE_PICKS)}
                     </span>
                     {href ? (
                       <Link href={href} className="button-link" data-testid="compare-link">
-                        Compare the two runs
+                        {t.compareBar.go}
                       </Link>
                     ) : (
-                      picked.length === 1 && <span className="muted">Pick one more run.</span>
+                      picked.length === 1 && <span className="muted">{t.compareBar.one}</span>
                     )}
                     {picked.length > 0 && (
                       <button type="button" onClick={() => setPicked([])}>
-                        Clear picks
+                        {t.compareBar.clear}
                       </button>
                     )}
                   </div>
@@ -283,7 +253,7 @@ export function RunsList({
                 <RunsTable
                   runs={runs}
                   base={base}
-                  caption="Runs"
+                  caption={t.table.caption}
                   now={now}
                   selected={picked}
                   onToggle={comparing ? (id) => setPicked((p) => toggleRun(p, id)) : undefined}
@@ -291,10 +261,11 @@ export function RunsList({
                 {q.hasNextPage && (
                   <button
                     type="button"
+                    className="load-more"
                     disabled={q.isFetchingNextPage}
                     onClick={() => void q.fetchNextPage()}
                   >
-                    {q.isFetchingNextPage ? "Loading…" : "Load more"}
+                    {q.isFetchingNextPage ? t.loadingMore : t.loadMore}
                   </button>
                 )}
               </>

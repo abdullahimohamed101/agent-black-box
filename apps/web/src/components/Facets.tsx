@@ -3,9 +3,10 @@
 import { useState, useSyncExternalStore } from "react";
 import type { FacetsOut, QueryTermOut, RunStatus } from "@/lib/api/types";
 import { FACET_FIELDS, facetClickable, fieldTerm, findTerm } from "@/lib/search";
+import { runs as t } from "@/copy/runs";
 import { statusLabel } from "./StatusBadge";
 
-const NARROW = "(max-width: 52rem)";
+const NARROW = "(max-width: 56.1875rem)"; // the same breakpoint as the stacked layout in runs-list.css (900 px)
 const isNarrow = () => window.matchMedia?.(NARROW).matches ?? false;
 const subscribeNarrow = (notify: () => void) => {
   const m = window.matchMedia?.(NARROW);
@@ -68,6 +69,7 @@ export function Facets({
   q,
   terms,
   onToggle,
+  attention,
 }: {
   facets: FacetsOut | null | undefined;
   skipped?: string | null;
@@ -76,6 +78,8 @@ export function Facets({
   terms: readonly QueryTermOut[] | null;
   /** Add the term text, or remove the echoed term that is already in the query. */
   onToggle: (term: string, existing: QueryTermOut | null) => void;
+  /** The "Needs attention" preset: failed, timed-out and blocked runs together. It is a legacy status set, not a term. */
+  attention?: { on: boolean; toggle: () => void };
 }) {
   // On a phone the column folds into one "Narrow results" summary; on a wide screen the summary is hidden by CSS.
   const narrow = useSyncExternalStore(subscribeNarrow, isNarrow, () => false);
@@ -93,20 +97,20 @@ export function Facets({
         }));
 
   const groups: { title: string; items: FacetItem[] }[] = [
-    { title: "Status", items: statusItems },
+    { title: t.facets.status, items: statusItems },
     ...(facets
       ? [
-          { title: "Agent", items: fromFacet("agents", facets) },
-          { title: "Model", items: fromFacet("models", facets) },
+          { title: t.facets.agent, items: fromFacet("agents", facets) },
+          { title: t.facets.model, items: fromFacet("models", facets) },
         ]
       : []),
-    { title: "Started", items: TIMES },
-    { title: "Errors and retries", items: SIGNALS },
+    { title: t.facets.started, items: TIMES },
+    { title: t.facets.signals, items: SIGNALS },
   ].filter((g) => g.items.length > 0);
   const more: { title: string; items: FacetItem[] }[] = facets
     ? [
-        { title: "Tools", items: fromFacet("tools", facets) },
-        { title: "Event types", items: fromFacet("event_types", facets) },
+        { title: t.facets.tools, items: fromFacet("tools", facets) },
+        { title: t.facets.eventTypes, items: fromFacet("event_types", facets) },
       ].filter((g) => g.items.length > 0)
     : [];
 
@@ -149,24 +153,40 @@ export function Facets({
   );
 
   return (
-    <section className="facets" aria-label="Narrow the results">
+    <section className="facets" aria-label={t.facets.label}>
       <details
         className="facets-box"
         open={open}
         onToggle={(e) => setChosen((e.currentTarget as HTMLDetailsElement).open)}
       >
         <summary>
-          Narrow results{activeCount > 0 && <span className="muted"> ({activeCount} on)</span>}
+          {t.facets.summary}
+          {activeCount + (attention?.on ? 1 : 0) > 0 && (
+            <span className="muted"> ({t.facets.on(activeCount + (attention?.on ? 1 : 0))})</span>
+          )}
         </summary>
         {!facets && skipped && (
           <p className="muted" data-testid="facets-skipped">
-            Counts were left out to keep this search fast. Narrow the query to see them.
+            {t.facets.skipped}
           </p>
+        )}
+        {attention && (
+          <div className="facet facet-preset">
+            <button
+              type="button"
+              className="facet-button"
+              aria-pressed={attention.on}
+              title={t.facets.attentionHint}
+              onClick={attention.toggle}
+            >
+              {t.facets.attention}
+            </button>
+          </div>
         )}
         {groups.map(render)}
         {more.length > 0 && (
           <details className="facets-more">
-            <summary>More fields</summary>
+            <summary>{t.facets.more}</summary>
             {more.map(render)}
           </details>
         )}

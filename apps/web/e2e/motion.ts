@@ -1,12 +1,15 @@
 import { expect, type Page } from "@playwright/test";
 
-// Shared by the run-page specs (Phase 22 steps 5 and 6).
+// Shared by the run-page specs (Phase 22 steps 5 and 6, design pass 2 step 5b).
 
-/** The context column starts closed (D3): open it with the header button, as a person would. */
-export async function openContext(page: Page) {
-  const toggle = page.getByRole("button", { name: /^Context/ });
-  if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
-  await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
+/** Open one of the run page's tabs, as a person would (design pass 2: Findings and Evaluations are tabs, not a column). */
+export async function openTab(
+  page: Page,
+  name: "Timeline" | "Waterfall" | "Evidence" | "Findings" | "Evaluations",
+) {
+  const tab = page.getByRole("tab", { name, exact: true });
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
 }
 
 /**

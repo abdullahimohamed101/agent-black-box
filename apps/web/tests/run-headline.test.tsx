@@ -75,7 +75,7 @@ describe("headlineModel: the six states", () => {
   it("failed: step, offset, tool and error type; retries, time and cost after, total", () => {
     const m = model(failureRetryRun());
     expect(m.kind).toBe("failed");
-    expect(m.lead).toMatch(/^Failed at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout$/);
+    expect(m.lead).toMatch(/^Failed at step \d+ after 6\.2 s: run_migration, ConnectionTimeout\.$/);
     // 2 retries, then a 1.5 s model call: cost after is that call alone
     expect(m.detail).toMatch(/^2 retries · [\d.]+ s and \$0\.0167 spent after · \$0\.0356 total$/);
     expect(m.failure?.eventId).toBeTruthy();
@@ -91,7 +91,7 @@ describe("headlineModel: the six states", () => {
     expect(f.run.summary["error_count"]).toBe(0);
     const m = model(f);
     expect(m.kind).toBe("failed");
-    expect(m.lead).toMatch(/^Blocked at step \d+ \(\+[\d.]+ s\): policy action blocked$/);
+    expect(m.lead).toMatch(/^Blocked at step \d+ after [\d.]+ s: policy action blocked\.$/);
     expect(m.failure?.eventId).toBe(
       f.events.find((e) => e.event_type === "policy.action.blocked")!.event_id,
     );
@@ -105,7 +105,7 @@ describe("headlineModel: the six states", () => {
     const events = f.events.filter((e) => e.event_type !== "policy.action.blocked");
     const m = model(f, { first_error: null }, { events });
     expect(m.failure?.eventId).toBe(events[events.length - 1]!.event_id);
-    expect(m.lead).toMatch(/^Blocked at step \d+ \(\+[\d.]+ s\): the run's end$/);
+    expect(m.lead).toMatch(/^Blocked at step \d+ after [\d.]+ s: the run's end\.$/);
   });
   it("a run that ends in a timeout or failure at its last event says 'the run's end', not the event type", () => {
     const f = failureRetryRun();
@@ -113,7 +113,7 @@ describe("headlineModel: the six states", () => {
     const events = f.events.filter((e) => e.status !== "error" || e === end);
     expect(end.event_type).toBe("run.failed");
     const m = model(f, { status: "TIMED_OUT", first_error: null }, { events });
-    expect(m.lead).toMatch(/: the run's end$/);
+    expect(m.lead).toMatch(/: the run's end\.$/);
     expect(m.lead).not.toMatch(/run\.failed|, error/);
     const timedOut: EventOut = { ...end, event_type: "run.completed", status: "timeout" };
     const m2 = model(
@@ -121,12 +121,12 @@ describe("headlineModel: the six states", () => {
       { status: "TIMED_OUT", first_error: null },
       { events: [...events.slice(0, -1), timedOut] },
     );
-    expect(m2.lead).toMatch(/^Timed out at step \d+ \(\+[\d.]+ s\): the run's end$/);
+    expect(m2.lead).toMatch(/^Timed out at step \d+ after [\d.]+ s: the run's end\.$/);
   });
   it("failed without any error event says how long it ran, and offers no jump", () => {
     const f = successRun();
     const m = model(f, { status: "FAILED" });
-    expect(m.lead).toMatch(/^Failed after 11 s$/);
+    expect(m.lead).toMatch(/^Failed after 11 s\.$/);
     expect(m.failure).toBeNull();
   });
   it("uses the server's stored facts when present and says nothing about where they came from", () => {
@@ -180,7 +180,7 @@ describe("headlineModel: the six states", () => {
     const m = model(f, {}, { now: Date.parse(last.occurred_at) + 3_000 });
     expect(m.kind).toBe("running");
     expect(m.live).toBe(true);
-    expect(m.lead).toMatch(/^Running · step \d+ · last event (3s ago|just now)$/);
+    expect(m.lead).toMatch(/^Running at step \d+, last event (3s ago|just now)\.$/);
     expect(m.detail).toMatch(/so far/);
   });
   it("waiting for approval: what it waits on, for how long, the step", () => {
@@ -188,13 +188,13 @@ describe("headlineModel: the six states", () => {
     const ask = f.events.find((e) => e.event_type === "approval.requested")!;
     const m = model(f, {}, { now: Date.parse(ask.occurred_at) + 4 * 60_000 });
     expect(m.kind).toBe("waiting");
-    expect(m.lead).toMatch(/^Awaiting approval · step \d+$/);
+    expect(m.lead).toMatch(/^Waiting for approval at step \d+\.$/);
     expect(m.detail).toMatch(/waiting 4m 00s/);
   });
   it("recovered: succeeded after N retries, the error it recovered from, what the recovery cost", () => {
     const m = model(failureRetryRun(), { status: "SUCCESS" });
     expect(m.kind).toBe("recovered");
-    expect(m.lead).toBe("Succeeded after 2 retries");
+    expect(m.lead).toBe("Succeeded after 2 retries.");
     expect(m.detail).toMatch(
       /^Recovered from run_migration, ConnectionTimeout at step \d+ · \$0\.0167 spent on the recovery · \$0\.0356 total$/,
     );
@@ -202,7 +202,7 @@ describe("headlineModel: the six states", () => {
   it("clean success: calm, duration and cost; files and tests when known", () => {
     const m = model(successRun());
     expect(m.kind).toBe("success");
-    expect(m.lead).toBe("Completed in 11 s, $0.0253");
+    expect(m.lead).toBe("Completed in 11 s for $0.0253.");
     expect(m.detail).toBe("1 file changed");
     expect(m.failure).toBeNull();
     const f = successRun();
@@ -222,7 +222,7 @@ describe("headlineModel: the six states", () => {
   });
   it("cancelled: at which step, after how long, and who or what stopped it", () => {
     const m = model(successRun(), { status: "CANCELLED" });
-    expect(m.lead).toMatch(/^Cancelled at step \d+ after 11 s$/);
+    expect(m.lead).toMatch(/^Cancelled at step \d+ after 11 s\.$/);
     expect(m.detail).toBe("$0.0253 total");
     const f = approvalRun();
     const denied: EventOut = {
@@ -253,6 +253,34 @@ describe("headlineModel: the six states", () => {
   });
 });
 
+describe("headline sentences (design pass 2): one sentence, full stop, no parentheses or middle dots", () => {
+  const CASES: [string, () => HeadlineModel][] = [
+    ["failed", () => model(failureRetryRun())],
+    ["timed out", () => model(failureRetryRun(), { status: "TIMED_OUT" })],
+    ["blocked", () => model(blockedRun())],
+    ["failed, first error unknown", () => model(successRun(), { status: "FAILED" })],
+    ["recovered", () => model(failureRetryRun(), { status: "SUCCESS" })],
+    ["success", () => model(successRun())],
+    ["running", () => model(runningRun())],
+    ["waiting for approval", () => model(approvalRun())],
+    ["cancelled", () => model(successRun(), { status: "CANCELLED" })],
+  ];
+  for (const [name, make] of CASES)
+    it(`${name}: a sentence`, () => {
+      const { lead } = make();
+      expect(lead).toMatch(/^[A-Z][^·()]*\.$/);
+    });
+  it("each status opens with its own word", () => {
+    expect(model(failureRetryRun()).lead).toMatch(/^Failed at step/);
+    expect(model(failureRetryRun(), { status: "TIMED_OUT" }).lead).toMatch(/^Timed out at step/);
+    expect(model(blockedRun()).lead).toMatch(/^Blocked at step/);
+    expect(model(runningRun()).lead).toMatch(/^Running/);
+    expect(model(approvalRun()).lead).toMatch(/^Waiting for approval/);
+    expect(model(successRun(), { status: "CANCELLED" }).lead).toMatch(/^Cancelled/);
+    expect(model(successRun()).lead).toMatch(/^Completed in/);
+  });
+});
+
 describe("headline states x variants", () => {
   for (const kind of HEADLINE_KINDS) {
     describe(kind, () => {
@@ -263,9 +291,9 @@ describe("headline states x variants", () => {
         const lead = screen.getByTestId("headline");
         expect(lead).toHaveTextContent(m.lead);
         expect(screen.getByTestId("headline-detail")).toHaveTextContent(m.detail);
-        const go = screen.queryByRole("button", { name: "Show it" });
+        const go = screen.queryByRole("button", { name: "Go to first error" });
         if (m.failure) {
-          expect(go).toHaveTextContent("Go");
+          expect(go).toHaveTextContent("Go to first error");
           await userEvent.click(go!);
           expect(onGo).toHaveBeenCalledTimes(1);
         } else {
@@ -389,7 +417,7 @@ describe("headline states x variants", () => {
   it("an awaiting-approval or cancelled headline names the kind, not what the approval was for", () => {
     const f = approvalRun();
     expect(model(f).lead).toBe(
-      `Awaiting approval · step ${f.events[f.events.length - 1]!.sequence}`,
+      `Waiting for approval at step ${f.events[f.events.length - 1]!.sequence}.`,
     );
     const denied: EventOut = {
       ...f.events[f.events.length - 1]!,

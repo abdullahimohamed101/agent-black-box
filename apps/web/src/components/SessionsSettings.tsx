@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRevokeOtherSessions, useRevokeSession, useSessions } from "@/lib/admin";
 import type { components } from "@/lib/api/schema";
-import { ActionError, when } from "./SettingsKit";
+import { settings } from "@/copy/settings";
+import { ActionError, Lede, Section, StatusLine, TwoStep, when } from "./SettingsKit";
 import { Empty, ErrorState, Loading } from "./States";
 import "../app/sessions.css";
 
@@ -19,89 +20,64 @@ export function SessionsSettings() {
   const sessions = useSessions();
   const revokeOne = useRevokeSession();
   const revokeOthers = useRevokeOtherSessions();
-  const [confirming, setConfirming] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const others = sessions.data?.filter((s) => !s.current) ?? [];
   return (
     <div className="sessions">
-      <div className="page-head">
-        <h1>Sessions</h1>
-        <p className="muted">
-          The browsers and devices where you are signed in. Ending a session signs that device out
-          at once. Each change is written to the audit log of your workspaces.
-        </p>
-      </div>
-      {sessions.isPending ? (
-        <Loading label="Loading sessions" />
-      ) : sessions.isError ? (
-        <ErrorState error={sessions.error} onRetry={() => void sessions.refetch()} />
-      ) : sessions.data.length === 0 ? (
-        <Empty title="No sessions">
-          You have no working session. Reload the page to sign in again.
-        </Empty>
-      ) : (
-        <>
-          <ul className="session-list" aria-label="Your sessions">
-            {sessions.data.map((s) => (
-              <SessionItem
-                key={s.id}
-                session={s}
-                busy={revokeOne.isPending || revokeOthers.isPending}
-                onRevoke={() => {
-                  setNotice(null);
-                  revokeOne.mutate(s.id, { onSuccess: () => setNotice("Session ended.") });
-                }}
-              />
-            ))}
-          </ul>
-          {others.length > 0 && (
-            <div className="session-others">
-              {confirming ? (
-                <div role="group" aria-label="Confirm signing out everywhere else">
-                  <p>
-                    Sign out{" "}
-                    {others.length === 1
-                      ? "the 1 other session"
-                      : `${others.length} other sessions`}
-                    ? This device stays signed in.
-                  </p>
-                  <button
-                    type="button"
-                    className="danger"
-                    disabled={revokeOthers.isPending}
-                    onClick={() => {
-                      setConfirming(false);
-                      setNotice(null);
-                      revokeOthers.mutate(undefined, {
-                        onSuccess: (n) =>
-                          setNotice(
-                            n === 1
-                              ? "Signed out 1 other session."
-                              : `Signed out ${n} other sessions.`,
-                          ),
-                      });
-                    }}
-                  >
-                    Confirm sign out everywhere else
-                  </button>{" "}
-                  <button type="button" onClick={() => setConfirming(false)}>
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button type="button" className="danger" onClick={() => setConfirming(true)}>
-                  Sign out everywhere else
-                </button>
-              )}
-            </div>
-          )}
-        </>
-      )}
-      <div role="status" aria-live="polite" className="session-status" data-testid="session-status">
-        {notice}
-      </div>
-      <ActionError error={revokeOne.error ?? revokeOthers.error} />
+      <Lede>{settings.sessions.lede}</Lede>
+      <Section title={settings.sessions.listTitle}>
+        {sessions.isPending ? (
+          <Loading label="Loading sessions" />
+        ) : sessions.isError ? (
+          <ErrorState error={sessions.error} onRetry={() => void sessions.refetch()} />
+        ) : sessions.data.length === 0 ? (
+          <Empty title="No sessions">
+            You have no working session. Reload the page to sign in again.
+          </Empty>
+        ) : (
+          <>
+            <ul className="session-list" aria-label="Your sessions">
+              {sessions.data.map((s) => (
+                <SessionItem
+                  key={s.id}
+                  session={s}
+                  busy={revokeOne.isPending || revokeOthers.isPending}
+                  onRevoke={() => {
+                    setNotice(null);
+                    revokeOne.mutate(s.id, { onSuccess: () => setNotice("Session ended.") });
+                  }}
+                />
+              ))}
+            </ul>
+            {others.length > 0 && (
+              <div className="session-others">
+                <TwoStep
+                  label="Sign out everywhere else"
+                  confirmLabel="Confirm sign out everywhere else"
+                  question={`Sign out ${
+                    others.length === 1 ? "the 1 other session" : `${others.length} other sessions`
+                  }? This device stays signed in.`}
+                  disabled={revokeOthers.isPending}
+                  onConfirm={() => {
+                    setNotice(null);
+                    revokeOthers.mutate(undefined, {
+                      onSuccess: (n) =>
+                        setNotice(
+                          n === 1
+                            ? "Signed out 1 other session."
+                            : `Signed out ${n} other sessions.`,
+                        ),
+                    });
+                  }}
+                />
+              </div>
+            )}
+          </>
+        )}
+        <StatusLine testId="session-status">{notice}</StatusLine>
+        <ActionError error={revokeOne.error ?? revokeOthers.error} />
+      </Section>
     </div>
   );
 }
@@ -118,7 +94,7 @@ function SessionItem({
   return (
     <li className="session-item" data-testid="session-item" data-current={session.current}>
       <div className="session-head">
-        <h2>{session.device ?? "Unknown device"}</h2>
+        <h3>{session.device ?? "Unknown device"}</h3>
         <span className="session-status-word" data-current={session.current}>
           <span className="session-glyph" aria-hidden="true">
             {session.current ? "●" : "○"}

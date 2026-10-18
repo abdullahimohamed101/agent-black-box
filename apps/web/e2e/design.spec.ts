@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { withArtifacts } from "./artifacts";
-import { openContext, settleAnimations } from "./motion";
+import { settleAnimations } from "./motion";
 
 // Phase 21 design contract (fixtures build): the application frame, fonts, no third-party requests, axe in both colour
 // schemes and no horizontal scroll on a phone, on every kind of page. Objective checks only; the paired screenshots
@@ -9,7 +9,7 @@ import { openContext, settleAnimations } from "./motion";
 const BASE = "/w/demo/projects/all";
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 const ROUTES: [string, string][] = [
-  ["overview", BASE],
+  ["project home (redirects to Runs)", BASE],
   ["runs list", `${BASE}/runs`],
   ["failed run", `${BASE}/runs/${RUN(2)}`],
   ["multi-agent waterfall", `${BASE}/runs/${RUN(7)}?view=waterfall`],
@@ -44,36 +44,34 @@ test.describe("1440x900 frame", () => {
       const box = async (sel: string) => (await page.locator(sel).first().boundingBox())!;
       const width = await page.evaluate(() => document.documentElement.clientWidth);
       const main = await box("main#main");
-      const rail = await box("aside.rail");
       const top = await box("header.topbar");
-      // no centred column: content starts at the rail's edge and ends at the viewport's edge
-      expect(rail).toMatchObject({ x: 0, width: 224 });
-      expect(main.x).toBe(224);
+      // design pass 2: one 44 px top bar across the whole width and no rail; the page starts under it at the left edge
+      expect(top).toMatchObject({ x: 0, y: 0, width, height: 44 });
+      expect(main.x).toBe(0);
       expect(main.x + main.width).toBe(width);
-      expect(top.height).toBe(44);
+      await expect(page.locator(".rail, .switcher, .topbar-crumbs")).toHaveCount(0);
       await expect(page.locator("main#main")).toHaveAttribute("tabindex", "-1");
     });
   }
 
-  test("frame: the sign-in page has no rail", async ({ page }) => {
+  test("frame: the sign-in page has no top bar", async ({ page }) => {
     await page.goto("/login");
     await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
-    await expect(page.locator("aside.rail")).toHaveCount(0);
+    await expect(page.locator("header.topbar")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: /Sign in/ })).toBeVisible();
   });
 
-  test("focus order: skip link, then the rail, then the page", async ({ page }) => {
+  test("focus order: skip link, then the top bar, then the page", async ({ page }) => {
     await page.goto(`${BASE}/runs`);
     await page.keyboard.press("Tab");
     await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
     const order = await page.evaluate(() =>
       [...document.querySelectorAll("a[href], button, summary")]
-        .map((e) => (e.closest("aside.rail") ? "rail" : e.closest("header") ? "top" : "main"))
+        .map((e) => (e.closest("header") ? "top" : "main"))
         .filter((v, i, a) => i === 0 || a[i - 1] !== v),
     );
-    // the skip link sits outside the rail and the top bar; the top bar now holds the global search (Phase 22 step 7),
-    // so the order is skip link, rail, search, page
-    expect(order.slice(0, 4)).toEqual(["main", "rail", "top", "main"]);
+    // the skip link sits outside the top bar, which holds the links, the scope control, the search and the person menu
+    expect(order.slice(0, 3)).toEqual(["main", "top", "main"]);
   });
 
   test("fonts are self-hosted and applied; no request leaves the origin", async ({ page }) => {
@@ -82,14 +80,14 @@ test.describe("1440x900 frame", () => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
     await page.evaluate(async () => {
       await Promise.all(
-        ['400 1rem "IBMPlexSans"', '600 1rem "IBMPlexSansCondensed"', '400 1rem "IBMPlexMono"'].map(
-          (f) => document.fonts.load(f),
+        ['400 1rem "IBMPlexSans"', '600 1rem "IBMPlexSans"', '400 1rem "IBMPlexMono"'].map((f) =>
+          document.fonts.load(f),
         ),
       );
     });
     for (const face of [
       '400 1rem "IBMPlexSans"',
-      '600 1rem "IBMPlexSansCondensed"',
+      '600 1rem "IBMPlexSans"',
       '400 1rem "IBMPlexMono"',
     ])
       expect(await page.evaluate((f) => document.fonts.check(f), face)).toBe(true);
@@ -99,7 +97,12 @@ test.describe("1440x900 frame", () => {
         .first()
         .evaluate((e) => getComputedStyle(e).fontFamily);
     expect(await fam("body")).toContain("IBMPlexSans,");
-    expect(await fam("h1")).toContain("IBMPlexSansCondensed");
+    // headings are Plex Sans too (batch 5b removed the condensed face), and nothing asks for the deleted families
+    expect(await fam("h1")).toContain("IBMPlexSans,");
+    const families = await page.evaluate(() =>
+      [...document.fonts].map((f) => f.family.replace(/"/g, "")),
+    );
+    expect(families.filter((f) => /Condensed|Serif/.test(f))).toEqual([]);
     expect(await fam(".tl-type")).toContain("IBMPlexMono");
     expect(await page.evaluate(() => getComputedStyle(document.body).fontSize)).toBe("13px");
     expect([...origins]).toEqual(["http://localhost:3100"]);
@@ -126,14 +129,20 @@ test.describe("375 px", () => {
       await page.evaluate(() => document.fonts.ready);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
     });
-  test("the rail is a strip under the top bar and its links stay reachable", async ({ page }) => {
+  test("the top region is one 44 px bar and the links stay reachable through the Menu button", async ({
+    page,
+  }) => {
     await page.goto(`${BASE}/runs`);
-    const rail = (await page.locator("aside.rail").boundingBox())!;
-    expect(rail.x).toBe(0);
-    expect(rail.y).toBe(44);
-    await expect(
-      page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Runs" }),
-    ).toBeInViewport();
+    const top = (await page.locator("header.topbar").boundingBox())!;
+    expect(top).toMatchObject({ x: 0, y: 0, height: 44 });
+    const main = (await page.locator("main#main").boundingBox())!;
+    expect(main.y).toBe(44); // nothing stacked between the bar and the page (the old rail strip and breadcrumb row are gone)
+    const runs = page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Runs" });
+    await expect(runs).toBeHidden();
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(runs).toBeInViewport();
   });
 });
 
@@ -180,65 +189,90 @@ test.describe("run header", () => {
     ["failed run", `${BASE}/runs/${RUN(2)}`],
     ["multi-agent run", `${BASE}/runs/${RUN(7)}`],
   ] as const)
-    test(`the header is an instrument panel, not a page: ${name}`, async ({ page }) => {
+    test(`the header is three lines of text, not a page: ${name}`, async ({ page }) => {
       await page.goto(url);
-      await expect(page.locator(".run-head .stats .stat").first()).toBeVisible();
+      await expect(page.locator(".run-head dl.figures .fig").first()).toBeVisible();
       const head = (await page.locator(".run-head").boundingBox())!;
-      expect(head.height).toBeLessThanOrEqual(190);
-      // one readout strip on one row at this width
+      // audit (01-direction.md A.3): six bands and 262 px above the first event; now the title line, the headline, one detail line
+      // and the figures, at most 200 px, and the first events are in the first screen
+      expect(head.height).toBeLessThanOrEqual(200);
+      // five readouts on one row at this width, then the Details toggle
+      const labels = await page.locator(".run-head dl.figures dt").allTextContents();
+      expect(labels).toEqual(["Duration", "Cost", "Tokens", "Retries", "Errors"]);
       const tops = await page
-        .locator(".run-head .stats .stat")
+        .locator(".run-head dl.figures .fig")
         .evaluateAll(
           (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size,
         );
       expect(tops).toBe(1);
       await expect(page.getByTestId("headline")).toBeVisible();
+      const firstRow = (await page.getByRole("option").first().boundingBox())!;
+      expect(firstRow.y + firstRow.height).toBeLessThanOrEqual(900);
+      expect(firstRow.y).toBeLessThanOrEqual(300);
     });
 
-  test("annunciator grammar: the failure line and the error count are red, the retry count amber, on the failed run", async ({
+  test("one red line: the red on a failed run's page is the fault line with its label and the status word, nothing else", async ({
     page,
   }) => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await expect(page.locator(".run-head .stats .stat").first()).toBeVisible();
-    const colours = await page.evaluate(() => {
-      const probe = (v: string) => {
-        const e = document.createElement("span");
-        e.style.color = `var(${v})`;
-        document.body.append(e);
-        const c = getComputedStyle(e).color;
-        e.remove();
-        return c;
-      };
-      const bad = probe("--bad");
-      const warn = probe("--warn");
-      // the status badge is the state itself and is red on a failed run by design; everything else in the header counts
-      const els = [...document.querySelectorAll(".run-head *")].filter(
-        (e) => !e.closest(".badge") && !e.matches(".hl-nowrap"),
-      );
-      const direct = (c: string) =>
-        els.filter(
-          (e) =>
-            getComputedStyle(e).color === c &&
-            [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent?.trim()),
-        );
-      return {
-        red: direct(bad).map((e) => e.textContent),
-        amber: direct(warn).map((e) => e.textContent),
-      };
+    await expect(page.locator(".tl-fault")).toBeVisible();
+    const found = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--color-status-fault)";
+      document.body.append(probe);
+      const red = getComputedStyle(probe).color;
+      probe.remove();
+      const text: string[] = [];
+      const fills: string[] = [];
+      const edges: string[] = [];
+      for (const el of document.querySelectorAll("body *")) {
+        const cs = getComputedStyle(el);
+        const hasText = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent?.trim());
+        // the status badge is one thing: its glyph is decoration inside it, so only the badge itself is counted
+        if (hasText && cs.color === red && !el.parentElement?.closest(".badge"))
+          text.push(el.textContent!.trim());
+        if (cs.backgroundColor === red) fills.push(el.className.toString());
+        for (const w of ["Top", "Right", "Bottom", "Left"] as const)
+          if (parseFloat(cs[`border${w}Width`]) > 0 && cs[`border${w}Color`] === red)
+            edges.push(el.className.toString());
+        for (const pseudo of ["::before", "::after"]) {
+          const ps = getComputedStyle(el, pseudo);
+          if (ps.content !== "none" && ps.backgroundColor === red)
+            fills.push(`${el.className}${pseudo}`);
+        }
+      }
+      return { text, fills, edges };
     });
-    // Phase 22: the headline is the failure line (red, the one place red means "this run failed"); the Errors readout stays red
-    expect(colours.red).toHaveLength(2);
-    expect(colours.red[0]).toMatch(
-      /^Failed at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout/,
-    );
-    expect(colours.red[1]).toBe("4");
-    expect(colours.amber).toEqual(["2"]);
+    // the status word (the badge's text) and the label of the line; the line itself is the one red fill; no red border anywhere
+    expect(found.text.sort()).toEqual(["First error, step 7", "✕ Failed"].sort());
+    expect(found.fills).toEqual(["tl-fault::before"]);
+    expect(found.edges).toEqual([]);
   });
 
-  test("Show it opens the failing event from the header", async ({ page }) => {
+  test("Go to first error opens the failing event from the header", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.getByRole("button", { name: "Go to first error" }).click();
     await expect(page.getByRole("dialog")).toContainText("ConnectionTimeout");
+  });
+
+  test("the title line has a Runs back link and Details opens the identity items in place", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/runs/${RUN(2)}`);
+    const back = page.getByRole("link", { name: "Back to runs" });
+    await expect(back).toHaveAttribute("href", /\/runs$/);
+    const h1 = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+    const link = (await back.boundingBox())!;
+    expect(Math.abs(link.y - h1.y)).toBeLessThan(12); // one line: "Runs / name"
+    const toggle = page.getByRole("button", { name: /^Details/ });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator("#run-details")).toBeHidden();
+    const before = (await page.locator(".pane-head").boundingBox())!.y;
+    await toggle.click();
+    await expect(page.locator("#run-details")).toBeVisible();
+    await expect(page.locator("#run-details")).toContainText("Run id");
+    expect((await page.locator(".pane-head").boundingBox())!.y).toBeGreaterThan(before);
+    await axe(page);
   });
 });
 
@@ -257,66 +291,90 @@ test.describe("run work area", () => {
     expect(m.scroll).toBe(m.inner);
     const list = (await page.locator(".timeline").boundingBox())!;
     expect(list.height).toBeGreaterThan(300);
-    // Phase 22 D3: the context column starts closed (a strip beside the pane); findings are not in the main view
-    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
-    await expect(page.getByTestId("findings")).toBeHidden();
-    await expect(page.getByRole("button", { name: /^Context/ })).toHaveAttribute(
-      "aria-pressed",
+    // Findings and Evaluations are tabs (the Context column is gone): nothing of them is in the timeline view
+    await expect(page.getByTestId("findings")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Context/ })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "Findings" })).toHaveAttribute(
+      "aria-selected",
       "false",
     );
   });
 
-  test("an open context column stays open beside the inspector at 1280 (KI-126): the inspector narrows, the pane stays usable", async ({
+  test("the Steps column stays beside the inspector at 1280: the pane stays usable", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await openContext(page);
-    await expect(page.getByTestId("findings")).toBeVisible();
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.goto(`${BASE}/runs/${RUN(12)}`);
+    await expect(page.getByRole("complementary", { name: "Steps" })).toBeVisible();
+    await page.getByRole("button", { name: "Go to first error" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
-    await expect(page.getByTestId("findings")).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Steps" })).toBeVisible();
     expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(440);
-    // the header toggle folds it
-    await page.getByRole("button", { name: /^Context/ }).click();
-    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
   });
 
-  test("below 1280 an open context folds to the strip when the inspector opens, and one click restores it", async ({
+  test("below 1280 the inspector is an overlay from the right and the pane keeps its width; below 1100 Steps is a strip", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1100, height: 800 });
-    await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await openContext(page);
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.goto(`${BASE}/runs/${RUN(12)}`);
+    const pane = (await page.locator(".pane").boundingBox())!.width;
+    await page.getByRole("button", { name: "Go to first error" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    expect(await page.locator(".pane").evaluate((e) => e.clientWidth)).toBeGreaterThanOrEqual(300);
-    await expect(page.locator(".work")).toHaveAttribute("data-context", "closed");
-    await page.getByRole("button", { name: "Show run context" }).click();
-    await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
-    await expect(page.getByTestId("findings")).toBeVisible();
+    expect((await page.locator(".pane").boundingBox())!.width).toBe(pane); // overlay: nothing moved
+    await settleAnimations(page); // the inspector slides in for 160 ms
+    const dlg = (await page.getByRole("dialog").boundingBox())!;
+    expect(dlg.x + dlg.width).toBe(1100);
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1000, height: 800 });
+    const strip = page.locator("details.steps-strip");
+    await expect(strip).toBeVisible();
+    await expect(strip.locator("summary")).toHaveText(/^Steps · \d+/);
+    await strip.locator("summary").click();
+    await expect(page.getByTestId("story")).toBeVisible();
   });
 
-  test("a wide window keeps an open context beside the inspector", async ({ page }) => {
+  test("a wide window keeps Steps beside the inspector", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1000 });
-    await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await openContext(page);
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.goto(`${BASE}/runs/${RUN(12)}`);
+    await page.getByRole("button", { name: "Go to first error" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.locator(".work")).toHaveAttribute("data-context", "open");
-    await expect(page.getByTestId("findings")).toBeVisible();
+    await expect(page.locator(".work")).toHaveAttribute("data-steps", "open");
+    await expect(page.getByTestId("story")).toBeVisible();
   });
 
-  test("the view tabs are radios: keyboard and click both switch, the pane keeps its height", async ({
+  test("the view tabs are one tablist: keyboard and click both switch, the pane keeps its height", async ({
     page,
   }) => {
     await page.goto(`${BASE}/runs/${RUN(7)}`);
-    await page.getByRole("radio", { name: "Waterfall" }).check();
+    await page.getByRole("tab", { name: "Waterfall" }).click();
     await expect(page.getByTestId("waterfall")).toBeVisible();
     const h = (await page.locator(".wf-scroll").boundingBox())!.height;
     expect(h).toBeGreaterThan(250);
-    await expect(page.getByRole("radio", { name: "Waterfall" })).toBeChecked();
+    await expect(page.getByRole("tab", { name: "Waterfall" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    // arrow keys move and select; Tab leaves the list (one tab stop), and the URL follows
+    await page.getByRole("tab", { name: "Waterfall" }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.getByRole("tab", { name: "Evidence" })).toBeFocused();
+    await expect(page.getByRole("tab", { name: "Evidence" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(page.url()).toContain("view=evidence");
+    await page.keyboard.press("End");
+    await expect(page.getByRole("tab", { name: "Evaluations" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(page.url()).toContain("view=evaluations");
+    await page.keyboard.press("Home");
+    await expect(page.getByRole("tab", { name: "Timeline" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(page.url()).not.toContain("view=");
   });
 
   test("the 10,000-event run: bounded rows in both views, the page still does not scroll", async ({
@@ -328,7 +386,7 @@ test.describe("run work area", () => {
     await list.focus();
     await page.keyboard.press("End");
     expect(await page.getByRole("option").count()).toBeLessThan(80);
-    await page.getByRole("radio", { name: "Waterfall" }).check();
+    await page.getByRole("tab", { name: "Waterfall" }).click();
     await expect(page.getByTestId("waterfall")).toBeVisible();
     expect(await page.locator('.wf-scroll [role="row"]').count()).toBeLessThanOrEqual(80);
     const m = await page.evaluate(() => [
@@ -378,7 +436,7 @@ test.describe("inspector", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.getByRole("button", { name: "Go to first error" }).click();
     await page.waitForTimeout(300); // the inspector slides in for 180 ms
     const dlg = (await page.getByRole("dialog").boundingBox())!;
     expect(dlg.x + dlg.width).toBe(1440);
@@ -391,7 +449,7 @@ test.describe("inspector", () => {
   test("dragging the separator widens the inspector and the pane gives way", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.getByRole("button", { name: "Go to first error" }).click();
     const before = (await page.getByRole("dialog").boundingBox())!.width;
     const sep = (await page.getByRole("separator").boundingBox())!;
     await page.mouse.move(sep.x + 3, sep.y + 200);
@@ -406,7 +464,7 @@ test.describe("inspector", () => {
   test("the head stays put while a long inspector scrolls", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 500 });
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.getByRole("button", { name: "Go to first error" }).click();
     const dlg = page.getByRole("dialog");
     await dlg.evaluate((e) => e.scrollTo(0, 300));
     await expect(page.getByRole("button", { name: "Close details" })).toBeInViewport();
@@ -415,7 +473,7 @@ test.describe("inspector", () => {
   test("on a phone it is an overlay under the top bar", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.getByRole("button", { name: "Go to first error" }).click();
     await page.waitForTimeout(300);
     const dlg = (await page.getByRole("dialog").boundingBox())!;
     expect(dlg).toMatchObject({ x: 0, y: 44, width: 375, height: 812 - 44 });
@@ -427,7 +485,7 @@ test.describe("inspector", () => {
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`/w/viewer-only/projects/all/runs/${RUN(7)}`);
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.getByRole("button", { name: "Go to first error" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     expect(await page.locator("body").innerText()).not.toContain("[withheld]");
   });
@@ -443,7 +501,10 @@ test.describe("evidence view", () => {
     await page.goto(`${BASE}/runs/${RUN(11)}?view=evidence`);
     const region = page.getByRole("region", { name: "Captured artifacts" });
     await expect(region.getByRole("row")).toHaveCount(1 + 4); // header, two diffs, stdout and stderr of the one failed command
-    await expect(page.getByRole("radio", { name: "Evidence" })).toBeChecked();
+    await expect(page.getByRole("tab", { name: "Evidence" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await axe(page);
     await region
       .getByRole("button", { name: /^Open diff/ })
@@ -470,7 +531,10 @@ test.describe("evidence view", () => {
   test("a viewer's evidence view never shows the API's placeholder", async ({ page }) => {
     await withArtifacts(page);
     await page.goto(`/w/viewer-only/projects/all/runs/${RUN(7)}?view=evidence`);
-    await expect(page.getByRole("radio", { name: "Evidence" })).toBeChecked();
+    await expect(page.getByRole("tab", { name: "Evidence" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await page.waitForTimeout(300);
     const text = await page.locator("body").innerText();
     expect(text).not.toContain("[withheld]");
@@ -497,22 +561,24 @@ test.describe("runs list", () => {
       .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
     expect(attention.length).toBeGreaterThan(0);
     expect(Math.max(...attention)).toBeLessThanOrEqual(70);
-    const filters = (await page.getByRole("search", { name: "Filter runs" }).boundingBox())!;
-    expect(filters.height).toBeLessThanOrEqual(48);
+    // one field instead of three filtering systems (design pass 2): no filter form, a single 32 px field
+    await expect(page.getByRole("search", { name: "Filter runs" })).toHaveCount(0);
+    const field = (await page.getByRole("searchbox", { name: "Search runs" }).boundingBox())!;
+    expect(field.height).toBeLessThanOrEqual(36);
     const wrap = await page.locator(".table-wrap").evaluate((e) => [e.scrollWidth, e.clientWidth]);
     expect(wrap[0]).toBeLessThanOrEqual(wrap[1]!);
-    // the count line sits in the page head, above the table
-    const head = (await page.locator(".page-head").boundingBox())!;
+    // the count line sits in the chip row under the field, above the table
+    const row = (await page.locator(".chip-row").boundingBox())!;
     const table = (await page.getByRole("table").boundingBox())!;
-    expect(head.y).toBeLessThan(table.y);
-    await expect(page.locator(".page-head")).toContainText(/\d+ runs loaded/);
+    expect(row.y).toBeLessThan(table.y);
+    await expect(page.locator(".chip-row")).toContainText(/\d+ runs loaded/);
   });
 
   test("a search that adds the Matched column still fits without an inner scroll", async ({
     page,
   }) => {
     await page.goto(`${BASE}/runs`);
-    const box = page.getByRole("searchbox", { name: "Search" });
+    const box = page.getByRole("searchbox", { name: "Search runs" });
     await box.fill("tool:run_migration");
     await box.press("Enter");
     await expect(page.getByRole("list", { name: "Search terms" })).toBeVisible();
@@ -522,12 +588,20 @@ test.describe("runs list", () => {
     await expect(page.getByRole("region", { name: "Narrow the results" })).toBeVisible();
   });
 
-  test("the status filter is a segmented toggle that still checks by label", async ({ page }) => {
+  test("the status filter is a facet button that is pressed by label and shows as a chip", async ({
+    page,
+  }) => {
     await page.goto(`${BASE}/runs`);
-    await page.getByLabel("Failed").check();
-    await expect(page.getByLabel("Failed")).toBeChecked();
+    const all = await page.locator("tbody tr").count();
+    const facets = page.getByRole("region", { name: "Narrow the results" });
+    await facets.getByRole("button", { name: "Failed" }).click();
+    await expect(facets.getByRole("button", { name: /^Failed/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
-    await expect(page.locator("tbody tr")).not.toHaveCount(12);
+    await expect(page.getByRole("list", { name: "Search terms" })).toContainText("status:failed");
+    await expect(page.locator("tbody tr")).not.toHaveCount(all);
   });
 });
 
@@ -558,13 +632,13 @@ test.describe("motion", () => {
       await expect(page.getByTestId("headline")).toBeVisible();
       await settled(page);
       expect(await animations(page)).toBe(0);
-      await page.getByRole("button", { name: "Show it" }).click();
+      await page.getByRole("button", { name: "Go to first error" }).click();
       const drawer = page.getByRole("dialog");
       await expect(drawer).toBeVisible();
       await page.waitForTimeout(100);
       expect(await animations(page)).toBe(0);
       expect(await drawer.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
-      await page.getByRole("radio", { name: "Waterfall" }).check();
+      await page.getByRole("tab", { name: "Waterfall" }).click();
       await page.waitForTimeout(100);
       expect(await animations(page)).toBe(0);
     });
@@ -588,7 +662,7 @@ test.describe("motion", () => {
       );
       expect(line.animationName).toBe("none");
       expect(line.transform).toBe("none");
-      await page.getByRole("button", { name: "Show it" }).click();
+      await page.getByRole("button", { name: "Go to first error" }).click();
       const drawer = page.getByRole("dialog");
       await expect(drawer).toBeVisible();
       expect(
@@ -606,7 +680,7 @@ test.describe("motion", () => {
         opacity: "1",
         transform: "none",
       });
-      // the landing outline is a static outline in the failure colour, not a fade
+      // the landing outline is a static outline in the accent colour, not a fade
       const ring = await page.locator('.tl-row[data-landed="error"]').evaluate((el) =>
         ((c: CSSStyleDeclaration) => ({
           animationName: c.animationName,
@@ -662,9 +736,9 @@ test.describe("motion", () => {
       expect(await started(page)).toEqual(["fault-draw-x"]);
       await page.getByLabel("Errors only").check();
       await page.getByLabel("Errors only").uncheck();
-      await page.getByRole("radio", { name: "Waterfall" }).check();
+      await page.getByRole("tab", { name: "Waterfall" }).click();
       await expect(page.getByTestId("waterfall")).toBeVisible();
-      await page.getByRole("radio", { name: "Timeline", exact: false }).first().check();
+      await page.getByRole("tab", { name: "Timeline", exact: false }).first().click();
       await page.waitForTimeout(400);
       expect(await started(page)).toEqual(["fault-draw-x"]);
     });
@@ -677,13 +751,13 @@ test.describe("motion", () => {
       expect(await started(page)).toEqual([]);
     });
 
-    test("Go scrolls to the first error and fades one 600 ms red outline; the inspector slides in over 160 ms and out over 100 ms", async ({
+    test("Go scrolls to the first error and fades one 600 ms accent outline; the inspector slides in over 160 ms and out over 100 ms", async ({
       page,
     }) => {
       await recordAnimations(page);
       await page.goto(`${BASE}/runs/${RUN(2)}`);
       await page.waitForFunction(() => document.getAnimations().length === 0);
-      await page.getByRole("button", { name: "Show it" }).click();
+      await page.getByRole("button", { name: "Go to first error" }).click();
       const drawer = page.getByRole("dialog");
       await expect(drawer).toBeVisible();
       const timing = await page.evaluate(() =>
@@ -718,7 +792,7 @@ test.describe("motion", () => {
       await row.hover();
       expect(await row.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
       expect(await row.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe("all");
-      await page.getByRole("button", { name: "Show it" }).click();
+      await page.getByRole("button", { name: "Go to first error" }).click();
       expect(
         await page.getByRole("dialog").evaluate((el) => getComputedStyle(el).transitionDuration),
       ).toBe("0s");
@@ -734,12 +808,12 @@ test.describe("motion", () => {
   });
 });
 
-test.describe("polish: toolbar, story, agents, context strip and view tabs", () => {
+test.describe("polish: toolbar, steps, agents, the steps strip and view tabs", () => {
   for (const width of [1440, 1280]) {
     test(`toolbar is at most two rows with the inspector open at ${width}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
       await page.goto(`${BASE}/runs/${RUN(7)}`);
-      await page.getByRole("button", { name: "Show it" }).click();
+      await page.getByRole("button", { name: "Go to first error" }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
       const bar = page.getByRole("group", { name: "Timeline filters" });
       const pane = (await page.locator(".pane").boundingBox())!.width;
@@ -750,7 +824,6 @@ test.describe("polish: toolbar, story, agents, context strip and view tabs", () 
 
   test("a story step has one marker: the list number, no glyph", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(11)}`);
-    await openContext(page);
     // the label and its detail stay separate words in the button's accessible name
     await expect(
       page
@@ -768,24 +841,23 @@ test.describe("polish: toolbar, story, agents, context strip and view tabs", () 
     expect(marker).toBe("list-item");
   });
 
-  test("the folded context strip is a labelled control with an icon", async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`${BASE}/runs/${RUN(7)}`);
-    await page.getByRole("button", { name: "Show it" }).click();
-    const strip = page.getByRole("button", { name: "Show run context" });
-    await expect(strip).toBeVisible();
-    await expect(strip.locator("svg")).toBeVisible();
-    expect((await strip.boundingBox())!.width).toBeGreaterThanOrEqual(34);
-    await strip.click();
-    await expect(page.getByRole("button", { name: /^Context/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+  test("the folded Steps strip is a labelled disclosure that lists the steps and the failed ones", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1000, height: 800 });
+    await page.goto(`${BASE}/runs/${RUN(12)}`);
+    const summary = page.locator("details.steps-strip > summary");
+    await expect(summary).toBeVisible();
+    await expect(summary).toHaveText(/^Steps · \d+ \(\d+ failed\)$/);
+    expect((await summary.boundingBox())!.height).toBeGreaterThanOrEqual(30);
+    await summary.click();
+    await expect(page.getByTestId("story")).toBeVisible();
+    await page.getByRole("button", { name: "Go to first error" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
   });
 
   test("agents are clamped to two lines but keep their full text", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(7)}`);
-    await openContext(page);
     const item = page.getByTestId("agent-tree").getByRole("button").first();
     await expect(item).toHaveAttribute("title", /events/);
     expect((await item.boundingBox())!.height).toBeLessThan(64);
@@ -793,7 +865,10 @@ test.describe("polish: toolbar, story, agents, context strip and view tabs", () 
 
   test("the view tabs show counts without changing their names", async ({ page }) => {
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    await expect(page.getByRole("radio", { name: "Timeline", exact: true })).toBeChecked();
-    await expect(page.locator(".seg-count").first()).toHaveText("15");
+    await expect(page.getByRole("tab", { name: "Timeline", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(page.locator(".tab-count").first()).toHaveText("15");
   });
 });

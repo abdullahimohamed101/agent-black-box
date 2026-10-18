@@ -1,0 +1,54 @@
+/* ---- The title line of a page under Runs (design pass 2, batch 5b): "Runs / name", 24/30 (20/26 below 900 px). The back link is
+   ink-2 and regular, the name ink and 600. At 375 px the back link is its own small line with a chevron. Tokens only. ---- */
+.title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+  min-width: 0;
+}
+.title-back,
+.title-sep {
+  color: var(--color-text-secondary);
+  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
+  font-weight: var(--weight-regular);
+  text-decoration: none;
+}
+a.title-back:hover {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+}
+.title-chev {
+  display: none;
+}
+.title-line h1 {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 56.24rem) {
+  .title-back,
+  .title-sep,
+  .title-line h1 {
+    font-size: 1.25rem;
+    line-height: 1.625rem;
+  }
+}
+@media (max-width: 37.4375rem) {
+  .title-back {
+    flex-basis: 100%;
+    display: flex;
+    align-items: center;
+    min-height: var(--layout-control);
+    font: var(--type-body-weight) var(--type-body-size) / var(--type-body-line) var(--font-sans);
+  }
+  .title-chev {
+    display: inline;
+    margin-right: var(--space-1);
+  }
+  .title-sep {
+    display: none;
+  }
+}

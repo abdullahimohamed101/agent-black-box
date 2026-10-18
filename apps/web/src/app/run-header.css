@@ -1,101 +1,109 @@
-/* ---- Phase 22 step 3: the run header. Identity line, one headline in Plex Serif, one mono line, one quiet figures line.
-   Selectors carry `.run-head` so they win over the Phase 21 header rules in globals.css without !important. ---- */
-
-/* Identity: small and secondary. The run name is still the page's h1. */
-.run-head .run-title {
-  gap: 0.15rem 0.6rem;
-}
-.run-head .run-title h1 {
-  font: 600 0.9375rem / 22px var(--cond);
-  letter-spacing: 0;
-}
-.run-head .run-title .id {
-  font: 400 var(--fs-small) / 18px var(--mono);
+/* ---- The run header (design pass 2, batch 5b): a title line, ONE headline sentence in ink, five figures and a Details
+   disclosure. Three lines of text above the tab row; the one red mark of the page is the fault line, so nothing here is red
+   (the status word is red through the shared .badge rule). Tokens only (ADR-166). ---- */
+.run-head {
+  flex: none;
+  padding: var(--space-6) var(--layout-gutter) 0;
 }
 
-/* Headline: one fixed place, adapting to the run's state. The frame is the same for ready, skeleton and error. */
+/* Title line: the shared TitleLine on the left (title-line.css), status and age on the right. */
+.run-head .title-line {
+  min-width: 0;
+}
+.run-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+  margin-left: auto;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+.run-status .muted {
+  white-space: nowrap;
+}
+.replay-status {
+  font: var(--type-mono-small-weight) var(--type-mono-small-size) / var(--type-mono-small-line)
+    var(--font-mono);
+  color: var(--color-text-secondary);
+}
+
+/* Headline: one fixed place, ink, 600; never red. The frame is the same for ready, skeleton and error. */
 .hl {
-  margin: 0.4rem 0 0;
+  margin: var(--space-2) 0 0;
+}
+.hl-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
 }
 .hl-lead {
   margin: 0;
-  min-height: 30px;
-  font: 500 var(--fs-headline) / 30px var(--serif);
-  color: var(--ink);
+  min-height: var(--type-h1-line);
+  max-width: var(--measure);
+  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
+  color: var(--color-text-primary);
   overflow-wrap: anywhere;
-  text-wrap: balance;
+  text-wrap: pretty;
 }
-/* A phone must still show the fault line's label in its first viewport (acceptance 1): a smaller lead saves a line's height. */
-@media (max-width: 30rem) {
-  .hl-lead {
-    min-height: 26px;
-    font-size: 1.3rem;
-    line-height: 26px;
-  }
-}
-.hl[data-kind="failed"] .hl-lead {
-  color: var(--fail);
+.hl-nowrap {
+  white-space: nowrap;
 }
 .hl-detail {
-  margin: 4px 0 0;
-  min-height: 20px;
-  font: 400 var(--fs-body) / 20px var(--mono);
-  color: var(--fg-2);
+  margin: 2px 0 0;
+  min-height: var(--type-body-line);
+  color: var(--color-text-secondary);
   overflow-wrap: anywhere;
 }
+.hl-detail:empty {
+  display: none;
+}
 .hl-note {
-  font-family: var(--sans);
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .hl-dot {
   display: inline-block;
-  width: 0.55rem;
-  height: 0.55rem;
-  margin-right: 0.55rem;
-  vertical-align: 0.12em;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: var(--space-2);
+  vertical-align: 0.1em;
   border-radius: 50%;
-  background: var(--mark);
+  background: var(--color-status-running);
 }
+/* The one primary action of the page: an outline accent button, not a filled one. */
 .hl-go {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 26px;
-  margin: -4px 0 -4px 0.5rem;
-  padding: 0 0.6rem;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
+  flex: none;
+  min-height: var(--layout-control);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-interactive-default);
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--accent);
-  font: 500 var(--fs-small) / 1 var(--sans);
-  vertical-align: middle;
+  color: var(--color-interactive-default);
+  font: var(--type-body-weight) var(--type-body-size) / 1 var(--font-sans);
+  white-space: nowrap;
   cursor: pointer;
 }
 .hl-go:hover {
-  background: var(--accent-bg);
-}
-.hl-go kbd {
-  padding: 0 0.3rem;
-  border: 1px solid currentcolor;
-  border-radius: 4px;
-  font: 400 0.6875rem / 1.3 var(--mono);
+  background: var(--color-bg-wash);
 }
 .hl-error-text {
-  font-size: var(--fs-title);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-line);
 }
 
 /* Skeleton: bars where the text will be, same heights as the text, so nothing moves when it arrives. */
 .hl-skel {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: var(--space-2);
 }
 .hl-bar {
   display: block;
-  height: calc(var(--fs-headline) * 1.1);
+  height: 1.25rem;
   width: min(34rem, 85%);
-  border-radius: 4px;
-  background: var(--surface-2);
+  border-radius: var(--radius-control);
+  background: var(--color-border-subtle);
 }
 .hl-bar-short {
   width: min(16rem, 50%);
@@ -115,36 +123,165 @@
   }
 }
 
-/* The figures: one quiet mono line (duration, cost, tokens, calls, retries, errors). Tone survives on retries and errors. */
-.run-head dl.stats.figures {
+/* Five figures on one line, mono values, small ink-2 labels; Details opens the rest in place. */
+.run-figs {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: var(--space-2) 0 0;
+}
+.figures {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.1rem 1rem;
-  margin: 8px 0 0;
-  padding: 6px 0 8px;
-  border-top: 1px solid var(--border);
-  border-bottom: 0;
-}
-.run-head dl.stats.figures .stat {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.35rem;
+  gap: 0 var(--space-4);
   min-width: 0;
   margin: 0;
   padding: 0;
-  border: 0;
-  grid-column: auto;
 }
-.run-head dl.stats.figures .stat dt {
-  font: 400 var(--fs-small) / 18px var(--sans);
+.fig {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
 }
-.run-head dl.stats.figures .stat dd {
+.fig dt {
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  color: var(--color-text-secondary);
+}
+.fig dd {
   margin: 0;
-  font: 400 var(--fs-small) / 18px var(--mono);
-}
-.run-head dl.stats.figures .stat:not([data-tone]) dd {
-  color: var(--fg-2);
-}
-.hl-nowrap {
+  font: var(--type-mono-weight) var(--type-mono-size) / var(--type-mono-line) var(--font-mono);
   white-space: nowrap;
+}
+.fig dd small {
+  margin-left: var(--space-2);
+  font: var(--type-small-weight) var(--type-small-size) / var(--type-small-line) var(--font-sans);
+  color: var(--color-text-secondary);
+}
+.run-details-toggle {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-interactive-default);
+  font: inherit;
+  white-space: nowrap;
+}
+.run-details-toggle:hover {
+  text-decoration: underline;
+}
+.run-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--space-2) var(--space-6);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) 0 var(--space-1);
+  border-top: 1px solid var(--color-border-subtle);
+}
+.run-details[hidden] {
+  display: none;
+}
+.run-details > div {
+  min-width: 0;
+}
+.run-details dt {
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  color: var(--color-text-secondary);
+}
+.run-details dd {
+  margin: 0;
+  font: var(--type-mono-weight) var(--type-mono-size) / var(--type-mono-line) var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Live connection: one quiet line. Caution (amber text) only for a partial feed. */
+.live-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-4);
+  align-items: center;
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  color: var(--color-text-secondary);
+}
+.live-glyph {
+  font-size: var(--type-small-size);
+}
+.live-bar[data-stream="live"] .live-glyph {
+  color: var(--color-status-running);
+}
+.live-partial {
+  color: var(--color-status-caution);
+}
+.run-head .notice {
+  margin: var(--space-2) 0 0;
+}
+
+/* Below 900 px the title shrinks to 20/26 (the one place h1 shrinks), the status drops under it and the headline follows. */
+@media (max-width: 56.24rem) {
+  .run-head {
+    padding-top: var(--space-4);
+  }
+  .hl-lead {
+    font-size: 1.25rem;
+    line-height: 1.625rem;
+  }
+  .hl-lead {
+    min-height: 1.625rem;
+  }
+  .run-status {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}
+/* A phone: the back link is its own small line, the Go button is full width and 44 px tall, the line stays in the first screen. */
+@media (max-width: 37.4375rem) {
+  .run-head {
+    padding: var(--space-2) var(--layout-gutter-narrow) 0;
+  }
+  .hl-row {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .hl-go {
+    width: 100%;
+    min-height: var(--layout-touch);
+  }
+  .run-figs {
+    align-items: flex-start;
+  }
+}
+.run-details .phone-only {
+  display: none;
+}
+@media (max-width: 37.4375rem) {
+  /* Details on a phone: a label and its value on one row, not a tall stack. */
+  .run-details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+  .run-details > div {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-1) 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .run-details dd {
+    text-align: right;
+  }
+  .fig[data-extra] {
+    display: none;
+  }
+  .run-details .phone-only {
+    display: block;
+  }
+  .run-head .hl-row + .hl-detail,
+  .run-head .hl > .hl-detail {
+    margin-top: var(--space-1);
+  }
 }

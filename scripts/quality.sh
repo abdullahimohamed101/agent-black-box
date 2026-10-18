@@ -24,6 +24,7 @@ step "api: openapi.json is current"; (cd apps/api && uv run python -m abb_api.op
 step "api: ruff check / format";   (cd apps/api && uv run ruff check . && uv run ruff format --check .)
 step "api: mypy";                  (cd apps/api && uv run mypy)
 step "web: generated API client is current"; pnpm --filter @abb/web gen:api:check
+step "web: design tokens are current (generated css, contrast table)"; pnpm --filter @abb/web tokens:check
 step "web: eslint / prettier";     pnpm --filter @abb/web lint && pnpm --filter @abb/web format:check
 step "web: tsc";                   pnpm --filter @abb/web typecheck
 step "api: pytest";                (cd apps/api && uv run pytest -q)

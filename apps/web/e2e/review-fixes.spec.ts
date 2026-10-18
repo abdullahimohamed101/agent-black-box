@@ -1,22 +1,24 @@
 import { expect, test } from "@playwright/test";
-import { openContext } from "./motion";
+import { openTab } from "./motion";
 
 // Regressions found by the Phase 21 code review (docs/plans/completed/phase-21-code-review.md). Fixtures build.
 const BASE = "/w/demo/projects/all";
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 
-test.describe("R4 focus after expanding the folded context", () => {
-  test.use({ viewport: { width: 1440, height: 900 } });
+test.describe("R4 focus after expanding the folded Steps strip", () => {
+  test.use({ viewport: { width: 1000, height: 800 } });
 
-  test("Enter on the strip lands focus in the context column, not <body>", async ({ page }) => {
-    await page.goto(`${BASE}/runs/${RUN(2)}`);
+  test("Enter on the strip keeps focus on it and opens the steps, never <body>", async ({
+    page,
+  }) => {
+    await page.goto(`${BASE}/runs/${RUN(12)}`);
     await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
-    // closed by default (Phase 22 D3): the strip is already there
-    const strip = page.getByRole("button", { name: "Show run context" });
-    await strip.focus();
+    // below 1100 px the Steps column is a strip above the pane (design pass 2; it replaced the Context strip)
+    const summary = page.locator("details.steps-strip > summary");
+    await summary.focus();
     await page.keyboard.press("Enter");
-    const column = page.getByRole("complementary", { name: "Run context" });
-    await expect(column).toBeFocused();
+    await expect(page.locator("details.steps-strip")).toHaveAttribute("open", "");
+    await expect(summary).toBeFocused();
     expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BODY");
   });
 });
@@ -32,7 +34,7 @@ test.describe("R5 readouts at the smallest app window", () => {
         await page.goto(`${BASE}/runs/${RUN(n)}`);
         await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
         const broken = await page.evaluate(() =>
-          [...document.querySelectorAll(".run-head .stat dt, .run-head .stat dd")]
+          [...document.querySelectorAll(".run-head .fig dt, .run-head .fig dd")]
             .filter((el) => {
               const r = document.createRange();
               r.selectNodeContents(el);
@@ -45,7 +47,7 @@ test.describe("R5 readouts at the smallest app window", () => {
         // the whole row stays inside the header
         const out = await page.evaluate(() => {
           const head = document.querySelector(".run-head")!.getBoundingClientRect();
-          return [...document.querySelectorAll(".run-head .stat")].filter(
+          return [...document.querySelectorAll(".run-head .fig")].filter(
             (el) => el.getBoundingClientRect().right > head.right + 1,
           ).length;
         });
@@ -55,31 +57,35 @@ test.describe("R5 readouts at the smallest app window", () => {
   }
 });
 
-test.describe("R7 the context column survives a click on it", () => {
-  test("1440 and 1280: once open, Show it opens the inspector and the column stays open (KI-126); under 1280 it folds", async ({
+test.describe("R7 the Steps column survives a click on the inspector", () => {
+  test("1440 and 1280: the inspector is a column beside Steps; under 1280 it is an overlay and the pane keeps its width", async ({
     page,
   }) => {
-    for (const [w, state] of [
-      [1440, "open"],
-      [1280, "open"],
-      [1100, "closed"],
+    for (const [w, mode] of [
+      [1440, "column"],
+      [1280, "column"],
+      [1100, "overlay"],
     ] as const) {
       await page.setViewportSize({ width: w, height: 900 });
-      await page.goto(`${BASE}/runs/${RUN(2)}`);
+      await page.goto(`${BASE}/runs/${RUN(12)}`);
       await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
-      await openContext(page);
-      await page.getByRole("button", { name: "Show it" }).click();
+      const before = (await page.locator(".pane").boundingBox())!.width;
+      await page.getByRole("button", { name: "Go to first error" }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
-      await expect(page.locator(".work")).toHaveAttribute("data-context", state);
-      const pane = await page.locator(".pane").boundingBox();
-      expect(pane!.width, `${w}`).toBeGreaterThanOrEqual(w === 1440 ? 480 : w === 1280 ? 440 : 300);
+      await expect(page.locator(".work")).toHaveAttribute("data-steps", "open");
+      await expect(page.getByRole("complementary", { name: "Steps" })).toBeVisible();
+      const pane = (await page.locator(".pane").boundingBox())!.width;
+      if (mode === "overlay") expect(pane, `${w}`).toBe(before);
+      else expect(pane, `${w}`).toBeGreaterThanOrEqual(w === 1440 ? 480 : 440);
     }
   });
 });
 
 test.describe("R8 the toolbar controls and the Filter popover are never cut in half", () => {
+  // With the inspector only where it is a column (from 1280 px); below that it is an overlay that covers the tab row's tools by
+  // design (03: "the pane behind stays; Esc or Back"), so there the toolbar is checked with the inspector closed.
   for (const [w, h, inspector] of [
-    [1024, 640, true],
+    [1024, 640, false],
     [1280, 720, true],
     [1440, 900, false],
   ] as const) {
@@ -90,12 +96,12 @@ test.describe("R8 the toolbar controls and the Filter popover are never cut in h
       await page.goto(`${BASE}/runs/${RUN(2)}`);
       await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
       if (inspector) {
-        await page.getByRole("button", { name: "Show it" }).click();
+        await page.getByRole("button", { name: "Go to first error" }).click();
         await expect(page.getByRole("dialog")).toBeVisible();
       }
       const clipped = await page.evaluate(() => {
-        const toolbar = document.querySelector(".pane .toolbar")!.getBoundingClientRect();
-        return [...document.querySelectorAll(".pane .toolbar > *")]
+        const toolbar = document.querySelector(".pane-head")!.getBoundingClientRect();
+        return [...document.querySelectorAll(".pane-tools > *, .tl-tools > *")]
           .filter((c) => {
             const r = c.getBoundingClientRect();
             return r.right > toolbar.right + 0.5 || r.left < toolbar.left - 0.5;
@@ -139,7 +145,7 @@ test.describe("R12 empty states are statements, not cards", () => {
   ] as const) {
     test(`${name}: no bordered box`, async ({ page }) => {
       await page.goto(url);
-      if (name === "run evaluations") await openContext(page); // the context column starts closed (Phase 22 D3)
+      if (name === "run evaluations") await openTab(page, "Evaluations");
       const empty = page.locator('[data-state="empty"]').first();
       await expect(empty).toBeVisible();
       const css = await empty.evaluate((el) => {

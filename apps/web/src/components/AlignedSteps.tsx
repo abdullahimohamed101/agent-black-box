@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { compare } from "@/copy/run";
 import type { RowOut, StepOut } from "@/lib/api/types";
 import {
   RELATION_LABEL,
@@ -18,13 +19,23 @@ const CONTEXT_ROWS = 3;
 function Cell({ step, side }: { step: StepOut | null; side: "left" | "right" }) {
   if (!step)
     return (
-      <div className="step-cell" data-empty="true" data-side={side}>
-        <span className="muted">No step on this side</span>
+      <div
+        className="step-cell"
+        data-empty="true"
+        data-side={side}
+        data-label={compare.sides[side]}
+      >
+        <span className="muted">{compare.noStep}</span>
       </div>
     );
   const t = stepText(step);
   return (
-    <div className="step-cell" data-side={side} data-event-id={step.event_id}>
+    <div
+      className="step-cell"
+      data-side={side}
+      data-label={compare.sides[side]}
+      data-event-id={step.event_id}
+    >
       <span className="step-kind">{t.kind}</span>{" "}
       {t.label !== null && <span className="step-label">{t.label}</span>}
       {t.withheld && <span className="muted"> (details withheld)</span>}
@@ -127,7 +138,7 @@ export function AlignedSteps({
     <div className="aligned" data-testid="aligned-steps">
       <div className="aligned-toolbar" role="group" aria-labelledby={heading}>
         <span id={heading} className="muted">
-          Steps ({rows.length}; {diffs.length} differ)
+          {compare.toolbar.summary(rows.length, diffs.length)}
         </span>
         <button
           type="button"
@@ -136,7 +147,7 @@ export function AlignedSteps({
             go(divergence, divergence === null ? undefined : `Divergence: ${describe(divergence)}`)
           }
         >
-          Jump to divergence
+          {compare.toolbar.jump}
         </button>
         <button
           type="button"
@@ -146,7 +157,7 @@ export function AlignedSteps({
             go(i, i === null ? undefined : describe(i));
           }}
         >
-          Previous difference
+          {compare.toolbar.previous}
         </button>
         <button
           type="button"
@@ -156,13 +167,10 @@ export function AlignedSteps({
             go(i, i === null ? undefined : describe(i));
           }}
         >
-          Next difference
+          {compare.toolbar.next}
         </button>
       </div>
-      <p className="muted">
-        Keys: arrows move between steps, <kbd>n</kbd> and <kbd>p</kbd> jump to the next and previous
-        difference.
-      </p>
+      <p className="muted aligned-hint">{compare.hint}</p>
       <p role="status" aria-live="polite" className="aligned-announce" data-testid="aligned-live">
         {announce}
       </p>
@@ -178,7 +186,7 @@ export function AlignedSteps({
           data-testid="show-earlier-steps"
           onClick={() => setFrom(0)}
         >
-          Show the {from} earlier steps (the same in both runs)
+          {compare.earlier(from)}
         </button>
       )}
       <ol className="aligned-list" aria-label="Aligned steps" onKeyDown={onKeyDown}>
@@ -213,7 +221,7 @@ export function AlignedSteps({
                 )}
                 {i === outcome && (
                   <span className="badge" data-tone="bad" data-testid="outcome-flag">
-                    First outcome difference
+                    {compare.outcome}
                   </span>
                 )}
               </div>

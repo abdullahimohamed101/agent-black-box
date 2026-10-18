@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { shell } from "@/copy/shell";
 
 /**
  * Signs out with a same-origin `fetch`, not a form: the app sends `Referrer-Policy: no-referrer`, and browsers then
  * put `Origin: null` on a form POST, which the exact-origin rule (rightly) refuses. A fetch carries the real origin.
  */
-export function SignOutButton() {
+export function SignOutButton({ className }: { className?: string } = {}) {
   const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
   async function signOut() {
     setState("busy");
@@ -26,12 +27,17 @@ export function SignOutButton() {
   }
   return (
     <>
-      <button type="button" onClick={() => void signOut()} disabled={state === "busy"}>
-        Sign out
+      <button
+        type="button"
+        className={className}
+        onClick={() => void signOut()}
+        disabled={state === "busy"}
+      >
+        {shell.person.signOut}
       </button>
       {state === "failed" && (
         <span role="alert" className="field-error">
-          Sign-out failed; you may still be signed in.
+          {shell.person.signOutFailed}
         </span>
       )}
     </>

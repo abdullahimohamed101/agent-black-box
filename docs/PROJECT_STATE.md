@@ -2,6 +2,10 @@
 
 Last updated: 2026-10-16 (Phase 19 complete: 19a #186, 19b #206, 19c #207; Design pass 2 in progress; Phase 20 next)
 
+## Design pass 2 (branch `feature/design-pass-2`, worktree `abb-worktrees/design-pass-2`; not pushed)
+Steps 1-6 are built: ADR-166 "One Red Line" (top bar, Overview merged into Runs, Review tabs, Alerts under Settings, one Settings pattern, new tokens), every screen rebuilt, step 6 length-expansion stress test (`apps/web/e2e/stress-expansion.spec.ts`, helper `e2e/pseudo-localise.ts`; report `docs/design/pass-2/07-stress-test-report.md`; KI-297..300). PR text is ready in `docs/design/pass-2/PR-DESCRIPTION.md`. Gates 2026-10-16 (VERIFIED): tsc, eslint --max-warnings=0, prettier, tokens:check, gen:api:check clean; vitest 1721; `pnpm build`; fixtures Playwright 820 passed, 111 skipped (real-API specs: UNVERIFIED, KI-287, KI-293). No API or contract changes.
+**Exact next task:** the design review and its fixer pass are done (`docs/plans/completed/design-pass-2-review.md`; open: KI-294 narrowed, KI-301..304). On the user's go-ahead, push `feature/design-pass-2` and open the PR against `main` (never merge). Then the demo video (Phase 21 storyboard) and Phase 20.
+
 ## Current phase
 **Phase 19 (production hardening) is complete.** Part 1, 19a abuse resistance, PR #186 (2026-10-15); part 2, 19b data lifecycle, PR #206 (merge 05ae82b, 2026-10-16); part 3, 19c operability, PR #207 (merge 822e2a0, stacked on 19b, 2026-10-16). Plans with closing evidence: `docs/plans/completed/phase-19a-abuse-resistance.md`, `phase-19b-data-lifecycle.md`, `phase-19c-operability.md`; adversarial reviews with security passes: `phase-19b-code-review.md` (not merge-ready at first: no P0, one P1, five P2, all fixed; the delta review was merge-ready) and `phase-19c-code-review.md` (no P0/P1, two P2, ten P3, all fixed).
 

@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { openTab, settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
 
 // Runs only through scripts/eval-e2e.sh: the scripted coding agent wrote a passing run and a wrong-fix run through the
@@ -42,7 +42,7 @@ test.describe("as the OWNER", () => {
       void d.dismiss();
     });
     await page.goto(`${base()}/runs/${ids["wrong_run"]}`);
-    await openContext(page);
+    await openTab(page, "Evaluations");
     const section = page.getByTestId("evaluations");
     const row = (name: string) =>
       section.getByTestId("evaluation").filter({ has: page.getByRole("heading", { name }) });
@@ -67,7 +67,7 @@ test.describe("as the OWNER", () => {
 
   test("records a human verdict in the browser; hostile text stays text", async ({ page }) => {
     await page.goto(`${base()}/runs/${ids["wrong_run"]}`);
-    await openContext(page);
+    await openTab(page, "Evaluations");
     const form = page.getByRole("form", { name: "Record a verdict" });
     await form.getByLabel("bad").check();
     await form.getByLabel(/Explanation/).fill(`${HOSTILE}"alert(2)"> wrong file edited`);
@@ -81,7 +81,7 @@ test.describe("as the OWNER", () => {
     expect(await page.locator("[data-testid=evaluations] img").count()).toBe(0);
     // the baseline's verdict (recorded by the script) carries the same hostile text
     await page.goto(`${base()}/runs/${ids["baseline_run"]}`);
-    await openContext(page);
+    await openTab(page, "Evaluations");
     await expect(page.getByTestId("explanation").first()).toContainText(HOSTILE);
     expect(await page.locator("[data-testid=evaluations] img").count()).toBe(0);
   });
@@ -164,7 +164,7 @@ test.describe("as the VIEWER", () => {
 
   test("sees scores and labels but no explanation text and no forms", async ({ page }) => {
     await page.goto(`${base()}/runs/${ids["baseline_run"]}`);
-    await openContext(page);
+    await openTab(page, "Evaluations");
     const section = page.getByTestId("evaluations");
     await expect(section.getByTestId("evaluation").first()).toBeVisible();
     await expect(section.getByTestId("evaluation-label").first()).toBeVisible();

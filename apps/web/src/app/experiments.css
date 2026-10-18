@@ -1,0 +1,172 @@
+/* Experiments and an experiment (design pass 2 step 5d, ADR-166): the list is the title, one supporting sentence and a hairline
+   table; an experiment opens with the title line, one sentence that says which variant leads (in words, ink, 18/24 600 as the
+   Compare and Analytics headlines), the control notice, a small chart of the variants (ink for the lead, neutral for the rest,
+   the figures beside every bar) and hairline blocks. Forms are the settings form pattern. Tokens only; nothing is red. */
+.ex-title {
+  margin: 0 0 var(--space-1);
+  font: var(--type-h1-weight) var(--type-h1-size) / var(--type-h1-line) var(--font-sans);
+}
+.ex-lede {
+  max-width: var(--measure);
+  margin: var(--space-2) 0 var(--space-4);
+  font: var(--type-body-lg-weight) var(--type-body-lg-size) / var(--type-body-lg-line)
+    var(--font-sans);
+  color: var(--color-text-secondary);
+}
+.ex-meta {
+  margin: 0 0 var(--space-3);
+}
+.experiment .ex-verdict {
+  max-width: 48rem;
+  margin: var(--space-4) 0;
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.experiment .notice {
+  max-width: var(--measure);
+  margin: 0 0 var(--space-3);
+}
+.experiment .notice p,
+.experiment .notice ul {
+  margin: 0;
+}
+.experiment .notice .plain {
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+}
+.experiment .plain[aria-label="Warnings"] {
+  margin: 0 0 var(--space-3);
+}
+.ex-block {
+  margin: var(--space-6) 0 0;
+  padding: var(--space-4) 0 0;
+  border-top: 1px solid var(--color-border-subtle);
+  min-width: 0;
+}
+.experiment .ex-block > h2 {
+  margin: 0 0 var(--space-2);
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
+}
+.experiment .ex-charts h3 {
+  margin: 0 0 var(--space-2);
+  font: var(--type-small-weight) var(--type-small-size) / var(--type-small-line) var(--font-sans);
+  color: var(--color-text-secondary);
+}
+.experiment .two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  column-gap: var(--space-8);
+  row-gap: var(--space-4);
+}
+.experiment .ex-block .muted {
+  max-width: var(--measure);
+}
+.experiment .fields div {
+  grid-template-columns: minmax(5rem, auto) minmax(0, 1fr);
+}
+.experiment-form {
+  display: grid;
+  /* One shrinkable column: an option with a long run id must not widen the form past a phone. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  justify-items: start;
+  max-width: 32rem;
+  margin: var(--space-4) 0 0;
+}
+.experiment-form h3 {
+  margin: 0;
+}
+.experiment-form select {
+  max-width: 100%;
+}
+.experiments .ex-create {
+  max-width: none;
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border-subtle);
+}
+/* One size for a block head in Experiments (an experiment's blocks, its forms and the create block): the h3 step. */
+.experiments .ex-create h2 {
+  margin: 0;
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
+}
+.evaluate-all {
+  margin-top: var(--space-4);
+}
+.evaluate-all .muted {
+  margin: var(--space-2) 0;
+}
+@media (max-width: 37.4375rem) {
+  /* A table of rows becomes one block per row: the row's name, then "column: value" lines (the settings tables do the same). */
+  .ex-stack,
+  .ex-stack tbody,
+  .ex-stack tr,
+  .ex-stack th,
+  .ex-stack td {
+    display: block;
+    width: 100%;
+  }
+  .ex-stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .ex-stack tr {
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .ex-stack th,
+  .ex-stack td {
+    padding: var(--space-1) 0;
+    border: 0;
+    white-space: normal;
+  }
+  .ex-stack td[data-label] {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, 7rem) minmax(0, 1fr);
+    gap: var(--space-2);
+    text-align: left;
+  }
+  .ex-stack td[data-label]::before {
+    content: attr(data-label);
+    color: var(--color-text-secondary);
+    font-size: var(--type-small-size);
+    line-height: var(--type-body-line);
+  }
+  .experiment-form > button {
+    width: 100%;
+    min-height: var(--layout-touch);
+  }
+}
+/* The control notice: the "i" mark in its own column, the sentence and the list of changes beside it. */
+.experiment .notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+}
+.experiment .notice > * {
+  grid-column: 2;
+}
+.experiment .notice::before {
+  grid-column: 1;
+  grid-row: 1;
+}
+/* Row heads of the metrics table are plain: the figures are the content. */
+.experiment [data-testid="metrics"] tbody th {
+  font-weight: var(--weight-regular);
+}
+.experiments .ex-create > * {
+  max-width: 32rem;
+  width: 100%;
+}
+.experiments .ex-create > h2 {
+  max-width: none;
+}
+/* A row's description under its name is a plain sentence, not a heading. */
+.experiments tbody th .muted {
+  font-weight: var(--weight-regular);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}

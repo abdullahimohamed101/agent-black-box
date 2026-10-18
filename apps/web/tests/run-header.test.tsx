@@ -22,22 +22,22 @@ describe("run header", () => {
     stubApi();
     renderWithQuery(<RunDetail runId={failureRetryRun().run.id} base={BASE} />);
     const err = await screen.findByTestId("first-error");
-    expect(screen.getByTestId("headline")).toContainElement(err);
+    expect(err).toContainElement(screen.getByTestId("headline"));
     expect(err).toHaveTextContent(
-      /^Failed at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout/,
+      /^Failed at step \d+ after 6\.2 s: run_migration, ConnectionTimeout\./,
     );
-    expect(within(err).getByRole("button", { name: "Show it" })).toBeInTheDocument();
+    expect(within(err).getByRole("button", { name: "Go to first error" })).toBeInTheDocument();
     // no separate banner repeats it
     expect(screen.getAllByText(/Failed at step/)).toHaveLength(1);
     expect(document.querySelector(".banner")).toBeNull();
   });
 
-  it("Show it opens the failing event", async () => {
+  it("Go to first error opens the failing event", async () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={failureRetryRun().run.id} base={BASE} />);
     await screen.findByTestId("first-error");
-    await user.click(screen.getByRole("button", { name: "Show it" }));
+    await user.click(screen.getByRole("button", { name: "Go to first error" }));
     expect(await screen.findByRole("dialog")).toHaveTextContent("ConnectionTimeout");
   });
 
@@ -56,7 +56,7 @@ describe("run header", () => {
     expect(screen.getByTestId("headline-detail")).toHaveTextContent(/waiting 4m (2|3)\ds/);
   });
 
-  it("Show it works before the page holding the first error has loaded (review P3-2)", async () => {
+  it("Go to first error works before the page holding the first error has loaded (review P3-2)", async () => {
     const f = failureRetryRun();
     const errId = f.run.first_error!.event_id;
     const cut = f.events.findIndex((e) => e.event_id === errId);
@@ -70,12 +70,12 @@ describe("run header", () => {
         }),
     });
     renderWithQuery(<RunDetail runId={f.run.id} base={BASE} />);
-    const go = await screen.findByRole("button", { name: "Show it" });
+    const go = await screen.findByRole("button", { name: "Go to first error" });
     await user.click(go);
     expect(await screen.findByRole("dialog")).toHaveTextContent("ConnectionTimeout");
   });
 
-  it("lights Errors and Retries only when they are non-zero, in the readout strip", async () => {
+  it("shows exactly five readouts, none lit: Duration, Cost, Tokens, Retries, Errors", async () => {
     stubApi();
     renderWithQuery(<RunDetail runId={failureRetryRun().run.id} base={BASE} />);
     const readouts = await waitFor(() => {
@@ -83,48 +83,86 @@ describe("run header", () => {
       if (!dl) throw new Error("no readouts yet");
       return dl as HTMLElement;
     });
-    const stat = (label: string) =>
-      within(readouts).getByText(label).closest(".stat") as HTMLElement;
-    expect(stat("Errors")).toHaveAttribute("data-tone", "bad");
-    expect(stat("Retries")).toHaveAttribute("data-tone", "warn");
-    expect(stat("Duration")).not.toHaveAttribute("data-tone");
+    const labels = [...readouts.querySelectorAll("dt")].map((d) => d.textContent);
+    expect(labels).toEqual(["Duration", "Cost", "Tokens", "Retries", "Errors"]);
+    // the colour that used to light Errors and Retries is gone: the fault line is the page's one red mark
+    expect(readouts.querySelector("[data-tone]")).toBeNull();
     expect(within(readouts).queryByText("Agents")).toBeNull(); // single-agent run
   });
 
-  it("a clean run has no tone and no first-error control", async () => {
+  it("a clean run has no first-error control and the same five readouts", async () => {
     stubApi();
     renderWithQuery(<RunDetail runId={successRun().run.id} base={BASE} />);
     await screen.findByRole("heading", { level: 1 });
     const dl = (await screen.findByText("Errors")).closest("dl") as HTMLElement;
-    for (const label of ["Errors", "Retries"])
-      expect(within(dl).getByText(label).closest(".stat")).not.toHaveAttribute("data-tone");
+    expect(dl.querySelectorAll("dt")).toHaveLength(5);
     expect(screen.queryByTestId("first-error")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Show it" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Go to first error" })).toBeNull();
   });
 
-  it("a multi-agent run adds an Agents readout; a running run has no error control", async () => {
+  it("Details opens the identity items and the figures that left the line; a multi-agent run adds Agents", async () => {
     stubApi();
+    const user = userEvent.setup();
     const multi = renderWithQuery(<RunDetail runId={multiAgentRun().run.id} base={BASE} />);
-    const dl = (await screen.findByText("Agents", { selector: "dt" })).closest("dl") as HTMLElement;
-    expect(within(dl).getByText("Agents").closest(".stat")).toHaveTextContent("5");
+    const toggle = await screen.findByRole("button", { name: /^Details/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const details = document.getElementById("run-details")!;
+    expect(details).toHaveAttribute("hidden");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(details).not.toHaveAttribute("hidden");
+    expect(
+      within(details).getByText("Agents", { selector: "dt" }).nextElementSibling,
+    ).toHaveTextContent("5");
+    for (const label of [
+      "Run id",
+      "Agent",
+      "Ordered by",
+      "Started",
+      "Model calls",
+      "Tool calls",
+      "Files changed",
+    ])
+      expect(within(details).getByText(label, { selector: "dt" })).toBeInTheDocument();
     multi.unmount();
     renderWithQuery(<RunDetail runId={runningRun().run.id} base={BASE} />);
     await screen.findByRole("heading", { level: 1 });
     expect(screen.queryByTestId("first-error")).toBeNull();
   });
 
-  it("puts the id line next to the title and keeps the whole id in its tooltip", async () => {
+  it("keeps the whole run id and the agent in Details, one click from the title line", async () => {
+    stubApi();
+    const user = userEvent.setup();
+    const { run } = failureRetryRun();
+    renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
+    await user.click(await screen.findByRole("button", { name: /^Details/ }));
+    const details = document.getElementById("run-details")!;
+    const id = within(details).getByText(run.id);
+    expect(id).toHaveAttribute("title", run.id);
+    expect(details).toHaveTextContent("coding-agent");
+    expect(details).toHaveTextContent(/Ordered by/);
+  });
+
+  it("the title line has a back link to Runs (KI-276) and the run name as the h1", async () => {
     stubApi();
     const { run } = failureRetryRun();
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
-    const id = await waitFor(() => {
-      const el = document.querySelector<HTMLElement>(".run-title .id");
-      if (!el) throw new Error("not yet");
-      return el;
-    });
-    expect(id).toHaveAttribute("title", run.id);
-    expect(id).toHaveTextContent("coding-agent");
-    expect(id).toHaveTextContent(/ordered by/);
+    const h1 = await screen.findByRole("heading", { level: 1 });
+    expect(h1).toHaveTextContent(run.name ?? run.id);
+    const back = screen.getByRole("link", { name: "Back to runs" });
+    expect(back).toHaveAttribute("href", `/w/${BASE.workspace}/projects/${BASE.project}/runs`);
+    expect(back).toHaveTextContent("Runs");
+    expect(back.compareDocumentPosition(h1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("the status is a glyph and a word, then the age; the word is the only coloured text in the title line", async () => {
+    stubApi();
+    renderWithQuery(<RunDetail runId={failureRetryRun().run.id} base={BASE} />);
+    const age = await screen.findByTestId("run-age");
+    const badge = document.querySelector(".badge[data-status]") as HTMLElement;
+    expect(badge).toHaveTextContent("Failed");
+    expect(badge.querySelector('[aria-hidden="true"]')).not.toBeNull(); // the glyph is decoration
+    expect(age).toHaveTextContent(/ago$/);
   });
 });
 

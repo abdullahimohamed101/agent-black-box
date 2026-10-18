@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { withArtifacts } from "./artifacts";
-import { openContext } from "./motion";
+import { openTab } from "./motion";
 import { fixtureRuns } from "../src/fixtures";
 import { API_WITHHELD, isContentAttribute } from "../src/fixtures/withhold";
 
@@ -80,7 +80,8 @@ test.describe("viewer sees no captured content", () => {
     for (let i = 0; i < count && opened < 6; i++) {
       const o = options.nth(i);
       if ((await o.getAttribute("aria-label"))?.startsWith("Group")) continue;
-      if (!/Shell|Files & git/.test((await o.textContent()) ?? "")) continue;
+      // the commands, files and git events (the class column that said so is gone: the event type says it)
+      if (!/^(shell|file|git)\./.test((await o.locator(".tl-type").textContent()) ?? "")) continue;
       await o.click();
       await expect(page.getByRole("dialog")).toBeVisible();
       await page.waitForLoadState("networkidle");
@@ -90,8 +91,7 @@ test.describe("viewer sees no captured content", () => {
     }
     expect(opened).toBeGreaterThan(2);
     // the story steps open the inspector on content-bearing events too
-    await openContext(page);
-    const steps = page.getByRole("complementary", { name: "Run context" }).getByRole("button");
+    const steps = page.getByRole("complementary", { name: "Steps" }).getByRole("button");
     for (const i of [0, 1, 2]) {
       if (i >= (await steps.count())) break;
       await steps.nth(i).click();
@@ -99,17 +99,18 @@ test.describe("viewer sees no captured content", () => {
       expect(await leaks(page, secrets), `story ${i}`).toEqual([]);
     }
     await page.goto(`${VIEWER}/runs/${RUN(7)}`);
-    await openContext(page);
     await expect(page.getByTestId("agent-tree")).toBeVisible();
     expect(await leaks(page, secretsOf(7))).toEqual([]);
   });
 
-  test("the context column, opened with the Context button", async ({ page }) => {
+  test("the Findings and Evaluations tabs", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`${VIEWER}/runs/${RUN(11)}`);
     await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
-    await openContext(page);
-    await page.waitForLoadState("networkidle");
-    expect(await leaks(page, secretsOf(11))).toEqual([]);
+    for (const name of ["Findings", "Evaluations"] as const) {
+      await openTab(page, name);
+      await page.waitForLoadState("networkidle");
+      expect(await leaks(page, secretsOf(11)), name).toEqual([]);
+    }
   });
 });

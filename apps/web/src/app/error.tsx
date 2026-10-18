@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { FaultCut } from "@/components/illustrations";
 import { Brand } from "@/components/shell/Brand";
+import { auth } from "@/copy/auth";
+import "./login.css";
 
-// Phase 22 D9: the error boundary. It never prints the error's message (it can carry request details); the digest is the
-// handle for the server log.
+// The error boundary. It never prints the error's message (it can carry request details); the digest is the handle for the
+// server log. No drawing: routine failures are a sentence (ADR-166).
 export default function ErrorPage({
   error,
   reset,
@@ -16,18 +17,15 @@ export default function ErrorPage({
   return (
     <main id="main" className="state-page" data-state="error">
       <Brand />
-      <FaultCut className="illus-lg" />
-      <h1>Something broke on this page</h1>
+      <h1>{auth.error.title}</h1>
       <p className="muted" role="alert">
-        Nothing you recorded was lost. Try again, and if it keeps happening tell whoever runs this
-        workspace
-        {error.digest ? ` (reference ${error.digest})` : ""}.
+        {auth.error.body(error.digest)}
       </p>
       <p className="state-actions">
         <button type="button" onClick={reset}>
-          Try again
+          {auth.error.retry}
         </button>
-        <Link href="/">Go to your runs</Link>
+        <Link href="/">{auth.error.action}</Link>
       </p>
     </main>
   );
