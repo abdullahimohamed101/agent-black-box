@@ -331,7 +331,7 @@ widths, component-local tones); "Readers" counts `var(--name` occurrences in `sr
 ## 6. Visual check
 
 Screens before (the 19c tip) and after (this step), Runs list and a failed run, light and dark, 1440 and 375, in
-`docs/screenshots/pass-2/step4-{before,after}-{runs,run}-{1440,375}-{light,dark}.png` (`apps/web/scripts/shots-step4.mjs`,
+`docs/screenshots/pass-2/step4-{before,after}-{runs,run}-{1440,375}-{light,dark}.png` (`docs/design/pass-2/scripts/shots-step4.mjs`,
 fixtures server). They are intentionally near-identical: this step changes values, not layout. What changed and was looked at:
 the light canvas is a touch cooler (`#eef1f4` to `#f6f8fa`), the dark canvas darker (`#12161b` to `#101419`), borders lighter (the
 direction's hairline), ink-2 text a shade lighter in dark; every label, status word, fault line and tinted row stayed legible.

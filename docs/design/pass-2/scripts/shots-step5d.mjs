@@ -1,3 +1,4 @@
+// One-off script of design pass 2, kept as a record. It imports @playwright/test, so copy it into apps/web/scripts to run it (paths below are relative to apps/web).
 // Design pass 2 step 5d: screenshots of Analytics (the three reports, empty, error, the excluded-traces note) and Experiments (list,
 // empty, an experiment), light and dark, 1440 and 375 (768 for the main ones). Usage: node scripts/shots-step5d.mjs [baseUrl]
 // [nameFilter]. Needs a running fixtures server (port 3110 by default).

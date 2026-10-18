@@ -1,3 +1,4 @@
+// One-off script of design pass 2, kept as a record. It imports @playwright/test, so copy it into apps/web/scripts to run it (paths below are relative to apps/web).
 // Design pass 2 steps 5c and 5d (screens come from screens5d.mjs, the whole app): counts per screen for the report (docs/design/pass-2/01-direction.md A.7 asks for them): regions (landmarks,
 // tables, forms, fieldsets, tab lists and any element with its own border box or fill, table cells and list items aside),
 // distinct font sizes, distinct weights, font families, tab lists, interactive targets above 900 px, and elements painted in the

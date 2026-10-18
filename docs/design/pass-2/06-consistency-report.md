@@ -2,8 +2,8 @@
 
 Status: written 2026-10-16 at the end of step 5d. Step 6 (stress test, review, PR) extends it. "Before" is the audit of
 `01-direction.md` Part A where that audit counted the screen, and the code read for Analytics and Experiments, which it did not
-count. "After" is `apps/web/scripts/count-step5d.mjs` run against the fixtures build at 1440 x 900 light (workspace `demo`);
-the screens are the list in `apps/web/scripts/screens5d.mjs`. Regions are landmarks, tables, forms, fieldsets, tab lists and any
+count. "After" is `docs/design/pass-2/scripts/count-step5d.mjs` run against the fixtures build at 1440 x 900 light (workspace `demo`);
+the screens are the list in `docs/design/pass-2/scripts/screens5d.mjs`. Regions are landmarks, tables, forms, fieldsets, tab lists and any
 element with its own border box or fill (table cells and list items aside), so a hairline-separated block counts as one.
 
 ## 1. Every screen, after

@@ -1,3 +1,4 @@
+// One-off script of design pass 2, kept as a record. It imports @playwright/test, so copy it into apps/web/scripts to run it (paths below are relative to apps/web).
 // Design pass 2 step 5d: the cross-app consistency sweep. One screenshot per top-level area at 1440 light (login at its own
 // URL), the same frame and wait for each, so the screens can be compared side by side. Usage: node scripts/shots-sweep5d.mjs
 // [baseUrl] [scheme]. Needs the fixtures server (port 3110).

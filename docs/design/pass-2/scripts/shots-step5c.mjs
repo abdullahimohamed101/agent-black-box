@@ -1,3 +1,4 @@
+// One-off script of design pass 2, kept as a record. It imports @playwright/test, so copy it into apps/web/scripts to run it (paths below are relative to apps/web).
 // Design pass 2 step 5c: screenshots of Review (Approvals, Security findings), every Settings tab (Alerts included) and the person
 // menu, light and dark, 1440, 768 and 375. Usage: node scripts/shots-step5c.mjs [baseUrl] [nameFilter]. Needs a running fixtures
 // server (port 3110 by default). Some states change the fixture server's in-memory state (a saved retention shortening, a created

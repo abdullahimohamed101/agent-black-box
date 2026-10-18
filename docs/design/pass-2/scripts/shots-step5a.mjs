@@ -1,3 +1,4 @@
+// One-off script of design pass 2, kept as a record. It imports @playwright/test, so copy it into apps/web/scripts to run it (paths below are relative to apps/web).
 // Design pass 2 step 5a: screenshots of the frame, the Runs home and the pages outside the shell, light and dark, 1440 and 375.
 // Usage: node scripts/shots-step5a.mjs [baseUrl] [only]. Needs a running fixtures server (port 3110 by default).
 import { chromium } from "@playwright/test";

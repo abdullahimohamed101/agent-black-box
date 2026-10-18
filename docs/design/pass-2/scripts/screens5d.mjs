@@ -1,3 +1,4 @@
+// One-off script of design pass 2, kept as a record. It imports @playwright/test, so copy it into apps/web/scripts to run it (paths below are relative to apps/web).
 // The screens of the step 5d sweep and the consistency counts (fixtures server, workspace "demo").
 const RUN = (n) => `run_${String(n).padStart(26, "0")}`;
 const P = "/w/demo/projects/all";
