@@ -1,6 +1,6 @@
 # Phase 19b: Data lifecycle (production hardening, part 2 of 3)
 
-Status: Planned (2026-10-15). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-15). Part 2 of Phase 19 (19a abuse resistance is built and in review as PR #186; 19c operability follows). This branch is stacked on `feature/phase-19a-abuse-resistance`; its PR opens against `main` after #186 merges.
+Status: Completed (merged 2026-10-16, PR #206, merge commit 05ae82b; steps 1-7 built and evidenced below, the adversarial review `phase-19b-code-review.md` (no P0, one P1, five P2) is fixed or dispositioned). Planned (2026-10-15). Decisions D1-D6 were settled with the user one question at a time (grill, 2026-10-15). Part 2 of Phase 19 (19a abuse resistance is built and in review as PR #186; 19c operability follows). This branch is stacked on `feature/phase-19a-abuse-resistance`; its PR opens against `main` after #186 merges.
 Owner: api + web + scripts. Branch: `feature/phase-19b-data-lifecycle`.
 Depends on: 19a (usage tables, shared counters, sessions, quotas), Phase 13 (capture modes), Phase 15 (roles, audit), Phase 17 (alert secrets), Phase 5/7 (search, analytics rollups).
 Spec refs: §39, §94, §62 invariants (INV-1 is amended by an ADR), §116-125 context.
@@ -79,3 +79,23 @@ Unit and property tests for tier selection, ordering and idempotency; API tests 
 | UI | `[gate7-ui-*]` and `apps/web/e2e/retention-real.spec.ts` (axe, console) | |
 | Repo standard | `cd apps/api && uv run ruff check . && uv run ruff format --check . && uv run mypy`; `pnpm --filter @abb/web lint format:check`; `scripts/quality.sh full` in CI | |
 
+## Closing evidence (2026-10-16, merged tree)
+
+The per-step gate runs and the D6 command table above are the working evidence; the figures below are the ones from the last run before the PR and from CI on the PR. Benchmarks: `docs/benchmarks/phase-19b-retention-e2e.md`, `docs/benchmarks/phase-19b-restore-drill.md`. Runbooks: `docs/runbooks/retention.md`, `backup-restore.md`, `migrations.md`, `secrets.md`. ADRs: ADR-159 to ADR-163. Migrations: 0101 (data lifecycle foundation: `abb_retention` role, policy storage), 0102 (retention enforcement: `runs.trace_state`, reports, tombstones), 0103 (rollups for expired-trace runs), 0104 (project and workspace purge state), 0105 (review fixes: column-level `UPDATE` for the runtime role on `runs`, `projects` and `workspaces`, and the retention grace period).
+
+| Gate (D6) | Evidence | Status |
+| --- | --- | --- |
+| 1. Dry run deletes nothing, counts right | `make retention-e2e` `[gate1-dry-run]`: every table's row count and content digest unchanged, reported counts equal an independent computation | VERIFIED |
+| 2. Enforce: order, untouched unexpired data, roles, `deleting` reads as expired | `[gate2-enforce]`, `[gate2-roles]`; `tests/retention/` | VERIFIED |
+| 3. Crash leaves a consistent state, rerun completes | `[gate3-crash]`: SIGKILL while the job waits on a held lock; the rerun equals the uninterrupted end state | VERIFIED |
+| 4. Kill switch and per-tick bounds | `[gate4-kill-switch-bounds]` | VERIFIED |
+| 5. Policy role-gated, audited, validated, workspace-isolated | `[gate2-enforce]` policy block; `tests/retention/` | VERIFIED |
+| 6. Backup/restore drill in CI, times recorded | `make backup-restore-e2e` 45 of 45 checks; `docs/benchmarks/phase-19b-restore-drill.md` | VERIFIED |
+| 7. Migration safety table, rotation, purge, dirty marker | `tests/test_migration_safety.py`, `tests/test_rotation.py`, `tests/retention/`, retention e2e purge gates | VERIFIED |
+| 8. Overhead bound, no test weakened, clean CI, review | `[gate8-cost]` and the benchmark; no existing test edited to pass; adversarial review `docs/plans/completed/phase-19b-code-review.md` (no P0, the P1 and every P2 fixed, delta review merge-ready); CI 29 of 29 jobs green on #206 | VERIFIED |
+
+Final figures: full API suite 4,002 passed (last run before the PR); `make retention-e2e` 181 of 181 checks; `make backup-restore-e2e` 45 of 45; web vitest 1,544 tests; CI 29 of 29 jobs green on PR #206.
+
+### Open after the phase
+
+KI-192 to KI-219 (those not fixed in the phase), KI-224, KI-250 to KI-257 are in `docs/KNOWN_ISSUES.md` and filed on GitHub in the close-out PR. Resolved by the phase: KI-021, KI-040, KI-057, KI-072, KI-103, KI-170, KI-180, KI-184, KI-198, KI-210, KI-212, KI-217 (its artifact `DELETE` half is KI-251). KI-055 stays open (rollup day dimension) and was updated.

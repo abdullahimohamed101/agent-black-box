@@ -239,6 +239,8 @@ object storage, Kubernetes) requires its §57 trigger measured in `docs/benchmar
 Expect this phase to conclude "not yet" for most items.
 
 ## Phase 19 - Production hardening
+**Status: Completed** (19a #186, 19b #206, 19c #207, all merged by 2026-10-16).
+
 Rate limits/quotas, timeouts, circuit breaking where useful, dependency health, secure headers,
 secret management, backups + a *performed* restore drill, migration rollback notes, retention
 jobs (§94), audit logging, app metrics (§116) and internal tracing, SLO dashboards (§117),
@@ -247,8 +249,11 @@ runbooks (§125).
 Split into three parts, each with its own plan, review and PR (decided 2026-10-14):
 
 - **19a - Abuse resistance. Status: Completed (merged 2026-10-15, PR #186).** Shared PostgreSQL limiter (ADR-152, migration 0097), failed-auth throttling (ADR-153), per-project quotas (ADR-154, migration 0098), edge hardening: body cap, secure headers with a nonce CSP, `/docs` off in production, startup role check (ADR-155), `__Host-` login cookie (ADR-156), sessions page and invitation-only people (ADR-157, migration 0099), alert port allow-list and search fair share (ADR-158), review-fix migration 0100. Plan with closing evidence for the eight gates: `docs/plans/completed/phase-19a-abuse-resistance.md`; adversarial review with a security pass: `docs/plans/completed/phase-19a-code-review.md`; `make hardening-e2e`; benchmarks `docs/benchmarks/phase-19a-*.md`; runbook `docs/runbooks/hardening.md`. KI-173..191 (filed as #187-#202 where open).
-- **19b - Data lifecycle. Status: In progress** (branch `feature/phase-19b-data-lifecycle`): retention jobs (§94), backups and a *performed* restore drill, migration rollback notes, KI-057, KI-170, secret rotation.
-- **19c - Operability. Status: Next:** app metrics (§116) and internal tracing, SLO dashboards (§117), dependency health, timeouts and circuit breaking, runbooks (§125), CI pinning, lockfile audit.
+- **19b - Data lifecycle. Status: Completed (merged 2026-10-16, PR #206, merge 05ae82b).** Retention role and policy (ADR-159, migration 0101), enforcement by tier with tombstones (ADR-160, 0102), rollups after the trace tier (ADR-161, 0103), backups, restore, migration safety table and secret rotation (ADR-162), project and workspace purge (ADR-163, 0104), review-fix migration 0105. Plan with closing evidence for the eight gates: `docs/plans/completed/phase-19b-data-lifecycle.md`; adversarial review with a security pass: `docs/plans/completed/phase-19b-code-review.md`; `make retention-e2e`, `make backup-restore-e2e`; benchmarks `docs/benchmarks/phase-19b-*.md`; runbooks `retention.md`, `backup-restore.md`, `migrations.md`, `secrets.md`. Resolved KI-021, 040, 057, 072, 103, 170, 180, 184, 198, 210, 212, 217; new rows KI-192..219, 224, 250..257 (filed on GitHub where open).
+- **19c - Operability. Status: Completed (merged 2026-10-16, PR #207, merge 822e2a0).** Metrics registry and authenticated `/metrics` (ADR-165), domain metrics and scrape-time gauges (ADR-168), readiness, statement timeout, database breaker and failed-session throttle (ADR-169), log schema and optional OpenTelemetry (ADR-170), SLO rules, Grafana dashboard, `observability` compose profile and the missing runbooks (ADR-171), supply-chain pins and lockfile audits (ADR-173), migration 0106. Plan with closing evidence for the nine gates: `docs/plans/completed/phase-19c-operability.md`; adversarial review with a security pass: `docs/plans/completed/phase-19c-code-review.md`; `make obs-e2e` (215 checks, real promtool, Prometheus and Grafana); benchmarks `docs/benchmarks/phase-19c-*.md`. Resolved KI-024, 060, 176, 183, 237; new rows KI-220..223, 225..249, 260..270 (filed on GitHub). Dependabot configuration UNVERIFIED (env) until its first scheduled run (KI-267).
+
+## Design pass 2 (inserted before Phase 20)
+**Status: In progress** on branch `feature/design-pass-2` (direction 'One Red Line'; `docs/design/design-pass-2-*.md`; the PR will carry it). Added after the user's note that the UI looked convoluted: a second pass over the product's look and information density, ahead of the demo and release-quality work in Phase 20.
 
 ## Phase 20 - Demo, docs, release quality
 README with screenshots, architecture, quickstart, SDK/API/events/deployment/security/ops/
