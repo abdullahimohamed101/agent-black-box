@@ -1,12 +1,12 @@
-/* ---- Phase 12 step 2: the replay transport bar. Tokens only; no animation or transition of any kind (replay updates are
-   instant, so the zero-motion contract in tests/motion-contract.test.ts has nothing to gate here). Red appears once: the
-   first-error mark on the scrub bar, which is a failure marker. ---- */
+/* ---- Phase 12 step 2, restyled in design pass 2: the replay transport bar. Tokens only; no animation or transition of any
+   kind (replay updates are instant, so the zero-motion contract in tests/motion-contract.test.ts has nothing to gate here).
+   Nothing here is red: the first-error mark on the scrub bar is an ink tick (the page's one red line is the fault line). ---- */
 .replay {
   display: grid;
-  gap: 0.25rem;
-  padding: 0.4rem 0.75rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  gap: var(--space-1);
+  padding: var(--space-2) var(--layout-gutter);
+  background: var(--color-bg-raised);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 .replay-row {
   display: flex;
@@ -23,18 +23,18 @@
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  min-height: 1.875rem;
-  font: 500 var(--fs-body) / 1.2 var(--sans);
+  min-height: var(--layout-control);
+  font: var(--type-body-weight) var(--type-body-size) / 1.2 var(--font-sans);
 }
 .replay button:disabled {
-  color: var(--muted);
+  color: var(--color-text-secondary);
   cursor: default;
 }
 .replay-play {
   min-width: 5rem;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg);
+  background: var(--color-interactive-default);
+  border-color: var(--color-interactive-default);
+  color: var(--color-text-inverse);
 }
 .replay-play:disabled {
   background: transparent;
@@ -46,20 +46,20 @@
   display: inline-flex;
 }
 .replay-speed button {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   border-radius: 0;
   margin-left: -1px;
 }
 .replay-speed button:first-child {
-  border-radius: 4px 0 0 4px;
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
   margin-left: 0;
 }
 .replay-speed button:last-child {
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
 }
 .replay-speed button[aria-pressed="true"] {
-  background: var(--sel);
-  border-color: var(--accent);
+  background: var(--color-bg-wash);
+  border-color: var(--color-interactive-default);
   position: relative;
 }
 .replay-track {
@@ -72,31 +72,31 @@
 .replay-scrub {
   width: 100%;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--color-interactive-default);
 }
 .replay-fault {
   position: absolute;
   top: 50%;
-  width: 3px;
+  width: 2px;
   height: 1.1rem;
   transform: translate(-50%, -50%);
-  background: var(--fail);
+  background: var(--color-text-primary);
   pointer-events: none;
 }
 .replay-time {
-  font: 400 var(--fs-body) / 1.2 var(--mono);
-  color: var(--fg);
+  font: var(--type-mono-weight) var(--type-mono-size) / 1.2 var(--font-mono);
+  color: var(--color-text-primary);
   white-space: nowrap;
 }
 .replay-time-total {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .replay-check {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font: 400 var(--fs-body) / 1.2 var(--sans);
-  color: var(--fg-2);
+  font: var(--type-body-weight) var(--type-body-size) / 1.2 var(--font-sans);
+  color: var(--color-text-primary);
   white-space: nowrap;
 }
 .replay-menu {
@@ -111,9 +111,9 @@
   gap: 0.6rem;
   min-width: 13rem;
   padding: 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
 }
 .replay-notes {
   display: grid;
@@ -122,8 +122,8 @@
 .replay-notes p {
   margin: 0;
   min-height: 1.1rem;
-  font: 400 var(--fs-small) / 1.1rem var(--mono);
-  color: var(--muted);
+  font: var(--type-mono-small-weight) var(--type-mono-small-size) / 1.1rem var(--font-mono);
+  color: var(--color-text-secondary);
   overflow-wrap: anywhere;
 }
 .replay-notes p:empty {
@@ -131,14 +131,14 @@
 }
 .replay-skew,
 .replay-notice {
-  font-family: var(--sans);
-  color: var(--fg-2);
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
 }
 .replay-link {
   min-height: 0;
   padding: 0;
   border: 0;
-  color: var(--accent);
+  color: var(--color-interactive-default);
   text-decoration: underline;
 }
 /* Phones: 44 px targets, and the row never scrolls sideways. */

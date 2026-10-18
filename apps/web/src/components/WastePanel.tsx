@@ -2,6 +2,7 @@
 
 import { useWasteReport, type WindowDays } from "@/lib/queries";
 import { formatCost, formatInt } from "@/lib/format";
+import { analytics as t } from "@/copy/analytics";
 import { BarList } from "./charts";
 import { Empty, ErrorState, Loading } from "./States";
 import "../app/analytics.css";
@@ -22,10 +23,10 @@ export function WastePanel({
   const q = useWasteReport(project, days);
   const w = q.data;
   return (
-    <section aria-labelledby="waste-h" className="waste" data-testid="waste-panel">
-      <h2 id="waste-h">Where the money was wasted</h2>
+    <section aria-labelledby="waste-h" className="waste an-block" data-testid="waste-panel">
+      <h2 id="waste-h">{t.waste.title}</h2>
       {q.isPending ? (
-        <Loading label="Loading wasted spend" />
+        <Loading label={t.waste.loading} />
       ) : q.error ? (
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
       ) : w ? (
@@ -34,36 +35,23 @@ export function WastePanel({
           data-stale={q.isPlaceholderData ? "true" : undefined}
         >
           {w.wasted_usd === 0 ? (
-            <Empty title="Nothing was wasted in this window" motif="tape">
-              No run failed or retried with a cost.
-            </Empty>
+            <Empty title={t.waste.emptyTitle}>{t.waste.emptyBody}</Empty>
           ) : (
             <>
               <p className="waste-line" data-testid="waste-line">
-                <span className="waste-total">{formatCost(w.wasted_usd)}</span>
-                <span className="muted"> wasted</span>
-                <span data-fig="share">
-                  <span className="muted">of spend</span> {pct(w.wasted_share)}
-                </span>
-                <span data-fig="failed">
-                  <span className="muted">failed runs</span> {formatCost(w.failed.spend_usd)} (
-                  {formatInt(w.failed.runs)})
-                </span>
-                <span data-fig="retries">
-                  <span className="muted">retries</span> {formatCost(w.retries.in_other_runs_usd)}
-                </span>
-                <span data-fig="after">
-                  <span className="muted">after the first error</span>{" "}
-                  {formatCost(w.failed.after_first_error_usd)}
-                </span>
+                <span className="waste-total">{formatCost(w.wasted_usd)}</span> was wasted
+                {w.wasted_share == null ? "" : `, ${pct(w.wasted_share)} of spend`}.{" "}
+                <span className="waste-fig">{formatCost(w.failed.spend_usd)}</span> went on{" "}
+                {formatInt(w.failed.runs)} failed {w.failed.runs === 1 ? "run" : "runs"} (
+                <span className="waste-fig">{formatCost(w.failed.after_first_error_usd)}</span> of
+                it after the first error) and{" "}
+                <span className="waste-fig">{formatCost(w.retries.in_other_runs_usd)}</span> on
+                retries in the runs that did not fail.
               </p>
-              <p className="muted waste-note">
-                Spend on runs that failed, timed out or were blocked, plus retries in the runs that
-                did not. Retries inside a failed run are already in its spend.
-              </p>
+              <p className="muted waste-note">{t.waste.basis}</p>
               <div className="two-col">
                 <div>
-                  <h3>By agent</h3>
+                  <h3>{t.waste.byAgent}</h3>
                   <BarList
                     caption="Wasted spend by agent"
                     bars={w.by_agent.map((a) => ({
@@ -81,7 +69,7 @@ export function WastePanel({
                   )}
                 </div>
                 <div>
-                  <h3>By model</h3>
+                  <h3>{t.waste.byModel}</h3>
                   <BarList
                     caption="Wasted spend by model"
                     bars={w.by_model.map((m) => ({

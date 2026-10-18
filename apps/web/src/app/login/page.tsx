@@ -1,20 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { auth, type LoginErrorKey } from "@/copy/auth";
 import { safeReturnTo, fixturesMode } from "@/server/config";
 import { loadMe } from "@/server/session";
 import { Brand } from "@/components/shell/Brand";
 import "../login.css";
 
 export const dynamic = "force-dynamic";
-
-const MESSAGES: Record<string, string> = {
-  login_failed: "Sign-in did not complete. Try again.",
-  rate_limited: "Too many sign-in attempts. Wait a minute and try again.",
-  unavailable: "The sign-in service is unavailable. Try again shortly.",
-  not_configured: "Sign-in is not configured on this server.",
-  no_access: "No access yet. Ask a workspace owner to invite you.",
-  logout_failed: "Signing out failed; your session may still be active.",
-};
 
 export default async function LoginPage({
   searchParams,
@@ -27,12 +19,15 @@ export default async function LoginPage({
   // A visitor who is already signed in has nothing to do here (a stale cookie yields 401 and shows the form).
   if (me.status === "ok" && !fixturesMode()) redirect(returnTo ?? "/");
   // Only fixed strings are shown, never the query value (it is attacker-controllable text).
-  const message = params.error ? (MESSAGES[params.error] ?? MESSAGES.login_failed) : null;
+  const known = params.error !== undefined && Object.hasOwn(auth.errors, params.error);
+  const message = params.error
+    ? auth.errors[known ? (params.error as LoginErrorKey) : "login_failed"]
+    : null;
   const href = `/api/auth/login${returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : ""}`;
   return (
-    <main id="main" className="auth auth-page">
+    <main id="main" className="auth-page">
       <Brand />
-      <h1>Sign in to see what your agents did</h1>
+      <h1>{auth.loginTitle}</h1>
       {message && (
         <p role="alert" className="notice">
           {message}
@@ -40,15 +35,15 @@ export default async function LoginPage({
       )}
       {fixturesMode() ? (
         <p>
-          Fixture mode: no sign-in is needed. <Link href="/">Continue</Link>
+          {auth.fixtureNote} <Link href="/">{auth.fixtureContinue}</Link>
         </p>
       ) : (
         <>
           {/* A plain link, not next/link: prefetching it would start a sign-in. */}
           <a className="button" href={href}>
-            Sign in
+            {auth.signIn}
           </a>
-          <p className="auth-aside">You sign in with your organization&apos;s identity provider.</p>
+          <p className="auth-aside">{auth.aside}</p>
         </>
       )}
     </main>

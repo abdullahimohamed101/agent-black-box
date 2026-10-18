@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
+import { review } from "@/copy/review";
 import { ApiRequestError } from "@/lib/api/client";
 import { formatRelative, formatTimestamp } from "@/lib/format";
 import { useSecurityDetectors, useSecurityFindings } from "@/lib/queries";
@@ -36,6 +37,25 @@ const subscribeNarrow = (notify: () => void) => {
   m?.addEventListener("change", notify);
   return () => m?.removeEventListener("change", notify);
 };
+
+/**
+ * The API lists newest run first. Within one run the most severe finding comes first, so the order reads without colour.
+ * Runs never move relative to each other (a page boundary cannot reorder what is already on screen).
+ */
+function mostSevereFirst<T extends { run_id: string; severity: string }>(rows: readonly T[]): T[] {
+  const rank = (s: string) => {
+    const i = SEVERITY_ORDER.indexOf(s as never);
+    return i < 0 ? SEVERITY_ORDER.length : i;
+  };
+  const out: T[] = [];
+  for (let i = 0; i < rows.length;) {
+    let j = i;
+    while (j < rows.length && rows[j]!.run_id === rows[i]!.run_id) j++;
+    out.push(...rows.slice(i, j).sort((a, b) => rank(a.severity) - rank(b.severity)));
+    i = j;
+  }
+  return out;
+}
 
 type FacetValue = { value: string; label: string | null; count: number };
 
@@ -78,7 +98,7 @@ function FacetGroup({
 function Skeleton() {
   return (
     <div className="table-wrap" aria-busy="true" role="status" aria-live="polite">
-      <span className="sr-only">Loading security findings…</span>
+      <span className="sr-only">{review.security.loading}</span>
       <table className="sec-table" aria-hidden="true">
         <tbody>
           {[0, 1, 2, 3, 4].map((i) => (
@@ -91,9 +111,6 @@ function Skeleton() {
               </td>
               <td>
                 <span className="sec-skel" style={{ width: "8rem" }} />
-              </td>
-              <td>
-                <span className="sec-skel" style={{ width: "5rem" }} />
               </td>
               <td>
                 <span className="sec-skel" style={{ width: "3rem" }} />
@@ -141,14 +158,9 @@ export function SecurityPage({ now: nowProp }: { now?: number }) {
   const slugOf = (id: string) => ws.projects.find((p) => p.id === id)?.slug ?? id;
 
   if (!canRead || (q.error instanceof ApiRequestError && q.error.status === 403))
-    return (
-      <>
-        <PageHead />
-        <Forbidden what="security findings" />
-      </>
-    );
+    return <Forbidden what={review.security.forbiddenWhat} />;
 
-  const items = q.data?.pages.flatMap((p) => p.items) ?? [];
+  const items = mostSevereFirst(q.data?.pages.flatMap((p) => p.items) ?? []);
   const facets = q.data?.pages[0]?.facets;
   const filtered = hasSecurityFilters(filters);
   const settled = !q.isPending && !q.isError;
@@ -160,21 +172,9 @@ export function SecurityPage({ now: nowProp }: { now?: number }) {
 
   return (
     <div className="sec-page">
-      <PageHead
-        note={
-          settled && items.length > 0 ? (
-            <p className="muted" aria-live="polite">
-              {items.length} finding{items.length === 1 ? "" : "s"} loaded
-              {q.hasNextPage ? "" : " (end of list)"}
-            </p>
-          ) : null
-        }
-      />
       {settled && items.length === 0 && !filtered ? (
         <div className="sec-empty" data-testid="security-clean">
-          <Empty title="Nothing suspicious found" motif="shield">
-            No security findings in this workspace. These detectors are on:
-          </Empty>
+          <Empty title={review.security.cleanTitle}>{review.security.cleanBody}</Empty>
           {detectors.data ? (
             <DetectorList items={detectors.data} />
           ) : detectors.isError ? (
@@ -261,28 +261,26 @@ export function SecurityPage({ now: nowProp }: { now?: number }) {
               <ErrorState error={q.error} onRetry={() => void q.refetch()} />
             ) : items.length === 0 ? (
               <Empty
-                title="No findings match"
-                motif="cut"
+                title={review.security.noneTitle}
                 action={
                   <button type="button" onClick={() => set(NO_SECURITY_FILTERS)}>
                     Clear filters
                   </button>
                 }
               >
-                Try clearing a filter or widening the time range.
+                {review.security.noneBody}
               </Empty>
             ) : (
               <>
                 <div className="table-wrap">
                   <table className="sec-table">
-                    <caption className="sr-only">Security findings, newest run first</caption>
+                    <caption className="sr-only">{review.security.caption}</caption>
                     <thead>
                       <tr>
-                        <th scope="col">Severity</th>
-                        <th scope="col">Finding</th>
-                        <th scope="col">Run</th>
-                        <th scope="col">Project</th>
-                        <th scope="col">When</th>
+                        <th scope="col">{review.security.heads.severity}</th>
+                        <th scope="col">{review.security.heads.finding}</th>
+                        <th scope="col">{review.security.heads.run}</th>
+                        <th scope="col">{review.security.heads.when}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -302,7 +300,6 @@ export function SecurityPage({ now: nowProp }: { now?: number }) {
                               {r.run_name ?? r.run_id}
                             </Link>
                           </td>
-                          <td>{r.project_name}</td>
                           <td title={formatTimestamp(r.run_started_at)}>
                             {formatRelative(r.run_started_at, nowProp)}
                           </td>
@@ -311,6 +308,9 @@ export function SecurityPage({ now: nowProp }: { now?: number }) {
                     </tbody>
                   </table>
                 </div>
+                <p className="muted sec-count-line" aria-live="polite">
+                  {review.security.loaded(items.length, !q.hasNextPage)}
+                </p>
                 {q.hasNextPage && (
                   <p className="sec-more">
                     <button
@@ -326,19 +326,6 @@ export function SecurityPage({ now: nowProp }: { now?: number }) {
             )}
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-function PageHead({ note }: { note?: React.ReactNode }) {
-  return (
-    <div className="page-head">
-      <h1>Security</h1>
-      {note ?? (
-        <p className="muted">
-          What agents touched that deserves a look: secrets, destructive commands, unexpected hosts.
-        </p>
       )}
     </div>
   );

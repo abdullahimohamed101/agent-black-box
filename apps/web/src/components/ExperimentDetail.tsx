@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useId, useState } from "react";
+import { experiments as t } from "@/copy/experiments";
 import { fieldErrors } from "@/lib/api/client";
 import type { EvaluateOut, ExperimentOut, VariantMetricsOut } from "@/lib/api/types";
 import { JUDGE_BADGE, KIND_LABEL } from "@/lib/evaluations";
@@ -16,6 +17,8 @@ import {
   num,
   parseConfig,
   pct,
+  cheapestOf,
+  verdictOf,
   warningText,
 } from "@/lib/experiments";
 import { formatTimestamp } from "@/lib/format";
@@ -28,40 +31,39 @@ import {
   useRuns,
 } from "@/lib/queries";
 import { comparePath, experimentsPath, runPath, type Base } from "@/lib/routes";
+import { BarList } from "./charts";
+import { TitleLine } from "./TitleLine";
 import { useCan, useProjectId } from "./WorkspaceProvider";
 import { TableScroll } from "./TableScroll";
 import { StatusBadge } from "./StatusBadge";
 import { ErrorState, Loading } from "./States";
 import { ActionError, FieldError } from "./SettingsKit";
 import type { RunStatus } from "@/lib/api/types";
+import "../app/experiments.css";
 
 function ControlBanner({ e }: { e: ExperimentOut }) {
   const c = controlOf(e);
   if (c.state === "no-candidates")
     return (
       <p role="note" className="notice" data-testid="control-banner" data-control="no-candidates">
-        Add a candidate variant to compare against the baseline.
+        {t.control.none}
       </p>
     );
-  const names = (keys: string[]) => (keys.length ? keys.join(", ") : "nothing");
+  const names = (keys: string[]) => (keys.length ? keys.join(", ") : t.control.nothing);
   return (
     <div role="note" className="notice" data-testid="control-banner" data-control={c.state}>
       {c.state === "single" ? (
         <p>
-          <strong>Controlled:</strong> each candidate changes exactly one setting from the baseline,
-          so a difference in results can be attributed to it.
+          <strong>{t.control.single}</strong> {t.control.singleBody}
         </p>
       ) : (
         <p>
-          <strong>Not controlled:</strong> a candidate changes more than one setting (or none), so a
-          difference in results cannot be attributed to a single cause.
+          <strong>{t.control.multiple}</strong> {t.control.multipleBody}
         </p>
       )}
       <ul className="plain">
         {c.changes.map((x) => (
-          <li key={x.variant}>
-            {x.variant} changes: {names(x.keys)}
-          </li>
+          <li key={x.variant}>{t.control.changes(x.variant, names(x.keys))}</li>
         ))}
       </ul>
     </div>
@@ -70,23 +72,25 @@ function ControlBanner({ e }: { e: ExperimentOut }) {
 
 function Variants({ e }: { e: ExperimentOut }) {
   return (
-    <TableScroll label="Variants">
-      <table className="compare-table" data-testid="variants">
+    <TableScroll label={t.variants.caption}>
+      <table data-testid="variants" className="ex-stack">
         <thead>
           <tr>
-            <th scope="col">Variant</th>
-            <th scope="col">Role</th>
-            <th scope="col">Declared settings</th>
-            <th scope="col">Differs from baseline</th>
-            <th scope="col">Runs</th>
+            <th scope="col">{t.variants.heads.variant}</th>
+            <th scope="col">{t.variants.heads.role}</th>
+            <th scope="col">{t.variants.heads.settings}</th>
+            <th scope="col">{t.variants.heads.differs}</th>
+            <th scope="col" className="num">
+              {t.variants.heads.runs}
+            </th>
           </tr>
         </thead>
         <tbody>
           {e.variants.map((v) => (
             <tr key={v.id} data-role={v.role}>
               <th scope="row">{v.name}</th>
-              <td>{v.role}</td>
-              <td>
+              <td data-label={t.variants.heads.role}>{v.role}</td>
+              <td data-label={t.variants.heads.settings}>
                 <dl className="fields">
                   {configEntries(v.config).map(([k, val]) => (
                     <div key={k}>
@@ -96,10 +100,14 @@ function Variants({ e }: { e: ExperimentOut }) {
                   ))}
                 </dl>
               </td>
-              <td>
-                {v.changed_variables === null ? "—" : v.changed_variables.join(", ") || "nothing"}
+              <td data-label={t.variants.heads.differs}>
+                {v.changed_variables === null
+                  ? "—"
+                  : v.changed_variables.join(", ") || t.variants.nothing}
               </td>
-              <td>{v.run_count}</td>
+              <td className="num" data-label={t.variants.heads.runs}>
+                {v.run_count}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -137,11 +145,11 @@ function Metrics({ e }: { e: ExperimentOut }) {
     }); // prettier-ignore
   return (
     // A table wider than a phone scrolls inside its own region, which must be reachable by keyboard.
-    <TableScroll label="Metrics by variant">
-      <table className="compare-table" data-testid="metrics">
+    <TableScroll label={t.metrics.caption}>
+      <table data-testid="metrics">
         <thead>
           <tr>
-            <th scope="col">Measure</th>
+            <th scope="col">{t.metrics.measure}</th>
             {e.variants.map((v) => (
               <th key={v.id} scope="col">
                 {v.name}
@@ -203,24 +211,24 @@ function AttachRun({ e }: { e: ExperimentOut }) {
   return (
     <form
       className="experiment-form"
-      aria-label="Attach a run"
+      aria-label={t.attach.title}
       onSubmit={(ev) => {
         ev.preventDefault();
         if (chosenRun && chosenVariant)
           attach.mutate({ run_id: chosenRun, variant_id: chosenVariant });
       }}
     >
-      <h3>Attach a run</h3>
+      <h3>{t.attach.title}</h3>
       {runs.isPending ? (
-        <Loading label="Loading runs" />
+        <Loading label={t.attach.loading} />
       ) : e.variants.length === 0 ? (
-        <p className="muted">Add a variant first.</p>
+        <p className="muted">{t.attach.needVariant}</p>
       ) : options.length === 0 ? (
-        <p className="muted">No unattached runs in this project.</p>
+        <p className="muted">{t.attach.none}</p>
       ) : (
         <>
           <div className="field">
-            <label htmlFor={`${id}-run`}>Run</label>
+            <label htmlFor={`${id}-run`}>{t.attach.run}</label>
             <select id={`${id}-run`} value={chosenRun} onChange={(x) => setRunId(x.target.value)}>
               {options.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -231,7 +239,7 @@ function AttachRun({ e }: { e: ExperimentOut }) {
             <FieldError message={errors["run_id"]} />
           </div>
           <div className="field">
-            <label htmlFor={`${id}-variant`}>Variant</label>
+            <label htmlFor={`${id}-variant`}>{t.attach.variant}</label>
             <select
               id={`${id}-variant`}
               value={chosenVariant}
@@ -244,8 +252,8 @@ function AttachRun({ e }: { e: ExperimentOut }) {
               ))}
             </select>
           </div>
-          <button type="submit" disabled={attach.isPending}>
-            {attach.isPending ? "Attaching…" : "Attach run"}
+          <button type="submit" className="primary" disabled={attach.isPending}>
+            {attach.isPending ? t.attach.submitting : t.attach.submit}
           </button>
         </>
       )}
@@ -269,7 +277,7 @@ function AddVariant({ e }: { e: ExperimentOut }) {
   return (
     <form
       className="experiment-form"
-      aria-label="Add a variant"
+      aria-label={t.addVariant.title}
       onSubmit={(ev) => {
         ev.preventDefault();
         const parsed = parseConfig(text);
@@ -286,9 +294,9 @@ function AddVariant({ e }: { e: ExperimentOut }) {
         );
       }}
     >
-      <h3>Add a variant</h3>
+      <h3>{t.addVariant.title}</h3>
       <div className="field">
-        <label htmlFor={`${id}-name`}>Name</label>
+        <label htmlFor={`${id}-name`}>{t.addVariant.name}</label>
         <input
           id={`${id}-name`}
           value={name}
@@ -298,7 +306,7 @@ function AddVariant({ e }: { e: ExperimentOut }) {
         <FieldError message={errors["name"]} />
       </div>
       <div className="field">
-        <label htmlFor={`${id}-role`}>Role</label>
+        <label htmlFor={`${id}-role`}>{t.addVariant.role}</label>
         <select
           id={`${id}-role`}
           value={effectiveRole}
@@ -310,7 +318,7 @@ function AddVariant({ e }: { e: ExperimentOut }) {
         </select>
       </div>
       <div className="field">
-        <label htmlFor={`${id}-config`}>Declared settings, one key=value per line</label>
+        <label htmlFor={`${id}-config`}>{t.addVariant.config}</label>
         <textarea
           id={`${id}-config`}
           value={text}
@@ -318,13 +326,11 @@ function AddVariant({ e }: { e: ExperimentOut }) {
           placeholder={"model=gpt-x\nprompt_version=v2"}
           onChange={(x) => setText(x.target.value)}
         />
-        <p className="muted">
-          Visible to everyone who can see this experiment. No secrets, prompts or paths.
-        </p>
+        <p className="muted">{t.addVariant.help}</p>
         <FieldError message={formError ?? errors["config"]} />
       </div>
-      <button type="submit" disabled={add.isPending}>
-        {add.isPending ? "Adding…" : "Add variant"}
+      <button type="submit" className="primary" disabled={add.isPending}>
+        {add.isPending ? t.addVariant.submitting : t.addVariant.submit}
       </button>
       <ActionError error={add.error} />
     </form>
@@ -341,13 +347,9 @@ function EvaluateAll({ e }: { e: ExperimentOut }) {
         disabled={run.isPending || e.runs.length === 0 || e.evaluators.length === 0}
         onClick={() => run.mutate()}
       >
-        {run.isPending ? "Starting…" : "Evaluate all"}
+        {run.isPending ? t.evaluate.starting : t.evaluate.button}
       </button>
-      <p className="muted">
-        Starts every selected evaluator on every attached run (at most {EVALUATE_CAP} evaluations
-        per click; click again while some remain). Evaluations start after a short batch delay so
-        that runs still being summarised go first. A model judge costs money per evaluation.
-      </p>
+      <p className="muted">{t.evaluate.help(EVALUATE_CAP)}</p>
       <ActionError error={run.error} />
       {result && (
         <div role="status" data-testid="evaluate-result">
@@ -377,18 +379,18 @@ function Attached({ e, base, canWrite }: { e: ExperimentOut; base: Base; canWrit
   const detach = useDetachRun(e.id);
   const baseline = baselineRunId(e);
   const name = (id: string) => e.variants.find((v) => v.id === id);
-  if (e.runs.length === 0) return <p className="muted">No runs are attached yet.</p>;
+  if (e.runs.length === 0) return <p className="muted">{t.attached.none}</p>;
   return (
     <>
-      <TableScroll label="Attached runs">
-        <table className="compare-table" data-testid="attached-runs">
+      <TableScroll label={t.attached.caption}>
+        <table data-testid="attached-runs" className="ex-stack">
           <thead>
             <tr>
-              <th scope="col">Run</th>
-              <th scope="col">Variant</th>
-              <th scope="col">Status</th>
-              <th scope="col">Started</th>
-              <th scope="col">Actions</th>
+              <th scope="col">{t.attached.heads.run}</th>
+              <th scope="col">{t.attached.heads.variant}</th>
+              <th scope="col">{t.attached.heads.status}</th>
+              <th scope="col">{t.attached.heads.started}</th>
+              <th scope="col">{t.attached.heads.actions}</th>
             </tr>
           </thead>
           <tbody>
@@ -399,16 +401,14 @@ function Attached({ e, base, canWrite }: { e: ExperimentOut; base: Base; canWrit
                   <th scope="row">
                     <Link href={runPath(base, r.run_id)}>{r.run_id}</Link>
                   </th>
-                  <td>{v?.name ?? "—"}</td>
-                  <td>
+                  <td data-label={t.attached.heads.variant}>{v?.name ?? "—"}</td>
+                  <td data-label={t.attached.heads.status}>
                     <StatusBadge status={r.status as RunStatus} />
                   </td>
-                  <td>{formatTimestamp(r.started_at)}</td>
-                  <td>
+                  <td data-label={t.attached.heads.started}>{formatTimestamp(r.started_at)}</td>
+                  <td data-label={t.attached.heads.actions}>
                     {v?.role === "candidate" && baseline && (
-                      <Link href={comparePath(base, baseline, r.run_id)}>
-                        Compare with baseline run
-                      </Link>
+                      <Link href={comparePath(base, baseline, r.run_id)}>{t.attached.compare}</Link>
                     )}{" "}
                     {canWrite && (
                       <button
@@ -416,7 +416,7 @@ function Attached({ e, base, canWrite }: { e: ExperimentOut; base: Base; canWrit
                         disabled={detach.isPending}
                         onClick={() => detach.mutate(r.run_id)}
                       >
-                        Detach
+                        {t.attached.detach}
                       </button>
                     )}
                   </td>
@@ -437,25 +437,33 @@ export function ExperimentDetail({ base, experimentId }: { base: Base; experimen
   const canWrite = useCan("experiment.write");
   const canRun = useCan("evaluation.run");
   const ids = [useId(), useId(), useId(), useId()] as const;
-  if (q.isPending) return <Loading label="Loading experiment" />;
+  if (q.isPending) return <Loading label={t.loadingOne} />;
   if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
   const e = q.data;
+  const verdict = verdictOf(e);
+  const byVariant = new Map(e.metrics.map((m) => [m.variant_id, m] as const));
+  const rated = e.variants.flatMap((v) => {
+    const m = byVariant.get(v.id);
+    return m && m.finished > 0 ? [{ v, m }] : [];
+  });
+  // The cost chart marks the cheaper variant: the verdict's leader may be the one that cost more.
+  const cheapest = cheapestOf(rated.map(({ v, m }) => ({ id: v.id, median: m.cost_usd.median })));
   return (
-    <div className="experiment" data-testid="experiment">
-      <p>
-        <Link href={experimentsPath(base)}>All experiments</Link>
+    <div className="experiment st" data-testid="experiment">
+      <TitleLine href={experimentsPath(base)} title={e.name} back={t.back} />
+      {e.description && <p className="ex-lede">{e.description}</p>}
+      {e.dataset_label && <p className="muted ex-meta">{t.detail.taskSet(e.dataset_label)}</p>}
+      {e.archived_at && <p className="notice">{t.detail.archived}</p>}
+      <p className="ex-verdict" data-testid="experiment-verdict" data-verdict={verdict.kind}>
+        {verdict.text}
       </p>
-      <h1>{e.name}</h1>
-      {e.description && <p>{e.description}</p>}
-      {e.dataset_label && <p className="muted">Task set: {e.dataset_label}</p>}
-      {e.archived_at && <p className="notice">This experiment is archived.</p>}
       <ControlBanner e={e} />
       {e.warnings.length > 0 && (
         <ul className="plain" aria-label="Warnings" data-testid="warnings">
           {e.warnings.map((w, i) => (
             <li key={i} data-code={w.code}>
               <span className="badge" data-tone="warn">
-                Warning
+                {t.detail.warning}
               </span>{" "}
               {warningText(w)}
               {w.keys && w.keys.length > 0 && <> ({w.keys.join(", ")})</>}
@@ -464,24 +472,58 @@ export function ExperimentDetail({ base, experimentId }: { base: Base; experimen
           ))}
         </ul>
       )}
-      <section aria-labelledby={ids[0]}>
-        <h2 id={ids[0]}>Variants</h2>
+      {rated.length > 0 && (
+        <section className="ex-block ex-charts" aria-labelledby={ids[3]}>
+          <h2 id={ids[3]}>{t.sections.compared}</h2>
+          <div className="two-col">
+            <div>
+              <h3>{t.sections.successRate}</h3>
+              <BarList
+                caption={t.chart.successRate}
+                marks="lead"
+                bars={rated.map(({ v, m }) => ({
+                  label: v.name,
+                  value: m.success_rate ?? 0,
+                  display: pct(m.success_rate),
+                  lead: v.id === verdict.leader,
+                }))}
+              />
+            </div>
+            <div>
+              <h3>{t.sections.medianCost}</h3>
+              <BarList
+                caption={t.chart.medianCost}
+                marks="lead"
+                bars={rated.map(({ v, m }) => ({
+                  label: v.name,
+                  value: m.cost_usd.median ?? 0,
+                  display: distCost(m.cost_usd).median,
+                  lead: v.id === cheapest,
+                }))}
+              />
+            </div>
+          </div>
+        </section>
+      )}
+      <section className="ex-block" aria-labelledby={ids[0]}>
+        <h2 id={ids[0]}>{t.sections.variants}</h2>
         <Variants e={e} />
         {canWrite && <AddVariant e={e} />}
       </section>
-      <section aria-labelledby={ids[1]}>
-        <h2 id={ids[1]}>Metrics</h2>
+      <section className="ex-block" aria-labelledby={ids[1]}>
+        <h2 id={ids[1]}>{t.sections.metrics}</h2>
         {e.evaluators.length > 0 && (
           <p className="muted">
-            Evaluators:{" "}
-            {e.evaluators.map((v) => `${v.name} (${KIND_LABEL[v.kind].toLowerCase()})`).join(", ")}.
+            {t.metrics.evaluators(
+              e.evaluators.map((v) => `${v.name} (${KIND_LABEL[v.kind].toLowerCase()})`).join(", "),
+            )}
           </p>
         )}
         <Metrics e={e} />
         {canRun && <EvaluateAll e={e} />}
       </section>
-      <section aria-labelledby={ids[2]}>
-        <h2 id={ids[2]}>Runs</h2>
+      <section className="ex-block" aria-labelledby={ids[2]}>
+        <h2 id={ids[2]}>{t.sections.runs}</h2>
         <Attached e={e} base={base} canWrite={canWrite} />
         {canWrite && <AttachRun e={e} />}
       </section>

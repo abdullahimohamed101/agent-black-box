@@ -146,7 +146,9 @@ for (const variant of ["approve", "deny"] as const)
       await settleAnimations(page);
       await page.screenshot({ path: `${SHOTS}/real-run-waiting.png`, fullPage: false });
     }
-    await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
+    await expect(page.getByTestId("headline")).toContainText(
+      /^Waiting for approval of github\.push/,
+    );
     const detail = page.getByTestId("headline-detail");
     await expect(detail).toContainText(/\d+ (min|s|h)/);
     const banner = page.getByTestId("approval-banner");
@@ -187,7 +189,9 @@ for (const variant of ["approve", "deny"] as const)
     await expect(panel).toContainText(/\d+ min/);
     const row = page.locator(`#apr-open-${approval}`).locator("xpath=ancestor::tr");
     await expect(row).toContainText("origin main");
-    await expect(row).toContainText("approve-push-main");
+    // Design pass 2: the five-column list row no longer carries the policy; the open row's request panel names it, with its version.
+    await expect(row.locator(`#apr-open-${approval}`)).toHaveAttribute("aria-current", "true");
+    await expect(panel.getByText(/approve-push-main/)).toBeVisible();
     await expect(row.getByTestId("time-left")).toHaveText(/\d+ (min|s|h)/);
     await expect(page.getByTestId("approvals-count")).toContainText(/[1-9]/);
     if (variant === "approve") {
@@ -265,7 +269,8 @@ for (const role of ["viewer", "billing"] as const)
   test(`@gate6 ${role}: 'Not available for your role' on Approvals and Policies, and 403 from the APIs`, async () => {
     const page = await signedIn(role, `/w/${WS}/approvals`);
     await expect(page.getByText("Not available for your role")).toBeVisible();
-    await expect(page.getByRole("link", { name: /^Approvals/ })).toHaveCount(0);
+    // Step 5c: Approvals is a tab of Review; a role that may not read approvals has no such tab.
+    await expect(page.getByRole("tab", { name: "Approvals" })).toHaveCount(0);
     await page.goto(`/w/${WS}/settings/policies`);
     await expect(page.getByText("Not available for your role")).toBeVisible();
     const headers = await workspaceHeader(page);
@@ -435,11 +440,13 @@ test("@ui real dry-run sample links open the recorded event (?event=)", async ()
 test("@ui a run waiting on a live approval shows the real time left; a viewer reads the same words without it", async () => {
   const ui = shared().ui as UiShared;
   const page = await signedIn("admin", runUrl(ui.run));
-  await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
+  await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval of github\.push/);
   await expect(page.getByTestId("headline-detail")).toContainText(/\d+ (h|min|s)( \d+ min)? left/);
   await expect(page.getByTestId("approval-banner")).toContainText(/· \d+ (h|min|s)/);
   const viewer = await signedIn("viewer", runUrl(ui.run));
-  await expect(viewer.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
+  await expect(viewer.getByTestId("headline")).toContainText(
+    /^Waiting for approval of github\.push/,
+  );
   await expect(viewer.getByTestId("headline-detail")).not.toContainText("left");
   await expect(viewer.getByTestId("approval-banner")).toContainText(
     "Someone with approval rights decides this request.",
@@ -455,7 +462,7 @@ test("@ui a developer reads policies (read only) and sees the approvals page; bi
   await expect(dev.getByRole("button", { name: "Publish" })).toHaveCount(0);
   await dev.goto(`/w/${WS}/approvals`);
   await expect(approvalRows(dev).first()).toBeVisible();
-  await expect(dev.getByRole("link", { name: /^Approvals/ }).first()).toBeVisible();
+  await expect(dev.getByRole("tab", { name: "Approvals" })).toBeVisible();
   const billing = await signedIn("billing", POLICIES());
   await expect(billing.getByText("Not available for your role")).toBeVisible();
 });

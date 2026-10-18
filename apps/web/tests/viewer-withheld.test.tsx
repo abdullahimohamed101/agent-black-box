@@ -133,7 +133,7 @@ describe("a viewer sees the withheld wording and no captured content", () => {
     const secrets = secretsOf(run.id);
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("region", { name: "Captured artifacts" });
-    expect(screen.getByRole("radio", { name: "Evidence" })).toBeChecked();
+    expect(screen.getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent(/events/));
     expectNoLeak(secrets);
   });

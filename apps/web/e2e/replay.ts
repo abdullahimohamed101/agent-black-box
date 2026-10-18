@@ -39,10 +39,12 @@ export async function seekTo(page: Page, index: number) {
 }
 
 export async function figure(page: Page, label: string): Promise<string> {
+  // one of the five readouts, or one that moved into Details (model calls, tool calls, files changed): its dd is the dt's sibling
   return page
-    .locator('dl[aria-label="Run summary"] .stat')
-    .filter({ has: page.locator("dt", { hasText: new RegExp(`^${label}$`) }) })
-    .locator("dd")
+    .locator('dl[aria-label="Run summary"] dt, #run-details dt')
+    .filter({ hasText: new RegExp(`^${label}$`) })
+    .first()
+    .locator("xpath=following-sibling::dd[1]")
     .innerText();
 }
 

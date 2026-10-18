@@ -4,71 +4,72 @@ import { useState } from "react";
 import { fieldErrors } from "@/lib/api/client";
 import { useCan, useWorkspace } from "./WorkspaceProvider";
 import { useCreateOverride, usePrices, useRebuildCosts } from "@/lib/admin";
-import { ActionError, FieldError, when } from "./SettingsKit";
+import { settings } from "@/copy/settings";
+import { ActionError, FieldError, Lede, ReadOnly, Section, StatusLine, when } from "./SettingsKit";
 import { Empty, ErrorState, Loading } from "./States";
 
 export function PricingOverrides() {
   const canWrite = useCan("pricing.write");
   const prices = usePrices(true);
   const rebuild = useRebuildCosts();
+  const c = settings.pricing;
   return (
     <>
-      <div className="page-head">
-        <h1>Pricing</h1>
-        <p className="muted">
-          Prices per million tokens used to cost LLM calls. An override replaces the built-in price
-          for matching models from its start time; past runs change only after a rebuild.
-        </p>
-      </div>
-      {canWrite && <OverrideForm />}
-      {prices.isPending ? (
-        <Loading label="Loading prices" />
-      ) : prices.error ? (
-        <ErrorState error={prices.error} onRetry={() => void prices.refetch()} />
-      ) : prices.data.length === 0 ? (
-        <Empty title="No prices" />
-      ) : (
-        <div className="table-wrap" tabIndex={0} role="region" aria-label="Model prices">
-          <table>
-            <caption className="sr-only">Model prices</caption>
-            <thead>
-              <tr>
-                <th>Model</th>
-                <th>Origin</th>
-                <th>Tier</th>
-                <th className="num">Input</th>
-                <th className="num">Output</th>
-                <th className="num">Cached input</th>
-                <th>Valid from</th>
-                <th>Scope</th>
-              </tr>
-            </thead>
-            <tbody>
-              {prices.data.map((p, i) => (
-                <tr key={`${p.pricing_version}-${p.model_pattern}-${i}`}>
-                  <td>{p.model_pattern}</td>
-                  <td>{p.origin}</td>
-                  <td>
-                    {p.service_tier ?? "any"}
-                    {p.min_prompt_tokens != null
-                      ? `, prompts over ${p.min_prompt_tokens.toLocaleString("en-US")}`
-                      : ""}
-                  </td>
-                  <td className="num">{p.input_per_million}</td>
-                  <td className="num">{p.output_per_million}</td>
-                  <td className="num">{p.cached_input_per_million ?? "—"}</td>
-                  <td>{when(p.valid_from)}</td>
-                  <td>{p.project_id ?? "workspace"}</td>
+      <Lede>{c.lede}</Lede>
+      <Section title={c.pricesTitle}>
+        {prices.isPending ? (
+          <Loading label="Loading prices" />
+        ) : prices.error ? (
+          <ErrorState error={prices.error} onRetry={() => void prices.refetch()} />
+        ) : prices.data.length === 0 ? (
+          <Empty title={c.empty} />
+        ) : (
+          <div className="table-wrap" tabIndex={0} role="region" aria-label="Model prices">
+            <table>
+              <caption className="sr-only">Model prices</caption>
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>Origin</th>
+                  <th>Tier</th>
+                  <th className="num">Input</th>
+                  <th className="num">Output</th>
+                  <th className="num">Cached input</th>
+                  <th>Valid from</th>
+                  <th>Scope</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {prices.data.map((p, i) => (
+                  <tr key={`${p.pricing_version}-${p.model_pattern}-${i}`}>
+                    <td>{p.model_pattern}</td>
+                    <td>{p.origin}</td>
+                    <td>
+                      {p.service_tier ?? "any"}
+                      {p.min_prompt_tokens != null
+                        ? `, prompts over ${p.min_prompt_tokens.toLocaleString("en-US")}`
+                        : ""}
+                    </td>
+                    <td className="num">{p.input_per_million}</td>
+                    <td className="num">{p.output_per_million}</td>
+                    <td className="num">{p.cached_input_per_million ?? "—"}</td>
+                    <td>{when(p.valid_from)}</td>
+                    <td>{p.project_id ?? "workspace"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!canWrite && !prices.isPending && !prices.error && <ReadOnly testId="pricing-readonly" />}
+      </Section>
+      {canWrite && (
+        <Section title={c.addTitle}>
+          <OverrideForm />
+        </Section>
       )}
       {canWrite && (
-        <>
-          <h2>Apply to past runs</h2>
-          <p className="muted">Recomputes the cost of existing runs with the prices above.</p>
+        <Section title={c.applyTitle} lede={c.applyLede}>
           <button
             type="button"
             disabled={rebuild.isPending}
@@ -78,12 +79,12 @@ export function PricingOverrides() {
           </button>
           <ActionError error={rebuild.error} />
           {rebuild.data && (
-            <p role="status">
+            <StatusLine>
               Matched {rebuild.data.matched} runs, queued {rebuild.data.queued}
               {rebuild.data.truncated ? "; older runs were left out (run it again later)" : ""}.
-            </p>
+            </StatusLine>
           )}
-        </>
+        </Section>
       )}
     </>
   );
@@ -107,7 +108,7 @@ function OverrideForm() {
   return (
     <>
       <form
-        className="form"
+        className="form form-pairs"
         onSubmit={(e) => {
           e.preventDefault();
           create.mutate({
@@ -125,7 +126,7 @@ function OverrideForm() {
           });
         }}
       >
-        <label className="field">
+        <label className="field wide">
           Model pattern
           <input
             required
@@ -180,7 +181,7 @@ function OverrideForm() {
           <input type="datetime-local" value={f.valid_from} onChange={set("valid_from")} />
           <FieldError message={errors.valid_from} />
         </label>
-        <label className="field">
+        <label className="field wide">
           Note
           <input value={f.note} maxLength={500} onChange={set("note")} />
           <FieldError message={errors.note} />
@@ -190,7 +191,7 @@ function OverrideForm() {
         </button>
       </form>
       {Object.keys(errors).length === 0 && <ActionError error={create.error} />}
-      {create.isSuccess && <p role="status">Override added.</p>}
+      {create.isSuccess && <StatusLine>Override added.</StatusLine>}
     </>
   );
 }

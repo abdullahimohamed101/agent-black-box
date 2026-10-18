@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { openTab, settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
 
 // Runs only through scripts/findings-e2e.sh: the ten pathological runs went in through the real ingestion path, the
@@ -15,7 +15,7 @@ const SHOTS = "../../docs/screenshots/phase-10";
 
 const open = async (page: Page, name: string) => {
   await page.goto(`/w/${workspace()}/projects/all/runs/${runs[name]}`);
-  await openContext(page); // findings live in the context panel, closed by default (Phase 22 D3)
+  await openTab(page, "Findings"); // design pass 2: findings are a tab
   await expect(page.getByTestId("findings")).toBeVisible();
   await expect(page.getByTestId("findings-state")).toContainText("Analysis is current");
 };
@@ -40,8 +40,7 @@ test("a looping run lists its probable loops, and Show evidence selects the cite
   await loops.first().getByText("Details", { exact: true }).click(); // the explanation sits behind Details
   await expect(loops.first().getByLabel("Pattern")).toContainText("tool:search");
   await expect(panel.getByTestId("finding").filter({ hasText: "Observed" }).first()).toBeVisible();
-  await panel.getByText(/^Health:/).click(); // the dimensions sit behind a disclosure
-  await expect(panel.getByTestId("health")).toContainText("Loops");
+  await expect(page.getByTestId("health")).toHaveCount(0); // the health dimensions are not on the page any more (ADR-166)
   await loops.first().getByRole("button", { name: "Show evidence" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("option", { selected: true })).toBeVisible();
@@ -92,8 +91,8 @@ test("the runs list shows a findings column as text", async ({ page }) => {
   await expect(row("healthy").getByTestId("findings-cell")).toContainText("No findings");
   await page.screenshot({ path: `${SHOTS}/e2e-runs-list.png`, fullPage: true });
   // Phase 16 search sits beside the findings column: a search keeps the column on every result row
-  await page.getByRole("searchbox", { name: "Search" }).fill("status:failed");
-  await page.getByRole("searchbox", { name: "Search" }).press("Enter");
+  await page.getByRole("searchbox", { name: "Search runs" }).fill("status:failed");
+  await page.getByRole("searchbox", { name: "Search runs" }).press("Enter");
   await expect(page.getByRole("list", { name: "Search terms" })).toContainText("status:failed");
   await expect(row("failing").getByTestId("findings-cell")).toContainText(/critical|warning|info/);
   await expect(row("healthy")).toHaveCount(0);

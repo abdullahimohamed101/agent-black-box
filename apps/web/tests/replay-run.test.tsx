@@ -74,11 +74,15 @@ function expected(f: FixtureRun, i: number) {
   };
 }
 
-const figure = (label: string) => {
-  const dl = document.querySelector('dl[aria-label="Run summary"]') as HTMLElement;
-  return within(dl).getByText(label, { selector: "dt" }).closest(".stat")!.querySelector("dd")!
-    .textContent;
+/** A figure of the run: one of the five readouts, or one that moved into Details (model calls, tool calls, files changed). */
+const figureCell = (label: string) => {
+  const dt = [
+    ...document.querySelectorAll('dl[aria-label="Run summary"] dt, #run-details dt'),
+  ].find((d) => d.textContent === label);
+  if (!dt) throw new Error(`no readout named ${label}`);
+  return dt.parentElement!.querySelector("dd")!;
 };
+const figure = (label: string) => figureCell(label).textContent;
 const scrub = () => screen.getByRole("slider", { name: "Replay position" });
 const seek = (i: number) => fireEvent.change(scrub(), { target: { value: String(i) } });
 const timelineTypes = () =>
@@ -112,7 +116,8 @@ describe("replay mode on the run page", () => {
     const { user, button } = await enter();
     expect(button).toHaveAttribute("aria-pressed", "true");
     expect(button).toHaveAttribute("aria-keyshortcuts", "r");
-    expect(button).toHaveTextContent(/Replay\s*r/);
+    expect(button).toHaveTextContent("Replay");
+    expect(button).toHaveAttribute("title", "Replay this run (r)"); // the hint is a tooltip now, not a drawn key
     // paused at the first event; the transport sits under the header, above the work area
     expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
     const bar = screen.getByRole("region", { name: "Replay controls" });
@@ -157,18 +162,18 @@ describe("replay mode on the run page", () => {
     const detail = () => screen.getByTestId("headline-detail");
     for (const i of [0, 2, errIdx - 1]) {
       seek(i);
-      expect(headline()).toHaveTextContent(/^Running · step \d+ · replay$/);
+      expect(headline()).toHaveTextContent(/^Running at step \d+, replay\.$/);
       expect(screen.queryByTestId("first-error")).toBeNull();
-      expect(screen.queryByRole("button", { name: "Show it" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Go to first error" })).toBeNull();
       const text = `${headline().textContent} ${detail().textContent} ${screen.getByTestId("replay-status").textContent}`;
       expect(text).not.toMatch(/run_migration|ConnectionTimeout|Failed|First error|Succeeded/);
     }
     seek(errIdx);
     const err = screen.getByTestId("first-error");
     expect(err).toHaveTextContent(
-      /^First error at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout/,
+      /^First error at step \d+ after 6\.2 s: run_migration, ConnectionTimeout/,
     );
-    expect(within(err).getByRole("button", { name: "Show it" })).toBeInTheDocument();
+    expect(within(err).getByRole("button", { name: "Go to first error" })).toBeInTheDocument();
     expect(detail().textContent).toContain(`${expected(failed, errIdx).cost} so far`);
     // and the outcome (the live "Failed at step") is never stated in replay
     seek(failed.events.length - 1);
@@ -223,35 +228,34 @@ describe("replay mode on the run page", () => {
     );
   });
 
-  it("Show it moves the playhead to the first error and opens it", async () => {
+  it("Go to first error moves the playhead to the first error and opens it", async () => {
     stubApi();
     const { user } = await enter();
     seek(errIdx);
-    await user.click(screen.getByRole("button", { name: "Show it" }));
+    await user.click(screen.getByRole("button", { name: "Go to first error" }));
     expect(await screen.findByRole("dialog")).toHaveTextContent("ConnectionTimeout");
     expect(scrub()).toHaveValue(String(errIdx));
   });
 
-  it("the context column stays live and says so; Evidence shows the whole run with a note", async () => {
+  it("the Findings tab says its totals reflect the whole run; Evidence shows the whole run with a note", async () => {
     stubApi();
     const { user } = await enter(baselineCodingRun());
-    await user.click(screen.getByRole("button", { name: /^Context/ }));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
     expect(screen.getByTestId("replay-context-note")).toHaveTextContent(
       "Findings and agent totals reflect the whole run.",
     );
-    await user.click(screen.getByRole("radio", { name: "Evidence" }));
+    await user.click(screen.getByRole("tab", { name: "Evidence" }));
     expect(screen.getByTestId("replay-evidence-note")).toHaveTextContent(
       "Evidence shows the whole run.",
     );
-    await user.click(screen.getByRole("radio", { name: "Timeline" }));
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
     expect(screen.queryByTestId("replay-evidence-note")).toBeNull();
   });
 
   it("the coding story shows only the steps that have happened", async () => {
     const f = baselineCodingRun();
     stubApi();
-    const { user } = await enter(f);
-    await user.click(screen.getByRole("button", { name: /^Context/ }));
+    await enter(f);
     const steps = () => within(screen.getByTestId("story")).getAllByRole("listitem").length;
     seek(1);
     const early = screen.queryByTestId("story") ? steps() : 0;
@@ -269,7 +273,7 @@ describe("replay and the waterfall", () => {
   it("spans appear as the playhead reaches them, open ones are in progress, and the agent tree follows", async () => {
     stubApi();
     const { user } = await enter(multi);
-    await user.click(screen.getByRole("radio", { name: "Waterfall" }));
+    await user.click(screen.getByRole("tab", { name: "Waterfall" }));
     const spanCount = () =>
       Number(
         /(\d[\d,]*) spans/.exec(document.querySelector(".wf-count")?.textContent ?? "0 spans")![1],
@@ -294,8 +298,7 @@ describe("replay and the waterfall", () => {
         .getAllByRole("row")
         .filter((r) => r.getAttribute("aria-current") === "step"),
     ).toHaveLength(1);
-    // the agent tree (context column) highlights the agent that emitted the current event
-    await user.click(screen.getByRole("button", { name: /^Context/ }));
+    // the agent tree (Steps column) highlights the agent that emitted the current event
     const at = Math.floor(multi.events.length / 2);
     seek(at);
     const tree = screen.getByTestId("agent-tree");
@@ -326,7 +329,7 @@ describe("replay and the waterfall", () => {
     stubApi();
     const f = failed;
     const { user } = await enter(f);
-    await user.click(screen.getByRole("radio", { name: "Waterfall" }));
+    await user.click(screen.getByRole("tab", { name: "Waterfall" }));
     seek(errIdx - 1);
     expect(document.querySelector(".wf-fault-line")).toBeNull();
     seek(errIdx);
@@ -365,8 +368,11 @@ describe("replay as a viewer", () => {
     );
     const surface = document.body.textContent ?? "";
     for (const s of secrets) expect(surface, `leaked ${s}`).not.toContain(s);
-    // opening an event shows the withheld wording
-    await user.click(screen.getAllByRole("option").at(-1)!);
+    // opening an event shows the withheld wording (an event row, not a group: a group row only folds)
+    const eventRows = screen
+      .getAllByRole("option")
+      .filter((o) => !/^Group /.test(o.getAttribute("aria-label") ?? ""));
+    await user.click(eventRows.at(-1)!);
     await screen.findByRole("dialog");
     await waitFor(() => expect(document.body.textContent).toContain(WITHHELD_TEXT));
   });
@@ -468,7 +474,7 @@ describe("keyboard and URL", () => {
         timeout: 2000,
       },
     );
-    await user.click(screen.getByRole("radio", { name: "Waterfall" }));
+    await user.click(screen.getByRole("tab", { name: "Waterfall" }));
     const q = new URLSearchParams(window.location.search);
     expect(q.get("view")).toBe("waterfall");
     expect(q.get("t")).toBe(failed.events[4]!.event_id);
@@ -587,6 +593,6 @@ describe("live runs", () => {
     await enter(f);
     seek(f.events.length - 1);
     expect(figure("Cost")).toBe(formatCost(f.run.summary["estimated_cost_usd"] as number));
-    expect(screen.getByTestId("headline")).toHaveTextContent(/^Completed · step \d+ · replay$/);
+    expect(screen.getByTestId("headline")).toHaveTextContent(/^Completed at step \d+, replay\.$/);
   });
 });

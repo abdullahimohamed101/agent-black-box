@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
 
 // Runs only through scripts/multiagent-e2e.sh: the multi-agent example (threads, an asyncio task and a subprocess whose
@@ -18,7 +18,6 @@ const open = async (page: Page, view = "waterfall") => {
   await page.goto(
     `/w/${workspace()}/projects/all/runs/${runId}${view === "waterfall" ? "?view=waterfall" : ""}`,
   );
-  await openContext(page); // the context column (agent tree) starts closed (Phase 22 D3)
   await expect(page.getByTestId(view === "waterfall" ? "waterfall" : "agent-tree")).toBeVisible();
 };
 const rowOf = (page: Page, agent: string) =>
@@ -82,8 +81,8 @@ test.describe("as the workspace owner", () => {
       new Set(["researcher"]),
     );
     await tree.getByRole("button", { name: /^researcher/ }).click(); // toggles the filter off
-    await page.getByRole("radio", { name: "Waterfall" }).check();
-    await page.getByRole("button", { name: "Show it" }).click();
+    await page.getByRole("tab", { name: "Waterfall" }).click();
+    await page.getByRole("button", { name: "Go to first error" }).click();
     await expect(
       page.getByRole("treegrid").locator('[role="row"][aria-selected="true"]'),
     ).toContainText("search_docs");
@@ -118,12 +117,12 @@ test.describe("as a viewer", () => {
     expect(await everything()).not.toContain(COMMAND);
     await page.getByRole("button", { name: "Lanes" }).click();
     expect(await everything()).not.toContain(COMMAND);
-    await page.getByRole("radio", { name: "Timeline" }).check();
+    await page.getByRole("tab", { name: "Timeline" }).click();
     expect(await everything()).not.toContain(COMMAND);
     // the API's own placeholder is never shown as text either: the UI words the notice itself
     expect(await everything()).not.toContain("[withheld]");
     // the command's row says why it is blank
-    await page.getByRole("radio", { name: "Waterfall" }).check();
+    await page.getByRole("tab", { name: "Waterfall" }).click();
     await expect(page.getByTestId("waterfall")).toContainText(WITHHELD);
     await axe(page);
     await page.screenshot({ path: `${SHOTS}/waterfall-viewer.png`, fullPage: true });
@@ -140,7 +139,7 @@ test.describe("as a viewer", () => {
 
   test("a viewer's drawer says the payload is withheld, not what it holds", async ({ page }) => {
     await open(page);
-    await page.getByRole("radio", { name: "Timeline" }).check();
+    await page.getByRole("tab", { name: "Timeline" }).click();
     // The example captures full payloads (delegation input, tool and shell output): at least one event
     // has a payload, and for a viewer its drawer must say so without showing it or the API's placeholder.
     const options = page.locator('[role="listbox"] [role="option"]:not([aria-label^="Group"])');

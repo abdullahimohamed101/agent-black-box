@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/AppShell";
-import { SettingsNav } from "@/components/SettingsNav";
+import { SettingsFrame } from "@/components/SettingsFrame";
 
 export default async function SettingsLayout({
   children,
@@ -11,8 +11,7 @@ export default async function SettingsLayout({
   const { workspace } = await params;
   return (
     <AppShell base={{ workspace, project: "all" }}>
-      <SettingsNav />
-      {children}
+      <SettingsFrame>{children}</SettingsFrame>
     </AppShell>
   );
 }

@@ -258,6 +258,8 @@ describe("ApiKeys", () => {
     });
     mount(<ApiKeys />, ctx(OWNER));
     await userEvent.click(await screen.findByRole("button", { name: /Revoke key/ }));
+    // Step 5c: a revoke is two steps, in place (the same pattern as removing a member); the second press acts.
+    await userEvent.click(await screen.findByRole("button", { name: /Confirm revoke key/ }));
     expect(await screen.findByText("No API keys")).toBeInTheDocument();
   });
 
@@ -268,6 +270,7 @@ describe("ApiKeys", () => {
     });
     mount(<ApiKeys />, ctx(OWNER));
     await userEvent.click(await screen.findByRole("button", { name: /Revoke key/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Confirm revoke key/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Your role does not allow this.");
   });
 });
@@ -360,10 +363,11 @@ describe("AuditLog", () => {
 describe("permission-driven navigation", () => {
   it("shows only the tabs the API's permission list allows", () => {
     mount(<SettingsNav />, ctx(["member.read", "pricing.read"]));
+    // In the grouped order of the settings list (People, Access, Limits, Notify, Record), not the old flat order.
     expect(screen.getAllByRole("link").map((l) => l.textContent)).toEqual([
       "Members",
-      "Pricing",
       "Sessions",
+      "Pricing",
     ]);
   });
   it("replaces a page the person cannot use with a clear note, and fetches nothing", () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  skipToken,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -57,6 +58,18 @@ export function usePendingCount(enabled: boolean) {
     refetchInterval: COUNT_POLL_MS,
     refetchIntervalInBackground: false,
   });
+}
+
+/**
+ * The pending count as the app already holds it (the top bar and the Review frame fetch and poll it): this reads the cache
+ * and re-renders when it changes, but never makes a request of its own, so a page that must not poll (Decided) does not.
+ */
+export function useCachedPendingCount(): number | undefined {
+  return useQuery({
+    queryKey: ["approvals", "count"],
+    queryFn: skipToken,
+    staleTime: Infinity,
+  }).data as number | undefined;
 }
 
 export function useApproval(id: string | null, enabled = true) {

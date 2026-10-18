@@ -1,5 +1,4 @@
 import { test, type Page } from "@playwright/test";
-import { openContext } from "./motion";
 import {
   BASE,
   CODING,
@@ -56,7 +55,6 @@ for (const scheme of ["light", "dark"] as const) {
         await openRun(page, BASE, MULTI, "?view=waterfall");
         await enterReplay(page);
         await seekTo(page, Math.floor(multi.events.length / 2));
-        if (w > 700) await openContext(page);
         await shot(page, name("replay-waterfall-mid"));
       });
 

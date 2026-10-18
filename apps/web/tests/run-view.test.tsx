@@ -25,15 +25,15 @@ describe("RunDetail view switch", () => {
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("listbox", { name: /Run timeline/ });
     expect(screen.getByRole("heading", { name: "Timeline" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Timeline" })).toBeChecked();
+    expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
 
-    await user.click(screen.getByRole("radio", { name: "Waterfall" }));
+    await user.click(screen.getByRole("tab", { name: "Waterfall" }));
     expect(await screen.findByRole("treegrid")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Waterfall" })).toBeInTheDocument();
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(window.location.search).toContain("view=waterfall");
 
-    await user.click(screen.getByRole("radio", { name: "Timeline" }));
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
     expect(await screen.findByRole("listbox", { name: /Run timeline/ })).toBeInTheDocument();
     expect(window.location.search).not.toContain("view=");
   });
@@ -44,7 +44,7 @@ describe("RunDetail view switch", () => {
     const { run } = successRun();
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     expect(await screen.findByRole("treegrid")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Waterfall" })).toBeChecked();
+    expect(screen.getByRole("tab", { name: "Waterfall" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("ignores an unknown view value", async () => {
@@ -73,7 +73,7 @@ describe("RunDetail view switch", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeInTheDocument();
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("radio", { name: "Timeline" }));
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
     const selected = await screen.findByRole("option", { selected: true });
     expect(selected).toHaveTextContent(/tool\.call\.started/);
   });

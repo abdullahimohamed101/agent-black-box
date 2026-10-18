@@ -269,9 +269,9 @@ describe("the settings tab", () => {
       );
     const { unmount } = render1(["project.read"]);
     expect(screen.getByRole("link", { name: "Quotas" })).toHaveAttribute("aria-current", "page");
-    expect(screen.queryByRole("link", { name: "Security" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Capture and detectors" })).toBeNull();
     unmount();
     render1(["project.read", "project.write"]);
-    expect(screen.getByRole("link", { name: "Security" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Capture and detectors" })).toBeInTheDocument();
   });
 });

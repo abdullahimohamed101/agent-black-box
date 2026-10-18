@@ -18,7 +18,8 @@ import { LEAVE_TEXT, useUnsavedGuard } from "@/lib/useUnsavedGuard";
 import { PolicyDryRunPanel } from "./PolicyDryRunPanel";
 import { PolicyEditor, type EditorHandle } from "./PolicyEditor";
 import { PolicyHistory } from "./PolicyHistory";
-import { ActionError, Forbidden } from "./SettingsKit";
+import { settings } from "@/copy/settings";
+import { ActionError, Forbidden, Lede, ReadOnly, Section, StatusLine } from "./SettingsKit";
 import { Empty, ErrorState, Loading } from "./States";
 import { useCan, useWorkspace } from "./WorkspaceProvider";
 import "../app/policy.css";
@@ -72,14 +73,8 @@ export function PoliciesSettings() {
 
   return (
     <div className="pol-page">
-      <div className="page-head">
-        <h1>Policies</h1>
-        <p className="muted">
-          Rules for what an agent may do. The first rule that matches decides; anything that matches
-          no rule is allowed.
-        </p>
-      </div>
-      <p className="pol-guarantee" role="note" data-testid="cooperative-note">
+      <Lede>{settings.policies.lede}</Lede>
+      <p className="notice pol-guarantee" role="note" data-testid="cooperative-note">
         {COOPERATIVE_NOTE}
       </p>
       <p className="pol-bar">
@@ -241,158 +236,183 @@ function PolicyPane({
 
   return (
     <>
-      <p className="pol-meta" data-testid="policy-meta">
-        {current.policy ? (
-          <>
-            Showing <strong>version {current.policy.version}</strong> of{" "}
-            {sourceText(current.source, scopeId === null)}
-            {" · "}published {current.policy.created_at.slice(0, 16).replace("T", " ")} UTC by{" "}
-            <code>{current.policy.created_by}</code>
-            {" · "}
-            {current.policy.rule_count} rule{current.policy.rule_count === 1 ? "" : "s"}
-            {current.policy.comment ? ` · “${current.policy.comment}”` : ""}
-          </>
-        ) : (
-          <>No policy has been published for this scope; everything is allowed.</>
+      <Section title="Policy text">
+        <p className="pol-meta" data-testid="policy-meta">
+          {current.policy ? (
+            <>
+              Showing <strong>version {current.policy.version}</strong> of{" "}
+              {sourceText(current.source, scopeId === null)}
+              {" · "}published {current.policy.created_at.slice(0, 16).replace("T", " ")} UTC by{" "}
+              <code>{current.policy.created_by}</code>
+              {" · "}
+              {current.policy.rule_count} rule{current.policy.rule_count === 1 ? "" : "s"}
+              {current.policy.comment ? ` · “${current.policy.comment}”` : ""}
+            </>
+          ) : (
+            <>No policy has been published for this scope; everything is allowed.</>
+          )}
+        </p>
+        {!own && current.policy && scopeId !== null && (
+          <p className="muted" data-testid="inherited-note">
+            This project has no policy of its own, so it follows the workspace policy. Publishing
+            here creates the project&apos;s own policy, which replaces the workspace one for this
+            project.
+          </p>
         )}
-      </p>
-      {!own && current.policy && scopeId !== null && (
-        <p className="muted" data-testid="inherited-note">
-          This project has no policy of its own, so it follows the workspace policy. Publishing here
-          creates the project&apos;s own policy, which replaces the workspace one for this project.
-        </p>
-      )}
-      {!canWrite && (
-        <p className="notice" role="note" data-testid="readonly-note">
-          You can read policies but not change them. Owners and admins edit and publish.
-        </p>
-      )}
-      {!current.policy && !dirty && canWrite ? (
-        <Empty
-          title="No policy yet"
-          motif="shield"
-          action={
+        {!canWrite && (
+          <ReadOnly testId="readonly-note">
+            You can read policies but not change them. Owners and admins edit and publish.
+          </ReadOnly>
+        )}
+        {!current.policy && !dirty && canWrite ? (
+          <Empty
+            title="No policy yet"
+            action={
+              <button type="button" onClick={start}>
+                Start from the example
+              </button>
+            }
+          >
+            Start from the example and edit it, or write your own.
+          </Empty>
+        ) : (
+          <>
+            <PolicyEditor
+              ref={editor}
+              value={draft}
+              onChange={canWrite ? setDraft : undefined}
+              readOnly={!canWrite}
+              issues={shownIssues}
+              label={canWrite ? "Policy text" : "Policy text (read only)"}
+              describedBy={statusId}
+            />
+            <p
+              id={statusId}
+              className="pol-status"
+              role="status"
+              aria-live="polite"
+              data-testid="check-status"
+            >
+              {status}
+              {tooBig && " This policy is too large to publish from the web editor."}
+            </p>
+            {shownIssues.length > 0 && (
+              <ul className="pol-issues" aria-label="Problems in the policy" data-testid="issues">
+                {shownIssues.map((i, n) => (
+                  <li key={`${i.line}:${i.column}:${i.code}:${n}`}>
+                    <button type="button" onClick={() => editor.current?.goTo(i.line, i.column)}>
+                      <span className="pol-pos">
+                        {i.line}:{i.column}
+                      </span>
+                      <span>{i.message}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+        {canWrite && (
+          <div className="pol-actions">
             <button type="button" onClick={start}>
               Start from the example
             </button>
-          }
-        >
-          Start from the example and edit it, or write your own.
-        </Empty>
-      ) : (
-        <>
-          <PolicyEditor
-            ref={editor}
-            value={draft}
-            onChange={canWrite ? setDraft : undefined}
-            readOnly={!canWrite}
-            issues={shownIssues}
-            label={canWrite ? "Policy text" : "Policy text (read only)"}
-            describedBy={statusId}
-          />
-          <p
-            id={statusId}
-            className="pol-status"
-            role="status"
-            aria-live="polite"
-            data-testid="check-status"
-          >
-            {status}
-            {tooBig && " This policy is too large to publish from the web editor."}
-          </p>
-          {shownIssues.length > 0 && (
-            <ul className="pol-issues" aria-label="Problems in the policy" data-testid="issues">
-              {shownIssues.map((i, n) => (
-                <li key={`${i.line}:${i.column}:${i.code}:${n}`}>
-                  <button type="button" onClick={() => editor.current?.goTo(i.line, i.column)}>
-                    <span className="pol-pos">
-                      {i.line}:{i.column}
-                    </span>
-                    <span>{i.message}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+          </div>
+        )}
+      </Section>
       {canWrite && (
-        <div className="pol-actions">
-          <button type="button" onClick={start}>
-            Start from the example
-          </button>
-          {scopeId === null && (
-            <label htmlFor={dryId}>
-              Dry run on project
-              <select id={dryId} value={dryProject} onChange={(e) => setDryProject(e.target.value)}>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <button
-            type="button"
-            disabled={
-              dry.isPending || !dryProject || draft.trim() === "" || effective.state === "issues"
-            }
-            onClick={() => dry.mutate({ document: draft, projectId: scopeId ?? dryProject })}
-          >
-            {dry.isPending ? "Running…" : "Dry run"}
-          </button>
-          <label className="pol-comment" htmlFor={commentId}>
-            Comment (optional)
-            <input
-              id={commentId}
-              type="text"
-              value={comment}
-              maxLength={MAX_PUBLISH_COMMENT_CHARS}
-              onChange={(e) => setComment(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={!canPublish}
-            onClick={() => publish.mutate({ document: draft, baseVersion, comment })}
-          >
-            {publish.isPending ? "Publishing…" : "Publish"}
-          </button>
-        </div>
+        <Section
+          title="Dry run"
+          lede="Check the draft against this project's recorded runs. Nothing is changed."
+        >
+          <div className="pol-actions">
+            {scopeId === null && (
+              <label htmlFor={dryId}>
+                Dry run on project
+                <select
+                  id={dryId}
+                  value={dryProject}
+                  onChange={(e) => setDryProject(e.target.value)}
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <button
+              type="button"
+              disabled={
+                dry.isPending || !dryProject || draft.trim() === "" || effective.state === "issues"
+              }
+              onClick={() => dry.mutate({ document: draft, projectId: scopeId ?? dryProject })}
+            >
+              {dry.isPending ? "Running…" : "Dry run"}
+            </button>
+          </div>
+          {dry.error && <ActionError error={dry.error} />}
+        </Section>
       )}
-      {conflict && (
-        <p role="alert" className="notice" data-state="denied" data-testid="conflict">
-          Someone published a newer version
-          {typeof conflict.details["current_version"] === "number"
-            ? ` (version ${conflict.details["current_version"]})`
-            : ""}
-          . Reload to continue from it; your draft in the editor will be replaced.{" "}
-          <button
-            type="button"
-            onClick={() => {
-              publish.reset();
-              void client.invalidateQueries({ queryKey: ["policy", "versions"] });
-              void onReload();
-            }}
-          >
-            Reload the latest version
-          </button>
-        </p>
-      )}
-      {!conflict && !invalidOnPublish && <ActionError error={publish.error} />}
-      {invalidOnPublish && (
-        <p role="alert" className="notice" data-state="denied">
-          The API found problems in this policy. They are listed above.
-        </p>
-      )}
-      {published != null && !dirty && (
-        <p role="status" className="notice" data-testid="published">
-          Published version {published}. It applies to the next decision an agent asks for.
-        </p>
-      )}
-      {dry.error && <ActionError error={dry.error} />}
       {dry.data && <PolicyDryRunPanel result={dry.data} runHref={runHref} />}
+      {canWrite && (
+        <Section
+          title="Publish"
+          lede="Publishing makes a new version that applies to the next decision an agent asks for."
+        >
+          <div className="pol-actions">
+            <label className="pol-comment" htmlFor={commentId}>
+              Comment (optional)
+              <input
+                id={commentId}
+                type="text"
+                value={comment}
+                maxLength={MAX_PUBLISH_COMMENT_CHARS}
+                onChange={(e) => setComment(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="primary"
+              disabled={!canPublish}
+              onClick={() => publish.mutate({ document: draft, baseVersion, comment })}
+            >
+              {publish.isPending ? "Publishing…" : "Publish"}
+            </button>
+          </div>
+          {conflict && (
+            <p role="alert" className="notice" data-state="denied" data-testid="conflict">
+              Someone published a newer version
+              {typeof conflict.details["current_version"] === "number"
+                ? ` (version ${conflict.details["current_version"]})`
+                : ""}
+              . Reload to continue from it; your draft in the editor will be replaced.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  publish.reset();
+                  void client.invalidateQueries({ queryKey: ["policy", "versions"] });
+                  void onReload();
+                }}
+              >
+                Reload the latest version
+              </button>
+            </p>
+          )}
+          {!conflict && !invalidOnPublish && <ActionError error={publish.error} />}
+          {invalidOnPublish && (
+            <p role="alert" className="notice" data-state="denied">
+              The API found problems in this policy. They are listed above.
+            </p>
+          )}
+          {published != null && !dirty && (
+            <StatusLine testId="published">
+              Published version {published}. It applies to the next decision an agent asks for.
+            </StatusLine>
+          )}
+        </Section>
+      )}
       <PolicyHistory
         projectId={scopeId}
         onUseAsDraft={canWrite ? (text) => setDraft(text) : undefined}

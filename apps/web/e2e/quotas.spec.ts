@@ -1,3 +1,4 @@
+import { currentSettingsTab } from "./settings";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
@@ -51,11 +52,8 @@ for (const [width, height] of [
         "refused until midnight UTC",
       );
       await expect(item(page, "artifact_bytes")).toContainText("1.25 GiB of 5 GiB stored");
-      // the tab is current (the sub-navigation is a row of links on a wide screen)
-      await expect(page.getByRole("link", { name: "Quotas" }).first()).toHaveAttribute(
-        "aria-current",
-        "page",
-      );
+      // the tab is current in the settings section list (a folded list on a phone: its link is hidden but still current)
+      await expect(currentSettingsTab(page)).toHaveText("Quotas");
       await axe(page);
       expect(errors).toEqual([]);
     });
@@ -113,7 +111,11 @@ test.describe("viewer", () => {
     await expect(page.getByTestId("quota-item")).toHaveCount(4);
     await expect(page.getByTestId("quota-readonly")).toContainText("Owners and admins");
     await expect(page.getByRole("button", { name: "Save limits" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Quotas" }).first()).toBeVisible();
+    await expect(
+      page
+        .getByRole("navigation", { name: "Settings sections" })
+        .getByRole("link", { name: "Quotas" }),
+    ).toBeVisible(); // a reader still has the tab (desktop width: the list is open)
     await axe(page);
   });
 });

@@ -183,8 +183,9 @@ const join = (parts: readonly (string | null | false | undefined)[]) =>
   parts.filter(Boolean).join(" · ");
 
 const subjectLine = (f: Failure) => (f.errorType ? `${f.subject}, ${f.errorType}` : f.subject);
+/** " after 6.5 s": how far into the run the first error is (design pass 2: a sentence, not a parenthesis). */
 const offsetText = (f: Failure) =>
-  f.offsetMs == null ? "" : ` (+${formatDuration(Math.max(0, f.offsetMs))})`;
+  f.offsetMs == null ? "" : ` after ${formatDuration(Math.max(0, f.offsetMs))}`;
 
 /** Test results the run reported, if any: the last event carrying a total. */
 function testsLine(events: readonly EventOut[]): string | null {
@@ -237,8 +238,8 @@ export function headlineModel(input: {
         ...common,
         live: false,
         lead: failure
-          ? `${word} at${stepText(failure.step) || " the first error"}${offsetText(failure)}: ${subjectLine(failure)}`
-          : `${word} after ${duration}`,
+          ? `${word} at${stepText(failure.step) || " the first error"}${offsetText(failure)}: ${subjectLine(failure)}.`
+          : `${word} after ${duration}.`,
         detail: failure
           ? pending
             ? ""
@@ -252,8 +253,8 @@ export function headlineModel(input: {
         live: false,
         lead:
           retries > 0
-            ? `Succeeded after ${pluralise(retries, "retry", "retries")}`
-            : "Succeeded after recovering from an error",
+            ? `Succeeded after ${pluralise(retries, "retry", "retries")}.`
+            : "Succeeded after recovering from an error.",
         detail: pending
           ? ""
           : failure
@@ -271,18 +272,18 @@ export function headlineModel(input: {
       return {
         ...common,
         live: false,
-        lead: `Completed in ${duration}, ${total}`,
+        lead: `Completed in ${duration} for ${total}.`,
         detail:
           join([files > 0 && `${pluralise(files, "file", "files")} changed`, testsLine(events)]) ||
           "No errors or retries",
       };
     }
     case "running": {
-      const age = last ? ` · last event ${formatRelative(last.occurred_at, now)}` : "";
+      const age = last ? `, last event ${formatRelative(last.occurred_at, now)}` : "";
       return {
         ...common,
         live: true,
-        lead: `${run.status === "QUEUED" ? "Queued" : "Running"}${lastStep == null ? "" : ` · step ${lastStep}`}${age}`,
+        lead: `${run.status === "QUEUED" ? "Queued" : "Running"}${lastStep == null ? "" : ` at step ${lastStep}`}${age}.`,
         detail: join([
           `${total} so far`,
           failure && `first error at${stepText(failure.step)}: ${subjectLine(failure)}`,
@@ -300,15 +301,15 @@ export function headlineModel(input: {
       const what =
         run.status === "WAITING_FOR_APPROVAL"
           ? capability
-            ? `Waiting for approval: ${capability}`
-            : "Awaiting approval"
+            ? `Waiting for approval of ${capability}`
+            : "Waiting for approval"
           : `Waiting${last ? ` on ${subjectOf(last)}` : ""}`;
       const left =
         run.status === "WAITING_FOR_APPROVAL" ? leftText(input.approvalLeftSeconds ?? null) : null;
       return {
         ...common,
         live: false,
-        lead: `${what}${lastStep == null ? "" : ` · step ${lastStep}`}`,
+        lead: `${what}${lastStep == null ? "" : ` at step ${lastStep}`}.`,
         detail: join([left, wait && wait !== "—" && `waiting ${wait}`, `${total} so far`]),
       };
     }
@@ -316,7 +317,7 @@ export function headlineModel(input: {
       return {
         ...common,
         live: false,
-        lead: `Cancelled${lastStep == null ? "" : ` at step ${lastStep}`} after ${duration}`,
+        lead: `Cancelled${lastStep == null ? "" : ` at step ${lastStep}`} after ${duration}.`,
         detail: join([cancelledBy(events), `${total} total`]),
       };
   }
@@ -341,8 +342,8 @@ export function replayHeadline(live: HeadlineModel, s: ReplayState): HeadlineMod
     return {
       kind: "failed",
       lead: blockedStop
-        ? `Blocked at${stepText(f.step) || " the blocking event"}${offsetText(f)}: ${subjectLine(f)}`
-        : `First error at${stepText(f.step) || " the first error"}${offsetText(f)}: ${subjectLine(f)}`,
+        ? `Blocked at${stepText(f.step) || " the blocking event"}${offsetText(f)}: ${subjectLine(f)}.`
+        : `First error at${stepText(f.step) || " the first error"}${offsetText(f)}: ${subjectLine(f)}.`,
       detail: join([retriesText(retries), cost]),
       pending: false,
       failure: f,
@@ -354,7 +355,7 @@ export function replayHeadline(live: HeadlineModel, s: ReplayState): HeadlineMod
   const step = s.current?.sequence ?? (s.index >= 0 ? s.index + 1 : null);
   return {
     kind: "running",
-    lead: `${word}${step == null ? "" : ` · step ${step}`} · replay`,
+    lead: `${word}${step == null ? "" : ` at step ${step}`}, replay.`,
     detail: join([cost, retries > 0 && pluralise(retries, "retry", "retries")]),
     pending: false,
     failure: null,

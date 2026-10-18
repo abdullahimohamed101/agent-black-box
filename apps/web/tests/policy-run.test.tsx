@@ -162,7 +162,7 @@ describe("a run waiting for a person", () => {
     mount(<RunDetail runId={f.run.id} base={BASE} />);
     const headline = await screen.findByTestId("headline");
     await waitFor(() =>
-      expect(headline).toHaveTextContent(/^Waiting for approval: github\.push · step \d+$/),
+      expect(headline).toHaveTextContent(/^Waiting for approval of github\.push at step \d+\.$/),
     );
     await waitFor(() =>
       expect(screen.getByTestId("headline-detail")).toHaveTextContent(
@@ -204,7 +204,9 @@ describe("a run waiting for a person", () => {
     const f = waitingForApprovalRun();
     mount(<RunDetail runId={f.run.id} base={BASE} />, ["run.read"]);
     const headline = await screen.findByTestId("headline");
-    await waitFor(() => expect(headline).toHaveTextContent(/^Waiting for approval: github\.push/));
+    await waitFor(() =>
+      expect(headline).toHaveTextContent(/^Waiting for approval of github\.push/),
+    );
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.getByTestId("headline-detail").textContent).not.toMatch(/left/);
     expect(calls.some((c) => c.path.startsWith("v1/approvals"))).toBe(false);
@@ -217,7 +219,7 @@ describe("a run waiting for a person", () => {
     stubPolicyApi();
     mount(<RunDetail runId={approvalRun().run.id} base={BASE} />);
     expect(await screen.findByTestId("headline")).toHaveTextContent(
-      /^Awaiting approval · step \d+$/,
+      /^Waiting for approval at step \d+\.$/,
     );
   });
 
@@ -230,7 +232,9 @@ describe("a run waiting for a person", () => {
       eventsComplete: true,
       now: Date.parse(f.run.updated_at) + 5000,
     };
-    expect(headlineModel(base).lead).toMatch(/^Waiting for approval: github\.push · step \d+$/);
+    expect(headlineModel(base).lead).toMatch(
+      /^Waiting for approval of github\.push at step \d+\.$/,
+    );
     expect(headlineModel(base).detail).not.toMatch(/left/);
     expect(headlineModel({ ...base, approvalLeftSeconds: 720 }).detail).toMatch(/^12 min left · /);
     expect(headlineModel({ ...base, approvalLeftSeconds: -5 }).detail).toMatch(/^Expired · /);

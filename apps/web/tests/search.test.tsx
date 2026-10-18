@@ -176,7 +176,7 @@ describe("search page", () => {
     renderWithQuery(<Harness />);
     await screen.findByText("No runs yet");
     await user.type(
-      screen.getByRole("searchbox", { name: "Search" }),
+      screen.getByRole("searchbox", { name: "Search runs" }),
       "status:failed tool:a+b&x{Enter}",
     );
     const chips = await screen.findByRole("list", { name: "Search terms" });
@@ -188,7 +188,7 @@ describe("search page", () => {
     expect(last).not.toContain("tool:a+b&x");
     await user.click(within(chips).getByRole("button", { name: "Remove tool:a+b&x" }));
     await waitFor(() =>
-      expect(screen.getByRole("searchbox", { name: "Search" })).toHaveValue("status:failed"),
+      expect(screen.getByRole("searchbox", { name: "Search runs" })).toHaveValue("status:failed"),
     );
   });
 
@@ -272,7 +272,7 @@ describe("search page", () => {
     renderWithQuery(<Harness />);
     await screen.findAllByRole("row");
     const before = calls.length;
-    const box = screen.getByRole("searchbox", { name: "Search" });
+    const box = screen.getByRole("searchbox", { name: "Search runs" });
     await user.click(box);
     await user.paste("a".repeat(513));
     await user.keyboard("{Enter}");
@@ -460,7 +460,7 @@ describe("search page", () => {
     const user = userEvent.setup();
     renderWithQuery(<Harness />);
     await screen.findByText("No runs yet");
-    await user.click(screen.getByText("Search help"));
+    await user.click(screen.getByRole("button", { name: "Search help" }));
     const list = await screen.findByRole("list", { name: "Searchable fields" });
     expect(list.textContent).toContain("status:");
     expect(list.textContent).toContain("tool:");
@@ -491,7 +491,7 @@ describe("search page", () => {
     const user = userEvent.setup();
     renderWithQuery(<Harness />);
     await screen.findByText("No runs yet");
-    await user.click(screen.getByText("Search help"));
+    await user.click(screen.getByRole("button", { name: "Search help" }));
     expect((await screen.findByRole("list", { name: "Searchable fields" })).textContent).toContain(
       "file:",
     );
@@ -518,7 +518,7 @@ describe("search page", () => {
     const chips = await screen.findByRole("list", { name: "Search terms" });
     expect(within(chips).getByText("started:>=-24h")).toBeInTheDocument();
     await user.click(within(chips).getByRole("button", { name: "Remove started:>=-24h" }));
-    await waitFor(() => expect(screen.getByLabelText("Started")).toHaveValue("all"));
+    await waitFor(() => expect(screen.queryByText("started:>=-24h")).toBeNull());
   });
 });
 
@@ -530,14 +530,14 @@ describe("fixture search", () => {
     // Every fixture run and a header row; the failed ones are counted from the data.
     const runs = fixtureRuns().map((f) => f.run);
     await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(runs.length + 1));
-    await user.type(screen.getByRole("searchbox", { name: "Search" }), "status:failed{Enter}");
+    await user.type(screen.getByRole("searchbox", { name: "Search runs" }), "status:failed{Enter}");
     await waitFor(() =>
       expect(screen.getAllByRole("row")).toHaveLength(
         runs.filter((r) => r.status === "FAILED").length + 1,
       ),
     );
-    await user.clear(screen.getByRole("searchbox", { name: "Search" }));
-    await user.type(screen.getByRole("searchbox", { name: "Search" }), "command:curl{Enter}");
+    await user.clear(screen.getByRole("searchbox", { name: "Search runs" }));
+    await user.type(screen.getByRole("searchbox", { name: "Search runs" }), "command:curl{Enter}");
     expect(await screen.findByRole("alert")).toHaveTextContent("fixture mode");
   });
 });

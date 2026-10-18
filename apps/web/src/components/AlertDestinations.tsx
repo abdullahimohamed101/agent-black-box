@@ -89,7 +89,7 @@ export function AlertDestinations({
         />
       )}
       {canWrite && !adding && items.length > 0 && (
-        <p>
+        <p className="al-add">
           <button type="button" className="primary" onClick={() => setAdding(true)}>
             Add a destination
           </button>

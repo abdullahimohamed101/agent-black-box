@@ -121,7 +121,7 @@ export function AlertRules({
   return (
     <section aria-label="Alert rules">
       {canWrite && editing === null && items.length > 0 && (
-        <p>
+        <p className="al-add">
           <button
             type="button"
             className="primary"

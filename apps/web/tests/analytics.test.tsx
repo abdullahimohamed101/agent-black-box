@@ -3,53 +3,25 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Analytics } from "@/components/Analytics";
 import { BarList, DayColumns } from "@/components/charts";
-import { Dashboard } from "@/components/Dashboard";
 import { fixtureAnalytics } from "@/fixtures/analytics";
 import { windowFrom } from "@/lib/queries";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("Dashboard (server aggregates, KI-028)", () => {
-  it("reads the analytics summary instead of sampling runs", async () => {
-    const calls = stubApi();
-    renderWithQuery(<Dashboard base={BASE} />);
-    expect(await screen.findByText("Success rate")).toBeVisible();
-    expect(screen.getByText(/runs started in the last 7 days/)).toBeVisible();
-    expect(calls.some((c) => c.startsWith("/api/abb/v1/analytics/summary"))).toBe(true);
-    // the recent tables are small separate requests, never a 200-run sample
-    expect(calls.filter((c) => c.includes("/v1/runs")).every((c) => !c.includes("limit=200"))).toBe(
-      true,
-    );
-    expect(screen.getByRole("link", { name: /analytics/i })).toHaveAttribute(
-      "href",
-      "/w/demo/projects/all/analytics",
-    );
-  });
-
-  it("shows an error with a retry when the aggregate fails", async () => {
-    stubApi({
-      "/analytics/summary": () =>
-        Response.json(
-          { error: { code: "ANALYTICS_TIMEOUT", message: "Too slow.", request_id: "req_1" } },
-          { status: 503 },
-        ),
-    });
-    renderWithQuery(<Dashboard base={BASE} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Too slow.");
-    expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
-  });
-});
-
 describe("Analytics page", () => {
-  it("renders cost, retries, reliability and performance sections", async () => {
+  // Step 5d: Cost, Reliability and Performance are the three tabs of the shared tab list (they were three stacked sections), so
+  // each report is read by opening its tab; the figures and headings asserted are the same ones.
+  it("renders cost, retries, reliability and performance reports, one per tab", async () => {
     stubApi();
     renderWithQuery(<Analytics base={BASE} />);
-    expect(await screen.findByRole("heading", { name: "Cost" })).toBeVisible();
+    expect(await screen.findByRole("tab", { name: "Cost", selected: true })).toBeVisible();
     expect(await screen.findByText(/of cost came from retries/)).toBeVisible();
-    expect(await screen.findByRole("heading", { name: "Retry-heavy runs" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Slow operations" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Where the cost figures come from" })).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "Reliability" }));
+    expect(await screen.findByRole("heading", { name: "Retry-heavy runs" })).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "Performance" }));
+    expect(await screen.findByRole("heading", { name: "Slow operations" })).toBeVisible();
   });
 
   it("explains runs summarised by an older version (summary version bump, Phase 9)", async () => {
@@ -95,9 +67,12 @@ describe("Analytics page", () => {
         Response.json({ error: { code: "X", message: "Reliability broke." } }, { status: 500 }),
     });
     renderWithQuery(<Analytics base={BASE} />);
+    // The reports are requested together, so the failing one shows its error in its own tab and the others still read.
+    expect(await screen.findByText(/of cost came from retries/)).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "Reliability" }));
     expect(await screen.findByText("Reliability broke.")).toBeVisible();
-    expect(await screen.findByRole("heading", { name: "Cost" })).toBeVisible();
-    expect(await screen.findByText("Run latency p50 / p95")).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "Performance" }));
+    expect(await screen.findByRole("heading", { name: "Latency" })).toBeVisible();
   });
 });
 
@@ -116,7 +91,7 @@ describe("stale figures are marked while the next window loads", () => {
       return original(input as Request);
     });
     await userEvent.click(screen.getByRole("button", { name: "Last 30 days" }));
-    const cost = screen.getByRole("region", { name: "Cost" });
+    const cost = screen.getByRole("tabpanel", { name: "Cost" });
     await waitFor(() => expect(cost.querySelector("[aria-busy='true']")).not.toBeNull());
     expect(within(cost).getByText("Updating…")).toBeInTheDocument();
     release();
@@ -180,15 +155,17 @@ describe("Where the money was wasted (Phase 22 D12)", () => {
   };
   const fixture = () => fixtureAnalytics("waste", new URLSearchParams()) as Waste;
 
-  it("opens the page, above the existing cost section", async () => {
+  it("opens the Cost report, under its headline sentence and above the charts", async () => {
     stubApi();
     renderWithQuery(<Analytics base={BASE} />);
     const panel = await screen.findByTestId("waste-panel");
-    const cost = await screen.findByRole("heading", { name: "Cost" });
+    const headline = await screen.findByTestId("report-headline");
+    const daily = await screen.findByRole("heading", { name: "Daily spend" });
     expect(
       within(panel).getByRole("heading", { name: "Where the money was wasted" }),
     ).toBeVisible();
-    expect(panel.compareDocumentPosition(cost) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(headline.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(panel.compareDocumentPosition(daily) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows the figures the server returned, by agent and by model", async () => {
@@ -197,10 +174,13 @@ describe("Where the money was wasted (Phase 22 D12)", () => {
     stubApi();
     renderWithQuery(<Analytics base={BASE} />);
     const line = await screen.findByTestId("waste-line");
-    expect(line).toHaveTextContent(/failed runs \$/);
-    expect(line).toHaveTextContent(/retries \$/);
-    expect(line).toHaveTextContent(/after the first error \$/);
-    expect(line).toHaveTextContent(`(${w.failed.runs})`);
+    // One sentence, the same figures: total and share, failed-run spend (and how much came after the first error), retries.
+    expect(line).toHaveTextContent(/wasted, \d+% of spend\./);
+    expect(line).toHaveTextContent(
+      /\$[\d.,]+ went on \d+ failed runs? \(\$[\d.,]+ of it after the first error\)/,
+    );
+    expect(line).toHaveTextContent(/\$[\d.,]+ on retries in the runs that did not fail\./);
+    expect(line).toHaveTextContent(`${w.failed.runs} failed run`);
     const agents = screen.getByRole("list", { name: "Wasted spend by agent" });
     expect(within(agents).getAllByRole("listitem")).toHaveLength(w.by_agent.length);
     expect(screen.getByRole("list", { name: "Wasted spend by model" })).toBeVisible();
@@ -236,13 +216,14 @@ describe("Where the money was wasted (Phase 22 D12)", () => {
     expect(screen.queryByTestId("waste-unrebuilt")).toBeNull();
   });
 
-  it("an empty window is a statement with the tape motif, and an error offers a retry", async () => {
+  // Step 5d: an empty state has no drawing anywhere (ADR-166 removal 15 is final), so the "tape" motif assertion became its absence.
+  it("an empty window is a statement with no drawing, and an error offers a retry", async () => {
     const w = { ...fixture(), wasted_usd: 0 };
     stubApi({ "/analytics/waste": () => Response.json(w) });
     const { unmount } = renderWithQuery(<Analytics base={BASE} />);
     const panel = await screen.findByTestId("waste-panel");
     await within(panel).findByText("Nothing was wasted in this window");
-    expect(panel.querySelector("svg.illus")).not.toBeNull();
+    expect(panel.querySelector("svg.illus")).toBeNull();
     unmount();
     vi.unstubAllGlobals();
     stubApi({

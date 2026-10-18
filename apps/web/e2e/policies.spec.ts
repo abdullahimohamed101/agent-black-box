@@ -204,8 +204,8 @@ test("unsaved changes: a link asks first, and so does a reload", async ({ page }
     void d.dismiss();
   });
   await page
-    .getByRole("link", { name: /^Approvals/ })
-    .first()
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("link", { name: /^Review/ }) // Approvals is under Review in the top bar (design pass 2)
     .click();
   await expect(page).toHaveURL(/settings\/policies/);
   expect(seen).toContain("confirm");
@@ -213,8 +213,8 @@ test("unsaved changes: a link asks first, and so does a reload", async ({ page }
   page.removeAllListeners("dialog");
   page.once("dialog", (d) => void d.accept());
   await page
-    .getByRole("link", { name: /^Approvals/ })
-    .first()
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("link", { name: /^Review/ }) // Approvals is under Review in the top bar (design pass 2)
     .click();
   await expect(page).toHaveURL(/\/w\/demo\/approvals/);
 });
