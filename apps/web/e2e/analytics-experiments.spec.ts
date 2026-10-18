@@ -199,7 +199,7 @@ test.describe("Experiments behaviour", () => {
     await page.goto(EXP(1));
     const verdict = page.getByTestId("experiment-verdict");
     await expect(verdict).toContainText(
-      "baseline leads on success rate: 100% against 0% for wrong fix.",
+      "Baseline leads on success rate: 100% against 0% for wrong fix.",
     );
     await expect(verdict).toContainText("finished run");
     const lead = page
