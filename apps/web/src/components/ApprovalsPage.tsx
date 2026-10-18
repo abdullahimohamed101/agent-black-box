@@ -14,7 +14,7 @@ import {
   type ApprovalSummary,
   type ApprovalTab,
 } from "@/lib/policy";
-import { useApprovals, useCachedPendingCount } from "@/lib/policyApi";
+import { useApprovals } from "@/lib/policyApi";
 import { useNow } from "@/lib/useNow";
 import { ApprovalDetailPanel } from "./ApprovalDetailPanel";
 import { RiskMark, StateMark } from "./PolicyMarks";
@@ -39,7 +39,6 @@ export function ApprovalsPage({ nowProp }: { nowProp?: number }) {
   const tab = parseApprovalTab(params.get("state"));
   const openId = params.get("approval");
   const q = useApprovals(tab, null, canRead);
-  const waiting = useCachedPendingCount() ?? 0;
   const items = q.data?.pages.flatMap((p) => p.items) ?? [];
   const hasWaiting = items.some((a) => a.state === "REQUESTED");
   const clock = useNow(1000, hasWaiting);
@@ -96,7 +95,6 @@ export function ApprovalsPage({ nowProp }: { nowProp?: number }) {
         items={APPROVAL_TABS.map((t) => ({
           id: t.key,
           label: t.label,
-          count: t.key === "pending" && waiting > 0 ? String(waiting) : undefined,
         }))}
         value={tab}
         onChange={(t) => go({ state: t, approval: null })}

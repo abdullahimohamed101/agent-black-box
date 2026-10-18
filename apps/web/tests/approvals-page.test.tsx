@@ -92,6 +92,8 @@ describe("the Approvals page list", () => {
     expect(first.queryByText("Demo project")).toBeNull();
     expect(first.queryByText("approve-push-main")).toBeNull();
     expect(screen.getByText(/6 requests loaded/)).toBeInTheDocument();
+    // The count of waiting requests is said once (the "N waiting" line of the Review frame), not again in the chip.
+    expect(screen.getByRole("tab", { name: "Pending" })).toBeInTheDocument();
   });
 
   // The state list is the shared Tabs component at chip density: role tab, aria-selected, the state is still the URL's ?state=.
