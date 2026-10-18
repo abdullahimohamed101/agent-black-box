@@ -69,7 +69,7 @@ def run_row(c: httpx.Client, run_id: str) -> dict[str, Any]:
 
 
 def settled_row(c: httpx.Client, run_id: str, seconds: float = 45) -> dict[str, Any]:
-    """The run row without the evaluation-owned fields, once two reads 2 s apart agree."""
+    """The run row without the evaluation-owned fields, once the security analysis has run and two reads 2 s apart agree."""
     deadline = time.monotonic() + seconds
     previous = None
     while True:
@@ -78,7 +78,13 @@ def settled_row(c: httpx.Client, run_id: str, seconds: float = 45) -> dict[str, 
             for k, v in run_row(c, run_id).items()
             if k not in ("findings", "matched")
         }
-        if row == previous:
+        # `none` means the security analysis has not run yet: it lands after the summary, and on a
+        # slow runner later than any fixed quiet period, so wait for it explicitly.
+        analysed = (row.get("security_findings") or {}).get("state") not in (
+            None,
+            "none",
+        )
+        if analysed and row == previous:
             return row
         previous = row
         if time.monotonic() > deadline:
