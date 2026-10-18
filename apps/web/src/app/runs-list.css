@@ -354,6 +354,11 @@ button.toggle[aria-pressed="true"] {
   font-size: var(--type-small-size);
   line-height: var(--type-small-line);
 }
+.finding-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
 .finding-count[data-tone="bad"] {
   font-weight: var(--weight-strong);
 }

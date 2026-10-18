@@ -16,6 +16,7 @@ import { runPath, type Base } from "@/lib/routes";
 import { matchedLabels, matchedOf } from "@/lib/search";
 import { findingsCell } from "@/lib/findings";
 import { failureLine } from "@/lib/runsListRow";
+import { ShieldGlyph } from "./SecuritySeverity";
 import { StatusBadge } from "./StatusBadge";
 import { TraceMarker } from "./TraceNotice";
 
@@ -26,7 +27,7 @@ function FindingsCell({ badge }: { badge: RunOut["findings"] }) {
       {c.visible ? (
         // Severity is carried by weight, never by colour (ADR-131): critical is bold, the rest regular.
         <span className="finding-count" data-tone={c.tone}>
-          <span aria-hidden="true">{c.glyph}</span> {c.visible}
+          <ShieldGlyph filled={c.tone === "bad"} /> {c.visible}
         </span>
       ) : (
         <span aria-hidden="true">—</span>

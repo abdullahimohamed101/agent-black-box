@@ -295,6 +295,10 @@ describe("runs list findings column", () => {
     expect(within(rowOf("Fix flaky checkout test")).getByTestId("findings-cell")).toHaveTextContent(
       "2 · critical",
     );
+    // The glyph is the shield of Security findings, filled for critical; the failed-run cross is not used for a finding.
+    const crit = within(rowOf("Fix flaky checkout test")).getByTestId("findings-cell");
+    expect(crit.querySelector("svg.sec-shield[data-filled]")).not.toBeNull();
+    expect(crit).not.toHaveTextContent("✕");
     const ok = within(rowOf("Fix login session expiry")).getByTestId("findings-cell");
     expect(ok).toHaveTextContent("No findings");
     expect(ok.querySelector('[aria-hidden="true"]')).toHaveTextContent("—");
