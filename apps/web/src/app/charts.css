@@ -67,6 +67,21 @@
   display: flex;
   align-items: flex-end;
 }
+/* One or two days: a slim column (1 rem) with its value printed beside it. */
+.column-row[data-few="true"] {
+  gap: var(--space-2);
+}
+.column-row[data-few="true"] .column {
+  flex: 0 0 1rem;
+  max-width: 1rem;
+}
+.column-value {
+  align-self: flex-end;
+  margin-right: var(--space-3);
+  font: var(--type-small-weight) var(--type-small-size) / var(--type-small-line) var(--font-mono);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
 .column-fill {
   display: block;
   width: 100%;

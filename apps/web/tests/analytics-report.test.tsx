@@ -186,6 +186,20 @@ describe("chart marks have text equivalents", () => {
     expect(container.querySelector("[data-tone]")).toBeNull();
   });
 
+  it("a chart of fewer than three days prints each value beside its column; three or more do not", () => {
+    const day = (n: number) => ({ label: `2026-10-0${n}`, value: n, display: `${n} runs` });
+    const few = renderWithQuery(<DayColumns caption="a" valueHeader="v" days={[day(1), day(2)]} />);
+    expect(few.container.querySelector(".column-row")).toHaveAttribute("data-few", "true");
+    expect(
+      Array.from(few.container.querySelectorAll(".column-value")).map((e) => e.textContent),
+    ).toEqual(["1 runs", "2 runs"]);
+    const many = renderWithQuery(
+      <DayColumns caption="b" valueHeader="v" days={[day(1), day(2), day(3)]} />,
+    );
+    expect(many.container.querySelector(".column-value")).toBeNull();
+    expect(many.container.querySelector(".column-row")).not.toHaveAttribute("data-few");
+  });
+
   it("no mark has a failure tone: the failure trend is neutral and ink, not red", () => {
     const { container } = renderWithQuery(
       <DayColumns

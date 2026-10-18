@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { DASH } from "@/lib/format";
 import "../app/charts.css";
 
@@ -64,24 +65,28 @@ export function DayColumns({
 }) {
   if (days.length === 0) return <p className="muted">No data in this window.</p>;
   const max = Math.max(...days.map((d) => d.value), 0);
+  const few = days.length < 3;
   const top = max > 0 ? days.find((d) => d.value === max) : undefined;
   return (
     <figure className="columns">
-      <div className="column-row" aria-hidden="true">
+      <div className="column-row" aria-hidden="true" data-few={few ? "true" : undefined}>
         {days.map((d) => (
-          <div
-            key={d.label}
-            className="column"
-            data-peak={top === d ? "true" : undefined}
-            title={`${d.label}: ${d.display}`}
-          >
-            <span
-              className="column-fill"
-              style={{
-                height: `${max ? Math.max((d.value / max) * 100, d.value > 0 ? 3 : 0) : 0}%`,
-              }}
-            />
-          </div>
+          <Fragment key={d.label}>
+            <div
+              className="column"
+              data-peak={top === d ? "true" : undefined}
+              title={`${d.label}: ${d.display}`}
+            >
+              <span
+                className="column-fill"
+                style={{
+                  height: `${max ? Math.max((d.value / max) * 100, d.value > 0 ? 3 : 0) : 0}%`,
+                }}
+              />
+            </div>
+            {/* With one or two days a column alone says little: the value is printed beside it. */}
+            {few && <span className="column-value">{d.display || DASH}</span>}
+          </Fragment>
         ))}
       </div>
       <table className="sr-only">
