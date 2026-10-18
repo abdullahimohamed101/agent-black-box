@@ -16,6 +16,11 @@ Status: run 2026-10-16 on `feature/design-pass-2` against the fixtures build. Me
   scroll region owns it; no clipped text (hidden overflow with text cut off) except a designed ellipsis that carries a `title`;
   no text over text and no control over control; the top bar keeps its controls inside the viewport, not over each other and under
   150 px tall. The +70% and names pass also runs axe (wcag2a, wcag2aa; serious and critical) and the console must stay clean.
+- **Allowances of the checker** (`e2e/pseudo-localise.ts`, review finding P3-10): an ellipsis counts as designed when the
+  element carries a `title` (the "clipped" check) and, for the "ellipsis without a full text" check, a `title` or an
+  `aria-label`; elements inside `[hidden]` or `[aria-hidden='true']` are skipped (decorations and chart marks, whose text
+  equivalent is a table that is checked), as are closed `<details>`, an off-screen skip link and visually hidden boxes. So a
+  `title` on a parent does not count for a child, and a clipped mark inside an `aria-hidden` chart is not reported.
 - **Baseline:** a +0% pass of the same checker was run by hand on every screen (not part of the spec) to separate what the
   expansion breaks from what was already wrong.
 
