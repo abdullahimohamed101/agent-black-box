@@ -106,7 +106,8 @@ async function personAt(
 
 let owner: Page;
 // Two page loads a second apart print different relative times ("51s ago", "52s ago"): compare the rest.
-const withoutAge = (rows: string[]): string[] => rows.map((r) => r.replace(/\d+\s*\w+ ago/g, "<age> ago"));
+const withoutAge = (rows: string[]): string[] =>
+  rows.map((r) => r.replace(/\d+\s*\w+ ago/g, "<age> ago"));
 
 let ownerFindings: string[] = [];
 
