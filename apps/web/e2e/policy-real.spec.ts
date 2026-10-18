@@ -189,7 +189,9 @@ for (const variant of ["approve", "deny"] as const)
     await expect(panel).toContainText(/\d+ min/);
     const row = page.locator(`#apr-open-${approval}`).locator("xpath=ancestor::tr");
     await expect(row).toContainText("origin main");
-    await expect(row).toContainText("approve-push-main");
+    // Design pass 2: the five-column list row no longer carries the policy; the open row's request panel names it, with its version.
+    await expect(row.locator(`#apr-open-${approval}`)).toHaveAttribute("aria-current", "true");
+    await expect(panel.getByText(/approve-push-main/)).toBeVisible();
     await expect(row.getByTestId("time-left")).toHaveText(/\d+ (min|s|h)/);
     await expect(page.getByTestId("approvals-count")).toContainText(/[1-9]/);
     if (variant === "approve") {

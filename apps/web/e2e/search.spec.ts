@@ -130,7 +130,9 @@ test("a viewer's search over captured text finds nothing, exactly like a nonsens
     await expect(page.getByRole("list", { name: "Search terms" })).toContainText(q);
     await expect(page.getByRole("link", { name: "Auth: payload run" })).toHaveCount(0);
     await expect(page.getByText("No runs match these filters")).toBeVisible();
-    return page.locator("main, body").first().innerText();
+    // The nav's "Recording" status (a screen-reader-only dot while any run is RUNNING) is live workspace state polled on its own
+    // clock, unrelated to the query: leave it out so the two pages are compared on the search outcome alone.
+    return (await page.locator("main, body").first().innerText()).replace(/^Recording\n/m, "");
   };
   const secret = await outcome("id_rsa");
   const nonsense = await outcome("zzzqqqxxx");

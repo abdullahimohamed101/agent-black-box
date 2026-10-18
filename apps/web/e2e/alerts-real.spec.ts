@@ -65,7 +65,7 @@ test("@ui-setup destination with the signing secret shown once, rule with a prev
   page,
 }) => {
   const problems = watch(page);
-  await loginAs(page, EMAIL as string, `/w/${WS}/alerts?tab=destinations`);
+  await loginAs(page, EMAIL as string, `/w/${WS}/settings/alerts?tab=destinations`);
   await expect(page.getByRole("heading", { name: "Alerts", level: 1 })).toBeVisible();
 
   // a target the server refuses is refused on the form, and nothing is stored
@@ -122,7 +122,7 @@ test("@ui-setup destination with the signing secret shown once, rule with a prev
   expect(JSON.parse(String(seen[0]?.body)).kind).toBe("test");
 
   // a rule for failed runs of the ui project, to this destination
-  await page.goto(`/w/${WS}/alerts`);
+  await page.goto(`/w/${WS}/settings/alerts`);
   await page.getByRole("button", { name: "Add a rule" }).click();
   const form = page.getByRole("form", { name: "New rule" });
   await form.getByLabel("Tell me when").selectOption("run_failed");
@@ -145,7 +145,7 @@ test("@ui-history the delivery of the alert that fired is listed with a link to 
   page,
 }) => {
   const problems = watch(page);
-  await loginAs(page, EMAIL as string, `/w/${WS}/alerts?tab=history`);
+  await loginAs(page, EMAIL as string, `/w/${WS}/settings/alerts?tab=history`);
   const row = page
     .getByTestId("history-row")
     .filter({ hasText: RULE })
