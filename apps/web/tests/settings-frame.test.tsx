@@ -54,10 +54,9 @@ describe("the settings frame", () => {
     pathname = "/w/demo/settings/quotas";
     mount(ALL);
     expect(screen.getByRole("heading", { level: 1, name: "Quotas" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to settings" })).toHaveAttribute(
-      "href",
-      "/w/demo/settings/members",
-    );
+    // The prefix is plain text: a settings tab has no level above it, and a link to the first tab was a self-link there.
+    expect(screen.queryByRole("link", { name: "Back to settings" })).toBeNull();
+    expect(screen.getByText("Settings", { selector: ".title-back" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 

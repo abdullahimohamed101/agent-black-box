@@ -202,7 +202,7 @@ for (const [width, height] of SIZES)
           await page.goto(`/w/demo/settings/${slug}`);
           await expect(page.getByRole("heading", { name, level: 1, exact: true })).toBeVisible();
           await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-          await expect(page.getByRole("link", { name: "Back to settings" })).toBeVisible();
+          await expect(page.locator(".title-line .title-back")).toHaveText("Settings");
           await page.waitForLoadState("networkidle");
           await axe(page);
           expect(await noSideScroll(page)).toBe(true);

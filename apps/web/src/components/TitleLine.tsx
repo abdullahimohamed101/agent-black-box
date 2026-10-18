@@ -12,7 +12,8 @@ export function TitleLine({
   back = run.back,
   children,
 }: {
-  href: string;
+  /** Without it the prefix is plain text (a settings tab has no level above it to go back to). */
+  href?: string;
   title: string;
   /** The first level's visible label and accessible name; Runs by default, Settings on a settings tab. */
   back?: { label: string; name: string };
@@ -20,12 +21,16 @@ export function TitleLine({
 }) {
   return (
     <div className="title-line">
-      <Link className="title-back" href={href} aria-label={back.name}>
-        <span className="title-chev" aria-hidden="true">
-          ‹
-        </span>
-        {back.label}
-      </Link>
+      {href ? (
+        <Link className="title-back" href={href} aria-label={back.name}>
+          <span className="title-chev" aria-hidden="true">
+            ‹
+          </span>
+          {back.label}
+        </Link>
+      ) : (
+        <span className="title-back">{back.label}</span>
+      )}
       <span className="title-sep" aria-hidden="true">
         /
       </span>

@@ -14,7 +14,7 @@
   font-weight: var(--weight-regular);
   text-decoration: none;
 }
-.title-back:hover {
+a.title-back:hover {
   color: var(--color-text-primary);
   text-decoration: underline;
 }

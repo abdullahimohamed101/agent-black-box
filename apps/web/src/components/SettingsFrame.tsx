@@ -49,11 +49,7 @@ export function SettingsFrame({ children }: { children: React.ReactNode }) {
   useCellLabels(body);
   return (
     <div className="st">
-      <TitleLine
-        href={tabs[0]?.href ?? "#"}
-        title={current?.label ?? settings.title}
-        back={settings.back}
-      />
+      <TitleLine title={current?.label ?? settings.title} back={settings.back} />
       <div className="st-layout">
         <SettingsNav />
         <div className="st-body" ref={body}>

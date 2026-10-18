@@ -70,7 +70,7 @@ export const settingsNav = {
 
 export const settings = {
   title: "Settings",
-  back: { label: "Settings", name: "Back to settings" },
+  back: { label: "Settings", name: "Settings" },
   forbidden: {
     title: "Not available for your role",
     body: (what: string) => `Your role in this workspace does not include ${what}.`,
