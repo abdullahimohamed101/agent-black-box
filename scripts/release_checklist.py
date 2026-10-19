@@ -2,7 +2,7 @@
 """Static release checks (Phase 20, D13). Driven by scripts/release-checklist.sh.
 
 usage: release_checklist.py [--root DIR] [--release] CHECK [CHECK ...]
-       CHECK: placeholders debug secrets charts routes network shots claims links | all
+       CHECK: placeholders debug secrets charts routes network shots claims links paths | all
 
 Every check reads git-tracked files (every file when ROOT is not a git checkout) and prints `ok`, `warn` or
 `FAIL` lines. The secrets check prints a file, a line and a kind, never the matched text, so the checklist
@@ -279,6 +279,22 @@ def check_secrets(tree: Tree) -> list[Hit]:
     return hits
 
 
+# --- local paths --------------------------------------------------------------------------------------------
+
+# A home directory in a tracked file names the author's machine and account. The history audit (docs/runbooks/release-publication.md)
+# cannot undo it once the repository is public, so it is checked on every tree.
+LOCAL_PATH = re.compile(r"/Users/[A-Za-z0-9._-]+/|\b[A-Za-z]:\\Users\\[A-Za-z0-9._-]+")
+
+
+def check_paths(tree: Tree) -> list[Hit]:
+    hits = []
+    for rel in tree.select("*", exclude=SECRET_SKIP, tests=True):
+        for number, line in enumerate(tree.lines(rel), 1):
+            if LOCAL_PATH.search(line[:4000]):
+                hits.append(Hit("paths", rel, number, "a local home-directory path (/Users/<name>/ or C:\\Users\\<name>)"))
+    return hits
+
+
 # --- charts -------------------------------------------------------------------------------------------------
 
 CHART_FILE_HINT = re.compile(r"<BarList\b|<DayColumns\b|bar-fill|<polyline\b|<svg\b|<Sparkline\b|<canvas\b")
@@ -533,6 +549,7 @@ CHECKS = {
     "shots": check_shots,
     "claims": check_claims,
     "links": check_links,
+    "paths": check_paths,
 }
 # `links` shells out to check_docs_links.py (and resolves paths against the real root), `claims` is about the
 # README text; both are part of `all`.

@@ -108,6 +108,26 @@ class EveryCheck(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("FAIL placeholders site/src/components/X.tsx:1", out)
 
+    def test_paths_flags_a_home_directory_in_any_tracked_text_file(self) -> None:
+        mac = "/" + "Users/alice/Projects/x"
+        win = "C:" + "\\" + "Users" + "\\bob\\x"
+        for rel, text in (("docs/a.md", f"see {mac}\n"), ("scripts/b.py", f'P = "{win}"\n'), ("apps/web/src/c.ts", f"// {mac}\n")):
+            code, out = run(planted(**{rel: text}), "paths")
+            self.assertEqual(code, 1, rel)
+            self.assertIn(f"{rel}:1", out)
+        code, out = run(planted(**{"docs/a.md": "use ~/Projects or /home/runner/work\n"}), "paths")
+        self.assertEqual(code, 0, out)
+
+    def test_paths_allow_list_entry_is_exact_and_goes_stale(self) -> None:
+        mac = "/" + "Users/alice/x"
+        allow = "paths | docs/design/launch/qa.md | * | rewritten by the video branch at merge\n"
+        files = planted(**{"docs/design/launch/qa.md": f"{mac}\n", "scripts/release-checklist-allow.txt": allow})
+        code, out = run(files, "paths")
+        self.assertEqual(code, 0, out)
+        code, out = run(planted(**{"docs/design/launch/qa.md": "clean\n", "scripts/release-checklist-allow.txt": allow}), *rc.CHECKS)
+        self.assertEqual(code, 1)
+        self.assertIn("allow-list entry matches nothing", out)
+
     def test_debug_logging(self) -> None:
         cases = {
             "apps/api/src/abb_api/a.py": "def f(x):\n    print(x)\n",
