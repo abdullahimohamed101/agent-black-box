@@ -11,6 +11,7 @@ pnpm --filter @abb/site build        # site/out, for https://<owner>.github.io/a
 pnpm --filter @abb/site dev          # http://localhost:3100/agent-black-box/
 pnpm --filter @abb/site test         # vitest: the trace island and its model
 make site-check                      # = scripts/check-site.sh: builds three exports and runs every check
+SITE_PERF_STRICT=1 scripts/check-site.sh --only perf   # timing limits are advisory unless SITE_PERF_STRICT=1
 scripts/check-site.sh --only perf    # one check (build fixture commands images links size claims nojs copy gallery
                                      #   network a11y motion perf shots planted)
 SHOTS_DIR=docs/screenshots/site scripts/check-site.sh --only shots   # the 375/1440 light/dark screenshots (AC11; full-page PNGs are about 1 MB, so they live apart from the release set capped at 400 KB per image)

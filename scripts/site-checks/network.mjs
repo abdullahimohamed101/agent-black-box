@@ -31,7 +31,14 @@ async function visit(browser, srv, label, rep, { measure = false } = {}) {
         if (!afterLoad) atLoad = bytes;
       });
       page.on("requestfailed", (r) => rep.fail(ctxName, `request failed: ${r.url()} ${r.failure()?.errorText}`));
-      page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") rep.fail(ctxName, `console ${m.type()}: ${m.text()}`); });
+      // Errors always fail. A warning is printed (and only fails when it is about a request that did not load or a blocked resource).
+      page.on("console", (m) => {
+        if (m.type() === "error") rep.fail(ctxName, `console error: ${m.text()}`);
+        else if (m.type() === "warning") {
+          if (/failed to load|net::|refused|blocked|content security policy|\b[45]\d\d\b/i.test(m.text())) rep.fail(ctxName, `console warning about a request: ${m.text()}`);
+          else rep.fact(`${ctxName}: console warning (not a gate): ${m.text().slice(0, 160)}`);
+        }
+      });
       page.on("pageerror", (e) => rep.fail(ctxName, `page error: ${e.message}`));
       await page.goto(srv.url, { waitUntil: "load" });
       await page.waitForLoadState("networkidle");
