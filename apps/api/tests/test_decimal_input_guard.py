@@ -15,7 +15,8 @@ def _body(**price: object) -> dict[str, object]:
 
 
 @pytest.mark.parametrize(
-    "bad", ["abc", "--1", "-", "+", ".", "", "1e400", "NaN", "Infinity", "-1", "1.0000000001", "1e7"]
+    "bad",
+    ["abc", "--1", "-", "+", ".", "", "1e400", "NaN", "Infinity", "-1", "1.0000000001", "1e7"],
 )
 def test_garbage_decimal_strings_are_rejected(bad: str) -> None:
     for field in ("input_per_million", "output_per_million", "request_price"):
