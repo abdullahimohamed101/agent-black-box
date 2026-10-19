@@ -9,7 +9,9 @@
 #   * ABB_ENVIRONMENT=production everywhere (switches off http issuers, dev sessions, the seeded owner and /docs).
 #   * ABB_TRUST_PROXY=1 on api and web: valid only because Caddy is the sole path in and replaces X-Forwarded-For.
 #   * fake-oidc moves to a profile nobody starts.
-#   * restart policy, log rotation and memory ceilings (mem_limit is a ceiling, not a reservation).
+#   * restart policy, log rotation and memory ceilings. mem_limit is a ceiling, not a reservation: the values below come from
+#     scripts/hosting-e2e.sh (docker stats peaks under its smoke load) with headroom for growth, and sum to about 2.4 GiB with
+#     the Caddy's 128m, while the same containers idle near 0.5 GiB. Docker kills a container that crosses its ceiling.
 name: agent-black-box
 
 x-logging: &logging
@@ -46,7 +48,9 @@ services:
     environment:
       POSTGRES_PASSWORD: ${ABB_POSTGRES_PASSWORD:?generate with scripts/hosting-secrets.sh}
     restart: unless-stopped
-    mem_limit: 768m
+    # Measured peak 58 MiB with 2,000 events; the ceiling leaves room for shared_buffers (128 MB) to fill, autovacuum and
+    # larger working sets as the data grows. Resize before it is the reason for an OOM kill (docs/hosting-guide.md).
+    mem_limit: 512m
     logging: *logging
 
   migrate:
@@ -73,7 +77,9 @@ services:
       ABB_OIDC_EXTRA_HOSTS: ${ABB_OIDC_EXTRA_HOSTS:-oauth2.googleapis.com,www.googleapis.com}
       ABB_ALLOW_DEV_SESSIONS: "0"
     restart: unless-stopped
-    mem_limit: 512m
+    # Measured peak 163 MiB under the rig's smoke load. The ceiling covers the worst measured case of the body-bytes budget
+    # (ABB_MAX_BODY_BYTES_IN_FLIGHT 64 MiB x about 6.5, docs/OPERATIONS.md) on top of that baseline.
+    mem_limit: 768m
     logging: *logging
 
   # Never started: a development-only provider that accepts any email. The profile name is deliberately not one anyone uses.
@@ -84,6 +90,7 @@ services:
     environment:
       <<: *prod-env
       ABB_DATABASE_URL: postgresql+asyncpg://abb_runtime:${ABB_RUNTIME_DB_PASSWORD:?set ABB_RUNTIME_DB_PASSWORD}@postgres:5432/abb
+    # Measured peak 86 MiB while it summarised 2,000 events and analysed 23 runs.
     mem_limit: 384m
     logging: *logging
 
@@ -93,7 +100,8 @@ services:
       ABB_RETENTION_DATABASE_URL: postgresql+asyncpg://abb_retention:${ABB_RETENTION_DB_PASSWORD:?set ABB_RETENTION_DB_PASSWORD}@postgres:5432/abb
       # dry_run until a restore drill has been performed (docs/runbooks/retention.md); enforce deletes permanently.
       ABB_RETENTION_MODE: ${ABB_RETENTION_MODE:-dry_run}
-    mem_limit: 192m
+    # Measured peak 68 MiB in dry_run. Revisit before enabling enforce (it reads and deletes in bounded batches).
+    mem_limit: 256m
     logging: *logging
 
   backup:
@@ -112,6 +120,7 @@ services:
       ABB_WEB_ORIGIN: ${ABB_PUBLIC_ORIGIN:?set ABB_PUBLIC_ORIGIN}
       ABB_TRUST_PROXY: "1"
     restart: unless-stopped
+    # Measured peak 59 MiB after rendering the main pages five times; server-rendered pages grow with use.
     mem_limit: 384m
     logging: *logging
 
