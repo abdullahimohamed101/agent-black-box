@@ -87,8 +87,11 @@ env_from_template | create_exclusive "$DIR/.env"
 if [ -n "$METRICS_TOKEN" ]; then
   printf '%s' "$METRICS_TOKEN" | create_exclusive "$DIR/secrets/metrics_token"
 else
-  [ -e "$DIR/secrets/metrics_token" ] || printf 'NOTE     %s exists but secrets/metrics_token does not: copy its ABB_METRICS_TOKEN value there yourself (mode 0600)\n' "$DIR/.env"
-  printf 'KEPT     %s (exists; never overwritten)\n' "$DIR/secrets/metrics_token"
+  if [ -e "$DIR/secrets/metrics_token" ]; then
+    printf 'KEPT     %s (exists; never overwritten)\n' "$DIR/secrets/metrics_token"
+  else
+    printf 'NOTE     %s exists but secrets/metrics_token does not: copy its ABB_METRICS_TOKEN value there yourself (mode 0600)\n' "$DIR/.env"
+  fi
 fi
 METRICS_TOKEN=""
 rand_hex 16 | create_exclusive "$DIR/secrets/grafana_admin_password"

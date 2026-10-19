@@ -196,6 +196,9 @@ echo "PASS A7.3"
 step "A7.4 a failed run: remote unreachable keeps the last success, records the failure, keeps the verified local bundle"
 before="$(awk '$1=="abb_hosting_backup_last_success_timestamp_seconds"{print $2}' "$WORK/textfile/abb_backup.prom")"
 sleep 1
+variant ABB_OFFSITE_REMOTE=bucket/abb
+if backup >"$WORK/f0.out" 2>&1; then fail "a remote without a colon (a local path to rclone) was accepted"; fi
+grep -q 'no colon' "$WORK/f0.out" || fail "no message for a remote without a colon"
 variant ABB_OFFSITE_REMOTE=nowhere:abb
 if backup >"$WORK/f1.out" 2>&1; then fail "a backup to a missing remote succeeded"; fi
 base_env

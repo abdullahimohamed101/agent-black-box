@@ -79,7 +79,7 @@ Alerts: `AbbPublicProbeFailing`, `AbbCertificateExpiring`, `AbbCertificateExpiri
 
 ## Alerts never arrive
 
-Alertmanager ships with the `disabled` receiver: alerts are evaluated and shown in Prometheus and Alertmanager, and sent nowhere, until a receiver is configured (`deploy/hosting/alertmanager/alertmanager.yml.tmpl`, the commented examples; the choice of email, Slack or a webhook is the owner's).
+Alertmanager ships with the `notify` receiver empty (and a `deadman` receiver for the watchdog): alerts are evaluated and shown in Prometheus and Alertmanager, and sent nowhere, until a receiver is configured (`deploy/hosting/alertmanager/alertmanager.yml.tmpl`, the commented examples; the choice of email, Slack or a webhook is the owner's).
 
 1. Is the pipeline alive: the always-firing `Watchdog` alert should reach the dead-man's switch URL (`ABB_DEADMAN_URL` style service). If that service reports silence, check Prometheus and Alertmanager (`docker compose ... ps`), then the receiver's own credentials.
 2. Alertmanager's view over an SSH tunnel: `ssh -L 9093:127.0.0.1:9093 deploy@<server>`, then `http://127.0.0.1:9093`. The same for Prometheus (9090) and Grafana (3001): none of them is reachable from the internet.

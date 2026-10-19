@@ -278,7 +278,7 @@ groups:
           runbook_url: docs/runbooks/hosting-operations.md#the-host-metrics-are-stale
 
       # Always firing, on purpose. Alertmanager routes it to the dead-man's switch receiver (a Healthchecks.io-style URL), so the absence of
-      # its ping means the alerting pipeline itself is broken. With no receiver configured it goes to the `disabled` receiver.
+      # its ping means the alerting pipeline itself is broken. With no receiver configured it goes to the `deadman` receiver, which sends nothing until a dead-man URL file is configured (alertmanager.yml.tmpl).
       - alert: Watchdog
         expr: vector(1)
         labels:

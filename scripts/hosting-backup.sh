@@ -90,6 +90,7 @@ command -v docker >/dev/null || die "docker is not installed" 2
 command -v rclone >/dev/null || die "rclone is not installed (scripts/hosting-bootstrap.sh installs it)" 2
 [ -n "$REMOTE" ] || die "ABB_OFFSITE_REMOTE is not set (rclone remote:path of the SECOND provider)" 2
 case "$REMOTE" in /*|.*) die "ABB_OFFSITE_REMOTE must be an rclone remote:path, not a local path (a copy on the same disk is not a backup)" 2 ;; esac
+case "$REMOTE" in *:*) ;; *) die "ABB_OFFSITE_REMOTE must be an rclone remote:path (no colon: rclone would treat it as a local path)" 2 ;; esac
 [ -r "$PASSFILE" ] || die "the passphrase file $PASSFILE is not readable" 2
 perm="$(stat -c '%a' "$PASSFILE" 2>/dev/null || stat -f '%Lp' "$PASSFILE")"
 [ "$perm" = 600 ] || [ "$perm" = 400 ] || die "the passphrase file must be mode 0600 (is $perm)" 2
