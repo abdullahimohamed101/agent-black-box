@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /*
- * record-demo.mjs (v2): records the Agent BlackBox demo video from a RUNNING, demo-seeded stack.
- * Direction: docs/design/launch/video-brief.md. Captions: docs/design/launch/positioning-brief.md (caption bank, section 7).
+ * record-demo.mjs (v3, cinematic): records the app of the Agent BlackBox demo video from a RUNNING, demo-seeded stack.
+ * Direction: docs/design/launch/video-cinematic-brief.md (and video-brief.md for what it keeps). Record with --captions=off --card=off:
+ * the page then carries only the cursor, camera, spotlight and key chip; scripts/video-plates.mjs and scripts/video-compose.mjs
+ * (run by scripts/encode-demo.sh) add the caption band, cards, dips and dim from meta.json. Captions: docs/design/launch/positioning-brief.md (caption bank, section 7).
  *
  * What it does. Drives system Chrome with Playwright at 1920x1080 CSS px and deviceScaleFactor 2, captures the page with the
  * CDP screencast (3840x2160 JPEG frames with real arrival times; Playwright's own recorder is VP8 at a fixed 1 Mbit/s), and
@@ -15,9 +17,9 @@
  *
  * Usage (repo root, `pnpm install` done so @playwright/test resolves from apps/web):
  *   scripts/demo-stack.sh up                                  # a private demo-seeded stack on :3180 (never your dev stack)
- *   node scripts/record-demo.mjs                              # main cut, about 70 s
+ *   node scripts/record-demo.mjs --captions=off --card=off    # main cut, 68.8 s of app (73 s with the cards)
  *   node scripts/record-demo.mjs --cut=teaser                 # 18 s loop for the landing hero and the README
- *   node scripts/record-demo.mjs --cut=social                 # optional 1080x1350 take, beats 1-5 (only beats 1-3 recorded, as a dry run)
+ *   node scripts/record-demo.mjs --cut=social                 # 1000x1000 take composited to 1080x1350, beats 1-7
  *   node scripts/record-demo.mjs --plan                       # no browser: print the beats and cues, write demo.vtt, check the rules
  *   node scripts/record-demo.mjs --dry-run                    # beats 1-3 only (about 15 s): checks the mechanics
  *
@@ -31,7 +33,9 @@
  *   ABB_VIDEO_TIMEOUT_MS      hard timeout for the whole run (default cut length + 180 s)
  *   RELEASE_CLAIMS=1          only after G2 (repository public) and AC1/AC12 are VERIFIED: the closing card says "Open source.
  *                             Self-hosted. Apache-2.0." and shows the repository URL (captions 26 and 28). Off by default.
- * Flags: --cut=main|teaser|social, --plan, --dry-run, --headed, --profile=<demo|fixtures>.
+ * Flags: --cut=main|teaser|social, --plan, --dry-run, --headed, --profile=<demo|fixtures>, --captions=off, --card=off.
+ * ABB_VIDEO_TRACE=1 prints how long each act took. Exit 4: forbidden text ("Agent Black Box", keys, emails) on screen; exit 5: a stalled take
+ * (a beat overran its table by 0.4 s): record again.
  * Nothing is uploaded; the script only talks to ABB_VIDEO_BASE_URL. It never passes or shows `--live`.
  */
 import { execFileSync } from "node:child_process";
