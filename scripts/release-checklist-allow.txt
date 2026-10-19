@@ -19,7 +19,7 @@ secrets | .env.example | * | documented local-only development credentials (docs
 secrets | apps/*/tests/* | * | planted fake secrets that the redactor and scanner tests must detect
 secrets | packages/*/tests/* | * | planted fake secrets that the redaction tests must detect
 secrets | docs/plans/completed/* | * | review notes quoting the synthetic test fixtures by shape
-secrets | docs/architecture/agent-black-box-spec.md | abb_live_prj_abc123 | the spec's example key format with a placeholder secret part
+secrets | docs/architecture/agent-black-box-spec.md | prj_abc | the spec's example key format with a placeholder secret part
 secrets | examples/coding-agent/coding_agent/workspace.py | * | the demo workspace plants fake credentials (AWS docs example key, fake PEM) so the redaction demo has something to redact
 secrets | examples/multi-agent/multi_agent/planner.py | AKIA | the AWS documentation example key, planted for the redaction demo
 secrets | examples/*/tests/* | * | example test fixtures with fake credentials for the redaction demo
