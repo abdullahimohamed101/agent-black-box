@@ -70,7 +70,7 @@ av1() {  # av1 <in> <out> <crf> <gop> <vp9 file to beat> <budget MB>
   fi
 }
 # poster: the middle of the red-line beat (the one frame that says what the product is for)
-poster_at="$(node -e 'const m=JSON.parse(require("fs").readFileSync("meta.json","utf8"));const b=m.beats.find(x=>x.id===5||x.id==="T3");console.log(((b?b.start+1.4:3)).toFixed(2))')"
+poster_at="$(node -e 'const m=JSON.parse(require("fs").readFileSync("meta.json","utf8"));const b=m.beats.find(x=>x.id===3||x.id==="T3");console.log(((b?b.start+1.4:3)).toFixed(2))')"
 poster_check() {
   for f in "$@"; do
     kb="$(awk -v b="$(size "$f")" 'BEGIN { printf "%.0f", b / 1024 }')"

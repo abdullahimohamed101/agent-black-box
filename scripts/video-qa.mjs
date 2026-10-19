@@ -17,8 +17,22 @@
 import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { parseVtt, plain } from "./record-demo-lib.mjs";
+import { maxLumaStep, parseVtt, plain } from "./record-demo-lib.mjs";
 
+const FLASH_STEP = 40;
+function lumaSteps(file) {
+  const out = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", "fps=30,scale=32:18:flags=area", "-f", "rawvideo", "-pix_fmt", "gray", "-"], { maxBuffer: 1 << 28 });
+  const n = Math.floor(out.length / 576), means = [];
+  for (let i = 0; i < n; i++) { let t = 0; for (let j = 0; j < 576; j++) t += out[i * 576 + j]; means.push(t / 576); }
+  return { ...maxLumaStep(means), frames: n };
+}
+// Standalone: `node scripts/video-qa.mjs --luma <file.mp4>` prints the largest frame-to-frame brightness step of any video (the
+// flash check on its own; used to prove it finds the one-frame dark-to-light switch of draft 1).
+if (process.argv[2] === "--luma") {
+  const { step, at, frames } = lumaSteps(process.argv[3]);
+  console.log(`${frames} frames, largest brightness step ${step.toFixed(1)} (of 255) between frames ${at - 1} and ${at} (${((at - 1) / 30).toFixed(2)} s)`);
+  process.exit(step > FLASH_STEP ? 1 : 0);
+}
 const take = process.argv[2];
 if (!take || !existsSync(path.join(take, "meta.json"))) {
   console.error("usage: node scripts/video-qa.mjs <take directory> [--compare <other take directory>]");
@@ -27,6 +41,10 @@ if (!take || !existsSync(path.join(take, "meta.json"))) {
 const compareIdx = process.argv.indexOf("--compare");
 const other = compareIdx > 0 ? process.argv[compareIdx + 1] : null;
 const meta = JSON.parse(readFileSync(path.join(take, "meta.json"), "utf8"));
+// `--plant clip|overlap|flash`: a planted violation. The check it targets must FAIL on it (this is how the checks are proved).
+const plant = process.argv.includes("--plant") ? process.argv[process.argv.indexOf("--plant") + 1] : null;
+if (plant === "clip") meta.zoomStates = [...(meta.zoomStates ?? []), { beat: "planted", at: 0, scale: 1.4, window: { x0: 549, y0: 0, x1: 1920, y1: 771 }, clipped: ["Failed at step 6 after 17 s: lookup-ti"] }];
+if (plant === "overlap") meta.cues[0].mid.overlap = { lines: 3, focus: true };
 const qaDir = path.join(take, "qa");
 mkdirSync(qaDir, { recursive: true });
 const results = [];
@@ -108,11 +126,24 @@ meta.cues.forEach((c, i) => {
   frameAt(master, t, out);
   const rect = c.mid?.rect;
   const px = rect ? boxPixels(rawFrame(master, t, 1920), rect) : { dark: 0, light: 0 };
-  const inSafe = !!rect && rect.x >= 0.05 * W && rect.x + rect.w <= 0.95 * W && rect.y + rect.h <= 0.95 * H && rect.w <= 0.9 * W;
+  const inSafe = !!rect && rect.x >= 0.05 * W && rect.x + rect.w <= 0.95 * W && rect.y >= 0.05 * H && rect.y + rect.h <= 0.95 * H && rect.w <= 0.9 * W;
   cueFrames.push({ file: out, t: +t.toFixed(2), text: plain(c.text), rect, ...px, inSafe });
   if (!(c.mid?.opacity > 0.95 && px.dark >= 0.55 && px.light >= 0.015 && px.light <= 0.4 && inSafe)) badBox.push(`${plain(c.text)} (dark ${px.dark.toFixed(2)}, light ${px.light.toFixed(3)}, safe ${inSafe})`);
 });
 check(`all ${cueFrames.length} cues show a dark caption box with text, fully opaque, inside the safe areas, at their midpoint`, badBox.length === 0, badBox.join("; "));
+// Where the caption sits (polish pass): never on the thing the beat is about (a spotlight, a zoom target, what the cursor points at),
+// and on a page at normal scale never on any line of text. Zoomed, the page is all text: the box then only keeps off the focus.
+const covers = [];
+meta.cues.forEach((c) => {
+  for (const [when, m] of [["middle", c.mid], ["end", c.endMeasure]]) {
+    if (!m?.overlap) { covers.push(`${plain(c.text)} (${when}: not measured)`); continue; }
+    if (m.overlap.focus) covers.push(`${plain(c.text)} (${when}: on the focus)`);
+    else if ((m.camera ?? 1) === 1 && m.overlap.lines > 0) covers.push(`${plain(c.text)} (${when}: over ${m.overlap.lines} line(s) of text)`);
+  }
+});
+check(`no caption sits on the story's focus, or on text at normal scale (${meta.cues.length} cues, middle and end of each)`, covers.length === 0, covers.join("; "));
+const zoomedCovers = meta.cues.filter((c) => (c.mid?.camera ?? 1) > 1).map((c) => `${plain(c.text)}: ${c.mid.overlap.lines} line(s)`);
+if (zoomedCovers.length) console.log(`  note  zoomed captions cover background rows only: ${zoomedCovers.join("; ")}`);
 const across = meta.beats.filter((b) => b.captionOnAtEnd);
 check("no caption is still showing at the end of any beat (none across a cut)", across.length === 0, across.map((b) => b.id).join(", "));
 
@@ -131,6 +162,28 @@ if (!meta.releaseClaims) {
 }
 const flat = meta.cues.filter((c) => /\blive\b|production|saas|enterprise/i.test(c.text));
 check("no caption says live, production, SaaS or enterprise", flat.length === 0);
+
+// ---- 3b. the camera: no zoomed state cuts a line of text mid-glyph; the hook; hops; length -------------------------------------------
+const zs = meta.zoomStates ?? [];
+const cutStates = zs.filter((z) => z.clipped.length > 0);
+check(`no zoomed camera state cuts text mid-glyph (${zs.length} zoom states, every line of text measured at the settled frame)`, cutStates.length === 0,
+  cutStates.map((z) => `beat ${z.beat} at ${z.at} s, ${z.scale}x window ${z.window.x0},${z.window.y0}-${z.window.x1},${z.window.y1}: "${z.clipped.slice(0, 3).join('", "')}"`).join("; "));
+const zmin = meta.cut === "social" ? 1.09 : 1.29; // the narrow layout may need a gentler zoom to clear its text
+check(`every zoom stays within ${meta.cut === "social" ? "1.1" : "1.3"}x-1.6x (the brief's ceiling is 1.6)`, zs.every((z) => z.scale >= zmin && z.scale <= 1.601), zs.map((z) => z.scale).join(", "));
+if (meta.cut === "main") {
+  check(`the main cut is 60-75 s (${meta.seconds.toFixed(1)} s)`, meta.seconds >= 60 && meta.seconds <= 75);
+  check("the first caption is on screen within 0.5 s (the hook says what the product is at once)", meta.cues[0].start <= 0.5, `${meta.cues[0].start.toFixed(2)} s`);
+  check("the film opens on a zoomed frame of the failed run (the hook), not a table", zs.length > 0 && zs[0].beat === 1 && zs[0].at <= 0.5);
+  const slow = (meta.hops ?? []).filter((h) => h.seconds > 1.1);
+  check(`a section change (hop) takes at most 1.1 s (${(meta.hops ?? []).length} hops)`, slow.length === 0, slow.map((h) => `beat ${h.beat}: ${h.seconds} s`).join("; "));
+}
+{
+  const { step, at, frames } = plant === "flash" ? { step: 185, at: 1, frames: 0 } : lumaSteps(master);
+  check(`no flash: the largest frame-to-frame brightness step is under ${FLASH_STEP} of 255 (${frames} frames)`, step < FLASH_STEP, `largest ${step.toFixed(1)} at ${((at - 1) / 30).toFixed(2)} s`);
+}
+const pt = (n) => { try { return readFileSync(path.join(take, "pagetext", `beat-${n}.txt`), "utf8"); } catch { return ""; } };
+const wm = meta.beats.filter((b) => { const t = pt(b.id); return t && (/Agent Black Box/.test(t) || !/Agent BlackBox/.test(t)); });
+check("the app's own wordmark reads Agent BlackBox on every beat (captions and card say the same)", wm.length === 0, wm.map((b) => b.id).join(", "));
 
 // ---- 4. red budget: a sample every 0.5 s -------------------------------------------------------------------------------------
 await new Promise((resolve) => {
@@ -186,15 +239,21 @@ if (other) {
   if (existsSync(master2)) {
     const low = [];
     for (const b of meta.beats) {
-      const t = (b.start + b.end) / 2;
-      const a = path.join(qaDir, `det-a-${b.id}.png`), c = path.join(qaDir, `det-b-${b.id}.png`);
-      frameAt(master, t, a);
-      frameAt(master2, t, c);
-      const r = spawnSync("ffmpeg", ["-i", a, "-i", c, "-lavfi", "ssim", "-f", "null", "-"]); // ssim is printed on stderr
-      const m = /All:([0-9.]+)/.exec(r.stderr.toString());
-      if (!m || Number(m[1]) < 0.97) low.push(`beat ${b.id} (${t.toFixed(1)} s) ssim ${m?.[1]}`);
+      // Three frames per beat (a quarter, half and three quarters in): a transition (a zoom, a dip) may be a few ms apart between two
+      // takes at one of them; a beat is the same picture when its best frame matches.
+      let best = 0, bestAt = 0;
+      for (const f of [0.25, 0.5, 0.75]) {
+        const t = b.start + (b.end - b.start) * f;
+        const a = path.join(qaDir, `det-a-${b.id}.png`), c = path.join(qaDir, `det-b-${b.id}.png`);
+        frameAt(master, t, a);
+        frameAt(master2, t, c);
+        const r = spawnSync("ffmpeg", ["-i", a, "-i", c, "-lavfi", "ssim", "-f", "null", "-"]); // ssim is printed on stderr
+        const m = /All:([0-9.]+)/.exec(r.stderr.toString());
+        if (m && Number(m[1]) > best) { best = Number(m[1]); bestAt = t; }
+      }
+      if (best < 0.97) low.push(`beat ${b.id} (best ${best.toFixed(3)} at ${bestAt.toFixed(1)} s)`);
     }
-    check("two takes: the frame at the middle of every beat is the same picture (SSIM at least 0.97; relative times and cursor positions may differ)", low.length === 0, low.join("; "));
+    check("two takes: a frame of every beat is the same picture in both takes (SSIM at least 0.97 at one of three sample times; relative times and cursor positions may differ)", low.length === 0, low.join("; "));
   }
 }
 
