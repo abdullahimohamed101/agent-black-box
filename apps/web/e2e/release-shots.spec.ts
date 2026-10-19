@@ -186,6 +186,14 @@ for (const scheme of ["light", "dark"] as const) {
       await page.goto(`${BASE}/runs`);
       await expect(page.locator("tbody tr")).toHaveCount(12);
       await expect(page.getByText("Failed at step 6")).toBeVisible();
+      // The summary sentence under the title comes from the worker's rollup, which lags the last event on a fresh stack.
+      test.setTimeout(180_000);
+      await expect(async () => {
+        await page.reload();
+        await expect(page.getByText(/^Last 7 days: 12 runs, 73% succeeded/)).toBeVisible({
+          timeout: 4000,
+        });
+      }).toPass({ timeout: 150_000, intervals: [2000] });
       // The findings column fills in as the worker analyses each run: wait for every run that has findings.
       for (const [run, findings] of [
         [FAILED, "3 · critical"],

@@ -80,7 +80,14 @@ if [ "$verify" = 1 ]; then
   one_pass "$WORK/pass1"; one_pass "$WORK/pass2"
   step "compare the two passes"
   node scripts/screenshots-diff.mjs "$WORK/pass1" "$WORK/pass2" --allow="${SHOTS_VERIFY_ALLOW-waterfall-multi-agent}" || fail "the two passes differ: something varying between runs is not normalised"
-  cmp -s "$WORK/pass1/boxes.json" "$WORK/pass2/boxes.json" || fail "callout boxes differ between the two passes"
+  python3 - "$WORK/pass1/boxes.json" "$WORK/pass2/boxes.json" "${SHOTS_VERIFY_ALLOW-waterfall-multi-agent}" <<'PY' || fail "callout boxes differ between the two passes"
+import json, sys
+a, b = (json.load(open(p)) for p in sys.argv[1:3])
+allow = [x for x in sys.argv[3].split(",") if x]
+bad = [k for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k) and not any(k.startswith(x) for x in allow)]
+if bad: print("callout boxes differ for:", ", ".join(bad)); sys.exit(1)
+print("callout boxes identical" + (" (except the allowed images)" if a != b else ""))
+PY
   FINAL="$WORK/pass1"
 else
   one_pass "$WORK/pass1"; FINAL="$WORK/pass1"
