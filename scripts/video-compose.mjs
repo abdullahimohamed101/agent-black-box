@@ -95,7 +95,7 @@ if (cards) {
 }
 const script = path.join(out, "compose.filter");
 writeFileSync(script, f.join(";\n"));
-const args = ["-hide_banner", "-loglevel", "error", "-y", ...inputs.flat(), "-filter_complex_script", script, "-map", "[v]",
+const args = ["-hide_banner", "-loglevel", "error", "-y", ...inputs.flat(), "-/filter_complex", script, "-map", "[v]",
   "-c:v", "libx264", "-preset", "slow", "-crf", "14", "-g", "60", "-keyint_min", "30", "-pix_fmt", "yuv420p", "-color_range", "tv", "-an", path.join(out, "master-1080p30.mp4")];
 const t0 = Date.now();
 const r = spawnSync("ffmpeg", args, { stdio: ["ignore", "inherit", "inherit"] });

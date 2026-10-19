@@ -972,13 +972,7 @@ async function warmUp() {
     await locate(RUNS_HEADING).waitFor({ timeout: 15000 });
     await locate({ testid: "week-sentence" }).waitFor({ timeout: 15000 }).catch(() => {});
   });
-  // The film opens on the failed run: leave the browser there, headline and timeline drawn.
-  await step("failed run, ready to film", async () => {
-    await click(FAILED_LINK);
-    await locate(TIMELINE_TAB).waitFor({ timeout: 15000 });
-    await locate({ testid: "headline" }).waitFor({ timeout: 15000 });
-    await locate(FAULT_ROW).waitFor({ timeout: 15000 });
-  });
+  // The film opens on the Runs list (beat 1): the warm-up ends there.
 }
 
 async function main() {

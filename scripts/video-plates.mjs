@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { captionHtml } from "./record-demo-lib.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const take = process.argv[2];
+const take = process.argv[2] ? path.resolve(process.argv[2]) : undefined;
 if (!take || !existsSync(path.join(take, "meta.json"))) {
   console.error("usage: node scripts/video-plates.mjs <take directory written by scripts/record-demo.mjs>");
   process.exit(2);
@@ -29,7 +29,7 @@ const SPEC = JSON.parse(readFileSync(path.join(root, "scripts/video-spec.json"),
 const S = SPEC[meta.cut === "social" ? "social" : "main"];
 const C = SPEC.color;
 const claims = process.env.RELEASE_CLAIMS === "1";
-const fonts = path.join(root, "apps/web/src/fonts");
+const fonts = process.env.VIDEO_FONTS_DIR ?? path.join(root, "apps/web/src/fonts"); // the override exists to prove the missing-font failure
 const { chromium } = createRequire(path.join(root, "apps/web/package.json"))("@playwright/test");
 const mark = readFileSync(path.join(root, "brand/pulse-mark.svg"), "utf8").replace(/ width="24" height="24"/, "");
 const out = path.join(take, "plates");
