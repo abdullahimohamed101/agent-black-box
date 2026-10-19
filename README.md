@@ -142,8 +142,8 @@ Threat model and known gaps: [`docs/SECURITY.md`](docs/SECURITY.md). To report a
 Early release. There is no version promise: interfaces and the event contract can still change between commits, and there
 are no upgrade guarantees yet. Four limits to know before you start:
 
-1. Single node on Docker Compose. There is no hosting guide yet (TLS, a domain and a real identity provider are documented as
-   not covered).
+1. Single node on Docker Compose. A [hosting guide](docs/hosting-guide.md) covers one rented server with a domain, HTTPS and Google sign-in;
+   its proxy chain is tested locally and its live parts (certificate issuance, real sign-in, off-site backup) are not yet run by the project.
 2. Real-model mode exists in two examples and has not been run by the project.
 3. Policy enforcement is cooperative: it applies to agents that ask through the SDK guard.
 4. No load test exists, so there are no capacity or overhead numbers.
@@ -154,7 +154,7 @@ The roadmap is [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md); ope
 ## Documentation
 
 Start at the index, [`docs/README.md`](docs/README.md). Common destinations:
-[quickstart](docs/quickstart.md), [troubleshooting](docs/troubleshooting.md), [deployment on one machine](docs/deployment.md),
+[quickstart](docs/quickstart.md), [troubleshooting](docs/troubleshooting.md), [deployment on one machine](docs/deployment.md), [hosting guide](docs/hosting-guide.md),
 [Python SDK](docs/architecture/sdk-python.md), [HTTP API](docs/architecture/api-v1.md), [operations](docs/OPERATIONS.md) and
 [runbooks](docs/runbooks/README.md).
 
