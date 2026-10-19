@@ -1,0 +1,59 @@
+# Policy published by `make demo` for the demo project only: the starter policy, but a push to main may wait eight hours for a
+# person, so the pending request in the demo is still pending (and its time left stays a round number) while you look at it.
+# Starter policy for the coding-agent demo (Phase 14, ADR-140).
+#
+# Rules are checked in the order listed and the first match wins. Anything that matches no
+# rule is allowed (the policy default). Enforcement is cooperative: it stops an agent that
+# asks the policy service through the SDK, not one that bypasses the SDK.
+#
+# Capabilities and resources follow the SDK's coding helpers:
+#   filesystem.read   resource: the file path (relative to the workspace)
+#   github.push       resource: "<remote> <branch>"; attribute `branch`
+#   shell.execute     resource: the executable name; risk_class R0-R4; attributes `category` and
+#                     `command` (the exact command, which an approval binds to)
+version: 1
+policies:
+  - id: deny-env-read
+    description: Environment files hold secrets, so agents do not read them.
+    when:
+      capability: filesystem.read
+      resource: "**/.env*"
+    decision: deny
+
+  - id: approve-push-main
+    description: A push to main needs a person to approve it.
+    when:
+      capability: github.push
+      attributes:
+        branch: main
+    decision: require_approval
+    approver_role: admin
+    expires_in: 8h
+    on_error: closed
+
+  - id: approve-push-production
+    description: A push to production needs a person to approve it.
+    when:
+      capability: github.push
+      attributes:
+        branch: production
+    decision: require_approval
+    approver_role: admin
+    expires_in: 15m
+    on_error: closed
+
+  - id: deny-catastrophic-shell
+    description: Catastrophic commands (disk, root, drop database) are never run by an agent.
+    when:
+      capability: shell.execute
+      risk_class: R4
+    decision: deny
+
+  - id: approve-risky-shell
+    description: Destructive or privileged commands need a person to approve them.
+    when:
+      capability: shell.execute
+      risk_class: R3
+    decision: require_approval
+    approver_role: admin
+    expires_in: 15m

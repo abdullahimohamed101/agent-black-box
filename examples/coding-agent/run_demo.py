@@ -100,6 +100,11 @@ def main(argv: list[str] | None = None) -> int:
         "approval's own expiry)",
     )
     parser.add_argument(
+        "--name",
+        default="Fix OAuth session expiry",
+        help="the run's name in the runs list (`make demo` gives each of its runs its own)",
+    )
+    parser.add_argument(
         "--workdir", type=Path, help="where to build the working copy (default: a temp dir)"
     )
     parser.add_argument(
@@ -155,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         result: AgentResult | None = None
         try:
-            with bb.run("Fix OAuth session expiry", metadata={"model": model.name}) as run:
+            with bb.run(args.name, metadata={"model": model.name}) as run:
                 run_id = run.run_id
                 rec = CodingRecorder(bb, run, root)
                 result = run_agent(bb, run, rec, model)

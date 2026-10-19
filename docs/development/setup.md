@@ -34,7 +34,7 @@ cp .env.example .env && make setup
 | Background worker natively | `cd apps/api && uv run python -m abb_api.worker` (needs `.env` exported) |
 | Everything in containers | `make up`, then `make smoke` |
 | Provision a tenant and key | `make seed` (local dev key; the dev project captures FULL payloads) or `python -m abb_api.cli --help` |
-| See traces with no model API key | `make demo` (needs the stack from `make dev` or `make up`): records four scripted runs into its own project `abb-demo`; `make demo-reset` (dry run) and `make demo-reset CONFIRM=1` remove only that project |
+| See traces with no model API key | `make demo` (needs the stack from `make dev` or `make up`): records twelve scripted runs into its own project `abb-demo` (one agent stays waiting for an approval: that run needs `ABB_ALLOW_DEV_SESSIONS=1` on the API, otherwise `make demo` says so and skips only it); `make demo-reset` (dry run) and `make demo-reset CONFIRM=1` remove only that project |
 | Latency baseline | `make seed && make bench` (read `docs/benchmarks/phase-2-ingestion.md` first) |
 
 Database roles: Compose runs `migrate` as the owner (`abb`) and the API/worker as `abb_runtime` (cannot UPDATE/DELETE `events`). The native

@@ -4,6 +4,11 @@
                           run is derived, and print one JSON document: per run, what the agents DID. Run ids, event ids,
                           timestamps, durations and everything that depends on clock or thread timing are left out.
     report SUMMARY_FILE   print the counts the plan asks to see: runs, failed runs, findings by type, agents per run.
+    asks SUMMARY_FILE     check the demo against the data the video needs (docs/design/launch/video-brief.md, section 6): a failed
+                          run with a one-word error early, findings with evidence, five lanes, a waiting approval, three security
+                          rules, plain names, no real model names. Exits non-zero on the first ask that does not hold.
+    approvals             with DEMO_E2E_SESSION (a development session cookie of the demo owner): the pending approval's
+                          capability, resource and time left (hours, not minutes).
 
 Environment: DEMO_E2E_API, DEMO_E2E_KEY_FILE (a key with runs:read). Nothing here prints a credential or event content.
 """
@@ -60,7 +65,9 @@ def fail(message: str) -> None:
 
 def client() -> httpx.Client:
     key = Path(os.environ["DEMO_E2E_KEY_FILE"]).read_text().strip()
-    return httpx.Client(base_url=API, headers={"Authorization": f"Bearer {key}"}, timeout=15)
+    return httpx.Client(
+        base_url=API, headers={"Authorization": f"Bearer {key}"}, timeout=15
+    )
 
 
 def pages(http: httpx.Client, path: str) -> list[dict[str, Any]]:
@@ -104,6 +111,23 @@ def settled(
         time.sleep(POLL_STEP_SECONDS)
 
 
+def first_error(
+    run: dict[str, Any], events: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Where the run first went wrong, as the run page says it: the step (event sequence) and the error type."""
+    found = run.get("first_error")
+    if not found:
+        return None
+    event = next((e for e in events if e["event_id"] == found["event_id"]), None)
+    attributes = (event or {}).get("attributes") or {}
+    return {
+        "step": found["sequence"],
+        "event_type": (event or {}).get("event_type"),
+        "error_type": attributes.get("error.type") or attributes.get("tool.error_type"),
+        "retries_after": found.get("retries_after"),
+    }
+
+
 def normalise(http: httpx.Client, run_id: str) -> dict[str, Any]:
     run, events, findings = settled(http, run_id)
     spans = pages(http, f"/v1/runs/{run_id}/spans")
@@ -118,6 +142,7 @@ def normalise(http: httpx.Client, run_id: str) -> dict[str, Any]:
         "agent_id": run["agent_id"],
         "ordering_mode": run["ordering_mode"],
         "has_first_error": run.get("first_error") is not None,
+        "first_error": first_error(run, events),
         "summary": {k: summary.get(k) for k in STABLE_SUMMARY},
         "agents": sorted(
             ({k: a.get(k) for k in STABLE_AGENT} for a in summary.get("agents", [])),
@@ -141,7 +166,11 @@ def normalise(http: httpx.Client, run_id: str) -> dict[str, Any]:
 
 
 def summarise(runs_file: str) -> None:
-    pairs = [line.split() for line in Path(runs_file).read_text().splitlines() if line.strip()]
+    pairs = [
+        line.split()
+        for line in Path(runs_file).read_text().splitlines()
+        if line.strip()
+    ]
     with client() as http:
         out = {name: normalise(http, run_id) for name, run_id in pairs}
     json.dump(out, sys.stdout, indent=2, sort_keys=True)
@@ -154,20 +183,162 @@ def report(summary_file: str) -> None:
     by_type = collections.Counter(
         f for r in data.values() for f in (x.split()[1] for x in r["findings"])
     )
-    print(f"runs: {len(data)}; failed runs: {len(failed)} ({', '.join(failed) or 'none'})")
     print(
-        "findings by type: " + (", ".join(f"{t}={n}" for t, n in sorted(by_type.items())) or "none")
+        f"runs: {len(data)}; failed runs: {len(failed)} ({', '.join(failed) or 'none'})"
     )
-    print("agents per run: " + ", ".join(f"{n}={len(r['agents'])}" for n, r in data.items()))
+    print(
+        "findings by type: "
+        + (", ".join(f"{t}={n}" for t, n in sorted(by_type.items())) or "none")
+    )
+    print(
+        "agents per run: "
+        + ", ".join(f"{n}={len(r['agents'])}" for n, r in data.items())
+    )
     multi = data.get("multi-agent")
     print(f"multi-agent lanes (agents): {len(multi['agents']) if multi else 'n/a'}")
     print(
         "error spans: "
-        + ", ".join(f"{n}={sum('| error |' in s for s in r['spans'])}" for n, r in data.items())
+        + ", ".join(
+            f"{n}={sum('| error |' in s for s in r['spans'])}" for n, r in data.items()
+        )
+    )
+
+
+REAL_MODEL_WORDS = (
+    "claude",
+    "gpt",
+    "anthropic",
+    "openai",
+    "gemini",
+    "llama",
+    "mistral",
+)
+SECURITY_RULES = {"destructive_command", "secret_file_read", "risky_git"}
+
+
+def ask(condition: bool, label: str) -> None:
+    if not condition:
+        fail(f"ask not met: {label}")
+    print(f"  ok  {label}")
+
+
+def asks(summary_file: str) -> None:
+    data: dict[str, dict[str, Any]] = json.loads(Path(summary_file).read_text())
+    failed = {n: r for n, r in data.items() if r["status"] == "FAILED"}
+    ask(
+        len(data) >= 12 and len(failed) >= 3,
+        f"at least 12 runs and 3 failed ({len(data)} runs, {len(failed)} failed)",
+    )
+    outage = data.get("support-outage")
+    ask(
+        outage is not None and outage["status"] == "FAILED",
+        "a failed support run exists",
+    )
+    assert outage is not None
+    fe = outage["first_error"]
+    ask(
+        fe is not None and fe["step"] <= 9 and (fe["error_type"] or "").isalpha(),
+        f"first error at step <= 9 with a one-word error type ({fe and (fe['step'], fe['error_type'])})",
+    )
+    ask(
+        bool(fe and fe["retries_after"] and fe["retries_after"] >= 1),
+        "at least one retry after the first error",
+    )
+    severities = {f.split()[3] for f in outage["findings"]}
+    ask(
+        {"critical", "warning"} <= severities,
+        f"critical and warning findings on the failed run ({sorted(severities)})",
+    )
+    ask(
+        any(
+            f.split()[1] == "retry_storm" for r in data.values() for f in r["findings"]
+        ),
+        "a retry-storm finding exists",
+    )
+    multi = data.get("multi-agent")
+    lanes = [a["agent_id"] for a in (multi or {}).get("agents", [])]
+    ask(
+        len(lanes) == 5 and all(len(x) <= 12 for x in lanes),
+        f"five lanes with names of 12 characters or fewer ({lanes})",
+    )
+    ask(
+        data.get("coding-awaiting-approval", {}).get("status")
+        == "WAITING_FOR_APPROVAL",
+        "a run is waiting for approval",
+    )
+    types = {f.split()[1] for r in data.values() for f in r["findings"]}
+    ask(
+        SECURITY_RULES <= types,
+        f"security findings for destructive command, secret file read and risky git ({sorted(types & SECURITY_RULES)})",
+    )
+    names = [r["name"] for r in data.values()]
+    ask(
+        all(
+            len(n) <= 40
+            and "@" not in n
+            and not any(w in n.lower() for w in ("test", "foo"))
+            for n in names
+        ),
+        "run names are plain (40 characters or fewer, no emails, no 'test' or 'foo')",
+    )
+    models = {
+        m if isinstance(m, str) else str(m) for r in data.values() for m in r["models"]
+    }
+    ask(
+        len(models) >= 2
+        and not any(w in m.lower() for m in models for w in REAL_MODEL_WORDS),
+        f"two or more scripted models, none a real one ({sorted(models)})",
+    )
+    ask(len({r["agent_id"] for r in data.values()}) >= 3, "three or more agents")
+
+
+def approvals() -> None:
+    with httpx.Client(
+        base_url=API,
+        cookies={"abb_session": os.environ["DEMO_E2E_SESSION"]},
+        headers={"Origin": os.environ["DEMO_E2E_ORIGIN"]},
+        timeout=15,
+    ) as http:
+        me = http.get("/v1/me").raise_for_status().json()
+        workspace = next(
+            m["workspace"]
+            for m in me["memberships"]
+            if m["workspace"]["slug"] == "local"
+        )
+        http.headers["x-abb-workspace"] = workspace["id"]
+        items = (
+            http.get("/v1/approvals", params={"state": "pending", "limit": 100})
+            .raise_for_status()
+            .json()["items"]
+        )
+    from datetime import datetime, timezone
+
+    ask(len(items) >= 1, f"{len(items)} pending approval(s)")
+    left_hours = min(
+        (
+            datetime.fromisoformat(a["expires_at"].replace("Z", "+00:00"))
+            - datetime.now(timezone.utc)
+        ).total_seconds()
+        / 3600
+        for a in items
+    )
+    ask(
+        all(a["capability"] == "github.push" for a in items),
+        "the request is a github.push",
+    )
+    ask(
+        left_hours > 2,
+        f"hours, not minutes, are left on the approval ({left_hours:.1f} h)",
     )
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] not in ("summarise", "report"):
-        fail("usage: demo_e2e_check.py summarise RUNS_FILE | report SUMMARY_FILE")
-    {"summarise": summarise, "report": report}[sys.argv[1]](sys.argv[2])
+    command = sys.argv[1] if len(sys.argv) > 1 else ""
+    if command == "approvals" and len(sys.argv) == 2:
+        approvals()
+    elif command in ("summarise", "report", "asks") and len(sys.argv) == 3:
+        {"summarise": summarise, "report": report, "asks": asks}[command](sys.argv[2])
+    else:
+        fail(
+            "usage: demo_e2e_check.py summarise RUNS_FILE | report SUMMARY_FILE | asks SUMMARY_FILE | approvals"
+        )

@@ -186,12 +186,13 @@ holds test data.
 ### Demo determinism (Phase 20, D9)
 - **Demo E2E** (`make demo-e2e`, `scripts/demo-e2e.sh`, CI job `demo-e2e`): dedicated `abb_demo_e2e` database, API (:8170) and a worker started by the
   script; `scripts/demo.sh` (what `make demo` runs) is executed twice against it with `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` planted to prove they are
-  scrubbed. `scripts/demo_e2e_check.py summarise` waits (bounded polls, no wall-clock assertions) until each of the four runs is derived and reduces it to
+  scrubbed. `scripts/demo_e2e_check.py summarise` waits (bounded polls, no wall-clock assertions) until each of the twelve runs is derived and reduces it to
   what the agents did: status, agents and parents, per-agent call and error counts, token and cost totals, event counts by agent, type and status, spans by
   agent, kind, name, status and parent, findings (type, kind, severity, confidence) and health statuses. Ids, timestamps, durations and anything that depends on
   thread timing are left out; the two summaries must be equal (`demo run 1 == demo run 2 (normalised)`). The script also checks the demo key file is owner-only
   and no model key reaches the demo output. Not covered here: the web pages of the printed run URLs (they need sign-in; the run pages are covered by the other
   browser E2E suites) and any `--live` mode, which the project has never run (KI-044).
+  It also asserts the data the demo video needs (`scripts/demo_e2e_check.py asks` and `approvals`; docs/design/launch/video-brief.md section 6): at least twelve runs and three failed ones, a failed support run whose first error is a one-word type at step 9 or earlier with a retry after it, critical and warning findings on it, a retry-storm finding, five agents with short names in the multi-agent run, a run waiting for approval with hours left on the request, security findings for a destructive command, a secret file read and risky git, plain run names and no real model name. The waiting agent needs development sign-in sessions on the API (the script turns them on for its own throwaway API).
 - `make demo-reset` is a dry run; `make demo-reset CONFIRM=1` runs `purge-project` for the fixed project `abb-demo` of workspace `local` and nothing else.
 
 ### Server-side redaction and capture modes (Phase 13 step 1, ADR-130)
