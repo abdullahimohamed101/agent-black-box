@@ -66,6 +66,15 @@ class Claims(unittest.TestCase):
                 self.assertEqual(code, 1, out)
                 self.assertIn("links into the repository", out)
 
+    def test_a_clone_command_in_the_payload_is_text_but_a_link_prop_is_not(self) -> None:
+        clone = '<script>self.__next_f.push([1,"git clone https://github.com/o/r.git"])</script>'
+        code, out = run(page(clone))
+        self.assertEqual(code, 0, out)
+        link = '<script>self.__next_f.push([1,"{\\"href\\":\\"https://GitHub.com/o/r\\"}"])</script>'
+        code, out = run(page(link))
+        self.assertEqual(code, 1, out)
+        self.assertIn("link prop", out)
+
     def test_the_same_claims_pass_with_the_flag_on(self) -> None:
         code, out = run(page("<p>Open source. Self-hosted.</p><a href=\"https://github.com/o/r\">x</a>", flag="1"))
         self.assertEqual(code, 0, out)

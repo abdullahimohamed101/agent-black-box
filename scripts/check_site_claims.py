@@ -149,8 +149,10 @@ def main(argv: list[str]) -> int:
         repo_links = [h for h in p.hrefs if "github.com" in h]
         if repo_links:
             problems.append(f"links into the repository with the flag off: {repo_links[:3]}")
-        if "github.com" in script_low:
-            problems.append("a github.com address in <script> text with the flag off")
+        # The visible clone command names github.com on purpose (it is text, not a link); a link prop in the hydration payload is
+        # what would render an <a href> into the repository.
+        if re.search(r"href[\\\"':\s]+https?://[^\s\"\\]*github\.com", script_low):
+            problems.append("a link prop to github.com in <script> text with the flag off")
 
     for pr in problems:
         print(f"FAIL: {pr}")
