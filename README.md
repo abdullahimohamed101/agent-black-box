@@ -10,7 +10,7 @@ where the run broke.
 <!-- RELEASE_CLAIM: tagline. At G2 (repository public, LICENSE verified) the second sentence may be reworded to the positioning brief's one-sentence form with the hosting-model word ("self" + "hosted"), and a licence badge may be added. Source: positioning brief section 8. -->
 
 <p align="center">
-  <img src="docs/screenshots/release/failed-run-story-light.png" alt="A failed run: the headline says it failed at step 6 in lookup-ticket with ConnectionTimeout, a red line marks the first error on the timeline, and the inspector shows the failed tool call" width="900">
+  <img src="docs/screenshots/release/failed-run-story-light.png" alt="A failed run, Answer ticket: invoice shows wrong VAT: the headline says it failed at step 6 in lookup-ticket with ConnectionTimeout, a red line marks the first error on the timeline, and the inspector shows the failed tool call" width="900">
 </p>
 
 ## What it is, and what it is not

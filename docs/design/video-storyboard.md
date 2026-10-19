@@ -1,5 +1,7 @@
 # Demo video storyboard: Agent BlackBox (design pass 2 app)
 
+> Superseded by `docs/design/launch/video-cinematic-brief.md`: run names and numbers below predate the renamed demo data (the hero run is now "Answer ticket: invoice shows wrong VAT").
+
 Status: rewritten 2026-10-18 for the redesigned app (ADR-166: one top bar, Runs as home, the fault line). Replaces the Phase 21
 storyboard, which described the left rail, stat strips and readout bars that no longer exist.
 

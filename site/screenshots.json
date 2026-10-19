@@ -34,7 +34,7 @@
     "The inspector says what went wrong, from the event itself."
    ],
    "caption": "Run page, Timeline tab, first error open. Light and dark follow your system.",
-   "alt": "A failed run: the headline sentence names the failing step, tool and error, a red line on the timeline marks the first error, and the inspector shows the failed tool call.",
+   "alt": "A failed run, Answer ticket: invoice shows wrong VAT: the headline says it failed at step 6 after 17 s in lookup-ticket with ConnectionTimeout, a red line on the timeline marks the first error, and the inspector shows the failed tool call.",
    "offsetX": 0
   },
   {
@@ -159,12 +159,12 @@
     }
    ],
    "notes": [
-    "A request waits for a person, with its policy version and exact arguments on screen.",
+    "A request waits for a person, with its risk class, policy version and exact arguments on screen.",
     "The state and the time left, in the list and in the panel.",
     "An approval authorises one action, once, and has an expiry."
    ],
    "caption": "Review, Approvals. Policies apply to agents that ask through the SDK guard.",
-   "alt": "The Approvals page: one pending github.push request in the list, and its detail panel showing that it is waiting, the time left, the policy and the arguments.",
+   "alt": "The Approvals page: one pending github.push request in the list, and its detail panel showing that it is waiting, the time left, its Risk R2 class, the policy and the arguments.",
    "offsetX": 0
   },
   {
