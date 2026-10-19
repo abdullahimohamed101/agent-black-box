@@ -15,9 +15,9 @@
  *
  * Usage (repo root, `pnpm install` done so @playwright/test resolves from apps/web):
  *   scripts/demo-stack.sh up                                  # a private demo-seeded stack on :3180 (never your dev stack)
- *   node scripts/record-demo.mjs                              # main cut, about 85 s
+ *   node scripts/record-demo.mjs                              # main cut, about 70 s
  *   node scripts/record-demo.mjs --cut=teaser                 # 18 s loop for the landing hero and the README
- *   node scripts/record-demo.mjs --cut=social                 # optional 1080x1350 take, beats 1-8 (not recorded by the project yet)
+ *   node scripts/record-demo.mjs --cut=social                 # optional 1080x1350 take, beats 1-5 (only beats 1-3 recorded, as a dry run)
  *   node scripts/record-demo.mjs --plan                       # no browser: print the beats and cues, write demo.vtt, check the rules
  *   node scripts/record-demo.mjs --dry-run                    # beats 1-3 only (about 15 s): checks the mechanics
  *
