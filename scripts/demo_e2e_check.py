@@ -161,6 +161,8 @@ def normalise(http: httpx.Client, run_id: str) -> dict[str, Any]:
         ),
         "findings": sorted(
             f"{f['category']} {f['finding_type']} {f['kind']} {f['severity']} {f['confidence']}"
+            # The evidence SHAPE (key names, never values) and the message are part of what the demo says it does the same twice.
+            f" | evidence={','.join(sorted(f['evidence']))} | message={f['message']}"
             for f in findings["items"]
         ),
         "health": {
