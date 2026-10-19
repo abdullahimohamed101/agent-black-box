@@ -82,6 +82,11 @@ class FakeHost(server.Host):
     def run(self, argv: Sequence[str], timeout: int = 30) -> Tuple[int, str]:
         return self.commands.get(tuple(argv), (127, ""))
 
+    root = True
+
+    def is_root(self) -> bool:
+        return self.root
+
     def read(self, path: str) -> Optional[str]:
         return self.files.get(path)
 
@@ -206,6 +211,11 @@ class ServerChecks(unittest.TestCase):
 
     def test_fail2ban_swap_time_reboot(self):
         self.planted("fail2ban.sshd", commands={("fail2ban-client", "status", "sshd"): (255, "")})
+        # not root: fail2ban-client cannot answer, which is a SKIP and never a red FAIL on a healthy host (review P2-6)
+        user = FakeHost(commands={("fail2ban-client", "status", "sshd"): (255, "")})
+        user.root = False
+        self.assertEqual(failing(user), [])
+        self.assertIn("SKIP", [r.status for r in server.check_fail2ban(user)])
         self.planted("swap.present", commands={("swapon", "--show", "--noheadings"): (0, "")})
         self.planted("time.synced", commands={("timedatectl", "show", "-p", "NTPSynchronized", "--value"): (0, "no\n")})
         self.planted("host.reboot_pending", mtimes={"/var/run/reboot-required": NOW - 9 * 86400})

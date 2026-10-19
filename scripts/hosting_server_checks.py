@@ -39,6 +39,9 @@ class Host:
             return 126, ""
         return done.returncode, done.stdout
 
+    def is_root(self) -> bool:
+        return os.geteuid() == 0
+
     def read(self, path: str) -> Optional[str]:
         try:
             with open(path, encoding="utf-8") as handle:
@@ -333,7 +336,10 @@ def check_fail2ban(h: Host) -> List[Result]:
     rc, out = h.run(["fail2ban-client", "status", "sshd"])
     if rc == 127:
         return [bad("fail2ban.sshd", "fail2ban-client is not installed")]
-    # fail2ban-client exits 255 both for a missing jail and for "permission denied" (not root): either way the jail is not proven.
+    # fail2ban-client exits 255 both for a missing jail and for "permission denied" (not root). Without root the jail is unknown, not
+    # failed: SKIP, so a correctly configured host does not show a red FAIL for a command that could not run (review P2-6).
+    if rc != 0 and not h.is_root():
+        return [skip("fail2ban.sshd", "fail2ban-client could not be read (run as root)")]
     return [verdict("fail2ban.sshd", rc == 0 and "Status for the jail: sshd" in out, "the sshd jail is running",
                     "the sshd jail is not running or not readable (run as root)")]
 
