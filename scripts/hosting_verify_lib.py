@@ -19,7 +19,6 @@ import json
 import os
 import re
 import secrets
-import select
 import socket
 import ssl
 import subprocess
@@ -234,15 +233,14 @@ def _exchange(
     sock.sendall(_build_head(host, method, path, headers, length))
     if body is not None:
         # The proxy may answer (413) and close before the whole body is sent; read the answer instead of failing.
+        # Do not stop sending when the socket becomes readable: under TLS 1.3 the server sends session tickets right
+        # after the handshake, which is not an answer, and stopping there leaves it waiting for the rest of the body.
         view = memoryview(body)
         sent = 0
         try:
             while sent < len(view):
-                readable, _, _ = select.select([sock], [], [], 0)
-                if readable:
-                    break
                 sent += sock.send(view[sent : sent + 65536])
-        except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+        except (BrokenPipeError, ConnectionResetError, ssl.SSLError, socket.timeout):
             pass
     deadline = time.monotonic() + 60.0
     status, hdrs, rest = _read_head(sock, deadline)
