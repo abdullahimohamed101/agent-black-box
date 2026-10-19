@@ -129,8 +129,8 @@ examples/{coding-agent,python,multi-agent}  site/  scripts/  docs/
 - Secrets the scanner recognises are redacted before anything is stored, and the stored copy keeps a
   `[REDACTED:credential]` marker. Redaction is best effort: a secret with an unknown shape can pass in full-capture mode, and
   stored events are never scrubbed afterwards. Keep secrets out of events when you can.
-- Captured telemetry is treated as hostile input. API keys are stored as hashes, tenants are separated in the database, and
-  sign-in is invitation-only.
+- Captured telemetry is treated as hostile input. API keys are stored as hashes, every tenant query is scoped by workspace, and
+  access is invitation-only.
 - Development sign-in and the seeded owner are for your laptop. The compose settings in the quickstart are development
   values; read [`docs/deployment.md`](docs/deployment.md) before letting anyone else use the stack.
 
