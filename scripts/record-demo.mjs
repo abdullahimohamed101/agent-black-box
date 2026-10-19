@@ -703,6 +703,15 @@ const evalOverlay = async (fn, arg) => {
 
 async function act(a, ctx) {
   const timeout = a.optional ? 3000 : 15000;
+  const traceAt = performance.now();
+  try {
+    return await actInner(a, ctx, timeout);
+  } finally {
+    if (process.env.ABB_VIDEO_TRACE) console.log(`  trace beat ${ctx.id} ${a.do} at ${clock().toFixed(2)} s took ${((performance.now() - traceAt) / 1000).toFixed(2)} s wall`);
+  }
+}
+
+async function actInner(a, ctx, timeout) {
   try {
     switch (a.do) {
       case "goto":
@@ -1087,6 +1096,13 @@ async function main() {
   if (log.textHits.length) {
     console.error(`record-demo: forbidden text on screen: ${JSON.stringify(log.textHits)}`);
     process.exit(4);
+  }
+  // A loaded machine stalls the browser for seconds (a travel that took 6 s, a gap in the screencast): the take is then slower than
+  // its table, and the captions would sit on the wrong picture. Exit 5 tells the caller to record again.
+  const late = log.beats.filter((b) => b.end - b.start > b.plannedLen + 0.4);
+  if (late.length) {
+    console.error(`record-demo: stalled take (beats ${late.map((b) => `${b.id}: ${(b.end - b.start).toFixed(1)} s vs ${b.plannedLen.toFixed(1)} s`).join(", ")}); record again`);
+    process.exit(5);
   }
 }
 

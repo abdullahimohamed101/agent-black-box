@@ -89,7 +89,7 @@ export async function filmChecks({ root, take, outDir, master, meta, tl, spec, c
   check(`the window never moves: its hairline is at row ${win.y - 1} and column ${win.x - 1} (1 px tolerance) in a frame of each of the ${beatTimes.length} beats`, edgeBad.length === 0, edgeBad.slice(0, 3).join("; "));
 
   // ---- the dim happens ----------------------------------------------------------------------------------------------------------
-  const patch = { x: 16, y: 300, w: 60, h: 200 };
+  const patch = meta.cut === "social" ? { x: CW - 28, y: 300, w: 20, h: 200 } : { x: 16, y: 300, w: 60, h: 200 }; // canvas, outside the window
   const dimBad = [];
   const alpha = (file, region) => execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", `alphaextract,crop=${region.w}:${region.h}:${region.x}:${region.y},format=gray`, "-frames:v", "1", "-f", "rawvideo", "-"], { maxBuffer: 1 << 24 });
   const aIn = mean(alpha(path.join(plates, "dim.png"), { x: win.x + 100, y: win.y + 100, w: 200, h: 200 }));
