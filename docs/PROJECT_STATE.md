@@ -3,6 +3,9 @@
 Last updated: 2026-10-19 (Phase 20 complete pending PR merge; Phase 19 complete: 19a #186, 19b #206, 19c #207; Design pass 2 merged)
 
 
+## Phase 23 (private hosting): planned, 2026-10-19
+Plan: `docs/plans/active/phase-23-private-hosting.md` (branch `feature/phase-23-hosting`, worktree `abb-worktrees/phase-23-hosting`, stacked on the Phase 20 tip; nothing pushed). Owner decisions D1-D8 recorded there. **Exact next task (after PR #300 merges and the branch is rebased):** step 1, ADR-178 and the `deploy/hosting/` skeleton. Gated: G1 (server, domain, DNS, Google client, B2) and G2 (live verify, real restore drill). Open `[NEEDS INPUT]`: Hetzner region, domain, backup provider, uptime check, alert receiver.
+
 ## Phase 20 (demo, docs, release quality): complete pending PR merge, 2026-10-19
 Plan with the closing acceptance table: `docs/plans/completed/phase-20-release-polish.md`; PR text: `docs/plans/completed/phase-20-pr-description.md`; adversarial review: `docs/plans/completed/phase-20-review.md`. Branch `feature/phase-20-release-polish` (worktree `abb-worktrees/phase-20`, tip after close-out commits; **nothing pushed**).
 **Delivered:** Apache-2.0 and community files (ADR-175), KI-097 (ADR-174), scripted examples and `make demo` (`demo-e2e.sh`), brand assets, release screenshots, the landing site (Next static export in `site/`, `check-site.sh`), docs (quickstart, deployment, troubleshooting), README, release checklist, the SDK import rename `agent_blackbox` (ADR-177) and the `guard_push` risk class (ADR-176), the demo film design (the video itself is not in git).
