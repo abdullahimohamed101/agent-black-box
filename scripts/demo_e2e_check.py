@@ -257,6 +257,12 @@ def realism(path: str) -> None:
             ask(8 <= seconds <= 90, f"{name}: lasted {seconds:.0f} s (8 to 90 s)")
         cost = float(r["cost_usd"] or 0)
         ask(0.03 <= cost <= 1.5, f"{name}: cost ${cost:.3f} ($0.03 to $1.50)")
+    # The hook of the launch film frames the failed support run's headline ("Failed at step N after S s: ...") and its red line.
+    outage = rows.get("support-outage")
+    ask(
+        outage is not None and (outage["duration_ms"] or 0) >= 30_000,
+        "the failed support run (the film's opening shot) lasted 30 s or more, so its headline carries a real duration",
+    )
     days = {datetime.fromisoformat(r["started_at"].replace("Z", "+00:00")).date() for r in rows.values()}
     ask(len(days) >= 5, f"runs spread over {len(days)} different days (5 or more)")
     models = {m for r in rows.values() for m in r["models"]}
