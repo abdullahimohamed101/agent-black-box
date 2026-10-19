@@ -1,11 +1,15 @@
 import fixture from "../../fixtures/migrate-billing-schema.json";
+import { Architecture, Faq } from "../components/Architecture";
 import { BeforeAfter } from "../components/BeforeAfter";
 import { FaultTrace } from "../components/FaultTrace";
 import { buildTrace, type Fixture } from "../lib/trace";
 import { Footer } from "../components/Footer";
 import { HowItWorks } from "../components/HowItWorks";
+import { FinalCta } from "../components/FinalCta";
 import { Hero } from "../components/Hero";
+import { Privacy } from "../components/Privacy";
 import { Quickstart } from "../components/Quickstart";
+import { Records } from "../components/Records";
 import { Screens } from "../components/Screens";
 import { TopBar } from "../components/TopBar";
 
@@ -27,6 +31,11 @@ export default function Page() {
         <Quickstart />
         <HowItWorks headline={trace.headline} />
         <Screens />
+        <Records />
+        <Privacy />
+        <Architecture />
+        <Faq />
+        <FinalCta />
       </main>
       <Footer />
     </>

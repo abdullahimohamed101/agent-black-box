@@ -28,3 +28,4 @@ backups/
 site-dist/
 site/out/
 site/out-root/
+site/out-*/

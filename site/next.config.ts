@@ -11,6 +11,8 @@ const config: NextConfig = {
   images: { unoptimized: true },
   reactStrictMode: true,
   poweredByHeader: false,
+  // The export goes to out/ unless a second build (a domain-root export, or the flag-on export) needs its own directory.
+  ...(process.env.ABB_SITE_OUT ? { distDir: process.env.ABB_SITE_OUT } : {}),
 };
 
 export default config;

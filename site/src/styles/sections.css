@@ -103,3 +103,42 @@
     .gallery { animation: step-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
   }
 }
+
+/* Records, privacy, architecture, FAQ, final call to action (brief 4.7 to 4.9) */
+.records { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 3rem; margin-top: 3rem; align-items: start; }
+.records dl { margin: 0; }
+.records dl > div { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 1rem; padding: .75rem 0; border-top: 1px solid var(--color-border-subtle); }
+.records dl > div:last-child { border-bottom: 1px solid var(--color-border-subtle); }
+.records dt { font-weight: 600; font-size: var(--type-body-lg-size); line-height: var(--type-body-lg-line); }
+.records dd { margin: 0; color: var(--color-text-secondary); font-size: var(--type-body-lg-size); line-height: var(--type-body-lg-line); }
+.records .works { margin-top: 1rem; }
+.records .works > div { grid-template-columns: 6rem minmax(0, 1fr); }
+@media (max-width: 1023px) { .records { grid-template-columns: minmax(0, 1fr); gap: 2rem; } }
+@media (max-width: 599px) { .records dl > div, .records .works > div { grid-template-columns: minmax(0, 1fr); gap: .25rem; } }
+
+.privacy { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3rem; margin-top: 3rem; }
+.privacy p { margin: .5rem 0 0; color: var(--color-text-secondary); max-width: 36ch; }
+.limit { margin: 3rem 0 0; padding-top: 1rem; border-top: 1px solid var(--color-border-subtle); max-width: 70ch; }
+@media (max-width: 1023px) { .privacy { grid-template-columns: minmax(0, 1fr); gap: 2rem; } }
+
+.diagram { margin: 3rem 0 0; }
+.dg { display: block; width: 100%; height: auto; max-width: 900px; font-family: var(--font-mono); }
+.dg-tall { display: none; max-width: 280px; }
+.dg-box { fill: var(--color-bg-raised); stroke: var(--color-border-strong); stroke-width: 1; }
+.dg-t { fill: var(--color-text-primary); font-size: 14px; font-weight: 400; }
+.dg-s { fill: var(--color-text-secondary); font-size: 12px; }
+.dg-line { fill: none; stroke: var(--color-text-secondary); stroke-width: 1; }
+.dg-head { fill: var(--color-text-secondary); }
+.diagram figcaption { margin-top: 1rem; color: var(--color-text-secondary); max-width: 60ch; }
+@media (max-width: 899px) { .dg-wide { display: none; } .dg-tall { display: block; } }
+
+.faq-wrap .faq { margin-top: 2.5rem; max-width: 46rem; border-bottom: 1px solid var(--color-border-subtle); }
+.faq details { border-top: 1px solid var(--color-border-subtle); }
+.faq summary { cursor: pointer; padding: .875rem 0; min-height: 2.75rem; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 1rem; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font-family: var(--font-mono); color: var(--color-text-secondary); }
+.faq details[open] summary::after { content: "\2212"; }
+.faq details p { margin: 0 0 1rem; color: var(--color-text-secondary); max-width: 60ch; }
+
+.final .final-block { margin-top: 2rem; max-width: 56rem; }
+.final .final-block pre { white-space: pre; }

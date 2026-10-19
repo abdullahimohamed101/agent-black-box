@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import localFont from "next/font/local";
-import { publicUrl, tokenValue } from "../config";
+import { RELEASE_CLAIMS, publicUrl, tokenValue } from "../config";
 import { NAME, SUB } from "../content/copy";
 // Token file first: site.css and every later stylesheet read the custom properties it defines (generated from
 // apps/web/design-tokens/tokens.json by scripts/tokens.mjs).
@@ -42,6 +42,8 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: publicUrl("assets/favicon-180.png"), sizes: "180x180", type: "image/png" }],
   },
+  // The state of the publication flag, so scripts/check_site_claims.py knows which rules apply to this export.
+  other: { "abb-release-claims": RELEASE_CLAIMS ? "1" : "0" },
   openGraph: { title: NAME, description: SUB, type: "website" },
   twitter: { card: "summary_large_image", title: NAME, description: SUB },
 };
