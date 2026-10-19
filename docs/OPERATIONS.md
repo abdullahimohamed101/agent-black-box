@@ -112,7 +112,7 @@ Alerts carry no captured content; a destination's masked form is the only displa
 
 ### Reading the alert delivery log and dead letters (Phase 17, ADR-151)
 
-The owner's view is `GET /v1/alerts/notifications` (and the Alerts page, History tab): status `pending` (waiting, or between retries when `attempts > 0` and `next_attempt_at` is in the future),
+The owner's view is `GET /v1/alerts/notifications` (and Settings, Alerts, History tab): status `pending` (waiting, or between retries when `attempts > 0` and `next_attempt_at` is in the future),
 `delivered`, `skipped` (with `skip_reason`: `cooldown`, `destination_paused`, `destination_deleted`, `rule_deleted`, `rate_limited`, `daily_cap`) and `dead` (every attempt used, or a failure no retry can fix).
 `error_code` is one of `timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address` (the name resolved to a non-public address: fix the target), `blocked_port` (the destination's port is not in `ABB_ALERTS_ALLOWED_PORTS`: move it to an allowed port or have the operator allow it; never retried), `http_3xx` (the receiver redirects; redirects are never
 followed: put the final URL in the destination), `http_4xx` (the receiver rejected it: wrong URL or revoked hook), `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable` (the sealed target cannot be opened:
