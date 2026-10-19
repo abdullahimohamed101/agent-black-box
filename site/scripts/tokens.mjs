@@ -3,7 +3,7 @@
 //   src/fonts/*, public/fonts/OFL.txt <- apps/web/src/fonts (IBM Plex, SIL OFL 1.1; the site uses three of the app's four files)
 //   node scripts/tokens.mjs           write them
 //   node scripts/tokens.mjs --check   exit 1 when a committed copy differs from its source
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTokens, renderTokensCss } from "../../apps/web/scripts/tokens-lib.mjs";

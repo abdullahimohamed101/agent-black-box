@@ -8,7 +8,7 @@
     "sync": "node scripts/tokens.mjs",
     "dev": "node scripts/tokens.mjs && next dev --port 3100",
     "build": "node scripts/tokens.mjs && next build",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check": "bash ../scripts/check-site.sh"

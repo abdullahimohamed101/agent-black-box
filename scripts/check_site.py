@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Static checks for the landing page in site/ (Phase 20, D12, D16). Stdlib only.
 
-usage: check_site.py BUILT_DIR [--repo-url URL] [--budget-kb N] [--release]
+usage: check_site.py BUILT_DIR [--repo-url URL] [--budget-kb N] [--release] [--base-path PATH]
 
 Stack-agnostic: BUILT_DIR is any static output directory with an index.html (plain HTML, a Next.js export, ...).
 
@@ -10,7 +10,9 @@ Fails (exit 1) on:
   * <iframe>, <object>, <embed> (scripts are allowed when they are same-site relative files);
   * a resource reference (src, srcset, poster, <link href>, CSS url(), @import) that is not a relative path;
   * an <a href> that leaves the site for anywhere other than the repository URL;
-  * a root-absolute path (starts with "/"), which breaks under a GitHub Pages project sub-path;
+  * a root-absolute path (starts with "/"), which breaks under a GitHub Pages project sub-path. With --base-path (a framework export
+    that bakes its deploy path into every URL, as Next's basePath does) a root-absolute path is allowed only when it starts with
+    that path ("" means the export is for a domain root), and is then resolved with the prefix removed;
   * a relative link or asset that does not resolve to a file under the site directory, or a #fragment with no id;
   * a total size over --budget-kb (default 250, fonts excluded; pass 0 to disable).
 `[CONFIRM]` markers are listed as warnings; with --release they fail.
@@ -99,6 +101,11 @@ def main(argv: list[str]) -> int:
         val = argv[argv.index("--budget-kb") + 1]
         budget = int(val) * 1024
         args = [a for a in args if a != val]
+    base_path: str | None = None
+    if "--base-path" in argv:
+        val = argv[argv.index("--base-path") + 1]
+        base_path = val.rstrip("/")
+        args = [a for a in args if a != val]
     site = Path(args[0] if args else Path(__file__).resolve().parents[1] / "site").resolve()
     problems: list[str] = []
     warnings: list[str] = []
@@ -135,8 +142,14 @@ def main(argv: list[str]) -> int:
             problems.append(f"{origin} line {line}: off-site reference {value!r}")
             return
         if value.startswith("/"):
-            problems.append(f"{origin} line {line}: root-absolute path {value!r} breaks under a project sub-path")
-            return
+            if base_path is None:
+                problems.append(f"{origin} line {line}: root-absolute path {value!r} breaks under a project sub-path")
+                return
+            if base_path and not (value == base_path or value.startswith(base_path + "/")):
+                problems.append(f"{origin} line {line}: root-absolute path {value!r} is outside the base path {base_path!r}")
+                return
+            value = value[len(base_path):].lstrip("/") or "./"
+            base = site
         parts = urlsplit(value)
         target = (base / unquote(parts.path)).resolve() if parts.path else base
         try:

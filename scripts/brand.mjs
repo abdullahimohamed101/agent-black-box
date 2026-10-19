@@ -1,5 +1,5 @@
 // Brand assets from one source (Phase 20, D5): `brand/pulse-mark.svg` is the pulse glyph (placeholder launch mark). This script writes
-//   site/assets/{favicon.svg, favicon-32.png, favicon-180.png, icon-512.png, social-card.png, readme-header.svg}
+//   site/public/assets/{favicon.svg, favicon-32.png, favicon-180.png, icon-512.png, social-card.png, readme-header.svg}
 // Colours come from apps/web/design-tokens/tokens.json (never typed here), fonts from apps/web/src/fonts (IBM Plex, OFL).
 // Swapping the mark later means replacing brand/pulse-mark.svg (and the web copy, apps/web/public/brand/option-a.svg) and rerunning
 // `scripts/brand.sh`. `--check` only verifies the web copy equals the source and exits.
@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const out = path.join(root, "site/assets");
+const out = path.join(root, "site/public/assets");
 const source = readFileSync(path.join(root, "brand/pulse-mark.svg"), "utf8");
 
 if (process.argv.includes("--check")) {

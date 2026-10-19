@@ -90,7 +90,8 @@ section.band + section.band { border-top: 1px solid var(--color-border-subtle); 
 .foot .cols { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 2rem; }
 .foot a { color: var(--color-text-primary); text-decoration: none; display: block; margin: .25rem 0; }
 .foot a:hover { text-decoration: underline; }
-.foot h3 { font: var(--type-small-size)/var(--type-small-line) var(--font-sans); color: var(--color-text-secondary); margin-bottom: .5rem; font-weight: 400; }
+.foot a.brand { display: inline-flex; margin: 0; color: var(--color-text-primary); }
+.foot .foot-h { font: var(--type-small-size)/var(--type-small-line) var(--font-sans); color: var(--color-text-secondary); margin-bottom: .5rem; font-weight: 400; }
 .foot .status { max-width: 46ch; margin: 1rem 0 0; }
 .foot .legal { margin: 1rem 0 0; font-size: var(--type-small-size); line-height: var(--type-small-line); }
 @media (max-width: 599px) { .foot .cols { grid-template-columns: 1fr 1fr; } .foot .cols > :first-child { grid-column: 1 / -1; } }
