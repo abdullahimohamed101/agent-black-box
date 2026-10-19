@@ -25,4 +25,4 @@ with bb.run("Fix OAuth timeout") as run:
     with run.span("run-tests", kind="shell"):
         agent.execute()`);
 
-export const PREREQUISITES = "Docker with Compose · uv · Git";
+export const PREREQUISITES = "Docker with Compose · uv · Git · curl · python3";

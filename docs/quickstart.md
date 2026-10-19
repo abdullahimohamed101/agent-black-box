@@ -14,6 +14,7 @@ If a step fails, [troubleshooting](troubleshooting.md) lists the usual causes. T
 | Docker with Compose | a recent release | runs PostgreSQL, the API, the worker and the web app |
 | [uv](https://docs.astral.sh/uv/) | 0.12 or later | runs the Python SDK and the example agents (it installs Python for you) |
 | Git | any | clones the repository; the coding-agent example also uses it |
+| `curl` and `python3` | any (both ship with macOS and most Linux) | `make demo` checks the API with `curl` and reads run ids with `python3`; the SDK itself runs under uv's Python. Contributors regenerating screenshots (`scripts/screenshots.sh`) also need `lsof` |
 
 You do not need Node.js unless you want to build the web app outside Docker. Give Docker (Colima on macOS) at least 2 CPUs
 and 4 GB of memory.

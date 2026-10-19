@@ -230,8 +230,9 @@ A viewer role never sees command text or file paths; that is by design ([securit
 | Node.js | 22 or later (`.nvmrc` says 22) |
 | pnpm | the version in the root `package.json` (`packageManager`); Corepack or `pnpm/action-setup` provides it |
 | Docker with Compose | a recent release |
+| `curl`, `python3` | `make demo` and the check scripts call them (`lsof` only for `scripts/screenshots.sh`) |
 
-If you only want to try the product, you need Docker and `uv`; Node is needed only to build or test the web app natively.
+If you only want to try the product, you need Docker, `uv`, `curl` and `python3`; Node is needed only to build or test the web app natively.
 
 ## Still stuck
 
