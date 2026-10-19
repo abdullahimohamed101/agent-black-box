@@ -1,5 +1,7 @@
 # PR draft: Phase 20, demo, docs, release quality
 
+Status: merged into `main` as PR #300 (2026-10-19).
+
 ## Title
 
 feat(release): Phase 20 - Apache-2.0, KI-097, scripted demo, brand, landing site, docs, release checklist, SDK import rename
