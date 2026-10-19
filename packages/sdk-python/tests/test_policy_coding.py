@@ -401,3 +401,60 @@ def test_a_custom_classifier_decides_the_push_class_and_a_broken_one_cannot_brea
         rec.guard_push("origin", "x")
     assert push_intents(srv)[2]["risk_class"] == "R2"
     bb.shutdown()
+
+
+def test_a_builtin_classifier_fault_leaves_the_push_class_unset(
+    srv: PolicyServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agent_blackbox import coding
+
+    def boom(command: str) -> Any:
+        raise RuntimeError("classifier fault")
+
+    monkeypatch.setattr(coding, "classify_command", boom)
+    bb, rec = recorder(srv, tmp_path)
+    with rec.run:
+        rec.guard_push("origin", "main")
+    assert push_intents(srv)[0]["risk_class"] is None
+    bb.shutdown()
+
+
+def test_a_forced_push_whose_class_cannot_be_derived_fails_closed(
+    srv: PolicyServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agent_blackbox import coding
+
+    def boom(command: str) -> Any:
+        raise RuntimeError("classifier fault")
+
+    monkeypatch.setattr(coding, "classify_command", boom)
+    bb, rec = recorder(srv, tmp_path)
+    seen: list[Any] = []
+    real = bb.guard
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs.get("on_error"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(bb, "guard", spy)
+    with rec.run:
+        rec.guard_push("origin", "main", force=True)
+        rec.guard_push("origin", "main")
+    assert seen == ["closed", None]  # forced: closed; plain: the configured mode
+    bb.shutdown()
+
+
+@pytest.mark.parametrize(
+    "bad", ["--force", "+refs/heads/x", ":main", "a b", "a..b", "", "-", "x.lock", "a/"]
+)
+def test_guard_push_refuses_option_like_names_before_asking(
+    srv: PolicyServer, tmp_path: Path, bad: str
+) -> None:
+    bb, rec = recorder(srv, tmp_path)
+    with rec.run:
+        with pytest.raises(ValueError):
+            rec.guard_push("origin", bad)
+        with pytest.raises(ValueError):
+            rec.guard_push(bad, "main", force=True)
+    assert push_intents(srv) == []
+    bb.shutdown()

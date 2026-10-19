@@ -1294,10 +1294,15 @@ class CodingRecorder:
         and the risk class the shell classifier gives the same push (a plain push is R2, a forced
         one R3), so an approver sees the class the matching `git push` command would carry.
         `force=True` asks for the forced form (`--force-with-lease`); `git_push(force=True)` runs
-        it. A class that cannot be derived is left unset, never guessed (ADR-176)."""
+        it. A class that cannot be derived is left unset, never guessed (ADR-176); a forced push
+        in that state fails closed, so it never goes unclassified under a fail-open mode. Names
+        that `git_push` would refuse raise `ValueError` here too, before anything is asked."""
+        _valid_ref(remote, "remote name")
+        _valid_ref(branch, "branch name")
+        risk = self._push_risk(remote, branch, force)
         self._guard(
-            "github.push", f"{remote} {branch}", self._push_risk(remote, branch, force),
-            {"branch": branch},
+            "github.push", f"{remote} {branch}", risk, {"branch": branch},
+            on_error="closed" if force and risk is None else None,
         )  # fmt: skip
 
     def _push_risk(self, remote: str, branch: str, force: bool) -> str | None:
@@ -1609,9 +1614,7 @@ class CodingRecorder:
 
     def git_push(self, remote: str, branch: str, *, force: bool = False) -> CommandResult:
         """Push `branch`; `force=True` uses `--force-with-lease` (class R3, asked as such)."""
-        _valid_ref(remote, "remote name")
-        _valid_ref(branch, "branch name")
-        self.guard_push(remote, branch, force=force)  # then the shell command itself is guarded
+        self.guard_push(remote, branch, force=force)  # validates the names; then the shell command itself is guarded
         result = self._git(*_push_argv(remote, branch, force))
         if result.ok:
             self.run.event(
