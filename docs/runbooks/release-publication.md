@@ -7,7 +7,12 @@ cleanly says so. Nothing here is automatic: the owner decides the moment.
 
 - `main` contains Phase 20 and its CI run is green.
 - `scripts/release-checklist.sh` passes. `scripts/release-checklist.sh --release` fails **only** on the five
-  `RELEASE_CLAIM` markers in `README.md` (step 1 removes them).
+  `RELEASE_CLAIM` markers in `README.md` (step 1 removes them): any other hit (a `[CONFIRM ...]` marker, a site
+  `confirm("AFTER ...")` call, a placeholder, a local path) is a defect to fix first.
+- With the flag on, the site export passes `scripts/check-site.sh <export-dir> --static --release --only build --only links --only size --only claims`
+  (what `.github/workflows/pages.yml` runs). `--release` must fail on every one of: a `[CONFIRM ...]` marker left in the
+  export, a gated claim (open source, self-hosted, a GitHub link, `--live`, an adapter) present while the flag is off, and a
+  missing release-only fact. Run it on the flag-on export before step 1; a pass here is what lets the Pages deploy succeed.
 - The history audit below was run on the exact commit to be published and found nothing (it must be repeated: history grows).
 - The owner has read the "Open decisions" below and answered them.
 

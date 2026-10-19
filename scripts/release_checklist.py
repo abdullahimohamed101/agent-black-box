@@ -147,7 +147,9 @@ PLACEHOLDER_RE = re.compile(
     r"\blorem ipsum\b|\bTODO\b|\bFIXME\b|\[NEEDS INPUT|\bTBD\b|placeholder text|\bchangeme\b|\byour[-_ ]name[-_ ]here\b|\bXXX\b",
     re.I,
 )
-GATED_RE = re.compile(r"\[CONFIRM\b|\bCONFIRM AFTER\b|\[RELEASE_CLAIM\b|\bRELEASE_CLAIM:")
+# `confirm("AFTER ...")` is the site's source form of the [CONFIRM ...] marker (site/src/lib/confirm.ts): without it
+# the checklist would pass while the Pages export, which renders the marker, fails.
+GATED_RE = re.compile(r"\[CONFIRM\b|\bCONFIRM AFTER\b|\bconfirm\(\s*[\"']AFTER\b|\[RELEASE_CLAIM\b|\bRELEASE_CLAIM:")
 
 
 def check_placeholders(tree: Tree) -> list[Hit]:

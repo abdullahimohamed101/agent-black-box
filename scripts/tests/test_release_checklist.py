@@ -90,6 +90,16 @@ class EveryCheck(unittest.TestCase):
         self.assertIn("FAIL placeholders docs/quickstart.md:1", out)
         self.assertIn("FAIL placeholders README.md:1", out)
 
+    def test_confirm_helper_calls_in_site_source_are_gated(self) -> None:
+        # The site writes markers as confirm("AFTER ..."); the rendered [CONFIRM ...] only exists in the export.
+        files = planted(**{"site/src/components/X.tsx": '<p {...confirm("AFTER STEP 3: fact")}>x</p>\n'})
+        code, out = run(files, "placeholders")
+        self.assertEqual(code, 0, out)
+        self.assertIn("warn placeholders site/src/components/X.tsx:1", out)
+        code, out = run(files, "placeholders", release=True)
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL placeholders site/src/components/X.tsx:1", out)
+
     def test_debug_logging(self) -> None:
         cases = {
             "apps/api/src/abb_api/a.py": "def f(x):\n    print(x)\n",

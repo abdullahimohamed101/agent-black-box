@@ -1,5 +1,4 @@
 import { PREREQUISITES, QUICKSTART_LINES, SDK_SNIPPET } from "../content/commands";
-import { confirm } from "../lib/confirm";
 import { CommandBlock } from "./CommandBlock";
 
 /** Section 3 (#quickstart): the primary action. Five commands from docs/quickstart.md, then the SDK snippet. */
@@ -9,12 +8,12 @@ export function Quickstart() {
       <div className="wrap quick">
         <div>
           <p className="eyebrow">Quickstart</p>
-          <h2 className="h2" id="quickstart-h" {...confirm("AFTER STEP 14: these commands are the ones in docs/quickstart.md")}>
+          <h2 className="h2" id="quickstart-h">
             Run it on your machine
           </h2>
-          <p className="lede lede-sm" {...confirm("AFTER AC8: demo determinism, no API key and no network beyond your own API are verified by scripts/demo-e2e.sh")}>
-            <code className="mono">make demo</code> records scripted example agents into a project of their own: a coding agent (one run that passes, one that fails),
-            a small custom agent with a failed tool call and a retry, and a five-agent run. No API key. The same agents, calls, errors, retries and costs every time.
+          <p className="lede lede-sm">
+            <code className="mono">make demo</code> records twelve scripted runs from four example agents into a project of their own: a coding agent (runs that pass, fail and wait for an
+            approval), a support agent with failed tool calls and retries, an ops agent that trips the security findings, and a five-agent run. No API key. The same agents, calls, errors, retries and costs every time.
           </p>
           <p className="req mono">{PREREQUISITES}</p>
         </div>
