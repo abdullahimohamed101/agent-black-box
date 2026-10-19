@@ -109,9 +109,11 @@ const vtt = parseVtt(readFileSync(path.join(outDir, "demo.vtt"), "utf8"));
 const cueList = tl ? tl.cues : meta.cues; // film seconds in a composed film, recorder seconds otherwise
 const same = vtt.length === cueList.length && vtt.every((c, i) => c.text === plain(cueList[i].text) && Math.abs(c.start - cueList[i].start) < 0.002 && Math.abs(c.end - cueList[i].end) < 0.002);
 check(`demo.vtt matches the ${cueList.length} captions one for one`, same);
-const gaps = cueList.slice(1).map((c, i) => c.start - cueList[i].end);
+// the claims end card's two lines are on screen together for the card's hold (brief 2.2): they are not caption cadence
+const cadence = cueList.filter((c) => c.beat !== "end");
+const gaps = cadence.slice(1).map((c, i) => c.start - cadence[i].end);
 check("captions are at least 250 ms apart", gaps.every((g) => g >= 0.24), `smallest gap ${Math.min(...gaps, 99).toFixed(2)} s`);
-const reading = cueList.map((c) => ({ c, need: Math.min(6, Math.max(2, plain(c.text).length / 15 + 0.6)) })).filter((x) => x.c.end - x.c.start < x.need - 0.05);
+const reading = cadence.map((c) => ({ c, need: Math.min(6, Math.max(2, plain(c.text).length / 15 + 0.6)) })).filter((x) => x.c.end - x.c.start < x.need - 0.05);
 check("every caption stays on screen at least max(2 s, characters / 15 + 0.6 s)", reading.length === 0, reading.map((x) => plain(x.c.text)).join("; "));
 
 // The caption box: the recorder measured its rectangle in the page at the middle of each cue; here the pixels inside that rectangle
