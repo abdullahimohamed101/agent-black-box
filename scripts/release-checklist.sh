@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # Release checklist (Phase 20, D13). One subcommand per check; later steps add more.
-#   licenses   LICENSE is the canonical Apache-2.0 text and every package declares Apache-2.0
+#   licenses       LICENSE is the canonical Apache-2.0 text and every package declares Apache-2.0
+#   placeholders   lorem / TODO / FIXME / [NEEDS INPUT] and gated [CONFIRM ...] markers in shipped paths
+#   debug          print( / console.log / debugger / payload-shaped logger.debug in non-test source
+#   secrets        key-shaped strings and tracked .env / key files (never prints the match)
+#   charts         no Math.random, no literal series, chart components take data props
+#   routes         every internal path in apps/web/src resolves to a page file
+#   network        no third-party host in shipped source (runtime half: scripts/check-site.sh network)
+#   shots          release screenshots within the size and count budget
+#   claims         README/site contain none of the claims the plan forbids
+#   links          relative links and anchors in README, docs, site resolve
+#   all            every check above (the default)
+# `--release` makes the gated markers ([CONFIRM ...], CONFIRM AFTER ..., [RELEASE_CLAIM ...]) fail. Rules and
+# allow-list: scripts/release_checklist.py, scripts/release-checklist-allow.txt.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -49,7 +61,15 @@ sys.exit(1 if failed else 0)
 PY
 }
 
+run_static() { uv run --no-project --python 3.12 python -I "$root/scripts/release_checklist.py" "$@"; }
+
 case "${1:-}" in
   licenses) check_licenses ;;
-  *) echo "usage: $0 licenses" >&2; exit 2 ;;
+  "" | all | --release | --root)
+    rc=0
+    check_licenses || rc=1
+    run_static "$@" || rc=1
+    exit $rc ;;
+  placeholders | debug | secrets | charts | routes | network | shots | claims | links) run_static "$@" ;;
+  *) echo "usage: $0 [licenses|placeholders|debug|secrets|charts|routes|network|shots|claims|links|all] [--release]" >&2; exit 2 ;;
 esac

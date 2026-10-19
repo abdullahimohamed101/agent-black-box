@@ -11,6 +11,7 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 
 step() { printf '\n==> %s\n' "$*"; }
 
+step "release checklist (static): licenses, placeholders, debug logging, secrets, charts, routes, network, shots, claims, links"; scripts/release-checklist.sh
 step "schema: ruff / mypy / pytest"; (cd packages/event-schema && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q)
 step "sdk-python: ruff / mypy / pytest (coverage gate)"; (cd packages/sdk-python && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q --cov --cov-report=term:skip-covered)
 step "examples/coding-agent: ruff / pytest (scripted demo run)"; (cd examples/coding-agent && uv run --project ../../packages/sdk-python ruff check . && uv run --project ../../packages/sdk-python ruff format --check . && cd ../.. && uv run --project packages/sdk-python pytest examples/coding-agent/tests -q -p no:cacheprovider)
