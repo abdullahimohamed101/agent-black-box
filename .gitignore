@@ -26,3 +26,5 @@ next-env.d.ts
 .coverage
 backups/
 site-dist/
+site/out/
+site/out-root/
