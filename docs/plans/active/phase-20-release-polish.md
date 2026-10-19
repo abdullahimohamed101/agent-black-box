@@ -168,6 +168,7 @@ Unit and integration tests for the findings change (pure health function, enqueu
 
 **Gated final steps (not part of the build steps; each waits for the user):**
 - **G1 Demo recording.** Needs the user's go-ahead, and for MP4 the approval of `brew install ffmpeg`. Update `docs/design/video-storyboard.md` to the post-design-pass-2 UI and the demo data, write `scripts/record-demo.mjs` (Playwright WebM from the demo-seeded stack, regenerable), check every caption against the Claims table (scene 8's "Open source. Self-hosted." only after AC1 and AC12 and G2's repository is public), WebM first; MP4 only with ffmpeg approval.
+  Progress 2026-10-19 (phase-20-video): recorder v2, encoder and QA script are built and a first QA'd take exists (main cut 85.6 s, teaser 19 s); evidence and what is still criticisable are in `docs/design/launch/video-qa-report.md`; the `RELEASE_CLAIMS` gate keeps the open-source line off until G2. ffmpeg is installed; the MP4 is VERIFIED, the social cut and `make demo` on the owner's own stack are not.
 - **G2 Publication (user actions).** Push the branch, open the PR, merge, enable GitHub Pages, set the repository public, add a custom domain if any, tag a release, publish packages. Each needs explicit approval; none is done by the builder.
 
 ## Needs input from the user (`[NEEDS INPUT]`)

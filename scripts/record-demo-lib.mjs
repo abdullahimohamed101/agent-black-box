@@ -100,7 +100,7 @@ export function wordCount(text) {
  * rule when `d` is omitted; a cue never starts before the previous one ended plus the gap. Returns the cues with absolute
  * `start`/`end` (seconds from the beat start) and the beat's length: the table's `len`, or the end of the last cue plus `tail`.
  */
-export function layoutBeat(beat, tail = 0.35) {
+export function layoutBeat(beat, tail = 0.3) {
   let free = 0;
   const cues = [];
   for (const cap of beat.caps ?? []) {

@@ -114,7 +114,7 @@ const MAIN = [
     caps: [cap(1, 0.3)], acts: [],
   },
   { // 2. A failed run: the cursor travels to it and opens it.
-    id: 2, len: 4.0, tx: "The cursor opens the failed run {failedRun}.",
+    id: 2, len: 4.6, tx: "The cursor opens the failed run {failedRun}.",
     caps: [cap(3, 0.2)],
     acts: [
       { at: 0.0, do: "scroll", to: FAILED_LINK },
@@ -127,12 +127,12 @@ const MAIN = [
     ],
   },
   { // 3. The sentence, zoomed to fill the frame once.
-    id: 3, len: 5.4, tx: "The run page says in one sentence where it broke: {headline}",
+    id: 3, len: 4.8, tx: "The run page says in one sentence where it broke: {headline}",
     caps: [cap(4, 1.0)],
     acts: [
       { at: 0.0, do: "scrape", key: "headline", of: { testid: "headline" } },
       { at: 0.7, do: "zoom", on: { testid: "headline" }, level: 1.6 },
-      { at: 4.4, do: "zoomOut" },
+      { at: 3.95, do: "zoomOut" },
     ],
   },
   { // 4. What it cost after the break.
@@ -140,7 +140,7 @@ const MAIN = [
     caps: [cap(6, 0.3)],
     acts: [
       { at: 0.0, do: "scrape", key: "detail", of: { testid: "headline-detail" } },
-      { at: 0.2, do: "spot", on: { testid: "headline-detail" } },
+      { at: 0.2, do: "spot", on: { testid: "headline-detail" }, pad: 3 }, // tight: the headline's descenders must not light up
       { at: 3.45, do: "spotOff" },
     ],
   },
@@ -154,16 +154,16 @@ const MAIN = [
     ],
   },
   { // 6. e opens the failed event in the inspector.
-    id: 6, len: 7.2, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}",
-    caps: [cap(8, 0.2), cap(9, 3.5)],
+    id: 6, len: 7.0, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}",
+    caps: [cap(8, 0.1), cap(9, 3.35)],
     acts: [
       { at: 0.0, do: "focus", css: ".timeline" },
-      { at: 0.3, do: "press", key: "e", chip: "e" },
+      { at: 0.2, do: "press", key: "e", chip: "e" },
       { do: "waitFor", for: { role: "dialog" } },
       { at: 1.2, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
       { at: 1.3, do: "zoom", on: WHAT_WENT_WRONG, level: 1.4 },
-      { at: 6.3, do: "zoomOut" },
-      { at: 6.9, do: "press", key: "Escape" },
+      { at: 6.2, do: "zoomOut" },
+      { at: 6.8, do: "press", key: "Escape" },
     ],
   },
   { // 7. Typed events: a model call with tokens and cost, then a retry.
@@ -192,8 +192,8 @@ const MAIN = [
     ],
   },
   { // 9. Five agents in one waterfall.
-    id: 9, len: 9.8, tx: "The multi-agent run {multiRun}: the Waterfall in lanes shows five agents, with the critical path as the thick edge.",
-    caps: [cap(16, 3.3), cap(17, 6.5)],
+    id: 9, len: 9.6, tx: "The multi-agent run {multiRun}: the Waterfall in lanes shows five agents, with the critical path as the thick edge.",
+    caps: [cap(16, 3.2), cap(17, 6.35)],
     acts: [
       { at: 0.1, do: "travel", to: NAV("Runs") },
       { do: "click" },
@@ -204,46 +204,46 @@ const MAIN = [
       { do: "travel", to: { role: "tab", name: "Waterfall", exact: true } },
       { do: "click" },
       { do: "waitFor", for: { testid: "waterfall" } },
-      { at: 4.6, do: "travel", to: { role: "button", name: "Lanes", exact: true } },
+      { at: 4.3, do: "travel", to: { role: "button", name: "Lanes", exact: true } },
       { do: "click" },
-      { at: 6.6, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.15, fy: 0.5 },
-      { at: 6.8, do: "spot", on: { css: ".wf-bar[data-critical]", widest: true, row: true } },
-      { at: 7.6, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.85, fy: 0.5 },
-      { at: 9.5, do: "spotOff" },
+      { at: 6.4, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.15, fy: 0.5 },
+      { at: 6.6, do: "spot", on: { css: ".wf-bar[data-critical]", widest: true, row: true } },
+      { at: 7.4, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.85, fy: 0.5 },
+      { at: 9.2, do: "spotOff" },
     ],
   },
   { // 10. A person decides. Never clicks Approve or Deny.
-    id: 10, len: 8.0, tx: "Review: one request is Waiting. Its panel shows the capability github.push, the resource, the arguments and Approve and Deny buttons, which are never clicked.",
-    caps: [cap(22, 1.7), cap(23, 4.8)],
+    id: 10, len: 7.4, tx: "Review: one request is Waiting. Its panel shows the capability github.push, the resource, the arguments and Approve and Deny buttons, which are never clicked.",
+    caps: [cap(22, 1.1), cap(23, 4.2)],
     acts: [
       { at: 0.1, do: "travel", to: { role: "link", name: "re:^Review" } },
       { do: "click" },
       { do: "waitFor", for: { testid: "approval-row" } },
-      { do: "travel", to: { role: "link", name: "$approval" } },
+      { do: "travel", to: { role: "link", name: "$approval" }, fx: 0.95, fy: 0.3 }, // the arrow beside the link, not over the line under it
       { do: "dwell", ms: 300 },
-      { at: 3.1, do: "click" },
+      { at: 3.95, do: "click" },
       { do: "waitFor", for: { role: "button", name: "Approve", exact: true } },
-      { at: 3.5, do: "park", name: "review" },
-      { at: 4.0, do: "spot", on: { css: "dl", has: "Capability" }, pad: 10 },
-      { at: 7.4, do: "spotOff" },
+      { do: "park", name: "review" },
+      { at: 4.4, do: "spot", on: { css: "dl", has: "Capability" }, pad: 10 },
+      { at: 6.9, do: "spotOff" },
     ],
   },
   { // 11. What the week cost.
-    id: 11, len: 8.0, tx: "Analytics, Cost: {costLine} Below it, where the money was wasted: failed runs, retries and spend after errors.",
-    caps: [cap(20, 1.4), cap(21, 4.3)],
+    id: 11, len: 7.6, tx: "Analytics, Cost: {costLine} Below it, where the money was wasted: failed runs, retries and spend after errors.",
+    caps: [cap(20, 1.2), cap(21, 3.95)],
     acts: [
       { at: 0.1, do: "travel", to: NAV("Analytics") },
       { do: "click" },
       { do: "waitFor", for: { testid: "report-headline" } },
       { do: "scrape", key: "costLine", of: { testid: "report-headline" } },
       { do: "park", name: "analytics" },
-      { at: 4.2, do: "spot", on: { heading: "Where the money was wasted" }, pad: 10 },
-      { at: 7.4, do: "spotOff" },
+      { at: 4.1, do: "spot", on: { heading: "Where the money was wasted" }, pad: 10 },
+      { at: 7.2, do: "spotOff" },
     ],
   },
   { // 12. Security findings, each with its rule.
-    id: 12, len: 8.4, tx: "Review, Security findings: a destructive command, a risky git operation and a secret file read, each with a Rule line.",
-    caps: [cap(14, 1.9), cap(15, 5.8)],
+    id: 12, len: 8.2, tx: "Review, Security findings: a destructive command, a risky git operation and a secret file read, each with a Rule line.",
+    caps: [cap(14, 1.7), cap(15, 5.6)],
     acts: [
       { at: 0.1, do: "travel", to: { role: "link", name: "re:^Review" } },
       { do: "click" },
@@ -251,14 +251,14 @@ const MAIN = [
       { do: "travel", to: { role: "tab", name: "Security findings", exact: true } },
       { do: "click" },
       { do: "waitFor", for: { testid: "security-row" } },
-      { at: 2.2, do: "travel", to: { testid: "security-row" }, fx: 0.55, fy: 0.5 },
-      { at: 2.4, do: "spot", on: { testid: "security-row" }, pad: 6 },
-      { at: 8.0, do: "spotOff" },
+      { at: 2.0, do: "travel", to: { testid: "security-row" }, fx: 0.55, fy: 0.5 },
+      { at: 2.2, do: "spot", on: { testid: "security-row" }, pad: 6 },
+      { at: 7.9, do: "spotOff" },
     ],
   },
   { // 13. Light follows the system.
-    id: 13, len: 6.4, tx: "The failed run again, now in the light scheme: the app follows the system setting. The caption box stays dark.",
-    caps: [cap(27, 3.1)],
+    id: 13, len: 5.9, tx: "The failed run again, now in the light scheme: the app follows the system setting. The caption box stays dark.",
+    caps: [cap(27, 2.6)],
     acts: [
       { at: 0.1, do: "travel", to: NAV("Runs") },
       { do: "click" },
@@ -267,15 +267,15 @@ const MAIN = [
       { do: "click" },
       { do: "waitFor", for: TIMELINE_TAB },
       { do: "park", name: "run" },
-      { at: 2.9, do: "scheme", value: "light" },
+      { at: 2.4, do: "scheme", value: "light" },
     ],
   },
   { // 14. The closing card. Pre-G2 text unless RELEASE_CLAIMS=1.
-    id: 14, len: 4.6,
+    id: 14, len: 4.4,
     tx: releaseClaims
       ? "The closing card: the wordmark on the canvas, the text 'Open source. Self-hosted. Apache-2.0.' and the repository address."
       : "The closing card: the wordmark on the canvas and the line 'Agent BlackBox: a flight recorder for AI agents.'",
-    caps: releaseClaims ? [cap(26, 0.9), cap(28, 4.15, { d: 2.9 })] : [{ at: 0.7, bank: null, text: CLOSING }],
+    caps: releaseClaims ? [cap(26, 0.6), cap(28, 3.95, { d: 3.7 })] : [{ at: 0.5, bank: null, text: CLOSING }],
     acts: [
       { at: 0.0, do: "cursor", show: false },
       { at: 0.0, do: "fade", to: 1, ms: 300 },
@@ -286,7 +286,7 @@ const MAIN = [
 ];
 
 const TEASER = [
-  { id: "T1", len: 2.8, tx: "The Runs list; the cursor opens the failed run {failedRun}.", caps: [cap(3, 0.4)],
+  { id: "T1", len: 3.9, tx: "The Runs list; the cursor opens the failed run {failedRun}.", caps: [cap(3, 0.4)],
     acts: [
       { at: 0.05, do: "fade", to: 0, ms: 250 },
       { at: 0.5, do: "travel", to: FAILED_LINK },
@@ -296,11 +296,11 @@ const TEASER = [
       { do: "wait", ms: 400 },
       { do: "park", name: "run" },
     ] },
-  { id: "T2", len: 5.4, tx: "One sentence says where it broke: {headline}", caps: [cap(4, 1.0)],
+  { id: "T2", len: 4.6, tx: "One sentence says where it broke: {headline}", caps: [cap(4, 1.0)],
     acts: [
       { at: 0.0, do: "scrape", key: "headline", of: { testid: "headline" } },
       { at: 0.6, do: "zoom", on: { testid: "headline" }, level: 1.6 },
-      { at: 4.3, do: "zoomOut" },
+      { at: 3.9, do: "zoomOut" },
     ] },
   { id: "T3", len: 3.4, tx: "The red line marks the first error.", caps: [cap(7, 0.3)],
     acts: [
@@ -439,6 +439,7 @@ function overlay(cfg) {
     if (nonced?.nonce) style.nonce = nonced.nonce;
     style.textContent = `
       html { overflow: hidden !important; background: #101419; }
+      .timeline:focus-visible { outline: none !important; } /* the listbox ring is a keyboard affordance, not part of the story */
       body { transform-origin: 0 0; transition: transform ${cfg.zoomIn}ms ${cfg.camera}; }
       #abb-cur { position: fixed; left: 0; top: 0; width: 32px; height: 32px; pointer-events: none; z-index: 2147483640;
         transition: opacity 200ms linear; will-change: transform; }
@@ -533,6 +534,10 @@ function overlay(cfg) {
       cursor(show) { store.set("__abbCurHidden", show ? "0" : "1"); cur.style.opacity = show ? "1" : "0"; },
       fade(to, ms) { store.set("__abbFade", to ? "1" : "0"); fade.style.transition = `opacity ${ms}ms linear`; fade.style.opacity = String(to); },
       card(show) { store.set("__abbCard", show ? "1" : "0"); card.classList.toggle("on", show); },
+      captionInfo() {
+        const r = capEl.getBoundingClientRect();
+        return { opacity: Number(getComputedStyle(capEl).opacity), on: capEl.classList.contains("on"), rect: { x: r.x, y: r.y, w: r.width, h: r.height } };
+      },
       overlayState() { return { cur: !!document.getElementById("abb-cur"), cap: !!document.getElementById("abb-cap"), htmlChildren: document.documentElement.childElementCount }; },
     };
   };
@@ -741,9 +746,11 @@ async function runCue(beatStart, cue, beatId) {
   const ttl = Math.round((cue.end - cue.start) * 1000) + 500; // survives a full page load; the explicit off below ends it
   await evalOverlay(([h, t]) => window.__abb?.caption(h, t), [captionHtml(cue.text), ttl]);
   const start = clock();
+  await sleepUntil(beatStart + (cue.start + cue.end) / 2);
+  const mid = await evalOverlay(() => window.__abb?.captionInfo()); // measured in the page, read back by video-qa.mjs
   await sleepUntil(beatStart + cue.end);
   await evalOverlay(() => window.__abb?.captionOff());
-  log.cues.push({ beat: beatId, bank: cue.bank ?? null, text: cue.text, start, end: clock() });
+  log.cues.push({ beat: beatId, bank: cue.bank ?? null, text: cue.text, start, end: clock(), mid });
 }
 
 const FORBIDDEN_TEXT = [/sk-[A-Za-z0-9]{8,}/, /AKIA[A-Z0-9]{8,}/, /@gmail/i, /anthropic/i, /openai/i, /claude/i, /\bgpt/i, /--live/, /BEGIN [A-Z ]*PRIVATE KEY/];
@@ -799,6 +806,52 @@ async function startScreencast() {
   };
 }
 
+/**
+ * Off camera: visit every page the cut opens once, by clicking through the app (no reload), so its code and data are cached and the
+ * recording shows pages, not "Loading run..." states. This is what a person who has used the app for a minute would see too.
+ */
+async function warmUp() {
+  const click = (spec) => locate(spec).click({ timeout: 15000 });
+  const step = async (name, fn) => {
+    try {
+      await fn();
+    } catch (e) {
+      log.warnings.push(`warm-up ${name} failed: ${String(e.message).split("\n")[0]}`);
+    }
+  };
+  await step("failed run", async () => {
+    await click(FAILED_LINK);
+    await locate(TIMELINE_TAB).waitFor({ timeout: 15000 });
+    await locate({ testid: "headline" }).waitFor({ timeout: 15000 });
+    await click({ role: "tab", name: "Findings", exact: true });
+    await locate({ role: "button", name: "Show evidence" }).waitFor({ timeout: 15000 });
+    await click(NAV("Runs"));
+    await locate(RUNS_HEADING).waitFor({ timeout: 15000 });
+  });
+  await step("multi-agent run", async () => {
+    await click({ role: "link", name: "$multiRun" });
+    await click({ role: "tab", name: "Waterfall", exact: true });
+    await locate({ testid: "waterfall" }).waitFor({ timeout: 15000 });
+    await click(NAV("Runs"));
+    await locate(RUNS_HEADING).waitFor({ timeout: 15000 });
+  });
+  await step("review", async () => {
+    await click({ role: "link", name: "re:^Review" });
+    await locate({ testid: "approval-row" }).waitFor({ timeout: 15000 });
+    await click({ role: "tab", name: "Security findings", exact: true });
+    await locate({ testid: "security-row" }).waitFor({ timeout: 15000 });
+  });
+  await step("analytics", async () => {
+    await click(NAV("Analytics"));
+    await locate({ testid: "report-headline" }).waitFor({ timeout: 15000 });
+  });
+  await step("back to runs", async () => {
+    await click(NAV("Runs"));
+    await locate(RUNS_HEADING).waitFor({ timeout: 15000 });
+    await locate({ testid: "week-sentence" }).waitFor({ timeout: 15000 }).catch(() => {});
+  });
+}
+
 async function main() {
   mkdirSync(framesDir, { recursive: true });
   const mark = readFileSync(path.join(root, "brand/pulse-mark.svg"), "utf8").replace(/ width="24" height="24"/, "");
@@ -827,6 +880,7 @@ async function main() {
   await page.goto(new URL(`/w/${workspace}/projects/all/runs`, base).toString(), { waitUntil: "load", timeout: 30000 });
   await page.getByRole("heading", RUNS_HEADING).waitFor({ timeout: 20000 });
   await page.evaluate(() => document.fonts.ready);
+  await warmUp();
   await sleep(400);
   cur = { x: cfg.start.x, y: cfg.start.y };
   await page.mouse.move(cur.x, cur.y);
@@ -858,6 +912,7 @@ async function main() {
       throw e;
     }
     entry.end = clock();
+    entry.captionOnAtEnd = !!(await evalOverlay(() => window.__abb?.captionInfo().on));
     entry.maxFrameGapMs = Math.round(maxFrameGap(rec.frames, startMs + bs * 1000, startMs + entry.end * 1000));
     log.beats.push(entry);
     await scanText(planned.id);

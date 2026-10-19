@@ -30,8 +30,8 @@ cut="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("meta.json","u
 speed="${ENC_VP9_SPEED:-2}"
 fails=0
 q=(ffmpeg -hide_banner -loglevel error -y)
-VF="scale=1920:1080:flags=lanczos,fps=30,format=yuv420p"
-[[ "$cut" == social ]] && VF="scale=1080:1350:flags=lanczos,fps=30,format=yuv420p"
+VF="scale=1920:1080:flags=lanczos+accurate_rnd:in_range=pc:out_range=tv,fps=30,format=yuv420p"
+[[ "$cut" == social ]] && VF="scale=1080:1350:flags=lanczos+accurate_rnd:in_range=pc:out_range=tv,fps=30,format=yuv420p"
 size() { stat -f %z "$1" 2>/dev/null || stat -c %s "$1"; }
 
 echo "==> master (${cut})"
@@ -40,7 +40,8 @@ echo "==> master (${cut})"
 report() {  # report <file> <budget MB>: one ffprobe line, size against budget
   local f="$1" budget="$2" mb line audio
   mb="$(awk -v b="$(size "$f")" 'BEGIN { printf "%.2f", b / 1048576 }')"
-  line="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,r_frame_rate,pix_fmt,duration -of csv=p=0 "$f" 2>/dev/null | tr ',' ' ')"
+  line="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,r_frame_rate,pix_fmt -of csv=p=0 "$f" 2>/dev/null | tr ',' ' ')"
+  line="$line $(ffprobe -v error -show_entries format=duration -of csv=p=0 "$f" 2>/dev/null | awk '{ printf "%.1fs", $1 }')"
   audio="$(ffprobe -v error -select_streams a -show_entries stream=codec_name -of csv=p=0 "$f" 2>/dev/null | wc -l | tr -d ' ')"
   if awk -v m="$mb" -v b="$budget" 'BEGIN { exit !(m + 0 > b + 0) }'; then
     echo "  OVER BUDGET  $f  ${mb} MB > ${budget} MB  [$line audio-streams=$audio]"; fails=$((fails + 1))
@@ -79,8 +80,8 @@ poster_check() {
 
 if [[ "$cut" == teaser ]]; then
   echo "==> teaser deliverables"
-  "${q[@]}" -i master-1080p30.mp4 -c:v libx264 -preset slow -crf 21 -profile:v high -level 4.1 -g 60 -pix_fmt yuv420p -movflags +faststart -an teaser-1080p.mp4
-  vp9 master-1080p30.mp4 teaser-1080p.webm 900k 33 180
+  "${q[@]}" -i master-1080p30.mp4 -c:v libx264 -preset slow -crf 23 -profile:v high -level 4.1 -g 60 -pix_fmt yuv420p -movflags +faststart -an teaser-1080p.mp4
+  vp9 master-1080p30.mp4 teaser-1080p.webm 700k 36 180
   "${q[@]}" -i teaser-1080p.mp4 -vf "fps=12,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" teaser-960.gif
   "${q[@]}" -ss "$poster_at" -i master-1080p30.mp4 -frames:v 1 -q:v 3 poster.jpg
   report teaser-1080p.mp4 2.5; faststart teaser-1080p.mp4
