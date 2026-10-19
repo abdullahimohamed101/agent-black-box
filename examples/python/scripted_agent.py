@@ -207,11 +207,15 @@ def run_agent(
                 span.set_attribute("tool.ticket_id", ticket["id"])
                 try:
                     found = lookup_ticket(attempt, ticket, variant)
-                except ConnectionTimeout:
-                    run.event(
-                        "timeout.occurred",
-                        {"timeout.operation": "lookup-ticket", "timeout.limit_ms": 5000},
-                    )
+                except (ConnectionTimeout, PermissionDenied) as exc:
+                    span.set_attribute(
+                        "tool.error_type", type(exc).__name__
+                    )  # the run page's headline names it
+                    if isinstance(exc, ConnectionTimeout):
+                        run.event(
+                            "timeout.occurred",
+                            {"timeout.operation": "lookup-ticket", "timeout.limit_ms": 5000},
+                        )
                     raise
                 finally:
                     time.sleep((0.4 if variant == "clean" else 1.8) * pace)
