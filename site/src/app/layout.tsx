@@ -8,6 +8,7 @@ import { NAME, SUB } from "../content/copy";
 import "../styles/tokens.css";
 import "../styles/site.css";
 import "../styles/hero.css";
+import "../styles/trace.css";
 
 // IBM Plex (SIL OFL 1.1, public/fonts/OFL.txt), served from our own origin: this page makes no third-party request.
 // Three files, the only ones the type scale uses. The variable names are the app's, so the token-generated --font-sans and
