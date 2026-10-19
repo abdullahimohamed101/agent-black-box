@@ -7,6 +7,7 @@
 placeholders | site/src/lib/confirm.ts | CONFIRM | defines the confirm() helper that emits data-confirm="[CONFIRM ...]"; not a pending marker
 placeholders | site/src/config.ts | CONFIRM | a comment documenting that check-site.sh --release fails while a marker remains
 placeholders | site/README.md | CONFIRM | documents the marker convention for contributors
+placeholders | site/src/components/ScreenGallery.tsx | CONFIRM AFTER STEP 12 | guard that stamps a [CONFIRM] marker only on a panel the manifest flags standIn; every panel is standIn=false (real release screenshots), so it renders nothing
 
 # --- debug: command-line programs whose stdout is the interface -----------------------------------------------
 debug | apps/api/src/abb_api/cli.py | * | the `abb` admin CLI: printing results to stdout is its job; no payload bodies are printed

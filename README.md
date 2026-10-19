@@ -10,9 +10,8 @@ where the run broke.
 <!-- RELEASE_CLAIM: tagline. At G2 (repository public, LICENSE verified) the second sentence may be reworded to the positioning brief's one-sentence form with the hosting-model word ("self" + "hosted"), and a licence badge may be added. Source: positioning brief section 8. -->
 
 <p align="center">
-  <img src="site/public/assets/shots/where-it-broke-light.png" alt="A failed run: the headline says it failed at step 7 after 6.2 s in run_migration with ConnectionTimeout, a red line marks the first error on the timeline, and the inspector shows the failed tool call" width="900">
+  <img src="docs/screenshots/release/failed-run-story-light.png" alt="A failed run: the headline says it failed at step 6 in lookup-ticket with ConnectionTimeout, a red line marks the first error on the timeline, and the inspector shows the failed tool call" width="900">
 </p>
-<!-- CONFIRM AFTER STEP 12: screenshots here are the landing-page set; switch to docs/screenshots/release/ when the screenshots builder lands it. The UI wordmark in them still reads "Agent Black Box" until the rename step. -->
 
 ## What it is, and what it is not
 
@@ -25,7 +24,7 @@ It is:
 
 It is not:
 
-- A hosted service. There is no cloud version and none is planned for this release.
+- A cloud product. There is no cloud version and none is planned for this release.
 - A guard that stops every bad action. Policies and approvals apply to agents that ask through the SDK guard; code that
   bypasses the guard is recorded, not stopped.
 - Proven at scale. No load test exists, so this page makes no throughput, overhead or capacity claim.
@@ -45,10 +44,9 @@ Each item below is a screen in the web app, not a mock-up.
 | Can I make it wait for a person? | Review, Approvals: an approval covers one exact action, once. Applies to agents that ask through the SDK guard |
 
 <p align="center">
-  <img src="site/public/assets/shots/with-evidence-light.png" alt="The Findings tab: findings with their rule and a Show evidence link" width="440">
-  <img src="site/public/assets/shots/what-it-cost-light.png" alt="Analytics, Cost: spend per run and where the money was wasted" width="440">
+  <img src="docs/screenshots/release/findings-light.png" alt="The Findings tab: findings with their rule and a Show evidence link" width="440">
+  <img src="docs/screenshots/release/cost-analytics-light.png" alt="Analytics, Cost: one sentence of spend, where the money was wasted, and daily spend" width="440">
 </p>
-<!-- CONFIRM AFTER STEP 12: same stand-in screenshots as above. -->
 
 ## Quickstart
 
@@ -149,20 +147,6 @@ are no upgrade guarantees yet. Four limits to know before you start:
 2. Real-model mode exists in two examples and has not been run by the project.
 3. Policy enforcement is cooperative: it applies to agents that ask through the SDK guard.
 4. No load test exists, so there are no capacity or overhead numbers.
-
-<!-- STATUS_TABLE: mirrors docs/IMPLEMENTATION_PLAN.md as of 2026-10-19. D14 and AC13 say no phase table in the README; this one is the owner's explicit request. Re-check against the plan at release and delete it if the plan has moved. -->
-
-| Area | Status |
-| --- | --- |
-| Event contract, ingestion, query API, Python SDK, web app, live streaming | Merged (Phases 0-6) |
-| Cost and analytics, framework adapters, multi-agent waterfall, reliability findings | Merged (Phases 7-10) |
-| Evaluations and comparison, visual replay, security observability, policies and approvals | Merged (Phases 11-14) |
-| Sign-in and roles, search, alerting | Merged (Phases 15-17) |
-| Production hardening: abuse limits, data lifecycle, operability | Merged (Phase 19, in three parts) |
-| UI shell, run-page redesign and design pass 2 | Merged |
-| Demo, documentation, landing page and release quality | In progress (Phase 20) |
-| Performance and scale hardening | Deferred until a measured trigger (Phase 18) |
-| Hosting guide (reverse proxy, TLS, domain, real OIDC) | Planned, not started |
 
 The roadmap is [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md); open problems are in
 [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).

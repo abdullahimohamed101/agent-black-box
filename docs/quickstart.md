@@ -103,14 +103,19 @@ The coding-agent scenario, its variants and what it captures and redacts are des
 
 ## Everything in one command
 
-`make demo` is being built and is not in the repository yet. It will run the example agents (scripted, no key, the same
-traces every time) against the stack from step 2 and print links to the runs. Until it lands, steps 4 to 6 and the section
-above are the demo.
+`make demo` runs the scripted example agents (no model key, the same runs every time) against the stack from step 2. It
+records twelve runs into a project called `abb-demo` in the `local` workspace: good and failed coding runs, a support
+agent that recovers, struggles and fails, an ops agent that triggers the security findings, a five-agent job, and a coding
+agent that waits for a person to approve a push. It prints a link to every run.
 
-[CONFIRM AFTER STEP 10] Remove this note and the marker when `make demo` exists.
 ```bash
 make demo
 ```
+
+Sign in as `owner@local.test` (development sign-in), open the `abb-demo` project, and start with the failed support run.
+The pending approval is on the Review page; it needs development sign-in sessions (`ABB_ALLOW_DEV_SESSIONS=1`, local
+development only), and without them the demo says so and skips only that run. `make demo-reset` shows what it would remove;
+`make demo-reset CONFIRM=1` removes the demo project's data and nothing else.
 
 ## Trace your own agent
 
