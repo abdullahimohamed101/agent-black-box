@@ -820,6 +820,36 @@ jobs:
           path: ${{ runner.temp }}/backup-restore-e2e-logs
           if-no-files-found: ignore
 
+  demo-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # `make demo` determinism (Phase 20, D9): scripts/demo.sh run twice against a throwaway database, API + worker; the normalised
+    # summaries of the two runs must be identical. No web build and no model key: the demo is scripted.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          cp .env.example .env
+      - name: Demo twice, normalised diff
+        run: scripts/demo-e2e.sh
+
   containers:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
