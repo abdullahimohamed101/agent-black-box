@@ -268,7 +268,7 @@ routes, fake charts, debug logging, or secrets).
 Added at the user's request ("go with your recommendation"). The design pass has a plan (Phase 21, below); hosting has none yet.
 
 - **UI design pass: Phase 21, "UI application shell and design pass". Status: Completed (merged 2026-10-12, PR #119; plan in `docs/plans/completed/`).** Plan: `docs/plans/completed/phase-21-ui-shell-and-design-pass.md`; direction, palette, type and
-  motion spec: `docs/design/ui-direction.md`; concept renders: `docs/design/concepts/`; demo video storyboard: `docs/design/video-storyboard.md`. The UI today is a centred
+  motion spec: `docs/design/ui-direction.md`; concept renders: `docs/design/concepts/`; demo video storyboard: `docs/design/video-storyboard.md`. **Historical (superseded by ADR-166, design pass 2, merged): the rail, the "Overview" label and the layout described below are the Phase 21 record; the application now has one 44 px top bar and no rail.** The UI at the time was a centred
   document under a top bar (`.shell main { max-width: 80rem }`): functional, accessible and unbranded. The pass turns it into an application: a persistent rail, a search
   slot, a sticky instrument-style run header, tabs, full-width content and a right inspector in place of the overlay drawer. Aesthetic: "flight-deck instrument panel".
   **Decided 2026-10-11 (the user accepted the recommendations):** (1) it lands after Phases 10, 16 and 11 have merged, because they all edit RunDetail.tsx, RunsTable.tsx and the
