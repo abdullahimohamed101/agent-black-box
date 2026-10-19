@@ -59,3 +59,15 @@ the schema or the SDK.
 - KI-188 can close once the rig passes; KI-220 is addressed by topology (config only); KI-222 by topology.
 - The shared Caddy is a single point of failure for both apps; `caddy validate` before reload and one file per site limit the risk.
 - Memory limits are ceilings measured in the rig, not reservations; the guide states the arithmetic next to ServerFlow's.
+
+## Amendment 1 (2026-10-19, step 11): the hosted PostgreSQL is pinned to 17
+
+**Decision.** `deploy/hosting/compose.production.yml` overrides the development file's PostgreSQL 16 with `postgres:17-alpine`, pinned by digest, for the `postgres` service.
+
+**Reason.** The API image ships a PostgreSQL 17.11 client. Its `pg_restore` sends `SET transaction_timeout`, which a version 16 server rejects, so a bundle taken inside the image cannot be restored into a 16 database. This was found by the first restore drill in `scripts/hosting-backup-e2e.sh` (Phase 19b's drill had used native tools that matched the server and ran only `create` and `verify` in the container). A hosted instance is a fresh install with no 16 data to carry over, so 17 costs nothing there, and the restore drill (D6, a hosted acceptance criterion) needs it.
+
+**What stays the same.** Development, CI and `docker-compose.yml` stay on PostgreSQL 16: no change under `apps/`, no migration, no schema or event-contract change. The rig evidence of steps 2-5 was collected on 16; the final `scripts/hosting-e2e.sh` ran on 17 (`HOSTING-VERIFY: 30 passed, 0 failed, 0 skipped`, memory peaks about 516 MiB in total).
+
+**Consequences.** (1) The hosted database and the development database differ by a major version. The code uses nothing version-specific that the tests on 16 and the rigs on 17 have shown to differ, but the suites run on 16 only, so a 17-only behaviour difference would first appear in a hosted instance (the rigs are the guard). (2) The development stack still cannot restore a bundle through the `backup` service (KI-310). (3) A major version is never changed in place: `scripts/hosting-upgrade.sh` refuses a release that changes the PostgreSQL image; a later major needs a dump and restore.
+
+**Reversal.** Remove the `image` override in the overlay to fall back to 16, at the price of the container restore (use a 16 client in the image, or restore with native tools matching the server). A hosted volume created on 17 cannot be opened by 16: going back means a dump from the 17 server restored into a new 16 volume. The cleaner resolution is KI-310 (a 16 client in the image or 17 in the development file), after which the override can go.
