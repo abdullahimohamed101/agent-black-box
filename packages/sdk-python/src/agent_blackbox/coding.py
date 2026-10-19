@@ -1614,7 +1614,8 @@ class CodingRecorder:
 
     def git_push(self, remote: str, branch: str, *, force: bool = False) -> CommandResult:
         """Push `branch`; `force=True` uses `--force-with-lease` (class R3, asked as such)."""
-        self.guard_push(remote, branch, force=force)  # validates the names; then the shell command itself is guarded
+        # Validates the names, then asks; the shell command itself is guarded again.
+        self.guard_push(remote, branch, force=force)
         result = self._git(*_push_argv(remote, branch, force))
         if result.ok:
             self.run.event(
