@@ -1,7 +1,7 @@
 # Landing site brief: Agent BlackBox v2 ("One Red Line", on the web)
 
 Status: design brief for the v2 redesign of `site/`, written 2026-10-18 for the Phase 20 builder (step 13 of
-`docs/plans/active/phase-20-release-polish.md`). Supersedes the layout of the baseline `site/` being built in the
+`docs/plans/completed/phase-20-release-polish.md`). Supersedes the layout of the baseline `site/` being built in the
 `phase-20-site` worktree; keeps its sources of truth (tokens, fonts, claims table, `scripts/check-site.sh`).
 
 Inputs read: the plan's decisions D2, D5, D11-D13, D15, D16 and its "Claims to verify" table; ADR-166 and

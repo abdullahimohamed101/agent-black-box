@@ -3,7 +3,7 @@
 Status: written 2026-10-18 for Phase 20 G1. Directs the second version of the recorder and storyboard that the
 `phase-20-video` worktree started (`docs/design/video-storyboard.md`, `scripts/record-demo.mjs`, `scripts/encode-demo.sh`).
 What we say comes from `docs/design/launch/positioning-brief.md` (caption bank, section 7); every caption below cites its bank
-number. What we may claim comes from the claims table in `docs/plans/active/phase-20-release-polish.md`. The product look is
+number. What we may claim comes from the claims table in `docs/plans/completed/phase-20-release-polish.md`. The product look is
 `docs/design/pass-2/01-direction.md` ("One Red Line"): red only for the fault line and the failure words, in the video as in the app.
 
 Constraints restated: name "Agent BlackBox"; silent, captions only, no music, no voice-over (D17); 1920x1080 main cut 60-90 s;
@@ -546,4 +546,4 @@ Not in scope for the builder: music, voice-over, any `--live` footage, a social 
 - Hero video markup and source order: https://web.dev/learn/performance/video-performance
 - Loop seams (xfade rules, cut-and-swap, why crossfades blur text): https://trac.ffmpeg.org/wiki/Xfade ; https://discourse.vidvox.net/t/crossfade-a-looped-clip-with-itself/549
 - Accessibility: WCAG 1.2.1 video-only text alternative: https://www.w3.org/WAI/WCAG22/Understanding/audio-only-and-video-only-prerecorded.html ; captions open vs closed: https://kb.daisy.org/publishing/docs/wcag/captions-prerecorded.html
-- Product: `docs/design/pass-2/01-direction.md`, `04-colour-type-tokens.md`, `05-microcopy-and-states.md`; `docs/screenshots/pass-2/`; `docs/design/launch/positioning-brief.md`; `docs/design/video-storyboard.md`; `scripts/record-demo.mjs` (phase-20-video worktree); `docs/plans/active/phase-20-release-polish.md` (claims table, D4, D9-D11, D15, D17).
+- Product: `docs/design/pass-2/01-direction.md`, `04-colour-type-tokens.md`, `05-microcopy-and-states.md`; `docs/screenshots/pass-2/`; `docs/design/launch/positioning-brief.md`; `docs/design/video-storyboard.md`; `scripts/record-demo.mjs` (phase-20-video worktree); `docs/plans/completed/phase-20-release-polish.md` (claims table, D4, D9-D11, D15, D17).

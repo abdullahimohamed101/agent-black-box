@@ -130,7 +130,7 @@ if (claims) {
     "",
     "This folder holds the claims variant of the launch film: the same footage as the parent folder, with an end card that says",
     `"${SPEC.claims.line}" and shows ${SPEC.claims.url} (captions 26 and 28 of the positioning brief). Those statements are gated on`,
-    "G2 (repository public) and on the acceptance criteria AC1 and AC12 being VERIFIED (docs/plans/active/phase-20-release-polish.md,",
+    "G2 (repository public) and on the acceptance criteria AC1 and AC12 being VERIFIED (docs/plans/completed/phase-20-release-polish.md,",
     "claims table). Until then publish only the files in the parent folder.",
     "",
     "It exists only because the build ran with RELEASE_CLAIMS=1; a default build never writes this folder.",

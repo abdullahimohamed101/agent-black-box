@@ -17,7 +17,7 @@ music (D17).** Captions sit in the lower third and carry the story. Casing in ca
 people who have never seen the product.
 
 Rules for the captions: plain language, no hype, nothing shown that is not built. Every caption is checked against the claims
-table in `docs/plans/active/phase-20-release-polish.md` ("Claims to verify"). Specifically:
+table in `docs/plans/completed/phase-20-release-polish.md` ("Claims to verify"). Specifically:
 
 - "Open source" and "Self-hosted" are **blocked** until G2 (the repository is public) and AC1/AC12 pass. Scene 10 therefore carries
   a neutral caption now; the blocked line is listed in the scene table and must not be used before G2.

@@ -2,7 +2,7 @@
 
 **Title:** `Show HN: Agent BlackBox – self-hosted flight recorder for AI agents (Python, Postgres)`
 
-Link the repository, not the site. The claims below follow `docs/plans/active/phase-20-release-polish.md` (Claims table);
+Link the repository, not the site. The claims below follow `docs/plans/completed/phase-20-release-polish.md` (Claims table);
 re-check each against that table on the day.
 
 **First comment** (post it yourself right after submitting):

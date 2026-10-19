@@ -1,6 +1,6 @@
 # Agent BlackBox: positioning brief for the public launch
 
-Status: written 2026-10-18 for Phase 20 (D1, D2, G1). This is the shared source of truth for *what we say* on the landing page (`site/`), the README, the Show HN post and the silent demo video. The landing-page design brief and the video direction inherit from it. Every claim below is tied to a row of the "Claims to verify" table in `docs/plans/active/phase-20-release-polish.md`; nothing may be said in public that is not VERIFIED or qualified exactly as that table says. Name casing is "Agent BlackBox" in prose (D15); slugs stay `agent-black-box` and the import name is `agent_blackbox` (ADR-177).
+Status: written 2026-10-18 for Phase 20 (D1, D2, G1). This is the shared source of truth for *what we say* on the landing page (`site/`), the README, the Show HN post and the silent demo video. The landing-page design brief and the video direction inherit from it. Every claim below is tied to a row of the "Claims to verify" table in `docs/plans/completed/phase-20-release-polish.md`; nothing may be said in public that is not VERIFIED or qualified exactly as that table says. Name casing is "Agent BlackBox" in prose (D15); slugs stay `agent-black-box` and the import name is `agent_blackbox` (ADR-177).
 
 Evidence: product behaviour was read from `docs/design/pass-2/*.md`, `docs/screenshots/pass-2/*.png`, `ARCHITECTURE.md`, `docs/architecture/integrations.md` and the detector sources in `apps/api/src/abb_api/findings/detectors/`. External patterns come from the sources listed at the end; no competitor text is copied.
 
@@ -225,7 +225,7 @@ Rules: never show `--live`; never show a real email (fixture `owner@local.test` 
 
 ## Sources
 
-Product (read in this worktree): `README.md`; `ARCHITECTURE.md`; `docs/plans/active/phase-20-release-polish.md` (D1-D17, claims table, KI-044); `docs/design/pass-2/01-direction.md`, `05-microcopy-and-states.md`; `docs/screenshots/pass-2/` (runs, failed run, inspector, waterfall, findings, compare, analytics cost, review security, approvals detail); `docs/architecture/integrations.md`; `docs/SECURITY.md`; `apps/api/src/abb_api/findings/detectors/`; `docs/design/video-storyboard.md`; spec §159 glossary.
+Product (read in this worktree): `README.md`; `ARCHITECTURE.md`; `docs/plans/completed/phase-20-release-polish.md` (D1-D17, claims table, KI-044); `docs/design/pass-2/01-direction.md`, `05-microcopy-and-states.md`; `docs/screenshots/pass-2/` (runs, failed run, inspector, waterfall, findings, compare, analytics cost, review security, approvals detail); `docs/architecture/integrations.md`; `docs/SECURITY.md`; `apps/api/src/abb_api/findings/detectors/`; `docs/design/video-storyboard.md`; spec §159 glossary.
 
 External:
 - Hacker News Show HN guidelines: https://news.ycombinator.com/showhn.html

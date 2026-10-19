@@ -7,7 +7,7 @@ captions from the bank, the claims gate, the QA script) and adds the craft aroun
 disagree; v2's sections 3.3 (cursor), 3.5 (CSP, hydration, 2x capture), 5 (encodes) and 7.1 (QA) stay in force.
 
 Inputs read: v2 brief; `video-qa-report.md` section 6 (the criticisms); `positioning-brief.md` (caption bank, section 7, and the
-claims table in `docs/plans/active/phase-20-release-polish.md`); `landing-site-brief.md` sections 1, 5, 10 (brand, type,
+claims table in `docs/plans/completed/phase-20-release-polish.md`); `landing-site-brief.md` sections 1, 5, 10 (brand, type,
 tokens, non-goals); ADR-166 and `docs/design/pass-2/01-direction.md` ("One Red Line"); `scripts/record-demo.mjs`,
 `record-demo-lib.mjs`; `brand/pulse-mark.svg`, `site/public/assets/`; `apps/web/design-tokens/tokens.json`. Frames of the final
 cut were extracted with ffmpeg (every 5 s, plus full frames at 1.5, 9.5, 18.5 and 66 s) and looked at.
