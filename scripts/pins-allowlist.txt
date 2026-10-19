@@ -6,3 +6,4 @@ abb-hosting-bk-api:local | tag of the developer's API image copied by scripts/ho
 abb-hosting-up-api:local | built by scripts/hosting-upgrade-e2e.sh from a copy of the local API image (rig only); never pulled
 abb-hosting-up-web:latest | built by scripts/hosting-upgrade-e2e.sh from a copy of the local web image (rig only); never pulled
 abb-hosting-obs-api:local | tag of the developer's API image copied by scripts/hosting-obs-e2e.sh (rig only); never pulled
+${ABB_WEB_IMAGE:-agent-black-box-web:local} | the production overlay names the locally built web image (hosting-upgrade.sh tags it for rollback); never pulled

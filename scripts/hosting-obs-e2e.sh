@@ -122,7 +122,7 @@ if grep -q 'migrate' "$WORK/textfile/abb_containers.prom"; then fail "the one-sh
 
 step "O2b a REAL out-of-memory kill is visible to the sampler even after restart: unless-stopped resets State.OOMKilled (review P2-5)"
 OOMC="$APP-oomprobe"; docker rm -f "$OOMC" >/dev/null 2>&1 || true
-docker run -d --name "$OOMC" --label "com.docker.compose.project=$APP" --memory 16m --memory-swap 16m --restart unless-stopped \
+docker run -d --name "$OOMC" --label "com.docker.compose.project=$APP" --memory=16m --memory-swap=16m --restart unless-stopped \
   --entrypoint python "$IMAGE" -c 'import time
 time.sleep(2)
 b = []
