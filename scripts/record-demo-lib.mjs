@@ -183,6 +183,26 @@ export function buildConcat(frames, startMs, endMs) {
   return lines.join("\n") + "\n";
 }
 
+/**
+ * Cut the hold intervals out of a frame list (milliseconds on the frames' own clock). A hold is a hop's transit: of the frames inside
+ * it only the last one survives, re-timed to the start of the hold, so the old page is followed at once by the finished new page;
+ * every later frame moves earlier by the length of the hold. Returns a new list; `endMs` of the cut is the old one minus the holds.
+ */
+export function applyHolds(frames, holds) {
+  const out = [];
+  let removed = 0;
+  let i = 0;
+  for (const h of [...holds].sort((a, b) => a.from - b.from)) {
+    for (; i < frames.length && frames[i].t < h.from; i++) out.push({ ...frames[i], t: frames[i].t - removed });
+    let last = null;
+    for (; i < frames.length && frames[i].t < h.to; i++) last = frames[i];
+    if (last) out.push({ ...last, t: h.from - removed });
+    removed += h.to - h.from;
+  }
+  for (; i < frames.length; i++) out.push({ ...frames[i], t: frames[i].t - removed });
+  return out;
+}
+
 /** The longest gap between consecutive frames inside [fromMs, toMs]: a stalled screencast shows up as a large number. */
 export function maxFrameGap(frames, fromMs, toMs) {
   const inside = frames.map((f) => f.t).filter((t) => t >= fromMs && t <= toMs);
