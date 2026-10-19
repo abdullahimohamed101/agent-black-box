@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Concept A: The break (Agent BlackBox landing)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<style>
+/* ---------- Concept A: the trace is the hero, the fault line draws across it ---------- */
+.hero { padding: 3.5rem 0 0; }
+.hero-top { display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); gap: 3rem; align-items: end; }
+.hero-side { font-size: var(--type-body-lg-size); color: var(--color-text-secondary); padding-bottom: .5rem; }
+.hero-side dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: .25rem 1rem; }
+.hero-side dt { font-family: var(--font-mono); } .hero-side dd { margin: 0; color: var(--color-text-primary); }
+.actions { display: flex; gap: .75rem; margin-top: 1.5rem; flex-wrap: wrap; }
+.facts { margin: 1rem 0 0; font: var(--type-small-size)/var(--type-small-line) var(--font-mono); color: var(--color-text-secondary); }
+.facts span + span::before { content: " · "; }
+@media (max-width: 1023px) { .hero-top { grid-template-columns: 1fr; } .hero-side { display: none; } }
+
+/* The trace: a device-less excerpt of the run page. Hairlines, no frame, no shadow. */
+.trace { margin-top: 2.5rem; border-top: 1px solid var(--color-border-strong); border-bottom: 1px solid var(--color-border-strong);
+         background: var(--color-bg-raised); display: grid; grid-template-columns: minmax(0, 1fr) 22rem; }
+.trace-main { min-width: 0; }
+.trace-head { padding: 1rem 1.25rem .75rem; border-bottom: 1px solid var(--color-border-subtle); }
+.trace-head .crumb { font-size: var(--type-body-lg-size); color: var(--color-text-secondary); margin: 0; }
+.trace-head .crumb b { color: var(--color-text-primary); font-weight: 600; }
+.trace-head .headline { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; margin: .25rem 0 0; }
+.trace-head .figs { margin: .5rem 0 0; font: var(--type-small-size)/var(--type-small-line) var(--font-sans); color: var(--color-text-secondary); }
+.trace-head .figs code { font-family: var(--font-mono); color: var(--color-text-primary); margin-right: 1rem; }
+.rows { list-style: none; margin: 0; padding: 0; position: relative; }
+.row { display: grid; grid-template-columns: 5rem minmax(0, 1fr) 4.5rem 5rem; gap: 1rem; align-items: center; padding: 0 1.25rem; height: 2.25rem;
+       border-bottom: 1px solid var(--color-border-subtle); font: var(--type-mono-size)/var(--type-mono-line) var(--font-mono); cursor: pointer; position: relative; }
+.row:last-child { border-bottom: 0; }
+.row .what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .row .what span { color: var(--color-text-secondary); font-family: var(--font-sans); }
+.row .t, .row .dur { color: var(--color-text-secondary); } .row .dur { text-align: right; }
+.row .st { text-align: right; }
+.row:hover, .row[aria-selected="true"] { background: var(--color-bg-wash); }
+.row[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--color-interactive-default); }
+.row.child { padding-left: 2.25rem; }
+/* The fault line: 2 px, top edge of the first failing row, label on the rule. Draws once from the left. */
+.row.first-error::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: var(--fault); transform-origin: left; }
+.row.first-error::after { content: "First error, step 7"; position: absolute; right: 12rem; top: -0.9rem; font: 600 var(--type-small-size)/1rem var(--font-sans); color: var(--fault); background: var(--color-bg-raised); padding: 0 .375rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .row.first-error::before { animation: draw var(--motion-duration-fault-draw, 280ms) var(--motion-easing-out, cubic-bezier(.2,0,0,1)) both; animation-delay: 600ms; }
+  .row.first-error::after { animation: appear 200ms both; animation-delay: 880ms; }
+  @keyframes draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+}
+.trace-foot { display: flex; justify-content: space-between; padding: .5rem 1.25rem; border-top: 1px solid var(--color-border-subtle); font: var(--type-small-size)/var(--type-small-line) var(--font-sans); color: var(--color-text-secondary); }
+.trace-foot kbd { font-family: var(--font-mono); }
+/* Inspector: what hovering/selecting a row shows. */
+.insp { border-left: 1px solid var(--color-border-subtle); padding: 1rem 1.25rem; font-size: var(--type-body-lg-size); line-height: var(--type-body-lg-line); }
+.insp h3 { font: 600 1rem/1.5rem var(--font-mono); margin: 0; }
+.insp .meta { color: var(--color-text-secondary); font: var(--type-small-size)/var(--type-small-line) var(--font-mono); margin: .25rem 0 1rem; }
+.insp h4 { font-size: var(--type-body-lg-size); margin: 1rem 0 .25rem; font-weight: 600; }
+.insp dl { display: grid; grid-template-columns: 6rem 1fr; gap: .25rem .5rem; margin: 0; }
+.insp dt { color: var(--color-text-secondary); } .insp dd { margin: 0; font-family: var(--font-mono); font-size: var(--type-mono-size); word-break: break-all; }
+.insp pre { margin: .5rem 0 0; font: var(--type-mono-small-size)/1.5 var(--font-mono); background: var(--color-bg-canvas); border: 1px solid var(--color-border-subtle); padding: .5rem .75rem; border-radius: 4px; overflow-x: auto; }
+@media (max-width: 1023px) { .trace { grid-template-columns: 1fr; } .insp { border-left: 0; border-top: 1px solid var(--color-border-subtle); } }
+@media (max-width: 599px) {
+  .row { grid-template-columns: 3.5rem minmax(0,1fr) 4rem; padding: 0 var(--gutter); } .row .dur { display: none; }
+  .row.first-error::after { right: var(--gutter); }
+  .trace-head { padding-left: var(--gutter); padding-right: var(--gutter); }
+  .trace { margin-left: calc(-1 * var(--gutter)); margin-right: calc(-1 * var(--gutter)); }
+}
+.caption { font: var(--type-small-size)/var(--type-small-line) var(--font-sans); color: var(--color-text-secondary); margin: .75rem 0 0; }
+
+/* ---------- Proof section: how it works, three steps, scroll narrative ---------- */
+.how { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); min-width: 0; gap: 4rem; align-items: start; }
+.how .sticky { position: sticky; top: 4rem; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4rem; }
+.step { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: 1rem; }
+.step .n { font: var(--type-mono-size)/1.5rem var(--font-mono); color: var(--color-text-secondary); }
+.step h3 { font-size: 1.25rem; line-height: 1.75rem; }
+.step p { margin: .5rem 0 1rem; color: var(--color-text-secondary); max-width: 48ch; }
+.step .code { max-width: 36rem; }
+/* Scroll-driven reveal: static final state by default; only inside @supports and no-preference. */
+@media (prefers-reduced-motion: no-preference) { @supports (animation-timeline: view()) {
+  .step { animation: rise linear both; animation-timeline: view(); animation-range: entry 0% entry 40%; }
+  @keyframes rise { from { opacity: .25; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+} }
+@media (max-width: 1023px) { .how { grid-template-columns: minmax(0, 1fr); } .how .sticky { position: static; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap top-row">
+  <a class="brand" href="./" aria-label="Agent BlackBox, home">
+    <svg class="mark" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 13h3.5l2.5-7 3.5 12 2.5-5"/><path d="M18 13h4"/><path class="cut" d="M15.5 19.5l1-13" stroke-width="1.5"/></svg>
+    <span>Agent BlackBox</span>
+  </a>
+  <nav class="nav" aria-label="Page"><a href="#how">How it works</a><a href="#screens">Screens</a><a href="#self-host">Self-host</a><a href="#docs">Docs</a><a class="gh" href="#repo">GitHub</a></nav>
+</div></header>
+
+<main id="main">
+<section class="hero"><div class="wrap">
+  <div class="hero-top">
+    <div>
+      <p class="eyebrow">Open source · Apache-2.0 · self-hosted</p>
+      <h1 class="hero-h">See exactly where your agent broke.</h1>
+      <p class="lede">A flight recorder for AI agents. Every model call, tool call, shell command, retry and failure is recorded as a typed event and shown as a run you read from the top, with one red line at the first error.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#self-host">Run the demo on your machine</a>
+        <a class="btn btn-secondary" href="#repo">Read the source</a>
+      </div>
+      <p class="facts"><span>No API key to try it</span><span>No third-party requests</span><span>Python SDK</span></p>
+    </div>
+  </div>
+
+  <!-- The trace. In the real site this is the one React island in the hero: fixture data, keyboard j/k/Enter, no network. -->
+  <figure class="trace" aria-label="A failed run, as the product shows it">
+    <div class="trace-main">
+      <div class="trace-head">
+        <p class="crumb">Runs / <b>Migrate billing schema</b> <span class="fail" style="margin-left:1rem">✕ Failed</span> <span class="quiet">· 9d ago</span></p>
+        <p class="headline">Failed at step 7 after 6.2 s: run_migration, ConnectionTimeout.</p>
+        <p class="figs">Duration <code>14 s</code> Cost <code>$0.0356</code> Tokens <code>4,900 in / 460 out</code> Retries <code>2</code> Errors <code>4</code></p>
+      </div>
+      <ol class="rows" id="rows" aria-label="Events">
+        <li class="row"><span class="t">+0ms</span><span class="what">run.started <span>Migrate billing schema</span></span><span class="dur">—</span><span class="st"></span></li>
+        <li class="row"><span class="t">+100ms</span><span class="what">agent.started</span><span class="dur">—</span><span class="st"></span></li>
+        <li class="row"><span class="t">+500ms</span><span class="what">file.read <span>db/migrations/0042_billing.sql</span></span><span class="dur">—</span><span class="st"></span></li>
+        <li class="row"><span class="t">+800ms</span><span class="what">llm.request.completed <span>model-x · 2,300 in / 340 out · $0.0189</span></span><span class="dur">2.1 s</span><span class="st"></span></li>
+        <li class="row"><span class="t">+3.1s</span><span class="what">tool.call.started <span>run_migration</span></span><span class="dur">—</span><span class="st"></span></li>
+        <li class="row first-error" aria-selected="true" tabindex="0"><span class="t">+6.2s</span><span class="what">tool.call.failed <span>run_migration · ConnectionTimeout</span></span><span class="dur">3.1 s</span><span class="st fail">✕ error</span></li>
+        <li class="row"><span class="t">+7.2s</span><span class="what">retry.attempted <span>Retry #1 after ConnectionTimeout</span></span><span class="dur">—</span><span class="st caution">↻ retry</span></li>
+        <li class="row"><span class="t">+10.3s</span><span class="what">tool.call.failed <span>run_migration · ConnectionTimeout</span></span><span class="dur">2.9 s</span><span class="st fail">✕ error</span></li>
+        <li class="row"><span class="t">+14.4s</span><span class="what">run.failed</span><span class="dur">—</span><span class="st fail">✕ error</span></li>
+      </ol>
+      <div class="trace-foot"><span>9 of 15 events shown</span><span><kbd>j</kbd> and <kbd>k</kbd> move, <kbd>Enter</kbd> opens, <kbd>e</kbd> jumps to the first error</span></div>
+    </div>
+    <aside class="insp" aria-live="polite">
+      <h3>tool.call.failed</h3>
+      <p class="meta">2026-10-07 09:30:06Z · #7 · coding-agent</p>
+      <h4>What went wrong</h4>
+      <p style="margin:0">run_migration failed: ConnectionTimeout</p>
+      <h4>Tool call</h4>
+      <dl><dt>Tool</dt><dd>run_migration</dd><dt>Duration</dt><dd>3.1 s</dd><dt>Status</dt><dd>error</dd></dl>
+      <h4>Payload</h4>
+      <pre>{
+  "error": {
+    "type": "ConnectionTimeout",
+    "host": "db.internal:5432"
+  }
+}</pre>
+    </aside>
+  </figure>
+  <p class="caption">Demo data from <code class="mono">make demo</code>, rendered by the page from fixtures. The dashboard draws it the same way.</p>
+</div></section>
+
+<section class="band" id="how"><div class="wrap">
+  <div class="how">
+    <div class="sticky">
+      <p class="eyebrow">How it works</p>
+      <h2 class="h2">Three lines in, one run out.</h2>
+      <p class="lede" style="font-size:var(--site-body-size);line-height:var(--site-body-line)">The SDK records typed events, not log lines. The server stores them unchanged and derives everything else: the timeline, findings, cost. Nothing leaves your network.</p>
+    </div>
+    <ol class="steps">
+      <li class="step"><span class="n">01</span><div>
+        <h3>Wrap the agent</h3>
+        <p>A run, then a span around each tool call or command. The SDK never raises into your agent; buffers and retries are bounded.</p>
+        <figure class="code"><div class="code-head"><span>agent.py</span><button type="button">Copy</button></div>
+<pre><span class="k">from</span> blackbox <span class="k">import</span> BlackBox
+
+bb = <span class="f">BlackBox</span>(project=<span class="s">"billing-agent"</span>)
+<span class="k">with</span> bb.<span class="f">run</span>(<span class="s">"Migrate billing schema"</span>) <span class="k">as</span> run:
+    <span class="k">with</span> run.<span class="f">span</span>(<span class="s">"run_migration"</span>, kind=<span class="s">"tool"</span>):
+        migrate()</pre></figure>
+      </div></li>
+      <li class="step"><span class="n">02</span><div>
+        <h3>Events arrive typed</h3>
+        <p>A tool call is a <code class="mono">tool.call.failed</code> event with a payload, not a string to grep. Accepted events are immutable; the UI is rebuilt from them.</p>
+        <figure class="code"><div class="code-head"><span>event</span><button type="button">Copy</button></div>
+<pre>{ <span class="s">"type"</span>: <span class="s">"tool.call.failed"</span>, <span class="s">"step"</span>: 7,
+  <span class="s">"tool"</span>: <span class="s">"run_migration"</span>, <span class="s">"duration_ms"</span>: 3100,
+  <span class="s">"error"</span>: { <span class="s">"type"</span>: <span class="s">"ConnectionTimeout"</span> } }</pre></figure>
+      </div></li>
+      <li class="step"><span class="n">03</span><div>
+        <h3>Read the run from the top</h3>
+        <p>The headline sentence says what failed and when. The fault line marks the first error. Findings point at the events that support them.</p>
+        <p class="mono quiet" style="font-size:var(--type-mono-size)">Failed at step 7 after 6.2 s: run_migration, ConnectionTimeout.</p>
+      </div></li>
+    </ol>
+  </div>
+</div></section>
+</main>
+
+<footer><div class="wrap cols">
+  <div><a class="brand" href="./"><svg class="mark" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 13h3.5l2.5-7 3.5 12 2.5-5"/><path d="M18 13h4"/><path class="cut" d="M15.5 19.5l1-13" stroke-width="1.5"/></svg>Agent BlackBox</a><p>Apache-2.0. Fonts: IBM Plex, SIL OFL 1.1.<br>This page makes no third-party request.</p></div>
+  <div><h3>Product</h3><a href="#how">How it works</a><a href="#screens">Screens</a><a href="#self-host">Self-host</a></div>
+  <div><h3>Project</h3><a href="#repo">Source</a><a href="#docs">Docs</a><a href="#license">License</a></div>
+  <div><h3>Community</h3><a href="#contrib">Contributing</a><a href="#security">Security policy</a><a href="#coc">Code of conduct</a></div>
+</div></footer>
+
+<script>
+// Mockup only: stands in for the hero's React island. Hover/focus/arrow keys select a row; the inspector mirrors it.
+(() => {
+  const rows = [...document.querySelectorAll('#rows .row')]; const insp = document.querySelector('.insp');
+  const data = {
+    0: ['run.started', 'What happened', 'Run Migrate billing schema started by coding-agent.'],
+    3: ['llm.request.completed', 'Model call', 'model-x · 2,300 in / 340 out · $0.0189 · 2.1 s'],
+    6: ['retry.attempted', 'Retry', 'Retry #1 after ConnectionTimeout, 1.0 s after the failure.'],
+  };
+  const select = (i) => { rows.forEach((r, j) => r.setAttribute('aria-selected', String(i === j)));
+    const d = data[i]; if (d) { insp.querySelector('h3').textContent = d[0]; insp.querySelector('h4').textContent = d[1]; insp.querySelector('h4 + p').textContent = d[2]; }
+    else if (i === 5) { insp.querySelector('h3').textContent = 'tool.call.failed'; insp.querySelector('h4').textContent = 'What went wrong'; insp.querySelector('h4 + p').textContent = 'run_migration failed: ConnectionTimeout'; } };
+  rows.forEach((r, i) => { r.tabIndex = 0; r.addEventListener('mouseenter', () => select(i)); r.addEventListener('focus', () => select(i)); });
+  document.addEventListener('keydown', (e) => { const cur = rows.findIndex(r => r.getAttribute('aria-selected') === 'true');
+    if (e.key === 'j') rows[Math.min(cur + 1, rows.length - 1)].focus(); if (e.key === 'k') rows[Math.max(cur - 1, 0)].focus(); if (e.key === 'e') rows[5].focus(); });
+})();
+</script>
+</body>
+</html>
