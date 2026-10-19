@@ -20,7 +20,7 @@ export function PolicyDryRunPanel({
 }) {
   const decisions = Object.entries(result.by_decision);
   return (
-    <section className="pol-section pol-dry" aria-labelledby="dry-h" data-testid="dry-run-result">
+    <section className="st-section pol-dry" aria-labelledby="dry-h" data-testid="dry-run-result">
       <h2 id="dry-h" tabIndex={-1}>
         Dry run result
       </h2>

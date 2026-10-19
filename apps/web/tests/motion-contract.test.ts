@@ -101,8 +101,9 @@ describe("zero-motion contract", () => {
   });
 
   it("finds the motion at all", () => {
-    expect(moving.length).toBeGreaterThanOrEqual(8);
-    expect(keyframes.length).toBeGreaterThan(6);
+    // Design pass 2 removed the headline fade (2 keyframes, 2 rules) and the live-row rise (1 keyframe, 2 rules): 8 and 6 became 6 and 5.
+    expect(moving.length).toBeGreaterThanOrEqual(6);
+    expect(keyframes.length).toBeGreaterThanOrEqual(6);
   });
 
   it("every animation, transition and scroll-behavior is gated, switched off for reduce, or timed only by tokens", () => {
@@ -140,13 +141,13 @@ describe("zero-motion contract", () => {
 
   it("the run page's motion animates transform and opacity only, once, with no loop", () => {
     const own = keyframes.filter((k) => k.file === "run-motion.css");
-    expect(own.length).toBeGreaterThanOrEqual(7);
+    expect(own.length).toBeGreaterThanOrEqual(5); // fault draw x and y, land fade, inspector in and out
     for (const k of own) {
       expect(k.gated, k.name).toBe(true);
       for (const p of k.props) expect(["opacity", "transform"], `${k.name}: ${p}`).toContain(p);
     }
     const own2 = decls.filter((d) => d.file === "run-motion.css" && MOTION_PROPS.test(d.prop));
-    expect(own2.length).toBeGreaterThanOrEqual(7);
+    expect(own2.length).toBeGreaterThanOrEqual(5);
     for (const d of own2) {
       expect(d.value, d.selector).not.toMatch(/infinite|steps\(|cubic-bezier\((?!0\.2, 0, 0, 1)/);
       expect(d.value, d.selector).not.toMatch(/\btransition\b/);

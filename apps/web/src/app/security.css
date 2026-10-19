@@ -6,129 +6,122 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  font: 500 0.75rem/1.3 var(--sans);
+  font: 600 var(--type-small-size)/1.3 var(--font-sans);
   white-space: nowrap;
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .sec-sev[data-tone="ink"] {
-  color: var(--ink);
-  font-weight: 700;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-strong);
 }
 .sec-sev[data-tone="wait"] {
-  color: var(--ink);
+  color: var(--color-text-primary);
   font-weight: 600;
 }
 .sec-sev[data-tone="wait"] .sec-shield {
-  color: var(--wait);
+  color: var(--color-status-caution);
 }
 .sec-sev[data-tone="muted"] {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .sec-shield {
   flex: none;
 }
 
-/* The chip beside the status in the run's identity line: quiet, a button, opens the Security group. */
+/* The chip beside the status in the run's title line: quiet, a button, opens the Security group of the Findings tab. */
 .sec-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.05rem 0.45rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
   background: transparent;
-  color: var(--fg-2);
-  font: 500 0.75rem/1.4 var(--sans);
+  color: var(--color-text-secondary);
+  font: var(--type-body-weight) var(--type-body-size) / var(--type-body-line) var(--font-sans);
   white-space: nowrap;
 }
 .sec-chip:hover {
-  background: var(--surface);
-  border-color: var(--border-strong);
+  color: var(--color-text-primary);
+  text-decoration: underline;
 }
 .sec-chip[data-tone="ink"] .sec-shield {
-  color: var(--ink);
+  color: var(--color-text-primary);
 }
 .sec-chip[data-tone="wait"] .sec-shield {
-  color: var(--wait);
+  color: var(--color-status-caution);
 }
 .sec-chip[data-tone="muted"] .sec-shield {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 
-/* The Security group in the context column. */
+/* The Security group at the top of the Findings tab: a hairline list like the reliability findings. */
 .security-group {
-  margin: 0 0 0.75rem;
+  margin: 0 0 var(--space-6);
 }
 .security-group h2:focus {
   outline: none;
 }
 .security-group h2:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-interactive-default);
   outline-offset: 2px;
 }
 .sec-list {
   display: grid;
-  gap: 0.35rem;
-  margin: 0.25rem 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 .sec-item {
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border-subtle);
 }
 .sec-item[data-focus] {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-interactive-default);
   outline-offset: 1px;
 }
 .sec-item-head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.25rem 0.5rem;
+  gap: var(--space-1) var(--space-3);
 }
 .sec-item-head h3 {
-  flex: 1 1 9rem;
+  flex: 1 1 14rem;
   min-width: 0;
   margin: 0;
-  font-size: 0.8rem;
-  font-weight: 500;
-  line-height: 1.3;
+  font: var(--type-body-weight) var(--type-body-size) / var(--type-body-line) var(--font-sans);
 }
 .sec-item-head button {
   flex: none;
-  padding: 0.05rem 0.45rem;
-  font-size: 0.7rem;
+  font-size: var(--type-small-size);
 }
 .sec-rule {
-  margin: 0.2rem 0 0;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  color: var(--muted);
+  margin: var(--space-1) 0 0;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  color: var(--color-text-secondary);
 }
 .sec-none {
-  font-size: 0.72rem;
-  color: var(--muted);
+  font-size: var(--type-small-size);
+  color: var(--color-text-secondary);
 }
 .sec-clean {
-  margin: 0.25rem 0;
-  color: var(--muted);
+  margin: var(--space-1) 0;
+  color: var(--color-text-secondary);
 }
 .sec-clean > p {
-  margin: 0.25rem 0 0;
+  margin: var(--space-1) 0 0;
 }
 .sec-detectors {
   margin: 0.3rem 0 0;
 }
 .sec-detectors > summary {
   cursor: pointer;
-  color: var(--muted);
-  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  font-size: var(--type-small-size);
 }
 .sec-detectors > summary:hover {
-  color: var(--fg);
+  color: var(--color-text-primary);
 }
 .sec-detector-list {
   display: grid;
@@ -136,7 +129,7 @@
   margin: 0.3rem 0 0;
   padding: 0;
   list-style: none;
-  font-size: 0.75rem;
+  font-size: var(--type-small-size);
 }
 .sec-detector-list li {
   display: flex;
@@ -145,40 +138,14 @@
   align-items: baseline;
 }
 .sec-detector-list li[data-muted] {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .sec-detector-state {
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-
-/* The strip count for security findings: a shield and a number. Decoration (aria-hidden); the title spells it out. */
-.strip-count[data-security] {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.1rem;
+  color: var(--color-text-secondary);
+  font-size: var(--type-small-size);
 }
 
 /* The workspace Security page. */
-.sec-page .page-head {
-  align-items: baseline;
-}
-.sec-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.6rem;
-  align-items: center;
-  margin: 0.5rem 0 0.75rem;
-  font-size: 0.8rem;
-}
-.sec-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin: 0 0 0.5rem;
-  padding: 0;
-  list-style: none;
-}
 .sec-table td.title {
   min-width: 14rem;
 }
@@ -189,12 +156,10 @@
   overflow-wrap: anywhere;
 }
 .sec-table tbody tr:hover {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--color-bg-wash) 50%, transparent);
 }
-.sec-count {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 0.72rem;
+.sec-count-line {
+  margin: var(--space-2) 0 0;
 }
 .sec-more {
   margin: 0.75rem 0 0;
@@ -210,81 +175,88 @@
 }
 .sec-empty .state-title {
   margin: 0;
-  font-family: var(--serif);
-  font-size: var(--fs-title);
+  font-family: var(--font-sans);
+  font-size: var(--type-h2-size);
 }
 .sec-empty ul {
   margin: 0;
 }
 
-/* The settings page. */
+/* The settings tab (settings pattern, design pass 2 step 5c): stacked fieldsets as hairline bands, the legend is the h2. */
 .sec-settings fieldset {
-  margin: 0 0 1rem;
+  display: block;
+  margin: var(--space-6) 0 0;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border-subtle);
+}
+/* A floated legend sits inside the fieldset (not on its top border), and what follows it clears the float. */
+.sec-settings legend + * {
+  clear: both;
+}
+.sec-settings legend {
+  float: left;
+  display: block;
+  width: 100%;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  color: var(--color-text-primary);
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
 }
 .sec-settings .sec-radio {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0 0.5rem;
+  gap: 0 var(--space-2);
   align-items: start;
-  margin: 0.25rem 0;
+  margin: var(--space-2) 0;
 }
 .sec-settings .sec-radio input {
-  margin-top: 0.25rem;
+  margin-top: var(--space-1);
 }
 .sec-settings .sec-radio small {
   grid-column: 2;
-  color: var(--muted);
-  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-size);
 }
 .sec-settings .sec-detector-row {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 0.2rem 1rem;
+  gap: var(--space-1) var(--space-4);
   align-items: start;
-  padding: 0.5rem 0;
-  border-top: 1px solid var(--border);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border-subtle);
 }
 .sec-settings .sec-detector-row p {
-  margin: 0.1rem 0 0;
-  font-size: 0.75rem;
-  color: var(--muted);
+  margin: var(--space-1) 0 0;
+  font-size: var(--type-body-size);
+  color: var(--color-text-secondary);
 }
 .sec-settings .sec-allow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin: 0.4rem 0;
+  margin: var(--space-2) 0;
   padding: 0;
   list-style: none;
 }
 .sec-settings .sec-allow li {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.1rem 0.2rem 0.1rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-}
-.sec-settings .sec-allow button {
-  padding: 0 0.35rem;
-  border: 0;
-  min-height: 24px;
-  min-width: 24px;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-size);
 }
 .sec-settings .sec-add {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: var(--space-2);
   align-items: flex-end;
-}
-.sec-settings .sec-status {
-  margin: 0.5rem 0 0;
-  min-height: 1.4em;
+  margin-top: var(--space-3);
 }
 .sec-settings .sec-note {
-  max-width: 44rem;
+  max-width: var(--measure);
+}
+.sec-settings > form > button.primary {
+  margin-top: var(--space-6);
 }
 
 @media (max-width: 52rem) {
@@ -295,21 +267,8 @@
 .sec-skel {
   display: inline-block;
   height: 0.8rem;
-  border-radius: 3px;
-  background: var(--border);
-}
-
-/* Settings: the global fieldset is a wrapping row; these are stacked sections. */
-.sec-settings fieldset {
-  display: block;
-  max-width: 56rem;
-}
-.sec-settings legend {
-  float: none;
-  display: block;
-  margin: 0 0 0.35rem;
-  font: 600 var(--fs-title) / 1.3 var(--cond);
-  color: var(--ink);
+  border-radius: var(--radius-control);
+  background: var(--color-border-subtle);
 }
 
 /* Phone: each finding is a small card instead of a table that would crush its text. */
@@ -329,7 +288,7 @@
   }
   .sec-table tr {
     padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   .sec-table td {
     padding: 0.1rem 0;

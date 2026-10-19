@@ -1,18 +1,20 @@
 import Link from "next/link";
 import { RecorderTape } from "@/components/illustrations";
 import { Brand } from "@/components/shell/Brand";
+import { auth } from "@/copy/auth";
+import "./login.css";
 
-// Phase 22 D9: not-found is an illustrated state, not a bare framework page.
+// Not-found keeps its small tape drawing (one of the two places an illustration stays, ADR-166).
 export default function NotFound() {
   return (
     <main id="main" className="state-page" data-state="not-found">
       <Brand />
-      <RecorderTape className="illus-lg" />
-      <h1>This page isn&apos;t here</h1>
-      <p className="muted">The link may be old, or the run or project may have been removed.</p>
+      <RecorderTape />
+      <h1>{auth.notFound.title}</h1>
+      <p className="muted">{auth.notFound.body}</p>
       <p className="state-actions">
         <Link href="/" className="button-link">
-          Go to your runs
+          {auth.notFound.action}
         </Link>
       </p>
     </main>

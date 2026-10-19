@@ -32,7 +32,7 @@ export function PolicyHistory({
   const diff = usePolicyDiff(projectId, compare ? picked : null, compare ? current : null);
 
   return (
-    <section className="pol-section pol-versions" aria-labelledby="hist-h">
+    <section className="st-section pol-versions" aria-labelledby="hist-h">
       <h2 id="hist-h">Version history</h2>
       {versions.isPending ? (
         <Loading label="Loading versions" />

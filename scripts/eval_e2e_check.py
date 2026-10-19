@@ -33,7 +33,10 @@ def fail(message: str) -> None:
 def client(kind: str) -> httpx.Client:
     token = os.environ["E2E_OWNER_SESSION" if kind == "owner" else "E2E_VIEWER_SESSION"]
     c = httpx.Client(
-        base_url=API, cookies={"abb_session": token}, headers={"origin": ORIGIN}, timeout=30
+        base_url=API,
+        cookies={"abb_session": token},
+        headers={"origin": ORIGIN},
+        timeout=30,
     )
     me = c.get("/v1/me")
     me.raise_for_status()
@@ -65,14 +68,45 @@ def run_row(c: httpx.Client, run_id: str) -> dict[str, Any]:
     return ok(c.get(f"/v1/runs/{run_id}"), "get run")
 
 
+def settled_row(c: httpx.Client, run_id: str, seconds: float = 45) -> dict[str, Any]:
+    """The run row without the evaluation-owned fields, once the security analysis has run and two reads 2 s apart agree."""
+    deadline = time.monotonic() + seconds
+    previous = None
+    while True:
+        row = {
+            k: v
+            for k, v in run_row(c, run_id).items()
+            if k not in ("findings", "matched")
+        }
+        # `none` means the security analysis has not run yet: it lands after the summary, and on a
+        # slow runner later than any fixed quiet period, so wait for it explicitly.
+        analysed = (row.get("security_findings") or {}).get("state") not in (
+            None,
+            "none",
+        )
+        if analysed and row == previous:
+            return row
+        previous = row
+        if time.monotonic() > deadline:
+            fail("the run row never settled before the failing evaluator was triggered")
+        time.sleep(2)
+
+
 def settled(c: httpx.Client, run_id: str) -> dict[str, Any] | None:
     r = run_row(c, run_id)
     done = r["summary_state"] == "current" and r["status"] in ("SUCCESS", "FAILED")
     return r if done and r["findings"] is not None else None
 
 
-def evaluator(c: httpx.Client, name: str, kind: str, implementation: str, **config: Any) -> str:
-    body = {"name": name, "kind": kind, "implementation": implementation, "config": config}
+def evaluator(
+    c: httpx.Client, name: str, kind: str, implementation: str, **config: Any
+) -> str:
+    body = {
+        "name": name,
+        "kind": kind,
+        "implementation": implementation,
+        "config": config,
+    }
     return ok(c.post("/v1/evaluators", json=body), f"create {name}")["id"]
 
 
@@ -98,17 +132,29 @@ def setup() -> None:
     ids = {
         "tests": evaluator(owner, "tests-pass", "deterministic", "tests_passed"),
         "cost": evaluator(owner, "cost-under", "metric", "cost_under", max_usd=5),
-        "reviewer": evaluator(owner, "reviewer", "human", "human", allowed_labels=["good", "bad"]),
-        "judge": evaluator(
-            owner, "quality-judge", "llm_judge", "judge", rubric="Did the run fix the bug?"
+        "reviewer": evaluator(
+            owner, "reviewer", "human", "human", allowed_labels=["good", "bad"]
         ),
-        "succeeded": evaluator(owner, "run-succeeded", "deterministic", "run_succeeded"),
-        "latency": evaluator(owner, "latency-under", "metric", "latency_under", max_ms=600000),
+        "judge": evaluator(
+            owner,
+            "quality-judge",
+            "llm_judge",
+            "judge",
+            rubric="Did the run fix the bug?",
+        ),
+        "succeeded": evaluator(
+            owner, "run-succeeded", "deterministic", "run_succeeded"
+        ),
+        "latency": evaluator(
+            owner, "latency-under", "metric", "latency_under", max_ms=600000
+        ),
     }
     for run_id in (BASELINE, WRONG):
         for key in ("tests", "cost", "judge"):
             ok(
-                owner.post(f"/v1/runs/{run_id}/evaluations", json={"evaluator_id": ids[key]}),
+                owner.post(
+                    f"/v1/runs/{run_id}/evaluations", json={"evaluator_id": ids[key]}
+                ),
                 f"trigger {key}",
             )
     for run_id in (BASELINE, WRONG):
@@ -139,15 +185,24 @@ def setup() -> None:
         rubric='"' * 4000,
         max_input_chars=5000,
     )
-    before = {k: v for k, v in run_row(owner, WRONG).items() if k not in ("findings", "matched")}
-    ok(owner.post(f"/v1/runs/{WRONG}/evaluations", json={"evaluator_id": ids["broken"]}), "trigger")
+    # Derived fields (security_findings, summaries) land asynchronously from the worker after the run
+    # ends; snapshot only once the row has stopped changing, or the comparison below measures that
+    # settling instead of the failed evaluation.
+    before = settled_row(owner, WRONG)
+    ok(
+        owner.post(
+            f"/v1/runs/{WRONG}/evaluations", json={"evaluator_id": ids["broken"]}
+        ),
+        "trigger",
+    )
     broken = wait(
         "the failing evaluator",
         lambda: next(
             (
                 e
                 for e in evaluations(owner, WRONG)
-                if e["evaluator_id"] == ids["broken"] and e["state"] in ("completed", "failed")
+                if e["evaluator_id"] == ids["broken"]
+                and e["state"] in ("completed", "failed")
             ),
             None,
         ),
@@ -155,7 +210,11 @@ def setup() -> None:
     if broken["state"] != "failed":
         fail("the deliberately failing evaluator did not fail")
     time.sleep(3)  # a (wrongly) enqueued summary would land within the debounce
-    after = {k: v for k, v in run_row(owner, WRONG).items() if k not in ("findings", "matched")}
+    after = {
+        k: v
+        for k, v in run_row(owner, WRONG).items()
+        if k not in ("findings", "matched")
+    }
     if before != after:
         diff = sorted(k for k in before if before[k] != after.get(k))
         fail(f"a failed evaluation changed the run row: {diff}")
@@ -181,7 +240,11 @@ def setup() -> None:
         variants[name] = ok(
             owner.post(
                 f"/v1/experiments/{exp['id']}/variants",
-                json={"name": name, "role": role, "config": {"model": model, "variant": variant}},
+                json={
+                    "name": name,
+                    "role": role,
+                    "config": {"model": model, "variant": variant},
+                },
             ),
             f"variant {name}",
         )["id"]
@@ -207,7 +270,9 @@ def verify() -> None:
     if not full["files"]["only_right"] or meta["files"]["paths_withheld"] is not True:
         fail("file sets are wrong")
     if any(
-        r[side] and r[side]["label"] and ("/" in r[side]["label"] or " " in r[side]["label"])
+        r[side]
+        and r[side]["label"]
+        and ("/" in r[side]["label"] or " " in r[side]["label"])
         for r in meta["steps"]
         for side in ("left", "right")
     ):
@@ -219,7 +284,9 @@ def verify() -> None:
     texts = [e for e in evaluations(viewer, BASELINE)]
     # built-in explanations are numbers from a template; only a person's and a judge's free text is withheld
     free = [e for e in texts if e["kind"] in ("human", "llm_judge")]
-    if not free or any(e["explanation"] is not None or not e["explanation_withheld"] for e in free):
+    if not free or any(
+        e["explanation"] is not None or not e["explanation_withheld"] for e in free
+    ):
         fail("a viewer received a human or judge explanation")
     if HOSTILE in json.dumps(texts):
         fail("a viewer received an explanation")

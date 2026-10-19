@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useId, useState } from "react";
+import { experiments as t } from "@/copy/experiments";
 import { fieldErrors } from "@/lib/api/client";
 import { KIND_LABEL } from "@/lib/evaluations";
 import { formatTimestamp } from "@/lib/format";
@@ -11,6 +12,7 @@ import { useCan, useProjectId, useWorkspaceOptional } from "./WorkspaceProvider"
 import { TableScroll } from "./TableScroll";
 import { Empty, ErrorState, Loading } from "./States";
 import { ActionError, FieldError } from "./SettingsKit";
+import "../app/experiments.css";
 
 function CreateForm({ base }: { base: Base }) {
   const id = useId();
@@ -29,8 +31,8 @@ function CreateForm({ base }: { base: Base }) {
   const created = create.data;
   return (
     <form
-      className="experiment-form"
-      aria-label="New experiment"
+      className="experiment-form ex-create"
+      aria-label={t.create.title}
       onSubmit={(e) => {
         e.preventDefault();
         if (!name.trim() || !projectId) return;
@@ -43,14 +45,10 @@ function CreateForm({ base }: { base: Base }) {
         });
       }}
     >
-      <h2>New experiment</h2>
-      <p className="muted">
-        An experiment compares variants of one agent setup. Declare each variant&apos;s settings
-        (model, prompt version); do not put secrets, prompts or paths in them. This product does not
-        run the tasks: you attach runs you already recorded.
-      </p>
+      <h2>{t.create.title}</h2>
+      <p className="muted">{t.create.help}</p>
       <div className="field">
-        <label htmlFor={`${id}-name`}>Name</label>
+        <label htmlFor={`${id}-name`}>{t.create.name}</label>
         <input
           id={`${id}-name`}
           value={name}
@@ -62,7 +60,7 @@ function CreateForm({ base }: { base: Base }) {
       </div>
       {fixed === null && (
         <div className="field">
-          <label htmlFor={`${id}-project`}>Project</label>
+          <label htmlFor={`${id}-project`}>{t.create.project}</label>
           <select
             id={`${id}-project`}
             value={projectId}
@@ -77,7 +75,7 @@ function CreateForm({ base }: { base: Base }) {
         </div>
       )}
       <div className="field">
-        <label htmlFor={`${id}-desc`}>Description (optional)</label>
+        <label htmlFor={`${id}-desc`}>{t.create.description}</label>
         <textarea
           id={`${id}-desc`}
           value={description}
@@ -87,7 +85,7 @@ function CreateForm({ base }: { base: Base }) {
         />
       </div>
       <div className="field">
-        <label htmlFor={`${id}-dataset`}>Task set label (optional)</label>
+        <label htmlFor={`${id}-dataset`}>{t.create.taskSet}</label>
         <input
           id={`${id}-dataset`}
           value={dataset}
@@ -97,7 +95,7 @@ function CreateForm({ base }: { base: Base }) {
       </div>
       {options.length > 0 && (
         <fieldset>
-          <legend>Evaluators used by &quot;Evaluate all&quot;</legend>
+          <legend>{t.create.evaluators}</legend>
           {options.map((o) => (
             <label key={o.id} className="chip">
               <input
@@ -112,14 +110,18 @@ function CreateForm({ base }: { base: Base }) {
           ))}
         </fieldset>
       )}
-      <button type="submit" disabled={create.isPending || !name.trim() || !projectId}>
-        {create.isPending ? "Creating…" : "Create experiment"}
+      <button
+        type="submit"
+        className="primary"
+        disabled={create.isPending || !name.trim() || !projectId}
+      >
+        {create.isPending ? t.create.submitting : t.create.submit}
       </button>
       <ActionError error={create.error} />
       {created && (
         <p role="status" data-testid="experiment-created">
-          Created.{" "}
-          <Link href={experimentPath(base, created.id)}>Open &quot;{created.name}&quot;</Link>
+          {t.create.created}{" "}
+          <Link href={experimentPath(base, created.id)}>{t.create.open(created.name)}</Link>
         </p>
       )}
     </form>
@@ -131,31 +133,29 @@ export function Experiments({ base }: { base: Base }) {
   const list = useExperiments();
   const canWrite = useCan("experiment.write");
   return (
-    <div className="experiments" data-testid="experiments">
-      <div className="page-head">
-        <h1>Experiments</h1>
-        <p className="muted">
-          Compare variants of an agent: the same task set run with one thing changed.
-        </p>
-      </div>
+    <div className="experiments st" data-testid="experiments">
+      <h1 className="ex-title">{t.title}</h1>
+      <p className="ex-lede">{t.lede}</p>
       {list.isPending ? (
-        <Loading label="Loading experiments" />
+        <Loading label={t.loading} />
       ) : list.isError ? (
         <ErrorState error={list.error} onRetry={() => void list.refetch()} />
       ) : list.data.length === 0 ? (
-        <Empty title="No experiments yet">
-          {canWrite ? "Create one below." : "Nobody has created an experiment."}
-        </Empty>
+        <Empty title={t.empty.title}>{canWrite ? t.empty.canWrite : t.empty.readOnly}</Empty>
       ) : (
-        <TableScroll label="Experiments">
-          <table className="compare-table" data-testid="experiment-list">
+        <TableScroll label={t.listCaption}>
+          <table data-testid="experiment-list">
             <thead>
               <tr>
-                <th scope="col">Experiment</th>
-                <th scope="col">Task set</th>
-                <th scope="col">Variants</th>
-                <th scope="col">Runs</th>
-                <th scope="col">Created</th>
+                <th scope="col">{t.heads.experiment}</th>
+                <th scope="col">{t.heads.taskSet}</th>
+                <th scope="col" className="num">
+                  {t.heads.variants}
+                </th>
+                <th scope="col" className="num">
+                  {t.heads.runs}
+                </th>
+                <th scope="col">{t.heads.created}</th>
               </tr>
             </thead>
             <tbody>
@@ -166,8 +166,8 @@ export function Experiments({ base }: { base: Base }) {
                     {e.description && <div className="muted">{e.description}</div>}
                   </th>
                   <td>{e.dataset_label ?? "—"}</td>
-                  <td>{e.variant_count}</td>
-                  <td>{e.run_count}</td>
+                  <td className="num">{e.variant_count}</td>
+                  <td className="num">{e.run_count}</td>
                   <td>{formatTimestamp(e.created_at)}</td>
                 </tr>
               ))}

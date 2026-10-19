@@ -57,7 +57,7 @@ describe("Evidence view", () => {
     const { run } = baselineCodingRun();
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     const region = await screen.findByRole("region", { name: "Captured artifacts" });
-    expect(screen.getByRole("radio", { name: "Evidence" })).toBeChecked();
+    expect(screen.getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("heading", { name: "Evidence" })).toBeInTheDocument();
     const table = await within(region).findByRole("table", { name: "Evidence" });
     const rows = within(table).getAllByRole("row").slice(1);
@@ -98,10 +98,10 @@ describe("Evidence view", () => {
     const { run } = baselineCodingRun();
     renderWithQuery(<RunDetail runId={run.id} base={BASE} />);
     await screen.findByRole("region", { name: "Captured artifacts" });
-    await user.click(screen.getByRole("radio", { name: "Timeline" }));
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
     expect(await screen.findByRole("listbox", { name: /Run timeline/ })).toBeInTheDocument();
     expect(window.location.search).not.toContain("view=");
-    await user.click(screen.getByRole("radio", { name: "Evidence" }));
+    await user.click(screen.getByRole("tab", { name: "Evidence" }));
     expect(window.location.search).toContain("view=evidence");
   });
 });

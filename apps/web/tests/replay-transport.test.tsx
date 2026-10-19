@@ -177,7 +177,7 @@ describe("ReplayTransport (wide)", () => {
     rerender(<Harness skewed />);
     expect(screen.getByText("Timing across agents is approximate.")).toBeInTheDocument();
     const css = readFileSync(path.join(__dirname, "../src/app/replay.css"), "utf8");
-    expect(css).toMatch(/\.replay-time\s*\{[^}]*var\(--mono\)/);
+    expect(css).toMatch(/\.replay-time\s*\{[^}]*var\(--font-mono\)/);
   });
 
   it("says so, politely, when the playhead in the URL is not in the run", async () => {

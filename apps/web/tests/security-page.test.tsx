@@ -91,6 +91,33 @@ describe("the workspace Security page", () => {
     for (const s of SECURITY_SENTINELS) expect(table.textContent).not.toContain(s);
   });
 
+  // Step 5c: Security findings is a tab of Review. Severity is a word and a glyph on every row, the order inside a run is the
+  // most severe first (so the order reads without colour), the Project column is gone, and nothing on the page is red.
+  it("shows severity as a word with a glyph, most severe first within a run, and no Project column", async () => {
+    stub();
+    mount();
+    const rows = await screen.findAllByTestId("security-row");
+    const rank = ["critical", "high", "medium", "warning", "info"];
+    const byRun = new Map<string, number[]>();
+    for (const row of rows) {
+      const word = within(row).getByText(/^(Critical|High|Medium|Warning|Info)$/);
+      expect(word.previousElementSibling?.tagName.toLowerCase()).toBe("svg"); // the glyph
+      const run = within(row).getByRole("link").getAttribute("href")!.split("?")[0]!;
+      const list = byRun.get(run) ?? [];
+      list.push(rank.indexOf(row.getAttribute("data-severity")!));
+      byRun.set(run, list);
+    }
+    for (const [run, order] of byRun) expect(order, run).toEqual([...order].sort((a, b) => a - b));
+    expect(screen.queryByRole("columnheader", { name: "Project" })).toBeNull();
+    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Severity",
+      "Finding",
+      "Run",
+      "When",
+    ]);
+    expect(screen.getByText(/findings? loaded/)).toBeInTheDocument();
+  });
+
   it("pages with 'Load more' until the end of the list", async () => {
     stub();
     const user = userEvent.setup();

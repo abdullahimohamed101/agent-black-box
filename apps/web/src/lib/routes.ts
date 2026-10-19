@@ -18,6 +18,6 @@ export const experimentPath = (b: Base, experimentId: string) =>
 export const approvalsPath = (workspace: string) => `/w/${workspace}/approvals`;
 export const policiesPath = (workspace: string) => `/w/${workspace}/settings/policies`;
 
-// Phase 17. Alerts are a workspace page; the tab is the URL's `?tab=`.
+// Phase 17, moved under Settings in design pass 2 step 5c. The tab is the URL's `?tab=`; `/w/{ws}/alerts` redirects here.
 export const alertsPath = (workspace: string, tab?: "rules" | "destinations" | "history") =>
-  `/w/${workspace}/alerts${tab && tab !== "rules" ? `?tab=${tab}` : ""}`;
+  `/w/${workspace}/settings/alerts${tab && tab !== "rules" ? `?tab=${tab}` : ""}`;

@@ -43,23 +43,24 @@ describe("illustrations", () => {
   });
 });
 
-describe("Empty and ErrorState carry a motif", () => {
-  it("Empty shows the sentence, the motif and the action", () => {
+describe("Empty has no motif; ErrorState keeps one for not-found only", () => {
+  // Step 5d: Empty has no motif prop any more (ADR-166 removal 15, final); it shows the sentence and the action, and no drawing.
+  it("Empty shows the sentence and the action, and never a drawing", () => {
     render(
-      <Empty title="No evaluations yet" motif="tape" action={<button type="button">Start</button>}>
+      <Empty title="No evaluations yet" action={<button type="button">Start</button>}>
         Nobody has evaluated this run.
       </Empty>,
     );
     const el = document.querySelector('[data-state="empty"]')!;
-    expect(el.querySelector("svg.illus")).not.toBeNull();
+    expect(el.querySelector("svg.illus")).toBeNull();
     expect(within(el as HTMLElement).getByRole("button", { name: "Start" })).toBeInTheDocument();
     expect(el).toHaveTextContent("No evaluations yet");
   });
 
-  it("an error and a not-found each get a motif; the alert keeps its words", () => {
+  it("a not-found keeps its motif and a routine error does not (ADR-166: drawings only on first-run and not-found); both keep their words", () => {
     const { rerender } = render(<ErrorState error={new Error("boom")} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Could not load this data");
-    expect(screen.getByRole("alert").querySelector("svg.illus")).not.toBeNull();
+    expect(screen.getByRole("alert").querySelector("svg.illus")).toBeNull();
     rerender(
       <ErrorState error={new ApiRequestError("no such run", 404, "NOT_FOUND", null, false)} />,
     );
@@ -195,7 +196,7 @@ describe("the runs list uses the guide", () => {
     });
     await screen.findByTestId("setup-arrived");
     const user = userEvent.setup();
-    const box = screen.getByRole("searchbox", { name: "Search" });
+    const box = screen.getByRole("searchbox", { name: "Search runs" });
     await user.type(box, "x{Enter}");
     await waitFor(() => expect(screen.queryByTestId("setup-guide")).toBeNull());
     await user.clear(box);

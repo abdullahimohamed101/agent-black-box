@@ -25,7 +25,7 @@ test("a really ingested failed run explains itself", async ({ page }) => {
     "file.read",
     "llm.request.completed",
   ]);
-  await page.getByRole("button", { name: "Show it" }).click();
+  await page.getByRole("button", { name: "Go to first error" }).click();
   await expect(page.getByRole("dialog")).toContainText("TestFailure");
   await settleAnimations(page);
   const bad = (
@@ -39,7 +39,11 @@ test("the real project lists both runs and the proxy exposes no credentials", as
   await page.goto(`/w/${workspace()}/projects/all/runs`);
   await expect(page.locator("tbody tr")).toHaveCount(2);
   await expect(page.getByText("Real: fix login bug (passes)")).toBeVisible();
-  await page.getByLabel("Failed").check();
+  // Design pass 2: the status filter is a facet button in the "Narrow the results" column (it edits the query string)
+  await page
+    .getByRole("region", { name: "Narrow the results" })
+    .getByRole("button", { name: "Failed" })
+    .click();
   await expect(page.locator("tbody tr")).toHaveCount(1);
   await page.goto(`/w/${workspace()}/projects/all/runs/${ok}`);
   await expect(page.getByTestId("headline")).toContainText("Completed in");

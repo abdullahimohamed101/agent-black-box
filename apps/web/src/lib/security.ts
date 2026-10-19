@@ -107,14 +107,6 @@ export function securityLine(f: FindingOut): SecurityLine {
 export const securityCountText = (n: number): string =>
   `${n} security finding${n === 1 ? "" : "s"}`;
 
-/** "2 security, 1 finding": what the closed Context button says is inside. Reliability keeps its old wording. */
-export function contextSummary(security: number, reliability: number): string {
-  const parts: string[] = [];
-  if (security > 0) parts.push(`${security} security`);
-  if (reliability > 0) parts.push(`${reliability} finding${reliability === 1 ? "" : "s"}`);
-  return parts.join(", ");
-}
-
 // ------------------------------------------------------------------------------------- the workspace page's URL
 
 export type RangeKey = "24h" | "7d" | "30d" | "all";

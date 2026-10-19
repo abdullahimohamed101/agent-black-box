@@ -1,0 +1,362 @@
+/* Application frame (design pass 2 step 5a, ADR-166): one 44 px top bar, then the page. Tokens only: no raw colour, size or
+   radius. Breakpoints (media queries cannot read custom properties): 56.1875rem = below 900 px, 37.4375rem = below 600 px.
+   Zero motion by construction: nothing here transitions or animates. */
+.shell {
+  min-height: 100dvh;
+}
+.shell main {
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.shell main.page {
+  padding: var(--space-6) var(--layout-gutter) var(--space-8);
+}
+.skip {
+  position: absolute;
+  left: -999px;
+  z-index: 10;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
+}
+.skip:focus {
+  left: var(--space-2);
+  top: var(--space-2);
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-4);
+  height: var(--layout-topbar);
+  padding: 0 var(--layout-gutter);
+  background: var(--color-bg-canvas);
+  border-bottom: 1px solid var(--color-border-subtle);
+  min-width: 0;
+}
+.topbar-start {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-6);
+  min-width: 0;
+}
+.topbar-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  min-width: 0;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-primary);
+  font-size: var(--type-body-lg-size);
+  font-weight: var(--weight-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand-mark {
+  flex: none;
+  width: var(--space-6);
+  height: var(--space-6);
+}
+
+/* Primary links: ink-2 until current; the current one is ink 600 with a 2 px accent underline on the bar's own rule. */
+.topnav {
+  display: flex;
+  align-self: stretch;
+}
+.topnav ul {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.topnav li {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.topnav a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  height: 100%;
+  padding: 0 var(--space-3);
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+.topnav a:hover {
+  color: var(--color-text-primary);
+}
+.topnav a[aria-current="page"] {
+  border-bottom-color: var(--color-interactive-default);
+  color: var(--color-text-primary);
+  font-weight: var(--weight-strong);
+}
+.nav-count {
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-small-size);
+  color: var(--color-text-secondary);
+}
+/* Something is running in this scope: a small accent dot after "Runs" (named "Recording" for screen readers). */
+.live {
+  display: inline-flex;
+  align-items: center;
+}
+.live-dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--color-brand-mark);
+}
+
+.menu-button {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: center;
+  height: var(--layout-control);
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  color: var(--color-text-primary);
+}
+.menu-button:hover {
+  border-color: var(--color-border-control);
+}
+
+/* Scope, search and person share one ghost-control look: no box until hover or open. */
+.menu {
+  position: relative;
+}
+.menu-trigger,
+.topbar-search-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--layout-control);
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--color-text-primary);
+  max-width: 100%;
+}
+.menu-trigger:hover,
+.topbar-search-icon:hover,
+.menu-trigger[aria-expanded="true"] {
+  border-color: var(--color-border-control);
+}
+/* min(): a bare rem cap would replace the 100% above and let a long scope name push the search icon out from under it. */
+.scope-button {
+  max-width: min(20rem, 100%);
+}
+.scope-text,
+.person-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-static {
+  padding: 0 var(--space-2);
+  color: var(--color-text-secondary);
+}
+.person-button {
+  color: var(--color-text-secondary);
+  max-width: min(14rem, 100%);
+}
+
+.menu-panel {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 8;
+  min-width: 15rem;
+  max-width: 24rem;
+  padding: var(--space-2) 0;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+}
+.menu-end .menu-panel {
+  left: auto;
+  right: 0;
+}
+.menu-label {
+  margin: var(--space-2) var(--space-4) var(--space-1);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  color: var(--color-text-secondary);
+}
+.menu-label:first-child {
+  margin-top: 0;
+}
+.menu-who {
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.menu-who p {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.menu-email {
+  margin: 0 var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-small-size);
+  overflow-wrap: anywhere;
+}
+.menu-aside {
+  margin: 0 var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--type-small-size);
+}
+.menu-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.menu-list li > a,
+.menu-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--layout-control);
+  padding: var(--space-1) var(--space-4);
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+.menu-list li > a .menu-aside {
+  margin: 0;
+}
+.menu-list li > a:hover,
+.menu-action:hover {
+  background: var(--color-bg-wash);
+}
+.menu-list li > a[aria-current="true"] {
+  border-left-color: var(--color-interactive-default);
+  font-weight: var(--weight-strong);
+}
+.menu-note {
+  margin: var(--space-2) var(--space-4) 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-small-size);
+}
+.menu-panel .field-error {
+  display: block;
+  padding: 0 var(--space-4);
+}
+
+/* Below 900 px the five links collapse into the Menu button; its panel opens under the bar. No hover-only behaviour. */
+@media (max-width: 56.1875rem) {
+  .topbar,
+  .shell main.page {
+    padding-left: var(--layout-gutter-narrow);
+    padding-right: var(--layout-gutter-narrow);
+  }
+  .topbar-start {
+    gap: var(--space-2);
+  }
+  .menu-button {
+    display: inline-flex;
+  }
+  .topnav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    padding: var(--space-2) var(--layout-gutter-narrow);
+    background: var(--color-bg-raised);
+    border-bottom: 1px solid var(--color-border-strong);
+  }
+  .topnav[data-open="true"] {
+    display: block;
+  }
+  .topnav ul {
+    flex-direction: column;
+    gap: 0;
+  }
+  .topnav a {
+    width: 100%;
+    min-height: var(--layout-touch);
+    border-bottom: 0;
+    border-left: 2px solid transparent;
+  }
+  .topnav a[aria-current="page"] {
+    border-left-color: var(--color-interactive-default);
+  }
+}
+
+/* A phone: the brand is the mark alone, the scope truncates, every target is 44 px, and the scope and person panels span the
+   width under the bar. */
+@media (max-width: 37.4375rem) {
+  .topbar .brand-name,
+  .person-text {
+    display: none;
+  }
+  .menu-button-text {
+    position: fixed;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .menu-button,
+  .menu-trigger,
+  .topbar-search-icon {
+    min-width: var(--layout-touch);
+    min-height: var(--layout-touch);
+    justify-content: center;
+  }
+  .scope-button {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+  .topbar-end {
+    flex: 1;
+    justify-content: flex-end;
+  }
+  .menu {
+    position: static;
+    min-width: 0;
+  }
+  .menu:has(.scope-button) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .menu .menu-panel,
+  .menu-end .menu-panel {
+    position: fixed;
+    top: calc(var(--layout-topbar) + var(--space-1));
+    left: var(--layout-gutter-narrow);
+    right: var(--layout-gutter-narrow);
+    max-width: none;
+  }
+  .menu-list li > a,
+  .menu-action {
+    min-height: var(--layout-touch);
+  }
+}

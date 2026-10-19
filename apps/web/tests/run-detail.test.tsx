@@ -128,13 +128,14 @@ describe("RunDetail", () => {
     await user.keyboard("e");
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveAttribute("data-error");
-    expect(within(dialog).getByRole("heading", { name: /Error/ })).toBeInTheDocument();
+    // "What went wrong" is the first section of an error event (design pass 2: no red heading, no cross)
+    expect(within(dialog).getByRole("heading", { name: "What went wrong" })).toBeInTheDocument();
     expect(dialog).toHaveTextContent("run_migration failed: ConnectionTimeout");
   });
 
   it.each([
-    ["running", runningRun, /Running · step \d+/],
-    ["waiting", approvalRun, /Awaiting approval/],
+    ["running", runningRun, /^Running at step \d+/],
+    ["waiting", approvalRun, /^Waiting for approval/],
     ["expensive", expensiveRun, /Succeeded|Completed in/],
   ])("renders a %s run", async (_n, build, text) => {
     stubApi();
@@ -200,7 +201,7 @@ describe("headline", () => {
         t0: Date.parse(failing.run.started_at),
         eventsComplete: true,
       }).lead,
-    ).toMatch(/^Timed out at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout/);
+    ).toMatch(/^Timed out at step \d+ after 6\.2 s: run_migration, ConnectionTimeout/);
     expect(lead("BLOCKED")).toMatch(/^Blocked/);
     expect(lead("QUEUED")).toMatch(/^Queued/);
   });

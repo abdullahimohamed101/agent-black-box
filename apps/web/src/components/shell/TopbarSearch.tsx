@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import "../../app/topbar-search.css";
-import { FaultCut } from "../illustrations";
+import { shell } from "@/copy/shell";
 import { api, unwrap } from "@/lib/api/client";
 import { MAX_Q_CHARS, searchProblem } from "@/lib/search";
 import { runPath, runsPath, type Base } from "@/lib/routes";
@@ -37,18 +37,18 @@ function useDebounced(value: string, ms: number): string {
 /** Why a search cannot show results, in words that never repeat what was typed. */
 function problemText(error: unknown): string {
   const p = searchProblem(error);
-  if (!p) return "Search is unavailable right now. Try again in a moment.";
+  if (!p) return shell.search.unavailable;
   switch (p.kind) {
     case "forbidden":
-      return `Your role cannot search ${p.field ? `${p.field}:` : "that field"}, which holds captured content. Metadata search still works.`;
+      return shell.search.forbidden(p.field);
     case "invalid":
-      return `This search could not be understood. ${p.message}`;
+      return shell.search.invalid(p.message);
     case "too-long":
-      return `Searches are limited to ${MAX_Q_CHARS} characters.`;
+      return shell.search.tooLong(MAX_Q_CHARS);
     case "busy":
-      return "Search is busy. Press Enter to open the runs list, or try again.";
+      return shell.search.busy;
     default:
-      return "This search took too long. Narrow it and try again.";
+      return shell.search.timeout;
   }
 }
 
@@ -67,7 +67,7 @@ export function TopbarSearch({ base }: { base: Base }) {
   const [value, setValue] = useState("");
   const [dismissed, setDismissed] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [expanded, setExpanded] = useState(false); // phone: the field replaces the crumbs
+  const [expanded, setExpanded] = useState(false); // the field takes the bar's place while it is open
   const [active, setActive] = useState(-1);
 
   const text = value.trim();
@@ -184,7 +184,8 @@ export function TopbarSearch({ base }: { base: Base }) {
       <button
         type="button"
         className="topbar-search-icon"
-        aria-label="Search runs"
+        aria-label={shell.search.open}
+        title={shell.search.openHint}
         aria-keyshortcuts="/"
         aria-expanded={expanded}
         onClick={() => {
@@ -207,7 +208,7 @@ export function TopbarSearch({ base }: { base: Base }) {
           ref={input}
           type="text"
           role="combobox"
-          aria-label="Search all runs"
+          aria-label={shell.search.field}
           aria-autocomplete="list"
           aria-expanded={showPopup && optionCount > 0}
           aria-controls={listId}
@@ -217,7 +218,7 @@ export function TopbarSearch({ base }: { base: Base }) {
           aria-keyshortcuts="/"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Search runs"
+          placeholder={shell.search.placeholder}
           value={value}
           onFocus={() => {
             setFocused(true);
@@ -230,9 +231,6 @@ export function TopbarSearch({ base }: { base: Base }) {
           }}
           onKeyDown={onKeyDown}
         />
-        <kbd className="topbar-search-hint" aria-hidden="true">
-          /
-        </kbd>
         <div
           id={listId}
           role="listbox"
@@ -251,7 +249,9 @@ export function TopbarSearch({ base }: { base: Base }) {
                 onClick={() => choose(i)}
               >
                 <StatusBadge status={r.status} />
-                <span className="topbar-option-name">{r.name ?? r.id}</span>
+                <span className="topbar-option-name" title={r.name ?? r.id}>
+                  {r.name ?? r.id}
+                </span>
                 {r.agent_id && <span className="muted topbar-option-agent">{r.agent_id}</span>}
               </div>
             ))}
@@ -264,26 +264,23 @@ export function TopbarSearch({ base }: { base: Base }) {
               onMouseDown={(e) => e.preventDefault()}
               onClick={toList}
             >
-              Show all in the runs list
+              {shell.search.all}
             </div>
           )}
         </div>
         {showPopup && state === "loading" && (
           <p className="topbar-note muted" role="status">
-            Searching…
+            {shell.search.searching}
           </p>
         )}
         {showPopup && state === "empty" && (
           <p className="topbar-note topbar-note-empty muted" role="status">
-            <FaultCut className="illus-sm" />
-            No runs match this search.
+            {shell.search.none}
           </p>
         )}
         {showPopup && state === "error" && (
           <p className="topbar-note" role="alert">
-            {tooLong
-              ? `Searches are limited to ${MAX_Q_CHARS} characters.`
-              : problemText(results.error)}
+            {tooLong ? shell.search.tooLong(MAX_Q_CHARS) : problemText(results.error)}
           </p>
         )}
       </div>

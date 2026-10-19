@@ -175,7 +175,7 @@ describe("Needs attention", () => {
     renderWithQuery(<Harness initial={{ q: "agent:coding-agent status:success" }} />);
     await screen.findByRole("table", { name: "Runs" });
     await user.click(screen.getByRole("button", { name: "Needs attention" }));
-    const box = screen.getByRole("searchbox", { name: "Search" });
+    const box = screen.getByRole("searchbox", { name: "Search runs" });
     await waitFor(() => expect(box).toHaveValue("agent:coding-agent"));
     await waitFor(() => expect(screen.getAllByRole("row").length).toBeGreaterThan(1));
   });
@@ -191,7 +191,7 @@ describe("Needs attention", () => {
     const region = screen.getByRole("region", { name: "Narrow the results" });
     await user.click(within(region).getByRole("button", { name: /^Success/ }));
     await waitFor(() => expect(attention).toHaveAttribute("aria-pressed", "false"));
-    expect(screen.getByRole("searchbox", { name: "Search" })).toHaveValue("status:success");
+    expect(screen.getByRole("searchbox", { name: "Search runs" })).toHaveValue("status:success");
   });
 
   it("keeps asking the server, so a failure is never beyond the first page", async () => {
@@ -216,7 +216,7 @@ describe("facet column", () => {
     await screen.findByRole("table", { name: "Runs" });
     const region = screen.getByRole("region", { name: "Narrow the results" });
     await user.click(within(region).getByRole("button", { name: "Failed" }));
-    const box = screen.getByRole("searchbox", { name: "Search" });
+    const box = screen.getByRole("searchbox", { name: "Search runs" });
     await waitFor(() => expect(box).toHaveValue("status:failed"));
     // the counts arrive with the search; the same facet is now pressed and still one term
     const on = await within(region).findByRole("button", { name: /^Failed\s*\(\d+\)$/ });
@@ -235,7 +235,7 @@ describe("facet column", () => {
     await screen.findByRole("table", { name: "Runs" });
     const region = screen.getByRole("region", { name: "Narrow the results" });
     await user.click(await within(region).findByRole("button", { name: /^Last 24 hours$/ }));
-    const box = screen.getByRole("searchbox", { name: "Search" });
+    const box = screen.getByRole("searchbox", { name: "Search runs" });
     await waitFor(() => expect(box).toHaveValue("tool:run_migration started:>=-24h"));
     await user.click(within(region).getByRole("button", { name: /^Last 24 hours$/ }));
     await waitFor(() => expect(box).toHaveValue("tool:run_migration"));

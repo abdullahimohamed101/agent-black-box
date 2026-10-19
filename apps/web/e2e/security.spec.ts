@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { openTab, settleAnimations } from "./motion";
 
 // Phase 13 step 3 (fixtures mode): security findings on the run page, the workspace Security page, the settings page.
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
@@ -40,9 +40,7 @@ for (const [width, height] of [
       await expect(page.getByRole("listbox", { name: /Run timeline/ })).toBeVisible();
       const chip = page.getByTestId("security-chip");
       await expect(chip).toHaveText("6 security findings (most severe: Critical)");
-      await expect(page.getByRole("button", { name: /^Context/ })).toHaveText(
-        "Context · 6 security",
-      );
+      await expect(page.getByRole("tab", { name: "Findings" })).toHaveText("Findings6");
       await chip.click();
       const group = page.getByTestId("security-group");
       await expect(group).toBeVisible();
@@ -62,14 +60,19 @@ for (const [width, height] of [
 
     test("workspace page: table, keyboard, deep link, facets and URL", async ({ page }) => {
       await page.goto("/w/demo/security");
-      await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible();
+      // Step 5c: the page is Review; Security findings is its second tab
+      await expect(page.getByRole("heading", { name: "Review", level: 1 })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Security findings" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
       await expect(page.getByTestId("security-row")).toHaveCount(10);
       await noSentinel(page, "main");
       if (width > 800)
-        await expect(page.getByRole("link", { name: "Security" }).first()).toHaveAttribute(
-          "aria-current",
-          "page",
-        );
+        // Security findings live under Review in the top bar (design pass 2)
+        await expect(
+          page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: /^Review/ }),
+        ).toHaveAttribute("aria-current", "page");
       await axe(page);
       // facets edit the URL; back and forward restore it
       if (width < 800) await page.getByText("Narrow results").click();
@@ -149,7 +152,9 @@ test.describe("settings", () => {
     page,
   }) => {
     await page.goto("/w/demo/settings/security");
-    await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Capture and detectors", level: 1 }),
+    ).toBeVisible();
     const save = page.getByRole("button", { name: "Save changes" });
     await expect(save).toBeDisabled();
     await page.getByRole("radio", { name: /^Full/ }).check();
@@ -181,10 +186,10 @@ test.describe("viewer", () => {
   }) => {
     await page.goto(`/w/viewer-only/projects/all/runs/${RUN(14)}`);
     await expect(page.getByTestId("security-chip")).toHaveText(/6 security findings/);
-    await openContext(page);
+    await openTab(page, "Findings");
     const lines = page.getByTestId("security-finding");
     await expect(lines).toHaveCount(6);
-    await noSentinel(page, "#run-context");
+    await noSentinel(page, "#run-tabs-panel");
     await lines
       .filter({ hasText: "usually holds secrets" })
       .getByRole("button", { name: "Show evidence" })
@@ -198,7 +203,7 @@ test.describe("viewer", () => {
     await noSentinel(page, "main");
     await page.goto("/w/viewer-only/settings/security");
     await expect(page.getByText("Not available for your role")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Security" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Review/ })).toBeVisible();
   });
 });
 

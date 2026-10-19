@@ -1,3 +1,4 @@
+import { currentSettingsTab } from "./settings";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
@@ -88,10 +89,7 @@ for (const [width, height] of [
       await expect(items.nth(0).getByRole("button")).toHaveCount(0);
       await expect(items.nth(1)).toContainText("Safari on iOS");
       await expect(items.nth(2)).toContainText("Unknown device");
-      await expect(page.getByRole("link", { name: "Sessions" }).first()).toHaveAttribute(
-        "aria-current",
-        "page",
-      );
+      await expect(currentSettingsTab(page)).toHaveText("Sessions");
       await axe(page);
       expect(errors).toEqual([]);
     });

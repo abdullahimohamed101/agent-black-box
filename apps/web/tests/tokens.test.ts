@@ -1,80 +1,20 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { contrast, roles, themes } from "./tokenCss";
 
-// D16: contrast is a test, not a scratch script. Parses the :root blocks of globals.css (light, then the dark media block)
-// and asserts every text role on the backgrounds it is drawn on is at least 4.5:1 (WCAG AA for body text).
-const css = readFileSync(path.join(__dirname, "../src/app/globals.css"), "utf8");
+// D16: contrast is a test, not a scratch script. Reads the custom properties through tests/tokenCss.ts (generated tokens, then
+// the alias layer, then globals.css; design pass 2 moved the values out of globals.css) and asserts every text role on the backgrounds it is drawn on is at least 4.5:1 (WCAG AA for body text).
+const schemes = themes();
 
-// Values are a hex colour or an alias `var(--other)` (the old names point at the Phase 22 semantic tokens).
-function vars(block: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const m of block.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6}|var\(--[a-z0-9-]+\))\s*;/g))
-    out[m[1]!] = m[2]!;
-  return out;
-}
-function resolve(raw: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const k of Object.keys(raw)) {
-    let v = raw[k]!;
-    for (let i = 0; i < 5 && v.startsWith("var("); i++) v = raw[v.slice(6, -1)] ?? v;
-    out[k] = v;
-  }
-  return out;
-}
-function rootBlock(src: string): string {
-  const start = src.indexOf(":root {");
-  const end = src.indexOf("\n}", start);
-  return src.slice(start, end);
-}
-const dark = css.indexOf("@media (prefers-color-scheme: dark)");
-const light = vars(rootBlock(css));
-const darkOnly = vars(rootBlock(css.slice(dark)));
-const schemes: Record<string, Record<string, string>> = {
-  light: resolve(light),
-  dark: resolve({ ...light, ...darkOnly }),
-};
-
-function lum(hex: string): number {
-  const [r, g, b] = [1, 3, 5].map((i) => {
-    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  }) as [number, number, number];
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-function contrast(a: string, b: string): number {
-  const [x, y] = [lum(a), lum(b)];
-  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
-}
-
-const text = ["fg", "fg-2", "muted", "accent", "ok", "warn", "bad"];
-const grounds = ["bg", "surface", "surface-2"];
-const tints: [string, string][] = [
-  ["ok", "ok-bg"],
-  ["warn", "warn-bg"],
-  ["bad", "bad-bg"],
-  ["accent", "accent-bg"],
-  ["fg", "ok-bg"],
-  ["fg", "warn-bg"],
-  ["fg", "bad-bg"],
-  ["muted", "warn-bg"],
-  ["muted", "bad-bg"],
-];
+// Step 5c: the pre-pass-2 alias names are deleted; `roles()` looks each role up under its token name (tests/tokenCss.ts).
+// Step 5b deleted the aliases nothing reads (fg, fg-2, ok, warn, bad, info, surface-2 and the four tints), with their pairs: the
+// roles that remain are ink, muted, accent, wait (caution) and fail, on the page, the raised surface and the selection.
+const text = ["ink", "muted", "accent", "wait", "fail"];
+const grounds = ["bg", "surface"];
 
 describe.each(Object.keys(schemes))("%s scheme tokens", (name) => {
-  const t = schemes[name]!;
+  const t = roles(schemes[name]!);
   it("defines every token the other stylesheets read", () => {
-    for (const k of [
-      ...text,
-      ...grounds,
-      "sel",
-      "border",
-      "ok-bg",
-      "warn-bg",
-      "bad-bg",
-      "accent-bg",
-      "mark",
-    ])
+    for (const k of [...text, ...grounds, "sel", "border"])
       expect(t[k], k).toMatch(/^#[0-9a-f]{6}$/i);
   });
   for (const fg of text)
@@ -82,13 +22,9 @@ describe.each(Object.keys(schemes))("%s scheme tokens", (name) => {
       it(`${fg} on ${bg} is at least 4.5:1`, () => {
         expect(contrast(t[fg]!, t[bg]!)).toBeGreaterThanOrEqual(4.5);
       });
-  for (const fg of ["fg", "fg-2", "muted", "accent", "bad", "warn", "ok"])
+  for (const fg of text)
     it(`${fg} on the selection colour is at least 4.5:1`, () => {
       expect(contrast(t[fg]!, t.sel!)).toBeGreaterThanOrEqual(4.5);
-    });
-  for (const [fg, bg] of tints)
-    it(`${fg} on ${bg} is at least 4.5:1`, () => {
-      expect(contrast(t[fg]!, t[bg]!)).toBeGreaterThanOrEqual(4.5);
     });
   it("button text (bg) on the accent fill is at least 4.5:1", () => {
     expect(contrast(t.bg!, t.accent!)).toBeGreaterThanOrEqual(4.5);

@@ -44,7 +44,7 @@ for (const [width, height] of [
       page.on("pageerror", (e) => problems.push(e.message));
       await page.goto(WAITING);
       await expect(page.getByTestId("headline")).toContainText(
-        /^Waiting for approval: github\.push · step \d+$/,
+        /^Waiting for approval of github\.push at step \d+\.$/,
       );
       await expect(page.getByTestId("headline-detail")).toContainText(/\d+ h( \d+ min)? left/);
       const banner = page.getByTestId("approval-banner");
@@ -141,7 +141,7 @@ test("a viewer reads the same words; the time left needs approval rights and is 
   const calls: string[] = [];
   page.on("request", (r) => calls.push(new URL(r.url()).pathname));
   await page.goto(`/w/viewer-only/projects/all/runs/${RUN(20)}`);
-  await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval: github\.push/);
+  await expect(page.getByTestId("headline")).toContainText(/^Waiting for approval of github\.push/);
   await expect(page.getByTestId("headline-detail")).not.toContainText("left");
   const banner = page.getByTestId("approval-banner");
   await expect(banner).toContainText("Someone with approval rights decides this request.");

@@ -45,32 +45,33 @@ function timeline(
 }
 
 describe("the timeline's fault line", () => {
-  it("draws one line, labelled with the step, on the first-error row; rows below carry the tint, rows above do not", () => {
+  it("draws one line, labelled with the step, on the first-error row; rows below are marked as after the fault, rows above are not", () => {
     timeline(failureRetryRun().events);
     const lines = document.querySelectorAll(".tl-fault");
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toHaveTextContent("first error · step 7");
+    expect(lines[0]).toHaveTextContent("First error, step 7");
     expect(lines[0]).toHaveAttribute("aria-hidden", "true");
     const rows = screen.getAllByRole("option");
     // Expanded, the line sits on the error event's own row. The group header and the "started" row above it happened
-    // before the error: they are neither tinted as "after the fault" nor under the line (review P2-3).
+    // before the error: they are neither marked as "after the fault" nor under the line (review P2-3). The mark is a data
+    // attribute only: no row is tinted (tests/run-page-css.test.ts).
     const at = rows.findIndex((r) => r.hasAttribute("data-first-error"));
     expect(at).toBeGreaterThan(1);
     rows.forEach((r, i) => {
       expect(r.hasAttribute("data-after-fault"), `row ${i}`).toBe(i > at);
     });
-    // the line sits on the top edge of that row (36px rows)
-    expect((lines[0] as HTMLElement).style.top).toBe(`${at * 36}px`);
+    // the line sits on the top edge of that row (32px rows)
+    expect((lines[0] as HTMLElement).style.top).toBe(`${at * 32}px`);
   });
 
-  it("anchors on the group when the first error is inside a collapsed group, and tints what follows", () => {
+  it("anchors on the group when the first error is inside a collapsed group, and marks what follows", () => {
     const events = failureRetryRun().events;
     const rowsExpanded = buildRows(events, new Set());
     const group = rowsExpanded.find((r) => r.kind === "group" && r.hasError)!;
     timeline(events, new Set([group.key]));
     const rows = screen.getAllByRole("option");
     const at = rows.findIndex((r) => r.getAttribute("aria-label")?.includes("contains an error"));
-    expect((document.querySelector(".tl-fault") as HTMLElement).style.top).toBe(`${at * 36}px`);
+    expect((document.querySelector(".tl-fault") as HTMLElement).style.top).toBe(`${at * 32}px`);
     expect(rows[at]).not.toHaveAttribute("data-after-fault");
     expect(rows[at + 1]).toHaveAttribute("data-after-fault");
   });
@@ -99,7 +100,7 @@ describe("the timeline's fault line", () => {
     expect(i).toBeGreaterThan(0);
     expect(rows[i]).not.toHaveAttribute("data-error");
     expect(document.querySelectorAll(".tl-fault")).toHaveLength(1);
-    expect((document.querySelector(".tl-fault") as HTMLElement).style.top).toBe(`${i * 36}px`);
+    expect((document.querySelector(".tl-fault") as HTMLElement).style.top).toBe(`${i * 32}px`);
     rows.forEach((r, k) => expect(r.hasAttribute("data-after-fault")).toBe(k > i));
   });
 
@@ -133,7 +134,8 @@ describe("the timeline's fault line", () => {
       .filter((s) => s.textContent && !s.querySelector(".sr-only"))
       .map((s) => s.textContent);
     expect(drawn.length).toBeGreaterThan(0);
-    for (const t of drawn) expect(t).toMatch(/error|timeout|failed/);
+    // failures say so in words, and a retry is a quiet word of its own; nothing else is drawn
+    for (const t of drawn) expect(t).toMatch(/error|timeout|failed|retry/);
   });
 
   it("the first-error row still says so in words for assistive technology", () => {
@@ -269,12 +271,12 @@ describe("the waterfall's fault line", () => {
       />,
     );
 
-  it("cuts across the lanes at the first-error time, with a label and a tinted region after it", () => {
+  it("cuts across the lanes at the first-error time, with a label and no tinted region after it", () => {
     render_();
     const line = document.querySelector<HTMLElement>(".wf-fault-line")!;
     expect(line).not.toBeNull();
-    expect(document.querySelector(".wf-fault-region")).not.toBeNull();
-    expect(document.querySelector(".wf-fault-flag")).toHaveTextContent("first error · step 4");
+    expect(document.querySelector(".wf-fault-region")).toBeNull();
+    expect(document.querySelector(".wf-fault-flag")).toHaveTextContent("First error, step 4");
     const pct = parseFloat(line.style.left);
     expect(pct).toBeGreaterThan(0);
     expect(pct).toBeLessThanOrEqual(100);

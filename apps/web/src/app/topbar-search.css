@@ -1,92 +1,75 @@
-/* Global top-bar search (Phase 22 step 7, plan D7). */
+/* Global search (Phase 22 step 7, plan D7; design pass 2 step 5a). The bar holds one icon button; opening it (the button or
+   the "/" key) lets the field take the bar's place until Escape or blur with no text. Tokens only. */
 .topbar-search {
   position: relative;
-  flex: 0 1 22rem;
   min-width: 0;
 }
-.topbar-search-icon {
-  display: none;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  color: var(--muted);
-}
 .topbar-search-field {
+  display: none;
   position: relative;
+}
+.topbar-search[data-expanded="true"] {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--layout-gutter);
+  background: var(--color-bg-canvas);
+}
+.topbar-search[data-expanded="true"] .topbar-search-icon {
+  display: none;
+}
+.topbar-search[data-expanded="true"] .topbar-search-field {
+  display: block;
+  flex: 1;
+  max-width: 40rem;
+  margin: 0 auto;
 }
 .topbar-search-field input {
   width: 100%;
-  height: 1.9rem;
-  padding: 0 1.9rem 0 0.65rem;
-  font: 400 0.8rem/1 var(--mono);
-  color: var(--fg);
-  background: var(--bg);
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  height: var(--layout-control);
+  padding: 0 var(--space-3);
+  font: var(--type-mono-weight) var(--type-mono-size) / var(--type-mono-line) var(--font-mono);
+  color: var(--color-text-primary);
+  background: var(--color-bg-canvas);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
 }
 .topbar-search-field input::placeholder {
-  color: var(--muted);
-  font-family: inherit;
-}
-.topbar-search-field input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 0;
-  border-color: var(--accent);
-}
-.topbar-search-hint {
-  position: absolute;
-  right: 0.4rem;
-  top: 50%;
-  transform: translateY(-50%);
-  min-width: 1.15rem;
-  padding: 0 0.3rem;
-  font: 500 0.7rem/1.1rem var(--mono);
-  text-align: center;
-  color: var(--muted);
-  border: 1px solid var(--border-strong);
-  border-radius: 3px;
-  pointer-events: none;
-}
-.topbar-search-field input:focus ~ .topbar-search-hint,
-.topbar-search-field input:not(:placeholder-shown) ~ .topbar-search-hint {
-  display: none;
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
 }
 .topbar-search [role="listbox"],
 .topbar-note {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(100% + 0.25rem);
+  top: calc(100% + var(--space-1));
   z-index: 8;
   margin: 0;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
 }
 .topbar-search [role="listbox"][hidden] {
   display: none;
 }
-/* A note and the list never show together except "no match" + the all-results option: stack the option under it. */
 .topbar-note {
-  padding: 0.5rem 0.65rem;
-  font-size: 0.78rem;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
 }
-.topbar-search [role="listbox"] ~ .topbar-note {
-  top: calc(100% + 0.25rem);
-}
+/* "No match" plus the all-results option: the option sits under the note. */
 .topbar-search-field:has(.topbar-note) [role="listbox"]:not([hidden]) {
-  top: calc(100% + 2.4rem);
+  top: calc(100% + var(--space-8));
   border-top: 0;
 }
 .topbar-option {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
-  padding: 0.35rem 0.65rem;
-  font-size: 0.8rem;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
   min-width: 0;
 }
@@ -99,48 +82,21 @@
 }
 .topbar-option-agent {
   flex: 0 0 auto;
-  font-size: 0.74rem;
+  font-size: var(--type-small-size);
 }
 .topbar-option:hover,
 .topbar-option[aria-selected="true"] {
-  background: var(--accent-bg);
+  background: var(--color-bg-wash);
 }
 .topbar-option[aria-selected="true"] {
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--color-interactive-default);
 }
 .topbar-option-all {
-  border-top: 1px solid var(--border);
-  color: var(--accent);
+  border-top: 1px solid var(--color-border-subtle);
+  color: var(--color-text-link);
 }
-
-/* A phone: an icon button; opening it lets the field cover the crumbs. */
-@media (max-width: 40rem) {
-  .topbar-search {
-    flex: 0 0 auto;
-  }
-  .topbar-search-icon {
-    display: inline-flex;
-  }
-  .topbar-search-field {
-    display: none;
-  }
+@media (max-width: 56.1875rem) {
   .topbar-search[data-expanded="true"] {
-    position: absolute;
-    inset: 0;
-    z-index: 7;
-    display: flex;
-    align-items: center;
-    padding: 0 0.75rem;
-    background: var(--surface);
-  }
-  .topbar-search[data-expanded="true"] .topbar-search-icon {
-    display: none;
-  }
-  .topbar-search[data-expanded="true"] .topbar-search-field {
-    display: block;
-    flex: 1;
-  }
-  .topbar-search-hint {
-    display: none;
+    padding: 0 var(--layout-gutter-narrow);
   }
 }

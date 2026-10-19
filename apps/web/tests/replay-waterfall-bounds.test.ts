@@ -46,7 +46,7 @@ describe("replayHeadline", () => {
     const m = replayHeadline(live, projectAt(f.events, errIdx - 1, ctx));
     expect(m.kind).toBe("running");
     expect(m.failure).toBeNull();
-    expect(m.lead).toMatch(/^Running · step \d+ · replay$/);
+    expect(m.lead).toMatch(/^Running at step \d+, replay\.$/);
     expect(`${m.lead} ${m.detail}`).not.toMatch(/run_migration|ConnectionTimeout|Failed/);
   });
 
@@ -54,7 +54,7 @@ describe("replayHeadline", () => {
     const m = replayHeadline(live, projectAt(f.events, errIdx, ctx));
     expect(m.kind).toBe("failed");
     expect(m.lead).toMatch(
-      /^First error at step \d+ \(\+6\.2 s\): run_migration, ConnectionTimeout$/,
+      /^First error at step \d+ after 6\.2 s: run_migration, ConnectionTimeout\.$/,
     );
     expect(m.detail).toBe("No retries · $0.0189 so far");
   });
