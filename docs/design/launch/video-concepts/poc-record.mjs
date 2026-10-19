@@ -59,6 +59,8 @@ const overlay = () => {
   const mount = () => {
     if (document.getElementById("abb-cur")) return;
     const style = document.createElement("style");
+    const nonced = document.querySelector("script[nonce],style[nonce],link[nonce]");
+    if (nonced?.nonce) style.nonce = nonced.nonce;
     style.textContent = `
       html { overflow: hidden !important; background: var(--color-bg-canvas, #101419); }
       body { transform-origin: 0 0; transition: transform ${"__ZOOM_MS__"}ms ${"__ZOOM_EASE__"}; }
@@ -76,6 +78,10 @@ const overlay = () => {
         transition: opacity 160ms linear; white-space: nowrap; }
       #abb-cap.on { opacity: 1; }
       #abb-cap em { font-style: normal; color: #ff8a80; }
+      #abb-spot { position: fixed; left: 0; top: 0; width: 0; height: 0; border-radius: 4px; pointer-events: none; z-index: 2147483644;
+        box-shadow: 0 0 0 9999px rgba(16,20,25,.55); opacity: 0;
+        transition: opacity 200ms linear, left 260ms cubic-bezier(.65,0,.35,1), top 260ms cubic-bezier(.65,0,.35,1),
+          width 260ms cubic-bezier(.65,0,.35,1), height 260ms cubic-bezier(.65,0,.35,1); }
     `;
     document.documentElement.append(style);
     const cur = document.createElement("div");
@@ -91,7 +97,7 @@ const overlay = () => {
     document.documentElement.append(cap, rip, cur);
     const font = getComputedStyle(document.body).getPropertyValue("--font-plex-sans").trim();
     if (font) document.documentElement.style.setProperty("--abb-cap-font", font);
-    let pos = { x: 960, y: 540 };
+    let pos = { x: 1200, y: 215 };
     try {
       pos = JSON.parse(sessionStorage.getItem("__abbCur") ?? "null") ?? pos;
     } catch {}
@@ -121,6 +127,14 @@ const overlay = () => {
       const t = sessionStorage.getItem("__abbCap");
       if (t) { cap.innerHTML = t; cap.classList.add("on"); }
     } catch {}
+    // React hydrates <html> itself in the app router and drops unknown children once; re-append whatever it removed.
+    const spot = document.createElement("div");
+    spot.id = "abb-spot";
+    document.documentElement.append(spot);
+    const keep = [style, cap, rip, cur, spot];
+    const ensure = () => { for (const el of keep) if (!el.isConnected) document.documentElement.append(el); };
+    new MutationObserver(ensure).observe(document.documentElement, { childList: true });
+    setInterval(ensure, 250);
   };
   window.__abb = {
     caption(html) {
@@ -131,14 +145,22 @@ const overlay = () => {
       cap.innerHTML = html;
       cap.classList.add("on");
     },
+    spot(rect) {
+      const el = document.getElementById("abb-spot");
+      if (!el) return;
+      if (!rect) { el.style.opacity = "0"; return; }
+      const pad = 8;
+      Object.assign(el.style, { left: rect.x - pad + "px", top: rect.y - pad + "px", width: rect.w + 2 * pad + "px", height: rect.h + 2 * pad + "px", opacity: "1" });
+    },
     // Zoom the app (body) so that viewport point (x, y) stays fixed, clamped so no canvas edge shows.
     zoom(scale, x, y) {
       const W = innerWidth, H = innerHeight;
       if (scale <= 1) { document.body.style.transform = ""; return; }
       // Visible rect after scaling about (ox, oy): [ox - ox/s, ox + (W-ox)/s]. Clamp origin into [0, W]/[0, H] band so
       // the chosen focus point is on screen and the scaled body still covers the viewport (origin inside viewport).
-      const ox = Math.max(0, Math.min(W, x));
-      const oy = Math.max(0, Math.min(H, y));
+      // (x, y) is the focus point to put at the window centre: solve ox - ox/s + W/(2s) = x, then clamp into the viewport.
+      const ox = Math.max(0, Math.min(W, (x - W / (2 * scale)) / (1 - 1 / scale)));
+      const oy = Math.max(0, Math.min(H, (y - H / (2 * scale)) / (1 - 1 / scale)));
       document.body.style.transformOrigin = `${ox}px ${oy}px`;
       document.body.style.transform = `scale(${scale})`;
     },
@@ -175,7 +197,7 @@ async function startScreencast(page) {
 }
 
 // ---- cursor motion from Node ----------------------------------------------------------------------------------
-let cur = { x: 960, y: 540 };
+let cur = { x: 1200, y: 215 };
 async function travel(page, to) {
   const dx = to.x - cur.x, dy = to.y - cur.y;
   const dist = Math.hypot(dx, dy);
@@ -206,26 +228,33 @@ async function click(page) {
   await page.mouse.up();
 }
 const caption = (page, html) => page.evaluate((h) => window.__abb?.caption(h), html).catch(() => {});
+const spot = (page, rect) => page.evaluate((r) => window.__abb?.spot(r), rect).catch(() => {});
 const zoom = (page, s, x, y) => page.evaluate(([s, x, y]) => window.__abb?.zoom(s, x, y), [s, x, y]).catch(() => {});
 
 // ---- the clip ---------------------------------------------------------------------------------------------------
 async function main() {
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  const browser = await chromium.launch({ channel: "chrome", headless: true, args: [`--force-device-scale-factor=${DSF}`] });
   const context = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
     deviceScaleFactor: DSF,
     colorScheme: "dark",
     reducedMotion: "no-preference",
+    // The app ships a strict CSP (style-src 'self' 'nonce-...'): without this the injected <style> is refused and the
+    // overlay is unstyled (invisible). The nonce is also copied onto the style element as a belt-and-braces measure.
+    bypassCSP: true,
   });
   await context.addInitScript(
     `(${overlay.toString().replace("__ZOOM_MS__", String(ZOOM.ms)).replace("__ZOOM_EASE__", EASE.camera)})()`,
   );
   const page = await context.newPage();
+  page.on("pageerror", (e) => console.log("pageerror:", e.message));
+  page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") console.log("console:", m.type(), m.text().slice(0, 200)); });
   const marks = [];
   const mark = (name) => marks.push({ name, t: performance.now() });
   await page.goto(`${base}/w/demo/projects/all/runs`, { waitUntil: "networkidle" });
   await page.getByRole("heading", { name: "Runs" }).waitFor();
   await page.mouse.move(cur.x, cur.y);
+  console.log("overlay:", JSON.stringify(await page.evaluate(() => ({ cur: !!document.getElementById("abb-cur"), cap: !!document.getElementById("abb-cap"), abb: typeof window.__abb, htmlKids: document.documentElement.childElementCount }))));
   const rec = await startScreencast(page);
   const t0 = performance.now();
   mark("start");
@@ -252,7 +281,7 @@ async function main() {
   const headline = page.locator("h1").first();
   const hb = await headline.boundingBox();
   mark("zoom-in");
-  await zoom(page, ZOOM.scale, hb.x, hb.y - 40);
+  await zoom(page, ZOOM.scale, hb.x + hb.width / 2, hb.y + hb.height / 2);
   await sleep(ZOOM.ms + 2400);
 
   // Beat 4: zoom out, then caption on the red line.
@@ -262,8 +291,12 @@ async function main() {
   await caption(page, "One red line marks where it went wrong.");
   const fault = page.locator(".tl-fault-label").first();
   const fb = await fault.boundingBox().catch(() => null);
+  const row = page.locator('[data-first-error]').first();
+  const rb = await row.boundingBox().catch(() => null);
+  if (rb) await spot(page, { x: rb.x, y: rb.y - 14, w: rb.width, h: rb.height + 14 });
   if (fb) await travel(page, { x: fb.x - 60, y: fb.y + fb.height / 2 + 24 });
   await sleep(2600);
+  await spot(page, null);
   await caption(page, "");
   await sleep(400);
   mark("end");
@@ -276,7 +309,7 @@ async function main() {
   const fr = rec.frames;
   const lines = ["ffconcat version 1.0"];
   for (let i = 0; i < fr.length; i++) {
-    const next = i + 1 < fr.length ? fr[i + 1].t : fr[i].t + 1000 / FPS_CAP;
+    const next = i + 1 < fr.length ? fr[i + 1].t : marks[marks.length - 1].t;
     lines.push(`file '${fr[i].file}'`, `duration ${((next - fr[i].t) / 1000).toFixed(4)}`);
   }
   if (fr.length) lines.push(`file '${fr[fr.length - 1].file}'`);

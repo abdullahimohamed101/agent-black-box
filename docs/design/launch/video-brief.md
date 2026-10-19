@@ -10,7 +10,7 @@ Constraints restated: name "Agent BlackBox"; silent, captions only, no music, no
 a 15-20 s teaser loop; recorded from the `make demo` stack (scripted agents, no API key) with Playwright and ffmpeg 9; nothing
 shown that is not built; "Open source. Self-hosted." only after G2; `--live` never shown or implied.
 
-Evidence vocabulary as in AGENTS.md: VERIFIED (run here), UNVERIFIED (env), ASSUMED. Section 3.5 has the proof-of-concept numbers.
+Evidence vocabulary as in AGENTS.md: VERIFIED (run here), UNVERIFIED (env), ASSUMED. Section 3.6 has the proof-of-concept numbers.
 
 ---
 
@@ -24,7 +24,7 @@ Change in v2 (each has a reason in the sections below):
 
 | v1 | v2 | Why |
 | --- | --- | --- |
-| Playwright `recordVideo` (VP8, fixed 1 Mbit/s, 1x pixels) | CDP `Page.startScreencast` at `deviceScaleFactor: 2`, JPEG q92 frames with timestamps, ffmpeg lanczos downscale to 1080p | `recordVideo` has no quality control and the Chromium recorder's bitrate is hard-coded at about 1 Mbit/s ([playwright#31424](https://github.com/microsoft/playwright/issues/31424)); it also records at 1x density, which looks soft on any modern display ([alexwlchan](https://alexwlchan.net/2026/record-browser-video/)). Section 3.5 shows the difference in frames. |
+| Playwright `recordVideo` (VP8, fixed 1 Mbit/s, 1x pixels) | CDP `Page.startScreencast` at `deviceScaleFactor: 2`, JPEG q92 frames with timestamps, ffmpeg lanczos downscale to 1080p | `recordVideo` has no quality control and the Chromium recorder's bitrate is hard-coded at about 1 Mbit/s ([playwright#31424](https://github.com/microsoft/playwright/issues/31424)); it also records at 1x density, which looks soft on any modern display ([alexwlchan](https://alexwlchan.net/2026/record-browser-video/)). Section 3.6 has the takes and numbers. |
 | 25 fps | 30 fps constant (frames carry real durations; the encoder resamples) | Cursor travel and the 280 ms fault-line draw read as motion, not steps. |
 | A round dot cursor, instant moves (`steps: 30`) | An arrow cursor with eased travel, a hover dwell, a press state and a click ripple, driven from Node at 60 Hz | Viewers follow the cursor; a dot that teleports is the one thing that makes a recording look fake. |
 | No zoom, no spotlight | Two camera moves (1.6x on the sentence, 1.4x on the inspector) and a dim-spotlight for rows | At 1080p the 24 px headline is 2.2 % of the frame height; the one thing the video exists to show must fill the frame once. |
@@ -95,7 +95,7 @@ brief in brackets); transitions are "cut" (a route change, no effect) unless sta
 | 7 | 27.5-32.5 | same | `Escape` closes the inspector. | Travel to the `llm.request.completed` row (first match), dwell 1.2 s; travel to the first `retry.attempted` row, dwell. | S follows the hovered row (two spotlights, 2.2 s each). | 27.8-30.0 "Every model call carries tokens and cost." [10]; 30.3-32.4 "Retries are retries, not log lines." [11] | spotlight out |
 | 8 | 32.5-39.5 | Findings tab | Click `getByRole("tab",{name:"Findings",exact:true})` at 33.0; at 35.8 click `getByRole("button",{name:"Show evidence"}).first()`; wait for the selected row outline (`[role="row"][aria-selected="true"]`). | Travel to the tab (dwell 300 ms), click; travel to Show evidence, dwell 400 ms, click; after the jump park at (1500, 300). | Z1.0 | 33.2-35.6 "Findings, from deterministic detectors." [12]; 36.4-39.3 "Each finding links to its evidence." [13] | cut |
 | 9 | 39.5-46.5 | `/runs` then the multi-agent run, Waterfall tab | goto `/runs`; click `getByRole("link",{name:$multiRun})`; click `getByRole("tab",{name:"Waterfall",exact:true})`; click `getByRole("button",{name:"Lanes"})` if present (`optional`); wait `getByTestId("waterfall")`. | Travel to the run link, click (no dwell: this is a transit); travel to Waterfall, click; travel along the thick critical-path bar (`[role="row"][data-critical]` first bar, 600 px right, 1.5 s). | Z1.0; at 44.0 S on the row with the thick edge, 2.2 s. | 41.0-43.6 "Five agents, one run, one picture." [16]; 44.0-46.3 "The thick edge is the critical path." [17] | cut |
-| 10 | 46.5-52.5 | `/w/{workspace}/approvals`, Pending | wait `getByRole("heading",{name:"Review"})`; click `getByTestId("approval-row").first()` at 48.0; the panel opens. Never click Approve or Deny. The foot sentence "Policies apply to agents that ask through the SDK guard." must be in frame [CONFIRM AFTER STEP 10: where the foot renders at 1080 high; if it is below the fold the beat scrolls it into view before the caption]. | Travel to the row, dwell 300 ms, click; park at (700, 950) (over no text). | Z1.0; at 49.5 S on the panel's capability/resource/risk block, 2.5 s. | 47.0-49.4 "The agent asked. A person decides." [22]; 49.8-52.2 "One approval, one action, once." [23] | cut |
+| 10 | 46.5-52.5 | `/w/{workspace}/approvals`, Pending | wait `getByRole("heading",{name:"Review"})`; click `getByTestId("approval-row").first()` at 48.0; the panel opens. Never click Approve or Deny. The foot `.apr-foot` ("An approval authorises one action, once. Policies apply to agents that ask through the SDK guard.", `apps/web/src/copy/review.ts`) must be in frame: with six pending rows it sits under the list at about y = 530 at 1080 high (fixtures); [CONFIRM AFTER STEP 10] with the demo's row count, and scroll it into view before the caption if it is below the fold. | Travel to the row, dwell 300 ms, click; park at (700, 950) (over no text). | Z1.0; at 49.5 S on the panel's capability/resource/risk block, 2.5 s. | 47.0-49.4 "The agent asked. A person decides." [22]; 49.8-52.2 "One approval, one action, once." [23] | cut |
 | 11 | 52.5-58.5 | `/analytics`, Cost | wait `getByTestId("report-headline")`. | Park at (1500, 300). | Z1.0; at 55.3 S on "Where the money was wasted" (`getByRole("heading",{name:"Where the money was wasted"})` grown to its figures row), 2.8 s. | 53.0-55.2 "What the week cost, per run." [20]; 55.5-58.3 "Failed runs, retries, spend after errors." [21] | cut |
 | 12 | 58.5-63.5 | `/w/{workspace}/security` (Review > Security findings) | wait the list; hover the first finding's row; click it if that opens a "Rule:" line (`optional`). | Travel to the first `getByTestId("security-row")`, dwell 1.5 s. | Z1.0; S on the hovered row 2.2 s. | 59.0-61.6 "Destructive commands, secret reads, risky git." [14]; 61.8-63.4 "Every finding states its rule." [15] | cut |
 | 13 | 63.5-68.5 | the failed run again, Timeline, light scheme | goto the failed run; `page.emulateMedia({colorScheme:"light"})` at 64.0 (the app follows the system; there is no toggle). | Park at (1500, 300). | Z1.0 | 64.4-67.6 "Light and dark follow your system." [27] | fade 300 ms to canvas |
@@ -164,8 +164,10 @@ never scale and `getBoundingClientRect` keeps returning viewport coordinates tha
 
 ### 3.3 Cursor
 
-- Shape: a 24 px SVG arrow (`M5 3l14 9-6.2 1.2L16.5 20l-2.6 1.2-3.7-6.6L5 19z`), white fill, `#111` 1.4 px stroke,
-  `drop-shadow(0 1px 1.5px rgba(0,0,0,.6))`; hotspot at the SVG origin. The same arrow on light pages (the stroke carries it).
+- Shape: a 32 px SVG arrow (viewBox 0 0 24 24, path `M5 3l14 9-6.2 1.2L16.5 20l-2.6 1.2-3.7-6.6L5 19z`), white fill, `#111`
+  1.4 px stroke, `drop-shadow(0 1px 1.5px rgba(0,0,0,.6))`; hotspot at the SVG origin. The same arrow on light pages (the
+  stroke carries it). The PoC drew it at 24 px and it reads small at 1080p (see `poc-frames/take4-sec-04.jpg`); 32 px is the
+  spec, which is also what screen-recording tools do when they enlarge the pointer.
 - Travel: duration `clamp(350 ms, 0.9 ms per px of distance, 1100 ms)` with `cubic-bezier(0.22, 1, 0.36, 1)` (fast start,
   long settle: the eye catches the departure and the arrival is soft). Path bows 4 % of the distance (max 40 px) perpendicular
   to the straight line (`sin(pi * p)`), so no travel is a ruler line. Driven from Node at 60 Hz with `page.mouse.move`;
@@ -174,8 +176,9 @@ never scale and `getBoundingClientRect` keeps returning viewport coordinates tha
 - Click: `mouse.down`, 90 ms, `mouse.up`; during the press the arrow scales to 0.88; a 44 px ring at the click point animates
   `scale .3 -> 1.15, opacity .9 -> 0` over 380 ms `cubic-bezier(.2,.7,.3,1)`. After a click that navigates, the cursor stays
   put until the new page is ready, then travels to its parking spot in 500 ms.
-- Parking spots (never over text being read): (1500, 300) on run pages (the right third of the header, below the Go button);
-  (700, 950) on Review; the cursor is hidden (`opacity: 0`, 200 ms) during the closing card and during zooms above 1.0 unless
+- Parking spots (never over text being read): (1200, 215) on the Runs list (the empty band above the table head; the PoC's first
+  guess of (1500, 300) sat on the first row and lit its hover state); (1500, 300) on run pages (the right third of the header,
+  below the Go button); (700, 950) on Review; the cursor is hidden (`opacity: 0`, 200 ms) during the closing card and during zooms above 1.0 unless
   the beat says the cursor points at something.
 - Position persists across navigations through `sessionStorage` (v1's trick, kept) so a new document mounts the arrow where
   the old one left it.
@@ -186,13 +189,57 @@ The app draws no key caps (design decision). The video shows a keypress with its
 `rgba(16,20,25,.92)` with a 1 px `rgba(255,255,255,.14)` border, Plex Mono 22 px, bottom-right at (1860, 996) inside the safe
 area, visible 600 ms, in/out 120 ms. Used for `e` (beat 6) and `Escape` is not shown (the caption carries it).
 
-### 3.5 Proof of concept (what was run here)
+### 3.5 Three things the PoC found that the v1 recorder would have hit
 
-Script: `docs/design/launch/video-concepts/poc-record.mjs` + `poc-encode.sh` (not for commit; the Sonnet builder folds the
-mechanics into `scripts/record-demo.mjs`). Run against the fixtures build of `apps/web` on port 3101 (this worktree's own
-build; the shared port 3100 belongs to the `phase-20-video` builder) under the heavy mutex.
+1. **The app's CSP blocks the overlay.** `apps/web` serves `style-src 'self' 'nonce-...'`; an injected `<style>` is refused
+   ("Applying inline style violates the following Content Security Policy directive") and the overlay renders unstyled, which
+   is invisible. v1's `style.cssText` assignments happen to pass (CSSOM writes are not blocked), but any stylesheet, keyframe
+   or class-based styling needs either `bypassCSP: true` on the context or the page's nonce copied onto the style element
+   (`document.querySelector("script[nonce]").nonce`). The v2 recorder does both. VERIFIED (take 3 console log, take 4 frames).
+2. **React removes children of `<html>` on hydration.** The app router renders `<html>` itself; nodes appended to it by the
+   init script are gone after hydration (takes 1-2: cursor and caption present at `DOMContentLoaded`, absent in every frame).
+   The overlay keeps references to its elements and re-appends them from a `MutationObserver` on `documentElement` plus a
+   250 ms interval. v1's "on `<html>` so React never sees them" comment is wrong for this app. VERIFIED.
+3. **`deviceScaleFactor` alone does not give 2x screencast frames.** With only the context option, `Page.screencastFrame`
+   is 1920x1080 (take 1). Launching Chrome with `--force-device-scale-factor=2` *and* the context's `deviceScaleFactor: 2`
+   gives 3840x2160 frames with `innerWidth` still 1920 (probe script, five variants; take 2 onwards). VERIFIED.
 
-[POC RESULTS: filled in section 3.6 below after the takes]
+### 3.6 Proof of concept: takes and numbers
+
+Script: `docs/design/launch/video-concepts/poc-record.mjs` + `poc-encode.sh` (kept as reference; the Sonnet builder folds the
+mechanics into `scripts/record-demo.mjs`). Run against this worktree's own fixtures build of `apps/web` on port 3101 (port
+3100 belongs to the `phase-20-video` builder) under the heavy mutex; frames and encodes in the session scratchpad, four
+reference frames and the take-4 MP4 in `docs/design/launch/video-concepts/poc-frames/` (gitignored there).
+
+| Take | Change | Result |
+| --- | --- | --- |
+| 1 | CDP screencast, dsf 2 context, overlay on `<html>` | Frames 1920x1080 (not 2x); no cursor, no caption in any frame (hydration); 1.6x zoom cut the left 30 px (origin at the headline's left edge). |
+| 2 | `--force-device-scale-factor=2`; re-mount on mutation; centre-formula origin; spotlight added | Frames 3840x2160, zoom framed correctly and crisp; overlay still absent. Console showed the CSP refusal. |
+| 3 | diagnostics (console, pageerror, overlay presence) | Overlay elements present (`cur:true cap:true`) but unstyled: root cause CSP. |
+| 4 | `bypassCSP: true` + nonce copy; last-frame duration to the end mark; parking spot moved | Everything on screen: arrow cursor, hover state, click, captions with the red word, 1.6x zoom, spotlight on the fault row. Frame cadence 28-30 fps during motion, one frame per hold. Plus a `recordVideo` baseline of the same page for comparison. |
+
+Take 4 numbers (VERIFIED with `ffprobe`; 13.6 s clip, 1920x1080, 30 fps, yuv420p, no audio):
+
+| File | Encode | Size | Rate |
+| --- | --- | --- | --- |
+| frames (125 JPEG q92, 3840x2160) | screencast | 33 MB on disk for 14 s (about 2.4 MB/s; a 74 s take is about 180 MB, fine for a scratch dir) | |
+| master.mp4 | x264 crf 14 preset slow | 2.91 MB | 1.71 Mbit/s |
+| demo (H.264) | x264 crf 20 preset slow, faststart (`ftyp` then `moov` first, checked) | 1.97 MB | 1.16 Mbit/s, so 74 s is about 10.7 MB (budget 12 MB holds; the PoC has more motion per second than the final cut) |
+| demo (VP9) | two-pass, 1200k target, crf 31, speed 1 | 1.30 MB | 0.76 Mbit/s, so 74 s is about 7 MB |
+| demo (AV1) | SVT-AV1 preset 4, crf 32 | 1.29 MB (5.9 s to encode) | no smaller than VP9 at this crf; use crf 36 for the hero or skip AV1 (section 5.4) |
+| teaser test (H.264, fades) | x264 crf 21 | 1.86 MB for 13.6 s | an 18 s teaser is about 2.5 MB, at the budget line; crf 22 if over |
+| teaser GIF | 960 px, 12 fps, 128 colours | 2.58 MB for 13.6 s | 18 s is about 3.4 MB (budget 4 MB) |
+| poster | PNG / JPEG q3 | 258 KB / 128 KB | this ffmpeg has no `libwebp`; the site poster is the JPEG or a PNG run through `pngquant` if the builder has it |
+
+Quality comparison, `recordVideo` (VP8, 25 fps, 666 KB for 5 s = 1.07 Mbit/s, which confirms the hard-coded bitrate) against
+the 2x screencast downscaled with lanczos: at 1.0x the headline crop is close in both (`poc-frames/crop-baseline.png` vs
+`crop-2x.png`; the VP8 one has faint ringing around the mono figures). The difference the viewer sees is in the zoom beats
+(`take4-sec-08.jpg`: the 1.6x headline is rasterised at 2x, no softening) and in the cursor and caption fades, which
+`recordVideo`'s fixed 1 Mbit/s smears. A gradient metric was tried and discarded: VP8 ringing raises it, so it does not
+measure sharpness.
+
+What the PoC did not do (left to the builder, section 8): the key chip, the inspector zoom, the teaser take, the `.vtt`
+writer, the QA script. The travel and dwell numbers in 3.3 are the ones the PoC ran, except the cursor size.
 
 ---
 
@@ -248,9 +295,9 @@ ffmpeg -y -i master-1080p30.mp4 -c:v libx264 -preset slow -crf 20 -profile:v hig
   -g 60 -keyint_min 30 -pix_fmt yuv420p -movflags +faststart -an demo-1080p.mp4
 ```
 
-Budget: <= 12 MB for 74 s (about 1.3 Mbit/s; UI footage is mostly static so CRF 20 lands well under). `+faststart` so the
-browser starts before the file finishes downloading. No `-tune`: `stillimage` softens the cursor motion, `animation` adds
-reference frames for no gain on flat UI (checked on the PoC, section 3.6).
+Budget: <= 12 MB for 74 s. The PoC's 13.6 s at this setting was 1.97 MB (1.16 Mbit/s), so expect about 10.7 MB; if the real
+take lands over, use `-crf 21` before touching the preset. `+faststart` so the browser starts before the file finishes
+downloading. No `-tune` (none was measured as a win; `stillimage` is for static slideshows and penalises the cursor motion).
 
 ### 5.3 Main cut, WebM VP9 (first `<source>` after AV1)
 
@@ -276,14 +323,16 @@ ffmpeg -y -i master-1080p30.mp4 -c:v libsvtav1 -preset 4 -crf 32 -g 240 -pix_fmt
 
 SVT-AV1 docs: presets 4-6 are the quality/speed balance, crf 30 is a 1080p starting point, `tune=0` favours visual sharpness
 ([SVT-AV1 Ffmpeg.md](https://gitlab.com/AOMediaCodec/SVT-AV1/-/blob/master/Docs/Ffmpeg.md)). Ship as `video/mp4; codecs=av01.0.08M.08`.
-Skip film-grain (no grain in UI footage). Budget <= 5 MB.
+Skip film-grain (no grain in UI footage). Budget <= 5 MB. On the PoC, crf 32 produced the same size as the VP9 file, so the
+AV1 source only earns its place at crf 36 (check the text edges in a zoom frame); if it is not clearly smaller than VP9, ship
+WebM + MP4 only.
 
 ### 5.5 Poster, teaser, GIF
 
 ```sh
-# Poster: the fault-line beat (t = 17.5 s), PNG for the README, WebP for the site
+# Poster: the fault-line beat (t = 17.5 s), PNG for the README, JPEG for the site (this ffmpeg has no libwebp encoder)
 ffmpeg -y -ss 17.5 -i master-1080p30.mp4 -frames:v 1 poster.png
-ffmpeg -y -ss 17.5 -i master-1080p30.mp4 -frames:v 1 -c:v libwebp -quality 82 poster.webp
+ffmpeg -y -ss 17.5 -i master-1080p30.mp4 -frames:v 1 -q:v 3 poster.jpg
 
 # Teaser (a separate 18 s take, same pipeline to its own master), with the dip-to-canvas seam baked in:
 ffmpeg -y -i teaser-master.mp4 -vf "fade=t=in:st=0:d=0.25:color=0x101419,fade=t=out:st=17.75:d=0.25:color=0x101419" \
@@ -299,7 +348,7 @@ Teaser budgets: H.264 <= 2.5 MB, VP9 <= 1.5 MB, AV1 <= 1 MB, GIF <= 4 MB (GitHub
 4 MB GIF is the upper end of acceptable; if it lands above, drop to 10 fps or 800 px). Landing-page markup:
 
 ```html
-<video autoplay muted loop playsinline preload="metadata" poster="assets/poster.webp" width="1920" height="1080">
+<video autoplay muted loop playsinline preload="metadata" poster="assets/poster.jpg" width="1920" height="1080">
   <source src="assets/teaser-1080p-av1.mp4" type='video/mp4; codecs="av01.0.08M.08"'>
   <source src="assets/teaser-1080p.webm" type="video/webm">
   <source src="assets/teaser-1080p.mp4" type="video/mp4">
@@ -383,7 +432,7 @@ story. Each is a concrete ask.
 
 ### 7.1 Before publishing (run on every take)
 
-- [ ] `ffprobe` on each deliverable: 1920x1080, 30/1, yuv420p, no audio stream, `faststart` (moov before mdat: `ffprobe -v trace 2>&1 | grep -m2 "type:'m"` shows `moov` first), sizes within budget.
+- [ ] `ffprobe` on each deliverable: 1920x1080, 30/1, yuv420p, no audio stream, `faststart` (`ffprobe -v trace f.mp4 2>&1 | grep -o "type:'[a-z]*'" | head -3` prints `ftyp`, `moov` before any `mdat`), sizes within budget.
 - [ ] One frame per caption extracted (`-ss` at each cue's midpoint) and looked at as an image: text complete, box inside safe area, no overlap with app text, no caption across a cut.
 - [ ] One frame per zoom at full level: text edges crisp (compare a 400x200 crop with the 1.0x frame of the same text), no canvas edge, no clipped top bar.
 - [ ] The only red in any frame is the fault line, the list dash, the failure words and the caption's fault words. Grep the frames: a script samples every 10th frame and counts pixels within 12 units of `#ff8a80` outside the known rects; more than 0.3 % of a frame fails the take.
@@ -403,6 +452,7 @@ story. Each is a concrete ask.
 | Risk | Likelihood | Mitigation |
 | --- | --- | --- |
 | Screencast frames stall in headless Chrome (reported on playwright#31424 for `recordVideo`) | low-medium | The recorder asserts >= 1 frame per 2 s during motion beats and aborts the take with a reason; `headless: false` under `xvfb`/a real display is the fallback and the script accepts `--headed`. |
+| The app's CSP or a future stricter one (`style-src-attr`) blocks the overlay | resolved for now | `bypassCSP: true` on the recording context plus the nonce copy (3.5); the QA frame check catches an invisible overlay (a caption frame without a caption fails). |
 | Font not ready at the first frame (Plex loads via `next/font`, self-hosted) | medium | Wait `document.fonts.ready` and 300 ms before the screencast starts; the caption reads the body's font variable. |
 | Relative times drift ("9 d ago", "5 h 59 min left") so takes differ | certain | Never caption them; QA compares `meta.json`, not pixels; the demo is re-seeded right before the take. |
 | The 280 ms fault-line draw is missed (page ready before the screencast catches the frame) | medium | 400 ms wait after the Timeline tab is visible is already in beat 3; if the draw is still missed, the recorder reloads the run page once the screencast is running (the draw happens on first mount). |
@@ -421,13 +471,15 @@ story. Each is a concrete ask.
 Each step ends with a command and the thing to look at. Work in the `phase-20-video` worktree on `scripts/record-demo.mjs`;
 keep v1's scene-table shape; nothing below needs a new dependency (CDP comes with Playwright; ffmpeg is installed).
 
-1. **Capture path.** Replace `recordVideo` with the CDP screencast (section 5.7): JPEG q92, `maxWidth 3840 x 2160`, ack each
-   frame, write `frames/fNNNNN.jpg` + `frames.ffconcat` with durations from `performance.now()`. Test: `--dry-run` against the
-   fixtures build on 3100 (`ABB_WEB_DATA_SOURCE=fixtures ABB_WEB_ALLOW_FIXTURES=1`), `node -e` prints the first frame's size as
-   3840x2160 from `meta.json`; `ffprobe frames/f00000.jpg`.
-2. **Overlay v2.** Replace the dot with the arrow cursor, add the ripple, the spotlight div, the key chip and the body-zoom
-   function (section 3; the PoC file `docs/design/launch/video-concepts/poc-record.mjs` has a working `overlay()` to lift).
-   Test: a 5 s clip that clicks one link and zooms once; extract 3 frames; look at them.
+1. **Capture path.** Replace `recordVideo` with the CDP screencast (section 5.7): launch Chrome with
+   `--force-device-scale-factor=2`, context `deviceScaleFactor: 2`, `bypassCSP: true`; JPEG q92, `maxWidth 3840 x 2160`, ack each
+   frame, write `frames/fNNNNN.jpg` + `frames.ffconcat` with durations from `performance.now()` (the last frame lasts until the
+   end mark). Test: `--dry-run` against the fixtures build on 3100 (`ABB_WEB_DATA_SOURCE=fixtures ABB_WEB_ALLOW_FIXTURES=1`);
+   `ffprobe frames/f00000.jpg` prints 3840x2160; `meta.json` lists the marks.
+2. **Overlay v2.** Replace the dot with the 32 px arrow cursor, add the ripple, the spotlight div, the key chip and the body-zoom
+   function (section 3; the PoC file `docs/design/launch/video-concepts/poc-record.mjs` has a working `overlay()` to lift,
+   including the nonce copy and the re-mount observer from 3.5). Test: a 5 s clip that clicks one link and zooms once;
+   extract 3 frames; look at them; the recorder logs `overlay: {cur:true, cap:true}` and no CSP console error.
 3. **Motion driver.** Add `travel(to)` (eased, bowed, 60 Hz), `dwell`, `click`, `zoomTo(locator, level)`, `spotlight(locator)`,
    `keyChip(key)` as step kinds in the scene table (`move` becomes `travel`, keep `click/press/goto/wait/scheme`). Test: unit-test
    the bezier solver (`f(0)=0, f(1)=1, monotonic`) in `apps/web/tests` or a `node --test` file beside the script.
