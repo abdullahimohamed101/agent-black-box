@@ -7,7 +7,8 @@
 # Needs `.env` (Postgres on 5433) and `pnpm --filter @abb/web build`. Never touches the shared dev/test databases.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"
-set -a; . ./.env; set +a
+if [ -f .env ]; then set -a; . ./.env; set +a; fi   # CI exports ABB_DATABASE_URL itself
+[ -n "${ABB_DATABASE_URL:-}" ] || { echo "FINDINGS-E2E FAILED: set ABB_DATABASE_URL or create .env" >&2; exit 1; }
 DB_NAME="${FINDINGS_E2E_DB_NAME:-abb_p10}"
 export ABB_DATABASE_URL="${ABB_DATABASE_URL%/*}/$DB_NAME"
 export ABB_SUMMARY_DEBOUNCE_SECONDS=0
@@ -38,7 +39,7 @@ uv run alembic upgrade head >/dev/null 2>&1
 step "start API (:$PORT) and worker"
 if curl -sf "$API/readyz" >/dev/null 2>&1; then fail "something is already serving $API; stop it or set FINDINGS_E2E_API_PORT"; fi
 uv run uvicorn abb_api.main:app_from_env --factory --port "$PORT" >"$WORK/api.log" 2>&1 & pids+=($!)
-uv run python -m abb_api.worker >"$WORK/worker.log" 2>&1 & pids+=($!)
+uv run python -m abb_api.worker >"$WORK/worker.log" 2>&1 & pids+=($!); WORKER_PID=$!
 for _ in $(seq 1 40); do curl -sf "$API/readyz" >/dev/null && break; sleep 0.5; done
 curl -sf "$API/readyz" >/dev/null || fail "API did not become ready: $(tail -5 "$WORK/api.log")"
 
@@ -77,6 +78,20 @@ cli rebuild-findings --workspace "$WS" --limit 1000 >/dev/null
 check wait --after "$WORK/before.json"
 check compare "$WORK/before.json"
 RUNS_JSON="$(check runs)"
+
+# KI-097 / ADR-174: a live run keeps its last analysis in view and its final analysis is not throttled. The minimum
+# interval is 600 s on a second worker, so nothing below depends on a wall clock: every wait is a bounded poll of
+# something the API says, and the throttle can only have been bypassed if the run's end did it.
+step "live run: the last analysis stays visible while a newer one is queued, then the end of the run analyses at once"
+kill_tree "$WORKER_PID"
+ABB_FINDINGS_MIN_INTERVAL_SECONDS=600 ABB_FINDINGS_DELAY_SECONDS=0 \
+  uv run python -m abb_api.worker >"$WORK/worker-live.log" 2>&1 & pids+=($!)
+export E2E_WRITE_KEY_FILE="$WORK/write.key"
+check live start "$WORK/live.json"
+check live mid "$WORK/live.json"
+check live end "$WORK/live.json"
+cli rebuild-findings --workspace "$WS" --limit 1000 >/dev/null
+check live verify "$WORK/live.json"
 
 step "Playwright: browser <-> web server <-> API"
 cd "$root/apps/web"
