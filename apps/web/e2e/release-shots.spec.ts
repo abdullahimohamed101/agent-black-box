@@ -15,6 +15,9 @@ import { signIn, workspace } from "./session";
  *  - the approval's `seconds_left` is recomputed against that frozen clock (otherwise it counts the real minutes between
  *    seeding and the picture);
  *  - absolute timestamps and dates in the text are shifted by one constant, so the intervals between them stay true;
+ *  - a measured latency in the inspector ("tool.latency_ms 5000.063") keeps its whole milliseconds: the scripted agent sleeps for
+ *    real, so the fraction differs between runs;
+ *  - a first-event offset of "+1ms" reads "+0ms" (scripted timestamps jitter by a millisecond);
  *  - ids ("evt_01M5…", and the shortened "run …TG04F1Z7") are replaced by a constant of the same shape.
  * The text of the data itself (names, figures, findings) is never rewritten.
  */
@@ -100,12 +103,21 @@ async function normalise(page: Page) {
             "$1_01DEMO00000000000000000000",
           )
           .replace(/…[0-9A-Z]{8}\b/g, "…K7Q2M4X8");
+        const offset = /^\+1ms$/.test(before) ? "+0ms" : null;
         // React renders "run …{id.slice(-8)}" as two text nodes
         const tail =
-          /^[0-9A-Z]{8}$/.test(before) && n.previousSibling?.nodeValue?.endsWith("…")
+          offset ??
+          (/^[0-9A-Z]{8}$/.test(before) && n.previousSibling?.nodeValue?.endsWith("…")
             ? "K7Q2M4X8"
-            : after;
+            : after);
         if (tail !== before) n.nodeValue = tail;
+      }
+      for (const dd of document.querySelectorAll('[role="dialog"] dd, [role="dialog"] td')) {
+        if (
+          /^\d+\.\d{3}$/.test(dd.textContent ?? "") &&
+          dd.previousElementSibling?.textContent?.endsWith("_ms")
+        )
+          dd.textContent = (dd.textContent ?? "").replace(/\.\d{3}$/, ".000");
       }
       (document.activeElement as HTMLElement | null)?.blur();
     },
@@ -174,6 +186,17 @@ for (const scheme of ["light", "dark"] as const) {
       await page.goto(`${BASE}/runs`);
       await expect(page.locator("tbody tr")).toHaveCount(12);
       await expect(page.getByText("Failed at step 6")).toBeVisible();
+      // The findings column fills in as the worker analyses each run: wait for every run that has findings.
+      for (const [run, findings] of [
+        [FAILED, "3 · critical"],
+        ["Answer support ticket T-1046", "1 · critical"],
+        ["Fix session refresh bug", "1 · critical"],
+        ["Answer support ticket T-1044", "2 · warning"],
+        ["Clean up old releases", "3 security findings"],
+      ] as const)
+        await expect(page.locator("tbody tr", { hasText: run })).toContainText(findings, {
+          timeout: 60_000,
+        });
       await shot(page, "runs-list", scheme, {
         failedRow: page.locator("tbody tr", { hasText: FAILED }),
         failedWhere: page.getByText(/Failed at step 6/),
@@ -211,6 +234,7 @@ for (const scheme of ["light", "dark"] as const) {
     });
 
     test(`cost analytics (${scheme})`, async ({ page }) => {
+      test.setTimeout(180_000);
       // The worker rolls the day's spend up a little after the last event; on a fresh stack the report fills in. Take the
       // picture once two reads, a few seconds apart, agree.
       let previous = "";

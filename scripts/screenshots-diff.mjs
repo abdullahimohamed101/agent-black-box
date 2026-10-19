@@ -2,7 +2,8 @@
 // decoded in headless Chromium (canvas, no image dependency) and the pixels that differ are counted. A pixel differs when any
 // channel is off by more than CHANNEL_TOLERANCE (anti-aliasing noise); an image fails when more than MAX_DIFF_PERCENT of its
 // pixels differ. Prints, per image, the verdict and the bounding box of the differing pixels.
-//   node scripts/screenshots-diff.mjs <dirA> <dirB> [--max-percent=0.05]
+//   node scripts/screenshots-diff.mjs <dirA> <dirB> [--max-percent=0.05] [--allow=<name prefix>,...]
+// --allow: images whose difference is reported but does not fail the run (a known source of nondeterminism, named by the caller).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { launch } from "./site-lib.mjs";
@@ -10,6 +11,7 @@ import { launch } from "./site-lib.mjs";
 const args = process.argv.slice(2);
 const [a, b] = args.filter((x) => !x.startsWith("--"));
 const maxPercent = Number(args.find((x) => x.startsWith("--max-percent="))?.split("=")[1] ?? 0.05);
+const allow = (args.find((x) => x.startsWith("--allow="))?.split("=")[1] ?? "").split(",").filter(Boolean);
 const CHANNEL_TOLERANCE = 8;
 if (!a || !b) { console.error("usage: node scripts/screenshots-diff.mjs <dirA> <dirB> [--max-percent=0.05]"); process.exit(2); }
 
@@ -38,9 +40,10 @@ for (const name of names) {
   }, { x: ba.toString("base64"), y: bb.toString("base64"), tol: CHANNEL_TOLERANCE });
   if (r.size) { console.log(`FAIL ${name}: different pixel sizes`); failed++; continue; }
   const pct = (100 * r.n) / r.total;
-  const ok = pct <= maxPercent;
+  const allowed = pct > maxPercent && allow.some((p) => name.startsWith(p));
+  const ok = pct <= maxPercent || allowed;
   if (!ok) failed++;
-  console.log(`${ok ? "near" : "FAIL"} ${name}: ${r.n} of ${r.total} pixels differ (${pct.toFixed(4)}%, limit ${maxPercent}%)${r.box ? ` in box x ${r.box[0]}-${r.box[2]}, y ${r.box[1]}-${r.box[3]}` : ""}`);
+  console.log(`${allowed ? "ALLOWED (known nondeterministic)" : ok ? "near" : "FAIL"} ${name}: ${r.n} of ${r.total} pixels differ (${pct.toFixed(4)}%, limit ${maxPercent}%)${r.box ? ` in box x ${r.box[0]}-${r.box[2]}, y ${r.box[1]}-${r.box[3]}` : ""}`);
 }
 await browser.close();
 console.log(failed ? `${failed} image(s) differ beyond the limit` : `all ${names.length} images identical or within ${maxPercent}% of pixels`);
