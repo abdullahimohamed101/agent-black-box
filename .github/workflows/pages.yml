@@ -14,9 +14,12 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # What to publish. The plain-HTML baseline is built by `node site/build.mjs` into site-dist/ (no sources). When the site moves to another stack,
-  # change the Build step and this directory together; scripts/check-site.sh takes any built directory.
-  SITE_DIR: site-dist
+  # What to publish: the Next static export, built for the project path /agent-black-box/ (D16, no custom domain; the base path is
+  # baked into every URL, so it must match the repository name). The publication claims are on only for this deploy: running this
+  # workflow is G2, the owner's decision that the repository is public.
+  SITE_DIR: site/out
+  ABB_SITE_BASE_PATH: /agent-black-box
+  ABB_RELEASE_CLAIMS: "1"
 
 jobs:
   deploy:
@@ -39,9 +42,10 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Build
-        run: node site/build.mjs --out "$SITE_DIR"
+        run: pnpm --filter @abb/site build
       - name: Check the output
-        run: scripts/check-site.sh "$SITE_DIR" --static
+        # --release also fails while any [CONFIRM ...] marker is left in the export.
+        run: scripts/check-site.sh "$SITE_DIR" --static --release --only build --only links --only size --only claims
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

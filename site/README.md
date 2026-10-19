@@ -1,41 +1,58 @@
-# Landing page (Phase 20, step 13)
+# Landing site (Phase 20, step 13)
 
-Status: the plain-HTML baseline. The owner has since allowed React and custom JS/CSS, so a richer v2 is expected to replace the
-files marked "baseline" below. The checks, the Pages workflow and the CI job are stack-agnostic and stay.
+A Next 16 static export, a pnpm workspace package (`@abb/site`) that reuses the exact `next`, `react`, `react-dom`, Playwright, axe and
+vitest versions of `apps/web` (the lockfile gained one importer and no package). Design: `docs/design/launch/landing-site-brief.md`;
+copy: `docs/design/launch/positioning-brief.md`.
 
 ## Build and check
 
 ```bash
-node site/build.mjs                       # writes site/index.html, site/styles.css, site/fonts/*
-node site/build.mjs --out /tmp/site       # a complete scratch or deploy build (what pages.yml publishes: site-dist/)
-scripts/check-site.sh                     # build freshness, static checks, browser checks on site/
-scripts/check-site.sh DIR [--static]      # the same checks on any built directory
-SITE_SHOTS_OUT=/tmp/shots scripts/check-site.sh   # also save full-page screenshots (not committed)
+pnpm --filter @abb/site build        # site/out, for https://<owner>.github.io/agent-black-box/ (what Pages publishes)
+pnpm --filter @abb/site dev          # http://localhost:3100/agent-black-box/
+pnpm --filter @abb/site test         # vitest: the trace island and its model
+make site-check                      # = scripts/check-site.sh: builds three exports and runs every check
+scripts/check-site.sh --only perf    # one check (build fixture commands images links size claims nojs copy gallery
+                                     #   network a11y motion perf shots planted)
+SHOTS_DIR=docs/screenshots/release scripts/check-site.sh --only shots   # the 375/1440 light/dark screenshots (AC11)
+scripts/check-site.sh site/out --static --release                       # fails while any [CONFIRM ...] marker remains
 ```
 
-## Files
+Environment: `ABB_SITE_BASE_PATH` (default `/agent-black-box`; empty builds for a domain root), `ABB_SITE_OUT` (a second output
+directory), `ABB_SITE_URL` (absolute origin for the Open Graph image), `ABB_RELEASE_CLAIMS=1` (below).
 
-| File | Role |
+## Publication claims (gate G2)
+
+`ABB_RELEASE_CLAIMS` is OFF by default. While it is off the export contains no "open source", no "self-hosted" as a product claim,
+no "Source on GitHub", no link into the repository (it 404s until the repository is public) and no video caption saying so;
+`check-site.sh claims` fails if one appears. "Apache-2.0" is stated as a licence fact. Pages sets the flag for its deploy, so
+running `.github/workflows/pages.yml` (inert: `workflow_dispatch` only) is the act of publication.
+
+## `[CONFIRM ...]` markers
+
+Copy that waits for a fact carries `data-confirm="[CONFIRM ...]"` (`src/lib/confirm.ts`) and the gallery marks every pass-2
+stand-in image. `check-site.sh --release` lists them and fails while any remain; remove a marker when its fact is verified.
+
+## Layout
+
+| Path | Role |
 | --- | --- |
-| `scripts/check-site.sh`, `scripts/check_site.py`, `scripts/check_site_browser.mjs` | stack-agnostic checks of a built directory |
-| `.github/workflows/pages.yml`, job `site-check` in `.github/workflows/ci.yml` | stack-agnostic (the Build step is the one line to change) |
-| `repo-url.mjs` | the single `REPO_URL` (override `ABB_REPO_URL`); keep |
-| `build.mjs`, `src/`, `index.html`, `styles.css`, `screenshots.json`, `assets/pulse-glyph.svg`, `fonts/` | baseline |
+| `src/app/` | layout (fonts, metadata, theme-color) and the one page |
+| `src/components/` | one component per section; islands: `FaultTrace`, `ScreenGallery`, `CopyButton`, `TeaserVideo` |
+| `src/lib/` | the trace model, code colouring, gallery data, `confirm` |
+| `src/content/` | shared copy, the five quickstart commands, the generated image manifest |
+| `src/styles/` | `tokens.css` (generated), `site.css`, `hero.css`, `trace.css`, `sections.css`; no colour literal |
+| `fixtures/` | the hero's 15 events, validated against `packages/event-schema` by `tests/validate_fixture.py` |
+| `screenshots.json` | gallery words, crops and callouts in source pixels; `scripts/site-images.mjs` encodes the images |
+| `public/` | brand assets (from `scripts/brand.sh`), gallery WebP/PNG, `site.webmanifest`; `public/assets/video/` for the G1 teaser |
+| `scripts/tokens.mjs` | writes `tokens.css` and the three Plex files from `apps/web` (`--check` for staleness) |
+| `repo-url.mjs`, `base-path.mjs` | the repository address and the deploy path, each in one place |
 
-`styles.css` begins with the block produced from `apps/web/design-tokens/tokens.json` by the app's own generator
-(`apps/web/scripts/tokens-lib.mjs`), so there is one source of truth. Fonts are the app's IBM Plex woff2 files plus `OFL.txt`
-(ADR-175); the page uses three of the four.
+The checks themselves are stack-agnostic and live in `scripts/` (`check-site.sh`, `check_site*.py`, `site-checks/*.mjs`).
 
-## Screenshots (optional, step 12 not built yet)
+## Not here yet
 
-`build.mjs` reads `screenshots.json` and includes a figure only for files that exist in `docs/screenshots/release/` (or `--shots DIR`),
-copying them to `assets/shots/`. Until step 12 delivers images the section is absent, so no link is ever broken. The file names, alt
-texts and captions in `screenshots.json` are guesses: check them against the real images. Existing `docs/screenshots/pass-2` images
-may be used as local stand-ins with `--shots`, never committed into the markup.
-
-## Claims
-
-Copy uses only claims the plan allows. The page says Apache-2.0 (a license fact), "install from source", "pre-release", and that the
-page itself loads nothing from other sites (verified by `check-site.sh`). It does not say "open source", "self-hosted", "no API key
-needed" or "deterministic demo". `[CONFIRM]` comments mark copy to re-check; `check-site.sh --release` fails while any remain.
-Repository links point at `REPO_URL` and 404 until the repository is public.
+- Release screenshots (plan step 12): the gallery falls back to `docs/screenshots/pass-2` and marks each panel; drop
+  `docs/screenshots/release/<release>-<light|dark>.png` (names in `screenshots.json`) and run `node scripts/site-images.mjs`.
+- The teaser video (gate G1): put `poster.webp`, `teaser-1080p.mp4` (and optionally `-av1.mp4`, `.webm`, `teaser.vtt`,
+  `demo-1080p.mp4`) in `public/assets/video/`; the Watch section appears when they exist.
+- `docs/quickstart.md` (step 14): `check-site.sh commands` then compares the page's commands with it.
