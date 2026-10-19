@@ -103,7 +103,10 @@ describe("SetupGuide", () => {
     const steps = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
     expect(steps).toEqual(["Create an API key", "Install the SDK", "Record a run"]);
     expect(document.body.textContent).toMatch(/shown only once/);
-    expect(document.body.textContent).toContain("pip install agent-black-box");
+    // No package is published yet: the primary line is the from-checkout install, never an unregistered package name.
+    expect(document.body.textContent).toContain("pip install ./packages/sdk-python");
+    expect(document.body.textContent).not.toContain("pip install agent-black-box");
+    expect(document.body.textContent).toMatch(/No package is published yet/);
     expect(document.body.textContent).toContain("from blackbox import BlackBox");
     expect(screen.getByRole("link", { name: /API keys|Create a key/ })).toHaveAttribute(
       "href",

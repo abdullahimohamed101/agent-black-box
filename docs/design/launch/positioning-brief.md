@@ -207,7 +207,7 @@ Rules: never show `--live`; never show a real email (fixture `owner@local.test` 
 | "Secrets redacted before storage" | Re-run of the planted-secret e2e in step 10 | VERIFIED in Phase 6; must be re-run against the final demo. |
 | "Works with LangGraph, OpenAI, Anthropic, MCP" | Always qualified: "tested offline, not against live providers" | Row "Works with": Qualified. |
 | Anything about `--live` or real models | Until the owner runs it and approves (KI-044) | Never run by the project. |
-| `pip install agent-black-box` | Q4 (PyPI name check and publication) | The setup guide shows it today; the README must say "install from source" until a package exists. The site must not show the pip line before publication. |
+| `pip install agent-black-box` | Q4 (PyPI name check and publication) | The in-app setup guide shows the from-checkout line (review P2-4); the README must say "install from source" until a package exists. The site must not show the pip line before publication. |
 | Performance, overhead, scale numbers | A recorded load test (spec §158) | None exists. |
 | "Alerts" beyond "webhook, Slack or email" | None, but keep it to the one sentence in before/after 10 | KI-168 filters are deferred; do not show alert history. |
 | Any comparison table | Indefinitely | No benchmark; FAQ prose only. |
