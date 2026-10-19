@@ -161,7 +161,8 @@ const MAIN = [
       { at: 3.3, do: "spotOff" },
     ],
   },
-  { // 5. e opens the failed event in the inspector; the camera frames "What went wrong" at 1.25x (no mid-word crop).
+  { // 5. e opens the failed event in the inspector; the camera frames "What went wrong" at the largest zoom (1.6x down to 1.3x) at which no line of text is cut
+    // (the brief's 1.25x cut the timeline text behind the inspector at the window's left edge; fitZoom decides, and the QA measures it).
     id: 5, len: 7.2, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}",
     caps: [cap(8, 0.2), cap(9, 3.6)],
     acts: [
@@ -170,7 +171,7 @@ const MAIN = [
       { at: 0.2, do: "press", key: "e", chip: "e" },
       { do: "waitFor", for: { role: "dialog" } },
       { at: 1.0, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
-      { at: 1.3, do: "zoom", on: WHAT_WENT_WRONG, level: 1.25, min: 1.15 },
+      { at: 1.3, do: "zoom", on: WHAT_WENT_WRONG, level: 1.6, min: 1.3 },
       { at: 6.6, do: "zoomOut" },
       { at: 7.05, do: "press", key: "Escape" },
     ],
@@ -206,8 +207,7 @@ const MAIN = [
     acts: [
       { at: 0.0, do: "hop", via: [NAV("Runs"), { role: "link", name: "$multiRun" }, { role: "tab", name: "Waterfall", exact: true }, { role: "button", name: "Lanes", exact: true }],
         waitFor: { testid: "waterfall" }, park: "run" },
-      // no hover on the bar: the app answers a hover with a tooltip that covers the lane labels
-      { at: 3.6, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.3, fy: 0.5 },
+      // the cursor stays off the bars: the app answers a hover with a tooltip that covers the lane labels
       { at: 4.2, do: "spot", on: { css: ".wf-bar[data-critical]", widest: true, row: true } },
       { at: 7.4, do: "spotOff" },
     ],
@@ -274,7 +274,7 @@ const TEASER = [
       { at: 0.2, do: "press", key: "e", chip: "e" },
       { do: "waitFor", for: { role: "dialog" } },
       { at: 1.0, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
-      { at: 1.0, do: "zoom", on: WHAT_WENT_WRONG, level: 1.25, min: 1.15 },
+      { at: 1.0, do: "zoom", on: WHAT_WENT_WRONG, level: 1.6, min: 1.3 },
     ] },
 ];
 
@@ -599,10 +599,11 @@ let T0 = 0;
 // film time and playback time are the same thing). `holds` are the cut-out intervals in raw performance.now() milliseconds.
 let skipMs = 0;
 const holds = [];
-const clock = () => (performance.now() - T0 - skipMs) / 1000;
+let frozenAt = null; // film seconds, set while a hop is in progress: the film clock does not run during the cut
+const clock = () => frozenAt ?? (performance.now() - T0 - skipMs) / 1000;
 async function sleepUntil(sec) {
-  const ms = sec * 1000 - (performance.now() - T0 - skipMs);
-  if (ms > 0) await sleep(ms);
+  // polled, not slept once: a sleep computed before a hop would count the hop's transit as film time
+  for (let rem = sec - clock(); rem > 0; rem = sec - clock()) await sleep(Math.min(rem * 1000, 40));
 }
 
 /** A Playwright locator for a selector spec (first match; `has` filters by text, `row` selects a timeline row). */
@@ -662,7 +663,7 @@ async function boxOf(s) {
 
 let cur = { x: 0, y: 0 };
 const view = { w: cut.w, h: cut.h };
-const log = { overlay: null, console: [], warnings: [], cues: [], beats: [], scrape: {}, textHits: [], zoomStates: [], zoomMarks: [], hops: [] };
+const log = { overlay: null, console: [], warnings: [], cues: [], beats: [], scrape: {}, textHits: [], zoomStates: [], zoomMarks: [], hops: [], faultInView: [] };
 let cursorShown = true;
 const setCursor = async (show) => { cursorShown = show; await evalOverlay((v) => window.__abb?.cursor(v), show); };
 // What the story is about right now (a spotlight, a zoom's target, the thing the cursor points at), in viewport px: a caption
@@ -716,6 +717,10 @@ async function act(a, ctx) {
         break;
       case "scroll":
         await locate(a.to).scrollIntoViewIfNeeded({ timeout });
+        {
+          const b = await boxOf(a.to);
+          log.faultInView.push({ beat: ctx.id, inView: !!b && b.y >= 0 && b.y + b.height <= view.h });
+        }
         break;
       case "travel": {
         const b = await boxOf(a.to);
@@ -806,6 +811,7 @@ async function act(a, ctx) {
         await sleep(HOP_LEAD * 1000);
         focusNow = [];
         const cutAt = clock();
+        frozenAt = cutAt;
         const h0 = performance.now();
         for (const step of a.via) await locate(step).click({ timeout });
         await locate(a.waitFor).waitFor({ state: "visible", timeout });
@@ -816,6 +822,7 @@ async function act(a, ctx) {
         const h1 = performance.now();
         holds.push({ from: h0, to: h1 });
         skipMs += h1 - h0;
+        frozenAt = null;
         log.hops.push({ beat: ctx.id, at: +cutAt.toFixed(3), wallSeconds: +((h1 - h0) / 1000).toFixed(2) });
         break;
       }
@@ -1071,7 +1078,7 @@ async function main() {
     cut: cut.name, film: cinematic ? "cinematic" : "preview", captionsInPage: !captionsOff, dryRun: dry, profile, releaseClaims, appCommit: commit, demoSeedHash: seedHash,
     viewport: { w: cut.w, h: cut.h, deviceScaleFactor: DSF }, frames: filmFrames.length, seconds: +seconds.toFixed(3), plannedSeconds: +totalPlanned.toFixed(3),
     beats: log.beats, cues: log.cues.map((c) => ({ ...c, start: +c.start.toFixed(3), end: +c.end.toFixed(3) })),
-    zoomStates: log.zoomStates, zoomMarks: log.zoomMarks, hops: log.hops, wordmark: "Agent BlackBox",
+    zoomStates: log.zoomStates, zoomMarks: log.zoomMarks, faultInView: log.faultInView, hops: log.hops, wordmark: "Agent BlackBox",
     scrape: log.scrape, overlay: log.overlay, consoleErrors: log.console, warnings: log.warnings, textHits: log.textHits,
   };
   writeFileSync(path.join(takeDir, "meta.json"), JSON.stringify(meta, null, 2));

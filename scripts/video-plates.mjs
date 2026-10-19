@@ -32,7 +32,7 @@ const claims = process.env.RELEASE_CLAIMS === "1";
 const fonts = process.env.VIDEO_FONTS_DIR ?? path.join(root, "apps/web/src/fonts"); // the override exists to prove the missing-font failure
 const { chromium } = createRequire(path.join(root, "apps/web/package.json"))("@playwright/test");
 const mark = readFileSync(path.join(root, "brand/pulse-mark.svg"), "utf8").replace(/ width="24" height="24"/, "");
-const out = path.join(take, "plates");
+const out = process.env.VIDEO_PLATES_OUT ? path.resolve(process.env.VIDEO_PLATES_OUT) : path.join(take, "plates"); // the override is for the QA's planted-font proof
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
