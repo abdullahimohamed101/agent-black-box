@@ -99,9 +99,11 @@ record() {  # record <name> <command...>: run an example, keep its last output l
 ago() {  # ago <days back> <hour of day, UTC>: how many hours before now that moment was
   python3 -c 'import sys,time; d,h=map(float,sys.argv[1:]); n=time.time(); print(f"{(n-(n-n%86400-d*86400+h*3600))/3600:.4f}")' "$1" "$2"
 }
+# Run names read like a team's week ("Answer ticket: refund not received"): the support names come from the scripted tickets
+# (examples/python/scripted_agent.py), the others are passed here.
 # Oldest first: the runs list shows the newest on top, so the failed support run is second from the top (the waiter and the
 # multi-agent job are recorded in real time, "now").
-record coding-baseline    py examples/coding-agent/run_demo.py --started-ago "$(ago 6 14)"
+record coding-baseline    py examples/coding-agent/run_demo.py --name "Add retry to webhook sender" --started-ago "$(ago 6 14)"
 record support-recovers   py examples/python/scripted_agent.py --pace 0 --started-ago "$(ago 5 10.5)" --tokens-scale 16
 record support-clean-1    py examples/python/scripted_agent.py --pace 0 --ticket T-1043 --variant clean --started-ago "$(ago 4 15)" --tokens-scale 20
 record support-flaky      py examples/python/scripted_agent.py --pace 0 --ticket T-1044 --variant flaky --started-ago "$(ago 4 9)" --tokens-scale 14

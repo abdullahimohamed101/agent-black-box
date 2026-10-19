@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /*
- * record-demo.mjs (v2): records the Agent BlackBox demo video from a RUNNING, demo-seeded stack.
- * Direction: docs/design/launch/video-brief.md. Captions: docs/design/launch/positioning-brief.md (caption bank, section 7).
+ * record-demo.mjs (v3, cinematic): records the app of the Agent BlackBox demo video from a RUNNING, demo-seeded stack.
+ * Direction: docs/design/launch/video-cinematic-brief.md (and video-brief.md for what it keeps). Record with --captions=off --card=off:
+ * the page then carries only the cursor, camera, spotlight and key chip; scripts/video-plates.mjs and scripts/video-compose.mjs
+ * (run by scripts/encode-demo.sh) add the caption band, cards, dips and dim from meta.json. Captions: docs/design/launch/positioning-brief.md (caption bank, section 7).
  *
  * What it does. Drives system Chrome with Playwright at 1920x1080 CSS px and deviceScaleFactor 2, captures the page with the
  * CDP screencast (3840x2160 JPEG frames with real arrival times; Playwright's own recorder is VP8 at a fixed 1 Mbit/s), and
@@ -15,9 +17,9 @@
  *
  * Usage (repo root, `pnpm install` done so @playwright/test resolves from apps/web):
  *   scripts/demo-stack.sh up                                  # a private demo-seeded stack on :3180 (never your dev stack)
- *   node scripts/record-demo.mjs                              # main cut, about 70 s
+ *   node scripts/record-demo.mjs --captions=off --card=off    # main cut, 68.8 s of app (73 s with the cards)
  *   node scripts/record-demo.mjs --cut=teaser                 # 18 s loop for the landing hero and the README
- *   node scripts/record-demo.mjs --cut=social                 # optional 1080x1350 take, beats 1-5 (only beats 1-3 recorded, as a dry run)
+ *   node scripts/record-demo.mjs --cut=social                 # 1000x1000 take composited to 1080x1350, beats 1-7
  *   node scripts/record-demo.mjs --plan                       # no browser: print the beats and cues, write demo.vtt, check the rules
  *   node scripts/record-demo.mjs --dry-run                    # beats 1-3 only (about 15 s): checks the mechanics
  *
@@ -31,7 +33,9 @@
  *   ABB_VIDEO_TIMEOUT_MS      hard timeout for the whole run (default cut length + 180 s)
  *   RELEASE_CLAIMS=1          only after G2 (repository public) and AC1/AC12 are VERIFIED: the closing card says "Open source.
  *                             Self-hosted. Apache-2.0." and shows the repository URL (captions 26 and 28). Off by default.
- * Flags: --cut=main|teaser|social, --plan, --dry-run, --headed, --profile=<demo|fixtures>.
+ * Flags: --cut=main|teaser|social, --plan, --dry-run, --headed, --profile=<demo|fixtures>, --captions=off, --card=off.
+ * ABB_VIDEO_TRACE=1 prints how long each act took. Exit 4: forbidden text ("Agent Black Box", keys, emails) on screen; exit 5: a stalled take
+ * (a beat overran its table by 0.4 s): record again.
  * Nothing is uploaded; the script only talks to ABB_VIDEO_BASE_URL. It never passes or shows `--live`.
  */
 import { execFileSync } from "node:child_process";
@@ -41,7 +45,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  CAMERA_EASE_CSS, MAX_CAPTION_WORDS, MIN_CAPTION_GAP, buildConcat, buildSrt, buildVtt, captionHtml, captionOverlap, clippedLines,
+  CAMERA_EASE_CSS, MAX_CAPTION_WORDS, applyHolds, MIN_CAPTION_GAP, buildConcat, buildSrt, buildVtt, captionHtml, captionOverlap, clippedLines,
   fitZoom, maxFrameGap, minCaptionSeconds, parseVtt, placeCaption, plain, planCut, travelMs, travelPoint, wordCount,
 } from "./record-demo-lib.mjs";
 
@@ -51,7 +55,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Names read from the seeded demo (scripts/demo.sh). Run pages are found by visible name, never by id.
 // ---------------------------------------------------------------------------------------------------------------------
 const DATA = {
-  demo: { workspace: "local", failedRun: "Answer support ticket T-1047", multiRun: "Ship feature: multi-agent", approval: "github.push" },
+  demo: { workspace: "local", failedRun: "Answer ticket: invoice shows wrong VAT", multiRun: "Ship feature: multi-agent", approval: "github.push" },
   fixtures: { workspace: "demo", failedRun: "Migrate billing schema", multiRun: "Ship feature: multi-agent", approval: "github.push" },
 };
 
@@ -110,168 +114,235 @@ const WHAT_WENT_WRONG = { css: '[role="dialog"] h3', has: "What went wrong", par
 // The hook frames the headline and the red line together: the headline, plus the left 760 px of the first-error row (its text).
 const HOOK_FOCUS = { union: [{ testid: "headline" }, { ...FAULT_ROW, clipW: 760 }] };
 
-// Polish pass (owner review of draft 1): the film opens on the failed run itself (a 1.6x frame of its headline and the red line),
-// pulls back, and never travels the cursor across the app between sections: a section change is a 0.5 s dip to the canvas (`hop`:
-// the click happens under the dip, the cursor is moved for free). Captions overlap the cursor's travel instead of waiting for it.
+// v3 (cinematic): the recorder films the app only. The caption band, the title card, the end card, the dips and the dim are made
+// afterwards by scripts/video-compose.mjs from meta.json (docs/design/launch/video-cinematic-brief.md). Times below are seconds
+// from the beat start; the film clock the recorder keeps excludes the time spent in a `hop` (see below), so a hop is a hard cut.
+//
+// `hop {via, waitFor, park}`: a section change. The cursor fades out, then everything between "now" and "the new page is ready and
+// settled" is cut out of the film (the frames in between are dropped, the old page is followed at once by the new one), so the
+// viewer sees one hard cut at beat start + HOP_LEAD, inside a caption gap, never a dip and never a cursor transit. The first caption
+// of a beat that starts with a hop comes at least HOP_QUIET after the cut; the previous beat's last caption ends before it.
+const HOP_LEAD = 0.25;
+const HOP_QUIET = 0.8;
+const FIRST_CAP = HOP_LEAD + HOP_QUIET; // 1.05 s into a beat that starts with a hop
+
 const MAIN = [
-  { // 1. The hook: the failed run's headline and its red first-error line, close, then the camera pulls back.
-    id: 1, len: 3.8,
-    tx: "The failed run {failedRun} opens in a close frame on its headline and the red first-error line, then the camera pulls back.",
-    pre: [{ do: "zoom", on: HOOK_FOCUS, level: 1.6, min: 1.3, instant: true }],
-    caps: [cap(1, 0.15)],
-    acts: [{ at: 1.9, do: "zoomOut" }],
+  { // 1. The Runs list, the failed run opened with a click (the fault line draws as the page opens).
+    id: 1, len: 4.6, tx: "The Runs list. The cursor goes to the failed run {failedRun} and opens it; the red first-error line draws on its timeline.",
+    caps: [cap(3, 1.2)],
+    acts: [
+      { at: 1.2, do: "travel", to: FAILED_LINK },
+      { do: "dwell", ms: 400 },
+      { do: "click" },
+      { do: "waitFor", for: { testid: "headline" } },
+      { do: "park", name: "run" },
+    ],
   },
-  { // 2. The sentence and the line under it, lit together.
-    id: 2, len: 3.0, tx: "The run page says in one sentence where it broke: {headline} Under it: {detail}",
-    caps: [cap(4, 0.15)],
+  { // 2. The sentence: camera 1.6x on the headline.
+    id: 2, len: 4.6, tx: "The run page says in one sentence where it broke: {headline}",
+    caps: [cap(4, 0.8)],
     acts: [
       { at: 0.0, do: "scrape", key: "headline", of: { testid: "headline" } },
+      { at: 0.3, do: "zoom", on: { testid: "headline" }, level: 1.6, min: 1.3 },
+      { at: 4.0, do: "zoomOut" },
+    ],
+  },
+  { // 3. The line under it, lit.
+    id: 3, len: 3.4, tx: "Under it: {detail}",
+    caps: [cap(6, 0.2)],
+    acts: [
       { at: 0.0, do: "scrape", key: "detail", of: { testid: "headline-detail" } },
-      { at: 0.1, do: "spot", on: [{ testid: "headline" }, { testid: "headline-detail" }], pad: 8 },
-      { at: 2.75, do: "spotOff" },
+      { at: 0.2, do: "spot", on: { testid: "headline-detail" }, pad: 3 },
+      { at: 3.2, do: "spotOff" },
     ],
   },
-  { // 3. The red line.
-    id: 3, len: 3.1, tx: "On the timeline one red line crosses the rows and is labelled First error.",
-    caps: [cap(7, 0.1)],
+  { // 4. The red line.
+    id: 4, len: 3.6, tx: "On the timeline one red line crosses the rows and is labelled First error.",
+    caps: [cap(7, 0.3)],
     acts: [
-      { at: 0.0, do: "travel", to: FAULT_ROW, fx: 0.62, fy: 0.5, dx: 0, dy: 34 },
-      { at: 0.35, do: "spot", on: [FAULT_ROW, { css: ".tl-fault-label" }] },
-      { at: 2.7, do: "spotOff" },
+      { at: 0.0, do: "travel", to: { css: ".tl-fault-label" }, fx: 0, fy: 1, dx: -60, dy: 24 },
+      { at: 0.3, do: "spot", on: [FAULT_ROW, { css: ".tl-fault-label" }] },
+      { at: 3.3, do: "spotOff" },
     ],
   },
-  { // 4. e opens the failed event in the inspector; the camera frames "What went wrong" without cutting a word.
-    id: 4, len: 7.1, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}",
-    caps: [cap(8, 0.4), cap(9, 3.65)], // the first caption waits for the inspector to be open: its text lines are then where they will stay
+  { // 5. e opens the failed event in the inspector; the camera frames "What went wrong" at the largest zoom (1.6x down to 1.3x) at which no line of text is cut
+    // (the brief's 1.25x cut the timeline text behind the inspector at the window's left edge; fitZoom decides, and the QA measures it).
+    id: 5, len: 7.2, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}",
+    caps: [cap(8, 0.2), cap(9, 3.6)],
     acts: [
+      { at: 0.0, do: "cursor", show: false },
       { at: 0.0, do: "focus", css: ".timeline" },
-      { at: 0.05, do: "press", key: "e", chip: "e" },
+      { at: 0.2, do: "press", key: "e", chip: "e" },
       { do: "waitFor", for: { role: "dialog" } },
-      { at: 0.9, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
-      { at: 1.0, do: "zoom", on: WHAT_WENT_WRONG, level: 1.6, min: 1.3 },
-      { at: 6.2, do: "zoomOut" },
-      { at: 6.75, do: "press", key: "Escape" },
+      { at: 1.0, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
+      { at: 1.3, do: "zoom", on: WHAT_WENT_WRONG, level: 1.6, min: 1.3 },
+      { at: 6.6, do: "zoomOut" },
+      { at: 7.05, do: "press", key: "Escape" },
     ],
   },
-  { // 5. Typed events: a model call with tokens and cost, then a retry.
-    id: 5, len: 6.8, tx: "Back on the timeline, a model call row shows its tokens and cost, and a retry row says retry attempted.",
-    caps: [cap(10, 0.15), cap(11, 3.65)],
+  { // 6. Typed events: a model call with tokens and cost, then a retry.
+    id: 6, len: 7.1, tx: "Back on the timeline, a model call row shows its tokens and cost, and a retry row says retry attempted.",
+    caps: [cap(10, 0.3), cap(11, 3.9)],
     acts: [
       { at: 0.0, do: "travel", to: { row: "llm.request.completed" }, fx: 0.52, fy: 0.5 },
-      { at: 0.35, do: "spot", on: { row: "llm.request.completed" }, pad: 6 },
-      { at: 3.4, do: "travel", to: { row: "retry.attempted" }, fx: 0.62, fy: 0.5 },
-      { at: 3.5, do: "spot", on: { row: "retry.attempted" }, pad: 6 },
-      { at: 6.45, do: "spotOff" },
+      { at: 0.3, do: "spot", on: { row: "llm.request.completed" }, pad: 6 },
+      { at: 3.6, do: "travel", to: { row: "retry.attempted" }, fx: 0.62, fy: 0.5 },
+      { at: 3.7, do: "spot", on: { row: "retry.attempted" }, pad: 6 },
+      { at: 6.85, do: "spotOff" },
     ],
   },
-  { // 6. Findings and their evidence.
-    id: 6, len: 6.8, tx: "On the Findings tab: critical findings. Show evidence jumps to the exact rows.",
-    caps: [cap(12, 0.2), cap(13, 3.65)],
+  { // 7. Findings and their evidence.
+    id: 7, len: 7.5, tx: "On the Findings tab: critical findings. Show evidence jumps to the exact rows.",
+    caps: [cap(12, 1.0), cap(13, 4.45)],
     acts: [
       { at: 0.0, do: "travel", to: { role: "tab", name: "Findings", exact: true } },
-      { do: "dwell", ms: 300 },
+      { do: "dwell", ms: 200 },
       { do: "click" },
-      { at: 1.5, do: "travel", to: { role: "button", name: "Show evidence" } },
-      { do: "dwell", ms: 400 },
-      { at: 3.55, do: "click" },
+      { at: 2.4, do: "travel", to: { role: "button", name: "Show evidence" } },
+      { do: "dwell", ms: 300 },
+      { at: 4.3, do: "click" },
       { do: "wait", ms: 450 },
       { do: "park", name: "run" },
     ],
   },
-  { // 7. Five agents in one waterfall. The hop opens the multi-agent run on its Waterfall tab in Lanes view.
-    id: 7, len: 7.0, tx: "The multi-agent run {multiRun}: the Waterfall in lanes shows five agents, with the critical path as the thick edge.",
-    caps: [cap(16, 0.75), cap(17, 4.0)],
+  { // 8. Five agents in one waterfall (a cut: the multi-agent run opens on its Waterfall in Lanes).
+    id: 8, len: 7.7, cut: true, tx: "The multi-agent run {multiRun}: the Waterfall in lanes shows five agents, with the critical path as the thick edge.",
+    caps: [cap(16, FIRST_CAP), cap(17, 4.4)],
     acts: [
       { at: 0.0, do: "hop", via: [NAV("Runs"), { role: "link", name: "$multiRun" }, { role: "tab", name: "Waterfall", exact: true }, { role: "button", name: "Lanes", exact: true }],
         waitFor: { testid: "waterfall" }, park: "run" },
-      // no hover on the bar: the app answers a hover with a tooltip that covers the lane labels, and the spotlight already says it
-      { at: 3.85, do: "spot", on: { css: ".wf-bar[data-critical]", widest: true, row: true } },
-      { at: 6.75, do: "spotOff" },
+      // the cursor stays off the bars: the app answers a hover with a tooltip that covers the lane labels
+      { at: 4.2, do: "spot", on: { css: ".wf-bar[data-critical]", widest: true, row: true } },
+      { at: 7.4, do: "spotOff" },
     ],
   },
-  { // 8. A person decides. Never clicks Approve or Deny.
-    id: 8, len: 6.5, tx: "Review: one request is Waiting. Its panel shows the capability github.push, the resource, the arguments and Approve and Deny buttons, which are never clicked.",
-    caps: [cap(22, 0.75), cap(23, 3.8)],
+  { // 9. A person decides. Never clicks Approve or Deny.
+    id: 9, len: 7.1, cut: true, tx: "Review: one request is Waiting. Its panel shows the capability github.push, the resource, the risk class R2, the arguments and Approve and Deny buttons, which are never clicked.",
+    caps: [cap(22, FIRST_CAP), cap(23, 4.25)],
     acts: [
       { at: 0.0, do: "hop", via: [{ role: "link", name: "re:^Review" }], waitFor: { testid: "approval-row" }, park: "review" },
-      { at: 1.3, do: "travel", to: { role: "link", name: "$approval" }, fx: 0.95, fy: 0.3 }, // the arrow beside the link, not over the line under it
+      { at: 0.5, do: "travel", to: { role: "link", name: "$approval" }, fx: 0.95, fy: 0.3 }, // the arrow beside the link, not over the line under it
       { do: "dwell", ms: 350 },
       { do: "click" },
       { do: "waitFor", for: { role: "button", name: "Approve", exact: true } },
       { do: "park", name: "review" },
-      { at: 3.85, do: "spot", on: { css: "dl", has: "Capability" }, pad: 10 },
-      { at: 6.2, do: "spotOff" },
-    ],
-  },
-  { // 9. Security findings, each with its rule.
-    id: 9, len: 7.2, tx: "Review, Security findings: a destructive command, a risky git operation and a secret file read, each with a Rule line.",
-    caps: [cap(14, 0.4), cap(15, 4.3)],
-    acts: [
-      { at: 0.0, do: "travel", to: { role: "tab", name: "Security findings", exact: true } },
-      { do: "dwell", ms: 300 },
-      { do: "click" },
-      { do: "waitFor", for: { testid: "security-row" } },
-      { at: 3.4, do: "travel", to: { testid: "security-row" }, fx: 0.55, fy: 0.5 },
-      { at: 4.2, do: "spot", on: { testid: "security-row" }, pad: 6 },
-      { at: 6.9, do: "spotOff" },
+      { at: 3.9, do: "spot", on: { css: "dl", has: "Capability" }, pad: 10 },
+      { at: 6.75, do: "spotOff" },
     ],
   },
   { // 10. What the week cost.
-    id: 10, len: 7.0, tx: "Analytics, Cost: {costLine} Below it, where the money was wasted: failed runs, retries and spend after errors.",
-    caps: [cap(20, 0.7, { top: 512 }), cap(21, 3.4, { top: 512 })], // the page is full of text and bars to the bottom: the one empty band is beside the daily-spend chart
+    id: 10, len: 7.4, cut: true, tx: "Analytics, Cost: {costLine} Below it, where the money was wasted: failed runs, retries and spend after errors.",
+    caps: [cap(20, FIRST_CAP), cap(21, 3.8)],
     acts: [
       { at: 0.0, do: "hop", via: [NAV("Analytics")], waitFor: { testid: "report-headline" }, park: "analytics" },
       { do: "scrape", key: "costLine", of: { testid: "report-headline" } },
-      { at: 0.65, do: "spot", on: { testid: "report-headline" }, pad: 10 },
-      { at: 3.2, do: "spot", on: { heading: "Where the money was wasted" }, pad: 10 },
-      { at: 6.7, do: "spotOff" },
+      { at: 3.6, do: "spot", on: { heading: "Where the money was wasted" }, pad: 10 },
+      { at: 7.0, do: "spotOff" },
     ],
   },
-  { // 11. Light follows the system: the Runs list with the failed run, dark to light as a cross-fade, never a one-frame flash.
-    id: 11, len: 5.0, tx: "The Runs list again with the failed run, now in the light scheme: the app follows the system setting, and the picture cross-fades. The caption box stays dark.",
-    caps: [cap(27, 2.0)], // after the cross-fade: the mid-point of a dark-to-light blend is a flat grey that no caption should sit on
+  { // 11. Security findings, each with its rule.
+    id: 11, len: 8.0, cut: true, tx: "Review, Security findings: a destructive command, a risky git operation and a secret file read, each with a Rule line.",
+    caps: [cap(14, FIRST_CAP), cap(15, 5.0)],
     acts: [
-      { at: 0.0, do: "hop", via: [NAV("Runs")], waitFor: RUNS_HEADING, park: "runs" },
-      { at: 0.7, do: "scheme", value: "light", fadeMs: 650 },
-      { at: 1.9, do: "travel", to: FAILED_LINK },
+      { at: 0.0, do: "hop", via: [{ role: "link", name: "re:^Review" }, { role: "tab", name: "Security findings", exact: true }], waitFor: { testid: "security-row" }, park: "review" },
+      { at: 0.8, do: "travel", to: { testid: "security-row" }, fx: 0.55, fy: 0.5 },
+      { at: 1.1, do: "spot", on: { testid: "security-row" }, pad: 6 },
+      { at: 7.4, do: "spotOff" },
     ],
   },
-  { // 12. The closing card. Pre-G2 text unless RELEASE_CLAIMS=1.
-    id: 12, len: 4.6,
-    tx: releaseClaims
-      ? "The closing card: the wordmark on the canvas, the text 'Open source. Self-hosted. Apache-2.0.' and the repository address."
-      : "The closing card: the wordmark on the canvas and the line 'Agent BlackBox: a flight recorder for AI agents.'",
-    caps: releaseClaims ? [cap(26, 0.8), cap(28, 4.15, { d: 3.7 })] : [{ at: 0.75, bank: null, text: CLOSING }],
+];
+
+// The teaser loop: the first five beats' story (hook, headline, red line, inspector) with the dip to the canvas at both ends (compose).
+const TEASER = [
+  { id: "T1", len: 4.3, tx: "The Runs list; the cursor opens the failed run.", caps: [cap(3, 0.6)],
+    acts: [
+      { at: 1.2, do: "travel", to: FAILED_LINK }, { do: "dwell", ms: 400 }, { do: "click" },
+      { do: "waitFor", for: { testid: "headline" } }, { do: "park", name: "run" },
+    ] },
+  { id: "T2", len: 4.3, tx: "The run page says in one sentence where it broke: {headline}", caps: [cap(4, 0.7)],
+    acts: [
+      { at: 0.0, do: "scrape", key: "headline", of: { testid: "headline" } },
+      { at: 0.2, do: "zoom", on: { testid: "headline" }, level: 1.6, min: 1.3 },
+      { at: 3.7, do: "zoomOut" },
+    ] },
+  { id: "T3", len: 3.4, tx: "On the timeline one red line crosses the rows and is labelled First error.", caps: [cap(7, 0.3)],
+    acts: [
+      { at: 0.0, do: "travel", to: { css: ".tl-fault-label" }, fx: 0, fy: 1, dx: -60, dy: 24 },
+      { at: 0.3, do: "spot", on: [FAULT_ROW, { css: ".tl-fault-label" }] },
+      { at: 3.15, do: "spotOff" },
+    ] },
+  { id: "T4", len: 7.4, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}", caps: [cap(8, 0.2), cap(9, 3.6)],
     acts: [
       { at: 0.0, do: "cursor", show: false },
-      { at: 0.0, do: "fade", to: 1, ms: 480 }, // the light page goes to the dark canvas: slow enough not to be a step
-      { at: 0.55, do: "card", show: true },
-      { at: 0.55, do: "fade", to: 0, ms: 1 },
-    ],
-  },
+      { at: 0.0, do: "focus", css: ".timeline" },
+      { at: 0.2, do: "press", key: "e", chip: "e" },
+      { do: "waitFor", for: { role: "dialog" } },
+      { at: 1.0, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
+      { at: 1.0, do: "zoom", on: WHAT_WENT_WRONG, level: 1.6, min: 1.3 },
+    ] },
 ];
 
-// The teaser loop: the first four beats of the main cut with the dip to the canvas at both ends.
-const TEASER = [
-  { ...MAIN[0], id: "T1", len: 3.9, acts: [{ at: 0.05, do: "fade", to: 0, ms: 250 }, ...MAIN[0].acts] },
-  { ...MAIN[1], id: "T2" },
-  { ...MAIN[2], id: "T3" },
-  { ...MAIN[3], id: "T4", len: 6.9, acts: [...MAIN[3].acts.filter((a) => a.key !== "Escape"), { at: 6.55, do: "fade", to: 1, ms: 250 }] },
+// Social cut: a separate take at 1000x1000 CSS px (the app's one-column layout), beats 1-7, zoom at most 1.4. Written after a dry
+// run of the narrow layout (docs/design/launch/video-cinematic-brief.md 3.3): the rows it names are the ones it showed.
+const SOCIAL = [
+  { id: 1, len: 5.0, tx: "The Runs list at phone width; the failed run {failedRun} is opened.", caps: [cap(3, 1.2)],
+    acts: [
+      { at: 1.2, do: "travel", to: FAILED_LINK }, { do: "dwell", ms: 400 }, { do: "click" },
+      { do: "waitFor", for: { testid: "headline" } }, { do: "park", name: "run" },
+    ] },
+  { id: 2, len: 4.6, tx: "The headline of the run: {headline}", caps: [cap(4, 0.6)],
+    acts: [
+      { at: 0.0, do: "scrape", key: "headline", of: { testid: "headline" } },
+      { at: 0.2, do: "zoom", on: { testid: "headline" }, level: 1.4, min: 1.1 },
+      { at: 4.0, do: "zoomOut" },
+    ] },
+  { id: 3, len: 3.4, tx: "Under it: {detail}", caps: [cap(6, 0.2)],
+    acts: [
+      { at: 0.0, do: "scrape", key: "detail", of: { testid: "headline-detail" } },
+      { at: 0.2, do: "spot", on: { testid: "headline-detail" }, pad: 3 },
+      { at: 3.2, do: "spotOff" },
+    ] },
+  { id: 4, len: 3.6, tx: "The red first-error line on the timeline.", caps: [cap(7, 0.3)],
+    acts: [
+      { at: 0.0, do: "scroll", to: FAULT_ROW },
+      { at: 0.1, do: "travel", to: { css: ".tl-fault-label" }, fx: 0, fy: 1, dx: -40, dy: 20 },
+      { at: 0.4, do: "spot", on: [FAULT_ROW, { css: ".tl-fault-label" }] },
+      { at: 3.3, do: "spotOff" },
+    ] },
+  { id: 5, len: 7.2, tx: "The inspector opens over the list: {wrong}", caps: [cap(8, 0.2), cap(9, 3.6)],
+    acts: [
+      { at: 0.0, do: "cursor", show: false },
+      { at: 0.0, do: "focus", css: ".timeline" },
+      { at: 0.2, do: "press", key: "e", chip: "e" },
+      { do: "waitFor", for: { role: "dialog" } },
+      { at: 1.0, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
+      { at: 1.3, do: "spot", on: WHAT_WENT_WRONG, pad: 6 },
+      { at: 6.7, do: "spotOff" },
+      { at: 7.05, do: "press", key: "Escape" },
+    ] },
+  { id: 6, len: 7.1, tx: "A model call row and a retry row on the timeline.", caps: [cap(10, 0.3), cap(11, 3.9)],
+    acts: [
+      { at: 0.0, do: "travel", to: { row: "llm.request.completed" }, fx: 0.5, fy: 0.5 },
+      { at: 0.3, do: "spot", on: { row: "llm.request.completed" }, pad: 4 },
+      { at: 3.6, do: "travel", to: { row: "retry.attempted" }, fx: 0.5, fy: 0.5 },
+      { at: 3.7, do: "spot", on: { row: "retry.attempted" }, pad: 4 },
+      { at: 6.85, do: "spotOff" },
+    ] },
+  { id: 7, len: 7.5, tx: "On the Findings tab: findings, and Show evidence.", caps: [cap(12, 1.0), cap(13, 4.45)],
+    acts: [
+      { at: 0.0, do: "travel", to: { role: "tab", name: "Findings", exact: true } }, { do: "dwell", ms: 200 }, { do: "click" },
+      { at: 2.4, do: "travel", to: { role: "button", name: "Show evidence" } }, { do: "dwell", ms: 300 },
+      { at: 4.3, do: "click" }, { do: "wait", ms: 450 }, { do: "park", name: "run" },
+    ] },
 ];
-
-// Social cut: a separate take at 1080x1350 (the app's narrow layout), beats 1-5, captions 40/50 px, zoom at most 1.4.
-const SOCIAL = MAIN.filter((b) => b.id <= 5).map((b) => ({
-  ...b,
-  pre: b.pre?.map((a) => (a.do === "zoom" ? { ...a, level: Math.min(a.level, 1.4), min: 1.1 } : a)),
-  acts: b.acts.map((a) => (a.do === "zoom" ? { ...a, level: Math.min(a.level, 1.4), min: 1.1 } : a)),
-}));
 
 // Parking spots are fractions of the viewport (never over text being read; video-brief.md 3.3).
 const PARKS = { runs: [0.625, 0.2], run: [0.78, 0.28], review: [0.36, 0.88], analytics: [0.78, 0.28] };
+// `cap` is the size of the caption when it is drawn in the page (--captions=on, a preview only); the film's captions are plates.
 const CUTS = {
-  main: { beats: MAIN, w: 1920, h: 1080, name: "main", cap: { size: 34, line: 44 }, parks: PARKS },
-  teaser: { beats: TEASER, w: 1920, h: 1080, name: "teaser", cap: { size: 34, line: 44 }, parks: PARKS, startFaded: true },
-  social: { beats: SOCIAL, w: 1080, h: 1350, name: "social", cap: { size: 40, line: 50 }, parks: { ...PARKS, runs: [0.6, 0.12], run: [0.7, 0.2] } },
+  main: { beats: MAIN, w: 1920, h: 1080, name: "main", cap: { size: 34, line: 44 }, parks: PARKS, start: "runs" },
+  teaser: { beats: TEASER, w: 1920, h: 1080, name: "teaser", cap: { size: 34, line: 44 }, parks: PARKS, start: "runs" },
+  social: { beats: SOCIAL, w: 1000, h: 1000, name: "social", cap: { size: 40, line: 50 }, parks: { runs: [0.6, 0.2], run: [0.7, 0.2], review: [0.4, 0.9], analytics: [0.7, 0.3] }, start: "runs" },
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -290,11 +361,15 @@ const cutName = opt("cut") ?? "main";
 if (!CUTS[cutName]) fail(`unknown cut "${cutName}" (main, teaser, social)`);
 const cut = CUTS[cutName];
 const dry = flag("dry-run");
+// The cinematic film (the default way to make a cut): the page carries no caption and no card; scripts/video-compose.mjs draws them.
+const captionsOff = opt("captions") === "off";
+const cardOff = opt("card") === "off";
+const cinematic = captionsOff && cardOff;
 const profile = opt("profile") ?? process.env.ABB_VIDEO_PROFILE ?? "demo";
 if (!DATA[profile]) fail(`unknown profile "${profile}" (demo or fixtures)`);
 const data = DATA[profile];
 const workspace = process.env.ABB_VIDEO_WORKSPACE ?? data.workspace;
-const beats = cut.beats.filter((b) => !dry || (typeof b.id === "number" && b.id <= 3));
+const beats = cut.beats.filter((b) => !dry || ["1", "2", "3", "T1", "T2", "T3"].includes(String(b.id)));
 const plan = planCut(beats);
 const totalPlanned = plan.length ? plan[plan.length - 1].start + plan[plan.length - 1].len : 0;
 const outRoot = path.resolve(root, process.env.ABB_VIDEO_OUT ?? "video-out");
@@ -317,7 +392,17 @@ function checkPlan(planned) {
     const gap = all[i].abs.start - all[i - 1].abs.end;
     if (gap < MIN_CAPTION_GAP - 1e-9) problems.push(`captions "${plain(all[i - 1].text)}" and "${plain(all[i].text)}" are ${gap.toFixed(2)} s apart (minimum ${MIN_CAPTION_GAP})`);
   }
-  for (const p of planned) for (const c of p.cues) if (c.end > p.len - 0.2) problems.push(`beat ${p.id}: a caption runs to the end of the beat (across a cut)`);
+  // A cut (a beat that starts with a hop) comes HOP_LEAD into the beat: the previous beat's last caption must be over by then, and
+  // the first caption of the beat comes at least HOP_QUIET after it (the band is empty 0.25 s before to 0.8 s after a cut).
+  planned.forEach((p, i) => {
+    const beat = beats.find((b) => b.id === p.id);
+    if (i + 1 < planned.length && beats.find((b) => b.id === planned[i + 1].id)?.cut) {
+      for (const c of p.cues) if (c.end > p.len + 1e-9) problems.push(`beat ${p.id}: a caption runs into the cut that opens beat ${planned[i + 1].id}`);
+    } else if (i + 1 === planned.length || !beats.find((b) => b.id === planned[i + 1].id)?.cut) {
+      for (const c of p.cues) if (c.end > p.len - 0.2) problems.push(`beat ${p.id}: a caption runs to the end of the beat`);
+    }
+    if (beat?.cut && p.cues[0] && p.cues[0].start < HOP_LEAD + HOP_QUIET - 1e-9) problems.push(`beat ${p.id}: the first caption comes ${p.cues[0].start.toFixed(2)} s after the beat start, less than ${(HOP_LEAD + HOP_QUIET).toFixed(2)} s (cut at ${HOP_LEAD} s plus ${HOP_QUIET} s of quiet)`);
+  });
   return problems;
 }
 
@@ -379,7 +464,7 @@ function overlay(cfg) {
     const nonced = document.querySelector("script[nonce],style[nonce],link[nonce]");
     if (nonced?.nonce) style.nonce = nonced.nonce;
     style.textContent = `
-      html { overflow: hidden !important; background: #101419; }
+      html { overflow: hidden !important; background: #15191e; }
       .timeline:focus-visible { outline: none !important; } /* the listbox ring is a keyboard affordance, not part of the story */
       body { transform-origin: 0 0; transition: transform ${cfg.zoomIn}ms ${cfg.camera}; }
       #abb-cur { position: fixed; left: 0; top: 0; width: 32px; height: 32px; pointer-events: none; z-index: 2147483640;
@@ -401,18 +486,11 @@ function overlay(cfg) {
         box-shadow: 0 0 0 9999px rgba(16,20,25,.55); opacity: 0;
         transition: opacity 200ms linear, left 260ms ${cfg.camera}, top 260ms ${cfg.camera}, width 260ms ${cfg.camera}, height 260ms ${cfg.camera}; }
       @media (prefers-color-scheme: light) { #abb-spot { box-shadow: 0 0 0 9999px rgba(29,34,41,.45); } }
-      #abb-chip { position: fixed; right: ${W - 1860}px; bottom: ${H - 996}px; width: 44px; height: 44px; border-radius: 4px;
+      #abb-chip { position: fixed; right: 60px; bottom: 84px; width: 44px; height: 44px; border-radius: 4px;
         background: rgba(16,20,25,.92); border: 1px solid rgba(255,255,255,.14); color: #e2e5e8; display: flex; align-items: center;
         justify-content: center; font: 500 22px/1 "IBM Plex Mono", ui-monospace, monospace; pointer-events: none; z-index: 2147483644;
         opacity: 0; transition: opacity 120ms linear; }
       #abb-chip.on { opacity: 1; }
-      #abb-xf { position: fixed; left: 0; top: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; z-index: 2147483642; opacity: 0; display: none; }
-      #abb-fade { position: fixed; inset: 0; background: #101419; pointer-events: none; z-index: 2147483646; opacity: 0; }
-      #abb-card { position: fixed; inset: 0; background: #101419; z-index: 2147483641; display: none; align-items: center; justify-content: center;
-        flex-direction: column; gap: 28px; pointer-events: none; color: #e2e5e8; }
-      #abb-card.on { display: flex; }
-      #abb-card svg { width: 96px; height: 96px; color: #e2e5e8; }
-      #abb-card .name { font: 600 56px/1.1 var(--abb-cap-font, "IBM Plex Sans", system-ui, sans-serif); letter-spacing: 0; }
     `;
     document.documentElement.append(style);
     const mk = (tag, id, html) => { const e = document.createElement(tag); e.id = id; if (html) e.innerHTML = html; return e; };
@@ -422,10 +500,7 @@ function overlay(cfg) {
     const capEl = mk("div", "abb-cap"); capEl.setAttribute("aria-hidden", "true");
     const spot = mk("div", "abb-spot");
     const chip = mk("div", "abb-chip");
-    const fade = mk("div", "abb-fade");
-    const xf = mk("img", "abb-xf"); xf.setAttribute("alt", "");
-    const card = mk("div", "abb-card", cfg.mark + '<div class="name">Agent BlackBox</div>');
-    document.documentElement.append(card, xf, spot, capEl, chip, rip, cur, fade);
+    document.documentElement.append(spot, capEl, chip, rip, cur);
     const font = getComputedStyle(document.body).getPropertyValue("--font-plex-sans").trim();
     if (font) document.documentElement.style.setProperty("--abb-cap-font", font);
     const store = {
@@ -449,9 +524,7 @@ function overlay(cfg) {
       const saved = JSON.parse(store.get("__abbCap") ?? "null");
       if (saved && saved.until > Date.now()) { capEl.innerHTML = saved.html; capEl.style.top = saved.top + "px"; capEl.classList.add("on"); }
     } catch { /* none */ }
-    if (store.get("__abbFade") === "1") fade.style.opacity = "1";
-    if (store.get("__abbCard") === "1") card.classList.add("on");
-    const keep = [style, card, xf, spot, capEl, chip, rip, cur, fade];
+    const keep = [style, spot, capEl, chip, rip, cur];
     const ensure = () => { for (const el of keep) if (!el.isConnected) document.documentElement.append(el); };
     new MutationObserver(ensure).observe(document.documentElement, { childList: true });
     setInterval(ensure, 250);
@@ -497,13 +570,8 @@ function overlay(cfg) {
         }
         return out;
       },
-      // Cross-fade for a change the page cannot animate (the colour scheme): show the old picture on top, change, fade it away.
-      async xfShow(src) { xf.src = src; await xf.decode(); xf.style.transition = "none"; xf.style.display = "block"; xf.style.opacity = "1"; },
-      xfHide(ms) { xf.style.transition = `opacity ${ms}ms linear`; xf.style.opacity = "0"; setTimeout(() => { xf.style.display = "none"; xf.removeAttribute("src"); }, ms + 50); },
       chip(label, ms) { chip.textContent = label; chip.classList.add("on"); setTimeout(() => chip.classList.remove("on"), ms); },
       cursor(show) { store.set("__abbCurHidden", show ? "0" : "1"); cur.style.opacity = show ? "1" : "0"; },
-      fade(to, ms) { store.set("__abbFade", to ? "1" : "0"); fade.style.transition = `opacity ${ms}ms linear`; fade.style.opacity = String(to); },
-      card(show) { store.set("__abbCard", show ? "1" : "0"); card.classList.toggle("on", show); },
       captionInfo() {
         const r = capEl.getBoundingClientRect();
         return { opacity: Number(getComputedStyle(capEl).opacity), on: capEl.classList.contains("on"), rect: { x: r.x, y: r.y, w: r.width, h: r.height } };
@@ -531,10 +599,15 @@ const nameOf = (n) => {
 
 let page;
 let T0 = 0;
-const clock = () => (performance.now() - T0) / 1000;
+// The film clock: wall time since the first frame minus the time cut out by hops (the frames of those intervals are dropped, so
+// film time and playback time are the same thing). `holds` are the cut-out intervals in raw performance.now() milliseconds.
+let skipMs = 0;
+const holds = [];
+let frozenAt = null; // film seconds, set while a hop is in progress: the film clock does not run during the cut
+const clock = () => frozenAt ?? (performance.now() - T0 - skipMs) / 1000;
 async function sleepUntil(sec) {
-  const ms = sec * 1000 - (performance.now() - T0);
-  if (ms > 0) await sleep(ms);
+  // polled, not slept once: a sleep computed before a hop would count the hop's transit as film time
+  for (let rem = sec - clock(); rem > 0; rem = sec - clock()) await sleep(Math.min(rem * 1000, 40));
 }
 
 /** A Playwright locator for a selector spec (first match; `has` filters by text, `row` selects a timeline row). */
@@ -594,7 +667,9 @@ async function boxOf(s) {
 
 let cur = { x: 0, y: 0 };
 const view = { w: cut.w, h: cut.h };
-const log = { overlay: null, console: [], warnings: [], cues: [], beats: [], scrape: {}, textHits: [], zoomStates: [], hops: [] };
+const log = { overlay: null, console: [], warnings: [], cues: [], beats: [], scrape: {}, textHits: [], zoomStates: [], zoomMarks: [], hops: [], faultInView: [] };
+let cursorShown = true;
+const setCursor = async (show) => { cursorShown = show; await evalOverlay((v) => window.__abb?.cursor(v), show); };
 // What the story is about right now (a spotlight, a zoom's target, the thing the cursor points at), in viewport px: a caption
 // must never sit on it. The camera scale is kept for the caption measurements.
 let focusNow = [];
@@ -632,6 +707,15 @@ const evalOverlay = async (fn, arg) => {
 
 async function act(a, ctx) {
   const timeout = a.optional ? 3000 : 15000;
+  const traceAt = performance.now();
+  try {
+    return await actInner(a, ctx, timeout);
+  } finally {
+    if (process.env.ABB_VIDEO_TRACE) console.log(`  trace beat ${ctx.id} ${a.do} at ${clock().toFixed(2)} s took ${((performance.now() - traceAt) / 1000).toFixed(2)} s wall`);
+  }
+}
+
+async function actInner(a, ctx, timeout) {
   try {
     switch (a.do) {
       case "goto":
@@ -646,11 +730,16 @@ async function act(a, ctx) {
         break;
       case "scroll":
         await locate(a.to).scrollIntoViewIfNeeded({ timeout });
+        {
+          const b = await boxOf(a.to);
+          log.faultInView.push({ beat: ctx.id, inView: !!b && b.y >= 0 && b.y + b.height <= view.h });
+        }
         break;
       case "travel": {
         const b = await boxOf(a.to);
         if (!b) throw new Error("no box for " + JSON.stringify(a.to));
         if (a.focus !== false) focusNow = [asRect(b)];
+        if (!cursorShown) { await setCursor(true); await sleep(60); }
         await travelTo({ x: b.x + b.width * (a.fx ?? 0.5) + (a.dx ?? 0), y: b.y + b.height * (a.fy ?? 0.5) + (a.dy ?? 0) });
         break;
       }
@@ -681,8 +770,10 @@ async function act(a, ctx) {
         const fit = fitZoom({ lines, focus: asRect(b), s0: a.level, sMin: a.min ?? 1.3, view });
         if (!fit) throw new Error(`the zoom target does not fit a window of at least ${a.min ?? 1.3}x`);
         const ms = a.instant ? 0 : 700;
-        await evalOverlay(() => window.__abb?.cursor(false));
+        await setCursor(false);
+        const zoomAt = clock();
         await evalOverlay(([s, x0, y0, t]) => window.__abb?.zoom(s, x0, y0, t), [fit.s, fit.x0, fit.y0, ms]);
+        log.zoomMarks.push({ beat: ctx.id, level: fit.s, in: +zoomAt.toFixed(3), inEnd: +(zoomAt + ms / 1000).toFixed(3), out: null, outEnd: null });
         await sleep(ms + 80);
         cameraScale = fit.s;
         const after = await readLines();
@@ -695,14 +786,17 @@ async function act(a, ctx) {
         });
         break;
       }
-      case "zoomOut":
+      case "zoomOut": {
+        const outAt = clock();
         await evalOverlay(([ms]) => window.__abb?.zoom(1, 0, 0, ms), [600]);
         await sleep(600);
+        const open = [...log.zoomMarks].reverse().find((m) => m.out === null);
+        if (open) { open.out = +outAt.toFixed(3); open.outEnd = +(outAt + 0.6).toFixed(3); }
         cameraScale = 1;
         layoutLines = [];
         focusNow = [];
-        await evalOverlay(() => window.__abb?.cursor(true));
-        break;
+        break; // the cursor stays hidden until a beat travels it (a camera move is never shared with the cursor)
+      }
       case "spot": {
         const specs = Array.isArray(a.on) ? a.on : [a.on];
         const boxes = [];
@@ -723,47 +817,30 @@ async function act(a, ctx) {
         await evalOverlay(() => window.__abb?.spot(null, 0));
         focusNow = [];
         break;
-      case "scheme":
-        if (a.fadeMs) {
-          // dark to light as a cross-fade: the old picture goes on top, the scheme changes under it, the picture fades away
-          const shot = await page.screenshot({ type: "jpeg", quality: 90, scale: "css" });
-          await evalOverlay((src) => window.__abb?.xfShow(src), "data:image/jpeg;base64," + shot.toString("base64"));
-          await page.emulateMedia({ colorScheme: a.value });
-          await sleep(160);
-          await evalOverlay((ms) => window.__abb?.xfHide(ms), a.fadeMs);
-          await sleep(a.fadeMs + 60);
-        } else {
-          await page.emulateMedia({ colorScheme: a.value });
-        }
-        break;
       case "hop": {
-        // A section change: dip to the canvas, click through under the dip (no cursor travel), put the cursor at its resting place,
-        // dip back. The brief's "the cursor travels to the link" is kept inside a section, where the eye is already looking.
-        const t0 = clock();
-        await evalOverlay(() => window.__abb?.cursor(false));
-        await evalOverlay(([ms]) => window.__abb?.fade(1, ms), [150]);
-        await sleep(190);
+        // A section change as a hard cut: the cursor fades, then the whole transit (clicks, loading, settling) is cut out of the
+        // film. The first frame of the new page follows the last frame of the old one at film time `cutAt`.
+        await setCursor(false);
+        await sleep(HOP_LEAD * 1000);
         focusNow = [];
+        const cutAt = clock();
+        frozenAt = cutAt;
+        const h0 = performance.now();
         for (const step of a.via) await locate(step).click({ timeout });
         await locate(a.waitFor).waitFor({ state: "visible", timeout });
         const [fx, fy] = cut.parks[a.park];
         cur = { x: Math.round(cut.w * fx), y: Math.round(cut.h * fy) };
         await page.mouse.move(cur.x, cur.y);
-        await sleep(90);
-        await evalOverlay(([ms]) => window.__abb?.fade(0, ms), [220]);
-        await evalOverlay(() => window.__abb?.cursor(true));
-        await sleep(230);
-        log.hops.push({ beat: ctx.id, at: +t0.toFixed(2), seconds: +(clock() - t0).toFixed(2) });
+        await sleep(700); // the page's own entry motion (a drawing waterfall, a sliding panel) is over before the cut shows it
+        const h1 = performance.now();
+        holds.push({ from: h0, to: h1 });
+        skipMs += h1 - h0;
+        frozenAt = null;
+        log.hops.push({ beat: ctx.id, at: +cutAt.toFixed(3), wallSeconds: +((h1 - h0) / 1000).toFixed(2) });
         break;
       }
-      case "card":
-        await evalOverlay((show) => window.__abb?.card(show), a.show);
-        break;
-      case "fade":
-        await evalOverlay(([to, ms]) => window.__abb?.fade(to, ms), [a.to, a.ms]);
-        break;
       case "cursor":
-        await evalOverlay((show) => window.__abb?.cursor(show), a.show);
+        await setCursor(a.show);
         break;
       case "scrape": {
         log.scrape[a.key] = (await locate(a.of).innerText({ timeout })).replace(/\s+/g, " ").trim();
@@ -789,6 +866,14 @@ async function measureCaption() {
 }
 
 async function runCue(beatStart, cue, beatId) {
+  if (captionsOff) {
+    // The caption is a plate composed afterwards; the cue is only a time here (the page is never touched).
+    await sleepUntil(beatStart + cue.start);
+    const start = clock();
+    await sleepUntil(beatStart + cue.end);
+    log.cues.push({ beat: beatId, bank: cue.bank ?? null, text: cue.text, start, end: clock() });
+    return;
+  }
   await sleepUntil(beatStart + cue.start);
   const ttl = Math.round((cue.end - cue.start) * 1000) + 500; // survives a full page load; the explicit off below ends it
   const html = captionHtml(cue.text);
@@ -907,13 +992,7 @@ async function warmUp() {
     await locate(RUNS_HEADING).waitFor({ timeout: 15000 });
     await locate({ testid: "week-sentence" }).waitFor({ timeout: 15000 }).catch(() => {});
   });
-  // The film opens on the failed run: leave the browser there, headline and timeline drawn.
-  await step("failed run, ready to film", async () => {
-    await click(FAILED_LINK);
-    await locate(TIMELINE_TAB).waitFor({ timeout: 15000 });
-    await locate({ testid: "headline" }).waitFor({ timeout: 15000 });
-    await locate(FAULT_ROW).waitFor({ timeout: 15000 });
-  });
+  // The film opens on the Runs list (beat 1): the warm-up ends there.
 }
 
 async function main() {
@@ -921,7 +1000,7 @@ async function main() {
   const mark = readFileSync(path.join(root, "brand/pulse-mark.svg"), "utf8").replace(/ width="24" height="24"/, "");
   const cfg = {
     w: cut.w, h: cut.h, capSize: cut.cap.size, capLine: cut.cap.line, camera: CAMERA_EASE_CSS, zoomIn: 700, mark,
-    start: { x: Math.round(cut.w * cut.parks.run[0]), y: Math.round(cut.h * cut.parks.run[1]) },
+    start: { x: Math.round(cut.w * cut.parks[cut.start][0]), y: Math.round(cut.h * cut.parks[cut.start][1]) },
   };
   const browser = await chromium.launch({
     channel: "chrome",
@@ -950,9 +1029,6 @@ async function main() {
   await page.mouse.move(cur.x, cur.y);
   log.overlay = await page.evaluate(() => window.__abb?.overlayState());
   if (!log.overlay?.cur || !log.overlay?.cap) fail(`the overlay did not mount: ${JSON.stringify(log.overlay)}`);
-  if (cut.startFaded) await page.evaluate(() => window.__abb.fade(1, 0));
-  // A film that opens on a page: the first beat's `pre` acts (the hook's close frame) are set before the first frame is captured.
-  for (const a of beats[0]?.pre ?? []) await act(a, { id: beats[0].id });
   await sleep(150);
 
   const rec = await startScreencast();
@@ -978,8 +1054,7 @@ async function main() {
       throw e;
     }
     entry.end = clock();
-    entry.captionOnAtEnd = !!(await evalOverlay(() => window.__abb?.captionInfo().on));
-    entry.maxFrameGapMs = Math.round(maxFrameGap(rec.frames, startMs + bs * 1000, startMs + entry.end * 1000));
+    entry.captionOnAtEnd = captionsOff ? false : !!(await evalOverlay(() => window.__abb?.captionInfo().on));
     log.beats.push(entry);
     await scanText(planned.id);
     console.log(`beat ${String(planned.id).padEnd(2)} ${bs.toFixed(2)} - ${entry.end.toFixed(2)} s (planned ${planned.start.toFixed(2)} + ${planned.len.toFixed(2)})`);
@@ -990,8 +1065,11 @@ async function main() {
   await browser.close();
 
   // ---- outputs ----------------------------------------------------------------------------------------------------------
-  const seconds = (endMs - startMs) / 1000;
-  writeFileSync(path.join(takeDir, "frames.ffconcat"), buildConcat(rec.frames, startMs, endMs));
+  const filmFrames = applyHolds(rec.frames, holds); // the hops' transits are cut out: film time is playback time
+  const filmEnd = endMs - skipMs;
+  const seconds = (filmEnd - startMs) / 1000;
+  for (const b of log.beats) b.maxFrameGapMs = Math.round(maxFrameGap(filmFrames, startMs + b.start * 1000, startMs + b.end * 1000));
+  writeFileSync(path.join(takeDir, "frames.ffconcat"), buildConcat(filmFrames, startMs, filmEnd));
   writeFileSync(path.join(takeDir, "demo.vtt"), buildVtt(log.cues));
   writeFileSync(path.join(takeDir, "demo.srt"), buildSrt(log.cues));
   parseVtt(readFileSync(path.join(takeDir, "demo.vtt"), "utf8"));
@@ -1010,18 +1088,25 @@ async function main() {
   let commit = "unknown";
   try { commit = execFileSync("git", ["-C", root, "rev-parse", "--short", "HEAD"]).toString().trim(); } catch { /* not a checkout */ }
   const meta = {
-    cut: cut.name, dryRun: dry, profile, releaseClaims, appCommit: commit, demoSeedHash: seedHash,
-    viewport: { w: cut.w, h: cut.h, deviceScaleFactor: DSF }, frames: rec.frames.length, seconds: +seconds.toFixed(3), plannedSeconds: +totalPlanned.toFixed(3),
+    cut: cut.name, film: cinematic ? "cinematic" : "preview", captionsInPage: !captionsOff, dryRun: dry, profile, releaseClaims, appCommit: commit, demoSeedHash: seedHash,
+    viewport: { w: cut.w, h: cut.h, deviceScaleFactor: DSF }, frames: filmFrames.length, seconds: +seconds.toFixed(3), plannedSeconds: +totalPlanned.toFixed(3),
     beats: log.beats, cues: log.cues.map((c) => ({ ...c, start: +c.start.toFixed(3), end: +c.end.toFixed(3) })),
-    zoomStates: log.zoomStates, hops: log.hops, wordmark: "Agent BlackBox",
+    zoomStates: log.zoomStates, zoomMarks: log.zoomMarks, faultInView: log.faultInView, hops: log.hops, wordmark: "Agent BlackBox",
     scrape: log.scrape, overlay: log.overlay, consoleErrors: log.console, warnings: log.warnings, textHits: log.textHits,
   };
   writeFileSync(path.join(takeDir, "meta.json"), JSON.stringify(meta, null, 2));
   console.log(`overlay: ${JSON.stringify(log.overlay)}; console errors: ${log.console.length}; warnings: ${log.warnings.length}; text hits: ${log.textHits.length}`);
-  console.log(`wrote ${path.relative(root, takeDir)} (${rec.frames.length} frames, ${seconds.toFixed(1)} s)`);
+  console.log(`wrote ${path.relative(root, takeDir)} (${filmFrames.length} frames, ${seconds.toFixed(1)} s, ${holds.length} cut(s) of ${(skipMs / 1000).toFixed(1)} s in all)`);
   if (log.textHits.length) {
     console.error(`record-demo: forbidden text on screen: ${JSON.stringify(log.textHits)}`);
     process.exit(4);
+  }
+  // A loaded machine stalls the browser for seconds (a travel that took 6 s, a gap in the screencast): the take is then slower than
+  // its table, and the captions would sit on the wrong picture. Exit 5 tells the caller to record again.
+  const late = log.beats.filter((b) => b.end - b.start > b.plannedLen + 0.4);
+  if (late.length) {
+    console.error(`record-demo: stalled take (beats ${late.map((b) => `${b.id}: ${(b.end - b.start).toFixed(1)} s vs ${b.plannedLen.toFixed(1)} s`).join(", ")}); record again`);
+    process.exit(5);
   }
 }
 

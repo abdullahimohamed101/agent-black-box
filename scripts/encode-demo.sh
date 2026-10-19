@@ -2,8 +2,14 @@
 # Encode a recorded take (scripts/record-demo.mjs) into every deliverable, then check each against its size budget.
 #   scripts/encode-demo.sh video-out/main-<stamp>        the main cut
 #   scripts/encode-demo.sh video-out/teaser-<stamp>      the teaser loop (also a README GIF)
-# From <take>/frames.ffconcat (3840x2160 JPEG frames with real durations) it makes ONE master (lanczos downscale to 1080p, 30 fps
-# constant, CRF 14; never published) and every file below comes from that master (docs/design/launch/video-brief.md section 5):
+#   scripts/encode-demo.sh video-out/social-<stamp>      the 1080x1350 cut (H.264 only, budget 8 MB)
+#   RELEASE_CLAIMS=1 scripts/encode-demo.sh <main take>  ONLY the claims variant, into <take>/release-claims/ (README.txt: DO NOT
+#                                                        PUBLISH BEFORE G2); the default outputs of the take are not touched
+# A cinematic take (record-demo.mjs --captions=off --card=off) is first composed: scripts/video-plates.mjs renders the plates and
+# scripts/video-compose.mjs builds the master from the take's frames, plates and meta.json (docs/design/launch/video-cinematic-brief.md).
+# A preview take (captions drawn in the page) makes its master straight from <take>/frames.ffconcat.
+# From the master (3840x2160 JPEG frames, lanczos downscale, 30 fps constant, CRF 14; never published) every file below comes
+# (docs/design/launch/video-brief.md section 5):
 #   main:   demo-1080p.mp4 (H.264, faststart), demo-1080p.webm (VP9, two pass), demo-1080p-av1.mp4 (only when it beats VP9),
 #           poster.jpg and poster.png (the red-line beat; this ffmpeg has no libwebp encoder)
 #   teaser: teaser-1080p.mp4, teaser-1080p.webm, teaser-1080p-av1.mp4 (when it beats VP9), teaser-960.gif, poster.jpg
@@ -25,8 +31,12 @@ grep -q libx264 <<<"$enc" || { echo "encode-demo: this ffmpeg has no libx264" >&
 have_vp9=0; grep -q libvpx-vp9 <<<"$enc" && have_vp9=1
 have_av1=0; grep -q libsvtav1 <<<"$enc" && have_av1=1
 
+here="$(cd "$(dirname "$0")" && pwd)"
+take="$(cd "$take" && pwd)"
 cd "$take"
 cut="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("meta.json","utf8")).cut)')"
+film="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("meta.json","utf8")).film||"preview")')"
+claims=0; [[ "${RELEASE_CLAIMS:-}" == 1 ]] && claims=1
 speed="${ENC_VP9_SPEED:-2}"
 fails=0
 q=(ffmpeg -hide_banner -loglevel error -y)
@@ -34,8 +44,19 @@ VF="scale=1920:1080:flags=lanczos+accurate_rnd:in_range=pc:out_range=tv,fps=30,f
 [[ "$cut" == social ]] && VF="scale=1080:1350:flags=lanczos+accurate_rnd:in_range=pc:out_range=tv,fps=30,format=yuv420p"
 size() { stat -f %z "$1" 2>/dev/null || stat -c %s "$1"; }
 
-echo "==> master (${cut})"
-"${q[@]}" -f concat -safe 0 -i frames.ffconcat -vf "$VF" -c:v libx264 -preset slow -crf 14 -g 60 -keyint_min 30 -an master-1080p30.mp4
+if [[ "$film" == cinematic ]]; then
+  echo "==> plates and composite (${cut}$([[ "$claims" == 1 ]] && echo ', claims variant: RELEASE_CLAIMS=1'))"
+  node "$here/video-plates.mjs" "$take"
+  if [[ "$claims" == 1 ]]; then
+    node "$here/video-compose.mjs" "$take" --claims
+    cd "$take/release-claims"
+  else
+    node "$here/video-compose.mjs" "$take"
+  fi
+else
+  echo "==> master (${cut})"
+  "${q[@]}" -f concat -safe 0 -i frames.ffconcat -vf "$VF" -c:v libx264 -preset slow -crf 14 -g 60 -keyint_min 30 -an master-1080p30.mp4
+fi
 
 report() {  # report <file> <budget MB>: one ffprobe line, size against budget
   local f="$1" budget="$2" mb line audio
@@ -70,7 +91,11 @@ av1() {  # av1 <in> <out> <crf> <gop> <vp9 file to beat> <budget MB>
   fi
 }
 # poster: the middle of the red-line beat (the one frame that says what the product is for)
-poster_at="$(node -e 'const m=JSON.parse(require("fs").readFileSync("meta.json","utf8"));const b=m.beats.find(x=>x.id===3||x.id==="T3");console.log(((b?b.start+1.4:3)).toFixed(2))')"
+if [[ -f compose.json ]]; then  # film time: the red-line beat (4, or T3 in the teaser), a second and a half in
+  poster_at="$(node -e 'const m=JSON.parse(require("fs").readFileSync("compose.json","utf8"));const b=m.beats.find(x=>x.id===4||x.id==="T3");console.log(((b?b.start+1.5:3)).toFixed(2))')"
+else
+  poster_at="$(node -e 'const m=JSON.parse(require("fs").readFileSync("meta.json","utf8"));const b=m.beats.find(x=>x.id===3||x.id==="T3");console.log(((b?b.start+1.4:3)).toFixed(2))')"
+fi
 poster_check() {
   for f in "$@"; do
     kb="$(awk -v b="$(size "$f")" 'BEGIN { printf "%.0f", b / 1024 }')"
@@ -78,7 +103,13 @@ poster_check() {
   done
 }
 
-if [[ "$cut" == teaser ]]; then
+if [[ "$cut" == social ]]; then
+  echo "==> social deliverables"
+  "${q[@]}" -i master-1080p30.mp4 -c:v libx264 -preset slow -crf 21 -profile:v high -level 4.1 -g 60 -keyint_min 30 -pix_fmt yuv420p -movflags +faststart -an social-1080x1350.mp4
+  "${q[@]}" -ss "$poster_at" -i master-1080p30.mp4 -frames:v 1 -q:v 3 poster.jpg
+  report social-1080x1350.mp4 8; faststart social-1080x1350.mp4
+  poster_check poster.jpg
+elif [[ "$cut" == teaser ]]; then
   echo "==> teaser deliverables"
   "${q[@]}" -i master-1080p30.mp4 -c:v libx264 -preset slow -crf 23 -profile:v high -level 4.1 -g 60 -pix_fmt yuv420p -movflags +faststart -an teaser-1080p.mp4
   vp9 master-1080p30.mp4 teaser-1080p.webm 700k 36 180

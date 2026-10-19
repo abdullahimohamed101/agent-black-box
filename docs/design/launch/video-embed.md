@@ -36,7 +36,7 @@ cut) by hand at release time. The landing page is static HTML with no JavaScript
 ```
 
 `muted` is what lets it autoplay; `playsinline` keeps iOS inline; source order is most efficient first; the poster is the likely
-Largest Contentful Paint element. The teaser's ends are both the flat canvas colour (`#101419`), so the loop reads as a blink.
+Largest Contentful Paint element. The teaser's ends are both the flat film canvas colour (`#0d1015`, `film.canvas` in `scripts/video-spec.json`), so the loop reads as a blink.
 
 ## Full cut (controls, captions, transcript)
 
@@ -60,3 +60,22 @@ linking to the full cut attached to the release (after G2):
 ```markdown
 [![A failed run opened in Agent BlackBox: one sentence says where it broke, a red line marks the first error.](docs/assets/teaser-960.gif)](https://github.com/<owner>/agent-black-box/releases)
 ```
+
+## Film v3 (framed window on a canvas): what changes for the site
+
+The cut is now a framed window on a flat dark canvas, with the captions in a band under the window (not on the app), a title card
+and an end card (main and social) and 250 ms dips through the canvas colour. Two consequences for `site/` (not edited here):
+
+1. **One CSS rule: the hero box takes the film canvas colour.** The teaser has no cards; its seam is a 250 ms dip to `#0d1015` at both
+   ends. If the `<video>` sits on the page background, the dip shows as a dark flash. Wrap it in a box with the film canvas colour in
+   both colour schemes:
+
+   ```css
+   .hero-film { background: #0d1015; } /* film.canvas, scripts/video-spec.json: the loop's dip colour */
+   ```
+
+   (`check-site.sh` could assert this value equals `video-spec.json` `color.canvas`; not wired.)
+2. **Posters.** `poster.jpg` is now a frame of the composite (window, red line, caption band), 1920x1080.
+
+The `release-claims/` folder inside a take's output holds the variant whose end card says "Open source. Self-hosted. Apache-2.0." with
+the repository URL; it is built only with `RELEASE_CLAIMS=1` and carries a `README.txt`: DO NOT PUBLISH BEFORE G2.

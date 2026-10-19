@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildConcat, buildSrt, captionOverlap, clippedLines, fitZoom, maxLumaStep, placeCaption, throughCamera, buildVtt, captionHtml, cubicBezier, layoutBeat, maxFrameGap, minCaptionSeconds, parseVtt, plain, planCut,
+  applyHolds, buildConcat, buildSrt, captionOverlap, clippedLines, fitZoom, maxLumaStep, placeCaption, throughCamera, buildVtt, captionHtml, cubicBezier, layoutBeat, maxFrameGap, minCaptionSeconds, parseVtt, plain, planCut,
   travelEase, travelMs, travelPoint, vttTime, wordCount, zoomOrigin, zoomWindow,
 } from "./record-demo-lib.mjs";
 
@@ -172,4 +172,20 @@ test("maxLumaStep finds a one-frame flash and ignores a long cross-fade", () => 
   assert.equal(maxLumaStep(flash).at, 3);
   const fade = Array.from({ length: 19 }, (_, i) => 37 + (185 * i) / 18);
   assert.ok(maxLumaStep(fade).step < 12);
+});
+
+test("a hop is a hard cut: only the last frame of the cut-out interval survives, at its start, and later frames move earlier", () => {
+  const f = (t) => ({ file: `f${t}`, t });
+  const frames = [f(0), f(100), f(500), f(900), f(1200), f(1600), f(2000)];
+  const out = applyHolds(frames, [{ from: 400, to: 1300 }]);
+  assert.deepEqual(out.map((x) => [x.file, x.t]), [["f0", 0], ["f100", 100], ["f1200", 400], ["f1600", 700], ["f2000", 1100]]);
+  // two holds: the second is shifted by the first
+  const two = applyHolds(frames, [{ from: 400, to: 1000 }, { from: 1100, to: 1700 }]);
+  assert.deepEqual(two.map((x) => [x.file, x.t]), [["f0", 0], ["f100", 100], ["f900", 400], ["f1600", 500], ["f2000", 800]]);
+  // a hold with no frame inside it only closes the gap; no holds changes nothing
+  assert.deepEqual(applyHolds(frames, [{ from: 1700, to: 1800 }]).map((x) => x.t), [0, 100, 500, 900, 1200, 1600, 1900]);
+  assert.deepEqual(applyHolds(frames, []).map((x) => x.t), frames.map((x) => x.t));
+  // the film's end is the old end minus the holds: durations then add up to playback time
+  const concat = buildConcat(out, 0, 2000 - 900);
+  assert.match(concat, /duration 0.3000\nfile 'f1200'\nduration 0.3000\nfile 'f1600'\nduration 0.4000/);
 });

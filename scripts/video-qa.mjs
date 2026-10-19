@@ -7,6 +7,8 @@
  *   node scripts/video-qa.mjs video-out/main-<stamp>                       checks one take, exit 1 on any failure
  *   node scripts/video-qa.mjs video-out/main-<stamp> --compare other-take  also: determinism across two takes
  *
+ * Framed films (meta.film === "cinematic") add the checks of video-qa-film.mjs (band, window, dim, red, cards, dips, cuts, fonts; each with a
+ * planted violation: --plant band|window|dim|red|cards|dips|cuts|fonts). --claims checks <take>/release-claims.
  * Checks: ffprobe of every deliverable (1920x1080 or the cut's size, 30/1, yuv420p, no audio, faststart, size budget); one frame
  * per caption midpoint with the caption box actually present (a caption frame without a caption fails); one frame per beat; the
  * red-pixel budget (a sample every 0.5 s: more than 0.3 % of a frame's pixels outside the caption band that look like the fault
@@ -18,6 +20,8 @@ import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { maxLumaStep, parseVtt, plain } from "./record-demo-lib.mjs";
+import { filmChecks } from "./video-qa-film.mjs";
+import { fileURLToPath } from "node:url";
 
 const FLASH_STEP = 40;
 function lumaSteps(file) {
@@ -44,16 +48,23 @@ const meta = JSON.parse(readFileSync(path.join(take, "meta.json"), "utf8"));
 // `--plant clip|overlap|flash`: a planted violation. The check it targets must FAIL on it (this is how the checks are proved).
 const plant = process.argv.includes("--plant") ? process.argv[process.argv.indexOf("--plant") + 1] : null;
 if (plant === "clip") meta.zoomStates = [...(meta.zoomStates ?? []), { beat: "planted", at: 0, scale: 1.4, window: { x0: 549, y0: 0, x1: 1920, y1: 771 }, clipped: ["Failed at step 6 after 17 s: lookup-ti"] }];
-if (plant === "overlap") meta.cues[0].mid.overlap = { lines: 3, focus: true };
-const qaDir = path.join(take, "qa");
+if (plant === "overlap" && meta.cues[0].mid) meta.cues[0].mid.overlap = { lines: 3, focus: true };
+const film = meta.film === "cinematic";
+const claimsMode = process.argv.includes("--claims"); // check <take>/release-claims instead of the default build
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const outDir = claimsMode ? path.join(take, "release-claims") : take;
+const tl = film ? JSON.parse(readFileSync(path.join(outDir, "compose.json"), "utf8")) : null;
+const SPEC = JSON.parse(readFileSync(path.join(root, "scripts/video-spec.json"), "utf8"));
+const OFF = tl ? tl.titleSeconds : 0; // film seconds of the first app frame
+const qaDir = path.join(outDir, "qa");
 mkdirSync(qaDir, { recursive: true });
 const results = [];
 const check = (name, ok, detail = "") => {
   results.push({ name, ok, detail });
   console.log(`${ok ? "  ok  " : "  FAIL"} ${name}${detail ? `: ${detail}` : ""}`);
 };
-const master = path.join(take, "master-1080p30.mp4");
-const W = meta.viewport.w, H = meta.viewport.h;
+const master = path.join(outDir, "master-1080p30.mp4");
+const W = tl ? tl.canvas.w : meta.viewport.w, H = tl ? tl.canvas.h : meta.viewport.h;
 
 function frameAt(file, t, out) {
   execFileSync("ffmpeg", ["-v", "error", "-y", "-ss", String(t), "-i", file, "-frames:v", "1", out]);
@@ -66,12 +77,12 @@ function rawFrame(file, t, w = 960) {
 const probe = (f, entries) => execFileSync("ffprobe", ["-v", "error", ...entries, "-of", "default=nw=1", f]).toString().trim();
 
 // ---- 1. deliverables -------------------------------------------------------------------------------------------------
-const budgets = meta.cut === "teaser"
+const budgets = meta.cut === "social" ? { "social-1080x1350.mp4": 8 } : meta.cut === "teaser"
   ? { "teaser-1080p.mp4": 2.5, "teaser-1080p.webm": 1.5, "teaser-1080p-av1.mp4": 1, "teaser-960.gif": 4 }
   : { "demo-1080p.mp4": 12, "demo-1080p.webm": 8, "demo-1080p-av1.mp4": 5 };
 const files = [];
 for (const [name, budget] of Object.entries(budgets)) {
-  const f = path.join(take, name);
+  const f = path.join(outDir, name);
   if (!existsSync(f)) { if (!name.includes("av1")) check(`${name} exists`, false); continue; }
   const mb = statSync(f).size / 1048576;
   const info = Object.fromEntries(probe(f, ["-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height,r_frame_rate,pix_fmt"]).split("\n").map((l) => l.split("=")));
@@ -90,16 +101,19 @@ for (const [name, budget] of Object.entries(budgets)) {
   check(`${name}: ${info.codec_name} ${info.width}x${info.height} ${info.r_frame_rate} ${info.pix_fmt}, ${duration.toFixed(1)} s, ${mb.toFixed(2)} MB (budget ${budget} MB)`,
     sizeOk && rateOk && pixOk && audio === "" && fast && mb <= budget, !sizeOk ? "size" : !rateOk ? "frame rate" : !pixOk ? "pixel format" : audio !== "" ? "audio stream" : !fast ? "not faststart" : mb > budget ? "over budget" : "");
 }
-const poster = path.join(take, "poster.jpg");
+const poster = path.join(outDir, "poster.jpg");
 if (existsSync(poster)) check(`poster.jpg ${Math.round(statSync(poster).size / 1024)} KB (budget 400)`, statSync(poster).size <= 400 * 1024);
 
 // ---- 2. cues: burned in == sidecar, a frame per cue midpoint with the caption box present ----------------------------------
-const vtt = parseVtt(readFileSync(path.join(take, "demo.vtt"), "utf8"));
-const same = vtt.length === meta.cues.length && vtt.every((c, i) => c.text === plain(meta.cues[i].text) && Math.abs(c.start - meta.cues[i].start) < 0.002 && Math.abs(c.end - meta.cues[i].end) < 0.002);
-check(`demo.vtt matches the ${meta.cues.length} burned-in cues one for one`, same);
-const gaps = meta.cues.slice(1).map((c, i) => c.start - meta.cues[i].end);
+const vtt = parseVtt(readFileSync(path.join(outDir, "demo.vtt"), "utf8"));
+const cueList = tl ? tl.cues : meta.cues; // film seconds in a composed film, recorder seconds otherwise
+const same = vtt.length === cueList.length && vtt.every((c, i) => c.text === plain(cueList[i].text) && Math.abs(c.start - cueList[i].start) < 0.002 && Math.abs(c.end - cueList[i].end) < 0.002);
+check(`demo.vtt matches the ${cueList.length} captions one for one`, same);
+// the claims end card's two lines are on screen together for the card's hold (brief 2.2): they are not caption cadence
+const cadence = cueList.filter((c) => c.beat !== "end");
+const gaps = cadence.slice(1).map((c, i) => c.start - cadence[i].end);
 check("captions are at least 250 ms apart", gaps.every((g) => g >= 0.24), `smallest gap ${Math.min(...gaps, 99).toFixed(2)} s`);
-const reading = meta.cues.map((c) => ({ c, need: Math.min(6, Math.max(2, plain(c.text).length / 15 + 0.6)) })).filter((x) => x.c.end - x.c.start < x.need - 0.05);
+const reading = cadence.map((c) => ({ c, need: Math.min(6, Math.max(2, plain(c.text).length / 15 + 0.6)) })).filter((x) => x.c.end - x.c.start < x.need - 0.05);
 check("every caption stays on screen at least max(2 s, characters / 15 + 0.6 s)", reading.length === 0, reading.map((x) => plain(x.c.text)).join("; "));
 
 // The caption box: the recorder measured its rectangle in the page at the middle of each cue; here the pixels inside that rectangle
@@ -119,6 +133,7 @@ function boxPixels({ buf, w, h }, rect) {
   return { dark: dark / (total || 1), light: light / (total || 1) };
 }
 const cueFrames = [];
+if (!film) {
 const badBox = [];
 meta.cues.forEach((c, i) => {
   const t = (c.start + c.end) / 2;
@@ -144,11 +159,12 @@ meta.cues.forEach((c) => {
 check(`no caption sits on the story's focus, or on text at normal scale (${meta.cues.length} cues, middle and end of each)`, covers.length === 0, covers.join("; "));
 const zoomedCovers = meta.cues.filter((c) => (c.mid?.camera ?? 1) > 1).map((c) => `${plain(c.text)}: ${c.mid.overlap.lines} line(s)`);
 if (zoomedCovers.length) console.log(`  note  zoomed captions cover background rows only: ${zoomedCovers.join("; ")}`);
+}
 const across = meta.beats.filter((b) => b.captionOnAtEnd);
 check("no caption is still showing at the end of any beat (none across a cut)", across.length === 0, across.map((b) => b.id).join(", "));
 
 // ---- 3. a frame per beat, beat lengths, text scan, transcript ----------------------------------------------------------------
-meta.beats.forEach((b) => frameAt(master, (b.start + b.end) / 2, path.join(qaDir, `beat-${String(b.id).padStart(2, "0")}.png`)));
+meta.beats.forEach((b) => frameAt(master, OFF + (b.start + b.end) / 2, path.join(qaDir, `beat-${String(b.id).padStart(2, "0")}.png`)));
 const off = meta.beats.filter((b) => Math.abs(b.end - b.start - b.plannedLen) > 0.15);
 check("beat lengths within 150 ms of the table", off.length === 0, off.map((b) => `${b.id}: ${(b.end - b.start).toFixed(2)} vs ${b.plannedLen.toFixed(2)}`).join("; "));
 check("no forbidden text (keys, tokens, emails other than owner@local.test, provider or model names, --live) on any beat", meta.textHits.length === 0, JSON.stringify(meta.textHits));
@@ -156,8 +172,8 @@ check("no console errors in the recorded page", meta.consoleErrors.length === 0,
 check("the overlay mounted (cursor and caption elements present)", !!meta.overlay?.cur && !!meta.overlay?.cap);
 const transcript = readFileSync(path.join(take, "transcript.md"), "utf8");
 check("the transcript lists every beat", meta.beats.every((b) => transcript.includes(`\n${b.id}. `)));
-if (!meta.releaseClaims) {
-  const gated = meta.cues.filter((c) => /open source|self-hosted|apache|github\.com/i.test(c.text));
+if (!meta.releaseClaims && !claimsMode) {
+  const gated = cueList.filter((c) => /open source|self-hosted|apache|github\.com/i.test(c.text));
   check("the closing caption is the pre-G2 variant", gated.length === 0, gated.map((c) => c.text).join("; "));
 }
 const flat = meta.cues.filter((c) => /\blive\b|production|saas|enterprise/i.test(c.text));
@@ -171,11 +187,16 @@ check(`no zoomed camera state cuts text mid-glyph (${zs.length} zoom states, eve
 const zmin = meta.cut === "social" ? 1.09 : 1.29; // the narrow layout may need a gentler zoom to clear its text
 check(`every zoom stays within ${meta.cut === "social" ? "1.1" : "1.3"}x-1.6x (the brief's ceiling is 1.6)`, zs.every((z) => z.scale >= zmin && z.scale <= 1.601), zs.map((z) => z.scale).join(", "));
 if (meta.cut === "main") {
-  check(`the main cut is 60-75 s (${meta.seconds.toFixed(1)} s)`, meta.seconds >= 60 && meta.seconds <= 75);
+  check(`the main cut is 65-75 s (${(tl ? tl.totalSeconds : meta.seconds).toFixed(1)} s${claimsMode ? ", claims variant" : ""})`, (tl ? tl.totalSeconds : meta.seconds) >= (film ? 65 : 60) && (tl ? tl.totalSeconds : meta.seconds) <= (claimsMode ? 78 : 75));
+  if (!film) {
   check("the first caption is on screen within 0.5 s (the hook says what the product is at once)", meta.cues[0].start <= 0.5, `${meta.cues[0].start.toFixed(2)} s`);
   check("the film opens on a zoomed frame of the failed run (the hook), not a table", zs.length > 0 && zs[0].beat === 1 && zs[0].at <= 0.5);
-  const slow = (meta.hops ?? []).filter((h) => h.seconds > 1.1);
-  check(`a section change (hop) takes at most 1.1 s (${(meta.hops ?? []).length} hops)`, slow.length === 0, slow.map((h) => `beat ${h.beat}: ${h.seconds} s`).join("; "));
+  }
+  if (film) check(`the first caption lands within 3 s of the start (the mark and the wordmark are the first thing seen; first caption at ${tl.cues[0].start.toFixed(2)} s)`, tl.cues[0].start <= 3);
+  if (!film) {
+    const slow = (meta.hops ?? []).filter((h) => h.seconds > 1.1);
+    check(`a section change (hop) takes at most 1.1 s (${(meta.hops ?? []).length} hops)`, slow.length === 0, slow.map((h) => `beat ${h.beat}: ${h.seconds} s`).join("; "));
+  }
 }
 {
   const { step, at, frames } = plant === "flash" ? { step: 185, at: 1, frames: 0 } : lumaSteps(master);
@@ -197,7 +218,7 @@ await new Promise((resolve) => {
       const f = pending.subarray(0, size);
       pending = pending.subarray(size);
       let red = 0;
-      const bandTop = Math.round(h * ((H - 84 - 66) / H)); // the caption box has its own red words (allowed)
+      const bandTop = Math.round(h * (film ? tl.band.y / H : (H - 84 - 66) / H)); // the caption box has its own red words (allowed)
       for (let y = 0; y < bandTop; y++) {
         let row = 0;
         for (let x = 0; x < w; x++) {
@@ -223,9 +244,12 @@ if (meta.cut === "teaser") {
   const dur = Number(probe(master, ["-show_entries", "format=duration"]).split("=")[1]);
   const mean = ({ buf }) => [0, 1, 2].map((c) => { let s = 0; for (let i = c; i < buf.length; i += 3) s += buf[i]; return s / (buf.length / 3); });
   const first = mean(rawFrame(master, 0.0, 160)), last = mean(rawFrame(master, dur - 0.05, 160));
-  const near = (m) => Math.abs(m[0] - 16) < 6 && Math.abs(m[1] - 20) < 6 && Math.abs(m[2] - 25) < 6;
+  const near = (m) => Math.abs(m[0] - (film ? 13 : 16)) < 6 && Math.abs(m[1] - (film ? 16 : 20)) < 6 && Math.abs(m[2] - (film ? 21 : 25)) < 6;
   check("the teaser starts and ends on the flat canvas colour (the loop is a dip, not a jump)", near(first) && near(last), `first ${first.map(Math.round)} last ${last.map(Math.round)}`);
 }
+
+// ---- 5b. the framed film: band, window, dim, red, cards, dips, cuts, fonts (video-qa-film.mjs) --------------------------------------
+if (film) await filmChecks({ root, take, outDir, master, meta, tl, spec: SPEC, check, plant, claims: claimsMode });
 
 // ---- 6. determinism across two takes ---------------------------------------------------------------------------------------------
 if (other) {
@@ -243,7 +267,7 @@ if (other) {
       // takes at one of them; a beat is the same picture when its best frame matches.
       let best = 0, bestAt = 0;
       for (const f of [0.25, 0.5, 0.75]) {
-        const t = b.start + (b.end - b.start) * f;
+        const t = OFF + b.start + (b.end - b.start) * f;
         const a = path.join(qaDir, `det-a-${b.id}.png`), c = path.join(qaDir, `det-b-${b.id}.png`);
         frameAt(master, t, a);
         frameAt(master2, t, c);
