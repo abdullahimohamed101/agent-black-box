@@ -1,5 +1,7 @@
 # Phase 23: GitHub issues to file
 
+Filed 2026-10-19 as #331 (KI-310) to #337 (KI-316).
+
 For the owner to file (the builder does not create issues). Each: labels `known-issue` plus the severity label; the KI row in `docs/KNOWN_ISSUES.md` says "to be filed" until the number is known, then replace it with the issue link. Closing: issue #205 (KI-188) closes with the Phase 23 PR; KI-220, 222, 243, 244, 245 and 073 stay open with updated targets (their issues are unchanged).
 
 ## KI-310: development stack on PostgreSQL 16 cannot restore a bundle through the `backup` service
