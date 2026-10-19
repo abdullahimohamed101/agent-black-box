@@ -70,6 +70,10 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: eslint
         update-types: [version-update:semver-major]
+      # 3.14.21 renders no rows in the replay timeline under jsdom (8 tests in replay-run and findings fail; 3.14.20 passes).
+      # Lift this when a later release passes tests/replay-run.test.tsx.
+      - dependency-name: "@tanstack/react-virtual"
+        versions: ["3.14.21"]
 
   # One uv project (own pyproject.toml and uv.lock) per directory.
   - package-ecosystem: uv
