@@ -2,7 +2,7 @@
  "panels": [
   {
    "id": "where-it-broke",
-   "standIn": true,
+   "standIn": false,
    "light": {
     "webp": "where-it-broke-light.webp",
     "png": "where-it-broke-light.png",
@@ -18,7 +18,7 @@
   },
   {
    "id": "with-evidence",
-   "standIn": true,
+   "standIn": false,
    "light": {
     "webp": "with-evidence-light.webp",
     "png": "with-evidence-light.png",
@@ -34,7 +34,7 @@
   },
   {
    "id": "what-it-cost",
-   "standIn": true,
+   "standIn": false,
    "light": {
     "webp": "what-it-cost-light.webp",
     "png": "what-it-cost-light.png",
@@ -50,7 +50,7 @@
   },
   {
    "id": "many-agents",
-   "standIn": true,
+   "standIn": false,
    "light": {
     "webp": "many-agents-light.webp",
     "png": "many-agents-light.png",
@@ -65,24 +65,8 @@
    }
   },
   {
-   "id": "two-runs",
-   "standIn": true,
-   "light": {
-    "webp": "two-runs-light.webp",
-    "png": "two-runs-light.png",
-    "w": 1440,
-    "h": 900
-   },
-   "dark": {
-    "webp": "two-runs-dark.webp",
-    "png": "two-runs-dark.png",
-    "w": 1440,
-    "h": 900
-   }
-  },
-  {
    "id": "in-the-loop",
-   "standIn": true,
+   "standIn": false,
    "light": {
     "webp": "in-the-loop-light.webp",
     "png": "in-the-loop-light.png",
@@ -98,7 +82,7 @@
   },
   {
    "id": "runs",
-   "standIn": true,
+   "standIn": false,
    "light": {
     "webp": "runs-light.webp",
     "png": "runs-light.png",

@@ -186,13 +186,20 @@ holds test data.
 ### Demo determinism (Phase 20, D9)
 - **Demo E2E** (`make demo-e2e`, `scripts/demo-e2e.sh`, CI job `demo-e2e`): dedicated `abb_demo_e2e` database, API (:8170) and a worker started by the
   script; `scripts/demo.sh` (what `make demo` runs) is executed twice against it with `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` planted to prove they are
-  scrubbed. `scripts/demo_e2e_check.py summarise` waits (bounded polls, no wall-clock assertions) until each of the four runs is derived and reduces it to
+  scrubbed. `scripts/demo_e2e_check.py summarise` waits (bounded polls, no wall-clock assertions) until each of the twelve runs is derived and reduces it to
   what the agents did: status, agents and parents, per-agent call and error counts, token and cost totals, event counts by agent, type and status, spans by
   agent, kind, name, status and parent, findings (type, kind, severity, confidence) and health statuses. Ids, timestamps, durations and anything that depends on
   thread timing are left out; the two summaries must be equal (`demo run 1 == demo run 2 (normalised)`). The script also checks the demo key file is owner-only
   and no model key reaches the demo output. Not covered here: the web pages of the printed run URLs (they need sign-in; the run pages are covered by the other
   browser E2E suites) and any `--live` mode, which the project has never run (KI-044).
+  It also asserts the data the demo video needs (`scripts/demo_e2e_check.py asks` and `approvals`; docs/design/launch/video-brief.md section 6): at least twelve runs and three failed ones, a failed support run whose first error is a one-word type at step 9 or earlier with a retry after it, critical and warning findings on it, a retry-storm finding, five agents with short names in the multi-agent run, a run waiting for approval with hours left on the request, security findings for a destructive command, a secret file read and risky git, plain run names and no real model name. The waiting agent needs development sign-in sessions on the API (the script turns them on for its own throwaway API).
 - `make demo-reset` is a dry run; `make demo-reset CONFIRM=1` runs `purge-project` for the fixed project `abb-demo` of workspace `local` and nothing else.
+
+### Demo video (Phase 20, G1)
+- **Unit tests** of the recorder's pure parts: `node --test scripts/` (`scripts/record-demo-lib.test.mjs`: bezier easing, travel, camera origin, the caption timing rule, WebVTT/SRT, the frame list). No browser, no stack.
+- **Plan check without a browser:** `node scripts/record-demo.mjs --plan` (also `--cut=teaser`, and with `RELEASE_CLAIMS=1`) prints the beats and cues, writes and re-parses `demo.vtt`, and fails if a caption breaks the brief's rules (nine words, the reading rule, 250 ms gaps, none across a cut, none that says live/production/SaaS/enterprise, and captions 25/26/28 or the open-source line without `RELEASE_CLAIMS=1`).
+- **A real recording** needs a demo-seeded stack of its own: `scripts/demo-stack.sh up` (API :8180, worker, production build of `apps/web` on :3180, database `abb_demo_video` on the Postgres that `ABB_DATABASE_URL` names; refuses to start when a port is taken; never touches the dev stack), then `node scripts/record-demo.mjs`, `scripts/encode-demo.sh <take>` and `node scripts/video-qa.mjs <take>` (add `--compare <other take>` for determinism). Output goes to the gitignored `video-out/`. The QA writes its frames to `<take>/qa/` for a human to look at; `docs/design/launch/video-qa-report.md` records the take that was checked.
+- Not in CI: it needs Chrome, ffmpeg and about 450 MB of frames per take.
 
 ### Server-side redaction and capture modes (Phase 13 step 1, ADR-130)
 - `apps/api/tests/test_security_scanner.py`: one sample per kind, near misses, unicode, NUL/escape splitting, idempotence, size and time budgets, and 22 hostile
