@@ -39,7 +39,7 @@ Two findings are deferred only because another builder (`feature/phase-20-video`
 | P3-2 | `guard_push` did not validate names like `git_push` | fixed | `guard_push` calls `_valid_ref` (ValueError, before anything is asked); parametrized test with `--force`, `+refs/heads/x`, `:main`, spaces and more | 25e2862 |
 | P3-3 | Logger rename undocumented | fixed | `sdk-python.md` "Logging" section | 1f3d4f4 |
 | P3-4 | Old-import guard missed string and logger forms | fixed | `OLD_IMPORT` extended (dotted use, `getLogger`, `-m`, `--cov=`, `import_module`), planted tests for each, tree re-run clean, no new allow-list entry | ea90214 |
-| P3-5 | `demo.sh` put the key file content into a curl config line unvalidated | fixed | content must match the key alphabet on one line before the probe, else re-minted; test with a newline, a quote and a directive line | see git log (fix(demo)) |
+| P3-5 | `demo.sh` put the key file content into a curl config line unvalidated | fixed | content must match the key alphabet on one line before the probe, else re-minted; test with a newline, a quote and a directive line | a8d350f |
 
 ## Verification (this pass)
 
