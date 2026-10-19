@@ -108,7 +108,8 @@ def test_one_repo_tag_with_two_digests_fails(tmp_path: Path) -> None:
     files = {
         "docker-compose.yml": f"services:\n  d:\n    image: dbimg:16-alpine@{DIGEST}\n",
         ".github/workflows/ci.yml": (
-            f"jobs:\n  a:\n    services:\n      db:\n        image: dbimg:16-alpine@sha256:{other}\n"
+            f"jobs:\n  a:\n    services:\n      db:\n"
+            f"        image: dbimg:16-alpine@sha256:{other}\n"
         ),
         "scripts/helper.py": f'IMG = "dbimg:16-alpine@{DIGEST}"\n',
     }
