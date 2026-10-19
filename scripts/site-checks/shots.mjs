@@ -22,6 +22,9 @@ export default async function shots({ browser, srv, rep }) {
       const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       if (over !== 0) rep.fail(`${width}px ${scheme}`, `document is ${over}px wider than the viewport`);
       if (dir) {
+        // A full-page capture does not paint sections the page skips with content-visibility: auto; show them for the picture.
+        await page.addStyleTag({ content: "section.band { content-visibility: visible !important; }" });
+        await page.waitForTimeout(300);
         const file = path.join(dir, `site-${width}-${scheme}.png`);
         await page.screenshot({ path: file, fullPage: true });
         written.push(path.basename(file));

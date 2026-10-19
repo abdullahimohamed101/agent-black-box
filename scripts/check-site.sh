@@ -8,7 +8,7 @@
 #                 a11y motion perf shots planted
 #     --static    only the subcommands that need no browser
 #     --release   also fail while any [CONFIRM ...] marker remains in the export
-#   SHOTS_DIR=docs/screenshots/release   `shots` writes site-<width>-<scheme>.png there (unset in CI: nothing is written)
+#   SHOTS_DIR=docs/screenshots/site   `shots` writes site-<width>-<scheme>.png there (unset in CI: nothing is written)
 #   ABB_RELEASE_CLAIMS=1                 build the page with the publication claims on (G2); `claims` then checks that export too
 # The browser subcommands serve the export on a loopback port under /agent-black-box/ (and "/" for network) and need `pnpm install`
 # (apps/web's Playwright and axe) and Chromium (Google Chrome is used when present).
