@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildConcat, buildSrt, buildVtt, captionHtml, cubicBezier, layoutBeat, maxFrameGap, minCaptionSeconds, parseVtt, plain, planCut,
+  buildConcat, buildSrt, captionOverlap, clippedLines, fitZoom, maxLumaStep, placeCaption, throughCamera, buildVtt, captionHtml, cubicBezier, layoutBeat, maxFrameGap, minCaptionSeconds, parseVtt, plain, planCut,
   travelEase, travelMs, travelPoint, vttTime, wordCount, zoomOrigin, zoomWindow,
 } from "./record-demo-lib.mjs";
 
@@ -113,4 +113,63 @@ test("a stalled screencast shows up as a large gap", () => {
   const frames = [{ t: 100 }, { t: 133 }, { t: 166 }, { t: 3000 }];
   assert.equal(maxFrameGap(frames, 100, 3100), 2834);
   assert.equal(maxFrameGap(frames, 100, 200), 34);
+});
+
+// ---- the camera must not cut text, the caption must not cover it (polish pass) ----------------------------------------------
+
+const view = { w: 1920, h: 1080 };
+const row = (x, y, w, h = 14) => ({ x, y, w, h });
+
+test("clippedLines: a line the viewport edge runs through is clipped; whole lines and page-edge lines are not", () => {
+  const lines = [row(-30, 100, 200), row(10, 200, 100), row(1900, 300, 100), row(1930, 400, 50), row(100, 1075, 100), row(100, 500, 100)];
+  const cut = clippedLines(lines, view);
+  assert.deepEqual(cut.map((r) => r.y), [100, 300, 1075]);
+});
+
+test("fitZoom finds a window whose edges run through gaps, and says so when it cannot", () => {
+  // text from x 24 to 700 on every row (a table), rows 32 px apart, a column of text at x 1600-1900
+  const lines = [];
+  for (let y = 60; y < 1000; y += 32) { lines.push(row(24, y, 676)); lines.push(row(1600, y, 300)); }
+  const focus = { x: 1600, y: 300, w: 300, h: 100 };
+  const fit = fitZoom({ lines, focus, s0: 1.6, sMin: 1.25, view });
+  assert.equal(fit.clipped, 0);
+  assert.ok(fit.s >= 1.55 && fit.s <= 1.6, "only the high zoom clears the left column");
+  const w = { x0: fit.x0, x1: fit.x0 + view.w / fit.s, y0: fit.y0, y1: fit.y0 + view.h / fit.s };
+  assert.ok(w.x0 <= focus.x && w.x1 >= focus.x + focus.w && w.y0 <= focus.y && w.y1 >= focus.y + focus.h, "the focus is inside the window");
+  assert.equal(clippedLines(throughCamera(lines, fit.s, fit.x0, fit.y0), view).length, 0);
+  // a wall of text from edge to edge cannot be framed cleanly: the answer must say so, never pretend
+  const wall = []; for (let y = 0; y < 1080; y += 20) wall.push(row(0, y, 1920, 20));
+  const bad = fitZoom({ lines: wall, focus: { x: 800, y: 500, w: 100, h: 40 }, s0: 1.6, sMin: 1.5, view });
+  assert.ok(bad.clipped > 0);
+});
+
+test("planted violation: the draft-1 camera (1.4x pinned right) cuts the headline; the fitted one does not", () => {
+  const lines = [row(24, 122, 680, 24), row(140, 481, 330), row(124, 513, 551), row(1521, 355, 120), row(1521, 382, 160)];
+  const focus = { x: 1505, y: 347, w: 400, h: 100 };
+  const naive = throughCamera(lines, 1.4, 549, 0);
+  assert.ok(clippedLines(naive, view).length > 0, "the draft-1 camera cuts the headline mid-word");
+  const fit = fitZoom({ lines, focus, s0: 1.6, sMin: 1.3, view });
+  assert.equal(fit.clipped, 0);
+});
+
+test("placeCaption: the lowest empty band, never on the focus, and says what it covers when nothing is free", () => {
+  const empty = placeCaption({ w: 800, h: 72, lines: [row(24, 100, 600)], focus: [], view });
+  assert.equal(empty.top, 1080 - 84 - 72);
+  assert.equal(empty.lines, 0);
+  const lines = []; for (let y = 880; y < 1060; y += 20) lines.push(row(0, y, 1920, 16));
+  const moved = placeCaption({ w: 800, h: 72, lines, focus: [], view });
+  assert.ok(moved.top < 880 - 72 && moved.lines === 0);
+  const dense = []; for (let y = 60; y < 1060; y += 20) dense.push(row(0, y, 1920, 16));
+  const o = placeCaption({ w: 800, h: 72, lines: dense, focus: [{ x: 400, y: 900, w: 900, h: 80 }], view });
+  assert.equal(o.focus, false);
+  assert.ok(o.lines > 0);
+  assert.ok(captionOverlap({ x: 560, y: 900, w: 800, h: 72 }, dense, [], view).lines > 0);
+});
+
+test("maxLumaStep finds a one-frame flash and ignores a long cross-fade", () => {
+  const flash = [37, 37, 37, 222, 222, 222];
+  assert.equal(maxLumaStep(flash).step, 185);
+  assert.equal(maxLumaStep(flash).at, 3);
+  const fade = Array.from({ length: 19 }, (_, i) => 37 + (185 * i) / 18);
+  assert.ok(maxLumaStep(fade).step < 12);
 });
