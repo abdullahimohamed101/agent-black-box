@@ -1,5 +1,8 @@
 # Multi-agent example
 
+Scripted only, by design: there is no `--live` mode. The point of this example is the shape of the trace (threads, an asyncio task, another
+process, clock skew), which a real model would not change, and it keeps the example free of keys and network.
+
 A planner delegates a job to cooperating agents and every one of them is recorded in a single run (spec §84):
 
 ```text

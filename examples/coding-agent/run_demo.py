@@ -3,7 +3,8 @@
 
     uv run --project packages/sdk-python python examples/coding-agent/run_demo.py            # scripted, deterministic
     ANTHROPIC_API_KEY=... uv run --project packages/sdk-python python examples/coding-agent/run_demo.py \\
-        --model anthropic --i-understand-this-runs-commands    # runs arbitrary shell as you: see README
+        --live --i-understand-this-runs-commands    # real model (same as --model anthropic); runs arbitrary
+                                                    # shell as you: see README. Not run by the project (KI-044)
 
 `--policy-demo` runs the policy scenario instead (Phase 14): the agent tries to read `.env` (blocked) and to
 push to main (paused until a person approves). It needs a server, a published policy (see
@@ -72,6 +73,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", choices=["scripted", "anthropic"], default="scripted")
     parser.add_argument(
+        "--live",
+        action="store_true",
+        help="use a real model (same as --model anthropic); needs --i-understand-this-runs-commands "
+        "and ANTHROPIC_API_KEY. Not run by the project (KI-044)",
+    )
+    parser.add_argument(
         "--variant",
         choices=["baseline", "wrong-fix"],
         default="baseline",
@@ -104,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
         help="REQUIRED for --model anthropic: a real model runs arbitrary shell commands as you, unsandboxed",
     )
     args = parser.parse_args(argv)
+    if args.live:
+        args.model = "anthropic"
     if args.policy_demo and (
         args.model != "scripted" or args.variant != "baseline" or args.offline
     ):
