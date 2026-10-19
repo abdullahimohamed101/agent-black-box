@@ -14,6 +14,7 @@ incrementally" from "was buffered until the keep-alive", not a latency measureme
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import re
@@ -26,7 +27,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 MAX_BODY_READ = 2 * 1024 * 1024
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
@@ -109,6 +110,12 @@ class Target:
         self.resolve = resolve
         self.timeout = timeout
 
+    def host_header(self, scheme: Optional[str] = None, port: Optional[int] = None) -> str:
+        """What a browser sends: the port only when it is not the scheme's default."""
+        scheme = scheme or self.scheme
+        port = port or self.port
+        return self.host if port == (443 if scheme == "https" else 80) else f"{self.host}:{port}"
+
     def _context(self) -> ssl.SSLContext:
         # Verification stays on: a certificate that does not verify is itself a failed check.
         return ssl.create_default_context(cafile=self.cacert)
@@ -160,7 +167,7 @@ class Target:
     ) -> Response:
         sock = self.connect(scheme, port)
         try:
-            return _exchange(sock, self.host, method, path, headers, body)
+            return _exchange(sock, self.host_header(scheme, port), method, path, headers, body)
         finally:
             sock.close()
 
@@ -291,7 +298,7 @@ def probe_stream(
         all_headers = dict(headers)
         all_headers.setdefault("Accept", "text/event-stream")
         all_headers.setdefault("Accept-Encoding", "gzip, zstd, br")
-        sock.sendall(_build_head(target.host, "GET", path, all_headers, None))
+        sock.sendall(_build_head(target.host_header(), "GET", path, all_headers, None))
         sock.settimeout(0.5)
         buf = b""
         end = started + first_bound + heartbeat_bound
@@ -343,11 +350,14 @@ class Options:
     stream_token: Optional[str] = None
     web_budget: int = 10  # sign-in starts per address per minute (apps/web loginLimiter)
     api_budget: int = 30  # failed API-key attempts per address per window (ABB_AUTH_FAIL_PER_ADDRESS)
+    session_global: int = 600  # failed session attempts per window across all addresses (ABB_SESSION_FAIL_GLOBAL)
     first_bound: float = 10.0
     heartbeat_bound: float = 40.0
     over_limit_bytes: int = 9 * 1024 * 1024
     under_limit_bytes: int = 7 * 1024 * 1024
     flood: bool = True
+    signin_email: Optional[str] = None  # a person invited to a workspace (the rig's fake identity provider accepts any email)
+    signin_stranger: Optional[str] = None  # a person nobody invited
 
 
 def _random_key() -> str:
@@ -415,7 +425,7 @@ def check_headers(t: Target) -> List[Result]:
     out: List[Result] = []
     page = t.request("GET", "/", {"Accept": "text/html"})
     page2 = t.request("GET", "/", {"Accept": "text/html"})
-    api = t.request("GET", "/v1/auth/me")
+    api = t.request("GET", "/v1/me")
     for label, r in (("web", page), ("api", api)):
         values = r.all("Strict-Transport-Security")
         good = len(values) == 1 and "max-age=" in values[0] and int(re.search(r"max-age=(\d+)", values[0]).group(1)) >= 31536000  # type: ignore[union-attr]
@@ -520,7 +530,7 @@ def check_health_and_cookie(t: Target) -> List[Result]:
     r = t.request("GET", "/healthz")
     healthy = r.status == 200 and '"ok"' in r.text()
     out.append(verdict("health.healthz", healthy, "200 ok", f"/healthz answered {r.status}"))
-    me = t.request("GET", "/v1/auth/me")
+    me = t.request("GET", "/v1/me")
     out.append(verdict("auth.me_unauthenticated_401", me.status == 401, "401 without a cookie", f"answered {me.status}"))
     start = t.request("GET", "/api/auth/login", attempts=2)
     cookies = [c for c in start.all("Set-Cookie") if c.split("=", 1)[0].strip() == "__Host-abb_login"]
@@ -532,7 +542,29 @@ def check_health_and_cookie(t: Target) -> List[Result]:
             )
         )
         return out
-    attrs = [a.strip().lower() for a in cookies[0].split(";")[1:]]
+    problems = _cookie_problems([a.strip().lower() for a in cookies[0].split(";")[1:]])
+    out.append(
+        verdict(
+            "auth.login_cookie",
+            not problems,
+            "__Host-abb_login is Secure, HttpOnly, Path=/, no Domain, SameSite set",
+            "__Host-abb_login: " + ", ".join(problems),
+        )
+    )
+    return out
+
+
+def _cookies(r: Response) -> Dict[str, List[str]]:
+    """Set-Cookie lines by cookie name: [value, attribute, ...] with attributes lower-cased."""
+    out: Dict[str, List[str]] = {}
+    for line in r.all("Set-Cookie"):
+        parts = [x.strip() for x in line.split(";")]
+        name, _, value = parts[0].partition("=")
+        out[name.strip()] = [value] + [a.lower() for a in parts[1:]]
+    return out
+
+
+def _cookie_problems(attrs: List[str]) -> List[str]:
     problems = []
     if "secure" not in attrs:
         problems.append("no Secure")
@@ -544,14 +576,131 @@ def check_health_and_cookie(t: Target) -> List[Result]:
         problems.append("has a Domain attribute")
     if not any(a.startswith("samesite=") for a in attrs):
         problems.append("no SameSite")
+    return problems
+
+
+def _location_target(t: Target, location: str) -> Tuple[Target, str]:
+    """The Target and request path of an absolute Location (the identity provider or the callback)."""
+    parts = urlsplit(location)
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    path = parts.path + (("?" + parts.query) if parts.query else "")
+    if parts.hostname == t.host and port == t.port:
+        return t, path
+    return Target(f"{parts.scheme}://{parts.hostname}:{port}", t.cacert, t.resolve, t.http_port, t.timeout), path
+
+
+def _sign_in(t: Target, email: str) -> Tuple[Optional[Response], str]:
+    """Run the authorization-code flow against a provider that accepts any email. Returns the callback response and a note."""
+    start = t.request("GET", "/api/auth/login", attempts=1)
+    login = _cookies(start).get("__Host-abb_login")
+    location = start.header("Location") or ""
+    if start.status not in (302, 303, 307) or not login or not location.startswith("http"):
+        return None, f"sign-in start answered {start.status} without a provider redirect"
+    idp, authorize_path = _location_target(t, location)
+    page = idp.request("GET", authorize_path)
+    if page.status != 200:
+        return None, f"the provider's sign-in page answered {page.status}"
+    fields = dict(
+        (html.unescape(k), html.unescape(v))
+        for k, v in re.findall(r'<input type="hidden" name="([^"]*)" value="([^"]*)">', page.text())
+    )
+    fields["email"] = email
+    posted = idp.request(
+        "POST", authorize_path.split("?")[0],
+        {"Content-Type": "application/x-www-form-urlencoded"}, urlencode(fields).encode(), attempts=1,
+    )  # fmt: skip
+    back = posted.header("Location") or ""
+    if posted.status not in (302, 303) or not back.startswith("http"):
+        return None, f"the provider did not redirect back (answered {posted.status})"
+    app, callback_path = _location_target(t, back)
+    done = app.request("GET", callback_path, {"Cookie": "__Host-abb_login=" + login[0]}, attempts=1)
+    return done, ""
+
+
+def _check_relay(t: Target, o: Options, cookie: str) -> List[Result]:
+    """What a browser does after signing in: it talks to the web server only, which relays to the API (ADR-021, ADR-060).
+
+    The relay forwards the session cookie and drops X-Forwarded-*, so the API sees the web container as the client address
+    for browser traffic (open question U2). These checks show the consequences: the stream still flows through two proxies, and a
+    flood of junk session cookies at the relay does not lock out a person whose session is valid.
+    """
+    out: List[Result] = []
+    me = t.request("GET", "/api/abb/v1/me", {"Cookie": cookie})
+    out.append(verdict("relay.me_through_web", me.status == 200, "the dashboard's relay answers with a valid session", f"/api/abb/v1/me answered {me.status}"))
+    if o.stream_path:
+        try:
+            workspace = json.loads(me.body or b"{}")["memberships"][0]["workspace"]["id"]
+        except (ValueError, KeyError, IndexError, TypeError):
+            workspace = ""
+        headers = {"Cookie": cookie, "X-ABB-Workspace": workspace} if workspace else {"Cookie": cookie}
+        probe = probe_stream(t, "/api/abb" + o.stream_path, headers, o.first_bound, o.heartbeat_bound)
+        arrivals = probe.arrivals
+        first = arrivals[0][0] if arrivals else None
+        later = [a for a in arrivals[1:] if first is not None and a[0] - first > 0.2]
+        good = probe.status == 200 and first is not None and first <= o.first_bound and bool(later)
+        out.append(
+            verdict(
+                "relay.stream_through_web",
+                good,
+                f"the live stream flows through the proxy and the web relay (first bytes {first:.1f}s, a later chunk {later[0][0]:.1f}s)" if good else "",
+                f"stream through the relay: status {probe.status}, {len(arrivals)} chunk(s), error {probe.error or 'none'}",
+            )
+        )
+    # Past the API's global ceiling for failed sessions: the relay hides the client address, so this is the only limit that
+    # binds a flood sent through it (U2). Valid sessions must still be served while it is closed.
+    junk_codes = set()
+    for _ in range(o.session_global + 20):
+        junk = t.request("GET", "/api/abb/v1/me", {"Cookie": "__Host-abb_session=" + secrets.token_urlsafe(32)}, attempts=1)
+        junk_codes.add(junk.status)
+    after = t.request("GET", "/api/abb/v1/me", {"Cookie": cookie})
     out.append(
         verdict(
-            "auth.login_cookie",
-            not problems,
-            "__Host-abb_login is Secure, HttpOnly, Path=/, no Domain, SameSite set",
-            "__Host-abb_login: " + ", ".join(problems),
+            "relay.junk_flood_keeps_valid_session",
+            after.status == 200 and 401 in junk_codes,
+            f"after {o.session_global + 20} junk session cookies through the relay (answers {sorted(junk_codes)}; "
+            f"global ceiling {'reached' if 429 in junk_codes else 'not reached'}) a valid session still works",
+            f"a valid session answered {after.status} after a flood of junk cookies at the relay (answers {sorted(junk_codes)})",
         )
     )
+    return out
+
+
+def check_signin(t: Target, o: Options) -> List[Result]:
+    """Sign in over https through the proxy with a provider that accepts any email (the rig's fake issuer)."""
+    out: List[Result] = []
+    if o.signin_email:
+        done, note = _sign_in(t, o.signin_email)
+        session = _cookies(done).get("__Host-abb_session") if done else None
+        if done is None or not session or not session[0]:
+            where = (done.header("Location") or "") if done else ""
+            out.append(bad("signin.invited_person", note or f"no __Host-abb_session cookie was issued (callback answered {done.status if done else '?'} to {where.split('?')[0]})"))
+        else:
+            problems = _cookie_problems(session[1:])
+            me = t.request("GET", "/v1/me", {"Cookie": "__Host-abb_session=" + session[0]})
+            if me.status != 200:
+                problems.append(f"the session was refused by the API ({me.status})")
+            out.append(
+                verdict(
+                    "signin.invited_person",
+                    not problems,
+                    "signed in over https; __Host-abb_session is Secure, HttpOnly, Path=/, no Domain, and the API accepts it",
+                    "; ".join(problems),
+                )
+            )
+    if o.signin_email and out and out[-1].status == "PASS" and session:
+        out.extend(_check_relay(t, o, "__Host-abb_session=" + session[0]))
+    if o.signin_stranger:
+        done, note = _sign_in(t, o.signin_stranger)
+        session = _cookies(done).get("__Host-abb_session") if done else None
+        refused = done is not None and not (session and session[0]) and "error=" in (done.header("Location") or "")
+        out.append(
+            verdict(
+                "signin.stranger_refused",
+                refused,
+                "a person nobody invited gets no session and is sent back to the login page with an error",
+                note or "a person nobody invited was given a session or no error redirect",
+            )
+        )
     return out
 
 
@@ -565,7 +714,7 @@ def check_forwarded_for(t: Target, o: Options) -> List[Result]:
     """
     seen_429: Optional[Response] = None
     sent = 0
-    for sent in range(1, o.api_budget + 26):
+    for sent in range(1, o.api_budget + 26):  # noqa: B007 - `sent` is also the count reported below
         r = t.request(
             "GET",
             "/v1/runs",
@@ -658,7 +807,7 @@ def check_stream(t: Target, o: Options) -> List[Result]:
             "sse.not_compressed",
             not encoding and ctype.startswith("text/event-stream"),
             "text/event-stream, no Content-Encoding",
-            f"Content-Type {ctype!r}, Content-Encoding {encoding!r}: an encoded stream is held back by the encoder",
+            f"Content-Type {ctype!r}, Content-Encoding {encoding!r}: the proxy compresses the event stream (clients and caches may then buffer it)",
         )
     )
     return out
@@ -888,6 +1037,8 @@ def run_checks(t: Target, o: Options) -> List[Result]:
         ("body", lambda: check_body_limit(t, o)),
         ("sse", lambda: check_stream(t, o)),
     ]
+    if o.signin_email or o.signin_stranger:
+        groups.append(("signin", lambda: check_signin(t, o)))
     if o.flood:  # last: they spend this address's budgets
         groups += [("xff", lambda: check_forwarded_for(t, o)), ("flood", lambda: check_flood(t, o))]
     for name, fn in groups:
@@ -932,6 +1083,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--heartbeat-bound", type=float, default=40.0)
     p.add_argument("--web-budget", type=int, default=10)
     p.add_argument("--api-budget", type=int, default=30)
+    p.add_argument("--session-global", type=int, default=600, help="ABB_SESSION_FAIL_GLOBAL of the server")
+    p.add_argument("--signin-email", help="sign in as this invited person through a provider that accepts any email (the rig)")
+    p.add_argument("--signin-stranger-email", help="a person nobody invited: must be refused")
     p.add_argument("--no-flood", action="store_true", help="skip the checks that spend this address's rate-limit budgets")
     p.add_argument("--strict", action="store_true", help="a SKIP is a failure")
     p.add_argument("--config-only", action="store_true", help="check the rendered production compose files, no network")
@@ -966,9 +1120,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             stream_token=_read_file(args.stream_token_file),
             web_budget=args.web_budget,
             api_budget=args.api_budget,
+            session_global=args.session_global,
             first_bound=args.first_bound,
             heartbeat_bound=args.heartbeat_bound,
             flood=not args.no_flood,
+            signin_email=args.signin_email,
+            signin_stranger=args.signin_stranger_email,
         )
         results += run_checks(target, options)
     if not results:

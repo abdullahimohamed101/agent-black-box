@@ -1,0 +1,4 @@
+# Local rig only (scripts/hosting-e2e.sh): certificates from Caddy's own local CA instead of Let's Encrypt, and no attempt to
+# install that CA into the container's trust store. This is the `tls internal` of the plan, applied to every site.
+local_certs
+skip_install_trust

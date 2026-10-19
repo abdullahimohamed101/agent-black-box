@@ -1,0 +1,7 @@
+# Local rig only: the fake identity provider as an https issuer, behind the same Caddy and the same local CA, so the API's
+# production rule (an https issuer, a verified certificate) is exercised without code changes. Never exists on a real server.
+oidc.abb.localhost {
+	reverse_proxy rig-oidc:8900 {
+		flush_interval -1
+	}
+}

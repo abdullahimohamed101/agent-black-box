@@ -1,0 +1,55 @@
+# The shared front door (Phase 23, ADR-178): one Caddy per machine, the only thing that listens on 80/443 and obtains
+# certificates. Each app joins the external Docker network `edge` and is reached by a unique alias (abb-api, abb-web);
+# an app's database is on its own project network and cannot be reached from here.
+#   docker network create edge        # once
+#   docker compose --env-file edge.env -f deploy/hosting/edge/compose.yml up -d
+# Add a site by dropping a file into ./sites (abb.caddy.template is the Agent BlackBox one), then:
+#   docker compose -f deploy/hosting/edge/compose.yml exec caddy caddy validate --config /etc/caddy/Caddyfile
+#   docker compose -f deploy/hosting/edge/compose.yml exec caddy caddy reload --config /etc/caddy/Caddyfile
+# Validate first, reload (not restart) after: a broken site file must not take the other apps' certificates down.
+# The file is named compose.yml on purpose: Dependabot only reads compose.yml / docker-compose.yml.
+name: edge
+
+services:
+  caddy:
+    image: caddy:2.11-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    restart: unless-stopped
+    environment:
+      ABB_ACME_EMAIL: ${ABB_ACME_EMAIL:?set ABB_ACME_EMAIL (Let's Encrypt contact)}
+      ABB_SITE_ADDRESS: ${ABB_SITE_ADDRESS:?set ABB_SITE_ADDRESS to the public host name, for example abb.example.org}
+      ABB_EDGE_HTTP_PORT: ${ABB_EDGE_HTTP_PORT:-80}
+      ABB_EDGE_HTTPS_PORT: ${ABB_EDGE_HTTPS_PORT:-443}
+    # The container listens on the same numbers it publishes, so the redirect to https carries the right port.
+    # UDP/443 (HTTP/3) is not published: it stays off until someone needs it (plan U4).
+    ports:
+      - "${ABB_EDGE_BIND:-0.0.0.0}:${ABB_EDGE_HTTP_PORT:-80}:${ABB_EDGE_HTTP_PORT:-80}"
+      - "${ABB_EDGE_BIND:-0.0.0.0}:${ABB_EDGE_HTTPS_PORT:-443}:${ABB_EDGE_HTTPS_PORT:-443}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${ABB_EDGE_SITES_DIR:-./sites}:/etc/caddy/sites:ro
+      - ${ABB_EDGE_GLOBALS_DIR:-./globals}:/etc/caddy/globals:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    networks:
+      - edge
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  edge:
+    external: true
+    name: ${ABB_EDGE_NETWORK:-edge}
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

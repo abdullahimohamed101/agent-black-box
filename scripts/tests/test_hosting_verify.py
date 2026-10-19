@@ -14,7 +14,6 @@ import io
 import json
 import os
 import shutil
-import socket
 import ssl
 import subprocess
 import sys
@@ -22,6 +21,7 @@ import tempfile
 import threading
 import time
 import unittest
+from urllib.parse import parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
@@ -54,6 +54,7 @@ class FakeOrigin:
         self.failed: Dict[str, int] = {}
         self.logins: Dict[str, int] = {}
         self.requests = 0
+        self.junk = 0
         self.lock = threading.Lock()
         cert = directory / "server.pem"
         origin = self
@@ -139,11 +140,15 @@ class FakeOrigin:
 
     def _drain(self, h: BaseHTTPRequestHandler) -> int:
         remaining = total = int(h.headers.get("Content-Length") or 0)
+        kept = b""
         while remaining > 0:
             data = h.rfile.read(min(remaining, 1 << 16))
             if not data:
                 break
             remaining -= len(data)
+            if total <= 4096:
+                kept += data
+        h.body = kept  # type: ignore[attr-defined]
         return total
 
     def handle(self, h: BaseHTTPRequestHandler) -> None:  # noqa: C901
@@ -177,7 +182,9 @@ class FakeOrigin:
             if "metrics_token_only" in d and path == "/metrics" and TOKEN in (h.headers.get("Authorization") or ""):
                 return self._send(h, 200, b"# metrics", "text/plain", api=True)
             return self._send(h, 404, b'{"detail":"Not Found"}', "application/json", api=True)
-        if path == "/v1/auth/me":
+        if path == "/v1/me":
+            if "__Host-abb_session=sess" in (h.headers.get("Cookie") or "") and "session_refused" not in d:
+                return self._send(h, 200, b'{"user":{"id":"usr_x"}}', "application/json", api=True)
             return self._send(h, 401, b'{"error":{"code":"UNAUTHENTICATED"}}', "application/json", api=True,
                               extra=[("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")])  # fmt: skip
         if path == "/v1/runs":
@@ -205,7 +212,8 @@ class FakeOrigin:
                 h.send_header("Location", "/login?error=rate_limited")
                 h.send_header("Retry-After", "30")
             else:
-                h.send_header("Location", "https://idp.example/authorize")
+                host = h.headers.get("Host") or "localhost"
+                h.send_header("Location", f"https://{host}/authorize?client_id=x&state=s1&redirect_uri=https%3A%2F%2F{host}%2Fapi%2Fauth%2Fcallback")
                 attrs = "Path=/; SameSite=Lax"
                 if "cookie_no_secure" not in d:
                     attrs += "; Secure"
@@ -220,9 +228,56 @@ class FakeOrigin:
             h.send_header("Content-Length", "0")
             h.end_headers()
             return
-        if path == "/v1/runs/run1/stream":
-            if TOKEN not in (h.headers.get("Authorization") or ""):
+        if path == "/authorize":
+            if h.command == "GET":
+                page = (
+                    '<form method="post"><input type="hidden" name="state" value="s1">'
+                    '<input type="hidden" name="redirect_uri" value="https://x/cb"><input name="email"></form>'
+                )
+                return self._send(h, 200, page.encode(), "text/html")
+            email = parse_qs(getattr(h, "body", b"").decode()).get("email", [""])[0]
+            code = "stranger" if email.startswith("stranger") else "invited"
+            host = h.headers.get("Host") or "localhost"
+            h.send_response(302)
+            h.send_header("Location", f"https://{host}/api/auth/callback?code={code}&state=s1")
+            h.send_header("Content-Length", "0")
+            h.end_headers()
+            return
+        if path == "/api/auth/callback":
+            code = parse_qs(h.path.partition("?")[2]).get("code", [""])[0]
+            h.send_response(302)
+            if "__Host-abb_login=" not in (h.headers.get("Cookie") or ""):
+                h.send_header("Location", "/login?error=login_failed")
+            elif code == "stranger" and "stranger_gets_session" not in d:
+                h.send_header("Location", "/login?error=no_access")
+            else:
+                h.send_header("Location", "/")
+                attrs = "Path=/; SameSite=Lax; HttpOnly"
+                if "session_no_secure" not in d:
+                    attrs += "; Secure"
+                if "session_domain" in d:
+                    attrs += "; Domain=example.org"
+                h.send_header("Set-Cookie", f"__Host-abb_session=sess; {attrs}")
+            h.send_header("Content-Length", "0")
+            h.end_headers()
+            return
+        if path == "/api/abb/v1/me":
+            cookie = h.headers.get("Cookie") or ""
+            with self.lock:
+                if "__Host-abb_session=sess" not in cookie:
+                    self.junk += 1
+            if "__Host-abb_session=sess" in cookie:
+                if "relay_locks_out_valid" in d and self.junk > 30:
+                    return self._send(h, 429, b"{}", "application/json", api=True)
+                return self._send(h, 200, b'{"memberships":[{"workspace":{"id":"ws_x","slug":"s"}}]}', "application/json", api=True)
+            return self._send(h, 401, b"{}", "application/json", api=True)
+        if path in ("/v1/runs/run1/stream", "/api/abb/v1/runs/run1/stream"):
+            via_relay = path.startswith("/api/abb")
+            credential = "__Host-abb_session=sess" in (h.headers.get("Cookie") or "") if via_relay else TOKEN in (h.headers.get("Authorization") or "")
+            if not credential:
                 return self._send(h, 401, b"{}", "application/json", api=True)
+            if via_relay and (h.headers.get("X-ABB-Workspace") or "") != "ws_x":
+                return self._send(h, 400, b"{}", "application/json", api=True)
             h.send_response(200)
             h.send_header("Content-Type", "text/event-stream")
             h.send_header("Cache-Control", "no-store")
@@ -265,6 +320,7 @@ class Base(unittest.TestCase):
         target = lib.Target(f"https://localhost:{origin.tls_port}", str(cacert or self.dir / "server.pem"), "127.0.0.1", origin.plain_port, timeout=10)
         opts = lib.Options(
             metrics_token=TOKEN, stream_path="/v1/runs/run1/stream", stream_token=TOKEN,
+            signin_email="alice@example.test", signin_stranger="stranger@example.test",
             first_bound=3.0, heartbeat_bound=4.0, over_limit_bytes=9 * 1024 * 1024, under_limit_bytes=7 * 1024 * 1024,
         )  # fmt: skip
         return {r.check: r for r in fn(target, opts)}
@@ -278,6 +334,7 @@ GROUPS: Dict[str, Callable[[lib.Target, lib.Options], List[lib.Result]]] = {
     "compress": lambda t, o: lib.check_compression(t),
     "body": lambda t, o: lib.check_body_limit(t, o),
     "sse": lambda t, o: lib.check_stream(t, o),
+    "signin": lambda t, o: lib.check_signin(t, o),
     "xff": lambda t, o: lib.check_forwarded_for(t, o),
     "flood": lambda t, o: lib.check_flood(t, o),
 }
@@ -309,6 +366,13 @@ PLANTED = [
     ("buffered_sse", "sse", "sse.first_event"),
     ("no_heartbeat", "sse", "sse.heartbeat"),
     ("sse_gzip", "sse", "sse.not_compressed"),
+    ("session_no_secure", "signin", "signin.invited_person"),
+    ("session_domain", "signin", "signin.invited_person"),
+    ("session_refused", "signin", "signin.invited_person"),
+    ("stranger_gets_session", "signin", "signin.stranger_refused"),
+    ("relay_locks_out_valid", "signin", "relay.junk_flood_keeps_valid_session"),
+    ("buffered_sse", "signin", "relay.stream_through_web"),
+    ("no_heartbeat", "signin", "relay.stream_through_web"),
     ("xff_trusted", "xff", "xff.forged_header_cannot_evade_throttle"),
     ("no_throttle", "xff", "xff.forged_header_cannot_evade_throttle"),
     ("no_retry_after", "xff", "xff.throttle_has_retry_after"),
@@ -326,7 +390,8 @@ class WellBehavedOrigin(Base):
         for name in ("tls.certificate", "tls.http_redirect", "headers.hsts_once.web", "headers.csp_nonce_changes",
                      "paths.metrics_not_public", "auth.login_cookie", "xff.forged_header_cannot_evade_throttle",
                      "sse.first_event", "sse.heartbeat", "body.over_limit_refused_413", "compress.static_asset",
-                     "flood.signin_start_limited"):  # fmt: skip
+                     "flood.signin_start_limited", "signin.invited_person", "signin.stranger_refused", "relay.me_through_web", "relay.stream_through_web",
+                     "relay.junk_flood_keeps_valid_session"):  # fmt: skip
             self.assertIn(name, results)
 
     def test_a_certificate_from_another_ca_fails(self) -> None:
