@@ -115,6 +115,10 @@ services:
     logging: *logging
 
   web:
+    # An explicit image name, like the API's (docker-compose.yml): hosting-upgrade.sh tags and restores only services that have
+    # both `build` and `image`, so without it a rollback would restart the NEW dashboard on the old API (review P1-1).
+    # ABB_WEB_IMAGE exists for the upgrade rig, which must not move a developer's tag.
+    image: ${ABB_WEB_IMAGE:-agent-black-box-web:local}
     ports: !reset []
     networks: *edge-web
     build:

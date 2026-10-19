@@ -57,8 +57,9 @@ services:
   retention: { image: $API_IMG }
   backup: { image: $API_IMG }
   # A real compose build per release, made trivial: the base image plus a label, so every release has different image content.
+  # The web image NAME comes from the production overlay (ABB_WEB_IMAGE in app.env below), exactly as on a server: the rig must
+  # not name it here, or it would hide a production overlay that forgets to (P1-1: rollback never restored the web image).
   web:
-    image: $WEB_IMG
     build: !override { context: ., dockerfile: deploy/hosting/rig/Dockerfile.up-web }
   migrate:
     image: $API_IMG
@@ -81,6 +82,7 @@ release() { # N api-extra migrate-extra postgres-extra : commit and tag vN
 }
 head_release() { git -C "$SRV" describe --tags --exact-match HEAD 2>/dev/null || git -C "$SRV" rev-parse --short HEAD; }
 running_build() { docker inspect "$(dc ps -q api)" --format '{{index .Config.Labels "abb.build"}}' 2>/dev/null; }
+running_web_build() { docker inspect "$(dc ps -q web)" --format '{{index .Config.Labels "abb.build"}}' 2>/dev/null; }
 image_id() { docker image inspect "$1" --format '{{.Id}}'; }
 
 step "generated secrets and configuration (never printed)"
@@ -94,6 +96,7 @@ ABB_OIDC_ISSUER=https://idp.example.test
 ABB_OIDC_CLIENT_ID=abb-up
 ABB_OIDC_CLIENT_SECRET=$(rand 16)
 ABB_EDGE_NETWORK=$NET
+ABB_WEB_IMAGE=$WEB_IMG
 ENV
 printf '%s' "$(rand 24)" >"$WORK/backup.pass"; chmod 600 "$WORK/backup.pass"
 mkdir -p "$WORK/bin" "$WORK/remote" "$WORK/textfile" "$WORK/backups"
@@ -141,7 +144,7 @@ bundle="$(sed -n 's/.*pre-upgrade bundle: \(abb-[0-9TZ]*\).*/\1/p' "$WORK/u2.out
 echo "PASS U2 (bundle $bundle, rollback tag = release 1 image)"
 
 step "U3 release 3 never gets healthy and the schema is unchanged: rolled back automatically"
-prev_id="$(image_id "$API_IMG")"
+prev_id="$(image_id "$API_IMG")"; prev_web_id="$(image_id "$WEB_IMG")"
 release 3 '    healthcheck: { test: ["CMD", "false"], interval: 2s, timeout: 2s, retries: 2, start_period: 0s }'
 if up v3 --no-verify >"$WORK/u3.out" 2>&1; then fail "a release that is never healthy was reported as a success"; fi
 tail -4 "$WORK/u3.out" | sed 's/^/  /'
@@ -150,6 +153,9 @@ grep -q 'ROLLED BACK' "$WORK/u3.out" || fail "no rollback message"
 [ "$(running_build)" = 2 ] || fail "release 2 is not the running build after the rollback (is $(running_build))"
 [ "$(image_id "$API_IMG")" = "$prev_id" ] || fail "the previous image was not restored"
 dc ps api --format '{{.Health}}' | grep -q healthy || fail "the API is not healthy after the rollback"
+# P1-1: the dashboard rolls back with the API. Before, the web image was never tagged, so the new build kept running.
+[ "$(running_web_build)" = 2 ] || fail "the web image was not rolled back (running build is $(running_web_build), expected 2)"
+[ "$(image_id "$WEB_IMG")" = "$prev_web_id" ] || fail "the previous web image was not restored"
 echo "PASS U3"
 
 step "U4 release 4 changes the schema revision and then fails: NOT rolled back, the bundle is named, and it drills OK"
