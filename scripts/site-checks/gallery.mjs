@@ -1,12 +1,14 @@
 // The gallery island: a real tablist (arrow keys, Home/End), one visible panel, callouts that land on the same source pixels at
 // every width, and the colour scheme chooses the image.
+import { readFileSync } from "node:fs";
+const PANELS = JSON.parse(readFileSync(new URL("../../site/screenshots.json", import.meta.url), "utf8")).panels.length; // the manifest decides how many views there are
 export default async function gallery({ srv, browser, rep }) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light" });
   const page = await context.newPage();
   await page.goto(srv.url, { waitUntil: "networkidle" });
   const tabs = page.getByRole("tab");
   const n = await tabs.count();
-  if (n !== 7) rep.fail("gallery", `${n} tabs, expected 7`);
+  if (n !== PANELS) rep.fail("gallery", `${n} tabs, expected ${PANELS}`);
   const visible = async () => page.locator('#screens [role="tabpanel"]:not([hidden])').count();
   if ((await visible()) !== 1) rep.fail("gallery", "expected exactly one visible panel after hydration");
   await tabs.first().focus();

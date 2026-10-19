@@ -1,5 +1,7 @@
 // C3: the page is real HTML. With JavaScript disabled the hero, the trace rows, the quickstart commands and (as they land) the
 // gallery and FAQ are all in the DOM, and nothing waits for hydration.
+import { readFileSync } from "node:fs";
+const PANELS = JSON.parse(readFileSync(new URL("../../site/screenshots.json", import.meta.url), "utf8")).panels.length; // the manifest decides how many views there are
 export default async function nojs({ srv, browser, rep }) {
   const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
@@ -18,9 +20,9 @@ export default async function nojs({ srv, browser, rep }) {
   if (!(await text("#cmd-quickstart")).includes("make demo")) rep.fail("nojs", "make demo is not in the quickstart block");
   if (!(await count("#cmd-sdk .ln"))) rep.fail("nojs", "the SDK snippet is missing");
   const imgs = await count("#screens .panel img");
-  if (imgs !== 7) rep.fail("nojs", `${imgs} gallery images, expected 7`);
+  if (imgs !== PANELS) rep.fail("nojs", `${imgs} gallery images, expected ${PANELS}`);
   if ((await count("#screens .panel[hidden]")) !== 0) rep.fail("nojs", "a gallery panel is hidden without script");
-  if ((await count('#screens [role="tab"]')) !== 0 || (await count("#screens a.tab")) !== 7) rep.fail("nojs", "without script the tab list must be seven in-page links");
+  if ((await count('#screens [role="tab"]')) !== 0 || (await count("#screens a.tab")) !== PANELS) rep.fail("nojs", `without script the tab list must be ${PANELS} in-page links`);
   const copy = page.locator("button.copy").first();
   if (!(await copy.isDisabled())) rep.fail("nojs", "the Copy button must be disabled without script");
   rep.fact(`h1, ${rows} trace rows, ${cmds} command lines, inspector, SDK snippet and ${imgs} gallery images are in the DOM with scripting off`);
