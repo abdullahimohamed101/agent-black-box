@@ -120,7 +120,7 @@ Unit and integration tests for the findings change (pure health function, enqueu
 
 | Claim | How it is verified | Status now |
 | --- | --- | --- |
-| "Open source" | LICENSE present (Apache-2.0, AC1), metadata consistent, repository public (the user's action, G2) | UNVERIFIED until step 1 and G2 |
+| "Open source" | LICENSE present (Apache-2.0, AC1), metadata consistent, repository public (the user's action, G2) | Held behind the flag until G2 (parked by the owner). "Apache-2.0" alone is a licence fact and ships with the flag off (owner decision, review P3-2): VERIFIED (`release-checklist.sh licenses`) |
 | "Self-hosted" | `docs/deployment.md` commands run end to end (AC12) on a clean machine/container | UNVERIFIED (Docker needed) |
 | "No API key needed to try it" | AC7/AC8: demo and examples run with keys unset and network denied | UNVERIFIED until step 10 |
 | "No third-party requests" (product and site) | AC11, AC15 Playwright request log | UNVERIFIED until step 17 |

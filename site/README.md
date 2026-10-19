@@ -24,7 +24,7 @@ directory), `ABB_SITE_URL` (absolute origin for the Open Graph image), `ABB_RELE
 
 `ABB_RELEASE_CLAIMS` is OFF by default. While it is off the export contains no "open source", no "self-hosted" as a product claim,
 no "Source on GitHub", no link into the repository (it 404s until the repository is public) and no video caption saying so;
-`check-site.sh claims` fails if one appears. "Apache-2.0" is stated as a licence fact. Pages sets the flag for its deploy, so
+`check-site.sh claims` fails if one appears. "Apache-2.0" is stated as a licence fact (the `LICENSE` file exists; owner decision, review P3-2), flag on or off. Pages sets the flag for its deploy, so
 running `.github/workflows/pages.yml` (inert: `workflow_dispatch` only) is the act of publication.
 
 ## `[CONFIRM ...]` markers

@@ -128,7 +128,7 @@ The site is static HTML and CSS, no script (D12), so every block is text plus a 
 - H1: See what your agent actually did.
 - Sub (one sentence, two lines at most): A self-hosted flight recorder for AI agents. Every model call, tool call, command and retry, as typed events, and the step where it broke.
 - Primary CTA: **Run the demo** (anchor to the quickstart block). Secondary: **Source on GitHub** (G2-gated; until the repo is public the link does not exist and the hero has one CTA). No "Get started free", no "Sign up": there is nothing to sign up for.
-- Below the fold line: "Apache-2.0 · Python 3.12 · Docker · PostgreSQL only" (each item a verified row; "Apache-2.0" appears only after AC1 and G2).
+- Below the fold line: "Apache-2.0 · Python 3.12 · Docker · PostgreSQL only" (each item a verified row; "Apache-2.0" is stated as a licence fact because `LICENSE` is in the repository (AC1), even with the publication flag off; owner decision, review P3-2).
 - Hero image: the failed run with the fault line and the inspector open (P1). It is the one screen that proves the headline.
 
 **Three proof blocks (screenshot left, 40-60 words right, one h2 each).**
@@ -199,7 +199,8 @@ Rules: never show `--live`; never show a real email (fixture `owner@local.test` 
 
 | Claim | Hold until | Why |
 | --- | --- | --- |
-| "Open source", "Apache-2.0", any licence badge | G2 (repo public) and AC1 | A licence file in a private repo is not open source yet. |
+| "Open source", "Self-hosted" as a product claim, a licence badge | G2 (repo public) and AC1 | A licence file in a private repo is not open source yet. |
+| "Apache-2.0" as a plain licence fact (footer, below-the-fold line) | AC1 only (`LICENSE` exists; `release-checklist.sh licenses`) | Owner decision (review P3-2): it is a verifiable fact, not a claim about openness, so it ships with the flag off. |
 | "Source on GitHub" link, the Show HN post, caption 26/28 | G2 | The URL must resolve. |
 | "Self-hosted in minutes" / the five commands | AC12 (`docs-commands-check.sh` green on a clean machine) | Row "Self-hosted" is UNVERIFIED (Docker needed). |
 | "No API key, no network" and "same runs every time" | AC7, AC8 | Rows "No API key" and "Deterministic demo" are UNVERIFIED until step 10. |
