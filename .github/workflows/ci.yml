@@ -100,6 +100,21 @@ jobs:
       - run: python3 scripts/check_docs_links.py README.md docs site CONTRIBUTING.md
       - run: scripts/docs-commands-check.sh
 
+  release-checklist:
+    # Phase 20 (D13, AC14): scripts/release-checklist.sh runs every static release check (licenses, placeholders, debug logging,
+    # secrets, charts, routes, network, screenshot budget, claims, links) and its planted-violation tests prove each one fails on a
+    # violation. Reads files only, so it runs on documentation-only changes too. The gated markers ([CONFIRM ...]) are warnings
+    # here; `--release` (run by the maintainer before publication, gate G2) turns them into failures.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Planted violations are caught
+        run: python3 -m unittest scripts.tests.test_release_checklist -v
+      - name: Release checklist
+        run: scripts/release-checklist.sh
+
   lockfile-audit:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'

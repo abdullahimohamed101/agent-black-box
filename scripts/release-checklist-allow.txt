@@ -1,0 +1,32 @@
+# Reviewed exceptions for scripts/release_checklist.py.   check | path-glob | needle | reason
+# path-glob is fnmatch on the repo-relative path (`*` crosses `/`); needle is a substring of the offending line, or `*`.
+# An entry that matches nothing fails `release-checklist.sh all`, so this file cannot rot. One reason per entry.
+
+# --- placeholders: the marker machinery itself (these define or document the [CONFIRM ...] mechanism) ---------
+# The gated markers are warnings until `--release`; the definitional hits below are permanent.
+placeholders | site/src/lib/confirm.ts | CONFIRM | defines the confirm() helper that emits data-confirm="[CONFIRM ...]"; not a pending marker
+placeholders | site/src/config.ts | CONFIRM | a comment documenting that check-site.sh --release fails while a marker remains
+placeholders | site/README.md | CONFIRM | documents the marker convention for contributors
+
+# --- debug: command-line programs whose stdout is the interface -----------------------------------------------
+debug | apps/api/src/abb_api/cli.py | * | the `abb` admin CLI: printing results to stdout is its job; no payload bodies are printed
+debug | apps/api/src/abb_api/openapi.py | * | the OpenAPI generator CLI prints a stale-file message to stderr
+debug | apps/api/src/abb_api/retention/runner.py | * | retention worker CLI prints counters (reset=N), never event bodies
+debug | packages/event-schema/src/abb_event_schema/export.py | * | schema export CLI prints the stale-file list to stderr
+
+# --- secrets: synthetic fixtures. Every value below is a made-up string whose purpose is to be detected -------
+secrets | .env.example | * | documented local-only development credentials (docs/development/setup.md); the file is the template, never a real .env
+secrets | apps/*/tests/* | * | planted fake secrets that the redactor and scanner tests must detect
+secrets | packages/*/tests/* | * | planted fake secrets that the redaction tests must detect
+secrets | docs/plans/completed/* | * | review notes quoting the synthetic test fixtures by shape
+secrets | docs/architecture/agent-black-box-spec.md | abb_live_prj_abc123 | the spec's example key format with a placeholder secret part
+secrets | examples/coding-agent/coding_agent/workspace.py | * | the demo workspace plants fake credentials (AWS docs example key, fake PEM) so the redaction demo has something to redact
+secrets | examples/multi-agent/multi_agent/planner.py | AKIA | the AWS documentation example key, planted for the redaction demo
+secrets | examples/*/tests/* | * | example test fixtures with fake credentials for the redaction demo
+secrets | integrations/conformance/src/abb_conformance/* | * | conformance fixtures use obviously fake keys
+secrets | scripts/hardening_e2e_limits.py | * | e2e script asserts a malformed key is rejected; the value is fake
+secrets | scripts/security_e2e_*.py | * | e2e scripts plant fake secrets to prove they are redacted
+secrets | scripts/smoke.sh | abb_live_aaaa | smoke test sends an intentionally invalid key to prove a 401
+
+# --- claims ---------------------------------------------------------------------------------------------------
+claims | site/src/components/Architecture.tsx | hosted service | the sentence tells the reader who should choose a hosted tool instead (honest non-goal), it does not offer one
