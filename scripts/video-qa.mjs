@@ -168,7 +168,8 @@ const zs = meta.zoomStates ?? [];
 const cutStates = zs.filter((z) => z.clipped.length > 0);
 check(`no zoomed camera state cuts text mid-glyph (${zs.length} zoom states, every line of text measured at the settled frame)`, cutStates.length === 0,
   cutStates.map((z) => `beat ${z.beat} at ${z.at} s, ${z.scale}x window ${z.window.x0},${z.window.y0}-${z.window.x1},${z.window.y1}: "${z.clipped.slice(0, 3).join('", "')}"`).join("; "));
-check("every zoom stays within 1.3x-1.6x (the brief's ceiling is 1.6)", zs.every((z) => z.scale >= 1.29 && z.scale <= 1.601), zs.map((z) => z.scale).join(", "));
+const zmin = meta.cut === "social" ? 1.09 : 1.29; // the narrow layout may need a gentler zoom to clear its text
+check(`every zoom stays within ${meta.cut === "social" ? "1.1" : "1.3"}x-1.6x (the brief's ceiling is 1.6)`, zs.every((z) => z.scale >= zmin && z.scale <= 1.601), zs.map((z) => z.scale).join(", "));
 if (meta.cut === "main") {
   check(`the main cut is 60-75 s (${meta.seconds.toFixed(1)} s)`, meta.seconds >= 60 && meta.seconds <= 75);
   check("the first caption is on screen within 0.5 s (the hook says what the product is at once)", meta.cues[0].start <= 0.5, `${meta.cues[0].start.toFixed(2)} s`);

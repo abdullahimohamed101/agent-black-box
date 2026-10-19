@@ -262,8 +262,8 @@ const TEASER = [
 // Social cut: a separate take at 1080x1350 (the app's narrow layout), beats 1-5, captions 40/50 px, zoom at most 1.4.
 const SOCIAL = MAIN.filter((b) => b.id <= 5).map((b) => ({
   ...b,
-  pre: b.pre?.map((a) => (a.do === "zoom" ? { ...a, level: Math.min(a.level, 1.4) } : a)),
-  acts: b.acts.map((a) => (a.do === "zoom" ? { ...a, level: Math.min(a.level, 1.4) } : a)),
+  pre: b.pre?.map((a) => (a.do === "zoom" ? { ...a, level: Math.min(a.level, 1.4), min: 1.1 } : a)),
+  acts: b.acts.map((a) => (a.do === "zoom" ? { ...a, level: Math.min(a.level, 1.4), min: 1.1 } : a)),
 }));
 
 // Parking spots are fractions of the viewport (never over text being read; video-brief.md 3.3).
