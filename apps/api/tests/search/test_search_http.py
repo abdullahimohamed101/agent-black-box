@@ -183,8 +183,8 @@ async def test_a_bad_query_is_a_422_with_a_position_that_depends_only_on_the_tex
     error = response.json()["error"]
     assert error["code"] == "QUERY_INVALID" and error["details"]["position"] == 18
     assert error["details"]["reason"]
-    # The reason never quotes data. Only the message and details are checked: the body also carries a random hex request id,
-    # which contains "abc" by chance about once in 250 responses.
+    # The reason never quotes data. Only the message and details are checked: the body also
+    # carries a random hex request id, which contains "abc" by chance in about 1 of 250 responses.
     quoted = json.dumps({"message": error.get("message"), "details": error["details"]})
     assert "abc" not in quoted.replace("cost:>abc", "")
 
