@@ -1,0 +1,12 @@
+{
+  "name": "Agent BlackBox",
+  "short_name": "BlackBox",
+  "description": "A flight recorder for AI agents.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "browser",
+  "icons": [
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

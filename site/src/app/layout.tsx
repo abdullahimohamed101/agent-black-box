@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import localFont from "next/font/local";
-import { RELEASE_CLAIMS, publicUrl, tokenValue } from "../config";
+import { RELEASE_CLAIMS, REPO_URL, publicUrl, tokenValue } from "../config";
 import { NAME, SUB } from "../content/copy";
 // Token file first: site.css and every later stylesheet read the custom properties it defines (generated from
 // apps/web/design-tokens/tokens.json by scripts/tokens.mjs).
@@ -32,6 +32,10 @@ const IBMPlexMono = localFont({
 
 // Open Graph and Twitter tags point at the exported card (added with the brand assets); the absolute URL is only known after
 // publication, so metadataBase stays unset and the tags are emitted relative to the export.
+const PAGES_ORIGIN = `https://${REPO_URL.split("/")[3]}.github.io`;
+const CARD = publicUrl("assets/social-card.png");
+const CARD_ALT = "Agent BlackBox: a run timeline with a red line at the first error.";
+
 export const metadata: Metadata = {
   title: `${NAME}: a flight recorder for AI agents`,
   description: SUB,
@@ -44,8 +48,12 @@ export const metadata: Metadata = {
   },
   // The state of the publication flag, so scripts/check_site_claims.py knows which rules apply to this export.
   other: { "abb-release-claims": RELEASE_CLAIMS ? "1" : "0" },
-  openGraph: { title: NAME, description: SUB, type: "website" },
-  twitter: { card: "summary_large_image", title: NAME, description: SUB },
+  manifest: publicUrl("site.webmanifest"),
+  // Open Graph needs an absolute card URL. Until the owner says otherwise (ABB_SITE_URL) it is the default GitHub Pages address
+  // of the repository owner (D16, no custom domain); the page itself loads nothing from it.
+  metadataBase: new URL(process.env.ABB_SITE_URL ?? PAGES_ORIGIN),
+  openGraph: { title: NAME, description: SUB, type: "website", images: [{ url: CARD, width: 1200, height: 630, alt: CARD_ALT }] },
+  twitter: { card: "summary_large_image", title: NAME, description: SUB, images: [{ url: CARD, alt: CARD_ALT }] },
 };
 
 // The page follows the system scheme (ADR-166: no theme switch); two theme-color metas cover both.
