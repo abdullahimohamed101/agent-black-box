@@ -75,3 +75,10 @@ real cursor), captions injected as a fixed lower-third `div` in IBM Plex Sans 28
   content is on screen; the scope control reads `demo`.
 - Look at a frame from every scene as an image (captions not clipped, cursor visible, no text overlap) before publishing.
 - The user approves where the video is published (G2 territory); the recorder never uploads anything.
+
+## Dry-run evidence (2026-10-18, fixtures build, scenes 1-3 only)
+
+VERIFIED: `ABB_VIDEO_BASE_URL=http://localhost:3100 node scripts/record-demo.mjs --dry-run` then `scripts/encode-demo.sh`. `ffprobe`:
+WebM vp9 1920x1080 yuv420p 25 fps, 18.7 s, 2.5 MB; MP4 h264 1920x1080 yuv420p 25 fps, 18.1 s (0.6 s lead-in trimmed), 0.44 MB.
+Frames extracted and viewed: caption in Plex Sans and not clipped, cursor visible, no overlap with page text. Scenes 4-10 have not
+been exercised yet (they need the demo-seeded stack); their selectors are the first thing to check on the real recording.
