@@ -17,6 +17,8 @@ debug | apps/api/src/abb_api/openapi.py | * | the OpenAPI generator CLI prints a
 debug | apps/api/src/abb_api/retention/runner.py | * | retention worker CLI prints counters (reset=N), never event bodies
 debug | packages/event-schema/src/abb_event_schema/export.py | * | schema export CLI prints the stale-file list to stderr
 
+placeholders | docs/decisions/ADR-031-coding-agent-telemetry-and-capture.md | changeme | the decision lists `changeme` as a value the secret scanner deliberately ignores; it is not unfinished copy
+
 # --- secrets: synthetic fixtures. `~synthetic` exempts a hit only when the matched value announces itself as made up (marker word, template placeholder, repetition; see release_checklist.py looks_synthetic), so a real key pasted into the same file is still reported. -
 secrets | apps/*/tests/* | ~synthetic | planted fake secrets that the redactor and scanner tests must detect
 secrets | packages/*/tests/* | ~synthetic | planted fake secrets that the redaction tests must detect

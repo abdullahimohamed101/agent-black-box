@@ -80,6 +80,14 @@ class EveryCheck(unittest.TestCase):
         code, _ = run(planted(**{"docs/KNOWN_ISSUES.md": "TODO\n", "docs/plans/active/p.md": "TODO\n"}), "placeholders")
         self.assertEqual(code, 0)
 
+    def test_runbooks_and_architecture_docs_are_scanned_but_plans_design_research_are_not(self) -> None:
+        for path in ("docs/runbooks/r.md", "docs/architecture/a.md", "docs/decisions/ADR-1-x.md", "docs/development/setup.md"):
+            code, out = run(planted(**{path: "TODO\n"}), "placeholders")
+            self.assertEqual(code, 1, path)
+        for path in ("docs/plans/active/p.md", "docs/design/launch/b.md", "docs/research/r.md"):
+            code, out = run(planted(**{path: "TODO\n"}), "placeholders")
+            self.assertEqual(code, 0, path)
+
     def test_gated_markers_warn_then_fail_in_release_mode(self) -> None:
         files = planted(**{"docs/quickstart.md": "[CONFIRM AFTER STEP 10] remove\n", "README.md": "RELEASE_CLAIM: open source\n"})
         code, out = run(files, "placeholders")

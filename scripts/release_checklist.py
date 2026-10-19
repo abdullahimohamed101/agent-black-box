@@ -165,7 +165,7 @@ PLACEHOLDER_SHIPPED = (
 PLACEHOLDER_EXCLUDE = (
     "docs/PROJECT_STATE.md", "docs/IMPLEMENTATION_PLAN.md", "docs/KNOWN_ISSUES.md", "docs/BUILD_PROMPT.md",
     "docs/DECISIONS.md", "docs/TESTING.md", "docs/OPERATIONS.md", "docs/RELIABILITY.md",
-    "docs/*/*",
+    "docs/plans/*", "docs/design/*", "docs/research/*",
 )  # fmt: skip
 PLACEHOLDER_RE = re.compile(
     r"\blorem ipsum\b|\bTODO\b|\bFIXME\b|\[NEEDS INPUT|\bTBD\b|placeholder text|\bchangeme\b|\byour[-_ ]name[-_ ]here\b|\bXXX\b",
