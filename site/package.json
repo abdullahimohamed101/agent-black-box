@@ -5,8 +5,9 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 3100",
-    "build": "next build",
+    "sync": "node scripts/tokens.mjs",
+    "dev": "node scripts/tokens.mjs && next dev --port 3100",
+    "build": "node scripts/tokens.mjs && next build",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
