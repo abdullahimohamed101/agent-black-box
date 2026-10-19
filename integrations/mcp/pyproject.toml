@@ -1,7 +1,7 @@
 [project]
 name = "agent-black-box-mcp"
 version = "0.2.0"
-description = "Agent Black Box adapter for MCP client sessions"
+description = "Agent BlackBox adapter for MCP client sessions"
 license = "Apache-2.0"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,9 +1,10 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 import { run } from "@/copy/run";
 import type { FindingOut } from "@/lib/api/types";
 import {
+  analysisAgeSeconds,
   evidenceTarget,
   kindLabel,
   severityMeta,
@@ -118,11 +119,14 @@ export function Findings({
   runActive,
   summaryProcessing,
   onShowEvent,
+  clock = Date.now,
 }: {
   runId: string;
   runActive: boolean;
   summaryProcessing: boolean;
   onShowEvent: (eventId: string) => void;
+  /** The browser clock; injected by tests so the "as of" age is exact. */
+  clock?: () => number;
 }) {
   const q = useRunFindings(runId, runActive || summaryProcessing);
   return (
@@ -133,22 +137,49 @@ export function Findings({
       ) : q.isError ? (
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
       ) : (
-        <FindingsBody data={q.data} runActive={runActive} onShowEvent={onShowEvent} />
+        <FindingsBody
+          data={q.data}
+          fetchedAt={q.dataUpdatedAt}
+          clock={clock}
+          runActive={runActive}
+          onShowEvent={onShowEvent}
+        />
       )}
     </section>
   );
 }
 
+/** Re-reads the clock every second while `on`, so an age keeps counting between polls. */
+function useNow(clock: () => number, on: boolean): number {
+  const [now, setNow] = useState(() => clock());
+  useEffect(() => {
+    if (!on) return;
+    const id = setInterval(() => setNow(clock()), 1000);
+    return () => clearInterval(id);
+  }, [clock, on]);
+  return now;
+}
+
 function FindingsBody({
   data,
+  fetchedAt,
+  clock,
   runActive,
   onShowEvent,
 }: {
   data: NonNullable<ReturnType<typeof useRunFindings>["data"]>;
+  fetchedAt: number;
+  clock: () => number;
   runActive: boolean;
   onShowEvent: (eventId: string) => void;
 }) {
-  const line = stateLine(data.state, runActive);
+  const borrowed = data.state.status === "processing" && data.state.computed_at != null;
+  const now = useNow(clock, borrowed);
+  const line = stateLine(
+    data.state,
+    runActive,
+    borrowed ? analysisAgeSeconds(data.state, data.server_time, now - fetchedAt) : null,
+  );
   const items = sortFindings(splitFindings(data.items).reliability);
   const shown = items.slice(0, MAX_SHOWN);
   return (

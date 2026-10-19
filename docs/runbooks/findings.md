@@ -45,7 +45,9 @@ There is no HTTP route for this.
 
 - The job runs off the ingest path, once per delay window per run (`ABB_FINDINGS_DELAY_SECONDS`, default 5 s; scales with run size to at most 60 s: a
   30,000-event run is re-analysed at most every 15 s while it grows). Measured cost is about 44 microseconds per event: 54 ms for 1,000 events, 0.4 s for
-  10,000 and 1.3 s for 30,000 (`docs/benchmarks/phase-10-regression-check.md`; KI-096).
+  10,000 and 1.3 s for 30,000 (`docs/benchmarks/phase-10-regression-check.md`; KI-096). While a run is active, two analyses are also at least
+  `ABB_FINDINGS_MIN_INTERVAL_SECONDS` apart (default 10 s; `0` turns the floor off); the run's health shows the last completed analysis "as of" its age
+  meanwhile, and the final analysis is queued without the floor when the run ends (ADR-174).
 - **Every cost rebuild also re-runs the detectors.** `POST /v1/cost/rebuild`, `rebuild-costs` and any later backfill that goes through the summarizer
   (for example Phase 16's search backfill) make the summarizer enqueue `detect_findings` for each rebuilt run, because a cost rebuild changes `cost_usd`, an
   input of the cost-spike detector. Plan the worker capacity for roughly double the per-run work, or run rebuilds in bounded slices.

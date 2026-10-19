@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the coding-agent demo and record it with Agent Black Box.
+"""Run the coding-agent demo and record it with Agent BlackBox.
 
     uv run --project packages/sdk-python python examples/coding-agent/run_demo.py            # scripted, deterministic
     ANTHROPIC_API_KEY=... uv run --project packages/sdk-python python examples/coding-agent/run_demo.py \\

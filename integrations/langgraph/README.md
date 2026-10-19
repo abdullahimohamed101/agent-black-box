@@ -1,6 +1,6 @@
 # agent-black-box-langgraph
 
-LangGraph / LangChain callback adapter for Agent Black Box (spec 18, 70; ADR-050..052). Runtime dependency: `agent-black-box` only;
+LangGraph / LangChain callback adapter for Agent BlackBox (spec 18, 70; ADR-050..052). Runtime dependency: `agent-black-box` only;
 `pip install agent-black-box-langgraph[langgraph]` adds the framework.
 
 ```python

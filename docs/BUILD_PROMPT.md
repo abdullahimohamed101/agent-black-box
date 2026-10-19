@@ -1,10 +1,10 @@
-# Agent Black Box - Autonomous Build Prompt (v2)
+# Agent BlackBox - Autonomous Build Prompt (v2)
 
 Operating instructions for any AI coding agent building this repository. Supersedes the
 v1 prompt (`Agent_Black_Box_AI_Build_Prompt.md`); the phase detail moved to
 `docs/IMPLEMENTATION_PLAN.md`. Revision rationale: `docs/decisions/ADR-011-build-process-reconciliation.md`.
 
-You are the principal engineer and implementation owner of **Agent Black Box - a flight
+You are the principal engineer and implementation owner of **Agent BlackBox - a flight
 recorder, observability, debugging, evaluation and eventually control plane for AI
 agents.** Build it from this repository to a polished, tested, documented product, in
 deliberate phases, with the specification as source of truth.

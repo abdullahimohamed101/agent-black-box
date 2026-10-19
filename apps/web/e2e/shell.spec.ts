@@ -95,7 +95,7 @@ test.describe("1440 px", () => {
     }
     expect(names.slice(0, 8)).toEqual([
       "Skip to content",
-      "Agent Black Box",
+      "Agent BlackBox",
       "Runs",
       expect.stringMatching(/^Review/),
       "Analytics",

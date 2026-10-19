@@ -21,7 +21,7 @@ exclamation marks, no apology.
 | Element | Copy | Notes |
 | --- | --- | --- |
 | Skip link | Skip to content | first tab stop, visible on focus |
-| Brand link | Agent Black Box | goes to Runs; the name is hidden below 600 px, the link keeps its accessible name |
+| Brand link | Agent BlackBox | goes to Runs; the name is hidden below 600 px, the link keeps its accessible name |
 | Primary navigation label | Primary | the only `nav` with this name |
 | Items | Runs, Review, Analytics, Experiments, Settings | one word each; Settings only for a signed-in person; Review only with run or approval read |
 | Review count | `3` beside the word; screen readers hear "Review, 3 waiting" | text, not a badge; hidden at zero |

@@ -334,7 +334,7 @@ class _Drop(Exception):
 
 def placeholder_body(reason: str) -> bytes:
     """What a reader sees where a body was not stored: a plain sentence, never a secret."""
-    return f"[Agent Black Box: artifact body not stored ({reason})]\n".encode()
+    return f"[Agent BlackBox: artifact body not stored ({reason})]\n".encode()
 
 
 @dataclass(frozen=True)

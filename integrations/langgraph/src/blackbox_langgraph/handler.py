@@ -1,4 +1,4 @@
-"""LangChain / LangGraph callback handler that records canonical Agent Black Box events (ADR-052).
+"""LangChain / LangGraph callback handler that records canonical Agent BlackBox events (ADR-052).
 
     from blackbox import BlackBox
     from blackbox_langgraph import BlackBoxCallback

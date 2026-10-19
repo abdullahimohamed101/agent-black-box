@@ -137,6 +137,6 @@ KIND_WORDS: dict[str, str] = {
     "slack_webhook": "Slack webhook",
     "slack_token": "Slack token",
     "api_key": "API key",
-    "abb_api_key": "Agent Black Box API key",
+    "abb_api_key": "Agent BlackBox API key",
     "jwt": "JSON web token",
 }

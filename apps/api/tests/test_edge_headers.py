@@ -101,7 +101,7 @@ async def test_the_explicit_setting_overrides_the_environment_both_ways() -> Non
 async def test_the_schema_is_still_built_offline_when_the_routes_are_off() -> None:
     app = create_app(Settings(environment="production", database_url=PLACEHOLDER_DB))
     document = app.openapi()  # what `python -m abb_api.openapi` and the web generator call
-    assert document["info"]["title"] == "Agent Black Box API" and document["paths"]
+    assert document["info"]["title"] == "Agent BlackBox API" and document["paths"]
 
 
 async def test_the_docs_pages_are_the_only_ones_without_the_json_csp() -> None:

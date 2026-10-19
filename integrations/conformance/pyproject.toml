@@ -1,7 +1,7 @@
 [project]
 name = "abb-conformance"
 version = "0.1.0"
-description = "Shared conformance suite for Agent Black Box framework adapters (spec 70); test support, not published"
+description = "Shared conformance suite for Agent BlackBox framework adapters (spec 70); test support, not published"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 dependencies = ["agent-black-box", "abb-event-schema"]

@@ -51,6 +51,9 @@ web shows or hides by it. Resources of another workspace, or of another project 
 - `GET /v1/auth/callback?code=&state=`: finishes it; `302` to the stored `return_to` with the session cookie. Every failure is `400/401 LOGIN_FAILED`
   (the cause is logged, never returned). Both endpoints are rate-limited (`429`) by a global backstop.
 - `POST /v1/auth/logout`: revokes the session and clears the cookie; `200` even if the cookie was already invalid. Never a GET.
+- `GET /v1/auth/sessions`: the signed-in person's own working sessions, most recently used first (at most 100), each with an opaque handle, timestamps and a coarse device label; never the cookie value.
+  `DELETE /v1/auth/sessions/{session_id}` ends one (someone else's, unknown or already ended is the same `404`; the session in use is `409 CURRENT_SESSION`: sign out instead) and
+  `POST /v1/auth/sessions/revoke-others` ends every other one; both take effect at once, including on open streams (within the re-check interval). Sessions page: Settings, Sessions (ADR-157).
 - `GET /v1/me`: the person, and every membership with workspace id and slug, role, `permissions` and `own_permissions`. The one read across workspaces.
 
 ### Workspace administration (all take `X-ABB-Workspace` for people)
@@ -566,3 +569,17 @@ Events (lists and detail) also carry `cost_usd` and `cost_unpriced` (ADR-121): t
 `GET /v1/runs/{id}/spans` returns derived spans (`parent_span_id`, `kind`, `status`, timings, `event_count`)
 by start time (spans that never saw a start event come last), `limit` 1-2000 (default 500). It is empty until
 the first summarization.
+
+## Probes, metrics and retention
+
+Not part of the ingestion contract, listed here so the routes are in one place; behaviour and tuning are in [operations](../OPERATIONS.md).
+
+| Route | Notes |
+| --- | --- |
+| `GET /healthz` | liveness: no I/O, answers while the process runs. No authentication |
+| `GET /readyz` | readiness: `200` or `503` (with `Retry-After`) and a body `{status, checks}` naming each dependency check. No authentication, no tenant data |
+| `GET /metrics` | Prometheus text; exists only when `ABB_METRICS_TOKEN` is set (otherwise a plain `404`), and needs `Authorization: Bearer <token>` (ADR-165) |
+| `GET /v1/workspaces/{workspace_id}/retention` | the days in force for each tier (artifacts, trace detail, run record, audit log; `null` means kept forever), whether the workspace chose each and the environment default. Every member |
+| `PUT /v1/workspaces/{workspace_id}/retention` | change tiers (a whole number of days, at least 7; `"forever"`; `null` returns to the default). Owner and admin; every changed tier writes an audit entry. It deletes nothing by itself: the retention job applies the policy (dry run unless enforcement is on, ADR-159, ADR-160) |
+| `GET /v1/workspaces/{workspace_id}/retention/preview` | what the saved policy, or a proposed one (`artifacts_days`, `trace_days`, `run_days`, `audit_days`), would delete now, as counts per tier |
+| `GET /v1/workspaces/{workspace_id}/retention/reports` | the retention job's latest reports for the workspace, newest first: counts per tier, never content. Every member |

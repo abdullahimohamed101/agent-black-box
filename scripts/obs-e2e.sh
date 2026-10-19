@@ -46,7 +46,7 @@ export ABB_DATABASE_URL="$OWNER_URL"                   # provisioning and migrat
 export ABB_WEB_ORIGIN="http://localhost:$WEB_PORT"     # the cookie origin; nothing listens there (no UI is driven)
 export ABB_ENVIRONMENT=development                     # dev sessions exist only here and in test
 export ABB_LOG_LEVEL=DEBUG                             # gate 4: every process logs at the most verbose level
-export ABB_SUMMARY_DEBOUNCE_SECONDS=1 ABB_FINDINGS_DELAY_SECONDS=1
+export ABB_SUMMARY_DEBOUNCE_SECONDS=1 ABB_FINDINGS_DELAY_SECONDS=1 ABB_FINDINGS_MIN_INTERVAL_SECONDS=0
 export ABB_AUDIT_DENIALS_PER_MINUTE=1000
 export ABB_METRICS_REQUESTS_PER_MINUTE=100000          # many scrapes per second; the 429 bucket is covered by tests/obs
 # Alerting tuned so a failing delivery reaches its dead letter quickly: the relay is a closed loopback port, so every attempt fails.

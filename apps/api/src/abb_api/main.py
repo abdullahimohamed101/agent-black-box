@@ -138,7 +138,7 @@ def _install_openapi(app: FastAPI, settings: Settings) -> None:
             title=app.title,
             version=app.version,
             description=(
-                "Agent Black Box ingestion and query API. SDKs authenticate with a project key: "
+                "Agent BlackBox ingestion and query API. SDKs authenticate with a project key: "
                 "`Authorization: Bearer abb_live_<key_id>.<secret>`. The dashboard authenticates "
                 "people with a session cookie and names its workspace in `X-ABB-Workspace`."
             ),
@@ -447,7 +447,7 @@ def create_app(
     # they work with the routes off.
     docs = settings.docs_enabled
     app = FastAPI(
-        title="Agent Black Box API",
+        title="Agent BlackBox API",
         version=__version__,
         lifespan=lifespan,
         docs_url="/docs" if docs else None,

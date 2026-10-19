@@ -1,4 +1,4 @@
-# Prometheus configuration for Agent Black Box (Phase 19c, ADR-171, docs/OPERATIONS.md "Local dashboards").
+# Prometheus configuration for Agent BlackBox (Phase 19c, ADR-171, docs/OPERATIONS.md "Local dashboards").
 #
 # The metrics token is read from a FILE (credentials_file), never written here. In the compose
 # profile the file is `.local/metrics-token` (created by `make observability-token`) mounted read-only

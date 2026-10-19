@@ -1,7 +1,7 @@
 [project]
 name = "agent-black-box-openai"
 version = "0.1.0"
-description = "Agent Black Box adapter for the OpenAI Python client"
+description = "Agent BlackBox adapter for the OpenAI Python client"
 license = "Apache-2.0"
 readme = "README.md"
 requires-python = ">=3.10"

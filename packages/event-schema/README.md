@@ -1,6 +1,6 @@
 # abb-event-schema
 
-The Agent Black Box canonical telemetry contract, schema version `1.0`. Everything that
+The Agent BlackBox canonical telemetry contract, schema version `1.0`. Everything that
 produces or consumes agent telemetry (SDKs, adapters, the API, the web app) depends on this
 package and nothing here depends on them. Its only runtime dependency is `pydantic`.
 

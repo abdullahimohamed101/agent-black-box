@@ -1,4 +1,4 @@
-# Agent Black Box: UI direction (as landed in Phase 21)
+# Agent BlackBox: UI direction (as landed in Phase 21)
 
 The web UI is an application, not a centred page: a left rail, a slim top bar, full-width content, and a run page whose header is an
 instrument panel over a work area that fills the viewport. This file records what shipped and the rules the stylesheets follow. The
@@ -119,7 +119,7 @@ Same grammar as Security (ADR-111): an outcome is a glyph and a word, carried by
 failed run), Cancelled is muted. Risk class is the Security shield (filled for R4, amber outline for R3, muted below). `policy.css` is covered by the red-only,
 motion and contrast tests (`tests/policy-css.test.ts`); no animation was added.
 
-- Words that state the guarantee (D1): "Policies are enforced for agents that ask Agent Black Box through the SDK guard. They do not stop code that bypasses it."
+- Words that state the guarantee (D1): "Policies are enforced for agents that ask Agent BlackBox through the SDK guard. They do not stop code that bypasses it."
   sits at the top of the Policies page in a bordered note; no "protected" badge anywhere.
 - Approvals `/w/{workspace}/approvals` (rail item with a live pending count, polled every ~30 s on a visible tab; shown with `approval.read`): tabs Pending, Decided, All as
   links writing `?state=`; the open request is `?approval=<id>`. Table (request with scrubbed resource, risk, state, run, project, requested, time left, policy and

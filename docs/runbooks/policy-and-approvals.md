@@ -22,7 +22,7 @@ and worker; stored events are unaffected).
 ## What this is, and what it is not
 
 An agent that goes through the Python SDK asks the server before a sensitive action (`guard()`, the coding helpers, the MCP adapter, `@guarded`). The server
-answers **allow**, **deny**, or **wait for a person**. A person who may approve decides on the Approvals page; one approval authorises exactly one action, once.
+answers **allow**, **deny**, or **wait for a person**. A person who may approve decides on the Approvals tab of Review (top bar); one approval authorises exactly one action, once.
 Every decision is an event on the run, written by the server, with the policy id and version.
 
 **The guarantee is cooperative.** It stops an agent that asks. It does not stop code that bypasses the SDK, it is not a sandbox, and it is not a network or
@@ -63,7 +63,7 @@ is made, so a later publish never changes what a pending request needs.
 
 ## Approving
 
-Approvals page (the count in the rail is the number waiting): Pending, Decided, All. Open a request to see the capability, the resource and arguments **after secret scrubbing**,
+Approvals tab of Review (the count beside Review in the top bar is the number waiting): Pending, Decided, All. Open a request to see the capability, the resource and arguments **after secret scrubbing**,
 the policy and version, who is needed, the time left and the run it belongs to; add an optional comment; Approve or Deny with a confirm step. Who can decide: a signed-in
 person with `approval.decide` (owner, admin, developer, security) whose role satisfies the rule's `approver_role` ladder, who did not create the asking key (unless allowed). The page says
 which of those failed in one fixed sentence ("Your role cannot decide this request.", "You cannot decide a request made with your own API key.", "Someone else decided first: it
@@ -103,7 +103,7 @@ key cannot be used by the new key** (an approval belongs to the key that asked):
 
 ## Operating it
 
-- `GET /v1/approvals?state=pending` and the rail count are the queue; the Approvals page re-reads about every ten seconds while the tab is visible. There is no email or chat notification yet (Phase 17).
+- `GET /v1/approvals?state=pending` and the count in the top bar are the queue; the Approvals tab re-reads about every ten seconds while the tab is visible. A person who is not watching the page is told through an alert rule on approval requests (webhook, Slack or email; [alerting](alerting.md)).
 - Audit log (Settings, Audit log): `policy.publish`, `approval.decide`, `approval.cancel`, `approval.consume`, `approval.consume_refused`, system expiries. Content never appears in an audit row, an event, a log line or an agent-visible response; the tests plant sentinels and search all four.
 - Stuck "waiting" runs: confirm the worker is running (`docs/runbooks/worker-lag.md`): the run state follows the server-written events through the summariser; a request that was never decided becomes `EXPIRED` at its expiry regardless of the agent.
 - A fail-open warning on a run means the agent acted without an answer from the policy service: check the API's health and the time of the warning against an outage.

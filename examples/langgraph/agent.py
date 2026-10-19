@@ -1,4 +1,4 @@
-"""A small LangGraph agent traced by Agent Black Box. The only Black Box lines are marked.
+"""A small LangGraph agent traced by Agent BlackBox. The only Black Box lines are marked.
 
     cd integrations/langgraph
     BLACKBOX_API_KEY=... BLACKBOX_ENDPOINT=http://localhost:8000 uv run python ../../examples/langgraph/agent.py

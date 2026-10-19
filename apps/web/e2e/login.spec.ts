@@ -48,7 +48,7 @@ for (const [w, h] of [
         expect(await overflow(page)).toBeLessThanOrEqual(0);
         // Two Tab stops, each with a visible focus ring.
         await page.keyboard.press("Tab");
-        const brand = page.getByRole("link", { name: "Agent Black Box" });
+        const brand = page.getByRole("link", { name: "Agent BlackBox" });
         await expect(brand).toBeFocused();
         await page.keyboard.press("Tab");
         const action = page.getByRole("link", { name: /^(Continue|Sign in)$/ });

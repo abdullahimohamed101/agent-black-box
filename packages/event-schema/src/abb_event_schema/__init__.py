@@ -1,4 +1,4 @@
-"""Agent Black Box canonical telemetry contract."""
+"""Agent BlackBox canonical telemetry contract."""
 
 from abb_event_schema.versioning import SCHEMA_VERSION
 

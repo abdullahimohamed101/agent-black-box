@@ -26,3 +26,7 @@ next-env.d.ts
 .coverage
 backups/
 video-out/
+site-dist/
+site/out/
+site/out-root/
+site/out-*/

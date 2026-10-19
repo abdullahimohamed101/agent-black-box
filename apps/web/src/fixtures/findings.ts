@@ -191,7 +191,7 @@ function health(f: FixtureRun, items: FindingOut[], current: boolean): RunFindin
   const tools = f.events.filter((e) => /^tool\.call\.(completed|failed)$/.test(e.event_type));
   const toolsOk = tools.filter((e) => e.status === "success").length;
   const cost = Number(s["estimated_cost_usd"] ?? 0);
-  const noData = (name: string, why: string): DimensionOut => ({
+  const noData = (name: string, why: string): Omit<DimensionOut, "stale"> => ({
     name,
     status: "no_data",
     inputs: {},
@@ -202,7 +202,7 @@ function health(f: FixtureRun, items: FindingOut[], current: boolean): RunFindin
   const byType = (types: string[]) => items.filter((i) => types.includes(i.finding_type));
   const loops = byType(["possible_loop", "reported_loop", "identical_request"]);
   const ratio = tools.length ? toolsOk / tools.length : 1;
-  const dims: DimensionOut[] = [
+  const dims: Omit<DimensionOut, "stale">[] = [
     {
       name: "reliability",
       status: failed ? "bad" : errors + retries > 0 ? "warn" : "ok",
@@ -271,7 +271,7 @@ function health(f: FixtureRun, items: FindingOut[], current: boolean): RunFindin
     (w, d) => (rank[d.status] > rank[w] ? d.status : w),
     "no_data" as DimensionOut["status"],
   );
-  return { overall, dimensions: dims };
+  return { overall, dimensions: dims.map((d) => ({ ...d, stale: false })) };
 }
 
 /** Attach the findings response and the list badge to a fixture run. */
@@ -297,6 +297,7 @@ export function withFindings(f: FixtureRun): FixtureRun {
   };
   const findings: RunFindingsOut = {
     run_id: f.run.id,
+    server_time: f.run.updated_at,
     state: {
       status,
       detectors_version: analysed ? 1 : null,

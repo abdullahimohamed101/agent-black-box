@@ -66,7 +66,7 @@ Full product, architecture, low-level design, operations, security, and delivery
 
 # Contents
 
-Agent Black Box
+Agent BlackBox
 
 1. Executive Summary
 
@@ -164,7 +164,7 @@ Agent Black Box
 
 42. OpenTelemetry Compatibility
 
-43. Observability for Agent Black Box Itself
+43. Observability for Agent BlackBox Itself
 
 44. Reliability and Fault Tolerance
 
@@ -332,7 +332,7 @@ Recommended First Build
 
 115. Chaos and Failure Testing
 
-116. Observability of Agent Black Box
+116. Observability of Agent BlackBox
 
 117. SLOs, SLIs, and Error Budgets
 
@@ -486,7 +486,7 @@ Can we replay the run?
 
 Can we stop unsafe actions before they happen?
 
-Agent Black Box solves this by creating a structured trace for each agent execution.
+Agent BlackBox solves this by creating a structured trace for each agent execution.
 
 A run might look like:
 
@@ -653,7 +653,7 @@ how much money was spent before failure
 
 whether the agent made risky actions
 
-Agent Black Box treats agent execution as a first-class distributed workflow.
+Agent BlackBox treats agent execution as a first-class distributed workflow.
 
 # 3. Product Vision
 
@@ -763,7 +763,7 @@ It becomes an operational control plane for autonomous software.
 
 # 4. Why This Project Is Interesting
 
-Agent Black Box works well as a portfolio project because it combines several disciplines:
+Agent BlackBox works well as a portfolio project because it combines several disciplines:
 
 ### AI engineering
 
@@ -851,7 +851,7 @@ These principles should influence every design decision.
 
 ## 5.1 Framework agnostic
 
-Agent Black Box should not depend on one framework.
+Agent BlackBox should not depend on one framework.
 
 It should eventually support:
 
@@ -890,7 +890,7 @@ Framework
     ↓
 Adapter
     ↓
-Canonical Agent Black Box Event
+Canonical Agent BlackBox Event
     ↓
 Ingestion
     ↓
@@ -1181,7 +1181,7 @@ deny database.drop_table
 
 # 8. Primary User Experience
 
-A developer should be able to install Agent Black Box with minimal code.
+A developer should be able to install Agent BlackBox with minimal code.
 
 Example:
 
@@ -1232,7 +1232,7 @@ Coding Agent #124
 
 The key UX promise:
 
-Agent Black Box should make an opaque agent execution feel understandable.
+Agent BlackBox should make an opaque agent execution feel understandable.
 
 # 9. Core Features
 
@@ -1664,7 +1664,7 @@ System structure, storage, event model, SDKs, runtime behavior, and scaling seam
 
 # 12. System Architecture
 
-Figure 1. High-level Agent Black Box architecture.
+Figure 1. High-level Agent BlackBox architecture.
 
 The platform should be divided into clear responsibilities.
 
@@ -1672,7 +1672,7 @@ The platform should be divided into clear responsibilities.
                     AGENT APPLICATION
                           │
                           │
-                    Black Box SDK
+                    BlackBox SDK
                           │
                           ▼
                     Ingestion API
@@ -2012,7 +2012,7 @@ approval_denied
 
 # 16. Tracing Model
 
-Agent Black Box should borrow heavily from distributed tracing.
+Agent BlackBox should borrow heavily from distributed tracing.
 
 A run contains a trace.
 
@@ -3014,7 +3014,7 @@ Eval score        8.4/10
 Regression rate   2.1%
 ```
 
-This allows Agent Black Box to become a lightweight agent experimentation platform.
+This allows Agent BlackBox to become a lightweight agent experimentation platform.
 
 # 32. Security Layer
 
@@ -3367,7 +3367,7 @@ class Exporter:
 
 Examples:
 
-Agent Black Box cloud
+Agent BlackBox cloud
 
 local JSON
 
@@ -3423,14 +3423,14 @@ Use versioned APIs from the beginning:
 
 # 42. OpenTelemetry Compatibility
 
-Agent Black Box should avoid inventing tracing concepts unnecessarily.
+Agent BlackBox should avoid inventing tracing concepts unnecessarily.
 
 A strong future direction is to support OpenTelemetry export/import.
 
 Potential mappings:
 
 ```text
-Agent Black Box trace_id → OTEL trace_id
+Agent BlackBox trace_id → OTEL trace_id
 span → OTEL span
 attributes → OTEL attributes
 events → span events
@@ -3460,7 +3460,7 @@ Kubernetes trace
 
 could become one connected execution view.
 
-# 43. Observability for Agent Black Box Itself
+# 43. Observability for Agent BlackBox Itself
 
 The observability platform itself must be observable.
 
@@ -4004,7 +4004,7 @@ Right:
 AGENT BLACK BOX
 ```
 
-As the coding agent works, Agent Black Box updates:
+As the coding agent works, Agent BlackBox updates:
 
 ```text
 READ package.json
@@ -4047,7 +4047,7 @@ AI agents can now write code, execute shell commands, query databases, and inter
 
 Then:
 
-So I built Agent Black Box — a flight recorder for AI agents.
+So I built Agent BlackBox — a flight recorder for AI agents.
 
 The demo should explain itself without requiring a long caption.
 
@@ -4389,7 +4389,7 @@ Control
 "Should this action be allowed to happen?"
 ```
 
-At maturity, Agent Black Box could sit underneath almost any autonomous workflow.
+At maturity, Agent BlackBox could sit underneath almost any autonomous workflow.
 
 ```text
                   AGENT BLACK BOX
@@ -4454,7 +4454,7 @@ That is the product.
 
 # Principal Engineering Addendum: Build-to-Production Design
 
-This addendum turns the product specification above into an implementation and operations contract. The earlier sections describe what Agent Black Box is and how the experience should feel. The sections below define the decisions, invariants, failure semantics, APIs, data ownership, scaling triggers, security boundaries, testing strategy, operational practices, and delivery sequence required to build the system without losing architectural coherence as it grows.
+This addendum turns the product specification above into an implementation and operations contract. The earlier sections describe what Agent BlackBox is and how the experience should feel. The sections below define the decisions, invariants, failure semantics, APIs, data ownership, scaling triggers, security boundaries, testing strategy, operational practices, and delivery sequence required to build the system without losing architectural coherence as it grows.
 
 The document should be treated as a living design record. Decisions marked Committed are the default implementation path until an Architecture Decision Record (ADR) changes them. Decisions marked Deferred intentionally remain open because choosing too early would create unnecessary complexity. Decisions marked Guardrail are invariants that new features must preserve.
 
@@ -4484,7 +4484,7 @@ SDK v1: Python.
 
 SDK v2: TypeScript.
 
-Canonical telemetry format: Agent Black Box canonical events and spans, designed as a superset that can map to and from OpenTelemetry.
+Canonical telemetry format: Agent BlackBox canonical events and spans, designed as a superset that can map to and from OpenTelemetry.
 
 Large artifacts: object storage behind an ArtifactStore abstraction; local filesystem in development and S3-compatible storage in hosted environments.
 
@@ -4554,7 +4554,7 @@ Migration condition: add Kafka when there are at least three independently scale
 
 OpenTelemetry should influence naming, trace relationships, context propagation, and exporter design. The product, however, needs agent-specific concepts that generic tracing does not always express cleanly: agent identity, tool permission decisions, replay metadata, prompt redaction state, evaluation results, token cost, model strategy changes, code diffs, and human approval states.
 
-Therefore Agent Black Box owns a canonical schema and provides an OpenTelemetry mapping layer. This protects product semantics while allowing interoperability. Because generative-AI semantic conventions continue to evolve, the mapping must be versioned and isolated behind an adapter instead of leaking unstable external naming throughout the domain model.
+Therefore Agent BlackBox owns a canonical schema and provides an OpenTelemetry mapping layer. This protects product semantics while allowing interoperability. Because generative-AI semantic conventions continue to evolve, the mapping must be versioned and isolated behind an adapter instead of leaking unstable external naming throughout the domain model.
 
 # 58. Goals, Non-Goals, and Product Boundaries
 
@@ -4614,13 +4614,13 @@ Capturing hidden chain-of-thought from model providers.
 
 Promising deterministic reproduction of nondeterministic model executions.
 
-Running arbitrary untrusted customer code inside the Agent Black Box control plane.
+Running arbitrary untrusted customer code inside the Agent BlackBox control plane.
 
 Providing a universal sandbox in the first release.
 
 ## 58.4 Product boundary
 
-Agent Black Box observes and controls the boundary around an agent. It does not own the agent's business logic. The SDK captures metadata and events; adapters translate framework callbacks; policy hooks can intercept actions when explicitly integrated.
+Agent BlackBox observes and controls the boundary around an agent. It does not own the agent's business logic. The SDK captures metadata and events; adapters translate framework callbacks; policy hooks can intercept actions when explicitly integrated.
 
 This distinction is important because it keeps the product compatible with many agent architectures instead of requiring users to rewrite their agents inside a proprietary runtime.
 
@@ -6774,7 +6774,7 @@ Production-like configuration with lower scale. All database migrations execute 
 
 ## 104.4 Production
 
-Managed services are preferred for the side-project-to-product path because operational effort should focus on Agent Black Box, not running databases by hand.
+Managed services are preferred for the side-project-to-product path because operational effort should focus on Agent BlackBox, not running databases by hand.
 
 # 105. Reference Production Deployment
 
@@ -7100,7 +7100,7 @@ policy engine timeout.
 
 For each fault, define expected behavior before running the experiment.
 
-# 116. Observability of Agent Black Box
+# 116. Observability of Agent BlackBox
 
 Dogfood the same principles.
 
@@ -7527,7 +7527,7 @@ Retryability should be explicit on errors rather than inferred from status text.
 
 # 131. Logging Policy
 
-Never rely on logs as the product telemetry model. Internal service logs exist to operate Agent Black Box itself.
+Never rely on logs as the product telemetry model. Internal service logs exist to operate Agent BlackBox itself.
 
 Rules:
 
@@ -7666,13 +7666,13 @@ makes second patch;
 
 all tests pass;
 
-Agent Black Box shows final metrics.
+Agent BlackBox shows final metrics.
 
 The failure is important. A demo where everything succeeds immediately does not showcase observability.
 
 # 137. Product Analytics
 
-Measure whether Agent Black Box itself is useful.
+Measure whether Agent BlackBox itself is useful.
 
 North-star-style product signals:
 
@@ -7872,7 +7872,7 @@ Create ADRs for decisions that future contributors may reasonably question.
 Initial ADR set:
 
 ```text
-ADR-001 Canonical event schema owned by Agent Black Box
+ADR-001 Canonical event schema owned by Agent BlackBox
 ADR-002 PostgreSQL as MVP system of record
 ADR-003 FastAPI modular monolith for v1
 ADR-004 SSE as default live-stream transport
@@ -8558,7 +8558,7 @@ Policy: rule deciding whether an intended action is allowed.
 
 Approval: human decision authorizing or denying a specific intended action.
 
-Canonical schema: Agent Black Box's stable internal/public telemetry vocabulary.
+Canonical schema: Agent BlackBox's stable internal/public telemetry vocabulary.
 
 Control plane: APIs/data that manage users, projects, policies, and configuration.
 
@@ -8568,7 +8568,7 @@ Data plane / telemetry path: path that receives and processes agent events.
 
 The design intentionally aligns with mature ecosystem concepts rather than inventing every primitive.
 
-OpenTelemetry semantic conventions provide common naming and trace semantics. Agent Black Box should map to these conventions while keeping an adapter boundary because generative-AI conventions and other semantic groups may evolve over time.
+OpenTelemetry semantic conventions provide common naming and trace semantics. Agent BlackBox should map to these conventions while keeping an adapter boundary because generative-AI conventions and other semantic groups may evolve over time.
 
 PostgreSQL Row-Level Security can provide database-level tenant filtering as defense in depth, but application-level authorization remains required.
 
@@ -8584,7 +8584,7 @@ These notes are design inputs, not implementation lock-in. Internal contracts sh
 
 # 161. Final Principal-Engineer Guidance
 
-The temptation with a project like Agent Black Box is to prove technical sophistication by adding infrastructure. Resist that. The project's sophistication should come from correct abstractions, explicit failure semantics, a strong telemetry contract, excellent developer experience, and a path to scale, not from the number of technologies in the README.
+The temptation with a project like Agent BlackBox is to prove technical sophistication by adding infrastructure. Resist that. The project's sophistication should come from correct abstractions, explicit failure semantics, a strong telemetry contract, excellent developer experience, and a path to scale, not from the number of technologies in the README.
 
 The non-negotiable core is:
 

@@ -21,7 +21,7 @@ const noSideScroll = (page: Page) =>
 const editor = (page: Page) =>
   page.getByRole("textbox", { name: /^Policy text( \(read only\))?$/ });
 const GUARANTEE =
-  "Policies are enforced for agents that ask Agent Black Box through the SDK guard. They do not stop code that bypasses it.";
+  "Policies are enforced for agents that ask Agent BlackBox through the SDK guard. They do not stop code that bypasses it.";
 const RULE = `
   - id: deny-prod-shell
     description: Production tooling is for people.

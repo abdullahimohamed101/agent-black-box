@@ -1,7 +1,7 @@
 {
   "uid": "agent-black-box",
-  "title": "Agent Black Box",
-  "description": "Operational view of an Agent Black Box installation. Every series is aggregate; no tenant, project or user is ever a label.",
+  "title": "Agent BlackBox",
+  "description": "Operational view of an Agent BlackBox installation. Every series is aggregate; no tenant, project or user is ever a label.",
   "tags": [
     "agent-black-box"
   ],

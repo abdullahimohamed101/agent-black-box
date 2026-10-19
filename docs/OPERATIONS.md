@@ -1,6 +1,6 @@
 # Operations
 
-Operating Agent Black Box itself (spec §43, §104-125). Runbooks live in `docs/runbooks/`.
+Operating Agent BlackBox itself (spec §43, §104-125). Runbooks live in `docs/runbooks/`.
 
 ## Processes
 
@@ -73,7 +73,7 @@ Local stack: `make up` (migrate, api, worker, web, postgres), `make smoke` to pr
 | `ABB_SECURITY_SCAN_EVENT_MAX_SECONDS`, `_ARTIFACT_MAX_BYTES`, `_ARTIFACT_MAX_SECONDS` | 1, 4 MiB, 10 | server-side secret scan budgets (ADR-130); beyond them the value or artifact body is dropped and the reason recorded, never stored unscanned |
 | `ABB_SECURITY_REANALYSE_MAX_RUNS`, `_MAX_AGE_DAYS` | 200, 30 | a mute or allowlist change re-analyses at most this many of the project's newest runs started within this many days (0 runs: off) |
 | `ABB_SECURITY_REANALYSE_COOLDOWN_SECONDS` | 60 | at most one re-analysis wave per project per this many seconds; a later change is queued, due when the cooldown ends (0: no limit) |
-| `ABB_FINDINGS_DELAY_SECONDS`, `_MAX_EVENTS` | 5, 50000 | delay before a run's findings are (re)computed (grows with run size, at most 60 s); events read per run |
+| `ABB_FINDINGS_DELAY_SECONDS`, `_MIN_INTERVAL_SECONDS`, `_MAX_EVENTS` | 5, 10, 50000 | delay before a run's findings are (re)computed (grows with run size, at most 60 s); minimum time between two analyses of an active run (0 = off; a run that ended is analysed at once, ADR-174); events read per run |
 | `ABB_FINDINGS_LOOP_MIN_REPETITIONS`, `_LOOP_MIN_REPETITIONS_SINGLE`, `_IDENTICAL_MIN_COUNT`, `_RETRY_STORM_MIN`, `_RETRY_BURST_WINDOW_SECONDS`, `_CONTEXT_GROWTH_MIN_DELTA_TOKENS`, `_CONTEXT_GROWTH_FACTOR`, `_CONTEXT_GROWTH_WARNING_TOKENS`, `_CASCADE_MIN_FAILURES`, `_CASCADE_WINDOW_CALLS`, `_COST_SPIKE_MIN_BASELINE`, `_COST_SPIKE_WINDOW_DAYS` | 3, 8, 3, 5, 60, 4000, 2.0, 100000, 3, 10, 20, 30 | detector thresholds, recorded in each finding's evidence; see `runbooks/findings.md` |
 | `ABB_EVAL_TIMEOUT_SECONDS`, `_MAX_EVENTS`, `_STALE_SECONDS`, `_BATCH_DELAY_SECONDS` | 25, 50000, 3600, 5 | evaluator time budget (must be below half `ABB_WORKER_LEASE_SECONDS`), events read per evaluation, age after which a pending row reads as failed, delay of evaluate-all jobs; see `runbooks/evaluations.md` |
 | `ABB_COMPARE_MAX_EVENTS`, `_MAX_STEPS`, `_MAX_EDITS` | 20000, 2000, 600 | run comparison: events read per run, steps per side, edit budget before the answer is `partial` |
@@ -112,7 +112,7 @@ Alerts carry no captured content; a destination's masked form is the only displa
 
 ### Reading the alert delivery log and dead letters (Phase 17, ADR-151)
 
-The owner's view is `GET /v1/alerts/notifications` (and the Alerts page, History tab): status `pending` (waiting, or between retries when `attempts > 0` and `next_attempt_at` is in the future),
+The owner's view is `GET /v1/alerts/notifications` (and Settings, Alerts, History tab): status `pending` (waiting, or between retries when `attempts > 0` and `next_attempt_at` is in the future),
 `delivered`, `skipped` (with `skip_reason`: `cooldown`, `destination_paused`, `destination_deleted`, `rule_deleted`, `rate_limited`, `daily_cap`) and `dead` (every attempt used, or a failure no retry can fix).
 `error_code` is one of `timeout`, `connect_failed`, `dns_failed`, `tls_failed`, `blocked_address` (the name resolved to a non-public address: fix the target), `blocked_port` (the destination's port is not in `ABB_ALERTS_ALLOWED_PORTS`: move it to an allowed port or have the operator allow it; never retried), `http_3xx` (the receiver redirects; redirects are never
 followed: put the final URL in the destination), `http_4xx` (the receiver rejected it: wrong URL or revoked hook), `http_5xx`, `bad_response`, `smtp_failed`, `config_unreadable` (the sealed target cannot be opened:

@@ -9,7 +9,7 @@ it. This file summarizes what is *implemented now*; the spec and
 
 ## System Overview
 
-Agent Black Box records what AI agents do. An SDK (or framework adapter) emits **canonical
+Agent BlackBox records what AI agents do. An SDK (or framework adapter) emits **canonical
 events** describing runs, spans, LLM calls, tool calls, file/Git/shell activity, retries and
 policy decisions. The API ingests them idempotently into PostgreSQL, derives summaries and
 findings asynchronously, streams live updates over SSE, and serves a Next.js UI for

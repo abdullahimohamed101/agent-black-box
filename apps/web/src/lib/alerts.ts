@@ -410,7 +410,7 @@ export function problemFrom(error: unknown, kind: "rule" | "destination"): Probl
       return {
         fields: {},
         banner:
-          "Email is not set up on this server. The person who runs Agent Black Box has to configure it first.",
+          "Email is not set up on this server. The person who runs Agent BlackBox has to configure it first.",
       };
     case "RULE_INVALID": {
       const field = typeof d.field === "string" ? d.field : "";

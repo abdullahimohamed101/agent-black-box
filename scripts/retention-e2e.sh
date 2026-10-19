@@ -39,7 +39,7 @@ API_PORT="${RETENTION_E2E_API_PORT:-8240}"; OIDC_PORT="${RETENTION_E2E_OIDC_PORT
 export ABB_WEB_ORIGIN="http://localhost:$WEB_PORT"     # fixed: the fake provider's redirect URI and the cookie origin
 export ABB_ENVIRONMENT=development                     # http issuers and dev sessions exist only here and in test
 export ABB_OIDC_ISSUER="http://localhost:$OIDC_PORT" ABB_OIDC_CLIENT_ID="abb-dev"
-export ABB_SUMMARY_DEBOUNCE_SECONDS=1 ABB_FINDINGS_DELAY_SECONDS=1
+export ABB_SUMMARY_DEBOUNCE_SECONDS=1 ABB_FINDINGS_DELAY_SECONDS=1 ABB_FINDINGS_MIN_INTERVAL_SECONDS=0
 export ABB_RATE_LIMIT_EVENTS_PER_SECOND=1000000 ABB_RATE_LIMIT_BURST_EVENTS=1000000
 export ABB_AUDIT_DENIALS_PER_MINUTE=1000
 # The API only DISPLAYS the installation mode; the retention job reads its own. This stack enforces, so the page says so.

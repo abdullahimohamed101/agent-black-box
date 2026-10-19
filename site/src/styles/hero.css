@@ -1,0 +1,10 @@
+/* Hero (brief 4.1, 4.2): headline, sub, two actions, the fold line, then the trace. */
+.hero { padding: 3.5rem 0 0; }
+.hero .lede { max-width: 56ch; }
+.actions { display: flex; gap: .75rem; margin-top: 1.5rem; flex-wrap: wrap; }
+.facts { margin: 1rem 0 0; font: var(--type-small-size)/var(--type-small-line) var(--font-mono); color: var(--color-text-secondary); }
+.facts span + span::before { content: " · "; }
+@media (max-width: 599px) {
+  .hero { padding-top: 2.5rem; }
+  .actions .btn { width: 100%; }
+}

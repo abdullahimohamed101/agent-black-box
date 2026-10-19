@@ -1,4 +1,4 @@
-# Agent Black Box
+# Agent BlackBox
 
 A flight recorder, observability, debugging, evaluation and (eventually) control plane for
 AI agents. See what an agent actually did: every model call, tool call, file edit, shell

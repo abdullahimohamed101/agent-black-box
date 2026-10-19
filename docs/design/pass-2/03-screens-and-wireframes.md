@@ -65,7 +65,7 @@ saturated than it. The audit's failure (A.1, A.3) was several candidates at once
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ ⌁ Agent Black Box   Runs ·  Review 3   Analytics   Experiments   Settings            demo / All projects ▾  ⌕  ◦ you │  44
+│ ⌁ Agent BlackBox    Runs ·  Review 3   Analytics   Experiments   Settings            demo / All projects ▾  ⌕  ◦ you │  44
 ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                                              │  24
 │ Runs                                                                                     [Compare]           │  h1 24/30
@@ -118,7 +118,7 @@ and the title's right side into "Pick two runs · [Compare these]". The `?` in t
 
 ```text
 ┌───────────────────────────────────┐
-│ ☰  ⌁ Agent Black Box        ⌕  ◦ │ 44; ☰ opens the five items + scope as a sheet
+│ ☰  ⌁ Agent BlackBox         ⌕  ◦ │ 44; ☰ opens the five items + scope as a sheet
 ├───────────────────────────────────┤
 │ Runs                              │ h1 24/30
 │ demo / All projects ▾             │ scope on its own 32 px line
@@ -181,7 +181,7 @@ failure sentences; the rail and its two boxes.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ ⌁ Agent Black Box   Runs ·  Review 3   Analytics   Experiments   Settings            demo / All projects ▾  ⌕  ◦ you │ 44
+│ ⌁ Agent BlackBox    Runs ·  Review 3   Analytics   Experiments   Settings            demo / All projects ▾  ⌕  ◦ you │ 44
 ├──────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ Runs / Fix flaky checkout test                                                     ✕ Failed · 5d ago         │ 24 px top; h1 24/30; status 13 px 600 fail
 │                                                                                                              │ 8
@@ -237,7 +237,7 @@ Inspector at 600-1279: an overlay from the right, 416 px, raised background, the
 
 ```text
 ┌───────────────────────────────────┐
-│ ☰  ⌁ Agent Black Box        ⌕  ◦ │ 44
+│ ☰  ⌁ Agent BlackBox         ⌕  ◦ │ 44
 ├───────────────────────────────────┤
 │ ‹ Runs                            │ 32; the back link is the title line's first level
 │ Fix flaky checkout test           │ h1 20/26
@@ -571,7 +571,7 @@ aside. **Primary action.** Sign in. **Secondary.** none (no-workspaces: Sign out
 
 ```text
 ┌──────────────────────────────────────────┐
-│ ⌁ Agent Black Box                        │ brand 14 600; glyph with the mark-coloured cut
+│ ⌁ Agent BlackBox                         │ brand 14 600; glyph with the mark-coloured cut
 │                                          │ 32
 │ Sign in to see what                      │ display 32/40 600 (28/36 at < 600)
 │ your agents did.                         │
