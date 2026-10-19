@@ -141,16 +141,16 @@ const MAIN = [
     ],
   },
   { // 4. e opens the failed event in the inspector; the camera frames "What went wrong" without cutting a word.
-    id: 4, len: 6.8, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}",
-    caps: [cap(8, 0.1), cap(9, 3.35)],
+    id: 4, len: 7.1, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}",
+    caps: [cap(8, 0.4), cap(9, 3.65)], // the first caption waits for the inspector to be open: its text lines are then where they will stay
     acts: [
       { at: 0.0, do: "focus", css: ".timeline" },
-      { at: 0.15, do: "press", key: "e", chip: "e" },
+      { at: 0.05, do: "press", key: "e", chip: "e" },
       { do: "waitFor", for: { role: "dialog" } },
       { at: 0.9, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
       { at: 1.0, do: "zoom", on: WHAT_WENT_WRONG, level: 1.6, min: 1.3 },
-      { at: 5.9, do: "zoomOut" },
-      { at: 6.45, do: "press", key: "Escape" },
+      { at: 6.2, do: "zoomOut" },
+      { at: 6.75, do: "press", key: "Escape" },
     ],
   },
   { // 5. Typed events: a model call with tokens and cost, then a retry.
@@ -184,9 +184,8 @@ const MAIN = [
     acts: [
       { at: 0.0, do: "hop", via: [NAV("Runs"), { role: "link", name: "$multiRun" }, { role: "tab", name: "Waterfall", exact: true }, { role: "button", name: "Lanes", exact: true }],
         waitFor: { testid: "waterfall" }, park: "run" },
-      { at: 3.3, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.15, fy: 0.5 },
+      // no hover on the bar: the app answers a hover with a tooltip that covers the lane labels, and the spotlight already says it
       { at: 3.85, do: "spot", on: { css: ".wf-bar[data-critical]", widest: true, row: true } },
-      { at: 4.7, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.85, fy: 0.5 },
       { at: 6.75, do: "spotOff" },
     ],
   },
@@ -219,7 +218,7 @@ const MAIN = [
   },
   { // 10. What the week cost.
     id: 10, len: 7.0, tx: "Analytics, Cost: {costLine} Below it, where the money was wasted: failed runs, retries and spend after errors.",
-    caps: [cap(20, 0.7), cap(21, 3.4)],
+    caps: [cap(20, 0.7, { top: 512 }), cap(21, 3.4, { top: 512 })], // the page is full of text and bars to the bottom: the one empty band is beside the daily-spend chart
     acts: [
       { at: 0.0, do: "hop", via: [NAV("Analytics")], waitFor: { testid: "report-headline" }, park: "analytics" },
       { do: "scrape", key: "costLine", of: { testid: "report-headline" } },
@@ -238,16 +237,16 @@ const MAIN = [
     ],
   },
   { // 12. The closing card. Pre-G2 text unless RELEASE_CLAIMS=1.
-    id: 12, len: 4.4,
+    id: 12, len: 4.6,
     tx: releaseClaims
       ? "The closing card: the wordmark on the canvas, the text 'Open source. Self-hosted. Apache-2.0.' and the repository address."
       : "The closing card: the wordmark on the canvas and the line 'Agent BlackBox: a flight recorder for AI agents.'",
-    caps: releaseClaims ? [cap(26, 0.6), cap(28, 3.95, { d: 3.7 })] : [{ at: 0.5, bank: null, text: CLOSING }],
+    caps: releaseClaims ? [cap(26, 0.8), cap(28, 4.15, { d: 3.7 })] : [{ at: 0.75, bank: null, text: CLOSING }],
     acts: [
       { at: 0.0, do: "cursor", show: false },
-      { at: 0.0, do: "fade", to: 1, ms: 300 },
-      { at: 0.35, do: "card", show: true },
-      { at: 0.35, do: "fade", to: 0, ms: 1 },
+      { at: 0.0, do: "fade", to: 1, ms: 480 }, // the light page goes to the dark canvas: slow enough not to be a step
+      { at: 0.55, do: "card", show: true },
+      { at: 0.55, do: "fade", to: 0, ms: 1 },
     ],
   },
 ];
@@ -600,6 +599,7 @@ const log = { overlay: null, console: [], warnings: [], cues: [], beats: [], scr
 // must never sit on it. The camera scale is kept for the caption measurements.
 let focusNow = [];
 let cameraScale = 1;
+let layoutLines = []; // the page's lines at normal scale, kept while the camera is zoomed: a caption must also clear them for when it pulls back
 const asRect = (b) => ({ x: b.x, y: b.y, w: b.width, h: b.height });
 const readLines = () => evalOverlay(() => window.__abb?.lines());
 
@@ -677,6 +677,7 @@ async function act(a, ctx) {
         const b = await boxOf(a.on);
         if (!b) throw new Error("no box for zoom target");
         const lines = await readLines();
+        layoutLines = lines;
         const fit = fitZoom({ lines, focus: asRect(b), s0: a.level, sMin: a.min ?? 1.3, view });
         if (!fit) throw new Error(`the zoom target does not fit a window of at least ${a.min ?? 1.3}x`);
         const ms = a.instant ? 0 : 700;
@@ -689,7 +690,7 @@ async function act(a, ctx) {
         const nb = await boxOf(a.on);
         focusNow = nb ? [asRect(nb)] : [];
         log.zoomStates.push({
-          beat: ctx.id, at: +clock().toFixed(2), asked: a.level, scale: fit.s, window: { x0: Math.round(fit.x0), y0: Math.round(fit.y0), x1: Math.round(fit.x0 + view.w / fit.s), y1: Math.round(fit.y0 + view.h / fit.s) },
+          beat: ctx.id, at: T0 ? +clock().toFixed(2) : 0, asked: a.level, scale: fit.s, window: { x0: Math.round(fit.x0), y0: Math.round(fit.y0), x1: Math.round(fit.x0 + view.w / fit.s), y1: Math.round(fit.y0 + view.h / fit.s) },
           lines: after.length, clipped: clippedNow.map((c) => c.t), predictedClipped: fit.clipped,
         });
         break;
@@ -698,6 +699,7 @@ async function act(a, ctx) {
         await evalOverlay(([ms]) => window.__abb?.zoom(1, 0, 0, ms), [600]);
         await sleep(600);
         cameraScale = 1;
+        layoutLines = [];
         focusNow = [];
         await evalOverlay(() => window.__abb?.cursor(true));
         break;
@@ -791,7 +793,10 @@ async function runCue(beatStart, cue, beatId) {
   const ttl = Math.round((cue.end - cue.start) * 1000) + 500; // survives a full page load; the explicit off below ends it
   const html = captionHtml(cue.text);
   const size = await evalOverlay((h) => window.__abb?.captionPrep(h), html);
-  const place = placeCaption({ w: size.w, h: size.h, lines: await readLines(), focus: focusNow, view });
+  const seen = [...(await readLines()), ...layoutLines];
+  const place = cue.top != null // a fixed place for a page with no free band at the bottom; measured and checked like any other
+    ? { top: cue.top, ...captionOverlap({ x: (view.w - size.w) / 2, y: cue.top, w: size.w, h: size.h }, seen, focusNow, view) }
+    : placeCaption({ w: size.w, h: size.h, lines: seen, focus: focusNow, view });
   await evalOverlay(([top, h, t]) => window.__abb?.captionShow(top, h, t), [place.top, html, ttl]);
   const start = clock();
   await sleepUntil(beatStart + (cue.start + cue.end) / 2);
