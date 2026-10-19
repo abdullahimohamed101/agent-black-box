@@ -228,12 +228,12 @@ const MAIN = [
     ],
   },
   { // 11. Light follows the system: the Runs list with the failed run, dark to light as a cross-fade, never a one-frame flash.
-    id: 11, len: 4.2, tx: "The Runs list again with the failed run, now in the light scheme: the app follows the system setting, and the picture cross-fades. The caption box stays dark.",
-    caps: [cap(27, 1.0)],
+    id: 11, len: 5.0, tx: "The Runs list again with the failed run, now in the light scheme: the app follows the system setting, and the picture cross-fades. The caption box stays dark.",
+    caps: [cap(27, 2.0)], // after the cross-fade: the mid-point of a dark-to-light blend is a flat grey that no caption should sit on
     acts: [
       { at: 0.0, do: "hop", via: [NAV("Runs")], waitFor: RUNS_HEADING, park: "runs" },
-      { at: 0.8, do: "scheme", value: "light", fadeMs: 650 },
-      { at: 1.7, do: "travel", to: FAILED_LINK },
+      { at: 0.7, do: "scheme", value: "light", fadeMs: 650 },
+      { at: 1.9, do: "travel", to: FAILED_LINK },
     ],
   },
   { // 12. The closing card. Pre-G2 text unless RELEASE_CLAIMS=1.
