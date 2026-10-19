@@ -7,7 +7,7 @@
 #                                     (scripts/screenshots-diff.mjs), and write the first pass only if they agree
 #   then: node scripts/site-images.mjs   (turns the set into the landing page's WebP/PNG files)
 #
-# Nothing here touches your dev stack. It starts its own Postgres container (postgres:16-alpine, data in tmpfs, a random password
+# Nothing here touches your dev stack. It starts its own Postgres container (the digest-pinned image from docker-compose.yml, data in tmpfs, a random password
 # that is never printed), an API, a worker and a production build of apps/web, on ports of its own, and removes all of it on exit.
 # Needs Docker, uv, pnpm and Chrome. Builds apps/web when it is not built yet.
 # Environment (all optional): SHOTS_PG_PORT (5462), SHOTS_API_PORT (8190), SHOTS_WEB_PORT (3190), SHOTS_OUT (docs/screenshots/release),
@@ -46,7 +46,7 @@ one_pass() {
   pw="$(python3 -c 'import secrets; print(secrets.token_hex(12))')"
   step "throwaway Postgres on 127.0.0.1:$PG_PORT"
   docker run -d --name "$PG" -e POSTGRES_USER=abb -e POSTGRES_PASSWORD="$pw" -p "127.0.0.1:$PG_PORT:5432" \
-    --tmpfs /var/lib/postgresql/data postgres:16-alpine >/dev/null
+    --tmpfs /var/lib/postgresql/data postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea >/dev/null
   for _ in $(seq 1 60); do docker exec "$PG" pg_isready -U abb >/dev/null 2>&1 && break; sleep 1; done
   docker exec "$PG" pg_isready -U abb >/dev/null 2>&1 || fail "Postgres did not become ready"
   sleep 2  # the image restarts once after its init scripts
