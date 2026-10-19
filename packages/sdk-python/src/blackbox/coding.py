@@ -1091,6 +1091,16 @@ def safe_environment(extra: Mapping[str, str] | None = None) -> dict[str, str]:
     return env
 
 
+def _push_argv(remote: str, branch: str, force: bool) -> tuple[str, ...]:
+    flags = ("-u", "--force-with-lease") if force else ("-u",)
+    return ("push", *flags, remote, branch)
+
+
+def _push_command(remote: str, branch: str, force: bool) -> str:
+    """The exact command `git_push` runs, so the intent and the command classify alike."""
+    return "git " + shlex.join(_push_argv(remote, branch, force))
+
+
 def _valid_ref(value: str, what: str) -> str:
     if not _REF.fullmatch(value) or ".." in value or value.endswith((".lock", "/")):
         raise ValueError(f"unsafe {what}: {value!r}")
@@ -1279,9 +1289,23 @@ class CodingRecorder:
             operation = "modified" if full.exists() else "created"
         self._guard("filesystem.write", self.rel(full), None, {"operation": operation})
 
-    def guard_push(self, remote: str, branch: str) -> None:
-        """Ask before a git push: `github.push`, resource `<remote> <branch>`, argument `branch`."""
-        self._guard("github.push", f"{remote} {branch}", None, {"branch": branch})
+    def guard_push(self, remote: str, branch: str, *, force: bool = False) -> None:
+        """Ask before a git push: `github.push`, resource `<remote> <branch>`, argument `branch`,
+        and the risk class the shell classifier gives the same push (a plain push is R2, a forced
+        one R3), so an approver sees the class the matching `git push` command would carry.
+        `force=True` asks for the forced form (`--force-with-lease`); `git_push(force=True)` runs
+        it. A class that cannot be derived is left unset, never guessed (ADR-176)."""
+        self._guard(
+            "github.push", f"{remote} {branch}", self._push_risk(remote, branch, force),
+            {"branch": branch},
+        )  # fmt: skip
+
+    def _push_risk(self, remote: str, branch: str, force: bool) -> str | None:
+        try:
+            verdict = self.classify(_push_command(remote, branch, force))
+            return verdict.risk_class if verdict.risk_class in RISK_CLASSES else None
+        except Exception:  # a classifier fault must not stop the ask (INV-4)
+            return None
 
     # -- files -------------------------------------------------------------------------------------
 
@@ -1583,11 +1607,12 @@ class CodingRecorder:
             self.run.event("git.commit", attrs)
         return result
 
-    def git_push(self, remote: str, branch: str) -> CommandResult:
+    def git_push(self, remote: str, branch: str, *, force: bool = False) -> CommandResult:
+        """Push `branch`; `force=True` uses `--force-with-lease` (class R3, asked as such)."""
         _valid_ref(remote, "remote name")
         _valid_ref(branch, "branch name")
-        self.guard_push(remote, branch)  # then the shell command itself is guarded too
-        result = self._git("push", "-u", remote, branch)
+        self.guard_push(remote, branch, force=force)  # then the shell command itself is guarded
+        result = self._git(*_push_argv(remote, branch, force))
         if result.ok:
             self.run.event(
                 "git.push",

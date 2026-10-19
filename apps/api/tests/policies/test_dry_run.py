@@ -66,7 +66,7 @@ def test_each_event_type_maps_to_the_documented_intent() -> None:
             "filesystem.write", "p", None, {"operation": suffix}
         )
     assert intent_for("git.push", {"git.push_target": "origin main", "git.branch": "main"}) == (
-        Intent("github.push", "origin main", None, {"branch": "main"})
+        Intent("github.push", "origin main", "R2", {"branch": "main"})
     )
     assert intent_for("tool.call.started", {"tool.name": "github", "tool.operation": "merge"}) == (
         Intent("tool.github", "merge")
@@ -88,7 +88,7 @@ def test_non_text_attribute_values_never_break_the_mapping() -> None:
     odd: dict[str, Any] = {"shell.command": 5, "file.path": ["x"], "git.push_target": None}
     assert intent_for("shell.command.started", odd) == Intent("shell.execute", "", None, {})
     assert intent_for("file.read", odd) == Intent("filesystem.read", "")
-    assert intent_for("git.push", odd) == Intent("github.push", "", None, {})
+    assert intent_for("git.push", odd) == Intent("github.push", "", "R2", {})
 
 
 # ----------------------------------------------------------------------------------- evaluation
@@ -155,7 +155,7 @@ def test_counts_match_the_hand_computed_expectation() -> None:
         (events[2].event_id, "filesystem.read", None, deny, "deny-env-read"),
         (events[6].event_id, "shell.execute", "R4", deny, "deny-r4"),
         (events[7].event_id, "filesystem.read", None, deny, "deny-env-read"),
-        (events[8].event_id, "github.push", None, ask, "approve-push-main"),
+        (events[8].event_id, "github.push", "R2", ask, "approve-push-main"),
     ]
     assert evaluate_events(policy, events).samples == result.samples  # reproducible
 
