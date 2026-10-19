@@ -44,6 +44,10 @@ networks:
 
 services:
   postgres:
+    # PostgreSQL 17, not the development file's 16: the API image's backup client is 17.x and its pg_restore sends
+    # `SET transaction_timeout`, which a 16 server rejects, so a bundle taken in the image could not be restored into 16
+    # (found by scripts/hosting-backup-e2e.sh; docs/KNOWN_ISSUES.md). A fresh hosted volume has no 16 data to carry over.
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     ports: !reset []
     environment:
       POSTGRES_PASSWORD: ${ABB_POSTGRES_PASSWORD:?generate with scripts/hosting-secrets.sh}
