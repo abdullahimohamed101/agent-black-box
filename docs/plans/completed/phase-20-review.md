@@ -34,7 +34,7 @@ Two findings are deferred only because another builder (`feature/phase-20-video`
 | --- | --- | --- | --- | --- |
 | P2-1 | Dry run hard-codes R2 for every `git.push`; forced pushes and custom classifiers are not predicted | filed | KI-308 (S3, later phase): needs an event attribute (`git.force`) and a schema change | see KI-308 |
 | P2-2 | ADR-176 and the SDK doc did not say that `risk_class` is in the approval binding and changes rule matching | fixed | Consequences section of ADR-176 and a section in `sdk-python.md`; the "not an HTTP contract change" sentence now reads "no schema change; policy evaluation results change as described" | 1f3d4f4 |
-| P2-3 | Outbox lease tests are load-sensitive | filed | KI-309 (S3, flaky test, related to KI-172) | see KI-309 |
+| P2-3 | Outbox lease tests are load-sensitive | fixed | KI-309: clock injected and handlers gated on events instead of sleeps; the cause was also the database VM's clock stepping under load; 30/30 under CPU load, each test shown to fail when its behaviour is broken | see commit below |
 | P3-1 | Classifier fault path untested; a forced push could go unclassified under a fail-open mode | fixed | test for a faulting built-in classifier; a forced push with no derivable class asks with `on_error="closed"`; tests first (failed, then passed) | 25e2862 |
 | P3-2 | `guard_push` did not validate names like `git_push` | fixed | `guard_push` calls `_valid_ref` (ValueError, before anything is asked); parametrized test with `--force`, `+refs/heads/x`, `:main`, spaces and more | 25e2862 |
 | P3-3 | Logger rename undocumented | fixed | `sdk-python.md` "Logging" section | 1f3d4f4 |
