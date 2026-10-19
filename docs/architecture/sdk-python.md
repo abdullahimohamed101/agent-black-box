@@ -107,7 +107,7 @@ bodies are never logged.
 
 | Integration | Behaviour |
 | --- | --- |
-| `CodingRecorder` | with `policy_mode="enforce"`, `read_file` (`filesystem.read`, resource the path), `write_file`/`delete_file` (`filesystem.write`, resource the path, argument `operation`), `run_command` and every `git_*` helper that runs a command (`shell.execute`, resource the executable name, `risk_class` from the classifier, argument `category`) and `git_push` (`github.push`, resource `<remote> <branch>`, argument `branch`, `risk_class` the classifier's class for the push it runs: R2, or R3 with `force=True` which runs `--force-with-lease`; never invented, unset if it cannot be derived, ADR-176; then its shell command) ask first. A denied action does not happen and records no step of its own (the server records `policy.action.blocked`). `guard_command/read/write/push(remote, branch, force=False)` are the same checks for a host that acts itself. The three-line git metadata probes the recorder runs for attributes are not actions the agent chose and are not guarded. |
+| `CodingRecorder` | with `policy_mode="enforce"`, `read_file` (`filesystem.read`, resource the path), `write_file`/`delete_file` (`filesystem.write`, resource the path, argument `operation`), `run_command` and every `git_*` helper that runs a command (`shell.execute`, resource the executable name, `risk_class` from the classifier, argument `category`) and `git_push` (`github.push`, resource `<remote> <branch>`, argument `branch`, `risk_class` the classifier's class for the push it runs: R2, or R3 with `force=True` which runs `--force-with-lease`; never invented, unset if it cannot be derived, and a forced push then fails closed, ADR-176; `remote` and `branch` are validated as `git_push` validates them, `ValueError` if unsafe; then its shell command) ask first. A denied action does not happen and records no step of its own (the server records `policy.action.blocked`). `guard_command/read/write/push(remote, branch, force=False)` are the same checks for a host that acts itself. The three-line git metadata probes the recorder runs for attributes are not actions the agent chose and are not guarded. |
 | `blackbox_mcp.instrument` | `call_tool` is guarded as `tool.<name>`, resource `mcp.call_tool`; a denied call returns an MCP error result and is not made. |
 | LangGraph, OpenAI, Anthropic adapters | not hooked: they do not execute tools. Put `@guarded` on the tool function. |
 | Anything that bypasses the SDK | not stopped. |
@@ -167,3 +167,11 @@ attributes) and counted in `dropped_redaction_error`.
 
 Application-thread cost is ~7-23 us per operation (`docs/benchmarks/phase-3-sdk.md`). `scripts/sdk-e2e.sh` runs
 `examples/python/trace_an_agent.py` against the container stack and reads the run back.
+
+## Logging
+
+The SDK logs under the `agent_blackbox` logger namespace (adapters under `agent_blackbox.<adapter>`). Configuring the old logger name `blackbox` no longer applies (ADR-177).
+
+## `risk_class` on push intents (ADR-176)
+
+`risk_class` is part of the canonical intent and of the server's approval binding, so an approval granted to a push from an older SDK (null class) does not bind to the same push from this SDK; only a run that upgrades mid-flight is affected. Rules with `risk_class: [R2]` (or `[R2, R3]`) on `github.*` or `*` now match live pushes and dry runs that previously fell through to the default; rules without a risk filter are unchanged, a `[R3]` rule still does not match a plain push, and the capability is matched first so `shell.execute` is not over-matched.
