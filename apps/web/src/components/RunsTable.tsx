@@ -15,24 +15,42 @@ import { runs as t } from "@/copy/runs";
 import { runPath, type Base } from "@/lib/routes";
 import { matchedLabels, matchedOf } from "@/lib/search";
 import { findingsCell } from "@/lib/findings";
+import { securityCountText, securitySeverityMeta } from "@/lib/security";
 import { failureLine } from "@/lib/runsListRow";
 import { ShieldGlyph } from "./SecuritySeverity";
 import { StatusBadge } from "./StatusBadge";
 import { TraceMarker } from "./TraceNotice";
 
-function FindingsCell({ badge }: { badge: RunOut["findings"] }) {
-  const c = findingsCell(badge);
+/**
+ * Two marks, two meanings. Run findings (loops, retry storms, failure chains) carry the severity glyph of the Findings
+ * tab; the shield means Security findings only, counted from `security_findings`.
+ */
+function FindingsCell({ run }: { run: RunOut }) {
+  const c = findingsCell(run.findings);
+  const sec = run.security_findings;
+  const secCount = sec && sec.count > 0 ? sec.count : 0;
+  const secMeta = securitySeverityMeta(sec?.max_severity ?? "info");
   return (
     <td className="c-find" data-testid="findings-cell" data-state={c.state} title={c.title}>
       {c.visible ? (
         // Severity is carried by weight, never by colour (ADR-131): critical is bold, the rest regular.
-        <span className="finding-count" data-tone={c.tone}>
-          <ShieldGlyph filled={c.tone === "bad"} /> {c.visible}
+        <span className="finding-count" data-testid="run-findings" data-tone={c.tone}>
+          <span aria-hidden="true">{c.glyph}</span> {c.visible}
         </span>
-      ) : (
+      ) : secCount ? null : (
         <span aria-hidden="true">—</span>
       )}
       <span className="sr-only">{c.title}</span>
+      {secCount ? (
+        <span
+          className="finding-count finding-security"
+          data-testid="security-findings"
+          data-tone={secMeta.tone}
+        >
+          <ShieldGlyph filled={secMeta.style === "filled"} /> {securityCountText(secCount)}
+          <span className="sr-only"> (most severe: {secMeta.label})</span>
+        </span>
+      ) : null}
     </td>
   );
 }
@@ -181,7 +199,7 @@ export function RunsTable({
                   <td className="num c-dur">{formatDuration(r.duration_ms)}</td>
                   <td className="num c-cost">{formatCost(num(r.summary["estimated_cost_usd"]))}</td>
                   {showMatched && <MatchedCell run={r} />}
-                  <FindingsCell badge={r.findings} />
+                  <FindingsCell run={r} />
                 </tr>
                 {expanded && (
                   <tr id={detailId} className="row-detail" data-testid="row-detail">

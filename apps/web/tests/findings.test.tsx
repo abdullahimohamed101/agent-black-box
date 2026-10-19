@@ -7,7 +7,7 @@ import { RunsTable } from "@/components/RunsTable";
 import { fixtureRuns } from "@/fixtures";
 import { withFindings } from "@/fixtures/findings";
 import { cascadeRun, failingChainRun, loopingRun, successRun } from "@/fixtures/runs";
-import type { FindingOut, RunFindingsOut } from "@/lib/api/types";
+import type { FindingOut, RunFindingsOut, RunOut } from "@/lib/api/types";
 import {
   analysisAgeSeconds,
   findingsCell,
@@ -341,15 +341,56 @@ describe("runs list findings column", () => {
     expect(within(rowOf("Fix flaky checkout test")).getByTestId("findings-cell")).toHaveTextContent(
       "2 · critical",
     );
-    // The glyph is the shield of Security findings, filled for critical; the failed-run cross is not used for a finding.
+    // One glyph, one meaning: run findings carry the severity glyph of the Findings tab, never the Security shield.
     const crit = within(rowOf("Fix flaky checkout test")).getByTestId("findings-cell");
-    expect(crit.querySelector("svg.sec-shield[data-filled]")).not.toBeNull();
-    expect(crit).not.toHaveTextContent("✕");
+    expect(crit.querySelector("svg.sec-shield")).toBeNull();
+    expect(within(crit).getByTestId("run-findings")).toHaveTextContent("✕");
     const ok = within(rowOf("Fix login session expiry")).getByTestId("findings-cell");
     expect(ok).toHaveTextContent("No findings");
     expect(ok.querySelector('[aria-hidden="true"]')).toHaveTextContent("—");
     const waiting = within(rowOf("Deploy to staging")).getByTestId("findings-cell");
     expect(waiting).toHaveTextContent("Not analysed yet");
+  });
+});
+
+describe("runs list findings column: security is its own mark", () => {
+  const withSecurity = (sec: RunOut["security_findings"], badge: RunOut["findings"]) => {
+    const run = { ...fixtureRuns()[0]!.run, findings: badge, security_findings: sec };
+    renderWithQuery(<RunsTable runs={[run]} base={BASE} caption="Runs" />);
+    return screen.getByTestId("findings-cell");
+  };
+
+  it("shows run findings and security findings as two distinct, named marks", () => {
+    const cell = withSecurity(
+      { count: 2, max_severity: "high", state: "current" },
+      { count: 3, max_severity: "critical", state: "current" },
+    );
+    const run = within(cell).getByTestId("run-findings");
+    expect(run).toHaveTextContent("3 · critical");
+    expect(run.querySelector("svg")).toBeNull();
+    const sec = within(cell).getByTestId("security-findings");
+    expect(sec.querySelector("svg.sec-shield")).not.toBeNull();
+    expect(sec).toHaveTextContent("2 security findings");
+    expect(cell.querySelectorAll("svg.sec-shield")).toHaveLength(1);
+  });
+
+  it("never draws the shield for run findings alone", () => {
+    const only = withSecurity(
+      { count: 0, max_severity: null, state: "current" },
+      { count: 1, max_severity: "warning", state: "current" },
+    );
+    expect(only.querySelector("svg.sec-shield")).toBeNull();
+    expect(within(only).queryByTestId("security-findings")).toBeNull();
+  });
+
+  it("security findings alone still show the shield with an accessible name", () => {
+    const cell = withSecurity(
+      { count: 1, max_severity: "critical", state: "current" },
+      { count: 0, max_severity: null, state: "current" },
+    );
+    expect(within(cell).queryByTestId("run-findings")).toBeNull();
+    expect(within(cell).getByTestId("security-findings")).toHaveTextContent("1 security finding");
+    expect(cell.querySelector("svg.sec-shield")).not.toBeNull();
   });
 });
 

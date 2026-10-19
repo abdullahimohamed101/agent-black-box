@@ -55,6 +55,12 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await expect(
     page.locator("tbody tr", { hasText: "Fix login session expiry" }).getByTestId("findings-cell"),
   ).toContainText("No findings");
+  // one glyph, one meaning: the shield appears only beside a security count, never on a run-findings mark
+  await expect(page.getByTestId("run-findings").locator("svg.sec-shield")).toHaveCount(0);
+  await expect(
+    page.getByTestId("security-findings").locator("svg.sec-shield").first(),
+  ).toBeVisible();
+  await expect(page.getByTestId("security-findings").first()).toContainText("security finding");
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/runs-list.png`, fullPage: true });
 });
