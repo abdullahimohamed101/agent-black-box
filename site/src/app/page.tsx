@@ -1,8 +1,10 @@
 import fixture from "../../fixtures/migrate-billing-schema.json";
+import { BeforeAfter } from "../components/BeforeAfter";
 import { FaultTrace } from "../components/FaultTrace";
 import { buildTrace, type Fixture } from "../lib/trace";
 import { Footer } from "../components/Footer";
 import { Hero } from "../components/Hero";
+import { Quickstart } from "../components/Quickstart";
 import { TopBar } from "../components/TopBar";
 
 // Built once, on the server: nine rows and their inspector text, as plain data for the island.
@@ -19,7 +21,8 @@ export default function Page() {
           <p className="fine">An illustrative failed run, drawn by this page from fixture events in the dashboard&apos;s own format.</p>
         </Hero>
         {/* The sections of the brief are added here, in order, by the later steps. */}
-        <section className="band" id="quickstart" aria-label="Run the demo" />
+        <BeforeAfter />
+        <Quickstart />
         <section className="band" id="how" aria-label="How it works" />
         <section className="band" id="screens" aria-label="Screens" />
       </main>
