@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { settleAnimations } from "./motion";
 import { signIn, workspace, workspaceHeader } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/e2e-web-real.sh, which ingests the runs over HTTP into a real API + worker.
 const failed = process.env.E2E_REAL_FAILED_RUN;
@@ -9,7 +10,7 @@ const ok = process.env.E2E_REAL_OK_RUN;
 test.skip(!failed || !ok, "needs scripts/e2e-web-real.sh");
 test.use({ baseURL: "http://localhost:3102" });
 test.beforeEach(async ({ context, baseURL }) => signIn(context, baseURL!));
-const SHOTS = "../../docs/screenshots/phase-4";
+const SHOTS = shotsDir("phase-4");
 
 test("a really ingested failed run explains itself", async ({ page }) => {
   await page.goto(`/w/${workspace()}/projects/all/runs/${failed}`);

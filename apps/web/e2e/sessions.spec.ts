@@ -2,11 +2,12 @@ import { currentSettingsTab } from "./settings";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 19a step 5 (fixtures mode): the Sessions settings page. The list comes from src/fixtures/sessions.ts (this session,
 // a phone, an unknown device). Revoking changes server-side fixture state that nothing can put back, so the tests that end
 // sessions run against a stateful stub of the same two routes instead, and the fixture server is only ever read.
-const SHOTS = "../../docs/screenshots/phase-19a";
+const SHOTS = shotsDir("phase-19a");
 const PAGE = "/w/demo/settings/sessions";
 
 async function axe(page: Page) {

@@ -1,11 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { shotsDir } from "./shots-dir";
 
 // Phase 22 step 10 (D11): sign-in and invitation are quiet pages with a side gutter, a keyboard path and no axe violations.
 // The fixtures server renders the "Fixture mode" variant of the sign-in page; a server with no fixtures (and no reachable
 // API) renders the real "Sign in" button: set E2E_LOGIN_URL to its origin to cover that variant (auth-e2e covers the whole
 // flow against a real provider).
-const SHOTS = "../../docs/screenshots/phase-22/step-10";
+const SHOTS = shotsDir("phase-22/step-10");
 const TOKEN = "T".repeat(43);
 const REAL = process.env.E2E_LOGIN_URL;
 

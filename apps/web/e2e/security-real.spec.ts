@@ -9,6 +9,7 @@ import {
 } from "@playwright/test";
 import { settleAnimations } from "./motion";
 import { workspaceHeader } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Phase 13 step 4, API-backed. Runs only through scripts/security-e2e.sh: a real API and worker, the DEVELOPMENT-ONLY fake OIDC
 // provider, the built web server on :3190 and a run recorded by the real Python SDK that read a `.env`, printed an AWS-style key
@@ -25,7 +26,7 @@ test.skip(!WS || !RUN || !BENIGN || !OWNER || !VIEWER || !BILLING, "needs script
 test.use({ baseURL: "http://localhost:3190", viewport: { width: 1440, height: 900 } });
 test.describe.configure({ mode: "serial" }); // one owner session builds on the previous step (settings are restored at the end)
 const ORIGIN = "http://localhost:3190";
-const SHOTS = "../../docs/screenshots/phase-13";
+const SHOTS = shotsDir("phase-13");
 const RUN_URL = () => `/w/${WS}/projects/all/runs/${RUN}`;
 const SECRET_STRINGS = () => Object.values(planted); // plant tag, AWS key, PEM body, host, deploy directory
 

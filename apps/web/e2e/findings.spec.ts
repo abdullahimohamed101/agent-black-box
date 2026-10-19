@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { openTab, settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/findings-e2e.sh: the ten pathological runs went in through the real ingestion path, the
 // worker derived their findings, and the built web server on :3105 reads them through its proxy. An OWNER session and a
@@ -11,7 +12,7 @@ const viewerToken = process.env.E2E_VIEWER_SESSION_TOKEN;
 test.skip(!runs.looping || !viewerToken, "needs scripts/findings-e2e.sh");
 test.use({ baseURL: "http://localhost:3105", viewport: { width: 1400, height: 1000 } });
 test.beforeEach(async ({ context, baseURL }) => signIn(context, baseURL!));
-const SHOTS = "../../docs/screenshots/phase-10";
+const SHOTS = shotsDir("phase-10");
 
 const open = async (page: Page, name: string) => {
   await page.goto(`/w/${workspace()}/projects/all/runs/${runs[name]}`);

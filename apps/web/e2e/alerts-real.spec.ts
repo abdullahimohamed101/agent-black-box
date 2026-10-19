@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 17 step 4, API-backed. Runs only through scripts/alerts-e2e.sh: a real API and worker, the DEVELOPMENT-ONLY fake OIDC provider,
 // the built web server on :3210 and local receivers (a signed webhook receiver that verifies the HMAC, a control port). The owner
@@ -16,7 +17,7 @@ const MAIN_PORT = process.env.E2E_MAIN_PORT ?? "8213";
 test.skip(!WS || !EMAIL || !RECV || !TOKEN, "needs scripts/alerts-e2e.sh");
 test.use({ baseURL: "http://localhost:3210", viewport: { width: 1440, height: 900 } });
 test.describe.configure({ mode: "serial" });
-const SHOTS = "../../docs/screenshots/phase-17";
+const SHOTS = shotsDir("phase-17");
 const DESTINATION = "UI webhook";
 const RULE = "UI failed runs";
 

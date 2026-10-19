@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/multiagent-e2e.sh: the multi-agent example (threads, an asyncio task and a subprocess whose
 // clock is 1.5 s behind) already wrote its run through the SDK into a real API; the built web server on :3104 reads
@@ -10,7 +11,7 @@ const runId = process.env.E2E_MULTIAGENT_RUN_ID;
 const viewerToken = process.env.E2E_VIEWER_SESSION_TOKEN;
 test.skip(!runId || !viewerToken, "needs scripts/multiagent-e2e.sh");
 test.use({ baseURL: "http://localhost:3104", viewport: { width: 1400, height: 1000 } });
-const SHOTS = "../../docs/screenshots/phase-9";
+const SHOTS = shotsDir("phase-9");
 const COMMAND = "pytest -q"; // the tester's shell command: a content attribute a VIEWER must not see
 const WITHHELD = "content withheld for your role";
 

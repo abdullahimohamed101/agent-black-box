@@ -1,12 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 14 step 4 (fixtures mode): the Policies settings page. The project policy (version 3) is never changed here, so
 // the specs can run in parallel against one fixture server; the one test that publishes uses the workspace policy.
 const PAGE = "/w/demo/settings/policies";
 const PROJECT = `${PAGE}?project=demo`;
-const SHOTS = "../../docs/screenshots/phase-14";
+const SHOTS = shotsDir("phase-14");
 
 async function axe(page: Page) {
   await settleAnimations(page);

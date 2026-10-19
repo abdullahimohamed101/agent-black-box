@@ -1,13 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 17 step 3 (fixtures mode): the Alerts page. The fixture server keeps one in-memory store shared by parallel
 // specs, so tests that write create their own uniquely named items and never depend on counts.
 // Design pass 2 step 5c: Alerts is a tab of Settings (/settings/alerts); the old /alerts address redirects there and keeps ?tab=.
 const PAGE = "/w/demo/settings/alerts";
 const VIEWER = "/w/viewer-only/settings/alerts";
-const SHOTS = "../../docs/screenshots/phase-17";
+const SHOTS = shotsDir("phase-17");
 const uniq = (s: string) =>
   `${s} ${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 

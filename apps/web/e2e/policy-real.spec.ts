@@ -10,6 +10,7 @@ import {
 import { readFileSync } from "node:fs";
 import { settleAnimations } from "./motion";
 import { workspaceHeader } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Phase 14 step 5, API-backed. Runs only through scripts/policy-e2e.sh: a real API and worker, the DEVELOPMENT-ONLY fake OIDC
 // provider, the built web server on :3200 and runs recorded by the real Python SDK against the starter policy. People sign in
@@ -27,7 +28,7 @@ const STATE_FILE = process.env.E2E_STATE;
 test.skip(!WS || !EMAILS.admin || !STATE_FILE, "needs scripts/policy-e2e.sh");
 test.use({ baseURL: "http://localhost:3200", viewport: { width: 1440, height: 900 } });
 test.describe.configure({ mode: "serial" });
-const SHOTS = "../../docs/screenshots/phase-14";
+const SHOTS = shotsDir("phase-14");
 
 type Shared = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 type Gate6 = { admin_only: string; self_ok: string; secret: string; owner_only: string };

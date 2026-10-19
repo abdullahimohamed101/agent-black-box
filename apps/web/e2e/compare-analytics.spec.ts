@@ -1,10 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { shotsDir } from "./shots-dir";
 
 // Phase 22 step 9 (D12): compare opens with the divergence line, analytics opens with where the money was wasted.
 const BASE = "/w/demo/projects/all";
 const VIEWER = "/w/viewer-only/projects/all";
-const SHOTS = "../../docs/screenshots/phase-22/step-9";
+const SHOTS = shotsDir("phase-22/step-9");
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 const COMPARE = (b: string) => `${b}/runs/compare?left=${RUN(11)}&right=${RUN(12)}`;
 

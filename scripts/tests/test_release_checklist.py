@@ -250,6 +250,19 @@ class EveryCheck(unittest.TestCase):
         code, out = run(CLEAN, "shots", extra=ok)
         self.assertEqual(code, 0, out)
 
+    def test_shots_e2e_specs_must_not_name_docs_screenshots(self) -> None:
+        bad = {"apps/web/e2e/x.spec.ts": 'const SHOTS = "../../docs/screenshots/phase-4";\n'}
+        code, out = run(CLEAN, "shots", extra={k: v.encode() for k, v in bad.items()})
+        self.assertEqual(code, 1, out)
+        self.assertIn("apps/web/e2e/x.spec.ts:1", out)
+        ok = {
+            "apps/web/e2e/x.spec.ts": '// pictures used to go to docs/screenshots/phase-4\nimport { shotsDir } from "./shots-dir";\n',
+            "apps/web/e2e/release-shots.spec.ts": 'const OUT = "docs/screenshots/release";\n',
+            "apps/web/e2e/shots-dir.ts": 'const x = "docs/screenshots";\n',
+        }
+        code, out = run(CLEAN, "shots", extra={k: v.encode() for k, v in ok.items()})
+        self.assertEqual(code, 0, out)
+
     def test_claims(self) -> None:
         for text in ("1,234 tests pass.", "Production-ready.", "A SaaS you can trust.", "Run it with --live today."):
             code, out = run(planted(**{"README.md": text + "\n"}), "claims")

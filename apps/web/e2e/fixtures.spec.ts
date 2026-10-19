@@ -1,13 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { openTab, settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 const BASE = "/w/demo/projects/all";
 // Fixture runs: ten earlier ones, the two coding-agent runs (Phase 11) and the blocked run (Phase 22 review P1-3).
 const RUN_COUNT = 18;
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
-const SHOTS = "../../docs/screenshots/phase-4";
-const SHOTS10 = "../../docs/screenshots/phase-10";
+const SHOTS = shotsDir("phase-4");
+const SHOTS10 = shotsDir("phase-10");
 
 async function axe(page: Page) {
   await settleAnimations(page);
@@ -68,7 +69,7 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
 test("search: chips from the server parse, matched column, facets, refusal and keyboard use (fixtures)", async ({
   page,
 }) => {
-  const SHOTS16 = "../../docs/screenshots/phase-16";
+  const SHOTS16 = shotsDir("phase-16");
   await page.goto(`${BASE}/runs`);
   const box = page.getByRole("searchbox", { name: "Search runs" });
   await box.fill("tool:run_migration");
@@ -297,7 +298,7 @@ test("security headers are set and the CSP breaks nothing", async ({ page }) => 
 });
 
 // ---- Phase 9: multi-agent waterfall ----------------------------------------------------------------------------------
-const WSHOTS = "../../docs/screenshots/phase-9";
+const WSHOTS = shotsDir("phase-9");
 
 test("multi-agent waterfall: lanes, nesting under skew, critical path, synchronized selection, keyboard", async ({
   page,
@@ -431,7 +432,7 @@ test("10,000-event run in the waterfall: bounded rows, auto-collapse, zoom stays
 test("evaluations: every state, the judge badge, hostile text as text, and the viewer's withheld view (fixtures)", async ({
   page,
 }) => {
-  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const SHOTS11 = shotsDir("phase-11");
   const alerts: string[] = [];
   page.on("dialog", (d) => {
     alerts.push(d.message());
@@ -509,7 +510,7 @@ test("runs list: pick two runs to compare (fixtures)", async ({ page }) => {
 test("compare: divergence, keyboard, notices and the viewer's metadata-only view (fixtures)", async ({
   page,
 }) => {
-  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const SHOTS11 = shotsDir("phase-11");
   const url = (b: string) => `${b}/runs/compare?left=${RUN(11)}&right=${RUN(12)}`;
   await page.goto(url(BASE));
   await expect(page.getByRole("heading", { name: "Compare", level: 1, exact: true })).toBeVisible();
@@ -555,7 +556,7 @@ test("compare: divergence, keyboard, notices and the viewer's metadata-only view
 test("experiments: list, the control banner, warnings, metrics and forms by role (fixtures)", async ({
   page,
 }) => {
-  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const SHOTS11 = shotsDir("phase-11");
   const alerts: string[] = [];
   page.on("dialog", (d) => {
     alerts.push(d.message());

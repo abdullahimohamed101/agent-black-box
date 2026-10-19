@@ -2,10 +2,11 @@ import { currentSettingsTab } from "./settings";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 19a step 3 (fixtures mode): the Quotas settings page. Figures come from src/fixtures/quotas.ts: agents inside the
 // limit, runs per day near it, events per day at it, artifact storage inside it.
-const SHOTS = "../../docs/screenshots/phase-19a";
+const SHOTS = shotsDir("phase-19a");
 
 async function axe(page: Page) {
   await settleAnimations(page);

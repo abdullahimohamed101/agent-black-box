@@ -431,6 +431,22 @@ def check_shots(tree: Tree) -> list[Hit]:
         size = (tree.root / rel).stat().st_size
         if size > SHOT_MAX_BYTES:
             hits.append(Hit("shots", rel, 0, f"{size // 1024} KB exceeds {SHOT_MAX_BYTES // 1024} KB"))
+    hits += check_shot_writes(tree)
+    return hits
+
+
+# An e2e spec that names docs/screenshots in code writes (or can write) into tracked history on every run (KI-123). Specs go
+# through e2e/shots-dir.ts; release-shots.spec.ts and shots.spec.ts are the two that are skipped unless SHOTS_DIR is set.
+SHOT_WRITE_EXEMPT = ("apps/web/e2e/shots-dir.ts", "apps/web/e2e/release-shots.spec.ts", "apps/web/e2e/shots.spec.ts")
+COMMENT_LINE = re.compile(r"^\s*(//|/\*|\*)")
+
+
+def check_shot_writes(tree: Tree) -> list[Hit]:
+    hits = []
+    for rel in tree.select("apps/web/e2e/*.ts", exclude=SHOT_WRITE_EXEMPT, tests=True):
+        for number, line in enumerate(tree.lines(rel), 1):
+            if "docs/screenshots" in line and not COMMENT_LINE.match(line):
+                hits.append(Hit("shots", rel, number, "a literal docs/screenshots path in an e2e spec; use shotsDir() from ./shots-dir (KI-123)"))
     return hits
 
 
