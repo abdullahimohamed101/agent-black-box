@@ -23,6 +23,10 @@ the schema or the SDK.
    join it; the apps keep their own default network, so databases are unreachable from `edge`. No service publishes a port to
    the host (`ports: !reset []`), because Docker publishes around the host firewall: "no published ports" is the control, the
    firewall is the second layer.
+   *Trust assumption (review P2-1, KI-316):* `edge` is shared by every app on the server, and the API runs with `ABB_TRUST_PROXY=1`,
+   so any container attached to `edge` is trusted like Caddy: it can reach `abb-api`/`abb-web` directly and forge `X-Forwarded-For`.
+   Accepted for a one-owner server whose second app is trusted; the alternative, one edge network per app with Caddy joined to
+   each, is deferred as a design change (KI-316).
 4. **Metrics and admin UIs are never public (D11).** `/metrics` is not routed. Prometheus scrapes `api:8000` over the private
    compose network (this also resolves the plain-HTTP concern of KI-222 by topology). Prometheus and Grafana bind `127.0.0.1`
    and are reached through an SSH tunnel.

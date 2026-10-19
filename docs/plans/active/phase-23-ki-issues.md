@@ -19,9 +19,9 @@ Fix when a measured gap appears: the relay forwards a trusted client address, wi
 ## KI-312: no scripted cut-over to restore a bundle into a hosted install
 Labels: `known-issue`, `S3`
 
-`scripts/hosting-restore-drill.sh` proves a bundle restores into a throwaway database. Repointing `.env` (database URLs, artifact directory) at a restored database on the server is a manual procedure (`docs/runbooks/hosting-operations.md#restoring-onto-a-new-server`) that has not been performed on a real server (`UNVERIFIED (env)`).
+`scripts/hosting-restore-drill.sh` proves a bundle restores into a throwaway database. Restoring onto a replacement server is a hand-run procedure (`docs/runbooks/hosting-operations.md#restoring-onto-a-new-server`: start PostgreSQL, restore into the empty `abb`, `hosting-upgrade.sh`); its commands are exercised by `hosting-backup-e2e` A7.9 on wiped volumes but not on a real server (`UNVERIFIED (env)`).
 
-Fix: perform it once during the owner's gated run (G2), record the commands, then script a promote step or correct the runbook. Target: Phase 23 gate G2.
+Fix: perform it once during the owner's gated run (G2), record the result, then correct the runbook or script it. Target: Phase 23 gate G2.
 
 ## KI-313: hosting rigs are not in CI
 Labels: `known-issue`, `S4`
@@ -39,3 +39,8 @@ Host, backup and certificate alerts exist and are tested, but there is no host d
 Labels: `known-issue`, `S4`
 
 `hosting-verify.sh` follows sign-in, cookies, CSP and streams with raw requests; no browser runs the dashboard's JavaScript behind the proxy (the https cookie behaviour has a browser check in `auth-https-e2e.sh`). A proxy setting that only breaks client-side scripts would not be caught locally. Fix: a Playwright spec in the rig, or one browser pass at the owner's first deployment. Target: Phase 23 gates G1/G2.
+
+## KI-316: the shared `edge` network lets a second app reach this app's API and web directly
+Labels: `known-issue`, `S3`
+
+`api` and `web` join the one shared Docker network `edge` (ADR-178 D10) with `ABB_TRUST_PROXY=1`. Any container of another app on that network can open `abb-api:8000` / `abb-web:3000` without Caddy: the closed paths (`/readyz`, `/metrics`) are reachable from there, and a self-supplied `X-Forwarded-For` is believed (the API trusts the last entry), so per-address throttles can be evaded or used to frame an address. Not reachable from the internet; it is a lateral-movement surface if the second app is compromised. Today the trust assumption is: every container on `edge` is trusted as much as Caddy. Fix: one edge network per app (`edge-abb`, `edge-sf`) with Caddy joined to all of them, plus a `hosting-verify.sh --server` check that nothing foreign is attached to the project's edge network. Target: before a second app is added on a shared server.

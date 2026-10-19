@@ -14,7 +14,7 @@ Never run `docker volume prune` or `docker compose down -v` on the server: both 
 
 Weekly, five minutes, from your machine and the server:
 
-1. `scripts/hosting-verify.sh https://abb.<domain>` from your machine: certificate, headers, closed paths. `scripts/hosting-verify.sh https://abb.<domain> --server` on the server: firewall, ssh, published ports, secrets modes, backup freshness, disk.
+1. `scripts/hosting-verify.sh https://abb.<domain>` from your machine: certificate, headers, closed paths. `sudo scripts/hosting-verify.sh https://abb.<domain> --server` on the server (root is needed for ufw, sshd and fail2ban; without it those are SKIP): firewall, ssh, published ports, secrets modes, backup freshness, disk.
 2. `scripts/hosting-backup.sh --check` prints whether the last complete backup and its off-site copy are fresh (36 hours).
 3. `df -h /` and `docker system df`. Remove dangling images after upgrades with `docker image prune` (dangling only). **Never `docker volume prune`, never `docker compose down -v`**: both delete the database volume.
 4. `sudo journalctl -u unattended-upgrades --since "7 days ago" | tail`, and whether `/var/run/reboot-required` exists (`ls /var/run/reboot-required`). A reboot is safe: every service has `restart: unless-stopped`. Automatic reboots happen at 04:30 only when an update requires one, unless the bootstrap was run with `ABB_AUTO_REBOOT=0`.

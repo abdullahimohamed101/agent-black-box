@@ -62,10 +62,10 @@ about 0.3 GB when running (Grafana is the heavy part; stop it when you are not l
 **ACTION NEEDED (you):** create a Hetzner Cloud account and a project, then a server.
 
 1. Location: your choice. The cheapest are in Germany and Finland; pick the one closest to the people and agents that will use it. The choice cannot be changed later without rebuilding.
-2. Image: **Ubuntu 24.04**. Type: **CX23**. Networking: IPv4 and IPv6 on.
+2. Image: **Ubuntu 24.04**. Type: **CX23**. Networking: IPv4 on (the edge listens on IPv4 only, see step 2).
 3. SSH key: add the **public** half of a key pair you created on your own machine (`ssh-keygen -t ed25519`). Never paste a private key anywhere. Without a key, Hetzner emails a root password; do not use that route.
 4. Optional: tick **Backups** (automatic server backups). They help rebuild the host quickly; they are not a consistent database backup, which is what the nightly bundles are for.
-5. Name it, create it, and note its IPv4 and IPv6 addresses.
+5. Name it, create it, and note its IPv4 address.
 6. **ACTION NEEDED (you):** create a **Cloud Firewall** in the Hetzner project and attach it to the server: allow inbound TCP 22, 80 and 443 (and nothing else). It sits outside the machine, so it still works if a container publishes a port by mistake.
 
 ## Step 2: the domain and DNS
@@ -75,8 +75,9 @@ about 0.3 GB when running (Grafana is the heavy part; stop it when you are not l
 | Type | Name | Value |
 | --- | --- | --- |
 | A | `abb` | the server's IPv4 address |
-| AAAA | `abb` | the server's IPv6 address |
 | CAA (optional) | the domain | `0 issue "letsencrypt.org"` (only that authority may issue for the domain) |
+
+Publish **no AAAA record**: the Caddy edge listens on IPv4 only (`0.0.0.0:80/443`), so an IPv6 address would advertise a listener that does not exist and make IPv6 clients retry before falling back. (IPv6 support is a later change: publish `[::]:80/443` in `deploy/hosting/edge/compose.yml`, then add the record.)
 
 Wait until `dig +short abb.example.org` from your machine shows the address. Caddy asks Let's Encrypt for the certificate on its first start, and it fails (and retries
 with a back-off) if the name does not resolve yet. Do not run a second site on port 80 or 443 on the same machine.
@@ -253,10 +254,10 @@ scripts/hosting-verify.sh https://abb.example.org
 It asserts the certificate and the redirect, HSTS exactly once, a per-request nonce CSP, `/docs`, `/readyz` and `/metrics` closed, cookie attributes, forged `X-Forwarded-For` not evading the throttle, event streams delivering incrementally, the 8 MiB body limit, compression, and flood limits. The same
 script passes 30 assertions against the local rig; against your server it also proves Let's Encrypt, DNS and the real network path.
 
-On the server (checks the host itself: firewall, ssh, published ports, secrets modes, backup freshness, disk, log rotation):
+On the server, **with sudo** (checks the host itself: firewall, ssh, published ports, secrets modes, backup freshness, disk, log rotation). Without root, `ufw`, `sshd -T`, `fail2ban` and `timedatectl` cannot be read and show `SKIP`, which is not a pass:
 
 ```bash
-cd /opt/abb && scripts/hosting-verify.sh https://abb.example.org --server
+cd /opt/abb && sudo scripts/hosting-verify.sh https://abb.example.org --server
 ```
 
 From another machine (what the internet can reach; only 80 and 443 should answer):
@@ -302,6 +303,8 @@ Read the release notes and `git log` between the tags first. Never run `docker v
 
 ## Adding a second app (for example ServerFlow)
 
+**Trust assumption (KI-316):** every container attached to the shared `edge` network can reach Agent BlackBox's `api` and `web` directly, bypassing Caddy's closed paths, and can forge `X-Forwarded-For` (the API trusts it because Caddy is meant to be the only path in). Attach only apps you trust as much as Caddy itself. Per-app edge networks are the planned fix; until then, do not put an untrusted or internet-exposed-and-weakly-maintained app on `edge`.
+
 Each app keeps its own compose project and its own PostgreSQL; only Caddy is shared. Nothing in the ServerFlow repository changes. The example below is a pattern, not something this project applied or tested against ServerFlow.
 
 1. On the server, keep an override file outside the ServerFlow checkout, for example `/opt/serverflow/compose.edge.yml`, that attaches its gateway to the `edge` network under a unique alias, and start ServerFlow with `-f` for its own file and this one:
@@ -318,7 +321,7 @@ Each app keeps its own compose project and its own PostgreSQL; only Caddy is sha
        external: true
    ```
 
-2. **ACTION NEEDED (you):** add a DNS record (A and AAAA) for `sf.example.org`.
+2. **ACTION NEEDED (you):** add a DNS record (A, no AAAA) for `sf.example.org`.
 3. Add one Caddy site file from [`deploy/hosting/edge/serverflow.caddy.example`](../deploy/hosting/edge/serverflow.caddy.example), edit the host name, and reload (validate first; a reload keeps the old configuration if the new one is broken, a restart does not):
 
 ```bash
