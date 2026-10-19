@@ -2493,6 +2493,19 @@
       },
       "DimensionOut": {
         "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set on the dimensions that read findings, when they did: when the analysis they read completed (the state's `computed_at`).",
+            "title": "As Of"
+          },
           "finding_ids": {
             "items": {
               "type": "string"
@@ -2513,6 +2526,12 @@
             "description": "The one sentence that decided the status.",
             "title": "Rule",
             "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "description": "True when `as_of` is the last completed analysis while a newer one is queued or running: events have arrived since.",
+            "title": "Stale",
+            "type": "boolean"
           },
           "status": {
             "enum": [
@@ -7851,12 +7870,19 @@
             "title": "Run Id",
             "type": "string"
           },
+          "server_time": {
+            "description": "The server clock at read time; ages such as `as_of` are measured on it.",
+            "format": "date-time",
+            "title": "Server Time",
+            "type": "string"
+          },
           "state": {
             "$ref": "#/components/schemas/FindingsState"
           }
         },
         "required": [
           "run_id",
+          "server_time",
           "state",
           "health",
           "items"

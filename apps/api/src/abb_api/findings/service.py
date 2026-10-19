@@ -1,9 +1,11 @@
 """Findings read use case: visibility through the run service, then derived rows and health."""
 
+from datetime import datetime
 from decimal import Decimal
 
 from abb_event_schema.enums import RunStatus
 from abb_event_schema.ids import IdKind, from_uuid
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from abb_api.authz.principal import Principal
@@ -87,6 +89,18 @@ def _status(stored: RunFindingsState | None, job_state: str) -> FindingsStateNam
     return "outdated" if stored.detectors_version < DETECTORS_VERSION else "current"
 
 
+def _borrowable_as_of(
+    stored: RunFindingsState | None, status: FindingsStateName
+) -> datetime | None:
+    """KI-097 / ADR-174: while a newer analysis is queued or running, an earlier completed one of
+    the current rules is still the best available reading. Results of older rules are not."""
+    if status == "current":
+        return stored.computed_at if stored else None
+    if status == "processing" and stored and stored.detectors_version >= DETECTORS_VERSION:
+        return stored.computed_at
+    return None
+
+
 class FindingsService:
     def __init__(self, engine: AsyncEngine, runs: RunService) -> None:
         self._engine = engine
@@ -99,6 +113,7 @@ class FindingsService:
             stored, rows = await FindingsRepository(conn, principal.tenant).for_run(record.id)
             job_state = (await queries.job_states([record.id], DETECT_FINDINGS))[record.id]
             inputs = await queries.findings_inputs(record.id)
+            server_time: datetime = (await conn.execute(select(func.now()))).scalar_one()
         status = _status(stored, job_state)
         items = [_finding_out(r) for r in rows]
         report = health(
@@ -109,9 +124,11 @@ class FindingsService:
             ),
             [FindingRef(i.id, i.finding_type, Severity(i.severity)) for i in items],
             status,
+            as_of=_borrowable_as_of(stored, status),
         )
         return RunFindingsOut(
             run_id=from_uuid(IdKind.RUN, record.id),
+            server_time=server_time,
             state=FindingsState(
                 status=status,
                 detectors_version=stored.detectors_version if stored else None,
@@ -129,6 +146,8 @@ class FindingsService:
                         inputs=dict(d.inputs),
                         rule=d.rule,
                         finding_ids=list(d.finding_ids),
+                        as_of=d.as_of,
+                        stale=d.stale,
                     )
                     for d in report.dimensions
                 ],

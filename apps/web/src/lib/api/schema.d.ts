@@ -2543,6 +2543,11 @@ export interface components {
         };
         /** DimensionOut */
         DimensionOut: {
+            /**
+             * As Of
+             * @description Set on the dimensions that read findings, when they did: when the analysis they read completed (the state's `computed_at`).
+             */
+            as_of?: string | null;
             /** Finding Ids */
             finding_ids: string[];
             /** Inputs */
@@ -2556,6 +2561,12 @@ export interface components {
              * @description The one sentence that decided the status.
              */
             rule: string;
+            /**
+             * Stale
+             * @description True when `as_of` is the last completed analysis while a newer one is queued or running: events have arrived since.
+             * @default false
+             */
+            stale: boolean;
             /**
              * Status
              * @enum {string}
@@ -4656,6 +4667,12 @@ export interface components {
             items: components["schemas"]["FindingOut"][];
             /** Run Id */
             run_id: string;
+            /**
+             * Server Time
+             * Format: date-time
+             * @description The server clock at read time; ages such as `as_of` are measured on it.
+             */
+            server_time: string;
             state: components["schemas"]["FindingsState"];
         };
         /** RunOut */
