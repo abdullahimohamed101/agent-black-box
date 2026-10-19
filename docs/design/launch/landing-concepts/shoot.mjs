@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const require = createRequire("/Users/abdullahimohamed/Projects/agent-black-box/apps/web/package.json");
+const require = createRequire(new URL("../../../../apps/web/package.json", import.meta.url));
 const { chromium } = require("@playwright/test");
 const here = path.dirname(fileURLToPath(import.meta.url));
 const names = process.argv.slice(2).length ? process.argv.slice(2) : ["concept-a", "concept-b"];
