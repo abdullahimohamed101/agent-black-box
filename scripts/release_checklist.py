@@ -48,6 +48,7 @@ class Hit:
     line: int
     detail: str
     gated: bool = False
+    value: str = ""  # the matched secret-shaped text; never printed, only judged by `~synthetic` allow-list entries
 
     def __str__(self) -> str:
         return f"{self.path}:{self.line}: {self.detail}"
@@ -124,9 +125,30 @@ def load_allow(root: Path) -> list[Allow]:
     return entries
 
 
+SYNTHETIC_NEEDLE = "~synthetic"
+SYNTHETIC_MARKERS = re.compile(
+    r"example|fake|dummy|sample|xxxx|aaaa|0000|1234|abc|redact|secret|s3cr3t|placeholder|not[-_]?a[-_]?key|bogus|canary|invalid|mock"
+    r"|sentinel|hunter2|planted|leak|demo|tokenvalue|body|[{}$<>%]",
+    re.I,
+)
+
+
+def looks_synthetic(value: str) -> bool:
+    """A marker word, a template placeholder, or a value too repetitive to be a real credential."""
+    return bool(SYNTHETIC_MARKERS.search(value)) or len(set(value)) <= 8 or re.search(r"(.)\1{5,}", value) is not None
+
+
 def allowed(entries: list[Allow], hit: Hit, text: str) -> bool:
     for e in entries:
-        if e.check == hit.check and fnmatch.fnmatch(hit.path, e.glob) and (e.needle == "*" or e.needle in text):
+        if e.check != hit.check or not fnmatch.fnmatch(hit.path, e.glob):
+            continue
+        if e.needle == SYNTHETIC_NEEDLE:
+            # A planted fake, not a leak: only a matched value that announces itself as synthetic is exempt, so a real key
+            # pasted into the same file is still reported.
+            if hit.value and looks_synthetic(hit.value):
+                e.used = True
+                return True
+        elif e.needle == "*" or e.needle in text:
             e.used = True
             return True
     return False
@@ -226,7 +248,9 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
 SECRET_SKIP = ("*pnpm-lock.yaml", "*uv.lock", "*package-lock.json", "*.svg", "*.min.js", "*.map")
 SECRET_FILE_NAMES = re.compile(r"(^|/)(\.env(\..*)?|.*\.(pem|key|p12|pfx|jks)|id_(rsa|ed25519|ecdsa))$")
 # A password inside a connection string that is an obvious local default is not a leak.
-LOCAL_URL_PASSWORDS = {"abb_dev_password", "password", "postgres", "changeme", "secret", "example"}
+LOCAL_URL_PASSWORDS = {
+    "abb_dev_password", "abb_runtime_dev_password", "abb_retention_dev_password", "password", "postgres", "changeme", "secret", "example",
+}  # fmt: skip
 
 
 def check_secrets(tree: Tree) -> list[Hit]:
@@ -247,7 +271,10 @@ def check_secrets(tree: Tree) -> list[Hit]:
                     password = re.split(r"[:@]", match.group(0).split("://", 1)[1])[1]
                     if password.lower() in LOCAL_URL_PASSWORDS or password.startswith(("$", "{", "<", "%")):
                         continue
-                hits.append(Hit("secrets", rel, number, f"{kind}-shaped string"))
+                value = match.group(0)
+                if kind == "private key block":  # the header alone says nothing; judge the body on the next lines
+                    value = " ".join(tree.lines(rel)[number - 1 : number + 2])
+                hits.append(Hit("secrets", rel, number, f"{kind}-shaped string", value=value))
                 break
     return hits
 

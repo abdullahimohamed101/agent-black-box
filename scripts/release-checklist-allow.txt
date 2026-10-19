@@ -17,18 +17,23 @@ debug | apps/api/src/abb_api/openapi.py | * | the OpenAPI generator CLI prints a
 debug | apps/api/src/abb_api/retention/runner.py | * | retention worker CLI prints counters (reset=N), never event bodies
 debug | packages/event-schema/src/abb_event_schema/export.py | * | schema export CLI prints the stale-file list to stderr
 
-# --- secrets: synthetic fixtures. Every value below is a made-up string whose purpose is to be detected -------
-secrets | .env.example | * | documented local-only development credentials (docs/development/setup.md); the file is the template, never a real .env
-secrets | apps/*/tests/* | * | planted fake secrets that the redactor and scanner tests must detect
-secrets | packages/*/tests/* | * | planted fake secrets that the redaction tests must detect
-secrets | docs/plans/completed/* | * | review notes quoting the synthetic test fixtures by shape
+# --- secrets: synthetic fixtures. `~synthetic` exempts a hit only when the matched value announces itself as made up (marker word, template placeholder, repetition; see release_checklist.py looks_synthetic), so a real key pasted into the same file is still reported. -
+secrets | apps/*/tests/* | ~synthetic | planted fake secrets that the redactor and scanner tests must detect
+secrets | packages/*/tests/* | ~synthetic | planted fake secrets that the redaction tests must detect
+secrets | docs/plans/completed/* | ~synthetic | review notes quoting the synthetic test fixtures by shape
+secrets | docs/plans/completed/phase-11-code-review.md | 3364dbcd8d5f | a throwaway test database name that has the shape of an API key
+secrets | apps/api/tests/test_security_scanner.py | Sup3rS3cret | the made-up password the scanner test must redact
+secrets | apps/api/tests/test_security_scanner.py | spaced("-----BEGIN | the begin-marker evasion case: a header with no key body
+secrets | apps/api/tests/test_security_scanner_parity.py | dBjftJeZ4CVPmB92K27uh | the public jwt.io sample token (signature of a made-up secret)
+secrets | packages/sdk-python/tests/test_redaction.py | dBjftJeZ4CVPmB92K27uh | the public jwt.io sample token
+secrets | examples/coding-agent/repo_template/tests/test_session.py | c2lnbmF0dXJlLXZhbHVlLWhlcmU | the demo repo's fake token (base64 of "signature-value-here")
 secrets | docs/architecture/agent-black-box-spec.md | prj_abc | the spec's example key format with a placeholder secret part
-secrets | examples/coding-agent/coding_agent/workspace.py | * | the demo workspace plants fake credentials (AWS docs example key, fake PEM) so the redaction demo has something to redact
+secrets | examples/coding-agent/coding_agent/workspace.py | ~synthetic | the demo workspace plants fake credentials (AWS docs example key, fake PEM) so the redaction demo has something to redact
 secrets | examples/multi-agent/multi_agent/planner.py | AKIA | the AWS documentation example key, planted for the redaction demo
-secrets | examples/*/tests/* | * | example test fixtures with fake credentials for the redaction demo
-secrets | integrations/conformance/src/abb_conformance/* | * | conformance fixtures use obviously fake keys
-secrets | scripts/hardening_e2e_limits.py | * | e2e script asserts a malformed key is rejected; the value is fake
-secrets | scripts/security_e2e_*.py | * | e2e scripts plant fake secrets to prove they are redacted
+secrets | examples/*/tests/* | ~synthetic | example test fixtures with fake credentials for the redaction demo
+secrets | integrations/conformance/src/abb_conformance/* | ~synthetic | conformance fixtures use obviously fake keys
+secrets | scripts/hardening_e2e_limits.py | ~synthetic | e2e script asserts a malformed key is rejected; the value is fake
+secrets | scripts/security_e2e_*.py | ~synthetic | e2e scripts plant fake secrets to prove they are redacted
 secrets | scripts/smoke.sh | abb_live_aaaa | smoke test sends an intentionally invalid key to prove a 401
 
 # --- claims ---------------------------------------------------------------------------------------------------

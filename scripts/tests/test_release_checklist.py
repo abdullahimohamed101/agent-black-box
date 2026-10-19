@@ -137,6 +137,30 @@ class EveryCheck(unittest.TestCase):
             self.assertIn("src/config.py:1", out)
             self.assertNotIn(value, out, "the matched value must never be printed")
 
+    def test_synthetic_allow_entries_exempt_fakes_but_not_a_real_looking_key(self) -> None:
+        fake = "AKIA" + "IOSFODNN7EXAMPLE"
+        real = "AKIA" + "Q3XK7ZP2LM9WV4HT"  # no marker word, no repetition: shaped like a real key
+        allow = {"scripts/release-checklist-allow.txt": "secrets | apps/api/tests/* | ~synthetic | planted fakes\n"}
+        code, out = run(planted(**allow, **{"apps/api/tests/test_a.py": f'KEY = "{fake}"\n'}), "secrets")
+        self.assertEqual(code, 0, out)
+        code, out = run(planted(**allow, **{"apps/api/tests/test_a.py": f'KEY = "{fake}"\nREAL = "{real}"\n'}), "secrets")
+        self.assertEqual(code, 1, out)
+        self.assertIn("test_a.py:2", out)
+        self.assertNotIn(real, out)
+        # the exemption is for the listed paths only
+        code, out = run(planted(**allow, **{"docs/runbooks/a.md": f"{fake}\n"}), "secrets")
+        self.assertEqual(code, 1, out)
+
+    def test_a_pasted_pem_with_a_real_body_is_reported_in_a_synthetic_path(self) -> None:
+        allow = {"scripts/release-checklist-allow.txt": "secrets | apps/api/tests/* | ~synthetic | planted fakes\n"}
+        header = "-----BEGIN " + "PRIVATE KEY-----"
+        body = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj"
+        code, out = run(planted(**allow, **{"apps/api/tests/k.py": f"{header}\n{body}\n"}), "secrets")
+        self.assertEqual(code, 1, out)
+        fake = f"{header}\nFAKEKEYBODY\n"
+        code, out = run(planted(**allow, **{"apps/api/tests/k.py": fake}), "secrets")
+        self.assertEqual(code, 0, out)
+
     def test_secret_files(self) -> None:
         for name in (".env", "deploy/server.pem", "id_rsa"):
             code, out = run(planted(**{name: "x\n"}), "secrets")
