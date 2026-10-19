@@ -1,10 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 19b step 3 (fixtures mode): a run page in each trace state, the runs list marker and the honest words for a run
 // that is gone. The two runs come from src/fixtures/traceStateRuns.ts: 90 is expired, 91 is being deleted.
-const SHOTS = "../../docs/screenshots/phase-19b";
+const SHOTS = shotsDir("phase-19b");
 const run = (n: number) => `/w/demo/projects/all/runs/run_${String(n).padStart(26, "0")}`;
 const EXPIRED = run(90);
 const DELETING = run(91);

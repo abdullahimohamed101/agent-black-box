@@ -79,14 +79,16 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
   `apps/api/tests/test_event_costs.py` (per-event cost equals the run summary, one lookup per page, workspace scoping, index plan) and `tests/authz/test_content_withheld.py` (identical for every role).
 
 ### UI shell and design pass (Phase 21)
-- **Design contract** (`apps/web/e2e/design.spec.ts`, fixtures build, port 3100): frame geometry at 1440x900 (rail 224 px, top bar 44 px, `main` to the viewport edge), axe (WCAG A/AA, no serious or critical) on 11 routes in both colour
+- **Design contract** (`apps/web/e2e/design.spec.ts`, fixtures build, port 3100): frame geometry at 1440x900 (one 44 px top bar across the width and no rail since ADR-166, `main` to the viewport edge), axe (WCAG A/AA, no serious or critical) on 11 routes in both colour
   schemes, 375 px with no horizontal scroll, the status grammar (one red and one amber element in a failed run's header, radius and shadow scans), the run work area (no document scroll, header at most 190 px, pane at least 480 px beside the
   inspector, 10,000-event DOM bound), the inspector (flush right, overlay on a phone), the Evidence view (including the viewer: no command text, no `[withheld]`), the runs list, fonts and no third-party request, and the motion layer:
   with `reducedMotion: "reduce"` `document.getAnimations().length === 0` after load, after opening the inspector and after a view switch; with motion on, nothing animates on first paint on any route, the inspector transition is 180 ms,
   a hovered row 120 ms and `0s` while the keyboard drives the list. The Phase 21 polish checks (one-row class toolbar at 1440 and 1280, one story marker, the folded context strip, clamped agents, tab counts) live here too.
 - **Screenshots** (`apps/web/e2e/shots.spec.ts`): skipped unless `SHOTS_DIR=before|after` is set, so `test:e2e` never rewrites committed files. `SHOTS_DIR=after pnpm exec playwright test e2e/shots.spec.ts` regenerates the 21 pictures in
   `docs/screenshots/phase-21/after/` (1x scale, to match the committed `before/` set).
+- **Screenshot destination (KI-123, Phase 20)**: every spec writes its evidence pictures through `shotsDir("phase-N")` (`apps/web/e2e/shots-dir.ts`). Without `SHOTS_DIR` they go to the git-ignored `apps/web/test-results/shots/phase-N/`, so a normal `pnpm test:e2e` leaves `git status --short docs/screenshots` empty. To refresh the tracked history deliberately, point the run at the folder: `SHOTS_DIR=../../docs/screenshots pnpm test:e2e <spec>` (a path; the bare `before|after` value belongs to `shots.spec.ts` only, run that spec on its own). `release-shots.spec.ts` (`scripts/screenshots.sh`) and `shots.spec.ts` stay skipped unless `SHOTS_DIR` is set. `python3 scripts/release_checklist.py shots` fails if any other e2e spec names `docs/screenshots` in code (planted-violation test in `scripts/tests/test_release_checklist.py`); unit test: `apps/web/tests/shots-dir.test.ts`.
 - **Web unit** additions: `tokens.test.ts` (every text role at least 4.5:1 on every background, both schemes), `app-shell.test.tsx`, `run-header.test.tsx`, `run-layout.test.tsx`, `runs-header.test.tsx`, `evidence.test.ts(x)`.
+- **Landing site** (`scripts/check-site.sh`): the timing numbers of its `perf` check (LCP, long tasks, time to interactive under CPU x4) are ADVISORY: printed, never failing, because shared runners are too noisy to gate on absolute milliseconds; `SITE_PERF_STRICT=1` gates them locally. Layout shift, size, requests, console errors and axe remain gates; a console warning is printed unless it concerns a failed or blocked request.
 - Under heavy machine load (load average above 10) a few timing-sensitive tests flake without a code change: `waterfall-perf`, `coding.spec` "~220 KB log" (a `waitForTimeout(100)` race), `stream.spec` p95 latency (30 s test timeout), `findings.spec`. Re-run once; a flake that repeats is a bug.
 
 ### Auth, workspaces and RBAC (Phase 15)
@@ -180,8 +182,25 @@ holds test data.
   server-side scan (`scripts/coding_e2e_check.py`) searches events, `artifacts.name/kind/uri` and every artifact file for the planted
   secrets; Playwright (`apps/web/e2e/coding.spec.ts`, web on :3140) checks the story, diff, lazy shell output, chunked loading and that no
   planted secret reaches any page or API response. The script refuses to start if the port is already serving and kills the whole
-  process tree on exit. **The Playwright spec writes screenshots into the tracked `docs/screenshots/phase-6/`**: commit them when they changed
-  meaningfully, otherwise `git checkout` them. Example tests: `uv run --project packages/sdk-python pytest examples/coding-agent/tests`.
+  process tree on exit. The Playwright spec writes its screenshots to the scratch folder unless `SHOTS_DIR` is set (see "Screenshot destination"). Example tests: `uv run --project packages/sdk-python pytest examples/coding-agent/tests`.
+
+### Demo determinism (Phase 20, D9)
+- **Demo E2E** (`make demo-e2e`, `scripts/demo-e2e.sh`, CI job `demo-e2e`): dedicated `abb_demo_e2e` database, API (:8170) and a worker started by the
+  script; `scripts/demo.sh` (what `make demo` runs) is executed twice against it with `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` planted to prove they are
+  scrubbed. `scripts/demo_e2e_check.py summarise` waits (bounded polls, no wall-clock assertions) until each of the twelve runs is derived and reduces it to
+  what the agents did: status, agents and parents, per-agent call and error counts, token and cost totals, event counts by agent, type and status, spans by
+  agent, kind, name, status and parent, findings (type, kind, severity, confidence) and health statuses. Ids, timestamps, durations and anything that depends on
+  thread timing are left out; the two summaries must be equal (`demo run 1 == demo run 2 (normalised)`). The script also checks the demo key file is owner-only
+  and no model key reaches the demo output. Not covered here: the web pages of the printed run URLs (they need sign-in; the run pages are covered by the other
+  browser E2E suites) and any `--live` mode, which the project has never run (KI-044).
+  It also asserts the data the demo video needs (`scripts/demo_e2e_check.py asks` and `approvals`; docs/design/launch/video-brief.md section 6): at least twelve runs and three failed ones, a failed support run whose first error is a one-word type at step 9 or earlier with a retry after it, critical and warning findings on it, a retry-storm finding, five agents with short names in the multi-agent run, a run waiting for approval with hours left on the request, security findings for a destructive command, a secret file read and risky git, plain run names and no real model name. The waiting agent needs development sign-in sessions on the API (the script turns them on for its own throwaway API).
+- `make demo-reset` is a dry run; `make demo-reset CONFIRM=1` runs `purge-project` for the fixed project `abb-demo` of workspace `local` and nothing else.
+
+### Demo video (Phase 20, G1)
+- **Unit tests** of the recorder's pure parts: `node --test scripts/` (`scripts/record-demo-lib.test.mjs`: bezier easing, travel, camera origin, the caption timing rule, WebVTT/SRT, the frame list). No browser, no stack.
+- **Plan check without a browser:** `node scripts/record-demo.mjs --plan` (also `--cut=teaser`, and with `RELEASE_CLAIMS=1`) prints the beats and cues, writes and re-parses `demo.vtt`, and fails if a caption breaks the brief's rules (nine words, the reading rule, 250 ms gaps, none across a cut, none that says live/production/SaaS/enterprise, and captions 25/26/28 or the open-source line without `RELEASE_CLAIMS=1`).
+- **A real recording** needs a demo-seeded stack of its own: `scripts/demo-stack.sh up` (API :8180, worker, production build of `apps/web` on :3180, database `abb_demo_video` on the Postgres that `ABB_DATABASE_URL` names; refuses to start when a port is taken; never touches the dev stack), then `node scripts/record-demo.mjs`, `scripts/encode-demo.sh <take>` and `node scripts/video-qa.mjs <take>` (add `--compare <other take>` for determinism). Output goes to the gitignored `video-out/`. The QA writes its frames to `<take>/qa/` for a human to look at; `docs/design/launch/video-qa-report.md` records the take that was checked.
+- Not in CI: it needs Chrome, ffmpeg and about 450 MB of frames per take.
 
 ### Server-side redaction and capture modes (Phase 13 step 1, ADR-130)
 - `apps/api/tests/test_security_scanner.py`: one sample per kind, near misses, unicode, NUL/escape splitting, idempotence, size and time budgets, and 22 hostile
@@ -238,7 +257,7 @@ holds test data.
   coding helpers (a test executes `policies/mapping.py` and compares), robustness (a 120-draw exception fuzz per scenario, 32 threads, hostile arguments, 26 mutations of the defences), the https path. Adapters:
   `abb_conformance.check_guarded_tool`, the MCP tests; the demo: `examples/coding-agent/tests/test_policy_demo.py` against a fake server.
 - **Web** (`apps/web/tests/{policies-settings,approvals-page,policy-run,policy-lib,policy-proxy,policy-fixtures,policy-css}*`, fixtures Playwright `approvals`, `policies`, `policy-run` specs): the Policies settings page (line and
-  column messages, history, diff, dry run, conflict), the Approvals page and rail count, decisions on the run page, in light and dark, at 1440 and 375 px.
+  column messages, history, diff, dry run, conflict), the Approvals page and its top-bar count (the rail was removed by ADR-166), decisions on the run page, in light and dark, at 1440 and 375 px.
 
 ### Policy end to end (Phase 14 step 5, gates 1-8)
 - **Policy E2E** (`make policy-e2e`, `scripts/policy-e2e.sh`, CI job `policy-e2e`): dedicated `abb_policy_e2e` database (`POLICY_E2E_DB_NAME`), API (:8200), a SECOND API process on :8202 (same database; the checks stop and restart it by the PID of the

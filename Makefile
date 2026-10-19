@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e backup restore backup-verify rotate-alert-keys
+.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e demo demo-reset demo-e2e site site-check auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -87,6 +87,26 @@ typecheck:
 # (owner-only file, gitignored). Safe to repeat; it keeps a still-valid key.
 seed:
 	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && ABB_ALLOW_DEV_SESSIONS=1 uv run python -m abb_api.cli seed --key-file $(CURDIR)/.local/dev-api-key
+
+# Record the scripted example agents (coding, custom, multi-agent; no API key) into the running stack (`make dev` or `make up`).
+# Own project `abb-demo`; `make demo-reset` is a dry run, `make demo-reset CONFIRM=1` permanently removes only that project.
+demo:
+	scripts/demo.sh
+
+demo-reset:
+	scripts/demo.sh reset $(if $(CONFIRM),--confirm)
+
+# The demo twice on a throwaway database; the normalised summaries must be identical (docs/TESTING.md "Demo determinism").
+demo-e2e:
+	scripts/demo-e2e.sh
+
+# The landing page (Phase 20): `make site` builds the static export into site/out (deployed under /agent-black-box/);
+# `make site-check` builds it and runs every check (scripts/check-site.sh --help lists them; --only NAME runs one).
+site:
+	pnpm --filter @abb/site build
+
+site-check:
+	scripts/check-site.sh
 
 # Regenerate the committed JSON Schema and TypeScript types from the Pydantic models.
 schema:

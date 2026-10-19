@@ -237,6 +237,7 @@ Built as: destinations and rules as separate objects with sealed secrets (ADR-15
 Load tests with realistic payloads first. Each migration (Go ingest, Kafka, ClickHouse, Redis,
 object storage, Kubernetes) requires its §57 trigger measured in `docs/benchmarks/` and an ADR.
 Expect this phase to conclude "not yet" for most items.
+**Status: Deferred** (no §57 trigger has been measured; unchanged by Phase 20).
 
 ## Phase 19 - Production hardening
 **Status: Completed** (19a #186, 19b #206, 19c #207, all merged by 2026-10-16).
@@ -253,9 +254,11 @@ Split into three parts, each with its own plan, review and PR (decided 2026-10-1
 - **19c - Operability. Status: Completed (merged 2026-10-16, PR #207, merge 822e2a0).** Metrics registry and authenticated `/metrics` (ADR-165), domain metrics and scrape-time gauges (ADR-168), readiness, statement timeout, database breaker and failed-session throttle (ADR-169), log schema and optional OpenTelemetry (ADR-170), SLO rules, Grafana dashboard, `observability` compose profile and the missing runbooks (ADR-171), supply-chain pins and lockfile audits (ADR-173), migration 0106. Plan with closing evidence for the nine gates: `docs/plans/completed/phase-19c-operability.md`; adversarial review with a security pass: `docs/plans/completed/phase-19c-code-review.md`; `make obs-e2e` (215 checks, real promtool, Prometheus and Grafana); benchmarks `docs/benchmarks/phase-19c-*.md`. Resolved KI-024, 060, 176, 183, 237; new rows KI-220..223, 225..249, 260..270 (filed on GitHub). Dependabot configuration UNVERIFIED (env) until its first scheduled run (KI-267).
 
 ## Design pass 2 (inserted before Phase 20)
-**Status: In progress** on branch `feature/design-pass-2` (direction 'One Red Line'; `docs/design/design-pass-2-*.md`; the PR will carry it). Added after the user's note that the UI looked convoluted: a second pass over the product's look and information density, ahead of the demo and release-quality work in Phase 20.
+**Status: Merged into `main`** (direction 'One Red Line', ADR-166; `docs/design/pass-2/`; review `docs/plans/completed/design-pass-2-review.md`). Added after the user's note that the UI looked convoluted: a second pass over the product's look and information density, ahead of the demo and release-quality work in Phase 20.
 
 ## Phase 20 - Demo, docs, release quality
+**Status: Completed pending merge** (2026-10-19; plan with closing evidence in `docs/plans/completed/phase-20-release-polish.md`, PR text in `docs/plans/completed/phase-20-pr-description.md`; branch `feature/phase-20-release-polish`, not pushed). Parked by the owner: publication (G2: README claims, Pages, public repository, tag, packages) and the demo video's claims-variant and site embedding. `scripts/quality.sh full` and the rendered-app crawl (KI-306) are `UNVERIFIED (env)`. The planned hosting guide (see "Private hosting") stays Planned; Phase 18 stays deferred. Target: a public open-source launch (Apache-2.0). Decided by the user: static landing page in `site/` (D2), KI-097 fixed by throttling `detect_findings` and showing the last result with its age (D3), scripted deterministic examples and `make demo` with an optional `--live` (D4), the placeholder pulse glyph as launch mark (D5), Apache-2.0 plus contributing, conduct, security and templates (D6). 18 build steps; the demo recording and publication are gated final steps (G1, G2). The hosting guide stays a separate later plan.
+
 README with screenshots, architecture, quickstart, SDK/API/events/deployment/security/ops/
 troubleshooting docs, three examples (coding, simple custom, multi-agent), deterministic seed
 data (`make demo`), short demo recording, release polish checklist (no placeholder text, broken
@@ -266,7 +269,7 @@ routes, fake charts, debug logging, or secrets).
 Added at the user's request ("go with your recommendation"). The design pass has a plan (Phase 21, below); hosting has none yet.
 
 - **UI design pass: Phase 21, "UI application shell and design pass". Status: Completed (merged 2026-10-12, PR #119; plan in `docs/plans/completed/`).** Plan: `docs/plans/completed/phase-21-ui-shell-and-design-pass.md`; direction, palette, type and
-  motion spec: `docs/design/ui-direction.md`; concept renders: `docs/design/concepts/`; demo video storyboard: `docs/design/video-storyboard.md`. The UI today is a centred
+  motion spec: `docs/design/ui-direction.md`; concept renders: `docs/design/concepts/`; demo video storyboard: `docs/design/video-storyboard.md`. **Historical (superseded by ADR-166, design pass 2, merged): the rail, the "Overview" label and the layout described below are the Phase 21 record; the application now has one 44 px top bar and no rail.** The UI at the time was a centred
   document under a top bar (`.shell main { max-width: 80rem }`): functional, accessible and unbranded. The pass turns it into an application: a persistent rail, a search
   slot, a sticky instrument-style run header, tabs, full-width content and a right inspector in place of the overlay drawer. Aesthetic: "flight-deck instrument panel".
   **Decided 2026-10-11 (the user accepted the recommendations):** (1) it lands after Phases 10, 16 and 11 have merged, because they all edit RunDetail.tsx, RunsTable.tsx and the

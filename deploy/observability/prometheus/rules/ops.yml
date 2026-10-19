@@ -25,7 +25,7 @@ groups:
         labels:
           severity: page
         annotations:
-          summary: "A scrape target of Agent Black Box is down"
+          summary: "A scrape target of Agent BlackBox is down"
           description: >-
             Prometheus cannot scrape {{ $labels.job }} on {{ $labels.instance }} (down, wrong token,
             or a 429 because the scrape bucket was spent). 3 minutes is 12 missed scrapes at 15 s:

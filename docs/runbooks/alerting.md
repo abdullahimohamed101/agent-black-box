@@ -29,8 +29,8 @@ times and a link back to the app. **It never carries captured content**: no path
    the sealed targets cannot be opened and delivery fails closed (`config_unreadable`).
 2. **Email (optional).** Set `ABB_SMTP_HOST`, `ABB_SMTP_FROM` and, if the relay needs it, `ABB_SMTP_PORT` (587), `ABB_SMTP_USERNAME` and `ABB_SMTP_PASSWORD` in the API **and the worker** environment
    (the password only ever comes from the environment). STARTTLS is on by default and fails closed (a relay that does not offer it receives nothing); `ABB_SMTP_STARTTLS=false` is for a relay on a
-   trusted local network only. Without `ABB_SMTP_HOST` an email destination cannot be created and the Alerts page says why. `ABB_WEB_ORIGIN` must be set or alerts carry no link.
-3. **Destinations** (Alerts page, Destinations tab; owners and admins). A webhook or Slack incoming-webhook URL must be **HTTPS** and a public address; an email destination takes up to 10 recipients.
+   trusted local network only. Without `ABB_SMTP_HOST` an email destination cannot be created and the Alerts tab of Settings says why. `ABB_WEB_ORIGIN` must be set or alerts carry no link.
+3. **Destinations** (Settings, Alerts, Destinations tab; owners and admins). A webhook or Slack incoming-webhook URL must be **HTTPS** and a public address; an email destination takes up to 10 recipients.
    Creating a webhook shows the **signing secret once** (copy it into the receiver now; it cannot be shown again, only rotated). Use **Send test**: it sends a fixed `test` alert through the same sender,
    changes nothing about the destination's health and is not listed in History.
 4. **Rules** (Rules tab). One trigger, its filters (project, optional agent, minimum severity or run statuses, lead time before expiry, or the daily spend threshold), one or more destinations and an
@@ -59,7 +59,7 @@ A Slack destination needs no secret (the incoming-webhook URL is the secret). Th
 
 ## Reading the delivery log and dead letters
 
-Alerts page, History tab (or `GET /v1/alerts/notifications`; owners and admins also filter by destination). Status `pending` with attempts above zero is waiting for a retry; `delivered`; `skipped` with
+Settings, Alerts, History tab (or `GET /v1/alerts/notifications`; owners and admins also filter by destination). Status `pending` with attempts above zero is waiting for a retry; `delivered`; `skipped` with
 a reason (`cooldown`, `destination_paused`, `destination_deleted`, `rule_deleted`, `rate_limited`, `daily_cap`); `dead`. The fixed `error_code` tells what to fix; the response body is never stored.
 
 | error_code | what it means | what to do |

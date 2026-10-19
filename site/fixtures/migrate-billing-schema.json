@@ -1,0 +1,270 @@
+{
+  "$comment": "The 15 events of the demo's failing run 'Migrate billing schema', in the canonical event-in shape (packages/event-schema). The page shows the nine listed in `shown`. scripts/check-site.sh fixture validates every event with the schema package and recomputes the figures.",
+  "title": "Migrate billing schema",
+  "project": "billing-agent",
+  "started_at": "2026-10-07T09:30:00.000Z",
+  "shown": [
+    1,
+    2,
+    3,
+    5,
+    6,
+    7,
+    8,
+    9,
+    15
+  ],
+  "figures": {
+    "duration": "14 s",
+    "cost": "$0.0356",
+    "tokens": "4,900 in / 460 out",
+    "retries": 2,
+    "errors": 4
+  },
+  "events": [
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000001",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "run.started",
+      "occurred_at": "2026-10-07T09:30:00.000Z",
+      "sequence": 1,
+      "attributes": {
+        "run.name": "Migrate billing schema"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000002",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "agent.started",
+      "occurred_at": "2026-10-07T09:30:00.100Z",
+      "sequence": 2,
+      "span_id": "spn_01J90000000000000000000001",
+      "attributes": {}
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000003",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "file.read",
+      "occurred_at": "2026-10-07T09:30:00.500Z",
+      "sequence": 3,
+      "attributes": {
+        "file.path": "db/migrations/0042_billing.sql"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000004",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "llm.request.started",
+      "occurred_at": "2026-10-07T09:30:00.800Z",
+      "sequence": 4,
+      "span_id": "spn_01J90000000000000000000002",
+      "attributes": {
+        "llm.provider": "demo",
+        "llm.model": "model-x"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000005",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "llm.request.completed",
+      "occurred_at": "2026-10-07T09:30:02.900Z",
+      "sequence": 5,
+      "span_id": "spn_01J90000000000000000000002",
+      "status": "success",
+      "duration_ms": 2100,
+      "attributes": {
+        "llm.provider": "demo",
+        "llm.model": "model-x",
+        "llm.input_tokens": 2300,
+        "llm.output_tokens": 340,
+        "cost.estimated_usd": 0.0189
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000006",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "tool.call.started",
+      "occurred_at": "2026-10-07T09:30:03.100Z",
+      "sequence": 6,
+      "span_id": "spn_01J90000000000000000000003",
+      "attributes": {
+        "tool.name": "run_migration"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000007",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "tool.call.failed",
+      "occurred_at": "2026-10-07T09:30:06.200Z",
+      "sequence": 7,
+      "span_id": "spn_01J90000000000000000000003",
+      "status": "error",
+      "duration_ms": 3100,
+      "attributes": {
+        "tool.name": "run_migration",
+        "tool.error_type": "ConnectionTimeout"
+      },
+      "payload": {
+        "error": {
+          "type": "ConnectionTimeout",
+          "host": "db.internal:5432"
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000008",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "retry.attempted",
+      "occurred_at": "2026-10-07T09:30:07.200Z",
+      "sequence": 8,
+      "attributes": {
+        "retry.attempt": 1,
+        "retry.reason": "ConnectionTimeout",
+        "retry.delay_ms": 1000
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000009",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "tool.call.failed",
+      "occurred_at": "2026-10-07T09:30:10.300Z",
+      "sequence": 9,
+      "span_id": "spn_01J90000000000000000000004",
+      "status": "error",
+      "duration_ms": 2900,
+      "attributes": {
+        "tool.name": "run_migration",
+        "tool.error_type": "ConnectionTimeout"
+      },
+      "payload": {
+        "error": {
+          "type": "ConnectionTimeout",
+          "host": "db.internal:5432"
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000010",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "retry.attempted",
+      "occurred_at": "2026-10-07T09:30:11.300Z",
+      "sequence": 10,
+      "attributes": {
+        "retry.attempt": 2,
+        "retry.reason": "ConnectionTimeout",
+        "retry.delay_ms": 1000
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000011",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "llm.request.completed",
+      "occurred_at": "2026-10-07T09:30:13.600Z",
+      "sequence": 11,
+      "span_id": "spn_01J90000000000000000000005",
+      "status": "success",
+      "duration_ms": 2200,
+      "attributes": {
+        "llm.provider": "demo",
+        "llm.model": "model-x",
+        "llm.input_tokens": 2600,
+        "llm.output_tokens": 120,
+        "cost.estimated_usd": 0.0167
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000012",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "tool.call.failed",
+      "occurred_at": "2026-10-07T09:30:13.900Z",
+      "sequence": 12,
+      "span_id": "spn_01J90000000000000000000006",
+      "status": "error",
+      "duration_ms": 2400,
+      "attributes": {
+        "tool.name": "run_migration",
+        "tool.error_type": "ConnectionTimeout"
+      },
+      "payload": {
+        "error": {
+          "type": "ConnectionTimeout",
+          "host": "db.internal:5432"
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000013",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "file.read",
+      "occurred_at": "2026-10-07T09:30:14.000Z",
+      "sequence": 13,
+      "attributes": {
+        "file.path": "logs/migration.log"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000014",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "agent.state_changed",
+      "occurred_at": "2026-10-07T09:30:14.200Z",
+      "sequence": 14,
+      "attributes": {
+        "agent.state": "giving_up"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "event_id": "evt_01J90000000000000000000015",
+      "run_id": "run_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "trace_id": "trc_01J9ZZZZZZZZZZZZZZZZZZZZZY",
+      "agent_id": "coding-agent",
+      "event_type": "run.failed",
+      "occurred_at": "2026-10-07T09:30:14.400Z",
+      "sequence": 15,
+      "status": "error",
+      "attributes": {}
+    }
+  ]
+}

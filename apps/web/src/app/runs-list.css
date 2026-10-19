@@ -515,3 +515,6 @@ button.toggle[aria-pressed="true"] {
     margin-left: 0;
   }
 }
+.finding-security {
+  display: flex;
+}

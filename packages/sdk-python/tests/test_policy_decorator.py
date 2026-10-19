@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-import blackbox
-from blackbox import BlackBox, PolicyDenied, PolicyUnavailable, guarded
+import agent_blackbox
+from agent_blackbox import BlackBox, PolicyDenied, PolicyUnavailable, guarded
 from tests.policy_server import PolicyServer, R, deny, make_client
 
 
@@ -160,4 +160,4 @@ def test_an_explicit_client_and_on_error(srv: PolicyServer) -> None:
 def test_module_helpers_are_exported() -> None:
     for name in ("guard", "aguard", "guarded", "PolicyDenied", "ApprovalDenied", "ApprovalExpired",
                  "PolicyUnavailable", "PolicyError", "Decision"):  # fmt: skip
-        assert name in blackbox.__all__ and hasattr(blackbox, name)
+        assert name in agent_blackbox.__all__ and hasattr(agent_blackbox, name)

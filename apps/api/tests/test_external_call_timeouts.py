@@ -198,11 +198,11 @@ ALLOWED: dict[tuple[str, str], str] = {
     ("src/abb_api/backup/pgtools.py", "subprocess.Popen"): (
         "operator CLI: pg_restore / psql runs, proportional to the data; same bound"
     ),
-    ("src/blackbox/coding.py", "subprocess.Popen"): (
+    ("src/agent_blackbox/coding.py", "subprocess.Popen"): (
         "the SDK's recorded shell command: `proc.wait(timeout=...)` follows, then the process "
         "group is killed (the command's own timeout is a required argument)"
     ),
-    ("src/blackbox/policy_transport.py", "http.client.HTTPConnection"): (
+    ("src/agent_blackbox/policy_transport.py", "http.client.HTTPConnection"): (
         "makes no connection of its own: `conn.sock` is replaced by a deadline-enforcing socket "
         "opened with `socket.create_connection(timeout=...)` before any I/O"
     ),

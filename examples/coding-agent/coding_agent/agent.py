@@ -1,10 +1,10 @@
-"""The agent loop: model call, tool calls, repeat. Every step is a typed Agent Black Box event."""
+"""The agent loop: model call, tool calls, repeat. Every step is a typed Agent BlackBox event."""
 
 from dataclasses import dataclass
 from typing import Any
 
-from blackbox import BlackBox, Run
-from blackbox.coding import CodingRecorder
+from agent_blackbox import BlackBox, Run
+from agent_blackbox.coding import CodingRecorder
 
 from coding_agent.models import Model
 from coding_agent.tools import TOOL_SCHEMAS, Toolbox, ToolError

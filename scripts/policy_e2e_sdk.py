@@ -13,7 +13,7 @@ started (never by name), and checks what `guard()` does:
   * an approval that expires: `on_expiry: deny` raises ApprovalExpired, `on_expiry: allow` proceeds with a warning
   * guard() raised nothing but the documented exceptions in any of it
 
-Only the standard library plus `blackbox` are used here (the SDK environment has no httpx). Secrets are never printed.
+Only the standard library plus `agent_blackbox` are used here (the SDK environment has no httpx). Secrets are never printed.
 """
 
 import http.server
@@ -30,13 +30,13 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from blackbox import (
+from agent_blackbox import (
     ApprovalExpired,
     BlackBox,
     PolicyDenied,
     PolicyUnavailable,
 )
-from blackbox.policy import ApprovalDenied
+from agent_blackbox.policy import ApprovalDenied
 
 API = os.environ["E2E_API"]
 FAIL_API = os.environ["E2E_FAIL_API"]

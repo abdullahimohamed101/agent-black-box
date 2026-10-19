@@ -103,6 +103,19 @@ def test_a_pinned_image_named_again_without_its_digest_fails(tmp_path: Path) -> 
     assert _tree(tmp_path, files) == ["scripts/helper.py:1"]
 
 
+def test_one_repo_tag_with_two_digests_fails(tmp_path: Path) -> None:
+    other = "b" * 64
+    files = {
+        "docker-compose.yml": f"services:\n  d:\n    image: dbimg:16-alpine@{DIGEST}\n",
+        ".github/workflows/ci.yml": (
+            f"jobs:\n  a:\n    services:\n      db:\n"
+            f"        image: dbimg:16-alpine@sha256:{other}\n"
+        ),
+        "scripts/helper.py": f'IMG = "dbimg:16-alpine@{DIGEST}"\n',
+    }
+    assert _tree(tmp_path, files) == [".github/workflows/ci.yml:5"]
+
+
 def test_the_allow_list_exempts_only_the_named_reference(tmp_path: Path) -> None:
     files = {
         "docker-compose.yml": "services:\n  a:\n    image: local-a:dev\n  b:\n    image: other:1\n"

@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from abb_conformance import ScenarioError, capture
 from abb_conformance.scenarios import LLM_CACHED, LLM_INPUT, LLM_OUTPUT
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 import blackbox_langgraph.handler as handler_module
 from blackbox_langgraph import BlackBoxCallback
@@ -319,7 +319,7 @@ def test_sdk_failures_do_not_reach_the_framework(monkeypatch: pytest.MonkeyPatch
 def test_span_start_failure_keeps_the_node_so_children_still_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from blackbox import Span
+    from agent_blackbox import Span
 
     original = Span.start
     calls = {"n": 0}
@@ -543,7 +543,7 @@ def test_last_run_id_names_the_run_the_handler_opened() -> None:
 def test_an_sdk_without_llm_call_parent_still_records_the_span(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from blackbox import Run
+    from agent_blackbox import Run
 
     original = Run.llm_call
 
@@ -565,7 +565,7 @@ def test_an_sdk_without_llm_call_parent_still_records_the_span(
 def test_sdk_version_matches_the_adapter_lower_bound() -> None:
     import re
 
-    from blackbox import __version__
+    from agent_blackbox import __version__
 
     text = (Path(__file__).parents[1] / "pyproject.toml").read_text()
     bound = re.search(r'"agent-black-box>=([0-9.]+)"', text)

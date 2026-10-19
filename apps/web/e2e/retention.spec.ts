@@ -2,11 +2,12 @@ import { currentSettingsTab } from "./settings";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 19b step 3 (fixtures mode): the Retention settings tab. Values come from src/fixtures/retention.ts: the default
 // periods (30/90/365/365 days), a dry-run installation, four reports. Edits keep in-memory state on the fixture server, so
 // the mutating tests are serial and put the defaults back.
-const SHOTS = "../../docs/screenshots/phase-19b";
+const SHOTS = shotsDir("phase-19b");
 const PAGE = "/w/demo/settings/retention";
 
 async function axe(page: Page) {

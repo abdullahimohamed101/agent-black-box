@@ -114,7 +114,7 @@ def build_test_payload(
         "alert_id": from_uuid(IdKind.ALERT, alert_id),
         "kind": "test",
         "severity": "info",
-        "title": "Test alert from Agent Black Box",
+        "title": "Test alert from Agent BlackBox",
         "workspace_id": from_uuid(IdKind.WORKSPACE, workspace_id),
         "project": None,
         "agent": None,

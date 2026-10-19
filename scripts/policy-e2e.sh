@@ -19,7 +19,7 @@ set -a; . ./.env; set +a
 DB_NAME="${POLICY_E2E_DB_NAME:-abb_policy_e2e}"
 export ABB_DATABASE_URL="${ABB_DATABASE_URL%/*}/$DB_NAME"
 export ABB_SUMMARY_DEBOUNCE_SECONDS=1
-export ABB_FINDINGS_DELAY_SECONDS=1
+export ABB_FINDINGS_DELAY_SECONDS=1 ABB_FINDINGS_MIN_INTERVAL_SECONDS=0
 export ABB_RATE_LIMIT_EVENTS_PER_SECOND=1000000      # the benchmark measures the pipeline, not the default throttle
 export ABB_POLICY_DECIDE_PER_MINUTE_KEY=1000000      # ditto for decisions; a flood test lives in the API suite (test_flood.py)
 export ABB_POLICY_DECIDE_PER_MINUTE_WORKSPACE=1000000

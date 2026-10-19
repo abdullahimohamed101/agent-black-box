@@ -48,3 +48,7 @@ restart at zero on every restart, so rates under-report while it lasts.
 
 Tracing is off unless `ABB_OTEL_ENABLED=1`. With it on, `AbbOtelExportFailing` counts failed export attempts (`otel_export_failures_total`): the collector is down, slow, or rejecting the token in
 `OTEL_EXPORTER_OTLP_HEADERS`. Requests and jobs are never affected by a failing collector; spans beyond the queue are dropped. Check the endpoint from inside the container network and the collector's log.
+
+## Publishing a release
+
+Not an incident: the owner-run path for gate G2 (push, pull request, Pages, public repository, tag, packages) is [release-publication.md](release-publication.md).

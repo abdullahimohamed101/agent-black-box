@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from abb_conformance import ScenarioError, assert_golden, capture, validate_events
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 from tests.drivers import Driver, real_available
 

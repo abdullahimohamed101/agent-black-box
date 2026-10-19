@@ -4,7 +4,7 @@ import json
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 from abb_conformance.harness import capture, validate_events
 

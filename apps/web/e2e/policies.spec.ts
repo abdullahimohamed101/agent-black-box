@@ -1,12 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 14 step 4 (fixtures mode): the Policies settings page. The project policy (version 3) is never changed here, so
 // the specs can run in parallel against one fixture server; the one test that publishes uses the workspace policy.
 const PAGE = "/w/demo/settings/policies";
 const PROJECT = `${PAGE}?project=demo`;
-const SHOTS = "../../docs/screenshots/phase-14";
+const SHOTS = shotsDir("phase-14");
 
 async function axe(page: Page) {
   await settleAnimations(page);
@@ -21,7 +22,7 @@ const noSideScroll = (page: Page) =>
 const editor = (page: Page) =>
   page.getByRole("textbox", { name: /^Policy text( \(read only\))?$/ });
 const GUARANTEE =
-  "Policies are enforced for agents that ask Agent Black Box through the SDK guard. They do not stop code that bypasses it.";
+  "Policies are enforced for agents that ask Agent BlackBox through the SDK guard. They do not stop code that bypasses it.";
 const RULE = `
   - id: deny-prod-shell
     description: Production tooling is for people.

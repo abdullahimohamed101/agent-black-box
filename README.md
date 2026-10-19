@@ -1,95 +1,170 @@
-# Agent Black Box
+<p align="center">
+  <img src="site/public/assets/readme-header.svg" alt="Agent BlackBox: flight recorder and debugger for AI agents" width="720">
+</p>
 
-A flight recorder, observability, debugging, evaluation and (eventually) control plane for
-AI agents. See what an agent actually did: every model call, tool call, file edit, shell
-command, retry and failure, with cost and latency, live.
+# Agent BlackBox
 
-> Status: Phases 0-17, 19, 21 and 22 merged (event contract, ingestion, Python SDK, web UI, live streaming, coding-agent demo, cost and analytics, framework adapters, sign-in and roles, multi-agent tracing with a waterfall, reliability findings with explained health, search with filter chips, evaluations, experiments and run comparison, visual replay, security observability with redaction modes, the policy engine and approvals, alerting, and production hardening). Alerting (Phase 17, PR #171) tells a person who is not watching the dashboard when an approval is requested or about to expire, a security finding appears, a run fails, or spend passes a threshold, through signed webhooks, Slack or email, with content-free alerts and an SSRF-safe sender. The MVP gate is accepted (2026-10-12); see `docs/IMPLEMENTATION_PLAN.md`. Abuse resistance (Phase 19a, PR #186) adds limits that hold across API processes, throttling of failed authentication, per-project quotas that refuse loudly, secure headers with a nonce CSP, a sessions page, invitation-only sign-in and a `__Host-` login cookie on https (runbook `docs/runbooks/hardening.md`). Data lifecycle (Phase 19b, PR #206) adds audited retention that deletes expired runs from every backend (dry run by default), backups with a performed restore drill, secret rotation and owner-run project and workspace purge (runbooks `docs/runbooks/retention.md`, `backup-restore.md`). Operability (Phase 19c, PR #207) adds authenticated Prometheus metrics, readiness that checks real dependencies, a database circuit breaker, structured logs with optional OpenTelemetry tracing, shipped SLO alerts and a Grafana dashboard, a full runbook set, and pinned CI actions and images with lockfile audits. Design pass 2 is in progress; Phase 20 (demo, docs, release quality) follows.
-> You can run the stack, trace an agent with the Python SDK or a framework adapter, and watch the run in the web UI, live.
-> See `docs/PROJECT_STATE.md`.
+**See what your agent actually did.** Agent BlackBox is a flight recorder for AI agents that you run yourself on Docker Compose
+and PostgreSQL. It records every model call, tool call, command, file edit and retry as typed events, then shows you the step
+where the run broke.
+<!-- RELEASE_CLAIM: tagline. At G2 (repository public, LICENSE verified) the second sentence may be reworded to the positioning brief's one-sentence form with the hosting-model word ("self" + "hosted"), and a licence badge may be added. Source: positioning brief section 8. -->
 
-## What it does
+<p align="center">
+  <img src="docs/screenshots/release/failed-run-story-light.png" alt="A failed run, Answer ticket: invoice shows wrong VAT: the headline says it failed at step 6 in lookup-ticket with ConnectionTimeout, a red line marks the first error on the timeline, and the inspector shows the failed tool call" width="900">
+</p>
+
+## What it is, and what it is not
+
+It is:
+
+- A record you can trust after the fact. Events are typed (a retry is a retry, a file edit is a diff, a command is a command)
+  and accepted events are immutable. Summaries, costs and findings are derived from them and can be rebuilt.
+- A small stack: API, worker, web app and PostgreSQL. No Kafka, no ClickHouse, no Redis.
+- A standard-library Python SDK with a bounded buffer. If it fails, your agent keeps running.
+
+It is not:
+
+- A cloud product. There is no cloud version and none is planned for this release.
+- A guard that stops every bad action. Policies and approvals apply to agents that ask through the SDK guard; code that
+  bypasses the guard is recorded, not stopped.
+- Proven at scale. No load test exists, so this page makes no throughput, overhead or capacity claim.
+- A replacement for your tracing stack. It maps to OpenTelemetry at the boundary; it does not ingest OTLP today.
+
+## What you can do with it
+
+Each item below is a screen in the web app, not a mock-up.
+
+| You want to know | Where to look |
+| --- | --- |
+| Where did the run break? | The run headline ("Failed at step 7 after 6.2 s: run_migration, ConnectionTimeout.") and the red first-error line on the timeline |
+| Why is this a problem? | Findings, from deterministic detectors for loops, retry storms, repeated requests, context growth, cost spikes and failure chains, plus six security detectors. Each finding links to the events it was built from ("Show evidence") |
+| What did it cost, and what was wasted? | Analytics, Cost: spend per run and per agent, and how much went to failed runs, retries and spend after the first error |
+| What did many agents do? | The Waterfall tab: one lane per agent, the critical path, the spans with no recorded end |
+| Did the change matter? | Compare: two runs aligned step by step, with the step where they diverged |
+| Can I make it wait for a person? | Review, Approvals: an approval covers one exact action, once. Applies to agents that ask through the SDK guard |
+
+<p align="center">
+  <img src="docs/screenshots/release/findings-light.png" alt="The Findings tab: findings with their rule and a Show evidence link" width="440">
+  <img src="docs/screenshots/release/cost-analytics-light.png" alt="Analytics, Cost: one sentence of spend, where the money was wasted, and daily spend" width="440">
+</p>
+
+## Quickstart
+
+You need Docker with Compose, [uv](https://docs.astral.sh/uv/) and Git. No account and no model API key. Full walkthrough,
+including a failed run: [`docs/quickstart.md`](docs/quickstart.md).
+
+```bash
+git clone https://github.com/abdullahimohamed101/agent-black-box.git
+cd agent-black-box
+cp .env.example .env
+make up      # PostgreSQL, migrations, API, worker, web (the first build takes several minutes)
+make seed    # workspace "local", project "demo", a development key in .local/dev-api-key
+make demo    # records twelve scripted runs (four example agents) into the running stack and prints the run links
+```
+<!-- RELEASE_CLAIM: the clone URL points at the public repository; it only resolves after G2. Until then clone from your local checkout. -->
+
+Open <http://localhost:3000>, choose "Sign in" and use `owner@local.test` (the development sign-in provider accepts any
+email). The demo project is `abb-demo`. Stop with `make down`; `make demo-reset` shows what removing the demo project would
+delete and changes nothing unless you pass `CONFIRM=1`.
+
+Trace your own agent. Install the SDK from this checkout (it has no runtime dependencies), then:
 
 ```python
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
-bb = BlackBox(api_key=..., project="coding-agent")
+bb = BlackBox(api_key=..., endpoint="http://localhost:8000", project="demo")
 with bb.run("Fix OAuth timeout") as run:
-    with run.span("run-tests", kind="shell"):
+    with run.span("run-tests", kind="tool"):
         agent.execute()
+bb.shutdown()
 ```
 
-Open the dashboard and watch the run populate live: timeline, diffs, retries, cost, and
-where it failed. Diffs, shell output, cost and analytics are in the UI today; evaluations and run comparison are implemented and await review; policy and approvals are later phases (`docs/IMPLEMENTATION_PLAN.md`).
+Install from source with `pip install ./packages/sdk-python`. There is no published package yet.
+<!-- RELEASE_CLAIM: replace the install-from-source line with the package install only after the package name is checked and published (Q4). -->
 
-## Architecture in one picture
+## Examples
+
+The examples are scripted by default: fixed model replies and a made-up price table, so they need no key and no network, and
+record the same spans, errors, retries and costs every time (ids and timestamps differ). `make demo` runs them, plus a scripted ops agent (`examples/python/ops_agent.py`), for twelve runs in all.
+
+| Example | What it records |
+| --- | --- |
+| [`examples/coding-agent`](examples/coding-agent/README.md) | A small coding agent fixes a broken OAuth service: file reads and edits with diffs, shell commands and test output, one failing test, a retry, a commit. A `wrong-fix` variant ends in failure |
+| [`examples/python`](examples/python/README.md) | A support agent whose tool call times out and is retried; the shortest custom-agent sample |
+| [`examples/multi-agent`](examples/multi-agent/README.md) | A planner, researcher, coder, a tester in a separate process and a reviewer in one run; open the Waterfall tab. Scripted only |
+
+A `--live` flag exists on the coding-agent and the custom agent. It is available and untested: the project has not run it
+(KI-044).
+
+## Integrations
+
+Adapters for LangGraph, OpenAI, Anthropic and MCP live in [`integrations/`](integrations/) and are described in
+[`docs/architecture/integrations.md`](docs/architecture/integrations.md). They are tested offline against the real
+libraries, not against live providers. Framework-specific shapes stay inside the adapters; the API only sees the canonical
+event contract ([`docs/architecture/events.md`](docs/architecture/events.md)).
+
+## Architecture
 
 ```text
-SDK -> FastAPI (modular monolith) -> PostgreSQL (events + outbox) -> workers
-                    \-> SSE -> Next.js
+Agent / framework -> adapter -> SDK -> POST /v1/events/batch -> ingestion (FastAPI)
+   -> PostgreSQL (events + outbox) -> workers (summary, cost, findings) -> derived tables
+   -> query API and SSE -> Next.js web app
 ```
 
-Simple on purpose: Kafka, ClickHouse, Redis and Kubernetes are deferred until measured
-triggers say otherwise (spec §57). The stable asset is the versioned canonical telemetry
-contract, not any single datastore. Details: `ARCHITECTURE.md`.
-
-## Repository Layout
+A modular monolith on purpose. The stable asset is the versioned event contract, not the datastore; Kafka, ClickHouse, Redis
+and Kubernetes wait for a measured trigger. Ingestion is at-least-once and idempotent on `(workspace_id, event_id)`, arrival
+order is never trusted, and every tenant read carries workspace context. More in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ```text
 apps/{api,web}  packages/{event-schema,sdk-python}  integrations/{langgraph,openai,anthropic,mcp,conformance}
-examples/{coding-agent,multi-agent}  infrastructure/  scripts/  docs/
-```
-New directories appear when their phase begins (for example `processors/`).
-
-## Quick Start
-
-Requires Python 3.12 + `uv`, Node 22 + `pnpm`, and Docker (see `docs/development/setup.md`).
-
-```bash
-cp .env.example .env
-make setup      # Python env, JS deps, Postgres (Compose, host port 5433), migrations
-make dev        # API http://localhost:8000 and web http://localhost:3000
-curl localhost:8000/readyz
-make test lint typecheck
+examples/{coding-agent,python,multi-agent}  site/  scripts/  docs/
 ```
 
-Whole stack in containers: `make up` (migrate, api, worker, web, postgres, and a dev-only fake sign-in provider), `make down` to stop.
+## Security and privacy
 
-Signing in to the dashboard (no identity-provider account needed locally): `make seed` adds the workspace `local` and its owner
-`owner@local.test` (development only), `scripts/fake-oidc.sh` serves a fake provider that accepts any email, and the dashboard's "Sign in"
-button takes you through it. Details, roles and a real provider: `docs/development/setup.md` and `docs/runbooks/auth-and-access.md`.
-`scripts/quality.sh full` is the single gate used by CI and agents.
+- Your data stays on the machine that runs the stack. The SDK sends to the endpoint you configure and nowhere else.
+  <!-- RELEASE_CLAIM: add "the product and the landing page make no request to a third party" only after the Playwright request log (AC11, AC15, step 17) passes. -->
+- Capture is metadata-only by default. Prompts, tool results and file contents are dropped unless you opt in per project
+  (`full` keeps payloads after redaction; `disabled` keeps nothing).
+- Secrets the scanner recognises are redacted before anything is stored, and the stored copy keeps a
+  `[REDACTED:credential]` marker. Redaction is best effort: a secret with an unknown shape can pass in full-capture mode, and
+  stored events are never scrubbed afterwards. Keep secrets out of events when you can.
+- Captured telemetry is treated as hostile input. API keys are stored as hashes, every tenant query is scoped by workspace, and
+  access is invitation-only.
+- Development sign-in and the seeded owner are for your laptop. The compose settings in the quickstart are development
+  values; read [`docs/deployment.md`](docs/deployment.md) before letting anyone else use the stack.
 
-Try the data plane (needs `make up`):
+Threat model and known gaps: [`docs/SECURITY.md`](docs/SECURITY.md). To report a vulnerability, follow
+[`SECURITY.md`](SECURITY.md); do not open a public issue.
 
-```bash
-make smoke                      # provisions a tenant, ingests a run over gzip HTTP, reads it back
-make seed                       # local workspace + project + dev key in .local/dev-api-key
-KEY=$(cat .local/dev-api-key)
-curl -s localhost:8000/v1/runs -H "Authorization: Bearer $KEY"
-```
+## Project status
 
-See a real run in about two minutes (needs the Quick Start above, `make seed`, and `pnpm --filter @abb/web build`):
-the flagship demo is a small coding agent that fixes a broken OAuth service, hits a failing test, retries and passes.
-`scripts/coding-e2e.sh` runs it end to end on a throwaway database and drives a browser; `examples/coding-agent/README.md`
-shows how to point it at your own stack and open the run (diff, shell and cost panels).
-`examples/multi-agent` records a planner, a researcher, a coder, a tester in a separate process and a reviewer in one run (`--skew-ms` skews the
-tester's clock); open the run and switch to Waterfall. `scripts/multiagent-e2e.sh` runs it against the real API and web.
+Early release. There is no version promise: interfaces and the event contract can still change between commits, and there
+are no upgrade guarantees yet. Four limits to know before you start:
 
-Search runs with `status:failed tool:github retries:>=2 started:>=-7d "npm test"` (runs page search box, or `GET /v1/runs?q=`); a VIEWER searches
-metadata only, never the text of commands or file paths (`docs/architecture/api-v1.md`, "Search").
+1. Single node on Docker Compose. There is no hosting guide yet (TLS, a domain and a real identity provider are documented as
+   not covered).
+2. Real-model mode exists in two examples and has not been run by the project.
+3. Policy enforcement is cooperative: it applies to agents that ask through the SDK guard.
+4. No load test exists, so there are no capacity or overhead numbers.
 
-API reference: `docs/architecture/api-v1.md` and `apps/api/openapi.json`. Operations: `docs/OPERATIONS.md`.
+The roadmap is [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md); open problems are in
+[`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md).
 
-## Phase Status
+## Documentation
 
-See `docs/IMPLEMENTATION_PLAN.md` for the full table (Phases 0-11, 15 and 16 merged, MVP gate open). Summary: Phases 0-7 build the MVP
-(foundation, event contract, ingestion, SDK, web, live streaming, coding-agent demo,
-analytics) followed by a human review gate; Phases 8-20 add integrations, multi-agent
-tracing, reliability intelligence, evaluations, replay, security, policy/approvals, RBAC,
-search, alerting, scale hardening, production hardening and release polish.
+Start at the index, [`docs/README.md`](docs/README.md). Common destinations:
+[quickstart](docs/quickstart.md), [troubleshooting](docs/troubleshooting.md), [deployment on one machine](docs/deployment.md),
+[Python SDK](docs/architecture/sdk-python.md), [HTTP API](docs/architecture/api-v1.md), [operations](docs/OPERATIONS.md) and
+[runbooks](docs/runbooks/README.md).
 
-## Working in this repo (humans and agents)
+## Contributing
 
-Start at `AGENTS.md`. Build instructions: `docs/BUILD_PROMPT.md`. Spec:
-`docs/architecture/agent-black-box-spec.md`. Decisions: `docs/DECISIONS.md`.
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md). Development setup is in
+[`docs/development/setup.md`](docs/development/setup.md); `scripts/quality.sh full` is the single gate used by CI. Contributors
+who are AI agents should start at [`AGENTS.md`](AGENTS.md).
+
+## License
+
+Apache-2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+<!-- RELEASE_CLAIM: at G2 (repository public) this section may state the licence-based project description and carry a licence badge; not before. -->

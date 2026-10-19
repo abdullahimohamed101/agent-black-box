@@ -18,7 +18,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from blackbox.policy_transport import PolicyTransport
+from agent_blackbox.policy_transport import PolicyTransport
 
 BODY = json.dumps(
     {"decision": "allow", "policy_id": None, "policy_version": 3, "reason": "ok"}

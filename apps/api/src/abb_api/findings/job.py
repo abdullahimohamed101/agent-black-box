@@ -11,7 +11,7 @@ import time
 import uuid
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Literal
 
 from abb_event_schema.ordering import sort_events
@@ -69,6 +69,28 @@ def detect_delay(base_seconds: float, event_count: int) -> timedelta:
     run's size (a 30,000-event run is re-analysed at most every 3 x base), capped at 60 s."""
     grown = base_seconds * max(1.0, event_count / EVENTS_PER_DELAY_STEP)
     return timedelta(seconds=min(grown, max(base_seconds, MAX_DELAY_SECONDS)))
+
+
+def detect_enqueue_delay(
+    *,
+    base_seconds: float,
+    event_count: int,
+    min_interval_seconds: float,
+    computed_at: datetime | None,
+    db_now: datetime,
+    terminal: bool,
+) -> timedelta:
+    """The delay of a run's next analysis job (KI-097, ADR-174).
+
+    The normal coalescing delay, raised to the time left of the per-run minimum interval since the
+    last completed analysis, both read on the database clock. Jobs coalesce per run, so events that
+    arrive meanwhile join the one pending job: it is the trailing analysis. A run that has ended is
+    never throttled: its final analysis is computed promptly. `0` disables the floor."""
+    normal = detect_delay(base_seconds, event_count)
+    if terminal or min_interval_seconds <= 0 or computed_at is None:
+        return normal
+    age = max((db_now - computed_at).total_seconds(), 0.0)
+    return max(normal, timedelta(seconds=max(min_interval_seconds - age, 0.0)))
 
 
 async def try_lock_run(conn: AsyncConnection, tenant: TenantContext, run_id: uuid.UUID) -> bool:

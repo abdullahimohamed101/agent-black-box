@@ -12,11 +12,12 @@ import {
 } from "./replay";
 import { baselineCodingRun } from "../src/fixtures/codingRuns";
 import { failureRetryRun, multiAgentRun } from "../src/fixtures/runs";
+import { shotsDir } from "./shots-dir";
 
 // Phase 12 screenshot set (docs/screenshots/phase-12): replay at the start, at the first error, at the end, the waterfall
 // mid-play and a viewer's replay, at 1440 and 375 px in both colour schemes. Not an assertion suite. Only runs when
 // SHOTS_PHASE12 is set, so the normal e2e run never rewrites committed screenshots.
-const OUT = "../../docs/screenshots/phase-12";
+const OUT = shotsDir("phase-12");
 test.skip(!process.env.SHOTS_PHASE12, "set SHOTS_PHASE12=1 to take the screenshot set");
 
 const failed = failureRetryRun();

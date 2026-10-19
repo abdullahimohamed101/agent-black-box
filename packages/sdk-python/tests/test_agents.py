@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from abb_event_schema.parse import parse_event_in
 
-from blackbox import AgentSpan, PayloadMode
+from agent_blackbox import AgentSpan, PayloadMode
 from tests.helpers import events_of, offline, types_of
 
 
@@ -195,7 +195,7 @@ def test_a_disabled_client_returns_an_inert_agent() -> None:
 def test_the_agent_context_is_visible_in_a_thread_through_bind() -> None:
     import threading
 
-    from blackbox import bind
+    from agent_blackbox import bind
 
     bb = offline(agent_id="planner")
     with bb.run("job") as run, run.agent("worker"):

@@ -122,7 +122,7 @@ def parse_id(value: str, expected: IdKind | None = None) -> ParsedId:
     """
     match = _ID_RE.fullmatch(value)
     if not match:
-        raise ValueError("not a valid Agent Black Box id")
+        raise ValueError("not a valid Agent BlackBox id")
     try:
         kind = IdKind(match.group("prefix"))
     except ValueError:

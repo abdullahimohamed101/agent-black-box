@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { signIn, workspace } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/analytics-e2e.sh: a real API + worker, the built web server on :3150 and runs written by
 // scripts/analytics_driver.py with known costs (the expected figures are in the file named by E2E_ANALYTICS_EXPECT).
@@ -9,7 +10,7 @@ const expectFile = process.env.E2E_ANALYTICS_EXPECT;
 test.skip(!expectFile, "needs scripts/analytics-e2e.sh");
 test.use({ baseURL: "http://localhost:3150" });
 test.beforeEach(async ({ context, baseURL }) => signIn(context, baseURL!));
-const SHOTS = "../../docs/screenshots/phase-7";
+const SHOTS = shotsDir("phase-7");
 const want = () =>
   JSON.parse(readFileSync(expectFile!, "utf8")) as {
     runs: number;

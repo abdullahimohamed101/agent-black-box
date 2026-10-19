@@ -1,6 +1,6 @@
 # Security
 
-Agent Black Box stores source code, prompts, shell output, file names, database query text and
+Agent BlackBox stores source code, prompts, shell output, file names, database query text and
 tool arguments. Treat it as a high-value target and all captured telemetry as hostile input.
 Source: spec §32, §38, §90-93, §126; threat model to be expanded as phases land.
 
@@ -279,8 +279,8 @@ Prometheus authenticates to `/metrics` with `authorization: credentials_file`: t
 
 ## Known gaps (tracked in KNOWN_ISSUES.md)
 
-Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); failed API-key authentication is throttled (ADR-153) (KI-019) and projects have quotas (ADR-154) (KI-018, KI-040). The identity provider integration was exercised against the fake
-provider only; a real provider login is an open acceptance check (KI-067). Sessions can be listed and ended in the UI (Settings, Sessions; KI-068 resolved). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits hold across API processes while the database answers and are per process when it does not (the shared limiter fails open, ADR-152). The Python SDK
+Login and key-management endpoints are throttled only by the per-client/per-instance web limits and the API's global backstop (now counted across API processes, Phase 19a step 1, ADR-152); failed API-key authentication is throttled (ADR-153) (KI-019) and projects have quotas (ADR-154) (KI-018, KI-040). The identity provider integration is tested in CI against the fake
+provider; one real login with Google was performed on 2026-10-12 (KI-067, resolved) and no other provider has been tried. Sessions can be listed and ended in the UI (Settings, Sessions; KI-068 resolved). Providers that omit `email_verified` cannot sign in (KI-069). Rate limits hold across API processes while the database answers and are per process when it does not (the shared limiter fails open, ADR-152). The Python SDK
 redacts on the client (Phase 3: key rules, best-effort secret patterns, callback, payload modes; default drops payloads); since Phase 13 the server
 redacts again, but detection is best effort, so **clients should still keep secrets out of events**, and a project that needs no payloads should stay
 METADATA_ONLY. Stored text can carry a `[REDACTED:credential]` marker where an assignment looked secret-shaped (a name ending in `token`, `secret` or

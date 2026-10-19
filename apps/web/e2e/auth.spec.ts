@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
 import { signIn } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/auth-e2e.sh: a real API (stream re-check every 2 s), the DEVELOPMENT-ONLY fake OIDC provider
 // and the built web server on :3160. People sign in through the real browser flow; the only minted session is the
@@ -20,8 +21,8 @@ test.skip(
 );
 test.use({ baseURL: "http://localhost:3160" });
 test.describe.configure({ mode: "serial" }); // the steps build on each other: one person, one invitation, one session
-const SHOTS = "../../docs/screenshots/phase-15";
-const SHOTS_19A = "../../docs/screenshots/phase-19a";
+const SHOTS = shotsDir("phase-15");
+const SHOTS_19A = shotsDir("phase-19a");
 const ORIGIN = "http://localhost:3160";
 const OWNER = process.env.E2E_OWNER_EMAIL!;
 const INVITEE = process.env.E2E_INVITEE_EMAIL!;

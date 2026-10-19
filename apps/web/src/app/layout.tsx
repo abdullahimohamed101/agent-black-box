@@ -37,7 +37,7 @@ const IBMPlexMono = localFont({
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Agent Black Box",
+  title: "Agent BlackBox",
   description: "Flight recorder and observability for AI agents",
 };
 

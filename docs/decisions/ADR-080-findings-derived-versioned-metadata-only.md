@@ -64,6 +64,9 @@ findings never leak content, so there is nothing to project per role. Measured c
 `0060` is additive; existing runs have no findings until re-summarized or `rebuild-findings` runs; the runtime role keeps full DML on the new tables
 (derived, rewritten).
 
+## Amendment (2026-10-18, Phase 20, ADR-174)
+The job stays one coalesced pending job per run, but its enqueue delay now also honours a per-run minimum interval (`ABB_FINDINGS_MIN_INTERVAL_SECONDS`, default 10 s) measured from the last analysis, with a terminal-run bypass.
+
 ## Revisit conditions
 The detect job's share of worker time exceeds the summarizer's at Stage A volumes (merge into the summarizer or a dedicated worker pool); a customer
 needs per-project thresholds (Phase 14); dismissals are requested (a `finding_dismissals` table keyed on `fingerprint`); alerts (Phase 17) need

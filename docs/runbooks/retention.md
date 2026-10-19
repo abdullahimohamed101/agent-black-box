@@ -1,6 +1,6 @@
 # Retention runbook (operator)
 
-How long Agent Black Box keeps data, how to turn deletion on safely, how to read what the job did, how to stop it and what to do when it
+How long Agent BlackBox keeps data, how to turn deletion on safely, how to read what the job did, how to stop it and what to do when it
 is interrupted or fails. Mechanism and order: ADR-159, ADR-160; purge commands: ADR-163; backups: `docs/runbooks/backup-restore.md`.
 The settings and the table of environment variables are in `docs/OPERATIONS.md` ("Data retention"). This page is the procedure.
 

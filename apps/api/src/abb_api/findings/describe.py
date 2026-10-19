@@ -42,7 +42,11 @@ def _seconds(ms: Any) -> str:
 
 
 def _plural(n: Any, word: str) -> str:
-    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+    if n == 1:
+        return f"{n} {word}"
+    # "retry" -> "retries", not "retrys".
+    plural = f"{word[:-1]}ies" if word.endswith("y") and word[-2:-1] not in "aeiou" else f"{word}s"
+    return f"{n} {plural}"
 
 
 def _times(n: Any) -> str:
@@ -119,12 +123,22 @@ def _words(finding_type: str, e: dict[str, Any]) -> tuple[str, str]:
             f" with {_plural(e.get('retries_between'), 'retry')} between.{tail}",
         )
     if finding_type == "failure_chain":
+        caused, unlinked = e.get("retries_caused"), e.get("retries_unattributed")
+        if caused == 0 and isinstance(unlinked, int) and unlinked > 0:
+            # Retries without an operation cannot be tied to the failing one: say that, not "0".
+            retries = (
+                f"No retry could be tied to the failing operation ({_plural(unlinked, 'retry')}"
+                " had no operation), and"
+            )
+        else:
+            retries = f"{_plural(caused, 'retry')} followed the first error, and"
+        mutations = e.get("mutations")
+        verb = "was" if mutations == 1 else "were"
         return (
             "the run failed: "
             + CATEGORY_WORDS.get(_text(e.get("category")), "the cause is unknown"),
-            f"{_plural(e.get('retries_caused'), 'retry')} followed the first error, and"
-            f" {_plural(e.get('mutations'), 'change')} to files or the repository were made before"
-            " the end.",
+            f"{retries} {_plural(mutations, 'change')} to files or the repository {verb} made"
+            " before the end.",
         )
     if finding_type == "probable_cause":
         cause = CAUSE_WORDS.get(_text(e.get("cause")), "an unclassified cause")

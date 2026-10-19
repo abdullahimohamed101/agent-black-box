@@ -80,7 +80,8 @@ export const runs = {
     keyDeniedAfter: "). The token is shown only once, when it is created.",
     installTitle: "Install the SDK",
     installCopy: "Copy the install command",
-    checkout: "Working from a checkout of this repository? Run",
+    checkout:
+      "Run it from the root of your checkout of this repository. No package is published yet.",
     recordTitle: "Record a run",
     recordBefore: "Set",
     recordMid: "to your key (and",

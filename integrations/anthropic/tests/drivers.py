@@ -4,10 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from typing import Any
 
-import blackbox
+import agent_blackbox
 from abb_conformance import SECRET, ScenarioError
 from abb_conformance.scenarios import CONCURRENCY, TOOL_NAME
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 from blackbox_anthropic import instrument
 from tests.fakes import FakeStream, fake_client
@@ -106,7 +106,7 @@ class Driver:
                     call()
             elif scenario == "concurrent":
                 with ThreadPoolExecutor(CONCURRENCY) as pool:
-                    futures = [pool.submit(blackbox.bind(call)) for _ in range(CONCURRENCY)]
+                    futures = [pool.submit(agent_blackbox.bind(call)) for _ in range(CONCURRENCY)]
                     for future in futures:
                         future.result()
             elif scenario in ("sensitive", "sensitive_full"):

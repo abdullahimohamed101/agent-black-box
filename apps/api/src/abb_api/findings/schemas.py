@@ -32,6 +32,20 @@ class DimensionOut(BaseModel):
     inputs: dict[str, Any]
     rule: str = Field(description="The one sentence that decided the status.")
     finding_ids: list[str]
+    as_of: datetime | None = Field(
+        default=None,
+        description=(
+            "Set on the dimensions that read findings, when they did: when the analysis they read "
+            "completed (the state's `computed_at`)."
+        ),
+    )
+    stale: bool = Field(
+        default=False,
+        description=(
+            "True when `as_of` is the last completed analysis while a newer one is queued or "
+            "running: events have arrived since."
+        ),
+    )
 
 
 class HealthOut(BaseModel):
@@ -71,6 +85,9 @@ class FindingOut(BaseModel):
 
 class RunFindingsOut(BaseModel):
     run_id: str
+    server_time: datetime = Field(
+        description="The server clock at read time; ages such as `as_of` are measured on it."
+    )
     state: FindingsState
     health: HealthOut
     items: list[FindingOut]

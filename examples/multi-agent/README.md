@@ -1,5 +1,8 @@
 # Multi-agent example
 
+Scripted only, by design: there is no `--live` mode. The point of this example is the shape of the trace (threads, an asyncio task, another
+process, clock skew), which a real model would not change, and it keeps the example free of keys and network.
+
 A planner delegates a job to cooperating agents and every one of them is recorded in a single run (spec §84):
 
 ```text
@@ -33,9 +36,9 @@ inputs, results and responses (redacted first); the default records metadata onl
 
 | Concern | How |
 | --- | --- |
-| Threads | `threading.Thread(target=blackbox.bind(fn))`: threads do not inherit the SDK context, `bind` carries it |
+| Threads | `threading.Thread(target=agent_blackbox.bind(fn))`: threads do not inherit the SDK context, `bind` carries it |
 | asyncio | tasks inherit the context; `asyncio.to_thread` copies it |
-| Another process | `ctx = run.spawn_context("tester")` records `agent.spawned`; the child gets `BLACKBOX_TRACE_CONTEXT=ctx` and calls `bb.continue_run(blackbox.trace_context_from_env())` |
+| Another process | `ctx = run.spawn_context("tester")` records `agent.spawned`; the child gets `BLACKBOX_TRACE_CONTEXT=ctx` and calls `bb.continue_run(agent_blackbox.trace_context_from_env())` |
 | Clock skew | `tester_proc.py --skew-ms N` patches this example's timestamp function inside the child; the SDK has no clock setting |
 | Ordering | the child sends no `sequence`, so the run is time-ordered (`ordering_mode: time`) |
 

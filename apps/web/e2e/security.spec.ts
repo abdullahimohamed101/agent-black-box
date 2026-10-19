@@ -1,11 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { openTab, settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 13 step 3 (fixtures mode): security findings on the run page, the workspace Security page, the settings page.
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 const LEAKED = `/w/demo/projects/all/runs/${RUN(14)}`;
-const SHOTS = "../../docs/screenshots/phase-13";
+const SHOTS = shotsDir("phase-13");
 const SENTINELS = [
   "AKIAFIXTURESENTINEL",
   "pastebin.example.net",

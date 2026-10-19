@@ -155,7 +155,7 @@ up to 4,096 characters); readers render it as text and truncate it.
 
 ## Propagation (Phase 9, ADR-070)
 
-In one process the SDK follows contextvars (asyncio tasks inherit; threads use `blackbox.bind`). Across processes a serializable trace
+In one process the SDK follows contextvars (asyncio tasks inherit; threads use `agent_blackbox.bind`). Across processes a serializable trace
 context carries the address of the delegating span: `abb1;run=run_<ULID>;trace=trc_<ULID>;span=spn_<ULID>;agent=<slug>` (`span` and `agent`
 optional, at most 256 characters; every id matches the contract patterns). Conventions: the environment variable `BLACKBOX_TRACE_CONTEXT`, the
 HTTP header name `X-Blackbox-Trace-Context` (the API never reads it). The string is an address, not a credential: the child still needs an API key

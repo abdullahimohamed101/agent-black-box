@@ -1,13 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { openTab, settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 const BASE = "/w/demo/projects/all";
 // Fixture runs: ten earlier ones, the two coding-agent runs (Phase 11) and the blocked run (Phase 22 review P1-3).
 const RUN_COUNT = 18;
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
-const SHOTS = "../../docs/screenshots/phase-4";
-const SHOTS10 = "../../docs/screenshots/phase-10";
+const SHOTS = shotsDir("phase-4");
+const SHOTS10 = shotsDir("phase-10");
 
 async function axe(page: Page) {
   await settleAnimations(page);
@@ -55,6 +56,12 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await expect(
     page.locator("tbody tr", { hasText: "Fix login session expiry" }).getByTestId("findings-cell"),
   ).toContainText("No findings");
+  // one glyph, one meaning: the shield appears only beside a security count, never on a run-findings mark
+  await expect(page.getByTestId("run-findings").locator("svg.sec-shield")).toHaveCount(0);
+  await expect(
+    page.getByTestId("security-findings").locator("svg.sec-shield").first(),
+  ).toBeVisible();
+  await expect(page.getByTestId("security-findings").first()).toContainText("security finding");
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/runs-list.png`, fullPage: true });
 });
@@ -62,7 +69,7 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
 test("search: chips from the server parse, matched column, facets, refusal and keyboard use (fixtures)", async ({
   page,
 }) => {
-  const SHOTS16 = "../../docs/screenshots/phase-16";
+  const SHOTS16 = shotsDir("phase-16");
   await page.goto(`${BASE}/runs`);
   const box = page.getByRole("searchbox", { name: "Search runs" });
   await box.fill("tool:run_migration");
@@ -213,6 +220,27 @@ test("analysis states are stated: processing and not analysed", async ({ page })
   await expect(page.getByTestId("health")).toHaveCount(0);
 });
 
+test("a live run with a queued analysis shows the last one as of its age, not nothing (KI-097)", async ({
+  page,
+}) => {
+  // The fixture API never has a completed analysis for a running run, so the response is made from the
+  // real one: processing, with an earlier analysis that completed 12 s before the server's clock.
+  await page.route(`**/v1/runs/${RUN(4)}/findings`, async (route) => {
+    const body = await (await route.fetch()).json();
+    const served = Date.parse(body.server_time);
+    const state = { ...body.state, status: "processing", computed_at: new Date(served - 12_000) };
+    await route.fulfill({
+      json: { ...body, state: { ...state, computed_at: state.computed_at.toISOString() } },
+    });
+  });
+  await page.goto(`${BASE}/runs/${RUN(4)}`);
+  await openTab(page, "Findings");
+  const line = page.getByTestId("findings-state");
+  await expect(line).toContainText(/as of \d+ s ago/);
+  await expect(line).toContainText("Newer events are being analysed");
+  await expect(line).not.toContainText("Analysing…");
+});
+
 test("unknown run shows a not-found state", async ({ page }) => {
   await page.goto(`${BASE}/runs/run_00000000000000000000000999`);
   await expect(page.locator('[data-state="error"]')).toContainText("Not found");
@@ -270,7 +298,7 @@ test("security headers are set and the CSP breaks nothing", async ({ page }) => 
 });
 
 // ---- Phase 9: multi-agent waterfall ----------------------------------------------------------------------------------
-const WSHOTS = "../../docs/screenshots/phase-9";
+const WSHOTS = shotsDir("phase-9");
 
 test("multi-agent waterfall: lanes, nesting under skew, critical path, synchronized selection, keyboard", async ({
   page,
@@ -404,7 +432,7 @@ test("10,000-event run in the waterfall: bounded rows, auto-collapse, zoom stays
 test("evaluations: every state, the judge badge, hostile text as text, and the viewer's withheld view (fixtures)", async ({
   page,
 }) => {
-  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const SHOTS11 = shotsDir("phase-11");
   const alerts: string[] = [];
   page.on("dialog", (d) => {
     alerts.push(d.message());
@@ -482,7 +510,7 @@ test("runs list: pick two runs to compare (fixtures)", async ({ page }) => {
 test("compare: divergence, keyboard, notices and the viewer's metadata-only view (fixtures)", async ({
   page,
 }) => {
-  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const SHOTS11 = shotsDir("phase-11");
   const url = (b: string) => `${b}/runs/compare?left=${RUN(11)}&right=${RUN(12)}`;
   await page.goto(url(BASE));
   await expect(page.getByRole("heading", { name: "Compare", level: 1, exact: true })).toBeVisible();
@@ -528,7 +556,7 @@ test("compare: divergence, keyboard, notices and the viewer's metadata-only view
 test("experiments: list, the control banner, warnings, metrics and forms by role (fixtures)", async ({
   page,
 }) => {
-  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const SHOTS11 = shotsDir("phase-11");
   const alerts: string[] = [];
   page.on("dialog", (d) => {
     alerts.push(d.message());

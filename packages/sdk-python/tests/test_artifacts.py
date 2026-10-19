@@ -12,8 +12,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from blackbox import BlackBox, PayloadMode
-from blackbox.artifacts import MAX_ARTIFACT_BYTES, MAX_QUEUE_ITEMS
+from agent_blackbox import BlackBox, PayloadMode
+from agent_blackbox.artifacts import MAX_ARTIFACT_BYTES, MAX_QUEUE_ITEMS
 
 SECRET = "AKIAABCDEFGHIJKLMNOP"
 

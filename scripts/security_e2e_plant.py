@@ -24,8 +24,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-from blackbox import BlackBox, PayloadMode
-from blackbox.coding import CodingRecorder
+from agent_blackbox import BlackBox, PayloadMode
+from agent_blackbox.coding import CodingRecorder
 
 
 def pem(body: str) -> str:

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from abb_conformance import ScenarioError, capture
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 from blackbox_mcp import instrument
 from tests.drivers import FakeSession, real_available, real_session
@@ -106,7 +106,7 @@ def test_idempotent_garbage_tolerant_and_sync_methods() -> None:
 
 
 def test_bookkeeping_failure_never_breaks_the_call(monkeypatch: pytest.MonkeyPatch) -> None:
-    from blackbox import Run
+    from agent_blackbox import Run
 
     def explode(self: Run, *a: Any, **k: Any) -> None:
         raise RuntimeError("sdk bug")
@@ -152,7 +152,7 @@ def test_real_server_tool_error_and_success() -> None:
 
 
 def test_failures_while_finishing_a_span_are_contained(monkeypatch: pytest.MonkeyPatch) -> None:
-    from blackbox import Span
+    from agent_blackbox import Span
 
     def explode(self: Span, *a: Any, **k: Any) -> None:
         raise RuntimeError("sdk bug")
@@ -185,7 +185,7 @@ def test_unusual_arguments_and_unrenderable_payloads() -> None:
 
 
 def test_nothing_is_emitted_after_the_run_ended() -> None:
-    from blackbox import current_run
+    from agent_blackbox import current_run
 
     class EndsRun(FakeSession):
         async def call_tool(self, name: Any = None, arguments: Any = None, **kw: Any) -> Any:

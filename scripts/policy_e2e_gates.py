@@ -469,10 +469,10 @@ def gate7() -> None:
 
     # 4. the SDK imports only the standard library (an AST audit of the policy modules and the package metadata)
     sdk = ROOT / "packages" / "sdk-python"
-    allowed = set(sys.stdlib_module_names) | {"blackbox"}
+    allowed = set(sys.stdlib_module_names) | {"agent_blackbox"}
     outside: list[str] = []
     audited = 0
-    for path in sorted((sdk / "src" / "blackbox").glob("*.py")):
+    for path in sorted((sdk / "src" / "agent_blackbox").glob("*.py")):
         audited += 1
         for node in ast.walk(ast.parse(path.read_text())):
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""] if isinstance(node, ast.ImportFrom) and node.level == 0 else []

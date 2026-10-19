@@ -1,10 +1,10 @@
 # Python SDK
 
-Package `agent-black-box` (import `blackbox`), `packages/sdk-python`. Python >= 3.10, **no runtime dependencies** (ADR-013).
+Package `agent-black-box` (import `agent_blackbox`), `packages/sdk-python`. Python >= 3.10, **no runtime dependencies** (ADR-013).
 Spec §67-68, ADR-010 (client-side redaction), INV-4 (the SDK never harms the host), INV-5.
 
 ```python
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 bb = BlackBox(api_key=os.environ["BLACKBOX_API_KEY"], endpoint="http://localhost:8000")
 with bb.run("Fix OAuth timeout", metadata={"issue": 1842}) as run:
@@ -25,13 +25,13 @@ bb.shutdown()          # optional: an atexit hook flushes too
 | `run.agent(name, agent_id=, agent_version=, input=, attributes=, parent=)` | a child agent (Phase 9): records `agent.spawned` (delegator's identity, `agent.child_id`; `input` is a payload) then `agent.started`/`agent.completed` with the child's own `agent_id`; everything inside inherits it. `set_result(value)` is the payload of `agent.completed`. A name with no slug characters, or equal to the delegator's agent id, becomes `<delegator>-child-<n>`. |
 | `run.spawn_context(agent_id=, parent=, input=)` / `run.trace_context()` | delegate to another process: `spawn_context` records `agent.spawned` and returns the context string (`abb1;run=...;trace=...;span=...;agent=...`, <= 256 characters); `trace_context` returns the current position without an event. |
 | `bb.continue_run(context, agent_id=, agent_version=)` | join a run another process started: no `run.started`/`run.completed` (`end()` is a counted no-op, `ended` stays False), root spans parent to the context's span, `sequence` omitted. As a context manager it wraps the block in an agent span when an agent id is known. An invalid context returns an inert run. |
-| `blackbox.trace_context_from_env()` | the context in `BLACKBOX_TRACE_CONTEXT` or `None`. HTTP header name constant `TRACE_CONTEXT_HEADER` (`X-Blackbox-Trace-Context`); the SDK does no HTTP for you. |
+| `agent_blackbox.trace_context_from_env()` | the context in `BLACKBOX_TRACE_CONTEXT` or `None`. HTTP header name constant `TRACE_CONTEXT_HEADER` (`X-Blackbox-Trace-Context`); the SDK does no HTTP for you. |
 | `run.llm_call(provider, model, temperature=, max_tokens=)` | `llm.request.*`; `record_usage(input, output, cached_input_tokens=, cost_usd=, cache_write_tokens=, cache_write_1h_tokens=, service_tier=, data_residency=)` (the last four are billing modifiers, ADR-044; omit what you do not know). Cost: pass token counts and the server prices them (ADR-040); `cost_usd` is your own estimate and `provider_cost_usd` a provider-reported figure. |
 | `run.event(type, attributes, payload=, status=)` / `bb.event(...)` | point event (`custom.<name>` if no dot). |
 | `@bb.observe(kind=, name=)` | sync or async functions; untraced outside a run; arguments/results are never captured. |
 | `bb.flush(timeout)`, `bb.shutdown(timeout)`, `bb.stats()` | bounded, idempotent, never raise. `stats()` holds every drop counter. |
 | `bb.guard(...)`, `@guarded(...)` | cooperative policy checks, off by default: see **Policy** below. |
-| `blackbox.bind(fn)` | threads do not inherit context: wrap callables you hand to a thread/pool. asyncio tasks inherit it. |
+| `agent_blackbox.bind(fn)` | threads do not inherit context: wrap callables you hand to a thread/pool. asyncio tasks inherit it. |
 
 User exceptions inside `with` blocks always propagate unchanged.
 
@@ -48,16 +48,16 @@ bb = BlackBox(policy_mode="enforce")
 with bb.run("deploy") as run:
     try:
         decision = bb.guard("github.push", "origin main", arguments={"branch": "main"})   # waits if a person must approve
-    except blackbox.PolicyDenied as denied:     # also ApprovalDenied, ApprovalExpired
+    except agent_blackbox.PolicyDenied as denied:     # also ApprovalDenied, ApprovalExpired
         print(denied.policy_id, denied.policy_version, denied.reason)
-    except blackbox.PolicyUnavailable:          # the service could not be asked and the fail mode is closed
+    except agent_blackbox.PolicyUnavailable:          # the service could not be asked and the fail mode is closed
         ...
 ```
 
 | Call | Notes |
 | --- | --- |
-| `bb.guard(capability, resource=None, risk_class=None, arguments=None, *, on_error=None, run=None) -> Decision` | `blackbox.guard(...)` uses the current run's client (no run and no client: `via="disabled"`). `Decision(decision, policy_id, policy_version, reason, approval_id, via)`; `via` is `policy`, `approval`, `fail_open`, `expiry_allow` or `disabled`. A deny raises `PolicyDenied(policy_id, policy_version, reason)`; a denied approval `ApprovalDenied`; an expired or cancelled one `ApprovalExpired` (both subclasses of `PolicyDenied`); an unreachable service under a closed fail mode `PolicyUnavailable(reason)`. All derive from `PolicyError`. Nothing else is ever raised (INV-4). |
-| `await bb.aguard(...)` / `await blackbox.aguard(...)` | the same on a worker thread of the SDK's own 64-thread pool (not the loop's default executor, which a few pending approvals would exhaust). Cancelling the task withdraws a pending approval at the next long-poll round (at most 5 s). |
+| `bb.guard(capability, resource=None, risk_class=None, arguments=None, *, on_error=None, run=None) -> Decision` | `agent_blackbox.guard(...)` uses the current run's client (no run and no client: `via="disabled"`). `Decision(decision, policy_id, policy_version, reason, approval_id, via)`; `via` is `policy`, `approval`, `fail_open`, `expiry_allow` or `disabled`. A deny raises `PolicyDenied(policy_id, policy_version, reason)`; a denied approval `ApprovalDenied`; an expired or cancelled one `ApprovalExpired` (both subclasses of `PolicyDenied`); an unreachable service under a closed fail mode `PolicyUnavailable(reason)`. All derive from `PolicyError`. Nothing else is ever raised (INV-4). |
+| `await bb.aguard(...)` / `await agent_blackbox.aguard(...)` | the same on a worker thread of the SDK's own 64-thread pool (not the loop's default executor, which a few pending approvals would exhaust). Cancelling the task withdraws a pending approval at the next long-poll round (at most 5 s). |
 | `@guarded(capability, resource=None, risk_class=None, arguments=None, *, on_error=None, client=None)` | decorator for functions, methods and coroutine functions. `resource` and `arguments` are values or callables receiving the wrapped function's own call arguments (`self` first for a method). A denial raises before the function runs. A callable that raises is `invalid_intent` and follows the fail mode. Outside a run, or with policy off, the function simply runs. It is the integration path for LangGraph, OpenAI and Anthropic tool functions. |
 
 Options (also `BLACKBOX_*`): `policy_mode` (`off`\|`enforce`, env `BLACKBOX_POLICY`), `policy_timeout` (2.0 s, one decide, consume or cancel call), `policy_wait_max`
@@ -107,7 +107,7 @@ bodies are never logged.
 
 | Integration | Behaviour |
 | --- | --- |
-| `CodingRecorder` | with `policy_mode="enforce"`, `read_file` (`filesystem.read`, resource the path), `write_file`/`delete_file` (`filesystem.write`, resource the path, argument `operation`), `run_command` and every `git_*` helper that runs a command (`shell.execute`, resource the executable name, `risk_class` from the classifier, argument `category`) and `git_push` (`github.push`, resource `<remote> <branch>`, argument `branch`, then its shell command) ask first. A denied action does not happen and records no step of its own (the server records `policy.action.blocked`). `guard_command/read/write/push` are the same checks for a host that acts itself. The three-line git metadata probes the recorder runs for attributes are not actions the agent chose and are not guarded. |
+| `CodingRecorder` | with `policy_mode="enforce"`, `read_file` (`filesystem.read`, resource the path), `write_file`/`delete_file` (`filesystem.write`, resource the path, argument `operation`), `run_command` and every `git_*` helper that runs a command (`shell.execute`, resource the executable name, `risk_class` from the classifier, argument `category`) and `git_push` (`github.push`, resource `<remote> <branch>`, argument `branch`, `risk_class` the classifier's class for the push it runs: R2, or R3 with `force=True` which runs `--force-with-lease`; never invented, unset if it cannot be derived, and a forced push then fails closed, ADR-176; `remote` and `branch` are validated as `git_push` validates them, `ValueError` if unsafe; then its shell command) ask first. A denied action does not happen and records no step of its own (the server records `policy.action.blocked`). `guard_command/read/write/push(remote, branch, force=False)` are the same checks for a host that acts itself. The three-line git metadata probes the recorder runs for attributes are not actions the agent chose and are not guarded. |
 | `blackbox_mcp.instrument` | `call_tool` is guarded as `tool.<name>`, resource `mcp.call_tool`; a denied call returns an MCP error result and is not made. |
 | LangGraph, OpenAI, Anthropic adapters | not hooked: they do not execute tools. Put `@guarded` on the tool function. |
 | Anything that bypasses the SDK | not stopped. |
@@ -167,3 +167,11 @@ attributes) and counted in `dropped_redaction_error`.
 
 Application-thread cost is ~7-23 us per operation (`docs/benchmarks/phase-3-sdk.md`). `scripts/sdk-e2e.sh` runs
 `examples/python/trace_an_agent.py` against the container stack and reads the run back.
+
+## Logging
+
+The SDK logs under the `agent_blackbox` logger namespace (adapters under `agent_blackbox.<adapter>`). Configuring the old logger name `blackbox` no longer applies (ADR-177).
+
+## `risk_class` on push intents (ADR-176)
+
+`risk_class` is part of the canonical intent and of the server's approval binding, so an approval granted to a push from an older SDK (null class) does not bind to the same push from this SDK; only a run that upgrades mid-flight is affected. Rules with `risk_class: [R2]` (or `[R2, R3]`) on `github.*` or `*` now match live pushes and dry runs that previously fell through to the default; rules without a risk filter are unchanged, a `[R3]` rule still does not match a plain push, and the capability is matched first so `shell.execute` is not over-matched.

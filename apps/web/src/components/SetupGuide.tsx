@@ -8,12 +8,11 @@ import { TraceLine } from "./illustrations";
 import { useCan } from "./WorkspaceProvider";
 import "../app/setup-guide.css";
 
-// The real package and import names (packages/sdk-python/pyproject.toml, docs/architecture/sdk-python.md). Whether the
-// package is published to a public index is not verified here, so the checkout form is shown under it.
-const INSTALL = "pip install agent-black-box";
-const FROM_CHECKOUT = "pip install ./packages/sdk-python";
+// No package is published to a public index yet, so the only install line that works is the from-checkout one
+// (docs/quickstart.md, "Trace your own agent"). Do not show a registry name here until it is published and checked.
+const INSTALL = "pip install ./packages/sdk-python";
 // `BlackBox()` reads BLACKBOX_API_KEY and BLACKBOX_ENDPOINT (default http://localhost:8000); an atexit hook flushes.
-const SNIPPET = `from blackbox import BlackBox
+const SNIPPET = `from agent_blackbox import BlackBox
 bb = BlackBox()
 with bb.run("My first run"): pass`;
 
@@ -88,9 +87,7 @@ export function SetupGuide({
         <li>
           <h3>{t.guide.installTitle}</h3>
           <CopyBlock text={INSTALL} label="Copy the install command" />
-          <p className="muted">
-            {t.guide.checkout} <code>{FROM_CHECKOUT}</code>.
-          </p>
+          <p className="muted">{t.guide.checkout}</p>
         </li>
         <li>
           <h3>{t.guide.recordTitle}</h3>

@@ -19,11 +19,11 @@ import weakref
 from collections.abc import Callable
 from typing import Any
 
-from blackbox import BlackBox, LlmCall, Run, current_run
+from agent_blackbox import BlackBox, LlmCall, Run, current_run
 
 from blackbox_openai._util import count, get, number, preview, text
 
-log = logging.getLogger("blackbox.openai")
+log = logging.getLogger("agent_blackbox.openai")
 
 CostFn = Callable[[str, str, int | None, int | None, int | None], float | None]
 _TARGETS = (("chat", "completions", "create"), ("responses", "create"))

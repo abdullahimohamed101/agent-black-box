@@ -2,13 +2,14 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
 import { enterReplay, openRun, scrub, seekTo } from "./replay";
+import { shotsDir } from "./shots-dir";
 
 // Phase 14 step 4 (fixtures mode): decisions on the run page. Run 20 waits for a person; run 21 holds an allowed read, a
 // read denied by deny-env-read v3 and a push that was approved and then used. A denial is a policy outcome, not a failed run.
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 const WAITING = `/w/demo/projects/all/runs/${RUN(20)}`;
 const DECISIONS = `/w/demo/projects/all/runs/${RUN(21)}`;
-const SHOTS = "../../docs/screenshots/phase-14";
+const SHOTS = shotsDir("phase-14");
 const APR1 = `apr_${String(1).padStart(26, "0")}`;
 
 async function axe(page: Page) {

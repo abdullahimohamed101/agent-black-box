@@ -770,3 +770,41 @@ def test_a_reported_loop_without_a_repetition_count_says_so_in_words() -> None:
     _, message = describe(finding)
     assert message == "The integration reported a -> b repeated an unknown number of times."
     assert "None" not in message
+
+
+def _chain_message(**evidence: Any) -> str:
+    finding = Finding(
+        detector="failure_chain",
+        detector_version="failure_chain@1.0.0",
+        finding_type="failure_chain",
+        kind=Kind.DETERMINISTIC,
+        severity=Severity.CRITICAL,
+        confidence=1.0,
+        start_event_id="evt_a",
+        end_event_id="evt_b",
+        evidence_event_ids=("evt_a", "evt_b"),
+        fingerprint="f" * 8,
+        evidence={"category": "tool_failed", **evidence},
+    )
+    return describe(finding)[1]
+
+
+def test_a_failure_chain_never_says_zero_retries_followed_when_the_run_had_unlinked_retries() -> (
+    None
+):
+    message = _chain_message(retries_caused=0, retries_unattributed=2, mutations=0)
+    assert "0 retr" not in message and "retrys" not in message
+    assert "2 retries" in message and "no operation" in message
+
+
+def test_plural_words_are_spelled_and_agree_with_their_count() -> None:
+    assert "1 retry followed" in _chain_message(
+        retries_caused=1, retries_unattributed=0, mutations=1
+    )
+    assert "2 retries followed" in _chain_message(
+        retries_caused=2, retries_unattributed=0, mutations=2
+    )
+    one = _chain_message(retries_caused=1, retries_unattributed=0, mutations=1)
+    assert "1 change to files or the repository was made" in one
+    two = _chain_message(retries_caused=1, retries_unattributed=0, mutations=2)
+    assert "2 changes to files or the repository were made" in two

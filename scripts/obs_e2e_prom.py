@@ -42,6 +42,12 @@ def _images() -> dict[str, str]:
     return {name: str(compose["services"][name]["image"]) for name in ("prometheus", "grafana")}
 
 
+def _postgres_image() -> str:
+    """The database image comes from compose, so a Dependabot bump of compose cannot leave this helper on an old digest (KI-265)."""
+    compose = yaml.safe_load((lib.ROOT / "docker-compose.yml").read_text())
+    return str(compose["services"]["postgres"]["image"])
+
+
 def _present(image: str) -> bool:
     return lib.docker("image", "inspect", image).returncode == 0
 
@@ -66,7 +72,7 @@ def _vm_free_kib(candidates: list[str]) -> int | None:
 def _disk_guard(images: dict[str, str]) -> list[str]:
     """Fails the gate (never prunes, never deletes) unless pulling is safe. Returns the images that will be pulled."""
     to_pull = [image for image in images.values() if not _present(image)]
-    free = _vm_free_kib([*images.values(), "postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea", "alpine", "busybox"])
+    free = _vm_free_kib([*images.values(), _postgres_image(), "alpine", "busybox"])
     if to_pull:
         if free is None:
             die(f"cannot measure the container VM's free disk (no local image with `df`); refusing to pull {to_pull} blind. Free space or pull them yourself.")

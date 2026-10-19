@@ -10,7 +10,7 @@ from abb_event_schema.parse import parse_event_in
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from blackbox import BlackBox, PayloadMode
+from agent_blackbox import BlackBox, PayloadMode
 
 from multi_agent.planner import PLANTED_SECRET, run_job
 

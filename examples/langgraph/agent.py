@@ -1,4 +1,4 @@
-"""A small LangGraph agent traced by Agent Black Box. The only Black Box lines are marked.
+"""A small LangGraph agent traced by Agent BlackBox. The only Black Box lines are marked.
 
     cd integrations/langgraph
     BLACKBOX_API_KEY=... BLACKBOX_ENDPOINT=http://localhost:8000 uv run python ../../examples/langgraph/agent.py
@@ -9,7 +9,7 @@ The model is a local fake (no network, no provider key): it answers with fixed t
 import os
 from typing import Any, TypedDict
 
-from blackbox import BlackBox  # Black Box
+from agent_blackbox import BlackBox  # Black Box
 from blackbox_langgraph import BlackBoxCallback  # Black Box
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage

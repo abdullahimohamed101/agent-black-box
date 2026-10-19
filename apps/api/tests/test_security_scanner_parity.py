@@ -31,7 +31,7 @@ def sdk() -> ModuleType:
     assert SDK_SRC.is_dir(), "the SDK sources are part of this repository"
     sys.path.insert(0, str(SDK_SRC))
     try:
-        return importlib.import_module("blackbox.redaction")
+        return importlib.import_module("agent_blackbox.redaction")
     finally:
         sys.path.remove(str(SDK_SRC))
 

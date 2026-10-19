@@ -1,9 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { shotsDir } from "./shots-dir";
 
 // Phase 22 step 8 (D9): the first-run setup guide, the arrival switch, and the trace illustrations on empty/not-found states.
 const BASE = "/w/demo/projects/all";
-const SHOTS = "../../docs/screenshots/phase-22/step-8";
+const SHOTS = shotsDir("phase-22/step-8");
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 
 async function axe(page: Page) {

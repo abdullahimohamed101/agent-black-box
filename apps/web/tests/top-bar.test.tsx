@@ -177,7 +177,7 @@ describe("application frame", () => {
     expect(seen).toEqual([
       "Skip to content",
       "Menu",
-      "Agent Black Box",
+      "Agent BlackBox",
       "Runs",
       "Review",
       "Analytics",

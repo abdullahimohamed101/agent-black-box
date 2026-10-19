@@ -18,6 +18,7 @@ ABB_DATABASE_URL. Secrets are never printed; failures name the check and the end
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -53,6 +54,14 @@ ROLE_SESSIONS = {
     "billing": "E2E_BILLING_SESSION",
 }
 
+
+
+SERVER_TIME = re.compile(rb'"server_time"\s*:\s*"[^"]*"')
+
+
+def stable(body: bytes) -> bytes:
+    """The body with its one per-request field (`server_time`) blanked, for byte-for-byte role comparisons."""
+    return SERVER_TIME.sub(b'"server_time":"-"', body)
 
 def fail(message: str) -> None:
     print(f"SECURITY-E2E CHECK FAILED: {message}", file=sys.stderr)
@@ -248,9 +257,14 @@ def gate1() -> None:
         key_body = reader.get(reads[name], params={"limit": 100} if name == "workspace_list" else {})
         expect(key_body.status_code == 200, f"read key {name} -> {key_body.status_code}")
         assert_no_content(key_body.text, f"read key {name}")
+        # `server_time` (KI-097, ADR-174) is the database clock at the moment of THIS request, so it differs between any two
+        # reads by design. It is the only volatile field: assert it is there, then compare everything else byte for byte.
+        if name == "run_findings":
+            for who, content in (("owner", bodies["owner"][name]), ("read key", key_body.content)):
+                expect(SERVER_TIME.search(content) is not None, f"{who} {name} carries no server_time")
         for role in ("developer", "viewer"):
-            expect(bodies[role][name] == bodies["owner"][name], f"{role} {name} differs from the owner's bytes")
-        expect(key_body.content == bodies["owner"][name], f"read key {name} differs from the owner's bytes")
+            expect(stable(bodies[role][name]) == stable(bodies["owner"][name]), f"{role} {name} differs from the owner's bytes")
+        expect(stable(key_body.content) == stable(bodies["owner"][name]), f"read key {name} differs from the owner's bytes")
     for path in (reads["run_findings"], listing):
         expect(get("billing", path).status_code == 403, f"billing {path} is not 403")
     # the workspace list agrees with the run's findings, and its facets name only fixed words

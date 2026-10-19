@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { openTab, settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/eval-e2e.sh: the scripted coding agent wrote a passing run and a wrong-fix run through the
 // SDK into a real API; the owner's evaluators (rule, metric, the fake judge, a failing one) ran in the worker and an
@@ -11,7 +12,7 @@ const ids: Record<string, string> = JSON.parse(process.env.E2E_EVAL_IDS ?? "{}")
 const viewerToken = process.env.E2E_VIEWER_SESSION_TOKEN;
 test.skip(!ids["experiment"] || !viewerToken, "needs scripts/eval-e2e.sh");
 test.use({ baseURL: "http://localhost:3180", viewport: { width: 1400, height: 1000 } });
-const SHOTS = "../../docs/screenshots/phase-11";
+const SHOTS = shotsDir("phase-11");
 const HOSTILE = "<img src=x onerror=";
 
 const base = () => `/w/${workspace()}/projects/all`;

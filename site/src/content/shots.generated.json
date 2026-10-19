@@ -1,0 +1,100 @@
+{
+ "panels": [
+  {
+   "id": "where-it-broke",
+   "standIn": false,
+   "light": {
+    "webp": "where-it-broke-light.webp",
+    "png": "where-it-broke-light.png",
+    "w": 1440,
+    "h": 900
+   },
+   "dark": {
+    "webp": "where-it-broke-dark.webp",
+    "png": "where-it-broke-dark.png",
+    "w": 1440,
+    "h": 900
+   }
+  },
+  {
+   "id": "with-evidence",
+   "standIn": false,
+   "light": {
+    "webp": "with-evidence-light.webp",
+    "png": "with-evidence-light.png",
+    "w": 1440,
+    "h": 900
+   },
+   "dark": {
+    "webp": "with-evidence-dark.webp",
+    "png": "with-evidence-dark.png",
+    "w": 1440,
+    "h": 900
+   }
+  },
+  {
+   "id": "what-it-cost",
+   "standIn": false,
+   "light": {
+    "webp": "what-it-cost-light.webp",
+    "png": "what-it-cost-light.png",
+    "w": 1440,
+    "h": 900
+   },
+   "dark": {
+    "webp": "what-it-cost-dark.webp",
+    "png": "what-it-cost-dark.png",
+    "w": 1440,
+    "h": 900
+   }
+  },
+  {
+   "id": "many-agents",
+   "standIn": false,
+   "light": {
+    "webp": "many-agents-light.webp",
+    "png": "many-agents-light.png",
+    "w": 1440,
+    "h": 900
+   },
+   "dark": {
+    "webp": "many-agents-dark.webp",
+    "png": "many-agents-dark.png",
+    "w": 1440,
+    "h": 900
+   }
+  },
+  {
+   "id": "in-the-loop",
+   "standIn": false,
+   "light": {
+    "webp": "in-the-loop-light.webp",
+    "png": "in-the-loop-light.png",
+    "w": 1440,
+    "h": 900
+   },
+   "dark": {
+    "webp": "in-the-loop-dark.webp",
+    "png": "in-the-loop-dark.png",
+    "w": 1440,
+    "h": 900
+   }
+  },
+  {
+   "id": "runs",
+   "standIn": false,
+   "light": {
+    "webp": "runs-light.webp",
+    "png": "runs-light.png",
+    "w": 1440,
+    "h": 900
+   },
+   "dark": {
+    "webp": "runs-dark.webp",
+    "png": "runs-dark.png",
+    "w": 1440,
+    "h": 900
+   }
+  }
+ ]
+}

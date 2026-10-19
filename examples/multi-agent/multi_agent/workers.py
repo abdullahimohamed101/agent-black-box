@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from blackbox import TRACE_CONTEXT_ENV, Run
+from agent_blackbox import TRACE_CONTEXT_ENV, Run
 
 from multi_agent.fake_model import FakeModel
 

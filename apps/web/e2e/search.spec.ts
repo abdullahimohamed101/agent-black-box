@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { signIn } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/auth-e2e.sh (a real API, the built web server on :3160, the worker). The two people are minted
 // development sessions (create-session): a workspace OWNER who holds `payload.read` and a VIEWER who does not. Sign-in itself
@@ -16,7 +17,7 @@ test.skip(
 );
 test.use({ baseURL: "http://localhost:3160" });
 const ORIGIN = "http://localhost:3160";
-const SHOTS = "../../docs/screenshots/phase-16";
+const SHOTS = shotsDir("phase-16");
 const RUNS = () => `/w/${A}/projects/all/runs`;
 
 async function axe(page: Page) {

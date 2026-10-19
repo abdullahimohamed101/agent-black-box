@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 
-import blackbox
-from blackbox import BlackBox, bind, current_run, current_span
+import agent_blackbox
+from agent_blackbox import BlackBox, bind, current_run, current_span
 from tests.helpers import events_of, offline, types_of
 
 
@@ -192,7 +192,7 @@ def test_context_flows_through_asyncio_tasks_without_leaking_between_runs() -> N
             await asyncio.sleep(0.01)
             assert current_run() is run and current_span() is None
 
-    async def child(run: blackbox.Run) -> None:
+    async def child(run: agent_blackbox.Run) -> None:
         assert current_run() is run  # asyncio tasks copy the context
         await asyncio.sleep(0)
         run.event("custom.from_task")
@@ -349,7 +349,7 @@ def test_invalid_options_fall_back_to_defaults_and_never_raise(
     )
     c = bb2.config
     assert (c.batch_size, c.flush_interval, c.max_queue, c.http_timeout) == (100, 0.25, 10_000, 2.0)
-    assert c.payload_mode is blackbox.PayloadMode.METADATA_ONLY and c.agent_id == "my-agent"
+    assert c.payload_mode is agent_blackbox.PayloadMode.METADATA_ONLY and c.agent_id == "my-agent"
 
 
 def test_local_mode_writes_json_lines(tmp_path: Path) -> None:
@@ -379,7 +379,7 @@ def test_internal_failures_never_reach_the_application(monkeypatch: pytest.Monke
     def explode(*args: Any, **kwargs: Any) -> None:
         raise RuntimeError("sdk bug")
 
-    monkeypatch.setattr("blackbox.client.build_event", explode)
+    monkeypatch.setattr("agent_blackbox.client.build_event", explode)
     with bb.run("r") as run, run.span("s") as s, run.llm_call("p", "m"):
         s.set_attribute("a", 1)
         run.event("custom.x")

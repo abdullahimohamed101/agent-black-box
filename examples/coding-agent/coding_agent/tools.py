@@ -4,9 +4,9 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from blackbox import PolicyError
-from blackbox.coding import CodingRecorder
-from blackbox.secretscan import is_sensitive_path
+from agent_blackbox import PolicyError
+from agent_blackbox.coding import CodingRecorder
+from agent_blackbox.secretscan import is_sensitive_path
 
 MAX_RESULT_CHARS = 4000  # what the model sees of a tool result
 

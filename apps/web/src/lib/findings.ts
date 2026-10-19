@@ -57,8 +57,36 @@ export const evidenceTarget = (f: FindingOut): string | null =>
 
 export type StateLine = { text: string; tone: Tone };
 
+/** "12 s ago", "3 min ago", "2 h ago": coarse on purpose, an analysis age is not a stopwatch. */
+export function formatAge(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s} s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  return `${Math.floor(s / 3600)} h ago`;
+}
+
+/**
+ * How old the last completed analysis is, in seconds. Measured on the server's clock (`server_time` at fetch) plus the
+ * time elapsed here since the response arrived, so a browser clock that is minutes off cannot print a wrong age.
+ */
+export function analysisAgeSeconds(
+  state: Pick<RunFindingsOut["state"], "computed_at">,
+  serverTime: string | undefined,
+  elapsedMs: number,
+): number | null {
+  if (!state.computed_at || !serverTime) return null;
+  const at = Date.parse(state.computed_at);
+  const served = Date.parse(serverTime);
+  if (!Number.isFinite(at) || !Number.isFinite(served)) return null;
+  return Math.max(0, (served - at + Math.max(0, elapsedMs)) / 1000);
+}
+
 /** One honest sentence about how fresh the analysis is. */
-export function stateLine(state: RunFindingsOut["state"], runActive: boolean): StateLine {
+export function stateLine(
+  state: RunFindingsOut["state"],
+  runActive: boolean,
+  ageSeconds: number | null = null,
+): StateLine {
   const seen = state.event_count_seen;
   const over = seen != null ? ` over ${formatInt(seen)} events` : "";
   const when = state.computed_at ? ` at ${new Date(state.computed_at).toISOString()}` : "";
@@ -66,8 +94,13 @@ export function stateLine(state: RunFindingsOut["state"], runActive: boolean): S
     case "none":
       return { text: "Not analysed yet.", tone: "neutral" };
     case "processing":
+      // KI-097: a queued analysis does not hide the last completed one; its age is stated.
       return {
-        text: state.computed_at ? `Analysing… showing the previous analysis${over}.` : "Analysing…",
+        text: state.computed_at
+          ? ageSeconds != null
+            ? `Showing the last analysis, as of ${formatAge(ageSeconds)}${over}. Newer events are being analysed.`
+            : `Analysing… showing the previous analysis${over}.`
+          : "Analysing…",
         tone: "info",
       };
     case "outdated":

@@ -87,6 +87,34 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: scripts/check-pins.sh
 
+  docs:
+    # Phase 20 (D14): relative links and anchors resolve, and the command blocks of the user-facing docs are real (marked
+    # blocks are executed, the rest are reference-checked against the Makefile, compose file and CLI). Runs on every change,
+    # including documentation-only ones, so it does not wait for the `changes` job. No network beyond `uv`.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: python3 -m unittest discover -s scripts/tests -v
+      - run: python3 scripts/check_docs_links.py README.md docs site CONTRIBUTING.md
+      - run: scripts/docs-commands-check.sh
+
+  release-checklist:
+    # Phase 20 (D13, AC14): scripts/release-checklist.sh runs every static release check (licenses, placeholders, debug logging,
+    # secrets, charts, routes, network, screenshot budget, claims, links) and its planted-violation tests prove each one fails on a
+    # violation. Reads files only, so it runs on documentation-only changes too. The gated markers ([CONFIRM ...]) are warnings
+    # here; `--release` (run by the maintainer before publication, gate G2) turns them into failures.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Planted violations are caught
+        run: python3 -m unittest scripts.tests.test_release_checklist -v
+      - name: Release checklist
+        run: scripts/release-checklist.sh
+
   lockfile-audit:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
@@ -819,6 +847,62 @@ jobs:
           name: backup-restore-e2e-results
           path: ${{ runner.temp }}/backup-restore-e2e-logs
           if-no-files-found: ignore
+
+  site-check:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Landing page (Phase 20, AC11, brief section 9): scripts/check-site.sh builds the Next export three ways (under /agent-black-box/,
+    # at the domain root, and with the publication claims on) and runs every subcommand: static rules, fixture and image budgets,
+    # size, claims, then Chrome for nojs, copy, gallery, network (no third-party request), axe, motion and the throttled perf
+    # profile. `shots` writes nothing here (SHOTS_DIR unset). The ubuntu runner's Google Chrome is used, as by apps/web's Playwright.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Site unit tests
+        run: pnpm --filter @abb/site test && pnpm --filter @abb/site typecheck && pnpm --filter @abb/site lint
+      - name: Site check
+        run: scripts/check-site.sh
+      - name: Planted violations are caught
+        run: scripts/check-site.sh --only planted
+
+  demo-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # `make demo` determinism (Phase 20, D9): scripts/demo.sh run twice against a throwaway database, API + worker; the normalised
+    # summaries of the two runs must be identical. No web build and no model key: the demo is scripted.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          cp .env.example .env
+      - name: Demo twice, normalised diff
+        run: scripts/demo-e2e.sh
 
   containers:
     needs: changes

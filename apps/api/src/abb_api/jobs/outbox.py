@@ -88,12 +88,14 @@ class OutboxRepository:
         dedupe_key: str,
         payload: dict[str, Any],
         delay: timedelta | None = None,
+        advance: bool = False,
     ) -> bool:
         """Add a pending job unless an identical one is already pending (coalescing).
 
-        `delay` postpones the job; events arriving meanwhile coalesce into it. Returns True if a
-        new job was created. Written in the caller's transaction, so a job
-        exists if and only if the data that needs processing committed.
+        `delay` postpones the job; events arriving meanwhile coalesce into it. With `advance`, an
+        identical pending job is brought forward to `delay` from now if it was due later (never
+        pushed back). Returns True if a new job was created. Written in the caller's transaction,
+        so a job exists if and only if the data that needs processing committed.
         """
         # With tracing on, the job carries the W3C trace context of the work that asked for it
         # (55 characters), so the worker's span can link back to the request's. A job that
@@ -118,7 +120,24 @@ class OutboxRepository:
             )
             .returning(t.outbox_jobs.c.id)
         )
-        return result.first() is not None
+        created = result.first() is not None
+        if advance and not created:
+            await self._conn.execute(
+                update(t.outbox_jobs)
+                .where(
+                    t.outbox_jobs.c.workspace_id == self._tenant.workspace_id,
+                    t.outbox_jobs.c.job_type == job_type,
+                    t.outbox_jobs.c.dedupe_key == dedupe_key,
+                    t.outbox_jobs.c.status == "pending",
+                )
+                .values(
+                    available_at=func.least(
+                        t.outbox_jobs.c.available_at, func.now() + (delay or timedelta(0))
+                    ),
+                    updated_at=func.now(),
+                )
+            )
+        return created
 
     async def enqueue_summarize(self, run_ids: Sequence[uuid.UUID]) -> int:
         """Ask for these runs to be re-derived (cost or rule changes); returns jobs created."""

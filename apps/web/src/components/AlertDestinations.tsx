@@ -350,7 +350,7 @@ function DestinationForm({
         </select>
         {!emailConfigured && (
           <span className="muted" data-testid="email-unavailable">
-            Email needs the person who runs Agent Black Box to set up outgoing mail first.
+            Email needs the person who runs Agent BlackBox to set up outgoing mail first.
           </span>
         )}
       </label>

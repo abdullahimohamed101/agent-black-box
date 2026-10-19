@@ -69,6 +69,10 @@ services:
       ABB_OIDC_CLIENT_SECRET: ${ABB_OIDC_CLIENT_SECRET:-}
       # /metrics exists only when a token (24+ characters) is set (ADR-165). Blank: no endpoint.
       ABB_METRICS_TOKEN: ${ABB_METRICS_TOKEN:-}
+      # Local development only: lets `cli create-session` mint sign-in sessions (the demo's pending-approval run needs it). Set
+      # ABB_ALLOW_DEV_SESSIONS=1 in .env. The API ignores it unless ABB_ENVIRONMENT is development or test. Default 0, not blank:
+      # a blank value does not parse as a boolean.
+      ABB_ALLOW_DEV_SESSIONS: ${ABB_ALLOW_DEV_SESSIONS:-0}
     ports:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:8900:8900" # the fake provider shares this container's network namespace (see fake-oidc)

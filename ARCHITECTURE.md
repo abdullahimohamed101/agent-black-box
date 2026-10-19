@@ -9,7 +9,7 @@ it. This file summarizes what is *implemented now*; the spec and
 
 ## System Overview
 
-Agent Black Box records what AI agents do. An SDK (or framework adapter) emits **canonical
+Agent BlackBox records what AI agents do. An SDK (or framework adapter) emits **canonical
 events** describing runs, spans, LLM calls, tool calls, file/Git/shell activity, retries and
 policy decisions. The API ingests them idempotently into PostgreSQL, derives summaries and
 findings asynchronously, streams live updates over SSE, and serves a Next.js UI for
@@ -75,12 +75,15 @@ A hand-written metrics registry with a closed vocabulary and hard series ceiling
 
 ### Python SDK (`packages/sdk-python`)
 Instrumentation API -> context manager -> builder/sanitizer -> bounded buffer -> exporter.
-Never raises into the host agent. Status: implemented (Phase 3; `blackbox.coding` in Phase 6; SDK 0.2.0 in Phase 8).
+Never raises into the host agent. Status: implemented (Phase 3; `agent_blackbox.coding` in Phase 6; SDK 0.2.0 in Phase 8).
 
 ### Web (`apps/web`)
 Next.js App Router. Server-fetched page data; client-side trace viewers (timeline, waterfall,
 diff, replay) with virtualization. Status: implemented (Phases 4-7, 15): dashboard, runs list, run detail with story, timeline, waterfall (Phase 9: agent lanes, zoom and pan, critical path, derived in the browser, ADR-071), diff and shell panels, live updates, analytics page, sign-in, workspace switcher, settings (members, API keys, pricing, audit log).
 The browser holds only a session cookie; the web server is a same-origin relay with a header allowlist (`apps/web/src/server/`), forwarding the cookie to the API, which decides every request.
+
+### Release assets (`site/`, `examples/`, `brand/`, `scripts/`) - Phase 20, ADR-174 to ADR-177
+`site/` is a Next static export (landing page, no third-party requests; checked by `scripts/check-site.sh`; the Pages workflow is inert until publication). `make demo` runs scripted, deterministic examples into the `abb-demo` project (`scripts/demo.sh`, proven by `scripts/demo-e2e.sh`); `brand/` holds the pulse mark and `scripts/brand.sh` regenerates the site assets; `scripts/screenshots.sh` regenerates `docs/screenshots/release`. `scripts/release-checklist.sh` is the static pre-release gate (placeholders, debug output, secrets, charts, routes, network, claims, links, imports). The repository is Apache-2.0 (ADR-175); the SDK import package is `agent_blackbox` (ADR-177); a live run's health reads the last completed analysis with `as_of`/`stale` (ADR-174). Status: implemented, pending merge; publication is parked and the rendered-app crawl is open (KI-306).
 
 ### Integrations (`integrations/*`), Processors, Examples
 Adapters translate framework callbacks to SDK calls only; processors are pluggable derived-

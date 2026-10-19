@@ -4,7 +4,7 @@
  */
 export const shell = {
   skip: "Skip to content",
-  brand: "Agent Black Box",
+  brand: "Agent BlackBox",
   primaryLabel: "Primary",
   nav: {
     runs: "Runs",

@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 
-from blackbox import BlackBox, PolicyDenied, PolicyUnavailable
-from blackbox import policy as policy_module
-from blackbox.coding import CodingRecorder, classify_command, executable_of
-from blackbox.policy import PolicyGuard
+from agent_blackbox import BlackBox, PolicyDenied, PolicyUnavailable
+from agent_blackbox import policy as policy_module
+from agent_blackbox.coding import CodingRecorder, classify_command, executable_of
+from agent_blackbox.policy import PolicyGuard
 from tests.policy_server import (
     PolicyServer,
     R,
@@ -311,7 +311,7 @@ def test_hosts_can_ask_before_acting_themselves(srv: PolicyServer, tmp_path: Pat
 def test_a_custom_classifier_with_an_unknown_class_is_sent_unclassified(
     srv: PolicyServer, tmp_path: Path
 ) -> None:
-    from blackbox.coding import Classification
+    from agent_blackbox.coding import Classification
 
     bb = make_client(srv, policy_timeout=0.5)
     rec = CodingRecorder(
@@ -331,4 +331,130 @@ def test_the_engine_is_shared_by_the_recorder_and_the_client(
         rec.guard_read("x")
         assert isinstance(bb._policy_engine(), PolicyGuard)
     assert len(srv.of("failmodes")) == 1
+    bb.shutdown()
+
+
+# -- the push intent carries the classifier's risk class (ADR-176) ----------------------------------
+
+
+def push_intents(srv: PolicyServer) -> list[dict[str, Any]]:
+    return [b for b in decided(srv) if b["capability"] == "github.push"]
+
+
+def test_guard_push_carries_the_class_the_shell_classifier_gives_a_plain_push(
+    srv: PolicyServer, tmp_path: Path
+) -> None:
+    bb, rec = recorder(srv, tmp_path)
+    with rec.run:
+        rec.guard_push("origin", "main")
+    (intent,) = push_intents(srv)
+    assert intent["risk_class"] == classify_command("git push -u origin main").risk_class == "R2"
+    assert intent["resource"] == "origin main" and intent["arguments"] == {"branch": "main"}
+    bb.shutdown()
+
+
+def test_a_forced_push_is_r3_and_runs_the_force_with_lease_command(
+    srv: PolicyServer, tmp_path: Path
+) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)  # noqa: S607
+    bb, rec = recorder(srv, tmp_path)
+    with rec.run:
+        result = rec.git_push("origin", "main", force=True)  # fails (no remote), still asked
+    assert not result.ok
+    (intent,) = push_intents(srv)
+    assert intent["risk_class"] == "R3"
+    shell = [b for b in decided(srv) if b["capability"] == "shell.execute"]
+    assert shell[0]["arguments"]["command"] == "git push -u --force-with-lease origin main"
+    assert shell[0]["risk_class"] == "R3"  # both asks agree
+    bb.shutdown()
+
+
+def test_guard_push_force_flag_only_changes_the_class(srv: PolicyServer, tmp_path: Path) -> None:
+    bb, rec = recorder(srv, tmp_path)
+    with rec.run:
+        rec.guard_push("origin", "main", force=True)
+    (intent,) = push_intents(srv)
+    assert intent["risk_class"] == "R3" and intent["arguments"] == {"branch": "main"}
+    bb.shutdown()
+
+
+def test_a_custom_classifier_decides_the_push_class_and_a_broken_one_cannot_break_it(
+    srv: PolicyServer, tmp_path: Path
+) -> None:
+    from agent_blackbox.coding import Classification
+
+    bb, rec = recorder(srv, tmp_path)
+    rec._classifier = lambda command: Classification("R1", "custom", ("test",))
+    with rec.run:
+        rec.guard_push("origin", "main")
+    assert push_intents(srv)[0]["risk_class"] == "R1"
+    rec._classifier = lambda command: Classification("R9", "bogus", ())  # not a risk class
+    with rec.run:
+        rec.guard_push("origin", "dev")
+    assert push_intents(srv)[1]["risk_class"] is None  # unclassified, never an invented class
+
+    def broken(command: str) -> Classification:
+        raise RuntimeError("classifier fault")
+
+    rec._classifier = broken  # raises: the classifier is swallowed, the ask goes on
+    with rec.run:
+        rec.guard_push("origin", "x")
+    assert push_intents(srv)[2]["risk_class"] == "R2"
+    bb.shutdown()
+
+
+def test_a_builtin_classifier_fault_leaves_the_push_class_unset(
+    srv: PolicyServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agent_blackbox import coding
+
+    def boom(command: str) -> Any:
+        raise RuntimeError("classifier fault")
+
+    monkeypatch.setattr(coding, "classify_command", boom)
+    bb, rec = recorder(srv, tmp_path)
+    with rec.run:
+        rec.guard_push("origin", "main")
+    assert push_intents(srv)[0]["risk_class"] is None
+    bb.shutdown()
+
+
+def test_a_forced_push_whose_class_cannot_be_derived_fails_closed(
+    srv: PolicyServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agent_blackbox import coding
+
+    def boom(command: str) -> Any:
+        raise RuntimeError("classifier fault")
+
+    monkeypatch.setattr(coding, "classify_command", boom)
+    bb, rec = recorder(srv, tmp_path)
+    seen: list[Any] = []
+    real = bb.guard
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs.get("on_error"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(bb, "guard", spy)
+    with rec.run:
+        rec.guard_push("origin", "main", force=True)
+        rec.guard_push("origin", "main")
+    assert seen == ["closed", None]  # forced: closed; plain: the configured mode
+    bb.shutdown()
+
+
+@pytest.mark.parametrize(
+    "bad", ["--force", "+refs/heads/x", ":main", "a b", "a..b", "", "-", "x.lock", "a/"]
+)
+def test_guard_push_refuses_option_like_names_before_asking(
+    srv: PolicyServer, tmp_path: Path, bad: str
+) -> None:
+    bb, rec = recorder(srv, tmp_path)
+    with rec.run:
+        with pytest.raises(ValueError):
+            rec.guard_push("origin", bad)
+        with pytest.raises(ValueError):
+            rec.guard_push(bad, "main", force=True)
+    assert push_intents(srv) == []
     bb.shutdown()

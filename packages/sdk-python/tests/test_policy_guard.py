@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-import blackbox
-from blackbox import (
+import agent_blackbox
+from agent_blackbox import (
     ApprovalDenied,
     ApprovalExpired,
     BlackBox,
@@ -20,8 +20,8 @@ from blackbox import (
     PolicyUnavailable,
     policy_transport,
 )
-from blackbox import policy as policy_module
-from blackbox.policy import PolicyGuard
+from agent_blackbox import policy as policy_module
+from agent_blackbox.policy import PolicyGuard
 from tests.policy_server import (
     PolicyServer,
     R,
@@ -82,13 +82,13 @@ def test_env_turns_enforcement_on(srv: PolicyServer, monkeypatch: pytest.MonkeyP
 
 
 def test_module_level_guard_without_a_run_or_client_is_disabled() -> None:
-    assert blackbox.guard("shell.execute").via == "disabled"
+    assert agent_blackbox.guard("shell.execute").via == "disabled"
 
 
 def test_module_level_guard_uses_the_current_run(srv: PolicyServer) -> None:
     bb = client(srv)
     with bb.run("t"):
-        assert blackbox.guard("shell.execute", "git").via == "policy"
+        assert agent_blackbox.guard("shell.execute", "git").via == "policy"
     assert len(srv.of("decide")) == 1
     bb.shutdown()
 
@@ -359,8 +359,8 @@ def test_a_wait_the_key_may_not_make_is_final(srv: PolicyServer, fast: None, sta
 
 
 def test_backoff_is_jittered_and_bounded() -> None:
-    from blackbox.config import Config
-    from blackbox.stats import Stats
+    from agent_blackbox.config import Config
+    from agent_blackbox.stats import Stats
 
     engine = PolicyGuard(Config(mode="offline"), Stats())
     for failures in range(1, 12):
@@ -443,7 +443,7 @@ def test_aguard_allows_denies_and_waits(srv: PolicyServer, fast: None) -> None:
             assert (await bb.aguard("a.b")).via == "policy"
             with pytest.raises(PolicyDenied):
                 await bb.aguard("a.b")
-            assert (await blackbox.aguard("github.push", "origin main")).via == "approval"
+            assert (await agent_blackbox.aguard("github.push", "origin main")).via == "approval"
 
     asyncio.run(main())
     bb.shutdown()

@@ -1,12 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 14 step 4 (fixtures mode): the Approvals page. Every test that decides a request uses a request of its own, so
 // the specs can run in parallel against the one fixture server (state is in memory and resets when it restarts).
 const APR = (n: number) => `apr_${String(n).padStart(26, "0")}`;
 const PAGE = "/w/demo/approvals";
-const SHOTS = "../../docs/screenshots/phase-14";
+const SHOTS = shotsDir("phase-14");
 
 async function axe(page: Page) {
   await settleAnimations(page);

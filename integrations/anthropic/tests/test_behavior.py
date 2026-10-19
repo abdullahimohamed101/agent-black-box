@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from abb_conformance import LLM_CACHED, LLM_INPUT, LLM_OUTPUT, ScenarioError, capture
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 from blackbox_anthropic import instrument
 from tests.drivers import MESSAGE_JSON, real_available, real_client
@@ -196,7 +196,7 @@ def test_idempotent_and_garbage_tolerant() -> None:
 
 
 def test_bookkeeping_failure_never_breaks_the_call(monkeypatch: pytest.MonkeyPatch) -> None:
-    from blackbox import Run
+    from agent_blackbox import Run
 
     def explode(self: Run, *a: Any, **k: Any) -> None:
         raise RuntimeError("sdk bug")
