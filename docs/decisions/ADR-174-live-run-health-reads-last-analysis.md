@@ -1,6 +1,6 @@
 # ADR-174: A live run's health reads the last completed analysis, labelled with its age
 
-Status: Accepted (Phase 20, step 3; the cadence section is completed in step 4). Implements D3, D7 and D8 of the Phase 20 plan; D3 was decided by the user, D7 and D8 are the assistant's recommendations. Amends ADR-081 (health dimensions) and ADR-080 (findings job cadence). Resolves KI-097.
+Status: Accepted (Phase 20, steps 3 and 4). Implements D3, D7 and D8 of the Phase 20 plan; D3 was decided by the user, D7 and D8 are the assistant's recommendations. Amends ADR-081 (health dimensions) and ADR-080 (findings job cadence). Resolves KI-097.
 Date: 2026-10-18
 Phase: 20
 
@@ -18,12 +18,21 @@ ADR-081 makes the finding-based health dimensions (`loops`, `context`, and the c
 4. **`server_time` exists so the client measures age against the server's clock**, not its own: a browser clock that is minutes off would otherwise print "as of 5 min ago" for a fresh result. The client corrects by the offset between `server_time` and its clock at fetch time.
 5. No event, finding or `run_findings` row is written or changed by this: derived state is still rebuildable from events (INV-1, INV-2).
 
+### Cadence
+
+6. **A per-run minimum interval, `ABB_FINDINGS_MIN_INTERVAL_SECONDS` (default 10 s, `0` disables).** Where the job is enqueued (`jobs/handlers.py::enqueue_detect`) the delay is `max(detect_delay(...), interval - age(computed_at))`, with the age taken on the database clock (`now()` in the same transaction as `run_findings.computed_at`). `findings/job.py::detect_enqueue_delay` is the pure arithmetic and takes the clock as an argument, so the tests inject it.
+7. **Trailing by construction.** The job stays one coalesced pending job per run (`dedupe_key`); events arriving in the wait join it, so the last batch is always analysed after the interval. No new table, no timer.
+8. **No throttle when the run ends.** If the summary shows a terminal status, the floor is skipped and, because an already queued throttled job would otherwise keep its later `available_at`, `OutboxRepository.enqueue(..., advance=True)` brings a pending job forward (never back). Only the outbox row changes; no event is touched (INV-1).
+9. **Known limit.** The floor is measured when the job is enqueued. A job that is already running when the next batch arrives is not delayed by it, so two analyses can complete close together at the boundary; the rate is still bounded by one running plus one pending job per run. `rebuild-findings` and cost rebuilds enqueue without the floor.
+
 ## Alternatives considered
 
 - **Analyse on every batch.** Rejected: cost grows with run size and the 5 s coalescing delay already exists for that reason.
 - **A new state value (`stale`).** Rejected: breaks exhaustive clients; `status` stays the job state, `stale` is a property of the reading.
 - **Borrow results of `outdated` rules.** Rejected: ADR-081's honesty rule.
 - **Client-clock ages.** Rejected: skew.
+- **A timer or debounce table for the interval.** Rejected: the outbox already coalesces and delays; a second scheduler is more state to keep consistent.
+- **Throttling inside the handler (re-enqueue itself when too early).** Rejected for now: it would also cover the running-job boundary of point 9, at the cost of a wasted claim per run; revisit if the boundary shows up in the metrics.
 
 ## Consequences
 

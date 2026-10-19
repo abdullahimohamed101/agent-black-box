@@ -197,6 +197,9 @@ class Settings(RetentionSettings, TracingSettings):
     # Reliability findings (ADR-080/081). The detector job analyses at most `findings_max_events`
     # events of a run; thresholds are deployment-wide and every finding records the ones it used.
     findings_delay_seconds: float = Field(default=5.0, ge=0)
+    # At most one analysis per run per interval while the run is active (KI-097, ADR-174); a run
+    # that ended is analysed at once. 0 disables the floor.
+    findings_min_interval_seconds: float = Field(default=10.0, ge=0)
     findings_max_events: int = Field(default=50_000, ge=100)
     findings_loop_min_repetitions: int = Field(default=3, ge=2)
     findings_loop_min_repetitions_single: int = Field(default=8, ge=2)

@@ -11,7 +11,7 @@ set -a; . ./.env; set +a
 DB_NAME="${FINDINGS_E2E_DB_NAME:-abb_p10}"
 export ABB_DATABASE_URL="${ABB_DATABASE_URL%/*}/$DB_NAME"
 export ABB_SUMMARY_DEBOUNCE_SECONDS=0
-export ABB_FINDINGS_DELAY_SECONDS=0
+export ABB_FINDINGS_DELAY_SECONDS=0 ABB_FINDINGS_MIN_INTERVAL_SECONDS=0
 PORT="${FINDINGS_E2E_API_PORT:-8135}"; API="http://localhost:$PORT"
 WORK="$(mktemp -d)"; pids=()
 # `uv run` starts the real server as a child: kill every descendant, not just the wrapper.
