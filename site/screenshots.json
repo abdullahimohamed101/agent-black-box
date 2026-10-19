@@ -1,0 +1,9 @@
+[
+  { "file": "runs-list.png", "alt": "The runs list: one row per run, failed runs marked with the fault line and the step where they failed.", "caption": "Runs: what ran, what failed, what it cost." },
+  { "file": "failed-run-story.png", "alt": "A failed coding-agent run: the headline sentence, the steps column and the fault line at the failing step.", "caption": "A failed run, told as a story with the fault line at the first failure." },
+  { "file": "timeline-inspector.png", "alt": "The run timeline with the inspector open on a shell command.", "caption": "Timeline and inspector: every call, with its input and output when capture is on." },
+  { "file": "findings.png", "alt": "The findings tab listing detected loops and retries with the events that support them.", "caption": "Findings, each pointing at the events that support it." },
+  { "file": "waterfall-multi-agent.png", "alt": "A waterfall of a multi-agent run with one lane per agent.", "caption": "Waterfall: one lane per agent." },
+  { "file": "cost-analytics.png", "alt": "The cost and reliability analytics page.", "caption": "Cost and reliability over time." },
+  { "file": "policy-approval.png", "alt": "A pending approval request with the policy that required it.", "caption": "A policy pauses a tool call until a person approves it." }
+]
