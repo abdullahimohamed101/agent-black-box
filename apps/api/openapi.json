@@ -1601,7 +1601,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
                 "type": "string"
               },
               {
@@ -1618,7 +1617,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
                 "type": "string"
               }
             ],
@@ -1652,7 +1650,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
                 "type": "string"
               }
             ],
@@ -1692,7 +1689,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
                 "type": "string"
               }
             ],
@@ -5944,7 +5940,6 @@
           "cache_write_1h_per_million": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -5957,7 +5952,6 @@
           "cache_write_per_million": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -5970,7 +5964,6 @@
           "cached_input_per_million": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -5984,7 +5977,6 @@
             "type": "string"
           },
           "input_per_million": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Input Per Million",
             "type": "string"
           },
@@ -6022,7 +6014,6 @@
             "type": "string"
           },
           "output_per_million": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Output Per Million",
             "type": "string"
           },
@@ -6056,7 +6047,6 @@
           "regional_multiplier": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -6082,7 +6072,6 @@
             "title": "Regional Regions"
           },
           "request_price": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Request Price",
             "type": "string"
           },
