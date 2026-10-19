@@ -183,6 +183,17 @@ holds test data.
   process tree on exit. **The Playwright spec writes screenshots into the tracked `docs/screenshots/phase-6/`**: commit them when they changed
   meaningfully, otherwise `git checkout` them. Example tests: `uv run --project packages/sdk-python pytest examples/coding-agent/tests`.
 
+### Demo determinism (Phase 20, D9)
+- **Demo E2E** (`make demo-e2e`, `scripts/demo-e2e.sh`, CI job `demo-e2e`): dedicated `abb_demo_e2e` database, API (:8170) and a worker started by the
+  script; `scripts/demo.sh` (what `make demo` runs) is executed twice against it with `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` planted to prove they are
+  scrubbed. `scripts/demo_e2e_check.py summarise` waits (bounded polls, no wall-clock assertions) until each of the four runs is derived and reduces it to
+  what the agents did: status, agents and parents, per-agent call and error counts, token and cost totals, event counts by agent, type and status, spans by
+  agent, kind, name, status and parent, findings (type, kind, severity, confidence) and health statuses. Ids, timestamps, durations and anything that depends on
+  thread timing are left out; the two summaries must be equal (`demo run 1 == demo run 2 (normalised)`). The script also checks the demo key file is owner-only
+  and no model key reaches the demo output. Not covered here: the web pages of the printed run URLs (they need sign-in; the run pages are covered by the other
+  browser E2E suites) and any `--live` mode, which the project has never run (KI-044).
+- `make demo-reset` is a dry run; `make demo-reset CONFIRM=1` runs `purge-project` for the fixed project `abb-demo` of workspace `local` and nothing else.
+
 ### Server-side redaction and capture modes (Phase 13 step 1, ADR-130)
 - `apps/api/tests/test_security_scanner.py`: one sample per kind, near misses, unicode, NUL/escape splitting, idempotence, size and time budgets, and 22 hostile
   1 MB inputs with a wall-clock bound; `test_security_scanner_parity.py` loads the SDK from the monorepo and asserts the same kinds, deny keys, output on a corpus and
