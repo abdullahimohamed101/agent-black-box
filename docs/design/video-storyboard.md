@@ -3,6 +3,13 @@
 Status: rewritten 2026-10-18 for the redesigned app (ADR-166: one top bar, Runs as home, the fault line). Replaces the Phase 21
 storyboard, which described the left rail, stat strips and readout bars that no longer exist.
 
+**Superseded in part by the v2 direction (2026-10-19):** the shot list, camera, cursor and caption numbers are now in
+`docs/design/launch/video-brief.md`, and the single source of truth for what is recorded is the `MAIN`, `TEASER` and `SOCIAL`
+beat tables in `scripts/record-demo.mjs` (14 beats, about 85 s, 1920x1080 at 30 fps captured at 2x; the 78 s / 25 fps / ten
+scenes below are the v1 plan). `docs/design/launch/video-qa-report.md` records the take that was checked. The rules for captions
+and claims below still apply unchanged, and the recorder enforces them: captions 25, 26 and 28 and "Open source. Self-hosted."
+need `RELEASE_CLAIMS=1`, which stays off until G2 and AC1/AC12 are VERIFIED.
+
 Length: 78 seconds (range 60-90). Format: 1920x1080, 25 fps, dark theme with a closing light-theme scene. **No voice-over and no
 music (D17).** Captions sit in the lower third and carry the story. Casing in captions is "Agent BlackBox" (D15). Audience:
 people who have never seen the product.
