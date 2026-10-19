@@ -284,6 +284,34 @@ grep -q '^real-units-problem-lines=0$' "$WORK/units.out" || fail "systemd-analyz
 grep -qE '^planted-units-problem-lines=[1-9]' "$WORK/units.out" || fail "the unit check did not notice the planted mistakes"
 echo "PASS A7.8"
 
+step "A7.9 the runbook's 'Restoring onto a new server': wiped volumes, bundle from the off-site copy, restore into the empty abb, start the app"
+# Review P1-4. The commands below are the ones in docs/runbooks/hosting-operations.md; keep the two in step.
+NAME="$(rclone lsf -R --files-only "$REMOTE" | python3 scripts/hosting_backup_lib.py latest-complete)" || fail "no complete off-site bundle"
+dc down -v --remove-orphans >/dev/null 2>&1 || fail "could not wipe the rig's volumes (the 'new server')"
+export ABB_BACKUP_DIR="$WORK/backups"
+mkdir -p "$ABB_BACKUP_DIR/incoming"
+rclone copy "$REMOTE/$NAME" "$ABB_BACKUP_DIR/incoming/$NAME" --checksum >/dev/null || fail "could not download the bundle"
+rm -f "$ABB_BACKUP_DIR/incoming/$NAME/COMPLETE"
+dc up -d --wait --no-build postgres >"$WORK/new-pg.log" 2>&1 || { tail -5 "$WORK/new-pg.log" >&2; fail "postgres did not start on the new volume"; }
+drill "$ABB_BACKUP_DIR/incoming/$NAME" | tee "$WORK/new-drill.out" | tail -1 | grep -q '^DRILL OK ' || fail "the drill on the new server"
+ABB_BACKUP_PASSPHRASE="$(cat "$WORK/backup.pass")"; export ABB_BACKUP_PASSPHRASE
+# shellcheck disable=SC2016
+dc run --rm -T --user 0:0 -e ABB_BACKUP_PASSPHRASE --entrypoint sh backup -c \
+  'ABB_RESTORE_DATABASE_URL="$ABB_BACKUP_DATABASE_URL" python -m abb_api.backup restore /backups/incoming/"$0" --artifact-dir /data/artifacts --passphrase-env ABB_BACKUP_PASSPHRASE && chown -R 10001:10001 /data/artifacts' \
+  "$NAME" >"$WORK/new-restore.out" 2>&1 || { tail -8 "$WORK/new-restore.out" >&2; fail "the restore into the empty abb failed"; }
+# What hosting-upgrade.sh does on this database: migrations as the owner (they set the role passwords), then the app.
+dc up -d --wait --no-build migrate api >"$WORK/new-up.log" 2>&1 || { tail -10 "$WORK/new-up.log" >&2; fail "migrate/api did not start on the restored database"; }
+bad=0; checked=0
+while read -r table expected; do
+  actual="$(dc exec -T postgres psql -U abb -d abb -tAc "SELECT count(*) FROM \"$table\"" </dev/null)"
+  checked=$((checked + 1)); [ "$actual" = "$expected" ] || { echo "MISMATCH $table $expected $actual"; bad=$((bad + 1)); }
+done < <(python3 scripts/hosting_backup_lib.py manifest-counts "$ABB_BACKUP_DIR/incoming/$NAME")
+[ "$checked" -gt 0 ] && [ "$bad" = 0 ] || fail "restored row counts differ from the manifest ($bad of $checked tables)"
+art="$(dc run --rm -T --no-deps --entrypoint sh backup -c 'find /data/artifacts -type f | wc -l; stat -c %u /data/artifacts' </dev/null | tr '\n' ' ')"
+[ "$art" = "1 10001 " ] || fail "the artifact is missing or not owned by the API user (got: $art)"
+curl -fsS "http://127.0.0.1:$API_PORT/readyz" >/dev/null || fail "/readyz on the restored server"
+echo "PASS A7.9 ($checked tables equal the manifest, 1 artifact owned by uid 10001, API ready)"
+
 step "no secret in any output"
 if grep -rE "$(cat "$WORK/backup.pass")" "$WORK"/*.out "$WORK/up.log" 2>/dev/null; then fail "the passphrase appeared in an output"; fi
 echo "PASS output hygiene"

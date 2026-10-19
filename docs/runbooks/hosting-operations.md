@@ -106,11 +106,31 @@ Order of the script (its comments are the reference): preflight (clean checkout,
 
 For a lost or damaged server, or a failed upgrade that changed the schema. You need: the backup passphrase (your password manager), the rclone key for the second provider, the Google client secret, and the repository.
 
-1. New server, DNS pointing at it, then the guide's steps 5 to 7 (bootstrap, code, `hosting-secrets.sh`, Caddy). **Put the saved passphrase back** into `/etc/abb/backup.pass` (mode 0600, owner `deploy`) instead of the newly generated one, and recreate `/etc/abb/rclone.conf` and `ABB_OFFSITE_REMOTE`.
-2. Prove the bundle first, without touching anything: `scripts/hosting-restore-drill.sh --latest` (or a named `remote:path/abb-<timestamp>`). It must print `DRILL OK` with table counts equal to the manifest. This part was exercised end to end in the local rig.
-3. Start the database only and restore into an empty database as the tool's procedure says ([backup and restore](backup-restore.md#restore)): the restore never writes into a non-empty database, so on a freshly migrated database create a new empty one (`CREATE DATABASE abb_restored OWNER abb;`), restore into it, and point `ABB_DATABASE_URL`, `ABB_RETENTION_DATABASE_URL` and the artifact directory at it in `.env`. **The final repointing on a hosted server is `UNVERIFIED (env)`**: the drill proves the bundle restores and the tool is tested in the repository's own drill, but nobody has yet performed the cut-over on a real hosted install. Record the exact commands you used in your own notes, then fix this page.
-4. Start `api worker retention web`, check `/readyz` from the server (`$dc exec api python -c "import urllib.request as u;print(u.urlopen('http://127.0.0.1:8000/readyz').status)"`), sign in, open a recent run and an artifact.
-5. Run `hosting-verify.sh ... --server` and take a fresh backup straight away.
+1. New server, DNS pointing at it, then the guide's steps 5 to 7 (bootstrap, code, `hosting-secrets.sh`, Caddy), **but not the first deploy**. **Put the saved passphrase back** into `/etc/abb/backup.pass` (mode 0600, owner `deploy`) instead of the newly generated one, and recreate `/etc/abb/rclone.conf` and `ABB_OFFSITE_REMOTE` in `/etc/abb/backup.env`. Check out the release tag you were running (`git checkout --detach <tag>`).
+2. Fetch the bundle and start only the database. A fresh volume creates an **empty** `abb`; nothing is migrated yet.
+
+   ```bash
+   cd /opt/abb && set -a && . /etc/abb/backup.env && set +a && export ABB_BACKUP_DIR=/opt/abb/backups
+   rclone lsf -R --files-only "$ABB_OFFSITE_REMOTE" | python3 scripts/hosting_backup_lib.py latest-complete   # prints the newest complete bundle name, abb-<timestamp>
+   NAME=abb-<timestamp>
+   mkdir -p backups/incoming && rclone copy "$ABB_OFFSITE_REMOTE/$NAME" backups/incoming/$NAME --checksum && rm -f backups/incoming/$NAME/COMPLETE
+   $dc up -d --wait postgres
+   ```
+
+3. Prove the bundle first, touching only a throwaway database: `scripts/hosting-restore-drill.sh backups/incoming/$NAME`. It must print `DRILL OK` with table counts equal to the manifest.
+4. Restore straight into the empty `abb` and the real artifact volume with the tool ([backup and restore](backup-restore.md#restore)). It refuses a non-empty database, and creates the missing `abb_runtime` and `abb_retention` roles itself (the owner `abb` may). It runs as root in the container only so it can then hand the files to the API user:
+
+   ```bash
+   export ABB_BACKUP_PASSPHRASE="$(cat /etc/abb/backup.pass)"
+   $dc run --rm -T --user 0:0 -e ABB_BACKUP_PASSPHRASE --entrypoint sh backup -c \
+     'ABB_RESTORE_DATABASE_URL="$ABB_BACKUP_DATABASE_URL" python -m abb_api.backup restore /backups/incoming/"$0" --artifact-dir /data/artifacts --passphrase-env ABB_BACKUP_PASSPHRASE && chown -R 10001:10001 /data/artifacts' "$NAME"
+   ```
+
+   If it fails, nothing needs repairing by hand: `docker compose down` then remove only the data volumes of this project (`docker volume ls`, the `pgdata` and `artifacts` ones; this is the single case where deleting a volume is right, because the database is the empty one you just created), and repeat from step 2.
+5. Start the application on the restored data with the upgrade script: `scripts/hosting-upgrade.sh <the tag> --no-verify`. The restored `alembic_version` makes it a normal deploy (it takes a backup first, runs the migrations, which set the role passwords and are a no-op when the revision is current, and starts `api worker retention web`). Then check `/readyz` from the server (`$dc exec api python -c "import urllib.request as u;print(u.urlopen('http://127.0.0.1:8000/readyz').status)"`), sign in, open a recent run and an artifact.
+6. Run `sudo scripts/hosting-verify.sh https://abb.<domain> --server` and take a fresh backup straight away.
+
+Evidence: steps 2 to 5 (download, drill, restore into the empty `abb`, migrate, API ready, row counts equal to the manifest, artifact readable by uid 10001) are exercised by `scripts/hosting-backup-e2e.sh` case A7.9 on wiped volumes. `UNVERIFIED (env)`: the same on a real replacement server (DNS, Caddy certificate, the real provider); KI-312 stays open until the owner has done it once.
 
 ## Rotating secrets
 
