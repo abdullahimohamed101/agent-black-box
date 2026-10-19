@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record a multi-agent job with Agent Black Box.
+"""Record a multi-agent job with Agent BlackBox.
 
     uv run --project packages/sdk-python python examples/multi-agent/agent.py [--skew-ms 1500] [--fail-tool]
 

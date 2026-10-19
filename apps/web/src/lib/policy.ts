@@ -18,7 +18,7 @@ export type PolicyDecisionWord = "allow" | "deny" | "require_approval";
 
 /** The one sentence that states the guarantee (D1). It is shown, never softened, on both pages. */
 export const COOPERATIVE_NOTE =
-  "Policies are enforced for agents that ask Agent Black Box through the SDK guard. They do not stop code that bypasses it.";
+  "Policies are enforced for agents that ask Agent BlackBox through the SDK guard. They do not stop code that bypasses it.";
 
 /** The name server-written policy and approval events carry as `sdk.name` (ADR-141); the server rejects it from clients. */
 export const POLICY_SERVICE = "abb-policy-service";

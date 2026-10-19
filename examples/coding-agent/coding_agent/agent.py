@@ -1,4 +1,4 @@
-"""The agent loop: model call, tool calls, repeat. Every step is a typed Agent Black Box event."""
+"""The agent loop: model call, tool calls, repeat. Every step is a typed Agent BlackBox event."""
 
 from dataclasses import dataclass
 from typing import Any

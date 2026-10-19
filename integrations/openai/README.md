@@ -1,6 +1,6 @@
 # agent-black-box-openai
 
-OpenAI client wrapper for Agent Black Box (spec 18, 70; ADR-050..052). Runtime dependency: `agent-black-box` only;
+OpenAI client wrapper for Agent BlackBox (spec 18, 70; ADR-050..052). Runtime dependency: `agent-black-box` only;
 `pip install agent-black-box-openai[openai]` adds the client.
 
 ```python

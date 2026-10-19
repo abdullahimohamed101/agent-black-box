@@ -1,6 +1,6 @@
 # Operations
 
-Operating Agent Black Box itself (spec §43, §104-125). Runbooks live in `docs/runbooks/`.
+Operating Agent BlackBox itself (spec §43, §104-125). Runbooks live in `docs/runbooks/`.
 
 ## Processes
 

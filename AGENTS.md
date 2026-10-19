@@ -5,12 +5,12 @@ product and architecture knowledge lives in `/docs`.
 
 ## Mission
 
-Build Agent Black Box: a flight recorder, observability, debugging, evaluation and
+Build Agent BlackBox: a flight recorder, observability, debugging, evaluation and
 (eventually) control plane for AI agents. Produce correct, maintainable, testable
 software that satisfies the specification while preserving the architecture.
 Correctness and maintainability beat minimizing lines changed.
 
-> Developers must first trust that Agent Black Box accurately shows what their agents
+> Developers must first trust that Agent BlackBox accurately shows what their agents
 > did. Everything else depends on that trust.
 
 ## Session Start Protocol

@@ -6,11 +6,11 @@ How to use this file: each step below is sized for one agent run. It names its i
 
 ## Product facts (the placeholders, filled in once for every step)
 
-- **Product:** Agent Black Box. A flight recorder, debugger and control plane for AI agents.
+- **Product:** Agent BlackBox. A flight recorder, debugger and control plane for AI agents.
 - **Type:** web app, desktop-first, must work at 375 px. Light and dark follow the system setting.
 - **Industry:** developer tools / AI-agent observability.
 - **Users:** developers and AI engineers who run coding and other agents (high technical comfort, short on time when something failed), plus tech leads and security reviewers who approve risky actions and read findings.
-- **Core problem:** people cannot trust or debug what their agents did. Agent Black Box records every run so they can see exactly what happened, where it first went wrong, what it cost, and control what agents may do.
+- **Core problem:** people cannot trust or debug what their agents did. Agent BlackBox records every run so they can see exactly what happened, where it first went wrong, what it cost, and control what agents may do.
 - **Key user actions:** (1) understand a run and its first failure fast; (2) compare runs and versions; (3) review findings and approve or deny risky actions; (4) set up alerts, API keys and limits; (5) manage retention, quotas and access.
 - **Inspiration (assistant's recommendation, user may change):** Linear (restraint and hierarchy), Sentry (issue-first reading), Honeycomb and Datadog traces (what to show, but far less dense), Vercel and Stripe dashboards (clarity of settings).
 - **Vibe words (recommendation):** calm, precise, instrument-like, editorial restraint. Fewer boxes, clearer hierarchy, one thing to look at first on every page.

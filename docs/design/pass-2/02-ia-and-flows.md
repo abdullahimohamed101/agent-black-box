@@ -4,7 +4,7 @@ Status: written 2026-10-16 from Prompt 1 sections 1, 2 and 8 (`docs/design/desig
 `01-direction.md`, ADR-166, and the route tree under `apps/web/src/app` (read on `main` at `250ecc7`, plus the `retention` page
 on `feature/phase-19b-data-lifecycle`). Nothing here is invented: every route below exists in the tree or on that branch.
 
-Product context (from the pipeline): Agent Black Box, a web app, desktop-first and usable at 375 px; developer-tools / AI-agent
+Product context (from the pipeline): Agent BlackBox, a web app, desktop-first and usable at 375 px; developer-tools / AI-agent
 observability; users are developers and AI engineers under time pressure, plus tech leads and security reviewers; the core problem
 is trusting and debugging what agents did; key actions: understand a run and its first failure, compare runs, review findings and
 approve or deny, set up alerts, keys and limits, manage retention, quotas and access.

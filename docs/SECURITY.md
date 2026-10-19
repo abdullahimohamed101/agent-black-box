@@ -1,6 +1,6 @@
 # Security
 
-Agent Black Box stores source code, prompts, shell output, file names, database query text and
+Agent BlackBox stores source code, prompts, shell output, file names, database query text and
 tool arguments. Treat it as a high-value target and all captured telemetry as hostile input.
 Source: spec §32, §38, §90-93, §126; threat model to be expanded as phases land.
 

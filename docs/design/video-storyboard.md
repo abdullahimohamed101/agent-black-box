@@ -1,4 +1,4 @@
-# Demo video storyboard: Agent Black Box (redesigned app)
+# Demo video storyboard: Agent BlackBox (redesigned app)
 
 Length: 75 seconds (range 60-90). Format: 1920×1080 screen capture of the fixtures build after Phase 21, dark theme, no voice-over (captions carry the story), optional quiet music [NEEDS INPUT]. Audience: the owner's portfolio; people who have never seen the product.
 
@@ -8,7 +8,7 @@ Rules for the captions: plain language, no hype, nothing shown as built that is 
 
 | # | Time | On screen | Caption (lower third) | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | 0:00-0:06 | Runs list, dark theme, rail visible. Cursor rests. The REC indicator shows "2 running". | Agent Black Box records what your AI agents actually did. | Static for 2 s before any motion; no entrance animation (the app has none). |
+| 1 | 0:00-0:06 | Runs list, dark theme, rail visible. Cursor rests. The REC indicator shows "2 running". | Agent BlackBox records what your AI agents actually did. | Static for 2 s before any motion; no entrance animation (the app has none). |
 | 2 | 0:06-0:14 | Cursor moves down the list; the Failed row "Migrate billing schema" is selected (row tint, Findings "High" pill visible). Click. | A failed run. Let's find out why. | Row selection is instant; keep the cursor path short. |
 | 3 | 0:14-0:26 | Run page opens on the Story tab. The header: status Failed, readout strip with Retries 2 (amber) and Errors 4 (red). The headline sentence is read by the viewer. Cursor hovers "Show it". | One sentence says what happened. The readouts say how bad. | Hold 4 s on the header before moving. Zoom (post-production crop) on the readout strip is allowed if ffmpeg is available; otherwise no zoom. |
 | 4 | 0:26-0:40 | Click the High finding "Repeated failure, same arguments". The timeline scrolls to evt_0011, the row gets the landing ring, the inspector opens on the right with the ConnectionTimeout callout and "Retry of evt_0008". | Findings link to the exact events they were built from. | This is the finding-to-evidence jump; it must be the real `jumpTo`, not a cut. |

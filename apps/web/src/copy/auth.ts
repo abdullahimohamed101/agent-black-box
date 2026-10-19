@@ -29,7 +29,7 @@ export const auth = {
     failed: "The invitation could not be accepted.",
   },
   home: {
-    fixtureTitle: "Agent Black Box",
+    fixtureTitle: "Agent BlackBox",
     fixtureLede: "Flight recorder for AI agents.",
     fixtureOpen: "Open your runs →",
     unavailableSuffix: "Try again shortly.",

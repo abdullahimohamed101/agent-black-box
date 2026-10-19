@@ -131,7 +131,7 @@ def _name_of(payload: Mapping[str, Any], key: str) -> str | None:
     return name or None
 
 
-TEST_TITLE: Final = "Test alert from Agent Black Box"
+TEST_TITLE: Final = "Test alert from Agent BlackBox"
 
 
 def _lines(payload: Mapping[str, Any]) -> list[tuple[str, str]]:
@@ -215,7 +215,7 @@ def slack_message(alert: Alert) -> dict[str, Any]:
     lines += [f"{label}: {slack_escape(text)}" for label, text in _lines(payload)]
     link = absolute_link(alert.web_origin, payload.get("link_path"))
     if link:
-        lines.append(f"<{slack_escape(link)}|Open in Agent Black Box>")
+        lines.append(f"<{slack_escape(link)}|Open in Agent BlackBox>")
     text = "\n".join(lines)
     return {
         "text": text,
@@ -255,14 +255,14 @@ def email_message(alert: Alert, *, sender: str, recipients: list[str]) -> EmailM
     title = _title(payload)
     severity = _severity(payload)
     project = _name_of(payload, "project")
-    subject = f"[Agent Black Box] {title}" + (f": {project}" if project else "")
+    subject = f"[Agent BlackBox] {title}" + (f": {project}" if project else "")
     link = absolute_link(alert.web_origin, payload.get("link_path"))
     facts = _lines(payload)
 
     text_lines = [f"{title} ({severity})", ""]
     text_lines += [f"{label}: {text}" for label, text in facts]
     if link:
-        text_lines += ["", f"Open in Agent Black Box: {link}"]
+        text_lines += ["", f"Open in Agent BlackBox: {link}"]
     text_lines += ["", f"Alert id: {alert.alert_id}"]
 
     rows = "".join(
@@ -270,7 +270,7 @@ def email_message(alert: Alert, *, sender: str, recipients: list[str]) -> EmailM
         for label, text in facts
     )
     anchor = (
-        f'<p><a href="{html.escape(link, quote=True)}">Open in Agent Black Box</a></p>'
+        f'<p><a href="{html.escape(link, quote=True)}">Open in Agent BlackBox</a></p>'
         if link
         else ""
     )

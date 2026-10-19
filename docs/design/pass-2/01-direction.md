@@ -236,7 +236,7 @@ never appears inside the shell. Radii: 4 px on controls, 0 elsewhere. No shadows
 
 ```text
 ┌ top bar 44 ────────────────────────────────────────────────────────────────────────────────────┐
-│ ⌁ Agent Black Box   Runs  Review  Analytics  Experiments  Settings      demo / All projects ▾  ⌕  ◦ you │
+│ ⌁ Agent BlackBox    Runs  Review  Analytics  Experiments  Settings      demo / All projects ▾  ⌕  ◦ you │
 ├────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ Runs / Fix flaky checkout test                                                      Failed · 5d ago   │
 │                                                                                                   │

@@ -1,7 +1,7 @@
 [project]
 name = "agent-black-box-langgraph"
 version = "0.1.0"
-description = "Agent Black Box adapter for LangGraph / LangChain callbacks"
+description = "Agent BlackBox adapter for LangGraph / LangChain callbacks"
 license = "Apache-2.0"
 readme = "README.md"
 requires-python = ">=3.10"

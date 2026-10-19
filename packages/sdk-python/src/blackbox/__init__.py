@@ -1,4 +1,4 @@
-"""Agent Black Box Python SDK: trace an agent in a few lines, without ever harming it.
+"""Agent BlackBox Python SDK: trace an agent in a few lines, without ever harming it.
 
 bb = BlackBox(api_key="abb_live_...", project="demo")
 with bb.run("fix bug") as run:
