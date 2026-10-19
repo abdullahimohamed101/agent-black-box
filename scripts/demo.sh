@@ -73,7 +73,10 @@ cli add-member --workspace "$WORKSPACE" --email owner@local.test --role OWNER >/
 cli create-project --workspace "$WORKSPACE" --name "Agent BlackBox demo" --slug "$PROJECT" --capture-mode full >/dev/null || true  # exists on a repeat run
 # The key goes to curl on stdin as a config line, never in argv (any user can read argv with `ps`).
 valid=0
-if [ -s "$KEY_FILE" ] && printf 'header = "Authorization: Bearer %s"\n' "$(cat "$KEY_FILE")" \
+# The file content becomes a curl config line, so only a single-line token of the key alphabet may reach it (no quote, no
+# newline, no second directive); anything else is re-minted without being sent anywhere.
+key_ok() { [ -s "$KEY_FILE" ] && [[ "$(cat "$KEY_FILE")" =~ ^abb_live_[A-Za-z0-9._-]+$ ]]; }
+if key_ok && printf 'header = "Authorization: Bearer %s"\n' "$(cat "$KEY_FILE")" \
      | curl -sf --max-time 5 -K - "$API/v1/runs?limit=1" >/dev/null 2>&1; then valid=1; fi
 if [ "$valid" = 0 ]; then
   # --supersede revokes the earlier 'demo' key of this project, so a lost or stale key file does not leave live keys behind.

