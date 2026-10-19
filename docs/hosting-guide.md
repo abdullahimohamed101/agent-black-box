@@ -233,6 +233,8 @@ sudo systemctl enable --now abb-container-metrics.timer abb-backup.timer
 sudo systemctl start abb-backup.service            # the first backup now; read its output
 ```
 
+Writing `ABB_OBS_UID` into `.env` is also what tells `hosting-upgrade.sh`, `hosting-backup.sh` and the restore drill to keep the overlay (and the worker's metrics port) in every later command; do not skip that line. Use `$dco` instead of `$dc` from here on.
+
 The observability overlay adds Prometheus (30 days, 4 GiB at most), node_exporter, Alertmanager, a probe of your public `/healthz` and certificate, and Grafana, all bound to `127.0.0.1`.
 
 **ACTION NEEDED (you):** choose where alerts go. Alertmanager ships with **no receiver**: alerts are evaluated and visible, and are sent nowhere until you configure one. Edit the `notify` receiver in

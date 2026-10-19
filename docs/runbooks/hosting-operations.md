@@ -6,7 +6,7 @@ For the single-server recipe of Phase 23 (`deploy/hosting/`, ADR-178); the set-u
 (disk, memory, restarts, metrics, backups, certificate, alert delivery), [upgrade and rollback](#upgrade-and-rollback), [restoring onto a new server](#restoring-onto-a-new-server), [rotating secrets](#rotating-secrets), [growing the server](#growing-the-server)
 and [incident basics](#incident-basics). Anything in this page that needs a real server is `UNVERIFIED (env)` until the owner has run it; the scripts it names were exercised in local rigs (the guide says which).
 
-In this page `$dc` stands for `docker compose -f docker-compose.yml -f deploy/hosting/compose.production.yml --profile app --profile ops` run from `/opt/abb`.
+In this page `$dc` stands for `docker compose -f docker-compose.yml -f deploy/hosting/compose.production.yml --profile app --profile ops` run from `/opt/abb`. **Once the monitoring overlay is on (guide step 9), `$dc` must also carry `-f deploy/hosting/compose.observability.yml --profile observability`**: recreating `worker` without it drops its metrics port and `AbbTargetDown` pages. The scripts (`hosting-upgrade.sh`, `hosting-backup.sh`, `hosting-restore-drill.sh`) do this themselves: they read `scripts/hosting-compose.sh`, which adds the overlay when `.env` defines `ABB_OBS_UID` (step 9 writes it). Override with `ABB_OBSERVABILITY=0|1` or an explicit `ABB_COMPOSE_FILES` in `/etc/abb/backup.env`.
 
 Never run `docker volume prune` or `docker compose down -v` on the server: both delete the database volume. `docker image prune` (dangling images only) is safe.
 

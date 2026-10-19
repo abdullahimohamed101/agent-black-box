@@ -46,8 +46,10 @@ export ABB_BACKUP_DIR="$BACKUP_DIR"
 compose_args=()
 [ -n "$PROJECT" ] && compose_args+=(-p "$PROJECT")
 [ -n "${ABB_COMPOSE_ENV_FILE:-}" ] && compose_args+=(--env-file "$ABB_COMPOSE_ENV_FILE")
-for f in ${ABB_COMPOSE_FILES:-docker-compose.yml deploy/hosting/compose.production.yml}; do compose_args+=(-f "$f"); done
-dc() { docker compose "${compose_args[@]}" --profile ops "$@"; }
+# shellcheck source=hosting-compose.sh
+. "$HERE/hosting-compose.sh"; abb_compose_resolve
+for f in $compose_files; do compose_args+=(-f "$f"); done
+dc() { docker compose "${compose_args[@]}" "${compose_profiles[@]}" "$@"; }
 # A short root-in-container step with FIXED arguments (never the backup tool): the artifact files are 0600 owned by uid 10001, so
 # the tool must run as that user, and the bundle it makes (0700, uid 10001) is then handed to the deploy user for rclone.
 root_sh() { dc run --rm -T --no-deps --user 0:0 --entrypoint sh backup -c "$@"; }

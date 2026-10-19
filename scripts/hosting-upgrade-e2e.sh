@@ -21,7 +21,8 @@ SRV="$WORK/abb"
 step() { printf '\n==> %s\n' "$*"; }
 fail() { echo "HOSTING-UPGRADE-E2E FAILED: $*" >&2; exit 1; }
 dc() { docker compose -p "$APP" --env-file "$WORK/app.env" -f "$SRV/docker-compose.yml" -f "$SRV/deploy/hosting/compose.production.yml" \
-  -f "$SRV/deploy/hosting/rig/compose.upgrade.yml" --project-directory "$SRV" --profile app --profile ops "$@"; }
+  -f "$SRV/deploy/hosting/compose.observability.yml" -f "$SRV/deploy/hosting/rig/compose.upgrade.yml" --project-directory "$SRV" \
+  --profile app --profile ops --profile observability "$@"; }
 cleanup() {
   local status=$?
   if [ "$status" -ne 0 ] && [ -f "$WORK/app.env" ] && [ -d "$SRV" ]; then
@@ -45,7 +46,7 @@ docker tag agent-black-box-api:local abb-hosting-up-api:base; docker tag agent-b
 step "a throwaway server checkout (git repository) with the hosting files of this worktree"
 mkdir -p "$SRV"
 tar -C "$root" -cf - docker-compose.yml .env.production.example infrastructure/docker deploy scripts/hosting-backup.sh scripts/hosting-restore-drill.sh \
-  scripts/hosting-upgrade.sh scripts/hosting-verify.sh scripts/hosting_backup_lib.py scripts/hosting_verify_lib.py scripts/hosting_server_checks.py \
+  scripts/hosting-upgrade.sh scripts/hosting-compose.sh scripts/hosting-verify.sh scripts/hosting_backup_lib.py scripts/hosting_verify_lib.py scripts/hosting_server_checks.py \
   apps/api/Dockerfile apps/web/Dockerfile 2>/dev/null | tar -C "$SRV" -xf -
 git -C "$SRV" init -q -b main; git -C "$SRV" config user.email rig@example.test; git -C "$SRV" config user.name rig
 overlay() { # release number, extra lines for api, for migrate, for postgres (each a block already indented under its service)
@@ -83,6 +84,7 @@ release() { # N api-extra migrate-extra postgres-extra : commit and tag vN
 head_release() { git -C "$SRV" describe --tags --exact-match HEAD 2>/dev/null || git -C "$SRV" rev-parse --short HEAD; }
 running_build() { docker inspect "$(dc ps -q api)" --format '{{index .Config.Labels "abb.build"}}' 2>/dev/null; }
 running_web_build() { docker inspect "$(dc ps -q web)" --format '{{index .Config.Labels "abb.build"}}' 2>/dev/null; }
+worker_metrics_port() { docker inspect "$(dc ps -q worker)" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^ABB_WORKER_METRICS_PORT=//p'; }
 image_id() { docker image inspect "$1" --format '{{.Id}}'; }
 
 step "generated secrets and configuration (never printed)"
@@ -97,6 +99,8 @@ ABB_OIDC_CLIENT_ID=abb-up
 ABB_OIDC_CLIENT_SECRET=$(rand 16)
 ABB_EDGE_NETWORK=$NET
 ABB_WEB_IMAGE=$WEB_IMG
+ABB_OBS_UID=1000
+ABB_OBS_GID=1000
 ENV
 printf '%s' "$(rand 24)" >"$WORK/backup.pass"; chmod 600 "$WORK/backup.pass"
 mkdir -p "$WORK/bin" "$WORK/remote" "$WORK/textfile" "$WORK/backups"
@@ -114,7 +118,9 @@ ABB_OFFSITE_REMOTE=offsite:$WORK/remote/abb
 ABB_TEXTFILE_DIR=$WORK/textfile
 ABB_COMPOSE_PROJECT=$APP
 ABB_COMPOSE_ENV_FILE=$WORK/app.env
-ABB_COMPOSE_FILES="docker-compose.yml deploy/hosting/compose.production.yml deploy/hosting/rig/compose.upgrade.yml"
+# No ABB_COMPOSE_FILES: the scripts compute the list (hosting-compose.sh). ABB_OBS_UID in app.env switches the monitoring overlay on,
+# as guide step 9 does, and only the rig overlay is added.
+ABB_COMPOSE_EXTRA_FILES=deploy/hosting/rig/compose.upgrade.yml
 ABB_OFFSITE_KEEP_MIN=3
 ENV
 chmod 600 "$WORK/backup.env"
@@ -141,6 +147,8 @@ up v2 --no-verify 2>&1 | tee "$WORK/u2.out" | sed 's/^/  /'
 bundle="$(sed -n 's/.*pre-upgrade bundle: \(abb-[0-9TZ]*\).*/\1/p' "$WORK/u2.out" | tail -1)"
 [ -n "$bundle" ] && [ -f "$WORK/remote/abb/$bundle/COMPLETE" ] || fail "no pre-upgrade bundle with a COMPLETE marker at the remote"
 [ "$(image_id "${API_IMG%%:*}:rollback")" = "$old_id" ] || fail "the previous image was not tagged :rollback"
+# P1-3: the upgrade used the base files only and recreated the worker without the monitoring overlay's metrics port.
+[ "$(worker_metrics_port)" = 9101 ] || fail "the upgrade removed the worker's metrics port (the monitoring overlay was dropped)"
 echo "PASS U2 (bundle $bundle, rollback tag = release 1 image)"
 
 step "U2b the stack is STOPPED (database volume intact): the upgrade still backs up first and never calls it a first deploy"

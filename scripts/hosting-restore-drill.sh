@@ -43,8 +43,10 @@ export ABB_BACKUP_DIR="$BACKUP_DIR"
 compose_args=()
 [ -n "$PROJECT" ] && compose_args+=(-p "$PROJECT")
 [ -n "${ABB_COMPOSE_ENV_FILE:-}" ] && compose_args+=(--env-file "$ABB_COMPOSE_ENV_FILE")
-for f in ${ABB_COMPOSE_FILES:-docker-compose.yml deploy/hosting/compose.production.yml}; do compose_args+=(-f "$f"); done
-dc() { docker compose "${compose_args[@]}" --profile ops "$@"; }
+# shellcheck source=hosting-compose.sh
+. "$HERE/hosting-compose.sh"; abb_compose_resolve
+for f in $compose_files; do compose_args+=(-f "$f"); done
+dc() { docker compose "${compose_args[@]}" "${compose_profiles[@]}" "$@"; }
 host_user="$(id -u):$(id -g)"
 ABB_BACKUP_PASSPHRASE="$(cat "$PASSFILE")"
 export ABB_BACKUP_PASSPHRASE

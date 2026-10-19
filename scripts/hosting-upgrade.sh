@@ -51,8 +51,10 @@ export ABB_BACKUP_DIR="${ABB_BACKUP_DIR:-$ABB_DIR/backups}"
 compose_args=()
 [ -n "$PROJECT" ] && compose_args+=(-p "$PROJECT")
 [ -n "${ABB_COMPOSE_ENV_FILE:-}" ] && compose_args+=(--env-file "$ABB_COMPOSE_ENV_FILE")
-for f in ${ABB_COMPOSE_FILES:-docker-compose.yml deploy/hosting/compose.production.yml}; do compose_args+=(-f "$f"); done
-dc() { docker compose "${compose_args[@]}" --profile app --profile ops "$@"; }
+# shellcheck source=hosting-compose.sh
+. "$HERE/hosting-compose.sh"; abb_compose_resolve
+for f in $compose_files; do compose_args+=(-f "$f"); done
+dc() { docker compose "${compose_args[@]}" --profile app "${compose_profiles[@]}" "$@"; }
 
 # ---- 1. preflight ---------------------------------------------------------------------------------------------------------------
 for tool in git docker python3; do command -v "$tool" >/dev/null || die "$tool is required" 2; done
