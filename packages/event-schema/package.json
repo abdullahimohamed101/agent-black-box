@@ -2,6 +2,7 @@
   "name": "@abb/event-schema",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "Generated TypeScript types for the Agent Black Box event contract",
   "types": "ts/event.d.ts",
   "scripts": {

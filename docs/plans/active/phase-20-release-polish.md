@@ -195,3 +195,4 @@ Unit and integration tests for the findings change (pure health function, enqueu
 ## Progress
 
 - Plan written 2026-10-18; no step built.
+- Step 1 built 2026-10-18 (license and metadata). VERIFIED: `shasum -a 256 LICENSE` = `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` (canonical ASF text, copied from an identical file in node_modules since the build had no download approval); `scripts/release-checklist.sh licenses` prints 12 `ok` lines (LICENSE hash, 8 `pyproject.toml`, 3 `package.json`... 11 manifests) and exits 0; `uv build --wheel` of the SDK emits `License-Expression: Apache-2.0`. `license-files` not set (LICENSE is outside the packages; see ADR-175 item 5). ADR-175 written, indexed. Open: `NOTICE` holder is `[NEEDS INPUT: copyright holder name]`. The `examples/*` directories are not packages (no manifests), so they carry no metadata.
