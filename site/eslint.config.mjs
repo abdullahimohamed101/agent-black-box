@@ -10,6 +10,7 @@ export default defineConfig([
     "test-results/**",
     ".next/**",
     "out/**",
+    "out-*/**",
     "next-env.d.ts",
     "coverage/**",
   ]),

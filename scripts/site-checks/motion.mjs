@@ -21,8 +21,11 @@ export default async function motion({ srv, browser, rep }) {
   if (line && line.transform !== "none" && line.transform !== "matrix(1, 0, 0, 1, 0, 0)") rep.fail("motion", `reduced motion: the fault line is not in its final state (${line.transform})`);
   const videoPlaying = await rp.evaluate(() => [...document.querySelectorAll("video")].some((v) => !v.paused));
   if (videoPlaying) rep.fail("motion", "a video plays under reduced motion");
-  const sheetsReduced = await rp.evaluate(() => [...document.querySelectorAll("video[autoplay]")].length);
-  rep.fact(`reduced motion: no animation on the fault line, inspector, steps or gallery; ${sheetsReduced} autoplay video(s) in the DOM, none playing`);
+  const videos = await rp.evaluate(() => document.querySelectorAll("video").length);
+  const autoplayAttr = await rp.evaluate(() => document.querySelectorAll("video[autoplay]").length);
+  if (autoplayAttr) rep.fail("motion", "a video carries the autoplay attribute (the island starts the loop, and only when motion is allowed)");
+  if (videos && !(await rp.locator("button.play").count())) rep.fail("motion", "reduced motion: the teaser has no play control");
+  rep.fact(`reduced motion: no animation on the fault line, inspector, steps or gallery; ${videos} video(s) in the DOM, none playing${videos ? ", play control shown" : ""}`);
   await reduced.close();
 
   const live = await browser.newContext({ reducedMotion: "no-preference", viewport: { width: 1440, height: 900 } });
