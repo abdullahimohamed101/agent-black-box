@@ -1,0 +1,49 @@
+{
+  "main": {
+    "canvas": {
+      "w": 1920,
+      "h": 1080
+    },
+    "window": {
+      "x": 112,
+      "y": 36,
+      "w": 1696,
+      "h": 954,
+      "radius": 6,
+      "shadow": "0 32px 80px rgba(0,0,0,0.70), 0 6px 16px rgba(0,0,0,0.50)"
+    },
+    "band": {
+      "y": 990,
+      "h": 90,
+      "size": 32,
+      "line": 40
+    },
+    "zoom": {
+      "dim": 0.38
+    },
+    "card": {
+      "mark": 72,
+      "gapMarkName": 22,
+      "name": 56,
+      "nameLine": 64,
+      "gapNameLine": 14,
+      "line": 24,
+      "lineLine": 32,
+      "gapClaims": 40,
+      "claims": 26,
+      "claimsLine": 34,
+      "url": 20,
+      "urlLine": 28,
+      "tagline": "A flight recorder for AI agents."
+    },
+    "color": {
+      "canvas": "#0d1015",
+      "canvasLift": "#0d1015",
+      "appCanvas": "#15191e",
+      "hairline": "rgba(74,82,92,0.55)",
+      "ink": "#e4e8ec",
+      "ink2": "#a0a8b2",
+      "fail": "#ff8a80"
+    }
+  }
+}
