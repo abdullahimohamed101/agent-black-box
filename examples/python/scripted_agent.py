@@ -31,46 +31,54 @@ from demo_clock import SCRIPTED_PRICES, DemoClock, LatentModel, hours
 TICKET_ID = "T-1042"
 TICKET = {
     "id": TICKET_ID,
-    "title": "Cannot reset password",
+    "title": "Refund not received",
+    "subject": "refund not received",
     "status": "open",
     "customer": "Acme Co",
 }
-# More tickets for `make demo`, so the runs list has plain, different task names (ids of six characters).
+# More tickets for `make demo`, so the runs list reads like a support team's week: the run is named after the
+# ticket's `subject` ("Answer ticket: refund not received"); the id travels in the lookup payload, not the name.
 TICKETS = {
     TICKET_ID: TICKET,
     "T-1043": {
         "id": "T-1043",
-        "title": "Invoice shows wrong tax",
+        "title": "Login loop on iOS",
+        "subject": "login loop on iOS",
         "status": "open",
         "customer": "Acme Co",
     },
     "T-1044": {
         "id": "T-1044",
-        "title": "Export is missing rows",
+        "title": "Duplicate order emails",
+        "subject": "duplicate order emails",
         "status": "open",
         "customer": "Acme Co",
     },
     "T-1045": {
         "id": "T-1045",
-        "title": "Cannot change plan",
+        "title": "Export stuck at 90 %",
+        "subject": "export stuck at 90 %",
         "status": "open",
         "customer": "Acme Co",
     },
     "T-1046": {
         "id": "T-1046",
-        "title": "Webhook not firing",
+        "title": "Card declined twice",
+        "subject": "card declined twice",
         "status": "open",
         "customer": "Acme Co",
     },
     "T-1047": {
         "id": "T-1047",
-        "title": "Refund still pending",
+        "title": "Invoice shows wrong VAT",
+        "subject": "invoice shows wrong VAT",
         "status": "open",
         "customer": "Acme Co",
     },
     "T-1048": {
         "id": "T-1048",
-        "title": "Login loop on mobile",
+        "title": "Password reset not sent",
+        "subject": "password reset not sent",
         "status": "open",
         "customer": "Acme Co",
     },
@@ -342,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
     outcome: dict[str, Any] = {"retries": 0}
     failed = False
     try:
-        with bb.run(f"Answer support ticket {ticket['id']}", metadata={"model": model.name}) as run:
+        with bb.run(f"Answer ticket: {ticket['subject']}", metadata={"model": model.name}) as run:
             run_id = run.run_id
             outcome = run_agent(
                 run, model, ticket=ticket, variant=args.variant, pace=args.pace, clock=clock

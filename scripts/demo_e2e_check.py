@@ -20,6 +20,7 @@ Environment: DEMO_E2E_API, DEMO_E2E_KEY_FILE (a key with runs:read). Nothing her
 import collections
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -328,6 +329,11 @@ def asks(summary_file: str, realism_file: str | None = None) -> None:
         ),
         "run names are plain (40 characters or fewer, no emails, no 'test' or 'foo')",
     )
+    ask(
+        len(set(names)) == len(names)
+        and not any(re.search(r"\bT-\d{3,}\b", n) for n in names),
+        "every run name is different and none carries a ticket id",
+    )
     models = {
         m if isinstance(m, str) else str(m) for r in data.values() for m in r["models"]
     }
@@ -374,6 +380,10 @@ def approvals() -> None:
     ask(
         all(a["capability"] == "github.push" for a in items),
         "the request is a github.push",
+    )
+    ask(
+        all(a.get("risk_class") == "R2" for a in items),
+        "the push request carries the SDK classifier's class, R2 (ADR-176), not 'Unclassified'",
     )
     ask(
         left_hours > 2,

@@ -51,7 +51,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Names read from the seeded demo (scripts/demo.sh). Run pages are found by visible name, never by id.
 // ---------------------------------------------------------------------------------------------------------------------
 const DATA = {
-  demo: { workspace: "local", failedRun: "Answer support ticket T-1047", multiRun: "Ship feature: multi-agent", approval: "github.push" },
+  demo: { workspace: "local", failedRun: "Answer ticket: invoice shows wrong VAT", multiRun: "Ship feature: multi-agent", approval: "github.push" },
   fixtures: { workspace: "demo", failedRun: "Migrate billing schema", multiRun: "Ship feature: multi-agent", approval: "github.push" },
 };
 

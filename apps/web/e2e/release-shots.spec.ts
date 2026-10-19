@@ -26,7 +26,7 @@ test.skip(!OUT, "set SHOTS_DIR to write the release screenshots (scripts/screens
 test.describe.configure({ mode: "serial" });
 
 const BASE = `/w/${process.env.E2E_WORKSPACE ?? "local"}/projects/all`;
-const FAILED = "Answer support ticket T-1047";
+const FAILED = "Answer ticket: invoice shows wrong VAT";
 const MULTI = "Ship feature: multi-agent";
 // Where every absolute timestamp lands: a fixed, plausible day in the demo's own timezone (UTC).
 const TIMESTAMP_BASE = Date.parse("2026-03-02T09:00:00Z");
@@ -197,9 +197,9 @@ for (const scheme of ["light", "dark"] as const) {
       // The findings column fills in as the worker analyses each run: wait for every run that has findings.
       for (const [run, findings] of [
         [FAILED, "3 · critical"],
-        ["Answer support ticket T-1046", "1 · critical"],
+        ["Answer ticket: card declined twice", "1 · critical"],
         ["Fix session refresh bug", "1 · critical"],
-        ["Answer support ticket T-1044", "2 · warning"],
+        ["Answer ticket: duplicate order emails", "2 · warning"],
         ["Clean up old releases", "3 security findings"],
       ] as const)
         await expect(page.locator("tbody tr", { hasText: run })).toContainText(findings, {
