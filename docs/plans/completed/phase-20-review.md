@@ -28,6 +28,19 @@ Two findings are deferred only because another builder (`feature/phase-20-video`
 - `integrations/*/README.md` show `pip install agent-black-box-<name>` (unregistered names), the same problem as P2-4 in docs; fix with the SDK import-name rename ADR.
 - The positioning brief still says caption determinism "waits for AC8"; AC8 is verified, update with the video merge.
 
+## Delta review (SDK guard_push ADR-176, rename ADR-177, demo scripts)
+
+| ID | Finding | Outcome | What changed | Commit |
+| --- | --- | --- | --- | --- |
+| P2-1 | Dry run hard-codes R2 for every `git.push`; forced pushes and custom classifiers are not predicted | filed | KI-308 (S3, later phase): needs an event attribute (`git.force`) and a schema change | see KI-308 |
+| P2-2 | ADR-176 and the SDK doc did not say that `risk_class` is in the approval binding and changes rule matching | fixed | Consequences section of ADR-176 and a section in `sdk-python.md`; the "not an HTTP contract change" sentence now reads "no schema change; policy evaluation results change as described" | 1f3d4f4 |
+| P2-3 | Outbox lease tests are load-sensitive | filed | KI-309 (S3, flaky test, related to KI-172) | see KI-309 |
+| P3-1 | Classifier fault path untested; a forced push could go unclassified under a fail-open mode | fixed | test for a faulting built-in classifier; a forced push with no derivable class asks with `on_error="closed"`; tests first (failed, then passed) | 25e2862 |
+| P3-2 | `guard_push` did not validate names like `git_push` | fixed | `guard_push` calls `_valid_ref` (ValueError, before anything is asked); parametrized test with `--force`, `+refs/heads/x`, `:main`, spaces and more | 25e2862 |
+| P3-3 | Logger rename undocumented | fixed | `sdk-python.md` "Logging" section | 1f3d4f4 |
+| P3-4 | Old-import guard missed string and logger forms | fixed | `OLD_IMPORT` extended (dotted use, `getLogger`, `-m`, `--cov=`, `import_module`), planted tests for each, tree re-run clean, no new allow-list entry | ea90214 |
+| P3-5 | `demo.sh` put the key file content into a curl config line unvalidated | fixed | content must match the key alphabet on one line before the probe, else re-minted; test with a newline, a quote and a directive line | see git log (fix(demo)) |
+
 ## Verification (this pass)
 
 Commands run in `abb-worktrees/phase-20` (outputs in the hand-off report): `python3 -m unittest discover -s scripts/tests` (43 tests, OK, 1 skipped); `scripts/release-checklist.sh` (all ok, 5 gated markers pending); `scripts/release-checklist.sh --release` (fails only on the five README `RELEASE_CLAIM` markers); `scripts/check-pins.sh` OK; `scripts/docs-commands-check.sh` (0 problems); `check_docs_links.py` (0 broken); `node scripts/site-commands-check.mjs` (all 5 commands in the quickstart); web tsc, eslint `--max-warnings=0`, prettier, vitest (1737 passed), `gen:api:check`; site vitest (8 passed), typecheck, lint; `docker compose config -q` (no output, exit 0). `scripts/check-site.sh` (full: build, fixture, commands, images, links, size, claims, nojs, copy, gallery, network, a11y, motion, perf, shots) exited 0; the perf line printed LCP 664 ms, CLS 0.0000, long tasks 52 ms, interactive 800 ms after LCP (advisory); `scripts/check-site.sh site/out-flag --static --release --only links --only size --only claims` passed on the flag-on export (claims: flag ON, 1972 words) and `--release --only claims` on the flag-off export. The first full run failed in `claims` on the stricter script scan flagging the visible clone command; fixed and re-run (follow-up commit to P3-1).
