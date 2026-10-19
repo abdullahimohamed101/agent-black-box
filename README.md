@@ -59,7 +59,7 @@ cd agent-black-box
 cp .env.example .env
 make up      # PostgreSQL, migrations, API, worker, web (the first build takes several minutes)
 make seed    # workspace "local", project "demo", a development key in .local/dev-api-key
-make demo    # records three scripted agents into the running stack and prints the run links
+make demo    # records twelve scripted runs (four example agents) into the running stack and prints the run links
 ```
 <!-- RELEASE_CLAIM: the clone URL points at the public repository; it only resolves after G2. Until then clone from your local checkout. -->
 
@@ -84,8 +84,8 @@ Install from source with `pip install ./packages/sdk-python`. There is no publis
 
 ## Examples
 
-Three examples, scripted by default: fixed model replies and a made-up price table, so they need no key and no network, and
-record the same spans, errors, retries and costs every time (ids and timestamps differ). `make demo` runs all three.
+The examples are scripted by default: fixed model replies and a made-up price table, so they need no key and no network, and
+record the same spans, errors, retries and costs every time (ids and timestamps differ). `make demo` runs them, plus a scripted ops agent (`examples/python/ops_agent.py`), for twelve runs in all.
 
 | Example | What it records |
 | --- | --- |

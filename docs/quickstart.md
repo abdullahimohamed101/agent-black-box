@@ -113,8 +113,10 @@ make demo
 ```
 
 Sign in as `owner@local.test` (development sign-in), open the `abb-demo` project, and start with the failed support run.
-The pending approval is on the Review page; it needs development sign-in sessions (`ABB_ALLOW_DEV_SESSIONS=1`, local
-development only), and without them the demo says so and skips only that run. `make demo-reset` shows what it would remove;
+The pending approval is on the Review page; it needs development sign-in sessions, and without them the demo says so and
+skips only that run. To enable them, uncomment `ABB_ALLOW_DEV_SESSIONS=1` in `.env` and restart the stack (`make down && make up`:
+`docker-compose.yml` passes it to the API container). It is for local development only: the API ignores it when
+`ABB_ENVIRONMENT` is not `development` or `test`, and a deployment must never set it. `make demo-reset` shows what it would remove;
 `make demo-reset CONFIRM=1` removes the demo project's data and nothing else.
 
 ## Trace your own agent
