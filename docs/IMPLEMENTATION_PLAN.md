@@ -237,6 +237,7 @@ Built as: destinations and rules as separate objects with sealed secrets (ADR-15
 Load tests with realistic payloads first. Each migration (Go ingest, Kafka, ClickHouse, Redis,
 object storage, Kubernetes) requires its §57 trigger measured in `docs/benchmarks/` and an ADR.
 Expect this phase to conclude "not yet" for most items.
+**Status: Deferred** (no §57 trigger has been measured; unchanged by Phase 20).
 
 ## Phase 19 - Production hardening
 **Status: Completed** (19a #186, 19b #206, 19c #207, all merged by 2026-10-16).
@@ -256,7 +257,7 @@ Split into three parts, each with its own plan, review and PR (decided 2026-10-1
 **Status: Merged into `main`** (direction 'One Red Line', ADR-166; `docs/design/pass-2/`; review `docs/plans/completed/design-pass-2-review.md`). Added after the user's note that the UI looked convoluted: a second pass over the product's look and information density, ahead of the demo and release-quality work in Phase 20.
 
 ## Phase 20 - Demo, docs, release quality
-**Status: In progress, plan in `docs/plans/completed/phase-20-release-polish.md`** (branch `feature/phase-20-release-polish`; steps 1-6 and 8-17 built, step 7 and the final steps remain; publication G2 is parked by the owner; the landing page may use React, D18). Target: a public open-source launch (Apache-2.0). Decided by the user: static landing page in `site/` (D2), KI-097 fixed by throttling `detect_findings` and showing the last result with its age (D3), scripted deterministic examples and `make demo` with an optional `--live` (D4), the placeholder pulse glyph as launch mark (D5), Apache-2.0 plus contributing, conduct, security and templates (D6). 18 build steps; the demo recording and publication are gated final steps (G1, G2). The hosting guide stays a separate later plan.
+**Status: Completed pending merge** (2026-10-19; plan with closing evidence in `docs/plans/completed/phase-20-release-polish.md`, PR text in `docs/plans/completed/phase-20-pr-description.md`; branch `feature/phase-20-release-polish`, not pushed). Parked by the owner: publication (G2: README claims, Pages, public repository, tag, packages) and the demo video's claims-variant and site embedding. `scripts/quality.sh full` and the rendered-app crawl (KI-306) are `UNVERIFIED (env)`. The planned hosting guide (see "Private hosting") stays Planned; Phase 18 stays deferred. Target: a public open-source launch (Apache-2.0). Decided by the user: static landing page in `site/` (D2), KI-097 fixed by throttling `detect_findings` and showing the last result with its age (D3), scripted deterministic examples and `make demo` with an optional `--live` (D4), the placeholder pulse glyph as launch mark (D5), Apache-2.0 plus contributing, conduct, security and templates (D6). 18 build steps; the demo recording and publication are gated final steps (G1, G2). The hosting guide stays a separate later plan.
 
 README with screenshots, architecture, quickstart, SDK/API/events/deployment/security/ops/
 troubleshooting docs, three examples (coding, simple custom, multi-agent), deterministic seed
