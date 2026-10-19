@@ -125,11 +125,25 @@ class EveryCheck(unittest.TestCase):
             ("scripts/b.py", f"import {old}\n"),
             ("docs/quickstart.md", f"    from {old}.coding import CodingRecorder\n"),
             ("packages/sdk-python/pyproject.toml", f'packages = ["src/{old}"]\n'),
+            ("scripts/c.py", f'mock.patch("{old}.coding.run")\n'),
+            ("scripts/d.py", f"x = {old}.policy.Guard\n"),
+            ("scripts/e.py", f"{old}.client.BlackBox\n"),
+            ("scripts/f.py", f"{old}.core.x and {old}.propagation.y\n"),
+            ("packages/a.py", f'log = logging.getLogger("{old}")\n'),
+            ("packages/b.py", f"log = logging.getLogger('{old}')\n"),
+            ("Makefile", f"\tuv run python -m {old} --help\n"),
+            ("Makefile", f"\tpytest --cov={old} tests\n"),
+            ("scripts/g.py", f'importlib.import_module("{old}.coding")\n'),
+            ("scripts/h.py", f"importlib.import_module('{old}')\n"),
         ):
             code, out = run(planted(**{rel: text}), "imports")
             self.assertEqual(code, 1, rel)
             self.assertIn(f"{rel}:", out)
-        fine = f"from agent_{old} import BlackBox\nfrom {old}_openai import instrument\nimport {old}_mcp\n"
+        fine = (
+            f"from agent_{old} import BlackBox\nfrom {old}_openai import instrument\nimport {old}_mcp\n"
+            f'log = logging.getLogger("agent_{old}")\nmock.patch("agent_{old}.coding.run")\n'
+            f"pytest --cov=agent_{old}\nimportlib.import_module('agent_{old}.client')\n"
+        )
         code, out = run(planted(**{"examples/a.py": fine}), "imports")
         self.assertEqual(code, 0, out)
 

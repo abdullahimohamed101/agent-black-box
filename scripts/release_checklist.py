@@ -298,8 +298,14 @@ def check_paths(tree: Tree) -> list[Hit]:
 # --- the SDK import name -----------------------------------------------------------------------------------
 
 # The SDK is imported as `agent_blackbox` (ADR-177): the bare name belongs to an unrelated PyPI project. The pattern is
-# written so this file does not match itself.
-OLD_IMPORT = re.compile(r"\bfrom\s+blackbox(?:\.\w+)*\s+import\b|\bimport\s+blackbox\b|\bsrc/blackbox\b")
+# written (`[b]lackbox`) so this file does not match itself.
+OLD_IMPORT = re.compile(
+    r"\bfrom\s+[b]lackbox(?:\.\w+)*\s+import\b|\bimport\s+[b]lackbox\b|\bsrc/[b]lackbox\b"
+    r"|\b[b]lackbox\.(?:coding|policy|client|core|propagation)\b"  # dotted use, mock.patch targets
+    r"|getLogger\([\"'][b]lackbox[\"']\)"  # the old logger name (the SDK logs under agent_[b]lackbox)
+    r"|-m\s+[b]lackbox\b|--cov=[b]lackbox\b"
+    r"|import_module\([\"'][b]lackbox"
+)
 # Historical records keep what was true when they were written (ADRs and finished plans amend nothing retroactively).
 IMPORT_HISTORY = (
     "docs/decisions/*", "docs/plans/completed/*", "docs/architecture/agent-black-box-spec.md",
