@@ -1,6 +1,6 @@
 """Trace a small agent run end to end. Needs BLACKBOX_API_KEY (and BLACKBOX_ENDPOINT if not local).
 
-    cd packages/sdk-python && BLACKBOX_API_KEY=... uv run python ../../examples/python/trace_an_agent.py
+cd packages/sdk-python && BLACKBOX_API_KEY=... uv run python ../../examples/python/trace_an_agent.py
 """
 
 import os
@@ -14,4 +14,4 @@ with bb.run("Fix OAuth timeout", metadata={"issue": 1842}) as run:
     with run.llm_call("openai", "gpt-4.1") as llm:
         llm.record_usage(1200, 300)
 bb.shutdown()
-print(f"run {run.run_id}")  # noqa: T201
+print(f"run {run.run_id}")
