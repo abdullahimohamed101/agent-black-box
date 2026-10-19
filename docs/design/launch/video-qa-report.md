@@ -2,7 +2,7 @@
 
 Status: written 2026-10-19 after building the cinematic brief (`docs/design/launch/video-cinematic-brief.md`) on the Phase 20 video branch.
 Evidence words as in AGENTS.md: VERIFIED (a command was run here and its output observed), UNVERIFIED (env), ASSUMED. Take directories under `video-out/`
-are gitignored; the final files are in `/Users/abdullahimohamed/Projects/abb-worktrees/video-out-final/` (draft 1 in `draft-1/`, the polished draft 2 in `polish-2/`).
+are gitignored; the final files are in `video-out-final/` next to the repository's worktrees (outside git) (draft 1 in `draft-1/`, the polished draft 2 in `polish-2/`).
 
 ## 1. The owner's criticisms of draft 2, and what was done
 

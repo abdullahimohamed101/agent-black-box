@@ -42,4 +42,3 @@ secrets | scripts/smoke.sh | abb_live_aaaa | smoke test sends an intentionally i
 claims | site/src/components/Architecture.tsx | hosted service | the sentence tells the reader who should choose a hosted tool instead (honest non-goal), it does not offer one
 
 # --- paths ---------------------------------------------------------------------------------------------------
-paths | docs/design/launch/video-qa-report.md | * | rewritten by the video branch at merge: remove this entry when it lands
