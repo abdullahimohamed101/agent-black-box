@@ -24,10 +24,12 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))  # demo_clock.py
 
 from blackbox import BlackBox, PayloadMode
 from blackbox.coding import CodingRecorder
 from blackbox.policy import ApprovalPending
+from demo_clock import DemoClock, LatentModel, hours
 
 from coding_agent.agent import AgentResult, run_agent
 from coding_agent.models import ScriptedModel
@@ -105,6 +107,14 @@ def main(argv: list[str] | None = None) -> int:
         help="the run's name in the runs list (`make demo` gives each of its runs its own)",
     )
     parser.add_argument(
+        "--started-ago",
+        type=float,
+        default=None,
+        metavar="HOURS",
+        help="scripted model only: record the run as started this many hours ago, with believable model "
+        "latencies (virtual time, nothing waits; see examples/python/demo_clock.py)",
+    )
+    parser.add_argument(
         "--workdir", type=Path, help="where to build the working copy (default: a temp dir)"
     )
     parser.add_argument(
@@ -124,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--policy-demo is the scripted scenario and needs a server (not --offline)")
     if args.approval_timeout is not None and not args.policy_demo:
         parser.error("--approval-timeout only applies to --policy-demo")
+    if args.started_ago is not None and (args.model != "scripted" or args.policy_demo):
+        parser.error("--started-ago is for the scripted model and not for --policy-demo")
     if args.model == "anthropic" and args.variant != "baseline":
         parser.error("--variant only applies to the scripted model")
     if args.model == "anthropic" and not args.i_understand_this_runs_commands:
@@ -141,6 +153,10 @@ def main(argv: list[str] | None = None) -> int:
         model = AnthropicModel()
     else:
         model = ScriptedModel.for_variant("policy" if args.policy_demo else args.variant)
+        if args.started_ago is not None:
+            model = LatentModel(
+                model, DemoClock(hours(args.started_ago)), lambda r: r.output_tokens
+            )
 
     with tempfile.TemporaryDirectory(prefix="abb-coding-demo-") as scratch:
         workdir = args.workdir or Path(scratch)

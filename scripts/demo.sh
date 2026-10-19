@@ -19,7 +19,7 @@
 # Environment (all optional): DEMO_API_URL (default http://localhost:8000), DEMO_WEB_URL (default http://localhost:3000),
 # DEMO_KEY_FILE (default .local/demo-key), DEMO_RUNS_FILE (append one "<name> <run id>" line per run; used by scripts/demo-e2e.sh),
 # DEMO_STATE_DIR (default .local/demo: the waiting agent's pid file and log), DEMO_KEEP_WAITERS=1 (do not stop an earlier waiting
-# agent first), DEMO_PACE (seconds scale of the pretend latencies, default 1; 0 for none). ABB_DATABASE_URL comes from .env unless already set.
+# agent first), DEMO_PACE (scale of the real pauses of the multi-agent job, default 1; 0 for none). ABB_DATABASE_URL comes from .env unless already set.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"
 if [ -z "${ABB_DATABASE_URL:-}" ]; then
@@ -92,16 +92,25 @@ record() {  # record <name> <command...>: run an example, keep its last output l
   echo "run $RUN_ID (exit $rc)"
 }
 [ -n "${DEMO_KEEP_WAITERS:-}" ] || stop_waiters
-# Oldest first: the runs list shows the newest on top, so the failed support run is second from the top.
-record coding-baseline    py examples/coding-agent/run_demo.py
-record support-recovers   py examples/python/scripted_agent.py --pace "$PACE"
-record support-clean-1    py examples/python/scripted_agent.py --pace "$PACE" --ticket T-1043 --variant clean
-record support-flaky      py examples/python/scripted_agent.py --pace "$PACE" --ticket T-1044 --variant flaky
-record coding-wrong-fix   py examples/coding-agent/run_demo.py --variant wrong-fix --name "Fix session refresh bug"   # ends in error on purpose (exit 1)
-record support-clean-2    py examples/python/scripted_agent.py --pace "$PACE" --ticket T-1045 --variant clean
-record support-denied     py examples/python/scripted_agent.py --pace "$PACE" --ticket T-1046 --variant denied        # ends in error on purpose (exit 1)
-record ops-cleanup        py examples/python/ops_agent.py --pace "$PACE"
-record multi-agent        py examples/multi-agent/agent.py --skew-ms 1500 --fail-tool
+# Realism: the scripted agents record believable work without waiting for it. --started-ago puts a run on its own day and hour
+# (the agents' virtual clock: examples/python/demo_clock.py, sent through the SDK like any event), model and tool latencies pass
+# instantly (a run lasts 10 s to 90 s on the run page), --tokens-scale gives them real-sized contexts (a run costs 3 cents to
+# 60 cents) and --model-name picks one of two made-up models. The week then has a daily-spend curve and runs of different ages.
+ago() {  # ago <days back> <hour of day, UTC>: how many hours before now that moment was
+  python3 -c 'import sys,time; d,h=map(float,sys.argv[1:]); n=time.time(); print(f"{(n-(n-n%86400-d*86400+h*3600))/3600:.4f}")' "$1" "$2"
+}
+# Oldest first: the runs list shows the newest on top, so the failed support run is second from the top (the waiter and the
+# multi-agent job are recorded in real time, "now").
+record coding-baseline    py examples/coding-agent/run_demo.py --started-ago "$(ago 6 14)"
+record support-recovers   py examples/python/scripted_agent.py --pace 0 --started-ago "$(ago 5 10.5)" --tokens-scale 16
+record support-clean-1    py examples/python/scripted_agent.py --pace 0 --ticket T-1043 --variant clean --started-ago "$(ago 4 15)" --tokens-scale 20
+record support-flaky      py examples/python/scripted_agent.py --pace 0 --ticket T-1044 --variant flaky --started-ago "$(ago 4 9)" --tokens-scale 14
+record coding-wrong-fix   py examples/coding-agent/run_demo.py --variant wrong-fix --name "Fix session refresh bug" --started-ago "$(ago 3 11)"   # ends in error on purpose (exit 1)
+record support-clean-2    py examples/python/scripted_agent.py --pace 0 --ticket T-1045 --variant clean --started-ago "$(ago 2 16)" --tokens-scale 22
+record support-denied     py examples/python/scripted_agent.py --pace 0 --ticket T-1046 --variant denied --started-ago "$(ago 2 10)" --tokens-scale 28        # ends in error on purpose (exit 1)
+record ops-cleanup        py examples/python/ops_agent.py --pace 0 --started-ago "$(ago 1 13.5)" --tokens-scale 10 --model-name scripted-large
+MULTI_PACE="$(awk -v p="$PACE" 'BEGIN { print p * 10 }')"  # its pretend delays are real sleeps (threads and a second process): about half a minute
+record multi-agent        py examples/multi-agent/agent.py --skew-ms 1500 --fail-tool --pace "$MULTI_PACE"
 
 # The waiting agent: publish the demo policy as the demo owner, then start an agent that asks to push to main and waits.
 waiter_started=0
@@ -125,8 +134,8 @@ else
   echo "skipped the waiting agent: the API does not accept development sessions (set ABB_ALLOW_DEV_SESSIONS=1 on the API to see a pending approval; see $STATE_DIR/policy.log)" >&2
 fi
 unset SESSION
-record support-outage     py examples/python/scripted_agent.py --pace "$PACE" --ticket T-1047 --variant outage         # ends in error on purpose (exit 1)
-record support-clean-3    py examples/python/scripted_agent.py --pace "$PACE" --ticket T-1048 --variant clean
+record support-outage     py examples/python/scripted_agent.py --pace 0 --ticket T-1047 --variant outage --started-ago 3.2 --tokens-scale 18         # ends in error on purpose (exit 1)
+record support-clean-3    py examples/python/scripted_agent.py --pace 0 --ticket T-1048 --variant clean --started-ago 1.4 --tokens-scale 24
 
 # A scripted run exits 0 except the ones that are meant to fail.
 for entry in "${runs_json[@]}"; do

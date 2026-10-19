@@ -32,4 +32,6 @@ treat it as available but untested.
 
 `--variant` changes what the ticket lookup does: `recovers` (default), `clean`, `flaky` (five timeouts, then it answers), `outage` (it never answers, the agent escalates and the run fails with `ConnectionTimeout`) and `denied` (the service refuses, the run fails with `PermissionDenied`); `--ticket T-1043` picks another scripted ticket and `--pace 1` adds pretend latencies. `make demo` uses them all.
 
+`--started-ago HOURS`, `--tokens-scale N` and `--model-name scripted-large` (also on `ops_agent.py`, and `--started-ago` on `examples/coding-agent/run_demo.py`) make a run look like real work without waiting: the run is stamped that many hours in the past, its model and tool calls last seconds (virtual time, `demo_clock.py`: it patches this process's own two clock functions, the way `examples/multi-agent` patches the tester's), and the token counts are multiplied so the cost reads in cents. Everything still goes through the SDK and the ingestion API. `make demo` uses them for a week-long spread.
+
 Tests: `uv run --project packages/sdk-python pytest examples/python/tests -q -p no:cacheprovider`.

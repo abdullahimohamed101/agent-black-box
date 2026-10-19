@@ -64,11 +64,11 @@ done
 step "summarise both runs (bounded waits for the worker, ids and timestamps removed)"
 for n in 1 2; do
   DEMO_E2E_API="$API" DEMO_E2E_KEY_FILE="$WORK/demo-key" \
-    uv run --project apps/api python scripts/demo_e2e_check.py summarise "$WORK/runs-$n.txt" >"$WORK/summary-$n.json" || fail "could not summarise demo run $n"
+    uv run --project apps/api python scripts/demo_e2e_check.py summarise "$WORK/runs-$n.txt" "$WORK/realism-$n.json" >"$WORK/summary-$n.json" || fail "could not summarise demo run $n"
 done
 uv run --project apps/api python scripts/demo_e2e_check.py report "$WORK/summary-1.json"
 step "the data the demo video needs (docs/design/launch/video-brief.md, section 6)"
-uv run --project apps/api python scripts/demo_e2e_check.py asks "$WORK/summary-1.json"
+uv run --project apps/api python scripts/demo_e2e_check.py asks "$WORK/summary-1.json" "$WORK/realism-1.json"
 DEMO_E2E_API="$API" DEMO_E2E_ORIGIN="$ABB_WEB_ORIGIN" DEMO_E2E_SESSION="$(cd apps/api && uv run python -m abb_api.cli create-session --email owner@local.test --hours 1 2>/dev/null)" \
   uv run --project apps/api python scripts/demo_e2e_check.py approvals || fail "the pending approval is not as the video needs it"
 if diff -u "$WORK/summary-1.json" "$WORK/summary-2.json"; then

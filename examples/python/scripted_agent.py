@@ -26,6 +26,8 @@ from typing import Any, Protocol
 
 from blackbox import BlackBox, PayloadMode, Run
 
+from demo_clock import SCRIPTED_PRICES, DemoClock, LatentModel, hours
+
 TICKET_ID = "T-1042"
 TICKET = {
     "id": TICKET_ID,
@@ -104,18 +106,30 @@ class Model(Protocol):
 class ScriptedModel:
     """Fixed replies and token counts, indexed by step: no randomness, no network."""
 
-    provider, name = "scripted", "scripted-small"
+    provider = "scripted"
 
-    def __init__(self, ticket: dict[str, Any] = TICKET) -> None:
+    def __init__(
+        self,
+        ticket: dict[str, Any] = TICKET,
+        *,
+        tokens_scale: float = 1.0,
+        name: str = "scripted-small",
+    ) -> None:
+        """`tokens_scale` multiplies every token count: `make demo` uses real-sized contexts for believable costs."""
+        self.name = name
+
+        def reply(text: str, tokens_in: int, tokens_out: int) -> Reply:
+            return Reply(text, round(tokens_in * tokens_scale), round(tokens_out * tokens_scale))
+
         self._plan = (
-            Reply("I will look up the ticket first.", 420, 18),
-            Reply(
+            reply("I will look up the ticket first.", 420, 18),
+            reply(
                 f"Ticket {ticket['id']} ({ticket['title']}, {ticket['customer']}) is open. "
                 "Suggested reply: send the password reset link and ask them to try again.",
                 610,
                 52,
             ),
-            Reply("The ticket service is down. I will escalate to the on-call engineer.", 560, 40),
+            reply("The ticket service is down. I will escalate to the on-call engineer.", 560, 40),
         )
 
     def complete(self, step: int, prompt: str) -> Reply:
@@ -157,8 +171,9 @@ class AnthropicLive:
         return Reply(text, int(usage.get("input_tokens", 0)), int(usage.get("output_tokens", 0)))
 
 
-def cost(reply: Reply) -> float:
-    return round((reply.input_tokens * PRICE_IN + reply.output_tokens * PRICE_OUT) / 1e6, 6)
+def cost(reply: Reply, model: str | None = None) -> float:
+    price_in, price_out = SCRIPTED_PRICES.get(model or "", (PRICE_IN, PRICE_OUT))
+    return round((reply.input_tokens * price_in + reply.output_tokens * price_out) / 1e6, 6)
 
 
 def lookup_ticket(
@@ -180,7 +195,7 @@ def think(run: Run, model: Model, step: int, prompt: str, pace: float = 0.0) -> 
             0.5 * pace
         )  # a pretend model latency, so durations on the run page read like work
         reply = model.complete(step, prompt)
-        call.record_usage(reply.input_tokens, reply.output_tokens, cost_usd=cost(reply))
+        call.record_usage(reply.input_tokens, reply.output_tokens, cost_usd=cost(reply, model.name))
         call.set_payload({"response": reply.text})  # kept only with full payload capture, redacted
     return reply
 
@@ -193,7 +208,9 @@ def run_agent(
     ticket: dict[str, Any] = TICKET,
     variant: str = "recovers",
     pace: float = 0.0,
+    clock: DemoClock | None = None,
 ) -> dict[str, Any]:
+    """`clock`: a virtual clock (see demo_clock.py); tool waits and retry back-offs then pass instantly but are recorded."""
     think(run, model, 0, f"Plan how to answer support ticket {ticket['id']}. One sentence.", pace)
     found: dict[str, Any] | None = None
     retries = 0
@@ -218,7 +235,11 @@ def run_agent(
                         )
                     raise
                 finally:
-                    time.sleep((0.4 if variant == "clean" else 1.8) * pace)
+                    # a timeout lasts its 5 s limit; an answer takes a second or so
+                    if clock is not None:
+                        clock.advance(1.4 if sys.exc_info()[0] is None else 5.0)
+                    else:
+                        time.sleep((0.4 if variant == "clean" else 1.8) * pace)
             break
         except PermissionDenied:
             raise  # a refusal is not a flaky call: no retry
@@ -226,6 +247,8 @@ def run_agent(
             if attempt == max_attempts:
                 break
             retries += 1
+            if clock is not None:
+                clock.advance(2.0)  # back-off before the next try
             run.event(
                 "retry.attempted",
                 {"retry.attempt": retries, "retry.reason": f"lookup-ticket failed: {exc}"},
@@ -278,9 +301,38 @@ def main(argv: list[str] | None = None) -> int:
         default=0.0,
         help="seconds scale for pretend latencies (0 = none, the default)",
     )
+    parser.add_argument(
+        "--started-ago",
+        type=float,
+        default=None,
+        metavar="HOURS",
+        help="scripted model only: record the run as started this many hours ago, with believable latencies "
+        "(virtual time, nothing waits; see demo_clock.py). Default: now, real time",
+    )
+    parser.add_argument(
+        "--tokens-scale",
+        type=float,
+        default=1.0,
+        help="scripted model only: multiply every token count (real agents send big contexts)",
+    )
+    parser.add_argument(
+        "--model-name",
+        choices=sorted(SCRIPTED_PRICES),
+        default="scripted-small",
+        help="scripted model only: which made-up model (and price table) the run reports",
+    )
     args = parser.parse_args(argv)
+    if args.live and (args.started_ago is not None or args.tokens_scale != 1.0):
+        parser.error("--started-ago and --tokens-scale are for the scripted model")
     ticket = TICKETS[args.ticket]
-    model: Model = AnthropicLive() if args.live else ScriptedModel(ticket)
+    clock = DemoClock(hours(args.started_ago)) if args.started_ago is not None else None
+    model: Model
+    if args.live:
+        model = AnthropicLive()
+    else:
+        model = ScriptedModel(ticket, tokens_scale=args.tokens_scale, name=args.model_name)
+        if clock is not None:
+            model = LatentModel(model, clock, lambda reply: reply.output_tokens)
     bb = BlackBox(
         project="custom-agent-demo",
         agent_id="support-agent",
@@ -292,7 +344,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with bb.run(f"Answer support ticket {ticket['id']}", metadata={"model": model.name}) as run:
             run_id = run.run_id
-            outcome = run_agent(run, model, ticket=ticket, variant=args.variant, pace=args.pace)
+            outcome = run_agent(
+                run, model, ticket=ticket, variant=args.variant, pace=args.pace, clock=clock
+            )
     except (RuntimeError, PermissionDenied):
         failed = True  # the run is recorded as failed; the scenario is meant to end this way
     flushed = bb.shutdown(15)

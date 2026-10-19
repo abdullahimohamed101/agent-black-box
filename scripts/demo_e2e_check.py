@@ -1,12 +1,16 @@
 """Helpers of scripts/demo-e2e.sh (Phase 20, D9). Run with `uv run --project apps/api python`.
 
-    summarise RUNS_FILE   read the demo's "<name> <run id>" lines, wait (bounded polls, no wall-clock assertions) until each
+    summarise RUNS_FILE [REALISM_FILE]
+                          read the demo's "<name> <run id>" lines, wait (bounded polls, no wall-clock assertions) until each
                           run is derived, and print one JSON document: per run, what the agents DID. Run ids, event ids,
-                          timestamps, durations and everything that depends on clock or thread timing are left out.
+                          timestamps, durations and everything that depends on clock or thread timing are left out. With REALISM_FILE
+                          the volatile facts (start time, duration, cost, model) are written there for `asks`, never compared.
     report SUMMARY_FILE   print the counts the plan asks to see: runs, failed runs, findings by type, agents per run.
-    asks SUMMARY_FILE     check the demo against the data the video needs (docs/design/launch/video-brief.md, section 6): a failed
+    asks SUMMARY_FILE [REALISM_FILE]
+                          check the demo against the data the video needs (docs/design/launch/video-brief.md, section 6): a failed
                           run with a one-word error early, findings with evidence, five lanes, a waiting approval, three security
-                          rules, plain names, no real model names. Exits non-zero on the first ask that does not hold.
+                          rules, plain names, no real model names; with REALISM_FILE also: durations of 8 to 90 s, costs of $0.03 to $1.50, runs
+                          spread over five or more days, three or more scripted models. Exits non-zero on the first ask that does not hold.
     approvals             with DEMO_E2E_SESSION (a development session cookie of the demo owner): the pending approval's
                           capability, resource and time left (hours, not minutes).
 
@@ -165,7 +169,21 @@ def normalise(http: httpx.Client, run_id: str) -> dict[str, Any]:
     }
 
 
-def summarise(runs_file: str) -> None:
+def volatile(http: httpx.Client, run_id: str) -> dict[str, Any]:
+    """What differs between two plays on purpose (when it ran, how long it took): kept out of the determinism diff."""
+    run = http.get(f"/v1/runs/{run_id}").raise_for_status().json()
+    summary = run["summary"]
+    return {
+        "name": run["name"],
+        "status": run["status"],
+        "started_at": run["started_at"],
+        "duration_ms": run["duration_ms"],
+        "cost_usd": summary.get("estimated_cost_usd"),
+        "models": sorted(summary.get("models", [])),
+    }
+
+
+def summarise(runs_file: str, realism_file: str | None = None) -> None:
     pairs = [
         line.split()
         for line in Path(runs_file).read_text().splitlines()
@@ -173,6 +191,10 @@ def summarise(runs_file: str) -> None:
     ]
     with client() as http:
         out = {name: normalise(http, run_id) for name, run_id in pairs}
+        if realism_file:
+            Path(realism_file).write_text(
+                json.dumps({n: volatile(http, i) for n, i in pairs}, indent=2, sort_keys=True)
+            )
     json.dump(out, sys.stdout, indent=2, sort_keys=True)
     print()
 
@@ -222,7 +244,26 @@ def ask(condition: bool, label: str) -> None:
     print(f"  ok  {label}")
 
 
-def asks(summary_file: str) -> None:
+def realism(path: str) -> None:
+    """Runs that look like work: how long they took, what they cost, when they ran (the owner's review of the first draft)."""
+    from datetime import datetime
+
+    rows: dict[str, dict[str, Any]] = json.loads(Path(path).read_text())
+    for name, r in rows.items():
+        seconds = (r["duration_ms"] or 0) / 1000
+        if r["status"] == "WAITING_FOR_APPROVAL":
+            continue  # it is still running: its duration grows while it waits
+        if name != "multi-agent":  # its delays are real sleeps, and this check runs with DEMO_PACE=0 (no pauses at all)
+            ask(8 <= seconds <= 90, f"{name}: lasted {seconds:.0f} s (8 to 90 s)")
+        cost = float(r["cost_usd"] or 0)
+        ask(0.03 <= cost <= 1.5, f"{name}: cost ${cost:.3f} ($0.03 to $1.50)")
+    days = {datetime.fromisoformat(r["started_at"].replace("Z", "+00:00")).date() for r in rows.values()}
+    ask(len(days) >= 5, f"runs spread over {len(days)} different days (5 or more)")
+    models = {m for r in rows.values() for m in r["models"]}
+    ask(len(models) >= 3, f"{len(models)} scripted models ({sorted(models)})")
+
+
+def asks(summary_file: str, realism_file: str | None = None) -> None:
     data: dict[str, dict[str, Any]] = json.loads(Path(summary_file).read_text())
     failed = {n: r for n, r in data.items() if r["status"] == "FAILED"}
     ask(
@@ -290,6 +331,8 @@ def asks(summary_file: str) -> None:
         f"two or more scripted models, none a real one ({sorted(models)})",
     )
     ask(len({r["agent_id"] for r in data.values()}) >= 3, "three or more agents")
+    if realism_file:
+        realism(realism_file)
 
 
 def approvals() -> None:
@@ -336,9 +379,13 @@ if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     if command == "approvals" and len(sys.argv) == 2:
         approvals()
-    elif command in ("summarise", "report", "asks") and len(sys.argv) == 3:
-        {"summarise": summarise, "report": report, "asks": asks}[command](sys.argv[2])
+    elif command == "summarise" and len(sys.argv) in (3, 4):
+        summarise(*sys.argv[2:])
+    elif command == "asks" and len(sys.argv) in (3, 4):
+        asks(*sys.argv[2:])
+    elif command == "report" and len(sys.argv) == 3:
+        report(sys.argv[2])
     else:
         fail(
-            "usage: demo_e2e_check.py summarise RUNS_FILE | report SUMMARY_FILE | asks SUMMARY_FILE | approvals"
+            "usage: demo_e2e_check.py summarise RUNS_FILE [REALISM_FILE] | report SUMMARY_FILE | asks SUMMARY_FILE [REALISM_FILE] | approvals"
         )

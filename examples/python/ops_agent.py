@@ -24,20 +24,30 @@ from pathlib import Path
 from blackbox import BlackBox, PayloadMode, Run
 from blackbox.coding import CodingRecorder
 
-MODEL = ("scripted", "scripted-small")
-PRICE_IN, PRICE_OUT = 3.0, 15.0  # made-up USD per million tokens
+from demo_clock import SCRIPTED_PRICES, DemoClock, hours, latency_seconds, scripted_cost
+
+PROVIDER = "scripted"
 # (input tokens, output tokens) per scripted model turn
 TURNS = ((520, 40), (880, 64), (1210, 52), (1460, 38))
 
 
-def plan(run: Run, turn: int, pace: float) -> None:
-    tokens_in, tokens_out = TURNS[turn]
-    with run.llm_call(*MODEL) as call:
-        time.sleep(0.5 * pace)
+def plan(
+    run: Run,
+    turn: int,
+    pace: float,
+    *,
+    model: str = "scripted-small",
+    scale: float = 1.0,
+    clock: DemoClock | None = None,
+) -> None:
+    tokens_in, tokens_out = (round(n * scale) for n in TURNS[turn])
+    with run.llm_call(PROVIDER, model) as call:
+        if clock is not None:
+            clock.advance(latency_seconds(tokens_out))
+        else:
+            time.sleep(0.5 * pace)
         call.record_usage(
-            tokens_in,
-            tokens_out,
-            cost_usd=round((tokens_in * PRICE_IN + tokens_out * PRICE_OUT) / 1e6, 6),
+            tokens_in, tokens_out, cost_usd=scripted_cost(model, tokens_in, tokens_out)
         )
 
 
@@ -77,7 +87,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--pace", type=float, default=0.0, help="seconds scale for pretend latencies (0 = none)"
     )
+    parser.add_argument(
+        "--started-ago",
+        type=float,
+        default=None,
+        metavar="HOURS",
+        help="record the run as started this many hours ago, with believable latencies (virtual time; see demo_clock.py)",
+    )
+    parser.add_argument(
+        "--tokens-scale", type=float, default=1.0, help="multiply every token count"
+    )
+    parser.add_argument(
+        "--model-name",
+        choices=sorted(SCRIPTED_PRICES),
+        default="scripted-small",
+        help="made-up model",
+    )
     args = parser.parse_args(argv)
+    clock = DemoClock(hours(args.started_ago)) if args.started_ago is not None else None
     os.environ["PATH"] = str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", "")
     bb = BlackBox(
         project="ops-agent-demo",
@@ -87,16 +114,27 @@ def main(argv: list[str] | None = None) -> int:
     )
     with tempfile.TemporaryDirectory(prefix="abb-ops-demo-") as scratch:
         root = workspace(Path(scratch))
-        with bb.run("Clean up old releases", metadata={"model": MODEL[1]}) as run:
+        with bb.run("Clean up old releases", metadata={"model": args.model_name}) as run:
             run_id = run.run_id
             rec = CodingRecorder(bb, run, root)
-            plan(run, 0, args.pace)
+
+            def think(turn: int) -> None:
+                plan(
+                    run,
+                    turn,
+                    args.pace,
+                    model=args.model_name,
+                    scale=args.tokens_scale,
+                    clock=clock,
+                )
+
+            think(0)
             rec.run_command("ls releases")
-            plan(run, 1, args.pace)
+            think(1)
             rec.read_file(".env")  # a secret file read
-            plan(run, 2, args.pace)
+            think(2)
             record_only(run, rec, "git clean -fdx")  # destructive, recorded and never run
-            plan(run, 3, args.pace)
+            think(3)
             record_only(
                 run, rec, "git push --force origin main", 128
             )  # risky git, recorded and never run
