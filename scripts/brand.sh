@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate the brand assets in site/assets from brand/pulse-mark.svg (see scripts/brand.mjs), or `--check` that the web
+# Regenerate the brand assets in site/public/assets from brand/pulse-mark.svg (see scripts/brand.mjs), or `--check` that the web
 # app's copy of the mark equals the source. Needs `pnpm install` (Playwright, already an apps/web dev dependency) and its Chromium.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"

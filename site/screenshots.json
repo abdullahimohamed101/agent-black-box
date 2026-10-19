@@ -1,0 +1,215 @@
+{
+ "$comment": "Gallery manifest (brief section 8). `release` is the name step 12 will give the view (docs/screenshots/release/<release>-<scheme>.png); until that exists scripts/site-images.mjs falls back to `standIn` in docs/screenshots/pass-2 and marks the panel. Callouts are in source pixels.",
+ "panels": [
+  {
+   "id": "where-it-broke",
+   "tab": "Where it broke",
+   "sub": "Headline, fault line, inspector",
+   "release": "failed-run-story",
+   "standIn": "step5b-failed-inspector-1440",
+   "zoom": 125,
+   "offsetY": 60,
+   "callouts": [
+    {
+     "x": 18,
+     "y": 104,
+     "w": 720,
+     "h": 40
+    },
+    {
+     "x": 8,
+     "y": 494,
+     "w": 1016,
+     "h": 36
+    }
+   ],
+   "notes": [
+    "One sentence says where it broke: the step, the time, the tool and the error.",
+    "One red line marks the first error. The rows above it stay quiet."
+   ],
+   "caption": "Run page, Timeline tab. Light and dark follow your system.",
+   "alt": "A failed run: the headline sentence names the failing tool and step, and a red line on the timeline marks the first error.",
+   "offsetX": 0
+  },
+  {
+   "id": "with-evidence",
+   "tab": "With evidence",
+   "sub": "Findings that link their events",
+   "release": "findings",
+   "standIn": "step5b-failed-findings-1440",
+   "zoom": 140,
+   "offsetY": 180,
+   "callouts": [
+    {
+     "x": 216,
+     "y": 420,
+     "w": 900,
+     "h": 32
+    },
+    {
+     "x": 1004,
+     "y": 423,
+     "w": 108,
+     "h": 26
+    }
+   ],
+   "notes": [
+    "A finding is a fixed sentence from a deterministic detector, with its severity.",
+    "Show evidence jumps to the exact events it was built from."
+   ],
+   "caption": "Run page, Findings tab. Detectors are rules, not a model.",
+   "alt": "The Findings tab: a critical finding row with its fixed explanation and a Show evidence control.",
+   "offsetX": 190
+  },
+  {
+   "id": "what-it-cost",
+   "tab": "What it cost",
+   "sub": "Spend, and what was wasted",
+   "release": "cost-analytics",
+   "standIn": "step5d-analytics-cost-1440",
+   "zoom": 140,
+   "offsetY": 140,
+   "callouts": [
+    {
+     "x": 24,
+     "y": 168,
+     "w": 640,
+     "h": 28
+    },
+    {
+     "x": 24,
+     "y": 232,
+     "w": 640,
+     "h": 110
+    }
+   ],
+   "notes": [
+    "What the period cost, in one sentence, and what a run costs on average.",
+    "Where the money was wasted: failed runs, retries and spend after the first error."
+   ],
+   "caption": "Analytics, Cost. A figure is reported by the provider, computed from tokens and a versioned price, or estimated; an unpriced call counts as $0.",
+   "alt": "The Cost analytics page: a headline sentence with the week's spend and a block breaking down wasted spend by failed runs, retries and spend after errors.",
+   "offsetX": 0
+  },
+  {
+   "id": "many-agents",
+   "tab": "Many agents",
+   "sub": "One lane per agent, one fault line",
+   "release": "waterfall-multi-agent",
+   "standIn": "step5b-failed-waterfall-1440",
+   "zoom": 125,
+   "offsetY": 60,
+   "callouts": [
+    {
+     "x": 728,
+     "y": 336,
+     "w": 130,
+     "h": 220
+    },
+    {
+     "x": 452,
+     "y": 362,
+     "w": 668,
+     "h": 24
+    }
+   ],
+   "notes": [
+    "The same fault line, drawn vertically across every lane.",
+    "The critical path is drawn thicker; a span with no end recorded is hatched."
+   ],
+   "caption": "Run page, Waterfall tab, a scripted multi-agent run.",
+   "alt": "The waterfall: one lane per agent on a time axis, the critical path drawn thicker, and a vertical red line at the first error.",
+   "offsetX": 0
+  },
+  {
+   "id": "two-runs",
+   "tab": "Two runs",
+   "sub": "Compared step by step",
+   "release": "compare",
+   "standIn": "step5b-compare-1440",
+   "zoom": 125,
+   "offsetY": 40,
+   "callouts": [
+    {
+     "x": 24,
+     "y": 112,
+     "w": 640,
+     "h": 30
+    },
+    {
+     "x": 24,
+     "y": 510,
+     "w": 1390,
+     "h": 24
+    }
+   ],
+   "notes": [
+    "Where the two runs diverged, in a sentence.",
+    "The step where their outcomes first differed."
+   ],
+   "caption": "Compare, two runs of the same task.",
+   "alt": "Compare: two runs aligned step by step, with a sentence naming the step where they diverged and a Divergence row.",
+   "offsetX": 0
+  },
+  {
+   "id": "in-the-loop",
+   "tab": "A person in the loop",
+   "sub": "Approvals, recorded",
+   "release": "policy-approval",
+   "standIn": "step5c-review-approvals-detail-1440",
+   "zoom": 115,
+   "offsetY": 60,
+   "callouts": [
+    {
+     "x": 176,
+     "y": 236,
+     "w": 820,
+     "h": 40
+    },
+    {
+     "x": 1024,
+     "y": 224,
+     "w": 390,
+     "h": 60
+    }
+   ],
+   "notes": [
+    "A request waits for a person, with its risk class, policy version and exact arguments on screen.",
+    "An approval covers one action, once, and has an expiry."
+   ],
+   "caption": "Review, Approvals. Policies apply to agents that ask through the SDK guard.",
+   "alt": "The Approvals page: a pending request in the list and its detail panel showing that it is waiting, with the time left.",
+   "offsetX": 150
+  },
+  {
+   "id": "runs",
+   "tab": "Runs",
+   "sub": "Status, cost, where it failed",
+   "release": "runs-list",
+   "standIn": "step5d-sweep-runs-1440",
+   "zoom": 125,
+   "offsetY": 60,
+   "callouts": [
+    {
+     "x": 226,
+     "y": 422,
+     "w": 600,
+     "h": 48
+    },
+    {
+     "x": 20,
+     "y": 228,
+     "w": 140,
+     "h": 150
+    }
+   ],
+   "notes": [
+    "A failed run says where it failed and what its retries cost, in the list itself.",
+    "Narrow to what needs attention: failed, timed out, blocked, awaiting approval."
+   ],
+   "caption": "Runs, the project's list.",
+   "alt": "The runs list: one row per run with its status, agent, duration and cost; a failed row states the step it failed at and the retries that followed.",
+   "offsetX": 0
+  }
+ ]
+}

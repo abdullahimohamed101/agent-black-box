@@ -1,5 +1,5 @@
 // Brand assets from one source (Phase 20, D5): `brand/pulse-mark.svg` is the pulse glyph (placeholder launch mark). This script writes
-//   site/assets/{favicon.svg, favicon-32.png, favicon-180.png, icon-512.png, social-card.png, readme-header.svg}
+//   site/public/assets/{favicon.svg, favicon-32.png, favicon-180.png, icon-512.png, social-card.png, readme-header.svg}
 // Colours come from apps/web/design-tokens/tokens.json (never typed here), fonts from apps/web/src/fonts (IBM Plex, OFL).
 // Swapping the mark later means replacing brand/pulse-mark.svg (and the web copy, apps/web/public/brand/option-a.svg) and rerunning
 // `scripts/brand.sh`. `--check` only verifies the web copy equals the source and exits.
@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const out = path.join(root, "site/assets");
+const out = path.join(root, "site/public/assets");
 const source = readFileSync(path.join(root, "brand/pulse-mark.svg"), "utf8");
 
 if (process.argv.includes("--check")) {
@@ -93,22 +93,21 @@ const fontData = (name) => `data:font/woff2;base64,${readFileSync(fontFile(name)
 const NAME = "Agent BlackBox";
 const TAGLINE = "Flight recorder and debugger for AI agents";
 
-// Social card 1200x630, rendered from a throwaway HTML page (fonts by file URL) in a temp directory that is removed afterwards.
+// Social card 1200x630, light scheme only: brand/social-card.html with token values and font files substituted, rendered from a
+// throwaway directory that is removed afterwards. The card carries no claim that waits for publication.
 const scratch = mkdtempSync(path.join(tmpdir(), "abb-brand-"));
 const cardHtml = path.join(scratch, "card.html");
-writeFileSync(
-  cardHtml,
-  `<!doctype html><meta charset="utf-8"><style>
-@font-face{font-family:"Plex";font-weight:600;src:url("${fontUrl("IBMPlexSans-SemiBold-Latin1.woff2")}") format("woff2")}
-@font-face{font-family:"Plex";font-weight:400;src:url("${fontUrl("IBMPlexSans-Regular-Latin1.woff2")}") format("woff2")}
-html,body{margin:0;width:1200px;height:630px;background:${ink.bgDark};font-family:"Plex",sans-serif}
-.card{box-sizing:border-box;width:1200px;height:630px;padding:96px;display:flex;flex-direction:column;justify-content:center;gap:28px}
-.mark{width:176px;height:176px;margin-left:-14px}
-h1{margin:0;font-weight:600;font-size:96px;line-height:1.05;color:${ink.inkDark};letter-spacing:-1px}
-p{margin:12px 0 0;font-weight:400;font-size:40px;line-height:1.25;color:${ink.mutedDark}}
-</style><div class="card"><svg class="mark" viewBox="0 0 24 24">${glyph(ink.markDark, { width: 2, paths: sturdy })}</svg>
-<div><h1>${NAME}</h1><p>${TAGLINE}</p></div></div>`,
-);
+const lightTokens = {
+  CANVAS: await hex(pick("neutral", "50")), RAISED: await hex(pick("neutral", "0")), INK: await hex(pick("neutral", "800")),
+  INK2: await hex(pick("neutral", "500")), BORDER: await hex(pick("neutral", "150")), BORDER_STRONG: await hex(pick("neutral", "200")),
+  WASH: await hex(pick("accent", "100")), ACCENT: await hex(pick("accent", "600")), FAULT: await hex(pick("red", "600")),
+  CAUTION: await hex(pick("amber", "700")), MARK: await hex(pick("orange", "600")),
+  SANS_600: fontUrl("IBMPlexSans-SemiBold-Latin1.woff2"), SANS_400: fontUrl("IBMPlexSans-Regular-Latin1.woff2"), MONO_400: fontUrl("IBMPlexMono-Regular-Latin1.woff2"),
+};
+let card = readFileSync(path.join(root, "brand/social-card.html"), "utf8");
+for (const [k, v] of Object.entries(lightTokens)) card = card.replaceAll(`{{${k}}}`, v);
+if (/\{\{[A-Z0-9_]+\}\}/.test(card)) throw new Error("brand/social-card.html has an unresolved placeholder");
+writeFileSync(cardHtml, card);
 await rasterise(cardHtml, "social-card.png", 1200, 630, { html: true });
 await browser.close();
 rmSync(scratch, { recursive: true, force: true });
