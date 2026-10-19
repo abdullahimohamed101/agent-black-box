@@ -75,7 +75,11 @@ cleanup() {
       "abb_hosting_backup_last_run_timestamp_seconds=$(date +%s)" \
       "abb_hosting_backup_last_run_success=0" 2>/dev/null || true
     # A bundle that already verified is kept (it is a good backup that only missed the second provider); anything earlier is removed.
-    [ "$local_ok" = 1 ] || rm -rf "${BACKUP_DIR:?}/$NAME" 2>/dev/null || true
+    if [ "$local_ok" != 1 ]; then
+      rm -rf "${BACKUP_DIR:?}/$NAME" 2>/dev/null || true
+      # the partial dump of a failed create lives in the staging directory, owned by uid 10001 (review P2-4)
+      root_sh "rm -rf /backups/$STAGING/$NAME" sh >/dev/null 2>&1 || true
+    fi
     log "FAILED (exit $status); nothing was recorded as a success"
   fi
 }
@@ -101,7 +105,8 @@ host_user="$(id -u):$(id -g)"
 
 # ---- 1. create (encrypted) --------------------------------------------------------------------------------------------------
 log "step=create bundle=$NAME"
-root_sh "install -d -o 10001 -g 10001 -m 0700 /backups/$STAGING && rm -rf /backups/$STAGING/$NAME" sh
+# Orphans of runs that died mid-create (older than a day, so a run in progress is never touched) are removed here.
+root_sh "install -d -o 10001 -g 10001 -m 0700 /backups/$STAGING && find /backups/$STAGING -mindepth 1 -maxdepth 1 -mmin +1440 -exec rm -rf {} + ; rm -rf /backups/$STAGING/$NAME" sh
 dc run --rm -T -e ABB_BACKUP_PASSPHRASE backup create --out "/backups/$STAGING/$NAME" --encrypt --passphrase-env ABB_BACKUP_PASSPHRASE >/dev/null
 root_sh "mv /backups/$STAGING/$NAME /backups/$NAME && chown -R $host_user /backups/$NAME" sh
 bundle="$BACKUP_DIR/$NAME"

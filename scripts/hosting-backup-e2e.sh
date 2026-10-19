@@ -262,6 +262,17 @@ step "A7.7 --latest finds the newest complete remote bundle and drills it"
 drill --latest | grep -q '^DRILL OK ' || fail "--latest"
 echo "PASS A7.7"
 
+step "A7.7b orphans in backups/.staging: a partial bundle from a dead run (3 days old) is swept, a fresh one is left alone (review P2-4)"
+export ABB_BACKUP_DIR="$WORK/backups"
+staging_ls() { dc run --rm -T --no-deps --user 0:0 --entrypoint sh backup -c 'ls -A /backups/.staging' </dev/null; }
+dc run --rm -T --no-deps --user 0:0 --entrypoint sh backup -c \
+  'mkdir -p /backups/.staging/abb-20200101T000000Z/x /backups/.staging/abb-fresh && touch -d "3 days ago" /backups/.staging/abb-20200101T000000Z' </dev/null
+backup >"$WORK/b-orphan.out" 2>&1 || { cat "$WORK/b-orphan.out" >&2; fail "the backup failed"; }
+left="$(staging_ls | tr '\n' ' ')"
+[ "$left" = "abb-fresh " ] || fail "staging holds [$left]; expected only the fresh entry"
+dc run --rm -T --no-deps --user 0:0 --entrypoint sh backup -c 'rm -rf /backups/.staging/abb-fresh' </dev/null
+echo "PASS A7.7b"
+
 step "A7.8 a held lock stops a second run; units verify"
 mkdir "$WORK/backups/.lock"
 if backup >"$WORK/l.out" 2>&1; then fail "ran with the lock held"; fi
