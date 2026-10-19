@@ -9,6 +9,7 @@ Kept out of the shell so the rules that delete data and the rules that judge fre
     hosting_backup_lib.py metrics --file F KEY=VALUE ...           write the node_exporter textfile atomically
     hosting_backup_lib.py check --file F [--max-age-hours H]       the first-run / freshness check (KI-243)
     hosting_backup_lib.py latest-complete < LISTING                the newest COMPLETE bundle name
+    hosting_backup_lib.py containers --file F < INSPECT_JSON       write container restart/OOM/running metrics from `docker inspect`
     hosting_backup_lib.py sha256 FILE                              hex digest (portable: no sha256sum on macOS)
     hosting_backup_lib.py manifest-counts BUNDLE_DIR               "table count" lines of a bundle's manifest
 
@@ -151,6 +152,59 @@ def write_metrics(path: Path, values: Dict[str, float]) -> None:
         raise
 
 
+def _label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def write_samples(path: Path, samples: List[Tuple[str, Dict[str, str], float]]) -> None:
+    """Like write_metrics, with labels: [(name, {label: value}, value)]. One TYPE line per name, atomic replace."""
+    by_name: Dict[str, List[Tuple[Dict[str, str], float]]] = {}
+    for name, labels, value in samples:
+        if not METRIC.match(name):
+            raise RuleError("not an abb_hosting_* metric name: " + name)
+        by_name.setdefault(name, []).append((labels, float(value)))
+    lines: List[str] = []
+    for name in sorted(by_name):
+        lines.append("# TYPE %s gauge" % name)
+        for labels, value in by_name[name]:
+            text = ",".join('%s="%s"' % (k, _label(v)) for k, v in sorted(labels.items()))
+            rendered = "%d" % value if value == int(value) else repr(value)
+            lines.append("%s%s %s" % (name, "{%s}" % text if text else "", rendered))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-" + path.name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def container_samples(inspected: List[Dict[str, object]], now: float) -> List[Tuple[str, Dict[str, str], float]]:
+    """Samples for `docker inspect` JSON: restart count, last stop was an out-of-memory kill, running. Only containers with a restart
+    policy are reported: they are meant to keep running (the one-shot migrate job has restart "no" and is exited by design)."""
+    out: List[Tuple[str, Dict[str, str], float]] = [("abb_hosting_container_metrics_timestamp_seconds", {}, now)]
+    for c in inspected:
+        host = c.get("HostConfig") or {}
+        policy = ((host.get("RestartPolicy") or {}) if isinstance(host, dict) else {}).get("Name") or "no"  # type: ignore[union-attr]
+        if policy in ("", "no"):
+            continue
+        state = c.get("State") or {}
+        name = str(c.get("Name") or "").lstrip("/")
+        if not name or not isinstance(state, dict):
+            continue
+        labels = {"name": name}
+        out.append(("abb_hosting_container_restart_count", labels, float(c.get("RestartCount") or 0)))
+        out.append(("abb_hosting_container_oom_killed", labels, 1.0 if state.get("OOMKilled") else 0.0))
+        out.append(("abb_hosting_container_running", labels, 1.0 if state.get("Running") else 0.0))
+    return out
+
+
 def read_metrics(path: Path) -> Dict[str, float]:
     values: Dict[str, float] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -220,6 +274,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--file", required=True)
     p.add_argument("--max-age-hours", type=float, default=36.0)
     sub.add_parser("latest-complete")
+    p = sub.add_parser("containers")
+    p.add_argument("--file", required=True)
     p = sub.add_parser("sha256")
     p.add_argument("path")
     p = sub.add_parser("manifest-counts")
@@ -251,6 +307,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print("%s backup.fresh  %s" % (status, message))
                 bad = bad or status == "FAIL"
             return 1 if bad else 0
+        elif args.cmd == "containers":
+            data = json.loads(sys.stdin.read() or "[]")
+            write_samples(Path(args.file), container_samples(data if isinstance(data, list) else [], time.time()))
         elif args.cmd == "latest-complete":
             complete, _ = parse_listing(sys.stdin.read().splitlines())
             if not complete:

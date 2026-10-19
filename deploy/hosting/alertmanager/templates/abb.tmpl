@@ -1,0 +1,11 @@
+{{/* Notification templates (Phase 23, KI-245). The alerts carry runbook_url as a repository path; __RUNBOOK_BASE_URL__ is replaced when the
+     config is rendered with ABB_RUNBOOK_BASE_URL (for example https://git.example.org/abb/blob/main/), so a notification links to a page
+     rather than to a path. Empty means the path is shown as it is. */}}
+{{ define "abb.title" }}[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }}){{ end }}
+
+{{ define "abb.runbook" }}__RUNBOOK_BASE_URL__{{ . }}{{ end }}
+
+{{ define "abb.text" }}{{ range .Alerts }}{{ .Annotations.summary }}
+{{ .Annotations.description }}
+Runbook: {{ template "abb.runbook" .Annotations.runbook_url }}
+{{ end }}{{ end }}

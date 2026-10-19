@@ -1,0 +1,12 @@
+# blackbox_exporter modules (Phase 23). https_2xx is what a visitor needs: TLS that verifies against the system roots, and a 200.
+# The local rig (scripts/hosting-obs-e2e.sh) replaces this file with one that trusts its throwaway certificate; production never does.
+modules:
+  https_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      fail_if_not_ssl: true
+      follow_redirects: false
+      preferred_ip_protocol: ip4

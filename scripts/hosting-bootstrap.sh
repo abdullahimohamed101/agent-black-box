@@ -177,12 +177,12 @@ do_keys() {
 # ---- 5. directories ------------------------------------------------------------------------------------------------------------
 dir_ok() { [ -d "$1" ] && [ "$(stat -c '%a %U' "$1")" = "$2 $DEPLOY_USER" ]; }
 st_dirs() {
-  dir_ok /opt/abb 755 && dir_ok /opt/abb/backups 700 && dir_ok /opt/abb/secrets 700 && dir_ok /opt/edge 755 \
+  dir_ok /opt/abb 755 && dir_ok /opt/abb/backups 700 && dir_ok /opt/abb/secrets 700 && dir_ok /opt/abb/secrets/alertmanager 700 && dir_ok /opt/edge 755 \
     && dir_ok /etc/abb 700 && dir_ok /var/lib/node_exporter/textfile 755
 }
 do_dirs() {
   install -d -m 0755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/abb /opt/edge /var/lib/node_exporter /var/lib/node_exporter/textfile
-  install -d -m 0700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/abb/backups /opt/abb/secrets /etc/abb
+  install -d -m 0700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /opt/abb/backups /opt/abb/secrets /opt/abb/secrets/alertmanager /etc/abb
 }
 
 # ---- 6. swap + sysctl ------------------------------------------------------------------------------------------------------------
@@ -244,7 +244,7 @@ st_time() { [ "$(timedatectl show -p NTP --value 2>/dev/null)" = yes ]; }
 do_time() { timedatectl set-ntp true; }
 st_network() { docker network inspect edge >/dev/null 2>&1; }
 do_network() { docker network create edge >/dev/null; }
-UNITS=(abb-backup.service abb-backup.timer)
+UNITS=(abb-backup.service abb-backup.timer abb-container-metrics.service abb-container-metrics.timer)
 st_units() { local u; for u in "${UNITS[@]}"; do cmp -s "$REPO/deploy/hosting/systemd/$u" "/etc/systemd/system/$u" || return 1; done; }
 do_units() { local u; for u in "${UNITS[@]}"; do install -m 0644 "$REPO/deploy/hosting/systemd/$u" "/etc/systemd/system/$u"; done; systemctl daemon-reload; }
 

@@ -1,0 +1,189 @@
+# Monitoring overlay for a hosted Agent BlackBox (Phase 23, ADR-178). Merge it after the production overlay and start the profile:
+#   docker compose -f docker-compose.yml -f deploy/hosting/compose.production.yml -f deploy/hosting/compose.observability.yml \
+#       --profile app --profile observability up -d --wait
+# It REPLACES the development `observability` services of docker-compose.yml:
+#   * Prometheus keeps its data in a named volume for 30 days (or 4 GB, whichever comes first: the disk is shared with the application)
+#     instead of 24 hours in memory (KI-244); it scrapes the API and worker over the private network with the metrics token from a file;
+#   * Grafana's admin password comes from secrets/grafana_admin_password (never an environment value), the UI binds 127.0.0.1;
+#   * new: node_exporter (host metrics + the textfile collector for the backup and container files), Alertmanager (receiver left unset
+#     until the owner picks one; runbook links rewritten to a configurable URL, KI-245), blackbox_exporter (certificate expiry and the
+#     public health check, probed from the server itself), and a one-shot obs-init that renders the configuration and fixes ownership.
+# Nothing here publishes a port except Prometheus (9090), Alertmanager (9093) and Grafana (3001) on 127.0.0.1: reach them with an SSH
+# tunnel (ssh -L 3001:127.0.0.1:3001 deploy@server). The monitoring containers run as the deploy user so that the 0600 secret files stay
+# 0600 (ABB_OBS_UID and ABB_OBS_GID: `id -u deploy`, `id -g deploy`).
+# Memory ceilings (measured by scripts/hosting-obs-e2e.sh, small data, see the plan's progress log): prometheus 512m, grafana 512m (heaviest: stop it when unused), the rest 64m.
+name: agent-black-box
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-obs-user: &obs-user "${ABB_OBS_UID:-1000}:${ABB_OBS_GID:-1000}"
+
+x-health: &wget-health
+  interval: 10s
+  timeout: 5s
+  retries: 6
+  start_period: 10s
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  obs-config:
+
+services:
+  # Renders the configuration that needs the public origin and the runbook base URL, and hands the data volumes to the deploy user.
+  # busybox only (sed, chown, printf); no network. Runs to completion before anything else in the profile starts.
+  obs-init:
+    image: busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+    profiles: ["observability"]
+    user: "0:0"
+    entrypoint: ["sh", "-ec"]
+    command:
+      - |
+        base="$${ABB_RUNBOOK_BASE_URL%/}"; [ -z "$$base" ] || base="$$base/"
+        mkdir -p /out/prometheus /out/alertmanager
+        printf -- '- targets: ["%s/healthz"]\n' "$${ABB_PUBLIC_ORIGIN}" > /out/prometheus/abb-https.yml
+        sed "s#__RUNBOOK_BASE_URL__#$$base#g" /in/alertmanager.yml.tmpl > /out/alertmanager/alertmanager.yml
+        sed "s#__RUNBOOK_BASE_URL__#$$base#g" /in/templates/abb.tmpl > /out/alertmanager/abb.tmpl
+        chown -R "$${ABB_OBS_UID}:$${ABB_OBS_GID}" /out /prometheus /alertmanager /grafana
+        chmod -R a+rX /out
+    environment:
+      ABB_PUBLIC_ORIGIN: ${ABB_PUBLIC_ORIGIN:?set ABB_PUBLIC_ORIGIN}
+      ABB_RUNBOOK_BASE_URL: ${ABB_RUNBOOK_BASE_URL:-}
+      ABB_OBS_UID: ${ABB_OBS_UID:-1000}
+      ABB_OBS_GID: ${ABB_OBS_GID:-1000}
+    volumes:
+      - ./deploy/hosting/alertmanager/alertmanager.yml.tmpl:/in/alertmanager.yml.tmpl:ro
+      - ./deploy/hosting/alertmanager/templates:/in/templates:ro
+      - obs-config:/out
+      - prometheus-data:/prometheus
+      - alertmanager-data:/alertmanager
+      - grafana-data:/grafana
+    restart: "no"
+    mem_limit: 32m
+    logging: *logging
+
+  prometheus:
+    user: *obs-user
+    command: !override
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=4GB
+      - --web.listen-address=:9090
+    tmpfs: !reset []
+    ports: !override
+      - "127.0.0.1:9090:9090"
+    volumes: !override
+      - ./deploy/hosting/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/prometheus/rules:/etc/prometheus/rules:ro
+      - ./deploy/hosting/rules/host.yml:/etc/prometheus/hosting-rules/host.yml:ro
+      - ${ABB_SECRETS_DIR:-./secrets}/metrics_token:/etc/prometheus/abb-metrics-token:ro
+      - obs-config:/etc/obs-config:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      obs-init: { condition: service_completed_successfully }
+    healthcheck:
+      <<: *wget-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: *logging
+
+  grafana:
+    user: *obs-user
+    environment: !override
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Grafana 13 downloads and installs apps (Loki Explore, ...) from grafana.com in the background on every start: network egress
+      # nobody asked for, and tens of MB of memory. Found by scripts/hosting-obs-e2e.sh (238 of 256 MiB used after a quiet run).
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      # Grafana is the heaviest piece (about 250-310 MiB idle, measured). A soft Go memory limit makes its garbage collector work before the
+      # container ceiling is near. Stop it when nobody is looking: docker compose ... stop grafana.
+      GOMEMLIMIT: 300MiB
+    ports: !override
+      - "127.0.0.1:3001:3000"
+    volumes: !override
+      - grafana-data:/var/lib/grafana
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ${ABB_SECRETS_DIR:-./secrets}/grafana_admin_password:/run/secrets/grafana_admin_password:ro
+    depends_on: !override
+      obs-init: { condition: service_completed_successfully }
+      prometheus: { condition: service_started }
+    healthcheck:
+      <<: *wget-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: *logging
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1@sha256:d00a542e409ee618a4edc67da14dd48c5da66726bbd5537ab2af9c1dfc442c8a
+    profiles: ["observability"]
+    # pid: host is what the upstream compose example uses so that the mount table read is the host's, not the container's.
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --collector.textfile.directory=/textfile
+      - --web.listen-address=:9100
+    volumes:
+      - /:/host:ro,rslave
+      - ${ABB_TEXTFILE_DIR:-/var/lib/node_exporter/textfile}:/textfile:ro
+    healthcheck:
+      <<: *wget-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9100/metrics"]
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: *logging
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    profiles: ["observability"]
+    user: *obs-user
+    command:
+      - --config.file=/etc/obs-config/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=:9093
+      - --cluster.listen-address=
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - obs-config:/etc/obs-config:ro
+      - alertmanager-data:/alertmanager
+      - ${ABB_SECRETS_DIR:-./secrets}/alertmanager:/run/alertmanager-secrets:ro
+    depends_on:
+      obs-init: { condition: service_completed_successfully }
+    healthcheck:
+      <<: *wget-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/-/ready"]
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: *logging
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.26.0@sha256:92e05d5fe0df01d3980518dc42f07b778a8997048b57392ebc7f7391ebd7bb06
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./deploy/hosting/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    healthcheck:
+      <<: *wget-health
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9115/-/healthy"]
+    restart: unless-stopped
+    mem_limit: 64m
+    logging: *logging
+
+  # The worker serves /metrics (bearer token) on the private network only; Prometheus scrapes worker:9101.
+  worker:
+    environment:
+      ABB_WORKER_METRICS_PORT: "9101"
+      ABB_WORKER_METRICS_BIND: 0.0.0.0

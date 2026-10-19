@@ -164,6 +164,50 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(lib.check_freshness(self.file, max_age_hours=36, now=now)[0][0], "FAIL")
 
 
+class ContainerMetricsTests(unittest.TestCase):
+    INSPECT = [
+        {"Name": "/abb-api-1", "RestartCount": 5, "HostConfig": {"RestartPolicy": {"Name": "unless-stopped"}}, "State": {"OOMKilled": True, "Running": True}},
+        {"Name": "/abb-web-1", "RestartCount": 0, "HostConfig": {"RestartPolicy": {"Name": "unless-stopped"}}, "State": {"OOMKilled": False, "Running": False}},
+        {"Name": "/abb-migrate-1", "RestartCount": 0, "HostConfig": {"RestartPolicy": {"Name": "no"}}, "State": {"Running": False}},
+        {"Name": 'bad"name\n', "RestartCount": 1, "HostConfig": {"RestartPolicy": {"Name": "always"}}, "State": {"Running": True}},
+    ]
+
+    def test_only_containers_meant_to_run_are_reported(self):
+        samples = lib.container_samples(self.INSPECT, 1000.0)
+        names = {labels.get("name") for _, labels, _ in samples if labels}
+        self.assertNotIn("abb-migrate-1", names)
+        value = {(n, labels.get("name")): v for n, labels, v in samples}
+        self.assertEqual(value[("abb_hosting_container_restart_count", "abb-api-1")], 5.0)
+        self.assertEqual(value[("abb_hosting_container_oom_killed", "abb-api-1")], 1.0)
+        self.assertEqual(value[("abb_hosting_container_running", "abb-web-1")], 0.0)
+        self.assertEqual(value[("abb_hosting_container_metrics_timestamp_seconds", None)], 1000.0)
+
+    def test_file_is_atomic_escaped_and_parsable(self):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        target = d / "abb_containers.prom"
+        lib.write_samples(target, lib.container_samples(self.INSPECT, 1000.0))
+        text = target.read_text()
+        self.assertIn('abb_hosting_container_oom_killed{name="abb-api-1"} 1', text)
+        self.assertIn('name="bad\\"name\\n"', text)  # quote and newline escaped, never a raw newline inside a label
+        self.assertEqual(sorted(p.name for p in d.iterdir()), ["abb_containers.prom"])
+        self.assertEqual(oct(target.stat().st_mode & 0o777), "0o644")
+        with self.assertRaises(lib.RuleError):
+            lib.write_samples(target, [("node_cpu", {}, 1)])
+
+    def test_cli_reads_docker_inspect_from_stdin(self):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        run = subprocess.run([sys.executable, str(SCRIPTS / "hosting_backup_lib.py"), "containers", "--file", str(d / "c.prom")],
+                             input=json.dumps(self.INSPECT), capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("abb_hosting_container_restart_count", (d / "c.prom").read_text())
+        empty = subprocess.run([sys.executable, str(SCRIPTS / "hosting_backup_lib.py"), "containers", "--file", str(d / "e.prom")],
+                               input="[]", capture_output=True, text=True)
+        self.assertEqual(empty.returncode, 0)
+        self.assertIn("metrics_timestamp", (d / "e.prom").read_text())
+
+
 class ManifestTests(unittest.TestCase):
     def test_table_names_are_validated_before_they_reach_sql(self):
         d = Path(tempfile.mkdtemp())

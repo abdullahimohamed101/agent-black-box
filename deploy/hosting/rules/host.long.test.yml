@@ -1,0 +1,110 @@
+# promtool test rules deploy/hosting/rules/host.long.test.yml : the alerts measured in days (backups, off-site copy, restore drill, KI-243).
+# Evaluated every 4 minutes (the series have one sample per 4 minutes, inside Prometheus' 5 minute lookback) so a 61 day case stays fast.
+# time() in a test starts at 0; eval_time is "now", and a series value is a timestamp relative to that.
+rule_files:
+  - host.yml
+evaluation_interval: 4m
+
+tests:
+  # ---- backups ------------------------------------------------------------------------------------------------------------------
+  # time() in a test starts at 0; the eval_time is the "now". Timestamps are written relative to it with a series that holds one value.
+  - name: backup 40 hours old -> ticket only; 80 hours old -> ticket and page; fresh -> silent
+    interval: 4m
+    input_series:
+      - series: 'abb_hosting_backup_last_success_timestamp_seconds{host="old40"}'
+        values: '3600x1300'
+      - series: 'abb_hosting_backup_last_success_timestamp_seconds{host="old80"}'
+        values: '3600x1300'
+      - series: 'abb_hosting_backup_last_success_timestamp_seconds{host="fresh"}'
+        values: '108000x1300'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbHostingBackupTooOld", alertstate="firing", host="old40"}
+        eval_time: 41h
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbHostingBackupTooOld", alertstate="firing", severity="ticket", host="old40"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbHostingBackupVeryOld", alertstate="firing", host="old40"}
+        eval_time: 41h
+        exp_samples: []
+      - expr: ALERTS{alertname="AbbHostingBackupVeryOld", alertstate="firing", host="old80"}
+        eval_time: 81h
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbHostingBackupVeryOld", alertstate="firing", severity="page", host="old80"}'
+            value: 1
+      - expr: ALERTS{alertname=~"AbbHostingBackup(TooOld|VeryOld)", alertstate="firing", host="fresh"}
+        eval_time: 30h
+        exp_samples: []
+  - name: off-site copy 50 hours old -> ticket; 2 hours old -> silent
+    interval: 4m
+    input_series:
+      - series: 'abb_hosting_backup_offsite_last_success_timestamp_seconds{host="stale"}'
+        values: '3600x800'
+      - series: 'abb_hosting_backup_offsite_last_success_timestamp_seconds{host="fresh"}'
+        values: '3600x800'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbHostingOffsiteTooOld", alertstate="firing", host="stale"}
+        eval_time: 50h
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbHostingOffsiteTooOld", alertstate="firing", severity="ticket", host="stale"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbHostingOffsiteTooOld", alertstate="firing", host="fresh"}
+        eval_time: 2h
+        exp_samples: []
+  - name: KI-243 no backup series at all after Prometheus has run 40 hours -> ticket; at 10 hours -> silent; with a backup -> silent
+    interval: 4m
+    input_series:
+      - series: 'process_start_time_seconds{job="prometheus"}'
+        values: '0x700'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbHostingBackupNeverRan", alertstate="firing"}
+        eval_time: 40h
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbHostingBackupNeverRan", alertstate="firing", severity="ticket"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbHostingBackupNeverRan", alertstate="firing"}
+        eval_time: 10h
+        exp_samples: []
+  - name: KI-243 the same Prometheus with a backup series never raises AbbHostingBackupNeverRan
+    interval: 4m
+    input_series:
+      - series: 'process_start_time_seconds{job="prometheus"}'
+        values: '0x700'
+      - series: 'abb_hosting_backup_last_success_timestamp_seconds{}'
+        values: '3600x700'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbHostingBackupNeverRan", alertstate="firing"}
+        eval_time: 40h
+        exp_samples: []
+  - name: a failed latest run -> ticket after 10 minutes; a successful one -> silent
+    interval: 1m
+    input_series:
+      - series: 'abb_hosting_backup_last_run_success{host="bad"}'
+        values: '0x30'
+      - series: 'abb_hosting_backup_last_run_success{host="good"}'
+        values: '1x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbHostingBackupRunFailed", alertstate="firing"}
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbHostingBackupRunFailed", alertstate="firing", severity="ticket", host="bad"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbHostingBackupRunFailed", alertstate="firing", host="good"}
+        eval_time: 15m
+        exp_samples: []
+  - name: restore drill 60 days old -> ticket; 10 days old -> silent
+    interval: 4m
+    input_series:
+      - series: 'abb_hosting_restore_drill_last_success_timestamp_seconds{host="stale"}'
+        values: '86400x22000'
+      - series: 'abb_hosting_restore_drill_last_success_timestamp_seconds{host="recent"}'
+        values: '4600000x22000'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbHostingRestoreDrillOld", alertstate="firing", host="stale"}
+        eval_time: 61d
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbHostingRestoreDrillOld", alertstate="firing", severity="ticket", host="stale"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbHostingRestoreDrillOld", alertstate="firing", host="recent"}
+        eval_time: 61d
+        exp_samples: []
+

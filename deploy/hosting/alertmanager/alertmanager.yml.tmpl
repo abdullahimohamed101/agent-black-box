@@ -1,0 +1,69 @@
+# Alertmanager for a hosted Agent BlackBox (Phase 23, ADR-178). The compose service renders this file (obs-init replaces
+# __RUNBOOK_BASE_URL__ in it and in templates/abb.tmpl) into the obs-config volume; `amtool check-config` runs on the rendered result.
+#
+# RECEIVER: [NEEDS INPUT]. The owner chooses email, Slack or a webhook. Until one is configured every alert goes to the `notify` receiver,
+# which has no integrations: alerts are evaluated and visible in Prometheus and in Alertmanager (an SSH tunnel to 127.0.0.1:9093) and
+# are sent NOWHERE. Add the integration under `notify` (examples below), keep secrets in FILES under secrets/alertmanager/ (mounted at
+# /run/alertmanager-secrets, mode 0600, owned by the deploy user), then `docker compose ... restart alertmanager`.
+#
+# The always-firing Watchdog alert goes to `deadman`: point it at a dead-man's-switch service (Healthchecks.io style) so that the
+# SILENCE of the pipeline is itself noticed. Same rule: URL in a file.
+global:
+  resolve_timeout: 5m
+
+templates:
+  - /etc/obs-config/alertmanager/abb.tmpl
+
+route:
+  receiver: notify
+  group_by: [alertname, job]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [alertname="Watchdog"]
+      receiver: deadman
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 5m
+    - matchers: [severity="page"]
+      receiver: notify
+      repeat_interval: 1h
+
+# A louder alert of the same kind hides its quieter sibling for the same object.
+inhibit_rules:
+  - source_matchers: [alertname="HostDiskUsageCritical"]
+    target_matchers: [alertname="HostDiskUsageHigh"]
+    equal: [mountpoint, instance]
+  - source_matchers: [alertname="AbbHostingBackupVeryOld"]
+    target_matchers: [alertname="AbbHostingBackupTooOld"]
+  - source_matchers: [alertname="AbbCertificateExpiringSoon"]
+    target_matchers: [alertname="AbbCertificateExpiring"]
+    equal: [instance]
+
+receivers:
+  # No integration yet. Replace with one of the examples (uncomment, edit, restart Alertmanager).
+  - name: notify
+    # -- email (an SMTP account of your own; the password in a file) --
+    # email_configs:
+    #   - to: you@example.org
+    #     from: alerts@example.org
+    #     smarthost: smtp.example.org:587
+    #     auth_username: alerts@example.org
+    #     auth_password_file: /run/alertmanager-secrets/smtp_password
+    #     headers:
+    #       subject: '{{ template "abb.title" . }}'
+    #     text: '{{ template "abb.text" . }}'
+    # -- Slack incoming webhook (the URL is a secret: a file) --
+    # slack_configs:
+    #   - api_url_file: /run/alertmanager-secrets/slack_webhook_url
+    #     channel: '#alerts'
+    #     title: '{{ template "abb.title" . }}'
+    #     text: '{{ template "abb.text" . }}'
+    # -- generic webhook (ntfy, Discord proxies, your own receiver) --
+    # webhook_configs:
+    #   - url_file: /run/alertmanager-secrets/webhook_url
+  - name: deadman
+    # webhook_configs:
+    #   - url_file: /run/alertmanager-secrets/deadman_url
+    #     send_resolved: false

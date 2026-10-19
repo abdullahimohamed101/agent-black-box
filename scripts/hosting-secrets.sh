@@ -12,6 +12,7 @@
 #                                       stay EMPTY: enter them yourself in an editor (they are never generated, passed or pasted into chat)
 #   <dir>/secrets/metrics_token         the same token, as a file for Prometheus
 #   <dir>/secrets/grafana_admin_password
+#   <dir>/secrets/alertmanager/          (empty, 0700) for the notification receiver's own secret files (SMTP password, webhook URLs)
 #   <etc-dir>/backup.pass               the backup encryption passphrase. NEVER regenerated: a new one would make every existing bundle
 #                                       unreadable. Copy it to your password manager now (sudo cat it yourself; this script will not).
 #   <etc-dir>/backup.env                the non-secret backup settings, from deploy/hosting/systemd/backup.env.example
@@ -58,7 +59,7 @@ create_exclusive() {
   printf 'CREATED  %s (mode 0600)\n' "$file"
 }
 
-mkdir_private "$DIR"; mkdir_private "$DIR/secrets"; mkdir_private "$ETC"
+mkdir_private "$DIR"; mkdir_private "$DIR/secrets"; mkdir_private "$DIR/secrets/alertmanager"; mkdir_private "$ETC"
 [ "$DIR" = /opt/abb ] && chmod 0755 "$DIR"   # the checkout itself is not secret; .env and secrets/ are
 
 # One token, written to the .env and to secrets/metrics_token. It lives in a shell variable for the length of this script only.

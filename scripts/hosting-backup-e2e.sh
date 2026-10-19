@@ -268,13 +268,13 @@ if backup >"$WORK/l.out" 2>&1; then fail "ran with the lock held"; fi
 grep -q 'another backup is running' "$WORK/l.out" || fail "lock message"
 rmdir "$WORK/backups/.lock"
 mkdir -p "$WORK/units/opt/abb/scripts"
-cp deploy/hosting/systemd/abb-backup.service deploy/hosting/systemd/abb-backup.timer "$WORK/units/"
-cp scripts/hosting-backup.sh "$WORK/units/opt/abb/scripts/"
+cp deploy/hosting/systemd/*.service deploy/hosting/systemd/*.timer "$WORK/units/"
+cp scripts/hosting-backup.sh scripts/hosting-container-metrics.sh "$WORK/units/opt/abb/scripts/"
 docker run --rm -v "$WORK/units:/u" "$UBUNTU_IMAGE" sh -c '
   apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq systemd >/dev/null 2>&1 || { echo "UNITS-NO-SYSTEMD"; exit 0; }
-  mkdir -p /opt/abb/scripts /opt/abb/backups /var/lib/node_exporter/textfile && cp /u/opt/abb/scripts/hosting-backup.sh /opt/abb/scripts/
-  cp /u/abb-backup.service /u/abb-backup.timer /etc/systemd/system/
-  echo "real-units-problem-lines=$(systemd-analyze verify /etc/systemd/system/abb-backup.service /etc/systemd/system/abb-backup.timer 2>&1 | grep -c .)"
+  mkdir -p /opt/abb/scripts /opt/abb/backups /var/lib/node_exporter/textfile && cp /u/opt/abb/scripts/*.sh /opt/abb/scripts/
+  cp /u/*.service /u/*.timer /etc/systemd/system/
+  echo "real-units-problem-lines=$(systemd-analyze verify /etc/systemd/system/abb-backup.service /etc/systemd/system/abb-backup.timer /etc/systemd/system/abb-container-metrics.service /etc/systemd/system/abb-container-metrics.timer 2>&1 | grep -c .)"
   # negative control: a misspelt directive and a missing ExecStart target must be reported
   sed "s/^NoNewPrivileges=yes/NoNewPriviliges=yes/; s#^ExecStart=.*#ExecStart=/opt/abb/scripts/missing.sh#" /u/abb-backup.service >/etc/systemd/system/planted.service
   echo "planted-units-problem-lines=$(systemd-analyze verify /etc/systemd/system/planted.service 2>&1 | grep -c .)"
