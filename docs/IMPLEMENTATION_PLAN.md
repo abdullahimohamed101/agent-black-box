@@ -256,6 +256,8 @@ Split into three parts, each with its own plan, review and PR (decided 2026-10-1
 **Status: In progress** on branch `feature/design-pass-2` (direction 'One Red Line'; `docs/design/design-pass-2-*.md`; the PR will carry it). Added after the user's note that the UI looked convoluted: a second pass over the product's look and information density, ahead of the demo and release-quality work in Phase 20.
 
 ## Phase 20 - Demo, docs, release quality
+**Status: Planned, plan in `docs/plans/active/phase-20-release-polish.md`** (2026-10-18; branch `feature/phase-20-release-polish`). Target: a public open-source launch (Apache-2.0). Decided by the user: static landing page in `site/` (D2), KI-097 fixed by throttling `detect_findings` and showing the last result with its age (D3), scripted deterministic examples and `make demo` with an optional `--live` (D4), the placeholder pulse glyph as launch mark (D5), Apache-2.0 plus contributing, conduct, security and templates (D6). 18 build steps; the demo recording and publication are gated final steps (G1, G2). The hosting guide stays a separate later plan.
+
 README with screenshots, architecture, quickstart, SDK/API/events/deployment/security/ops/
 troubleshooting docs, three examples (coding, simple custom, multi-agent), deterministic seed
 data (`make demo`), short demo recording, release polish checklist (no placeholder text, broken

@@ -1,6 +1,11 @@
 # Project State
 
-Last updated: 2026-10-16 (Phase 19 complete: 19a #186, 19b #206, 19c #207; Design pass 2 in progress; Phase 20 next)
+Last updated: 2026-10-18 (Phase 20 planned; Phase 19 complete: 19a #186, 19b #206, 19c #207; Design pass 2 in progress; Phase 20 next)
+
+
+## Phase 20 (demo, docs, release quality): planned 2026-10-18
+Plan: `docs/plans/active/phase-20-release-polish.md` (branch `feature/phase-20-release-polish`, worktree `abb-worktrees/phase-20`, off `main` b354c15; nothing pushed). Note: Design pass 2 is already in `main` (the branch is an ancestor), so the "Design pass 2 (branch ...; not pushed)" section below is historical.
+**Exact next task:** step 1 of the plan: `LICENSE` (Apache-2.0), `NOTICE`, license metadata in every `pyproject.toml`/`package.json`, ADR-175, `scripts/release-checklist.sh licenses`. Then steps 2-18 in order (KI-097 fix and demo data land before screenshots; screenshots before README and site). D1-D6 are the user's decisions; D7-D14 are recommendations to confirm. Gated and not for the builder: G1 demo video (ffmpeg approval for MP4), G2 publication (push, PR, Pages, public repo, tag). Open `[NEEDS INPUT]`: security contact, repo owner/name, name casing, copyright holder, domain.
 
 ## Design pass 2 (branch `feature/design-pass-2`, worktree `abb-worktrees/design-pass-2`; not pushed)
 Steps 1-6 are built: ADR-166 "One Red Line" (top bar, Overview merged into Runs, Review tabs, Alerts under Settings, one Settings pattern, new tokens), every screen rebuilt, step 6 length-expansion stress test (`apps/web/e2e/stress-expansion.spec.ts`, helper `e2e/pseudo-localise.ts`; report `docs/design/pass-2/07-stress-test-report.md`; KI-297..300). PR text is ready in `docs/design/pass-2/PR-DESCRIPTION.md`. Gates 2026-10-16 (VERIFIED): tsc, eslint --max-warnings=0, prettier, tokens:check, gen:api:check clean; vitest 1721; `pnpm build`; fixtures Playwright 820 passed, 111 skipped (real-API specs: UNVERIFIED, KI-287, KI-293). No API or contract changes.
