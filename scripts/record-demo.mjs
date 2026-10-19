@@ -41,8 +41,8 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  CAMERA_EASE_CSS, MAX_CAPTION_WORDS, MIN_CAPTION_GAP, buildConcat, buildSrt, buildVtt, captionHtml, maxFrameGap,
-  minCaptionSeconds, parseVtt, plain, planCut, travelMs, travelPoint, wordCount,
+  CAMERA_EASE_CSS, MAX_CAPTION_WORDS, MIN_CAPTION_GAP, buildConcat, buildSrt, buildVtt, captionHtml, captionOverlap, clippedLines,
+  fitZoom, maxFrameGap, minCaptionSeconds, parseVtt, placeCaption, plain, planCut, travelMs, travelPoint, wordCount,
 } from "./record-demo-lib.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -107,171 +107,138 @@ const FAILED_LINK = { role: "link", name: "$failedRun" };
 const TIMELINE_TAB = { role: "tab", name: "Timeline", exact: true };
 const FAULT_ROW = { css: ".timeline [data-first-error]" };
 const WHAT_WENT_WRONG = { css: '[role="dialog"] h3', has: "What went wrong", parent: true };
+// The hook frames the headline and the red line together: the headline, plus the left 760 px of the first-error row (its text).
+const HOOK_FOCUS = { union: [{ testid: "headline" }, { ...FAULT_ROW, clipW: 760 }] };
 
+// Polish pass (owner review of draft 1): the film opens on the failed run itself (a 1.6x frame of its headline and the red line),
+// pulls back, and never travels the cursor across the app between sections: a section change is a 0.5 s dip to the canvas (`hop`:
+// the click happens under the dip, the cursor is moved for free). Captions overlap the cursor's travel instead of waiting for it.
 const MAIN = [
-  { // 1. The Runs list, still. The only colour is the red Failed words.
-    id: 1, len: 3.4, tx: "The Runs list: twelve runs of scripted agents, three of them marked Failed.",
-    caps: [cap(1, 0.3)], acts: [],
+  { // 1. The hook: the failed run's headline and its red first-error line, close, then the camera pulls back.
+    id: 1, len: 3.8,
+    tx: "The failed run {failedRun} opens in a close frame on its headline and the red first-error line, then the camera pulls back.",
+    pre: [{ do: "zoom", on: HOOK_FOCUS, level: 1.6, min: 1.3, instant: true }],
+    caps: [cap(1, 0.15)],
+    acts: [{ at: 1.9, do: "zoomOut" }],
   },
-  { // 2. A failed run: the cursor travels to it and opens it.
-    id: 2, len: 4.6, tx: "The cursor opens the failed run {failedRun}.",
-    caps: [cap(3, 0.2)],
-    acts: [
-      { at: 0.0, do: "scroll", to: FAILED_LINK },
-      { at: 0.2, do: "travel", to: FAILED_LINK },
-      { do: "dwell", ms: 400 },
-      { at: 2.3, do: "click" },
-      { do: "waitFor", for: TIMELINE_TAB },
-      { do: "wait", ms: 450 }, // the fault line's 280 ms draw happens on arrival and belongs in the recording
-      { do: "park", name: "run" },
-    ],
-  },
-  { // 3. The sentence, zoomed to fill the frame once.
-    id: 3, len: 4.8, tx: "The run page says in one sentence where it broke: {headline}",
-    caps: [cap(4, 1.0)],
+  { // 2. The sentence and the line under it, lit together.
+    id: 2, len: 3.0, tx: "The run page says in one sentence where it broke: {headline} Under it: {detail}",
+    caps: [cap(4, 0.15)],
     acts: [
       { at: 0.0, do: "scrape", key: "headline", of: { testid: "headline" } },
-      { at: 0.7, do: "zoom", on: { testid: "headline" }, level: 1.6 },
-      { at: 3.95, do: "zoomOut" },
-    ],
-  },
-  { // 4. What it cost after the break.
-    id: 4, len: 3.6, tx: "Under it, the detail line: {detail}",
-    caps: [cap(6, 0.3)],
-    acts: [
       { at: 0.0, do: "scrape", key: "detail", of: { testid: "headline-detail" } },
-      { at: 0.2, do: "spot", on: { testid: "headline-detail" }, pad: 3 }, // tight: the headline's descenders must not light up
-      { at: 3.45, do: "spotOff" },
+      { at: 0.1, do: "spot", on: [{ testid: "headline" }, { testid: "headline-detail" }], pad: 8 },
+      { at: 2.75, do: "spotOff" },
     ],
   },
-  { // 5. The red line.
-    id: 5, len: 3.3, tx: "On the timeline one red line crosses the rows and is labelled First error.",
-    caps: [cap(7, 0.3)],
+  { // 3. The red line.
+    id: 3, len: 3.1, tx: "On the timeline one red line crosses the rows and is labelled First error.",
+    caps: [cap(7, 0.1)],
     acts: [
       { at: 0.0, do: "travel", to: FAULT_ROW, fx: 0.62, fy: 0.5, dx: 0, dy: 34 },
-      { at: 0.3, do: "spot", on: [FAULT_ROW, { css: ".tl-fault-label" }] },
-      { at: 3.15, do: "spotOff" },
+      { at: 0.35, do: "spot", on: [FAULT_ROW, { css: ".tl-fault-label" }] },
+      { at: 2.7, do: "spotOff" },
     ],
   },
-  { // 6. e opens the failed event in the inspector.
-    id: 6, len: 7.0, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}",
+  { // 4. e opens the failed event in the inspector; the camera frames "What went wrong" without cutting a word.
+    id: 4, len: 6.8, tx: "Pressing e opens the failed tool call in the inspector. Under What went wrong it reads: {wrong}",
     caps: [cap(8, 0.1), cap(9, 3.35)],
     acts: [
       { at: 0.0, do: "focus", css: ".timeline" },
-      { at: 0.2, do: "press", key: "e", chip: "e" },
+      { at: 0.15, do: "press", key: "e", chip: "e" },
       { do: "waitFor", for: { role: "dialog" } },
-      { at: 1.2, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
-      { at: 1.3, do: "zoom", on: WHAT_WENT_WRONG, level: 1.4 },
-      { at: 6.2, do: "zoomOut" },
-      { at: 6.8, do: "press", key: "Escape" },
+      { at: 0.9, do: "scrape", key: "wrong", of: { css: '[role="dialog"] .drawer-error p' } },
+      { at: 1.0, do: "zoom", on: WHAT_WENT_WRONG, level: 1.6, min: 1.3 },
+      { at: 5.9, do: "zoomOut" },
+      { at: 6.45, do: "press", key: "Escape" },
     ],
   },
-  { // 7. Typed events: a model call with tokens and cost, then a retry.
-    id: 7, len: 6.8, tx: "Back on the timeline, a model call row shows its tokens and cost, and a retry row says retry attempted.",
-    caps: [cap(10, 0.3), cap(11, 3.9)],
+  { // 5. Typed events: a model call with tokens and cost, then a retry.
+    id: 5, len: 6.8, tx: "Back on the timeline, a model call row shows its tokens and cost, and a retry row says retry attempted.",
+    caps: [cap(10, 0.15), cap(11, 3.65)],
     acts: [
-      { at: 0.1, do: "travel", to: { row: "llm.request.completed" }, fx: 0.52, fy: 0.5 },
-      { at: 0.5, do: "spot", on: { row: "llm.request.completed" }, pad: 6 },
-      { at: 3.75, do: "travel", to: { row: "retry.attempted" }, fx: 0.62, fy: 0.5 },
-      { at: 3.85, do: "spot", on: { row: "retry.attempted" }, pad: 6 },
-      { at: 6.65, do: "spotOff" },
+      { at: 0.0, do: "travel", to: { row: "llm.request.completed" }, fx: 0.52, fy: 0.5 },
+      { at: 0.35, do: "spot", on: { row: "llm.request.completed" }, pad: 6 },
+      { at: 3.4, do: "travel", to: { row: "retry.attempted" }, fx: 0.62, fy: 0.5 },
+      { at: 3.5, do: "spot", on: { row: "retry.attempted" }, pad: 6 },
+      { at: 6.45, do: "spotOff" },
     ],
   },
-  { // 8. Findings and their evidence.
-    id: 8, len: 7.0, tx: "On the Findings tab: two Critical findings and one Warning. Show evidence jumps to the exact rows.",
-    caps: [cap(12, 0.5), cap(13, 4.0)],
+  { // 6. Findings and their evidence.
+    id: 6, len: 6.8, tx: "On the Findings tab: critical findings. Show evidence jumps to the exact rows.",
+    caps: [cap(12, 0.2), cap(13, 3.65)],
     acts: [
-      { at: 0.1, do: "travel", to: { role: "tab", name: "Findings", exact: true } },
+      { at: 0.0, do: "travel", to: { role: "tab", name: "Findings", exact: true } },
       { do: "dwell", ms: 300 },
       { do: "click" },
-      { at: 2.4, do: "travel", to: { role: "button", name: "Show evidence" } },
+      { at: 1.5, do: "travel", to: { role: "button", name: "Show evidence" } },
       { do: "dwell", ms: 400 },
-      { at: 3.85, do: "click" },
-      { do: "wait", ms: 500 },
+      { at: 3.55, do: "click" },
+      { do: "wait", ms: 450 },
       { do: "park", name: "run" },
     ],
   },
-  { // 9. Five agents in one waterfall.
-    id: 9, len: 9.6, tx: "The multi-agent run {multiRun}: the Waterfall in lanes shows five agents, with the critical path as the thick edge.",
-    caps: [cap(16, 3.2), cap(17, 6.35)],
+  { // 7. Five agents in one waterfall. The hop opens the multi-agent run on its Waterfall tab in Lanes view.
+    id: 7, len: 7.0, tx: "The multi-agent run {multiRun}: the Waterfall in lanes shows five agents, with the critical path as the thick edge.",
+    caps: [cap(16, 0.75), cap(17, 4.0)],
     acts: [
-      { at: 0.1, do: "travel", to: NAV("Runs") },
-      { do: "click" },
-      { do: "waitFor", for: RUNS_HEADING },
-      { do: "travel", to: { role: "link", name: "$multiRun" } },
-      { do: "click" },
-      { do: "waitFor", for: { role: "tab", name: "Waterfall", exact: true } },
-      { do: "travel", to: { role: "tab", name: "Waterfall", exact: true } },
-      { do: "click" },
-      { do: "waitFor", for: { testid: "waterfall" } },
-      { at: 4.3, do: "travel", to: { role: "button", name: "Lanes", exact: true } },
-      { do: "click" },
-      { at: 6.4, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.15, fy: 0.5 },
-      { at: 6.6, do: "spot", on: { css: ".wf-bar[data-critical]", widest: true, row: true } },
-      { at: 7.4, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.85, fy: 0.5 },
-      { at: 9.2, do: "spotOff" },
+      { at: 0.0, do: "hop", via: [NAV("Runs"), { role: "link", name: "$multiRun" }, { role: "tab", name: "Waterfall", exact: true }, { role: "button", name: "Lanes", exact: true }],
+        waitFor: { testid: "waterfall" }, park: "run" },
+      { at: 3.3, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.15, fy: 0.5 },
+      { at: 3.85, do: "spot", on: { css: ".wf-bar[data-critical]", widest: true, row: true } },
+      { at: 4.7, do: "travel", to: { css: ".wf-bar[data-critical]", widest: true }, fx: 0.85, fy: 0.5 },
+      { at: 6.75, do: "spotOff" },
     ],
   },
-  { // 10. A person decides. Never clicks Approve or Deny.
-    id: 10, len: 7.4, tx: "Review: one request is Waiting. Its panel shows the capability github.push, the resource, the arguments and Approve and Deny buttons, which are never clicked.",
-    caps: [cap(22, 1.1), cap(23, 4.2)],
+  { // 8. A person decides. Never clicks Approve or Deny.
+    id: 8, len: 6.5, tx: "Review: one request is Waiting. Its panel shows the capability github.push, the resource, the arguments and Approve and Deny buttons, which are never clicked.",
+    caps: [cap(22, 0.75), cap(23, 3.8)],
     acts: [
-      { at: 0.1, do: "travel", to: { role: "link", name: "re:^Review" } },
+      { at: 0.0, do: "hop", via: [{ role: "link", name: "re:^Review" }], waitFor: { testid: "approval-row" }, park: "review" },
+      { at: 1.3, do: "travel", to: { role: "link", name: "$approval" }, fx: 0.95, fy: 0.3 }, // the arrow beside the link, not over the line under it
+      { do: "dwell", ms: 350 },
       { do: "click" },
-      { do: "waitFor", for: { testid: "approval-row" } },
-      { do: "travel", to: { role: "link", name: "$approval" }, fx: 0.95, fy: 0.3 }, // the arrow beside the link, not over the line under it
-      { do: "dwell", ms: 300 },
-      { at: 3.95, do: "click" },
       { do: "waitFor", for: { role: "button", name: "Approve", exact: true } },
       { do: "park", name: "review" },
-      { at: 4.4, do: "spot", on: { css: "dl", has: "Capability" }, pad: 10 },
+      { at: 3.85, do: "spot", on: { css: "dl", has: "Capability" }, pad: 10 },
+      { at: 6.2, do: "spotOff" },
+    ],
+  },
+  { // 9. Security findings, each with its rule.
+    id: 9, len: 7.2, tx: "Review, Security findings: a destructive command, a risky git operation and a secret file read, each with a Rule line.",
+    caps: [cap(14, 0.4), cap(15, 4.3)],
+    acts: [
+      { at: 0.0, do: "travel", to: { role: "tab", name: "Security findings", exact: true } },
+      { do: "dwell", ms: 300 },
+      { do: "click" },
+      { do: "waitFor", for: { testid: "security-row" } },
+      { at: 3.4, do: "travel", to: { testid: "security-row" }, fx: 0.55, fy: 0.5 },
+      { at: 4.2, do: "spot", on: { testid: "security-row" }, pad: 6 },
       { at: 6.9, do: "spotOff" },
     ],
   },
-  { // 11. What the week cost.
-    id: 11, len: 7.6, tx: "Analytics, Cost: {costLine} Below it, where the money was wasted: failed runs, retries and spend after errors.",
-    caps: [cap(20, 1.2), cap(21, 3.95)],
+  { // 10. What the week cost.
+    id: 10, len: 7.0, tx: "Analytics, Cost: {costLine} Below it, where the money was wasted: failed runs, retries and spend after errors.",
+    caps: [cap(20, 0.7), cap(21, 3.4)],
     acts: [
-      { at: 0.1, do: "travel", to: NAV("Analytics") },
-      { do: "click" },
-      { do: "waitFor", for: { testid: "report-headline" } },
+      { at: 0.0, do: "hop", via: [NAV("Analytics")], waitFor: { testid: "report-headline" }, park: "analytics" },
       { do: "scrape", key: "costLine", of: { testid: "report-headline" } },
-      { do: "park", name: "analytics" },
-      { at: 4.1, do: "spot", on: { heading: "Where the money was wasted" }, pad: 10 },
-      { at: 7.2, do: "spotOff" },
+      { at: 0.65, do: "spot", on: { testid: "report-headline" }, pad: 10 },
+      { at: 3.2, do: "spot", on: { heading: "Where the money was wasted" }, pad: 10 },
+      { at: 6.7, do: "spotOff" },
     ],
   },
-  { // 12. Security findings, each with its rule.
-    id: 12, len: 8.2, tx: "Review, Security findings: a destructive command, a risky git operation and a secret file read, each with a Rule line.",
-    caps: [cap(14, 1.7), cap(15, 5.6)],
+  { // 11. Light follows the system: the Runs list with the failed run, dark to light as a cross-fade, never a one-frame flash.
+    id: 11, len: 4.2, tx: "The Runs list again with the failed run, now in the light scheme: the app follows the system setting, and the picture cross-fades. The caption box stays dark.",
+    caps: [cap(27, 1.0)],
     acts: [
-      { at: 0.1, do: "travel", to: { role: "link", name: "re:^Review" } },
-      { do: "click" },
-      { do: "waitFor", for: { role: "tab", name: "Security findings", exact: true } },
-      { do: "travel", to: { role: "tab", name: "Security findings", exact: true } },
-      { do: "click" },
-      { do: "waitFor", for: { testid: "security-row" } },
-      { at: 2.0, do: "travel", to: { testid: "security-row" }, fx: 0.55, fy: 0.5 },
-      { at: 2.2, do: "spot", on: { testid: "security-row" }, pad: 6 },
-      { at: 7.9, do: "spotOff" },
+      { at: 0.0, do: "hop", via: [NAV("Runs")], waitFor: RUNS_HEADING, park: "runs" },
+      { at: 0.8, do: "scheme", value: "light", fadeMs: 650 },
+      { at: 1.7, do: "travel", to: FAILED_LINK },
     ],
   },
-  { // 13. Light follows the system.
-    id: 13, len: 5.9, tx: "The failed run again, now in the light scheme: the app follows the system setting. The caption box stays dark.",
-    caps: [cap(27, 2.6)],
-    acts: [
-      { at: 0.1, do: "travel", to: NAV("Runs") },
-      { do: "click" },
-      { do: "waitFor", for: RUNS_HEADING },
-      { do: "travel", to: FAILED_LINK },
-      { do: "click" },
-      { do: "waitFor", for: TIMELINE_TAB },
-      { do: "park", name: "run" },
-      { at: 2.4, do: "scheme", value: "light" },
-    ],
-  },
-  { // 14. The closing card. Pre-G2 text unless RELEASE_CLAIMS=1.
-    id: 14, len: 4.4,
+  { // 12. The closing card. Pre-G2 text unless RELEASE_CLAIMS=1.
+    id: 12, len: 4.4,
     tx: releaseClaims
       ? "The closing card: the wordmark on the canvas, the text 'Open source. Self-hosted. Apache-2.0.' and the repository address."
       : "The closing card: the wordmark on the canvas and the line 'Agent BlackBox: a flight recorder for AI agents.'",
@@ -285,43 +252,18 @@ const MAIN = [
   },
 ];
 
+// The teaser loop: the first four beats of the main cut with the dip to the canvas at both ends.
 const TEASER = [
-  { id: "T1", len: 3.9, tx: "The Runs list; the cursor opens the failed run {failedRun}.", caps: [cap(3, 0.4)],
-    acts: [
-      { at: 0.05, do: "fade", to: 0, ms: 250 },
-      { at: 0.5, do: "travel", to: FAILED_LINK },
-      { do: "dwell", ms: 350 },
-      { at: 2.4, do: "click" },
-      { do: "waitFor", for: TIMELINE_TAB },
-      { do: "wait", ms: 400 },
-      { do: "park", name: "run" },
-    ] },
-  { id: "T2", len: 4.6, tx: "One sentence says where it broke: {headline}", caps: [cap(4, 1.0)],
-    acts: [
-      { at: 0.0, do: "scrape", key: "headline", of: { testid: "headline" } },
-      { at: 0.6, do: "zoom", on: { testid: "headline" }, level: 1.6 },
-      { at: 3.9, do: "zoomOut" },
-    ] },
-  { id: "T3", len: 3.4, tx: "The red line marks the first error.", caps: [cap(7, 0.3)],
-    acts: [
-      { at: 0.0, do: "travel", to: FAULT_ROW, fx: 0.62, fy: 0.5, dx: 0, dy: 34 },
-      { at: 0.3, do: "spot", on: [FAULT_ROW, { css: ".tl-fault-label" }] },
-      { at: 3.05, do: "spotOff" },
-    ] },
-  { id: "T4", len: 6.9, tx: "Press e: the failed tool call opens; What went wrong comes from the event itself.", caps: [cap(8, 0.2), cap(9, 3.5)],
-    acts: [
-      { at: 0.0, do: "focus", css: ".timeline" },
-      { at: 0.3, do: "press", key: "e", chip: "e" },
-      { do: "waitFor", for: { role: "dialog" } },
-      { at: 1.3, do: "zoom", on: WHAT_WENT_WRONG, level: 1.4 },
-      { at: 6.1, do: "zoomOut" },
-      { at: 6.6, do: "fade", to: 1, ms: 250 },
-    ] },
+  { ...MAIN[0], id: "T1", len: 3.9, acts: [{ at: 0.05, do: "fade", to: 0, ms: 250 }, ...MAIN[0].acts] },
+  { ...MAIN[1], id: "T2" },
+  { ...MAIN[2], id: "T3" },
+  { ...MAIN[3], id: "T4", len: 6.9, acts: [...MAIN[3].acts.filter((a) => a.key !== "Escape"), { at: 6.55, do: "fade", to: 1, ms: 250 }] },
 ];
 
-// Social cut: a separate take at 1080x1350 (the app's narrow layout), beats 1-8, captions 40/50 px, zoom at most 1.4.
-const SOCIAL = MAIN.filter((b) => b.id <= 8).map((b) => ({
+// Social cut: a separate take at 1080x1350 (the app's narrow layout), beats 1-5, captions 40/50 px, zoom at most 1.4.
+const SOCIAL = MAIN.filter((b) => b.id <= 5).map((b) => ({
   ...b,
+  pre: b.pre?.map((a) => (a.do === "zoom" ? { ...a, level: Math.min(a.level, 1.4) } : a)),
   acts: b.acts.map((a) => (a.do === "zoom" ? { ...a, level: Math.min(a.level, 1.4) } : a)),
 }));
 
@@ -448,7 +390,7 @@ function overlay(cfg) {
         border: 2px solid rgba(255,255,255,.85); pointer-events: none; z-index: 2147483639; opacity: 0; transform: scale(.3); }
       #abb-ripple.go { animation: abb-rip 380ms cubic-bezier(.2,.7,.3,1) forwards; }
       @keyframes abb-rip { 0% { opacity: .9; transform: scale(.3) } 100% { opacity: 0; transform: scale(1.15) } }
-      #abb-cap { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); max-width: ${Math.round(W * 0.9)}px;
+      #abb-cap { position: fixed; left: 50%; top: 0; transform: translateX(-50%); max-width: ${Math.round(W * 0.9)}px;
         padding: 14px 26px; border-radius: 4px; background: rgba(16,20,25,.92); border: 1px solid rgba(255,255,255,.14);
         color: #e2e5e8; font: 600 ${cfg.capSize}px/${cfg.capLine}px var(--abb-cap-font, "IBM Plex Sans", system-ui, sans-serif);
         letter-spacing: 0; text-align: center; pointer-events: none; z-index: 2147483645; opacity: 0;
@@ -465,6 +407,7 @@ function overlay(cfg) {
         justify-content: center; font: 500 22px/1 "IBM Plex Mono", ui-monospace, monospace; pointer-events: none; z-index: 2147483644;
         opacity: 0; transition: opacity 120ms linear; }
       #abb-chip.on { opacity: 1; }
+      #abb-xf { position: fixed; left: 0; top: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; z-index: 2147483642; opacity: 0; display: none; }
       #abb-fade { position: fixed; inset: 0; background: #101419; pointer-events: none; z-index: 2147483646; opacity: 0; }
       #abb-card { position: fixed; inset: 0; background: #101419; z-index: 2147483641; display: none; align-items: center; justify-content: center;
         flex-direction: column; gap: 28px; pointer-events: none; color: #e2e5e8; }
@@ -481,8 +424,9 @@ function overlay(cfg) {
     const spot = mk("div", "abb-spot");
     const chip = mk("div", "abb-chip");
     const fade = mk("div", "abb-fade");
+    const xf = mk("img", "abb-xf"); xf.setAttribute("alt", "");
     const card = mk("div", "abb-card", cfg.mark + '<div class="name">Agent BlackBox</div>');
-    document.documentElement.append(card, spot, capEl, chip, rip, cur, fade);
+    document.documentElement.append(card, xf, spot, capEl, chip, rip, cur, fade);
     const font = getComputedStyle(document.body).getPropertyValue("--font-plex-sans").trim();
     if (font) document.documentElement.style.setProperty("--abb-cap-font", font);
     const store = {
@@ -504,32 +448,59 @@ function overlay(cfg) {
     if (store.get("__abbCurHidden") === "1") cur.style.opacity = "0";
     try {
       const saved = JSON.parse(store.get("__abbCap") ?? "null");
-      if (saved && saved.until > Date.now()) { capEl.innerHTML = saved.html; capEl.classList.add("on"); }
+      if (saved && saved.until > Date.now()) { capEl.innerHTML = saved.html; capEl.style.top = saved.top + "px"; capEl.classList.add("on"); }
     } catch { /* none */ }
     if (store.get("__abbFade") === "1") fade.style.opacity = "1";
     if (store.get("__abbCard") === "1") card.classList.add("on");
-    const keep = [style, card, spot, capEl, chip, rip, cur, fade];
+    const keep = [style, card, xf, spot, capEl, chip, rip, cur, fade];
     const ensure = () => { for (const el of keep) if (!el.isConnected) document.documentElement.append(el); };
     new MutationObserver(ensure).observe(document.documentElement, { childList: true });
     setInterval(ensure, 250);
     window.__abb = {
-      caption(html, ttl) {
-        store.set("__abbCap", JSON.stringify({ html, until: Date.now() + ttl }));
-        capEl.classList.remove("off"); capEl.innerHTML = html; capEl.classList.add("on");
+      // The caption is placed by the recorder (it measures the page's text lines and picks a band that covers none): prep sets the
+      // text and reports its size, show puts it at `top` and fades it in.
+      captionPrep(html) {
+        capEl.classList.remove("on"); capEl.classList.add("off"); capEl.innerHTML = html;
+        const r = capEl.getBoundingClientRect();
+        return { w: r.width, h: r.height };
+      },
+      captionShow(top, html, ttl) {
+        store.set("__abbCap", JSON.stringify({ html, top, until: Date.now() + ttl }));
+        capEl.style.top = top + "px"; capEl.classList.remove("off"); capEl.innerHTML = html; capEl.classList.add("on");
       },
       captionOff() { store.set("__abbCap", "null"); capEl.classList.add("off"); capEl.classList.remove("on"); },
       spot(rect, pad) {
         if (!rect) { spot.style.opacity = "0"; return; }
         Object.assign(spot.style, { left: rect.x - pad + "px", top: rect.y - pad + "px", width: rect.w + 2 * pad + "px", height: rect.h + 2 * pad + "px", opacity: "1" });
       },
-      zoom(s, x, y, ms) {
+      // Camera: the window of the page shown has its top-left at (x0, y0) and is W/s by H/s; transform-origin O = x0 * s / (s - 1).
+      zoom(s, x0, y0, ms) {
         document.body.style.transitionDuration = ms + "ms";
         if (s <= 1) { document.body.style.transform = ""; return; }
-        const ox = Math.max(0, Math.min(W, (x - W / (2 * s)) / (1 - 1 / s)));
-        const oy = Math.max(0, Math.min(H, (y - H / (2 * s)) / (1 - 1 / s)));
+        const ox = Math.max(0, Math.min(W, (x0 * s) / (s - 1)));
+        const oy = Math.max(0, Math.min(H, (y0 * s) / (s - 1)));
         document.body.style.transformOrigin = `${ox}px ${oy}px`;
         document.body.style.transform = `scale(${s})`;
       },
+      // Every line of visible text of the page as a viewport rect (transforms included): what the camera must not cut and the
+      // caption must not cover.
+      lines() {
+        const out = [];
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const text = n.nodeValue.trim();
+          const el = n.parentElement;
+          if (!text || !el || /^(SCRIPT|STYLE|NOSCRIPT)$/.test(el.tagName)) continue;
+          if (el.checkVisibility && !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
+          const range = document.createRange();
+          range.selectNodeContents(n);
+          for (const q of range.getClientRects()) if (q.width > 1 && q.height > 1) out.push({ x: q.x, y: q.y, w: q.width, h: q.height, t: text.slice(0, 40) });
+        }
+        return out;
+      },
+      // Cross-fade for a change the page cannot animate (the colour scheme): show the old picture on top, change, fade it away.
+      async xfShow(src) { xf.src = src; await xf.decode(); xf.style.transition = "none"; xf.style.display = "block"; xf.style.opacity = "1"; },
+      xfHide(ms) { xf.style.transition = `opacity ${ms}ms linear`; xf.style.opacity = "0"; setTimeout(() => { xf.style.display = "none"; xf.removeAttribute("src"); }, ms + 50); },
       chip(label, ms) { chip.textContent = label; chip.classList.add("on"); setTimeout(() => chip.classList.remove("on"), ms); },
       cursor(show) { store.set("__abbCurHidden", show ? "0" : "1"); cur.style.opacity = show ? "1" : "0"; },
       fade(to, ms) { store.set("__abbFade", to ? "1" : "0"); fade.style.transition = `opacity ${ms}ms linear`; fade.style.opacity = String(to); },
@@ -584,6 +555,13 @@ const rectOf = (r) => (r ? { x: r.x, y: r.y, width: r.width, height: r.height } 
 
 /** The bounding box of a spec in viewport CSS px (the camera transform is already included). */
 async function boxOf(s) {
+  if (s.union) {
+    const boxes = [];
+    for (const u of s.union) { const b = await boxOf(u); if (b) boxes.push(b); }
+    if (!boxes.length) return null;
+    const x0 = Math.min(...boxes.map((b) => b.x)), y0 = Math.min(...boxes.map((b) => b.y));
+    return { x: x0, y: y0, width: Math.max(...boxes.map((b) => b.x + b.width)) - x0, height: Math.max(...boxes.map((b) => b.y + b.height)) - y0 };
+  }
   if (s.widest) {
     return page.evaluate(({ css, row }) => {
       const bars = [...document.querySelectorAll(css)];
@@ -610,11 +588,20 @@ async function boxOf(s) {
   }
   const el = locate(s);
   await el.waitFor({ state: "visible", timeout: 15000 });
-  return rectOf(await el.boundingBox());
+  const r = rectOf(await el.boundingBox());
+  if (r && s.clipW) r.width = Math.min(r.width, s.clipW); // the text of a full-width row, not its whole width
+  return r;
 }
 
 let cur = { x: 0, y: 0 };
-const log = { overlay: null, console: [], warnings: [], cues: [], beats: [], scrape: {}, textHits: [] };
+const view = { w: cut.w, h: cut.h };
+const log = { overlay: null, console: [], warnings: [], cues: [], beats: [], scrape: {}, textHits: [], zoomStates: [], hops: [] };
+// What the story is about right now (a spotlight, a zoom's target, the thing the cursor points at), in viewport px: a caption
+// must never sit on it. The camera scale is kept for the caption measurements.
+let focusNow = [];
+let cameraScale = 1;
+const asRect = (b) => ({ x: b.x, y: b.y, w: b.width, h: b.height });
+const readLines = () => evalOverlay(() => window.__abb?.lines());
 
 async function travelTo(target) {
   const dist = Math.hypot(target.x - cur.x, target.y - cur.y);
@@ -663,6 +650,7 @@ async function act(a, ctx) {
       case "travel": {
         const b = await boxOf(a.to);
         if (!b) throw new Error("no box for " + JSON.stringify(a.to));
+        if (a.focus !== false) focusNow = [asRect(b)];
         await travelTo({ x: b.x + b.width * (a.fx ?? 0.5) + (a.dx ?? 0), y: b.y + b.height * (a.fy ?? 0.5) + (a.dy ?? 0) });
         break;
       }
@@ -684,16 +672,33 @@ async function act(a, ctx) {
         await page.locator(a.css).first().focus();
         break;
       case "zoom": {
+        // Frame the target with the largest zoom (at most a.level, at least a.min) and the window position at which the edges of
+        // the picture cut no line of text (fitZoom, pure and tested); the state reached is measured and logged for the QA.
         const b = await boxOf(a.on);
         if (!b) throw new Error("no box for zoom target");
+        const lines = await readLines();
+        const fit = fitZoom({ lines, focus: asRect(b), s0: a.level, sMin: a.min ?? 1.3, view });
+        if (!fit) throw new Error(`the zoom target does not fit a window of at least ${a.min ?? 1.3}x`);
+        const ms = a.instant ? 0 : 700;
         await evalOverlay(() => window.__abb?.cursor(false));
-        await evalOverlay(([s, x, y, ms]) => window.__abb?.zoom(s, x, y, ms), [a.level, b.x + b.width / 2, b.y + b.height / 2, 700]);
-        await sleep(700);
+        await evalOverlay(([s, x0, y0, t]) => window.__abb?.zoom(s, x0, y0, t), [fit.s, fit.x0, fit.y0, ms]);
+        await sleep(ms + 80);
+        cameraScale = fit.s;
+        const after = await readLines();
+        const clippedNow = clippedLines(after, view);
+        const nb = await boxOf(a.on);
+        focusNow = nb ? [asRect(nb)] : [];
+        log.zoomStates.push({
+          beat: ctx.id, at: +clock().toFixed(2), asked: a.level, scale: fit.s, window: { x0: Math.round(fit.x0), y0: Math.round(fit.y0), x1: Math.round(fit.x0 + view.w / fit.s), y1: Math.round(fit.y0 + view.h / fit.s) },
+          lines: after.length, clipped: clippedNow.map((c) => c.t), predictedClipped: fit.clipped,
+        });
         break;
       }
       case "zoomOut":
         await evalOverlay(([ms]) => window.__abb?.zoom(1, 0, 0, ms), [600]);
         await sleep(600);
+        cameraScale = 1;
+        focusNow = [];
         await evalOverlay(() => window.__abb?.cursor(true));
         break;
       case "spot": {
@@ -707,15 +712,48 @@ async function act(a, ctx) {
         const x0 = Math.min(...boxes.map((b) => b.x)), y0 = Math.min(...boxes.map((b) => b.y));
         const x1 = Math.max(...boxes.map((b) => b.x + b.width)), y1 = Math.max(...boxes.map((b) => b.y + b.height));
         const grow = specs.length > 1 ? 6 : 0; // the rule above a fault row belongs to the row
-        await evalOverlay(([r, pad]) => window.__abb?.spot(r, pad), [{ x: x0, y: y0 - grow, w: x1 - x0, h: y1 - y0 + grow }, a.pad ?? 8]);
+        const pad = a.pad ?? 8;
+        await evalOverlay(([r, p]) => window.__abb?.spot(r, p), [{ x: x0, y: y0 - grow, w: x1 - x0, h: y1 - y0 + grow }, pad]);
+        focusNow = [{ x: x0 - pad, y: y0 - grow - pad, w: x1 - x0 + 2 * pad, h: y1 - y0 + grow + 2 * pad }];
         break;
       }
       case "spotOff":
         await evalOverlay(() => window.__abb?.spot(null, 0));
+        focusNow = [];
         break;
       case "scheme":
-        await page.emulateMedia({ colorScheme: a.value });
+        if (a.fadeMs) {
+          // dark to light as a cross-fade: the old picture goes on top, the scheme changes under it, the picture fades away
+          const shot = await page.screenshot({ type: "jpeg", quality: 90, scale: "css" });
+          await evalOverlay((src) => window.__abb?.xfShow(src), "data:image/jpeg;base64," + shot.toString("base64"));
+          await page.emulateMedia({ colorScheme: a.value });
+          await sleep(160);
+          await evalOverlay((ms) => window.__abb?.xfHide(ms), a.fadeMs);
+          await sleep(a.fadeMs + 60);
+        } else {
+          await page.emulateMedia({ colorScheme: a.value });
+        }
         break;
+      case "hop": {
+        // A section change: dip to the canvas, click through under the dip (no cursor travel), put the cursor at its resting place,
+        // dip back. The brief's "the cursor travels to the link" is kept inside a section, where the eye is already looking.
+        const t0 = clock();
+        await evalOverlay(() => window.__abb?.cursor(false));
+        await evalOverlay(([ms]) => window.__abb?.fade(1, ms), [150]);
+        await sleep(190);
+        focusNow = [];
+        for (const step of a.via) await locate(step).click({ timeout });
+        await locate(a.waitFor).waitFor({ state: "visible", timeout });
+        const [fx, fy] = cut.parks[a.park];
+        cur = { x: Math.round(cut.w * fx), y: Math.round(cut.h * fy) };
+        await page.mouse.move(cur.x, cur.y);
+        await sleep(90);
+        await evalOverlay(([ms]) => window.__abb?.fade(0, ms), [220]);
+        await evalOverlay(() => window.__abb?.cursor(true));
+        await sleep(230);
+        log.hops.push({ beat: ctx.id, at: +t0.toFixed(2), seconds: +(clock() - t0).toFixed(2) });
+        break;
+      }
       case "card":
         await evalOverlay((show) => window.__abb?.card(show), a.show);
         break;
@@ -741,19 +779,31 @@ async function act(a, ctx) {
   }
 }
 
+/** What a caption box covers right now: lines of text and the story's focus rects (measured in the page, read back by the QA). */
+async function measureCaption() {
+  const info = await evalOverlay(() => window.__abb?.captionInfo());
+  const lines = await readLines();
+  return { ...info, camera: cameraScale, overlap: captionOverlap({ x: info.rect.x, y: info.rect.y, w: info.rect.w, h: info.rect.h }, lines, focusNow, view) };
+}
+
 async function runCue(beatStart, cue, beatId) {
   await sleepUntil(beatStart + cue.start);
   const ttl = Math.round((cue.end - cue.start) * 1000) + 500; // survives a full page load; the explicit off below ends it
-  await evalOverlay(([h, t]) => window.__abb?.caption(h, t), [captionHtml(cue.text), ttl]);
+  const html = captionHtml(cue.text);
+  const size = await evalOverlay((h) => window.__abb?.captionPrep(h), html);
+  const place = placeCaption({ w: size.w, h: size.h, lines: await readLines(), focus: focusNow, view });
+  await evalOverlay(([top, h, t]) => window.__abb?.captionShow(top, h, t), [place.top, html, ttl]);
   const start = clock();
   await sleepUntil(beatStart + (cue.start + cue.end) / 2);
-  const mid = await evalOverlay(() => window.__abb?.captionInfo()); // measured in the page, read back by video-qa.mjs
+  const mid = await measureCaption(); // measured in the page, read back by video-qa.mjs
+  await sleepUntil(beatStart + cue.end - 0.12);
+  const endM = await measureCaption();
   await sleepUntil(beatStart + cue.end);
   await evalOverlay(() => window.__abb?.captionOff());
-  log.cues.push({ beat: beatId, bank: cue.bank ?? null, text: cue.text, start, end: clock(), mid });
+  log.cues.push({ beat: beatId, bank: cue.bank ?? null, text: cue.text, start, end: clock(), placed: place, mid, endMeasure: { overlap: endM.overlap, camera: endM.camera } });
 }
 
-const FORBIDDEN_TEXT = [/sk-[A-Za-z0-9]{8,}/, /AKIA[A-Z0-9]{8,}/, /@gmail/i, /anthropic/i, /openai/i, /claude/i, /\bgpt/i, /--live/, /BEGIN [A-Z ]*PRIVATE KEY/];
+const FORBIDDEN_TEXT = [/Agent Black Box/, /sk-[A-Za-z0-9]{8,}/, /AKIA[A-Z0-9]{8,}/, /@gmail/i, /anthropic/i, /openai/i, /claude/i, /\bgpt/i, /--live/, /BEGIN [A-Z ]*PRIVATE KEY/];
 async function scanText(beatId) {
   let text = "";
   try {
@@ -838,6 +888,8 @@ async function warmUp() {
   await step("review", async () => {
     await click({ role: "link", name: "re:^Review" });
     await locate({ testid: "approval-row" }).waitFor({ timeout: 15000 });
+    await click({ role: "link", name: "$approval" });
+    await locate({ role: "button", name: "Approve", exact: true }).waitFor({ timeout: 15000 });
     await click({ role: "tab", name: "Security findings", exact: true });
     await locate({ testid: "security-row" }).waitFor({ timeout: 15000 });
   });
@@ -850,6 +902,13 @@ async function warmUp() {
     await locate(RUNS_HEADING).waitFor({ timeout: 15000 });
     await locate({ testid: "week-sentence" }).waitFor({ timeout: 15000 }).catch(() => {});
   });
+  // The film opens on the failed run: leave the browser there, headline and timeline drawn.
+  await step("failed run, ready to film", async () => {
+    await click(FAILED_LINK);
+    await locate(TIMELINE_TAB).waitFor({ timeout: 15000 });
+    await locate({ testid: "headline" }).waitFor({ timeout: 15000 });
+    await locate(FAULT_ROW).waitFor({ timeout: 15000 });
+  });
 }
 
 async function main() {
@@ -857,7 +916,7 @@ async function main() {
   const mark = readFileSync(path.join(root, "brand/pulse-mark.svg"), "utf8").replace(/ width="24" height="24"/, "");
   const cfg = {
     w: cut.w, h: cut.h, capSize: cut.cap.size, capLine: cut.cap.line, camera: CAMERA_EASE_CSS, zoomIn: 700, mark,
-    start: { x: Math.round(cut.w * cut.parks.runs[0]), y: Math.round(cut.h * cut.parks.runs[1]) },
+    start: { x: Math.round(cut.w * cut.parks.run[0]), y: Math.round(cut.h * cut.parks.run[1]) },
   };
   const browser = await chromium.launch({
     channel: "chrome",
@@ -887,6 +946,8 @@ async function main() {
   log.overlay = await page.evaluate(() => window.__abb?.overlayState());
   if (!log.overlay?.cur || !log.overlay?.cap) fail(`the overlay did not mount: ${JSON.stringify(log.overlay)}`);
   if (cut.startFaded) await page.evaluate(() => window.__abb.fade(1, 0));
+  // A film that opens on a page: the first beat's `pre` acts (the hook's close frame) are set before the first frame is captured.
+  for (const a of beats[0]?.pre ?? []) await act(a, { id: beats[0].id });
   await sleep(150);
 
   const rec = await startScreencast();
@@ -947,6 +1008,7 @@ async function main() {
     cut: cut.name, dryRun: dry, profile, releaseClaims, appCommit: commit, demoSeedHash: seedHash,
     viewport: { w: cut.w, h: cut.h, deviceScaleFactor: DSF }, frames: rec.frames.length, seconds: +seconds.toFixed(3), plannedSeconds: +totalPlanned.toFixed(3),
     beats: log.beats, cues: log.cues.map((c) => ({ ...c, start: +c.start.toFixed(3), end: +c.end.toFixed(3) })),
+    zoomStates: log.zoomStates, hops: log.hops, wordmark: "Agent BlackBox",
     scrape: log.scrape, overlay: log.overlay, consoleErrors: log.console, warnings: log.warnings, textHits: log.textHits,
   };
   writeFileSync(path.join(takeDir, "meta.json"), JSON.stringify(meta, null, 2));
