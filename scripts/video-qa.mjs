@@ -239,15 +239,21 @@ if (other) {
   if (existsSync(master2)) {
     const low = [];
     for (const b of meta.beats) {
-      const t = (b.start + b.end) / 2;
-      const a = path.join(qaDir, `det-a-${b.id}.png`), c = path.join(qaDir, `det-b-${b.id}.png`);
-      frameAt(master, t, a);
-      frameAt(master2, t, c);
-      const r = spawnSync("ffmpeg", ["-i", a, "-i", c, "-lavfi", "ssim", "-f", "null", "-"]); // ssim is printed on stderr
-      const m = /All:([0-9.]+)/.exec(r.stderr.toString());
-      if (!m || Number(m[1]) < 0.97) low.push(`beat ${b.id} (${t.toFixed(1)} s) ssim ${m?.[1]}`);
+      // Three frames per beat (a quarter, half and three quarters in): a transition (a zoom, a dip) may be a few ms apart between two
+      // takes at one of them; a beat is the same picture when its best frame matches.
+      let best = 0, bestAt = 0;
+      for (const f of [0.25, 0.5, 0.75]) {
+        const t = b.start + (b.end - b.start) * f;
+        const a = path.join(qaDir, `det-a-${b.id}.png`), c = path.join(qaDir, `det-b-${b.id}.png`);
+        frameAt(master, t, a);
+        frameAt(master2, t, c);
+        const r = spawnSync("ffmpeg", ["-i", a, "-i", c, "-lavfi", "ssim", "-f", "null", "-"]); // ssim is printed on stderr
+        const m = /All:([0-9.]+)/.exec(r.stderr.toString());
+        if (m && Number(m[1]) > best) { best = Number(m[1]); bestAt = t; }
+      }
+      if (best < 0.97) low.push(`beat ${b.id} (best ${best.toFixed(3)} at ${bestAt.toFixed(1)} s)`);
     }
-    check("two takes: the frame at the middle of every beat is the same picture (SSIM at least 0.97; relative times and cursor positions may differ)", low.length === 0, low.join("; "));
+    check("two takes: a frame of every beat is the same picture in both takes (SSIM at least 0.97 at one of three sample times; relative times and cursor positions may differ)", low.length === 0, low.join("; "));
   }
 }
 
