@@ -105,6 +105,10 @@ async function personAt(
 }
 
 let owner: Page;
+// Two page loads a second apart print different relative times ("51s ago", "52s ago"): compare the rest.
+const withoutAge = (rows: string[]): string[] =>
+  rows.map((r) => r.replace(/\d+\s*\w+ ago/g, "<age> ago"));
+
 let ownerFindings: string[] = [];
 
 test("owner: the run page shows the chip and the Security group, and the evidence opens with its content", async () => {
@@ -272,7 +276,7 @@ test("viewer: the same findings, the evidence says content withheld, and no plan
   await page.getByTestId("security-chip").click();
   const lines = page.getByTestId("security-group").getByTestId("security-finding");
   await expect(lines).toHaveCount(6);
-  expect(await lines.allInnerTexts()).toEqual(ownerFindings); // identical to the owner's
+  expect(withoutAge(await lines.allInnerTexts())).toEqual(withoutAge(ownerFindings)); // identical to the owner's
   await lines
     .filter({ hasText: "usually holds secrets" })
     .getByRole("button", { name: "Show evidence" })
@@ -291,7 +295,9 @@ test("viewer: the same findings, the evidence says content withheld, and no plan
   const viewerRows = await page.getByTestId("security-row").allInnerTexts();
   await owner.goto(`/w/${WS}/security`);
   await expect(owner.getByTestId("security-row").first()).toBeVisible();
-  expect(await owner.getByTestId("security-row").allInnerTexts()).toEqual(viewerRows);
+  expect(withoutAge(await owner.getByTestId("security-row").allInnerTexts())).toEqual(
+    withoutAge(viewerRows),
+  );
   await page.goto(`/w/${WS}/projects/all/runs?q=${encodeURIComponent(planted.plant!)}`);
   await page.waitForLoadState("networkidle");
   // (the term is in the search box, because the viewer typed it; what matters is that no run matched it)
