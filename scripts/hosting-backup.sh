@@ -61,7 +61,7 @@ success=0
 local_ok=0
 cleanup() {
   local status=$?
-  rmdir "$LOCKDIR" 2>/dev/null || true
+  [ -z "$LOCKDIR" ] || abb_lock_release "$LOCKDIR"
   if [ "$success" != 1 ]; then
     # A failed run keeps the previous success time (the age alert is what pages); it records that this run failed.
     prior=0
@@ -92,7 +92,7 @@ perm="$(stat -c '%a' "$PASSFILE" 2>/dev/null || stat -f '%Lp' "$PASSFILE")"
 [ "$(wc -c <"$PASSFILE")" -ge 12 ] || die "the passphrase must be at least 12 bytes" 2
 mkdir -p "$BACKUP_DIR"
 LOCKDIR="$BACKUP_DIR/.lock"
-mkdir "$LOCKDIR" 2>/dev/null || die "another backup is running (or died: remove $LOCKDIR)" 75
+abb_lock_acquire "$LOCKDIR" || die "another backup is running (or its lock has no pid file: check ps, then remove $LOCKDIR)" 75
 trap cleanup EXIT
 
 ABB_BACKUP_PASSPHRASE="$(cat "$PASSFILE")"

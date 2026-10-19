@@ -43,5 +43,32 @@ class ComposeFiles(unittest.TestCase):
         self.assertEqual(resolve(None, ABB_COMPOSE_EXTRA_FILES="rig.yml")[0], f"{BASE} rig.yml")
 
 
+def lock(script: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["bash", "-c", f'. "{LIB}"; {script}'], capture_output=True, text=True)
+
+
+class Locks(unittest.TestCase):
+    """Review P2-3: a lock left by a killed run must not block every later run."""
+
+    def test_acquire_release_and_held_by_live_pid(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            lk = f"{d}/.lock"
+            sleeper = subprocess.Popen(["sleep", "30"])
+            try:
+                Path(lk).mkdir()
+                (Path(lk) / "pid").write_text(f"{sleeper.pid}\n")
+                self.assertEqual(lock(f'abb_lock_acquire "{lk}"').returncode, 1, "a live owner keeps the lock")
+            finally:
+                sleeper.kill()
+                sleeper.wait()
+            self.assertEqual(lock(f'abb_lock_acquire "{lk}"').returncode, 0, "the owner died: stale, taken over")
+            self.assertEqual(lock(f'abb_lock_acquire "{lk}"; abb_lock_release "{lk}"; test ! -e "{lk}"').returncode, 0)
+
+    def test_lock_without_pid_is_held(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            Path(f"{d}/.lock").mkdir()
+            self.assertEqual(lock(f'abb_lock_acquire "{d}/.lock"').returncode, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

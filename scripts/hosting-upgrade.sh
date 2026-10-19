@@ -72,8 +72,8 @@ fi
 free_kb="$(df -Pk "$ABB_DIR" | awk 'NR==2{print $4}')"
 [ "${free_kb:-0}" -ge "$MIN_FREE_KB" ] || die "less than $((MIN_FREE_KB / 1024)) MiB free on $ABB_DIR; free space first (docs/runbooks/hosting-operations.md)" 2
 LOCK="$ABB_DIR/.upgrade.lock"
-mkdir "$LOCK" 2>/dev/null || die "another upgrade is running (or died: remove $LOCK)" 75
-cleanup() { rmdir "$LOCK" 2>/dev/null || true; }
+abb_lock_acquire "$LOCK" || die "another upgrade is running (or its lock has no pid file: check ps, then remove $LOCK)" 75
+cleanup() { abb_lock_release "$LOCK"; }
 trap cleanup EXIT
 
 if [ -n "$(git remote)" ]; then git fetch --tags --prune --quiet || die "git fetch failed (nothing was changed)" 2; fi

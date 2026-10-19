@@ -21,3 +21,19 @@ abb_compose_resolve() {
   compose_profiles=(--profile ops)
   case " $compose_files " in *compose.observability.yml*) compose_profiles+=(--profile observability) ;; esac
 }
+
+# A directory lock that survives a crash (review P2-3). `mkdir` is atomic and portable (no flock on macOS); the owner's pid is stored
+# inside, and a lock whose pid is no longer alive is stale (power loss, SIGKILL from a systemd timeout, a reboot during the run) and is
+# taken over instead of blocking every later run. A lock without a pid file is treated as held (never guess against a live run).
+# Returns 0 when acquired (the caller removes it with abb_lock_release), 1 when held.
+abb_lock_acquire() {
+  local dir="$1" pid
+  if mkdir "$dir" 2>/dev/null; then printf '%s\n' "$$" >"$dir/pid"; return 0; fi
+  pid="$(cat "$dir/pid" 2>/dev/null || true)"
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  if kill -0 "$pid" 2>/dev/null; then return 1; fi
+  rm -rf "$dir"
+  mkdir "$dir" 2>/dev/null || return 1
+  printf '%s\n' "$$" >"$dir/pid"
+}
+abb_lock_release() { rm -rf "$1" 2>/dev/null || true; }
