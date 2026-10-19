@@ -1,6 +1,6 @@
 # Phase 23: Private hosting (one small server, public HTTPS)
 
-**Status:** Planned (2026-10-19). Not started. Blocked only on PR #300 (Phase 20) merging, because this plan edits `docs/deployment.md`, the README, the release checklist and the docs checkers that Phase 20 created.
+**Status:** In progress (2026-10-19): steps 1-6 (local verification) being built; steps 7-12 and G1/G2 not started. Originally blocked on PR #300 (Phase 20) merging, because this plan edits `docs/deployment.md`, the README, the release checklist and the docs checkers that Phase 20 created.
 **Owner:** the lead agent builds steps 1-12; the project owner performs the gated steps G1 and G2 (accounts, money, DNS, credentials).
 **Depends on:** Phase 19 (hardening, merged), Phase 20 (`feature/phase-20-release-polish`, PR #300 open). Branch `feature/phase-23-hosting`, stacked on the Phase 20 tip `2e91913`; rebase onto `main` once #300 merges.
 **Numbering:** Phases 21 and 22 are already used (UI shell, run-page redesign; both merged), so this is Phase 23. Phase 18 stays deferred.
@@ -220,3 +220,9 @@ Each step is one commit on `feature/phase-23-hosting` (`type(scope): ...`, trail
 - **U2** Web read proxy drops browser `X-Forwarded-*`, so API throttles on session traffic see the web container. Recommendation: accept (SDK ingestion, the high-volume path, is direct and per-address); revisit with a justified change only if the rig shows a user-visible gap.
 - **U3** Single hostname with path split (D9) versus `api.<domain>`. Recommendation: single hostname.
 - **U4** Keep HTTP/3 (UDP 443)? Recommendation: off at first (smaller attack and firewall surface).
+
+## Progress log
+
+Owner accepted U1-U4 and D9-D14 as recommended (2026-10-19). Open S1 items re-checked in step 1: `docs/KNOWN_ISSUES.md` lists none open (KI-018, KI-019 resolved in 19a).
+
+- Step 1 (ADR-178 and skeleton): VERIFIED. `python3 scripts/check_docs_links.py README.md docs site CONTRIBUTING.md` -> `checked 215 Markdown files: 0 broken link(s)`.
