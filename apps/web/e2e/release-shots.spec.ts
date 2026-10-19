@@ -202,6 +202,7 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByTestId("headline")).toContainText("Failed at step 6");
       await page.getByRole("tab", { name: /^Findings/ }).click();
       await expect(page.getByTestId("findings")).toBeVisible();
+      await expect(page.getByText("Analysis is current.")).toBeVisible({ timeout: 60_000 });
       await expect(page.getByRole("button", { name: "Show evidence" })).toHaveCount(3);
       await shot(page, "findings", scheme, {
         criticalRow: page.getByTestId("findings").getByText("the run failed: a tool failed"),
@@ -210,8 +211,19 @@ for (const scheme of ["light", "dark"] as const) {
     });
 
     test(`cost analytics (${scheme})`, async ({ page }) => {
-      await page.goto(`${BASE}/analytics`);
-      await expect(page.getByTestId("report-headline")).toContainText("spent in the last 7 days");
+      // The worker rolls the day's spend up a little after the last event; on a fresh stack the report fills in. Take the
+      // picture once two reads, a few seconds apart, agree.
+      let previous = "";
+      await expect(async () => {
+        await page.goto(`${BASE}/analytics`);
+        const headline = page.getByTestId("report-headline");
+        await expect(headline).toContainText("spent in the last 7 days", { timeout: 4000 });
+        const now = (await headline.textContent()) ?? "";
+        const settled = now === previous;
+        previous = now;
+        await page.waitForTimeout(3000);
+        expect(settled, "the cost report is still changing").toBe(true);
+      }).toPass({ timeout: 120_000, intervals: [1000] });
       await expect(page.getByText("Where the money was wasted")).toBeVisible();
       await shot(page, "cost-analytics", scheme, {
         headline: page.getByTestId("report-headline"),
