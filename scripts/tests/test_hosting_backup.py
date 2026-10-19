@@ -182,6 +182,13 @@ class ContainerMetricsTests(unittest.TestCase):
         self.assertEqual(value[("abb_hosting_container_running", "abb-web-1")], 0.0)
         self.assertEqual(value[("abb_hosting_container_metrics_timestamp_seconds", None)], 1000.0)
 
+    def test_oom_events_survive_the_restart_that_resets_the_inspect_flag(self):
+        samples = lib.container_samples(self.INSPECT, 1000.0, {"abb-web-1": 3})
+        value = {(n, labels.get("name")): v for n, labels, v in samples}
+        self.assertEqual(value[("abb_hosting_container_oom_killed", "abb-web-1")], 0.0)
+        self.assertEqual(value[("abb_hosting_container_oom_events", "abb-web-1")], 3.0)
+        self.assertEqual(value[("abb_hosting_container_oom_events", "abb-api-1")], 0.0)
+
     def test_file_is_atomic_escaped_and_parsable(self):
         d = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))

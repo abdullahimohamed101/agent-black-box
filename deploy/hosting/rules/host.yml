@@ -116,7 +116,7 @@ groups:
           runbook_url: docs/runbooks/hosting-operations.md#a-container-keeps-restarting
 
       - alert: AbbContainerOOMKilled
-        expr: abb_hosting_container_oom_killed == 1
+        expr: abb_hosting_container_oom_killed == 1 or abb_hosting_container_oom_events > 0
         for: 0m
         labels:
           severity: page
@@ -124,7 +124,7 @@ groups:
           summary: "Container {{ $labels.name }} was killed for exceeding its memory limit"
           description: >-
             The last stop of {{ $labels.name }} was an out-of-memory kill (its mem_limit, or the host ran out). It restarts by itself,
-            but it will be killed again until the limit or the server is changed. Docker resets this flag when the container is recreated.
+            but it will be killed again until the limit or the server is changed. Docker resets the flag when it restarts the container, so the alert also reads the daemon's oom events of the last 15 minutes (abb_hosting_container_oom_events).
           runbook_url: docs/runbooks/hosting-operations.md#a-container-keeps-restarting
 
       - alert: AbbContainerNotRunning

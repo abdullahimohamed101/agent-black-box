@@ -201,6 +201,24 @@ tests:
       - expr: ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing"}
         eval_time: 1m
         exp_samples: []
+  - name: an OOM kill that Docker's restart already reset (events only) still pages
+    interval: 1m
+    input_series:
+      - series: 'abb_hosting_container_oom_killed{name="worker"}'
+        values: '0x5'
+      - series: 'abb_hosting_container_oom_events{name="worker"}'
+        values: '0 0 2 2 0'
+      - series: 'abb_hosting_container_oom_events{name="api"}'
+        values: '0x5'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing", severity="page", name="worker"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing", name="api"}
+        eval_time: 3m
+        exp_samples: []
   - name: a container that is not running for 6 minutes pages; 3 minutes of not running (a restart) does not
     interval: 1m
     input_series:

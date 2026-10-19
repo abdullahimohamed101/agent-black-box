@@ -34,6 +34,7 @@ cleanup() {
     for s in prometheus alertmanager obs-init blackbox node-exporter grafana; do dc logs --no-color --tail 8 "$s" 2>&1 | sed "s/^/[$s] /" >&2 || true; done
   fi
   if [ "${HOSTING_OBS_KEEP:-0}" = 1 ]; then echo "left running: docker compose -p $APP down -v; docker compose -p $EDGE down -v; docker network rm $NET; rm -rf $WORK" >&2; return; fi
+  docker rm -f "$APP-oomprobe" >/dev/null 2>&1 || true
   if [ -f "$WORK/app.env" ]; then dc down -v --remove-orphans >/dev/null 2>&1 || true; fi
   if [ -f "$WORK/edge.env" ]; then dc_edge down -v --remove-orphans >/dev/null 2>&1 || true; fi
   docker network rm "$NET" >/dev/null 2>&1 || true
@@ -118,6 +119,22 @@ ABB_BACKUP_ENV=/nonexistent ABB_TEXTFILE_DIR="$WORK/textfile" ABB_METRICS_PROJEC
 grep -c '^abb_hosting_container_running' "$WORK/textfile/abb_containers.prom" | sed 's/^/containers reported: /'
 grep -q 'abb_hosting_container_running{name="abb-hosting-obs-api-1"} 1' "$WORK/textfile/abb_containers.prom" || fail "the API container is not in the container metrics"
 if grep -q 'migrate' "$WORK/textfile/abb_containers.prom"; then fail "the one-shot migrate job must not be reported"; fi
+
+step "O2b a REAL out-of-memory kill is visible to the sampler even after restart: unless-stopped resets State.OOMKilled (review P2-5)"
+OOMC="$APP-oomprobe"; docker rm -f "$OOMC" >/dev/null 2>&1 || true
+docker run -d --name "$OOMC" --label "com.docker.compose.project=$APP" --memory 16m --memory-swap 16m --restart unless-stopped \
+  --entrypoint python "$IMAGE" -c 'import time
+time.sleep(2)
+b = []
+while True: b.append(bytearray(4 * 1024 * 1024))' >/dev/null || fail "could not start the OOM probe"
+for _ in $(seq 1 40); do [ "$(docker inspect "$OOMC" --format '{{.RestartCount}}')" -ge 2 ] && break; sleep 1; done
+[ "$(docker inspect "$OOMC" --format '{{.RestartCount}}')" -ge 2 ] || fail "the probe was never OOM-killed (Docker did not enforce the limit?)"
+echo "inspect now says OOMKilled=$(docker inspect "$OOMC" --format '{{.State.OOMKilled}}') after $(docker inspect "$OOMC" --format '{{.RestartCount}}') restarts"
+ABB_BACKUP_ENV=/nonexistent ABB_TEXTFILE_DIR="$WORK/textfile" ABB_METRICS_PROJECTS="$APP" scripts/hosting-container-metrics.sh
+grep -E "oom_events\{name=\"$OOMC\"\} [1-9]" "$WORK/textfile/abb_containers.prom" || fail "the sampler did not report the OOM kills from the event log"
+docker rm -f "$OOMC" >/dev/null
+ABB_BACKUP_ENV=/nonexistent ABB_TEXTFILE_DIR="$WORK/textfile" ABB_METRICS_PROJECTS="$APP $EDGE" scripts/hosting-container-metrics.sh
+echo "PASS O2b"
 
 step "start the monitoring profile (obs-init, prometheus, alertmanager, node-exporter, blackbox, grafana) with --wait"
 dc up -d --wait --no-build obs-init prometheus alertmanager node-exporter blackbox grafana >"$WORK/up2.log" 2>&1 || { tail -25 "$WORK/up2.log" >&2; fail "the monitoring stack did not become healthy"; }

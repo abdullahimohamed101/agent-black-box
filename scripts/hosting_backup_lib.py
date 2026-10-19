@@ -185,7 +185,9 @@ def write_samples(path: Path, samples: List[Tuple[str, Dict[str, str], float]]) 
         raise
 
 
-def container_samples(inspected: List[Dict[str, object]], now: float) -> List[Tuple[str, Dict[str, str], float]]:
+def container_samples(
+    inspected: List[Dict[str, object]], now: float, oom_events: Optional[Dict[str, int]] = None
+) -> List[Tuple[str, Dict[str, str], float]]:
     """Samples for `docker inspect` JSON: restart count, last stop was an out-of-memory kill, running. Only containers with a restart
     policy are reported: they are meant to keep running (the one-shot migrate job has restart "no" and is exited by design)."""
     out: List[Tuple[str, Dict[str, str], float]] = [("abb_hosting_container_metrics_timestamp_seconds", {}, now)]
@@ -201,6 +203,9 @@ def container_samples(inspected: List[Dict[str, object]], now: float) -> List[Tu
         labels = {"name": name}
         out.append(("abb_hosting_container_restart_count", labels, float(c.get("RestartCount") or 0)))
         out.append(("abb_hosting_container_oom_killed", labels, 1.0 if state.get("OOMKilled") else 0.0))
+        # State.OOMKilled is reset when `restart: unless-stopped` starts the container again (seen on Docker: oom=false with 3
+        # restarts), so a once-a-minute inspect misses it. The daemon's oom EVENTS in the recent window do not reset.
+        out.append(("abb_hosting_container_oom_events", labels, float((oom_events or {}).get(name, 0))))
         out.append(("abb_hosting_container_running", labels, 1.0 if state.get("Running") else 0.0))
     return out
 
@@ -276,6 +281,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     sub.add_parser("latest-complete")
     p = sub.add_parser("containers")
     p.add_argument("--file", required=True)
+    p.add_argument("--oom-events", help="file with one container name per `docker events` oom event of the recent window")
     p = sub.add_parser("sha256")
     p.add_argument("path")
     p = sub.add_parser("manifest-counts")
@@ -309,7 +315,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 1 if bad else 0
         elif args.cmd == "containers":
             data = json.loads(sys.stdin.read() or "[]")
-            write_samples(Path(args.file), container_samples(data if isinstance(data, list) else [], time.time()))
+            events: Dict[str, int] = {}
+            if args.oom_events:
+                try:
+                    for line in Path(args.oom_events).read_text(encoding="utf-8").splitlines():
+                        if line.strip():
+                            events[line.strip()] = events.get(line.strip(), 0) + 1
+                except OSError:
+                    pass
+            write_samples(Path(args.file), container_samples(data if isinstance(data, list) else [], time.time(), events))
         elif args.cmd == "latest-complete":
             complete, _ = parse_listing(sys.stdin.read().splitlines())
             if not complete:

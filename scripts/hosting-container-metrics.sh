@@ -17,6 +17,10 @@ if [ -n "${ABB_METRICS_PROJECTS:-}" ]; then
 else
   ids="$(docker ps -aq)"
 fi
-if [ -z "${ids// /}" ]; then printf '[]' | python3 "$HERE/hosting_backup_lib.py" containers --file "$TEXTFILE_DIR/abb_containers.prom"; exit 0; fi
+# OOM kills of the last window, from the daemon's event log (State.OOMKilled is reset by the automatic restart; review P2-5).
+events="$(mktemp)"; trap 'rm -f "$events"' EXIT
+docker events --since "${ABB_OOM_WINDOW:-15m}" --until "$(date +%s)" --filter type=container --filter event=oom \
+  --format '{{.Actor.Attributes.name}}' >"$events" 2>/dev/null || true
+if [ -z "${ids// /}" ]; then printf '[]' | python3 "$HERE/hosting_backup_lib.py" containers --file "$TEXTFILE_DIR/abb_containers.prom" --oom-events "$events"; exit 0; fi
 # shellcheck disable=SC2086 # one argument per container id, on purpose
-docker inspect $ids | python3 "$HERE/hosting_backup_lib.py" containers --file "$TEXTFILE_DIR/abb_containers.prom"
+docker inspect $ids | python3 "$HERE/hosting_backup_lib.py" containers --file "$TEXTFILE_DIR/abb_containers.prom" --oom-events "$events"

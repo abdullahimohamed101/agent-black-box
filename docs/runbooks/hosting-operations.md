@@ -44,7 +44,7 @@ Alerts: `HostMemoryLow`, `HostSwapHeavilyUsed`.
 
 Alerts: `AbbContainerRestarting`, `AbbContainerOOMKilled`, `AbbContainerNotRunning`.
 
-1. `docker ps -a --format 'table {{.Names}}\t{{.Status}}'` and `docker inspect -f '{{.RestartCount}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' <container>`.
+1. `docker ps -a --format 'table {{.Names}}\t{{.Status}}'` and `docker inspect -f '{{.RestartCount}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' <container>`. `oom=false` proves nothing after an automatic restart (Docker resets it); the proof is `docker events --since 24h --until "$(date +%s)" --filter event=oom`, which is also what the alert reads.
 2. `oom=true`: the container hit its `mem_limit` (or the host ran out). Raise that one limit in the overlay if the host has room, otherwise resize the server. Docker clears the flag when the container is recreated (`docker compose up -d <service>`).
 3. Exit code and the last log lines: `docker logs --tail 50 <container>`. Structured logs never hold payload bodies or secrets. A missing or wrong environment variable stops the API at start with a message naming it.
 4. After an upgrade: see `scripts/hosting-upgrade.sh`'s output; it rolls back by itself when the schema did not change.
