@@ -143,6 +143,17 @@ bundle="$(sed -n 's/.*pre-upgrade bundle: \(abb-[0-9TZ]*\).*/\1/p' "$WORK/u2.out
 [ "$(image_id "${API_IMG%%:*}:rollback")" = "$old_id" ] || fail "the previous image was not tagged :rollback"
 echo "PASS U2 (bundle $bundle, rollback tag = release 1 image)"
 
+step "U2b the stack is STOPPED (database volume intact): the upgrade still backs up first and never calls it a first deploy"
+# Review P1-2: a stopped PostgreSQL used to read as "no database yet", which skipped the backup and disabled the rollback.
+dc stop >/dev/null
+up v2 --no-verify 2>&1 | tee "$WORK/u2b.out" | sed 's/^/  /'
+if grep -q 'first deploy' "$WORK/u2b.out"; then fail "a stopped stack with a populated database was treated as a first deploy"; fi
+grep -q 'step=backup' "$WORK/u2b.out" || fail "no backup was taken for the stopped stack"
+b2b="$(sed -n 's/.*pre-upgrade bundle: \(abb-[0-9TZ]*\).*/\1/p' "$WORK/u2b.out" | tail -1)"
+[ -n "$b2b" ] && [ -f "$WORK/remote/abb/$b2b/COMPLETE" ] || fail "the stopped-stack upgrade left no complete off-site bundle"
+[ "$(running_build)" = 2 ] || fail "release 2 is not running after the stopped-stack upgrade"
+echo "PASS U2b (bundle $b2b)"
+
 step "U3 release 3 never gets healthy and the schema is unchanged: rolled back automatically"
 prev_id="$(image_id "$API_IMG")"; prev_web_id="$(image_id "$WEB_IMG")"
 release 3 '    healthcheck: { test: ["CMD", "false"], interval: 2s, timeout: 2s, retries: 2, start_period: 0s }'

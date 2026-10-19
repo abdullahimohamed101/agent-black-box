@@ -78,13 +78,39 @@ if [ -n "$(git remote)" ]; then git fetch --tags --prune --quiet || die "git fet
 NEW_SHA="$(git rev-parse --verify --quiet "$REF^{commit}")" || die "unknown ref '$REF' (nothing was changed)" 2
 PREV_SHA="$(git rev-parse HEAD)"
 
-revision() { dc exec -T postgres psql -U abb -d abb -tAc "select version_num from alembic_version" 2>/dev/null </dev/null | tr -d '[:space:]' || true; }
-rendered() { dc config --format json 2>/dev/null; }
+# The schema revision. Prints nothing when `alembic_version` does not exist (a database that was never migrated); returns 1 when the
+# query itself fails (PostgreSQL stopped or unreachable). A failed query is never "no database": that mistake skipped the backup
+# and the rollback for a populated database whose container happened to be stopped (review P1-2).
+revision() {
+  local has
+  has="$(dc exec -T postgres psql -U abb -d abb -v ON_ERROR_STOP=1 -tAc "select to_regclass('public.alembic_version') is not null" </dev/null 2>/dev/null)" || return 1
+  [ "$(printf '%s' "$has" | tr -d '[:space:]')" = t ] || return 0
+  dc exec -T postgres psql -U abb -d abb -v ON_ERROR_STOP=1 -tAc "select version_num from alembic_version" </dev/null 2>/dev/null | tr -d '[:space:]'
+}
+# A cheap `dc config` first: an incomplete .env (a secret still empty) is reported by Compose with the variable's name instead of a
+# traceback from the JSON readers below (review P3-3).
+rendered() { dc config --format json; }
 built_images() { rendered | python3 -c 'import json,sys; c=json.load(sys.stdin)["services"]; print("\n".join(sorted({s["image"] for s in c.values() if "build" in s and s.get("image")})))'; }
 pg_image() { rendered | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["postgres"]["image"])'; }
+pg_volume() { rendered | python3 -c 'import json,sys; print(json.load(sys.stdin)["volumes"]["pgdata"]["name"])'; }
 
-PREV_REV="$(revision)"
-FIRST=0; [ -n "$PREV_REV" ] || FIRST=1
+if ! cfg_err="$(dc config -q 2>&1 >/dev/null)"; then
+  printf '%s\n' "$cfg_err" | sed 's/^/  /' >&2
+  die "docker compose cannot render the configuration (above): complete .env first (nothing was changed)" 2
+fi
+# "First deploy" means there is no data volume, or its database was never migrated. It is never decided from a failed query.
+FIRST=0; PREV_REV=""
+if docker volume inspect "$(pg_volume)" >/dev/null 2>&1; then
+  if [ "$DRY" = 1 ] && [ -z "$(dc ps -q --status running postgres 2>/dev/null)" ]; then
+    PREV_REV="unknown (PostgreSQL is stopped; a real run starts it first)"
+  else
+    dc up -d --no-build --wait postgres >/dev/null 2>&1 || die "the PostgreSQL data volume exists but PostgreSQL would not start; refusing to treat this as a first deploy. Read: docker compose logs postgres (nothing was changed)." 2
+    PREV_REV="$(revision)" || die "could not read the schema revision from a running PostgreSQL; refusing to guess (nothing was changed)." 2
+    [ -n "$PREV_REV" ] || FIRST=1
+  fi
+else
+  FIRST=1
+fi
 PREV_PG="$(pg_image)"
 IMAGES="$(built_images)"
 log "from ${PREV_SHA:0:12} to ${NEW_SHA:0:12} ($REF); schema revision now: ${PREV_REV:-none (first deploy)}"
@@ -118,7 +144,7 @@ for img in $IMAGES; do
 done
 
 rollback_or_report() {
-  local why="$1" cur; cur="$(revision)"
+  local why="$1" cur; cur="$(revision || true)"
   log "FAILED: $why"
   if [ "$FIRST" = 1 ]; then
     die "first deploy failed; nothing to roll back to. Read: docker compose logs, then fix and run this again."
@@ -181,6 +207,6 @@ for img in $IMAGES; do
     docker rmi "$repo:$tag" >/dev/null 2>&1 || true
   done
 done
-log "OK now ${NEW_SHA:0:12} ($REF); schema revision $(revision); pre-upgrade bundle: $BUNDLE"
+log "OK now ${NEW_SHA:0:12} ($REF); schema revision $(revision || echo unknown); pre-upgrade bundle: $BUNDLE"
 log "disk: $(docker system df --format '{{.Type}} {{.Size}} (reclaimable {{.Reclaimable}})' 2>/dev/null | tr '\n' ';')"
 log "later, when sure: docker image prune (dangling images only). NEVER docker volume prune: it deletes the database."
