@@ -11,6 +11,7 @@ Checks, over git-tracked files (or every file when ROOT is not a git checkout):
     names and `scratch` are not images;
   * compose files and workflows: every `image:` and `container:` value carries a digest;
   * `docker run|pull|create <image>` in shell scripts, Makefiles and workflow steps;
+  * one `repo:tag` carrying two different digests in different files (a bump that missed a copy);
   * a tag-pinned reference of an image that is pinned elsewhere, written without its digest in
     any script or config (the literal `postgres:16-alpine` in a helper script).
 A digest that appears only in a comment does not count. Reviewed exceptions live in
@@ -210,6 +211,34 @@ def check_stray_literals(rel: str, lines: list[str], names: set[str]) -> list[Fi
     return found
 
 
+def check_digest_conflicts(files: list[tuple[str, list[str]]]) -> list[Finding]:
+    """One `repo:tag` must carry one digest everywhere (KI-265): a bump that misses a copy leaves two."""
+    seen: dict[str, dict[str, list[tuple[str, int]]]] = {}
+    for rel, lines in files:
+        if rel.startswith("scripts/check_pins") or rel == "scripts/pins-allowlist.txt":
+            continue
+        for number, line in enumerate(lines, 1):
+            for match in re.finditer(
+                r"([a-z0-9][a-z0-9./_-]*:[A-Za-z0-9._-]+)@(sha256:[0-9a-f]{64})", line
+            ):
+                seen.setdefault(match.group(1), {}).setdefault(match.group(2), []).append(
+                    (rel, number)
+                )
+    found = []
+    for name, digests in seen.items():
+        if len(digests) < 2:
+            continue
+        # The digest used most often is taken as the intended one; every other occurrence is reported.
+        keep = max(digests, key=lambda d: len(digests[d]))
+        for digest, places in digests.items():
+            if digest != keep:
+                found += [
+                    Finding(rel, n, name, f"pinned to a second digest ({digest[:19]}...)")
+                    for rel, n in places
+                ]
+    return found
+
+
 def run_checks(root: Path, allowlist: set[str] | None = None) -> list[Finding]:
     root = root.resolve()
     if allowlist is None:
@@ -236,6 +265,7 @@ def run_checks(root: Path, allowlist: set[str] | None = None) -> list[Finding]:
             findings += check_image_keys(rel, lines)
         if name == "Makefile" or rel.endswith(".sh"):
             findings += check_docker_commands(rel, lines)
+    findings += check_digest_conflicts(texts)
     names = pinned_tag_references(texts)
     for rel, lines in texts:
         if rel.startswith("scripts/check_pins") or rel == "scripts/pins-allowlist.txt":
