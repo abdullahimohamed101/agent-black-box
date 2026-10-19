@@ -17,8 +17,12 @@ export default async function nojs({ srv, browser, rep }) {
   if (cmds !== 5) rep.fail("nojs", `${cmds} quickstart command lines, expected 5`);
   if (!(await text("#cmd-quickstart")).includes("make demo")) rep.fail("nojs", "make demo is not in the quickstart block");
   if (!(await count("#cmd-sdk .ln"))) rep.fail("nojs", "the SDK snippet is missing");
+  const imgs = await count("#screens .panel img");
+  if (imgs !== 7) rep.fail("nojs", `${imgs} gallery images, expected 7`);
+  if ((await count("#screens .panel[hidden]")) !== 0) rep.fail("nojs", "a gallery panel is hidden without script");
+  if ((await count('#screens [role="tab"]')) !== 0 || (await count("#screens a.tab")) !== 7) rep.fail("nojs", "without script the tab list must be seven in-page links");
   const copy = page.locator("button.copy").first();
   if (!(await copy.isDisabled())) rep.fail("nojs", "the Copy button must be disabled without script");
-  rep.fact(`h1, ${rows} trace rows, ${cmds} command lines, inspector and SDK snippet are in the DOM with scripting off`);
+  rep.fact(`h1, ${rows} trace rows, ${cmds} command lines, inspector, SDK snippet and ${imgs} gallery images are in the DOM with scripting off`);
   await context.close();
 }

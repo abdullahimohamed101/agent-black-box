@@ -36,3 +36,70 @@
 .code pre .k { color: var(--color-syntax-keyword); }
 .code pre .s { color: var(--color-syntax-string); }
 .code pre .f { color: var(--color-syntax-function); }
+
+/* How it works (brief 4.5): sticky heading left, three steps right; each step settles in on scroll. */
+.how { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 4rem; align-items: start; }
+.how-lead { position: sticky; top: 5rem; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4rem; min-width: 0; }
+.step { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: 1rem; }
+.step .n { font: var(--type-mono-size)/var(--site-h3-line) var(--font-mono); color: var(--color-text-secondary); }
+.step p { margin: .5rem 0 1rem; color: var(--color-text-secondary); max-width: 52ch; }
+.step .code { max-width: 38rem; }
+.headline-sample { font-size: var(--type-mono-size); }
+/* Scroll-driven settle: the complete, static state is the default; this only runs where view() is supported and motion is allowed. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .step { animation: step-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 40%; }
+    /* Rise only: an opacity ramp would leave text below the fold under AA contrast (axe sees it at the start of the range). */
+    @keyframes step-rise { from { transform: translateY(12px); } to { transform: none; } }
+  }
+}
+@media (max-width: 1023px) { .how { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; } .how-lead { position: static; } .steps { gap: 3rem; } }
+@media (max-width: 599px) { .step { grid-template-columns: minmax(0, 1fr); gap: .25rem; } }
+
+/* Screens gallery (brief 4.6): tabs left, a cropped screenshot with source-pixel callouts, notes, caption. */
+.screens-lede { margin-bottom: 3rem; }
+.gallery { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 3rem; align-items: start; }
+.tabs { display: grid; border-top: 1px solid var(--color-border-subtle); }
+.tab {
+  display: block; text-align: left; font: inherit; color: inherit; background: none; border: 0; border-bottom: 1px solid var(--color-border-subtle);
+  padding: .875rem 0; cursor: pointer; text-decoration: none; min-height: 2.75rem;
+}
+.tab b { display: block; font-weight: 600; font-size: var(--type-body-lg-size); line-height: var(--type-body-lg-line); }
+.tab span { display: block; color: var(--color-text-secondary); font-size: var(--type-body-lg-size); line-height: var(--type-body-lg-line); }
+.tab:hover { background: var(--color-bg-raised); }
+.tab[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--color-interactive-default); padding-left: .75rem; }
+.tab:focus-visible { outline-offset: -2px; }
+.panels { min-width: 0; display: grid; gap: 4rem; }
+.panel { scroll-margin-top: 5rem; }
+.panel figure { margin: 0; }
+.panel[hidden] { display: none; }
+.shot {
+  position: relative; aspect-ratio: 16 / 10; border: 1px solid var(--color-border-strong); overflow: hidden; background: var(--color-bg-raised);
+  border-radius: var(--radius-control); container-type: size; --zoom: var(--zoom-d);
+  --px: calc(var(--zoom) * 1cqw / 1440); /* one source pixel, in container units: exact at every viewport width */
+}
+.shot img { position: absolute; left: calc(-1 * var(--ox) * var(--px)); top: calc(-1 * var(--oy) * var(--px)); width: calc(var(--zoom) * 1%); height: auto; display: block; max-width: none; }
+.co { position: absolute; left: calc((var(--x) - var(--ox)) * var(--px)); top: calc((var(--y) - var(--oy)) * var(--px)); width: calc(var(--w) * var(--px)); height: calc(var(--h) * var(--px)); border: 1px solid var(--color-interactive-default); box-shadow: 0 0 0 2px var(--color-bg-raised); pointer-events: none; }
+.co i {
+  position: absolute; left: -.75rem; top: -.75rem; height: 1.25rem; min-width: 1.25rem; padding: 0 .375rem; border-radius: var(--radius-control);
+  background: var(--color-interactive-default); color: var(--color-text-inverse); font: 600 var(--type-small-size)/1.25rem var(--font-mono); font-style: normal; text-align: center;
+}
+.notes { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; font-size: var(--type-body-lg-size); line-height: var(--type-body-lg-line); color: var(--color-text-secondary); }
+.notes li { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: .5rem; }
+.notes i { font: 600 var(--type-small-size)/1.25rem var(--font-mono); font-style: normal; color: var(--color-text-primary); }
+.panel figcaption { font: var(--type-small-size)/var(--type-small-line) var(--font-sans); color: var(--color-text-secondary); margin-top: .75rem; }
+@media (max-width: 1023px) {
+  .gallery { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+  .tabs { display: flex; overflow-x: auto; border-top: 0; gap: 1.5rem; }
+  .tab { white-space: nowrap; flex: none; border-bottom: 2px solid transparent; padding: .5rem 0; display: inline-flex; align-items: center; }
+  .tab span { display: none; }
+  .tab[aria-selected="true"] { box-shadow: none; padding-left: 0; border-bottom-color: var(--color-interactive-default); }
+  .notes { grid-template-columns: minmax(0, 1fr); }
+  .shot { aspect-ratio: 4 / 3; --zoom: 160; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .gallery { animation: step-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
+  }
+}
