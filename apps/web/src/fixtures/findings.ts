@@ -139,7 +139,7 @@ function findingsFor(f: FixtureRun): FindingOut[] {
           confidence: 1,
           title: "the run failed: a command failed",
           message:
-            "1 retry followed the first error, and 1 change to files or the repository were made before the end.",
+            "1 retry followed the first error, and 1 change to files or the repository was made before the end.",
           start: 11,
           end: 12,
           cited: chain.map((c) => c.seq),
