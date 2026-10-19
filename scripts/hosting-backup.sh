@@ -32,7 +32,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 LIB=(python3 "$HERE/hosting_backup_lib.py")
 
 log() { printf 'hosting-backup: %s\n' "$*"; }
-die() { printf 'hosting-backup: ERROR: %s\n' "$*" >&2; exit "${2:-1}"; }
+die() { printf 'hosting-backup: ERROR: %s\n' "$1" >&2; exit "${2:-1}"; }
 
 if [ "${1:-}" = "--check" ]; then
   "${LIB[@]}" check --file "$METRICS_FILE" --max-age-hours "$MAX_AGE_HOURS"

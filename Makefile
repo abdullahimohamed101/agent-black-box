@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e demo demo-reset demo-e2e site site-check auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e hosting-e2e hosting-verify backup restore backup-verify rotate-alert-keys
+.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e demo demo-reset demo-e2e site site-check auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e hosting-e2e hosting-verify hosting-backup-e2e hosting-bootstrap-e2e hosting-upgrade-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -243,6 +243,15 @@ backup-restore-e2e:
 # scripts/hosting-verify.sh, the config and port checks and the memory peaks. Throwaway projects on ports 18080/18443; needs Docker with Compose 2.24+.
 hosting-e2e:
 	scripts/hosting-e2e.sh
+
+# Host scripts (Phase 23 steps 7-8), each against a throwaway Docker rig, no cloud account: the backup and restore drill with a local
+# rclone remote; the bootstrap, secrets and --server checks in an Ubuntu 24.04 container; the upgrade and rollback on a real compose stack.
+hosting-backup-e2e:
+	scripts/hosting-backup-e2e.sh
+hosting-bootstrap-e2e:
+	scripts/hosting-bootstrap-e2e.sh
+hosting-upgrade-e2e:
+	scripts/hosting-upgrade-e2e.sh
 
 # The same assertions against any URL: make hosting-verify URL=https://abb.example.org [VERIFY_FLAGS="--metrics-token-file F --strict"]
 hosting-verify:

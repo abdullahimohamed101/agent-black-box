@@ -1093,6 +1093,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--env-file", help="env file for --config-only (names and test values; secrets are not printed)")
     p.add_argument("--docker-project", help="check the published ports of this running compose project")
     p.add_argument("--docker-bin", default="docker")
+    p.add_argument("--server", action="store_true", help="host-level checks, run ON the server as root (ufw, sshd, listeners, disk, backup...)")
+    p.add_argument("--server-probe", metavar="HOST", help="run from ANOTHER machine: 80/443 answer and the private ports do not")
+    p.add_argument("--abb-dir", default="/opt/abb", help="--server: the checkout holding .env, secrets/ and backups/")
+    p.add_argument("--deploy-user", default="deploy", help="--server: the user that must own the secrets")
+    p.add_argument("--textfile-dir", default="/var/lib/node_exporter/textfile", help="--server: where abb_backup.prom is written")
+    p.add_argument("--backup-pass", default="/etc/abb/backup.pass")
+    p.add_argument("--http3", action="store_true", help="--server: UDP 443 is expected to be open")
+    p.add_argument("--disk-limit", type=int, default=80, help="--server: percent of disk or inodes that fails the check")
     args = p.parse_args(argv)
 
     results: List[Result] = []
@@ -1108,6 +1116,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             results.append(bad("config.render", str(exc)[:200]))
     if args.docker_project:
         results += docker_ports(args.docker_project, args.docker_bin)
+    if args.server or args.server_probe:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import hosting_server_checks as server  # noqa: E402 - imports this module, so it is loaded lazily
+
+        if args.server:
+            results += server.run_server_checks(
+                server.Host(),
+                server.Settings(args.abb_dir, args.deploy_user, args.textfile_dir, args.backup_pass, args.http3, args.disk_limit),
+            )
+        if args.server_probe:
+            results += server.probe_from_outside(args.server_probe)
     if args.base_url:
         try:
             target = Target(args.base_url, args.cacert, args.resolve, args.http_port)
@@ -1129,7 +1148,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         results += run_checks(target, options)
     if not results:
-        p.error("give a base URL, --config-only or --docker-project")
+        p.error("give a base URL, --config-only, --docker-project, --server or --server-probe")
     return summarize(results, args.strict)
 
 

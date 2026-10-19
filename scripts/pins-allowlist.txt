@@ -2,3 +2,6 @@
 # `scratch` and names of earlier build stages are recognised without an entry.
 agent-black-box-api:local | built by docker compose from apps/api/Dockerfile; never pulled
 abb-hosting-rig-api:local | built from apps/api/Dockerfile by scripts/hosting-e2e.sh (the local hosting rig); never pulled
+abb-hosting-bk-api:local | tag of the developer's API image copied by scripts/hosting-backup-e2e.sh (rig only); never pulled
+abb-hosting-up-api:local | built by scripts/hosting-upgrade-e2e.sh from a copy of the local API image (rig only); never pulled
+abb-hosting-up-web:latest | built by scripts/hosting-upgrade-e2e.sh from a copy of the local web image (rig only); never pulled
