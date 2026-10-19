@@ -35,7 +35,9 @@ updates:
 
   # docker-compose.yml (postgres, prometheus, grafana). Supported by the docker ecosystem.
   - package-ecosystem: docker-compose
-    directory: /
+    # /deploy/hosting/edge holds the shared Caddy project (Phase 23); /deploy/hosting the production overlay and, later, the
+    # hosting observability overlay. Dependabot reads files named compose.yml / docker-compose.yml, so keep that name there.
+    directories: [/, /deploy/hosting, /deploy/hosting/edge]
     schedule: { interval: weekly, day: monday }
     open-pull-requests-limit: 5
     labels: [dependencies, supply-chain]
@@ -48,6 +50,9 @@ updates:
       - dependency-name: postgres
         update-types: [version-update:semver-major]
       - dependency-name: grafana/grafana
+        update-types: [version-update:semver-major]
+      # caddy 3 (if it ever exists) would change the Caddyfile format; the shared edge serves every app on the machine.
+      - dependency-name: caddy
         update-types: [version-update:semver-major]
 
   # pnpm workspace: one lockfile at the root covers apps/web and packages/event-schema.

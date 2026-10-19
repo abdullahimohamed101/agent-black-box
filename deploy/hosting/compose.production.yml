@@ -1,0 +1,127 @@
+# Production overlay (Phase 23, ADR-178). Merge it over the development file:
+#   docker compose -f docker-compose.yml -f deploy/hosting/compose.production.yml --profile app up -d --build --wait
+# Needs Docker Compose 2.24 or newer (`!reset` and `!override`). Every secret comes from the .env next to docker-compose.yml
+# (template: .env.production.example); a missing one stops the command instead of falling back to a development default.
+#
+# What it changes, and why:
+#   * no service publishes a port to the host: the only listener is the shared Caddy (deploy/hosting/edge) on the Docker
+#     network `edge`. Docker publishes around the host firewall, so "no ports:" is the control, not ufw alone (ADR-178).
+#   * ABB_ENVIRONMENT=production everywhere (switches off http issuers, dev sessions, the seeded owner and /docs).
+#   * ABB_TRUST_PROXY=1 on api and web: valid only because Caddy is the sole path in and replaces X-Forwarded-For.
+#   * fake-oidc moves to a profile nobody starts.
+#   * restart policy, log rotation and memory ceilings (mem_limit is a ceiling, not a reservation).
+name: agent-black-box
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+# Names of the attachment on the shared edge network. `abb-api` and `abb-web` are aliases so that a second app on the same
+# network (its own `api` or `web`) cannot be resolved by mistake: the Caddyfile only ever names these two.
+x-edge-api: &edge-api
+  default: {}
+  edge:
+    aliases: [abb-api]
+x-edge-web: &edge-web
+  default: {}
+  edge:
+    aliases: [abb-web]
+
+x-prod-env: &prod-env
+  ABB_ENVIRONMENT: production
+  ABB_CORS_ORIGINS: ${ABB_PUBLIC_ORIGIN:?set ABB_PUBLIC_ORIGIN to the public https origin}
+  ABB_RATE_LIMIT_EVENTS_PER_SECOND: ${ABB_RATE_LIMIT_EVENTS_PER_SECOND:-2000}
+  ABB_RATE_LIMIT_BURST_EVENTS: ${ABB_RATE_LIMIT_BURST_EVENTS:-10000}
+
+networks:
+  edge:
+    external: true
+    name: ${ABB_EDGE_NETWORK:-edge}
+
+services:
+  postgres:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${ABB_POSTGRES_PASSWORD:?generate with scripts/hosting-secrets.sh}
+    restart: unless-stopped
+    mem_limit: 768m
+    logging: *logging
+
+  migrate:
+    environment:
+      <<: *prod-env
+      ABB_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:?set ABB_POSTGRES_PASSWORD}@postgres:5432/abb
+      ABB_RUNTIME_DB_PASSWORD: ${ABB_RUNTIME_DB_PASSWORD:?set ABB_RUNTIME_DB_PASSWORD}
+      ABB_RETENTION_DB_PASSWORD: ${ABB_RETENTION_DB_PASSWORD:?set ABB_RETENTION_DB_PASSWORD}
+    mem_limit: 512m
+    logging: *logging
+
+  api:
+    ports: !reset []
+    networks: *edge-api
+    environment:
+      <<: *prod-env
+      ABB_DATABASE_URL: postgresql+asyncpg://abb_runtime:${ABB_RUNTIME_DB_PASSWORD:?set ABB_RUNTIME_DB_PASSWORD}@postgres:5432/abb
+      ABB_WEB_ORIGIN: ${ABB_PUBLIC_ORIGIN:?set ABB_PUBLIC_ORIGIN}
+      ABB_TRUST_PROXY: "1"
+      ABB_OIDC_ISSUER: ${ABB_OIDC_ISSUER:-https://accounts.google.com}
+      ABB_OIDC_CLIENT_ID: ${ABB_OIDC_CLIENT_ID:?set ABB_OIDC_CLIENT_ID}
+      ABB_OIDC_CLIENT_SECRET: ${ABB_OIDC_CLIENT_SECRET:?set ABB_OIDC_CLIENT_SECRET}
+      # Google serves its token and keys endpoints from other hosts than its issuer; the client refuses them unless listed.
+      ABB_OIDC_EXTRA_HOSTS: ${ABB_OIDC_EXTRA_HOSTS:-oauth2.googleapis.com,www.googleapis.com}
+      ABB_ALLOW_DEV_SESSIONS: "0"
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: *logging
+
+  # Never started: a development-only provider that accepts any email. The profile name is deliberately not one anyone uses.
+  fake-oidc:
+    profiles: !override ["dev-only-never-start"]
+
+  worker:
+    environment:
+      <<: *prod-env
+      ABB_DATABASE_URL: postgresql+asyncpg://abb_runtime:${ABB_RUNTIME_DB_PASSWORD:?set ABB_RUNTIME_DB_PASSWORD}@postgres:5432/abb
+    mem_limit: 384m
+    logging: *logging
+
+  retention:
+    environment:
+      ABB_ENVIRONMENT: production
+      ABB_RETENTION_DATABASE_URL: postgresql+asyncpg://abb_retention:${ABB_RETENTION_DB_PASSWORD:?set ABB_RETENTION_DB_PASSWORD}@postgres:5432/abb
+      # dry_run until a restore drill has been performed (docs/runbooks/retention.md); enforce deletes permanently.
+      ABB_RETENTION_MODE: ${ABB_RETENTION_MODE:-dry_run}
+    mem_limit: 192m
+    logging: *logging
+
+  backup:
+    environment:
+      ABB_ENVIRONMENT: production
+      ABB_BACKUP_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:?set ABB_POSTGRES_PASSWORD}@postgres:5432/abb
+    logging: *logging
+
+  web:
+    ports: !reset []
+    networks: *edge-web
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: ${ABB_PUBLIC_ORIGIN:?set ABB_PUBLIC_ORIGIN}
+    environment:
+      ABB_WEB_ORIGIN: ${ABB_PUBLIC_ORIGIN:?set ABB_PUBLIC_ORIGIN}
+      ABB_TRUST_PROXY: "1"
+    restart: unless-stopped
+    mem_limit: 384m
+    logging: *logging
+
+  # Optional dashboards (profile `observability`): the base file already binds them to loopback; they are reached only through
+  # an SSH tunnel. Restated so a future edit of the base file cannot publish them. The hosting dashboards, retention and the
+  # Grafana password come with the hosting observability overlay. A required-variable check cannot live here: Compose
+  # interpolates every service, active or not, so it would block the app stack for a variable only the dashboards use.
+  prometheus:
+    ports: !override
+      - "127.0.0.1:9090:9090"
+  grafana:
+    ports: !override
+      - "127.0.0.1:3001:3000"
