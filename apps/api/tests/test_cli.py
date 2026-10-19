@@ -237,3 +237,35 @@ async def test_seed_makes_the_dev_project_capture_full_payloads_once(
         assert (
             await PgSecuritySettingsStore(conn, tenant).get(project.id)
         ).capture_mode is CaptureMode.METADATA_ONLY
+
+
+async def test_create_key_supersede_revokes_same_named_keys_only(
+    database_url: str, engine: AsyncEngine
+) -> None:
+    settings = make_settings(database_url)
+    await invoke(settings, "create-workspace", "--name", "Acme", "--slug", "acme")
+    await invoke(settings, "create-project", "--workspace", "acme", "--name", "A", "--slug", "a")
+    await invoke(settings, "create-project", "--workspace", "acme", "--name", "B", "--slug", "b")
+
+    async def mint(project: str, name: str, *extra: str) -> str:
+        code, out, _ = await invoke(
+            settings, "create-key", "--workspace", "acme", "--project", project,
+            "--name", name, *extra,
+        )  # fmt: skip
+        assert code == 0
+        return out.strip()
+
+    old = await mint("a", "demo")
+    other_name = await mint("a", "ci")
+    other_project = await mint("b", "demo")
+    new = await mint("a", "demo", "--supersede")
+    async with engine.begin() as conn:
+        for token in (other_name, other_project, new):
+            await authenticate(conn, token, Tick())
+        with pytest.raises(AppError):
+            await authenticate(conn, old, Tick())
+
+    code, _, err = await invoke(
+        settings, "create-key", "--workspace", "acme", "--project", "a", "--supersede"
+    )
+    assert code == 2 and "--name" in err

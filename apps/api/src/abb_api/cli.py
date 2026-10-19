@@ -160,6 +160,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     key.add_argument("--name")
     key.add_argument("--expires-in-days", type=int)
+    key.add_argument(
+        "--supersede",
+        action="store_true",
+        help="first revoke this workspace's active keys with the same --name and project "
+        "(a script that re-issues its own key leaves no stale one behind)",
+    )
 
     revoke = sub.add_parser("revoke-key")
     revoke.add_argument("--workspace", required=True, help="workspace slug")
@@ -571,7 +577,23 @@ async def run(
                 expires = (
                     now + timedelta(days=args.expires_in_days) if args.expires_in_days else None
                 )
-                created = await ApiKeyRepository(conn, TenantContext(ws.id)).create(
+                if args.supersede and not args.name:
+                    raise ValueError("--supersede needs --name (it revokes keys of that name)")
+                key_repo = ApiKeyRepository(conn, TenantContext(ws.id))
+                if args.supersede:
+                    for old in await key_repo.list():
+                        if (
+                            old.name == args.name
+                            and old.project_id == project_id
+                            and old.revoked_at is None
+                        ):
+                            await key_repo.revoke(old.key_id, now)
+                            await _audit(
+                                conn, ws.id, "api_key.revoke",
+                                resource_kind="api_key", resource_id=old.key_id,
+                            )  # fmt: skip
+                            print(f"revoked superseded key {old.key_id}", file=err)
+                created = await key_repo.create(
                     scopes=frozenset(args.scopes),
                     project_id=project_id,
                     name=args.name,

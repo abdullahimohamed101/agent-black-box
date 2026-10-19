@@ -63,18 +63,25 @@ curl -sf --max-time 5 "$API/readyz" >/dev/null || fail "no API at $API (run 'mak
 cli() { (cd apps/api && uv run python -m abb_api.cli "$@" 2>/dev/null); }
 
 step "provision: workspace '$WORKSPACE' and its dev owner (idempotent, no dev key touched), project '$PROJECT', a demo write key"
-mkdir -p "$(dirname "$KEY_FILE")"; chmod 700 "$(dirname "$KEY_FILE")" 2>/dev/null || true
+# Permissions are only ever changed on a directory this script creates itself, never on a caller-chosen DEMO_KEY_FILE's existing
+# parent (that could be $HOME): the key file is written 0600 either way.
+KEY_DIR="$(dirname "$KEY_FILE")"
+if [ ! -d "$KEY_DIR" ]; then mkdir -p "$KEY_DIR"; chmod 700 "$KEY_DIR"; fi
 # Not `make seed`: seed re-issues (and so revokes) the dev key whenever its key file is missing, which would break a running dev stack.
 cli create-workspace --name "Local development" --slug "$WORKSPACE" >/dev/null || true  # exists after `make seed` or a repeat run
 cli add-member --workspace "$WORKSPACE" --email owner@local.test --role OWNER >/dev/null || true  # "already a member" on a repeat run
 cli create-project --workspace "$WORKSPACE" --name "Agent BlackBox demo" --slug "$PROJECT" --capture-mode full >/dev/null || true  # exists on a repeat run
+# The key goes to curl on stdin as a config line, never in argv (any user can read argv with `ps`).
 valid=0
-if [ -s "$KEY_FILE" ] && curl -sf --max-time 5 "$API/v1/runs?limit=1" -H "Authorization: Bearer $(cat "$KEY_FILE")" >/dev/null 2>&1; then valid=1; fi
+if [ -s "$KEY_FILE" ] && printf 'header = "Authorization: Bearer %s"\n' "$(cat "$KEY_FILE")" \
+     | curl -sf --max-time 5 -K - "$API/v1/runs?limit=1" >/dev/null 2>&1; then valid=1; fi
 if [ "$valid" = 0 ]; then
-  ( umask 077; cli create-key --workspace "$WORKSPACE" --project "$PROJECT" --scopes events:write artifacts:write runs:read --name demo >"$KEY_FILE.tmp" ) \
+  # --supersede revokes the earlier 'demo' key of this project, so a lost or stale key file does not leave live keys behind.
+  ( umask 077; cli create-key --workspace "$WORKSPACE" --project "$PROJECT" --scopes events:write artifacts:write runs:read --name demo --supersede >"$KEY_FILE.tmp" ) \
     || { rm -f "$KEY_FILE.tmp"; fail "could not create the demo key (is the database up and migrated? 'make setup')"; }
   mv "$KEY_FILE.tmp" "$KEY_FILE"
 fi
+chmod 600 "$KEY_FILE"
 [[ "$(cat "$KEY_FILE")" == abb_live_* ]] || fail "the demo key file is not a key; delete $KEY_FILE and rerun"
 
 export BLACKBOX_API_KEY="$(cat "$KEY_FILE")" BLACKBOX_ENDPOINT="$API"
