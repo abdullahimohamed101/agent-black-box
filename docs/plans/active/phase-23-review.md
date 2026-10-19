@@ -257,3 +257,32 @@ None found.
   `docs-commands-check` validates the commands and variable names. The exceptions are P1-3, P1-4 and P2-6 above.
 - **Memory arithmetic**, PostgreSQL 17 pin (ADR-178 Amendment 1), Dependabot directories and the `check-pins` coverage of the new
   tree are as described in the plan.
+
+## Disposition (fixer pass, 2026-10-19)
+
+Each fix was committed on its own. "Before" is the failing run or test observed before the fix; all rigs below were run to green at the end.
+
+| Finding | Disposition | Evidence |
+| --- | --- | --- |
+| P1-1 web image not rolled back | fixed in 0c6a81d | `hosting-upgrade-e2e` U3 now asserts the web build and image id: before, `the web image was not rolled back (running build is 3, expected 2)`; after, PASS. The overlay names `${ABB_WEB_IMAGE:-agent-black-box-web:local}`. |
+| P1-2 stopped PostgreSQL read as first deploy | fixed in ef19d6d | New rig case U2b (stack stopped): before, `treated as a first deploy`; after, backup taken and bundle at the remote. A failed query is fatal; first deploy is decided from the missing `pgdata` volume or an unmigrated database. The "PostgreSQL will not start" branch is `ASSUMED` (no rig plants a broken volume). |
+| P1-3 monitoring overlay dropped on upgrade | fixed in 65b8460 | `scripts/hosting-compose.sh` is the single source (`ABB_OBS_UID` in `.env` turns the overlay and profile on; overrides documented in `backup.env.example`, guide step 9, runbook). Unit tests; rig U2 asserts the worker keeps `ABB_WORKER_METRICS_PORT`: before (old scripts), `the upgrade removed the worker's metrics port`. |
+| P1-4 restore runbook not executable | fixed in cf6b09e | Procedure rewritten (start postgres, drill, restore into the empty `abb`, `hosting-upgrade.sh`). `hosting-backup-e2e` A7.9 runs the same commands on wiped volumes: 20 tables equal the manifest, artifact owned by uid 10001, `/readyz` answers. A real replacement server stays `UNVERIFIED (env)` (KI-312, text updated). |
+| P1-5 KNOWN_ISSUES regression | fixed in 935c21a (the review commit; verified: filed `#NNN` links present) | `grep` of the register. |
+| P2-1 shared `edge` network | accepted + documented, filed as KI-316 (S3, to be filed) | ADR-178 D10, guide second-app section, `docs/KNOWN_ISSUES.md`, `phase-23-ki-issues.md`. Per-app networks are a design change and not implemented, as instructed. fdbaec5 |
+| P2-2 AAAA with an IPv4-only edge | fixed in fdbaec5 | AAAA instruction removed; guide says IPv4 only and how IPv6 would be added. |
+| P2-3 stale backup lock | fixed in baae359 | pid-in-lock with stale takeover (portable; no flock on macOS) for backup and upgrade; unit tests fail without the helper. A lock without a pid file still counts as held. |
+| P2-4 staging orphans | fixed in 3f9237d | Rig A7.7b: before, `staging holds [abb-20200101T000000Z abb-fresh ]`; after, orphan older than a day swept, fresh entry kept; a failed run removes its own staging path (that branch is `ASSUMED`; no rig plants a failing `create`). |
+| P2-5 OOM alert false negative | fixed in 0fbe9ae | Measured on Docker: after an automatic restart `State.OOMKilled=false` (2 restarts, 3 oom events). The sampler now counts `docker events` oom events (`abb_hosting_container_oom_events`), the alert fires on either signal. `hosting-obs-e2e` O2b kills a real 16 MiB container: before, `the sampler did not report the OOM kills from the event log`; after PASS. promtool case and unit test added; mutation run green. The real page delivery on a server remains `UNVERIFIED (env)`. |
+| P2-6 `--server` without root | fixed in 3e708cf + fdbaec5 | fail2ban without root is SKIP (unit test failed before); guide and runbook use `sudo`. |
+| P3-1 receiver names | fixed in 06968c6 | |
+| P3-2 KEPT message | fixed in 06968c6 | |
+| P3-3 traceback on incomplete `.env` | fixed in ef19d6d | `dc config -q` first; Compose's own message is shown. `ASSUMED` (not exercised in a rig). |
+| P3-4 colon-less remote | fixed in 06968c6 | Rig case in A7.4 (`bucket/abb` refused). |
+| P3-5 closed-path normalisation variants | accepted | No bypass today (Caddy matches the cleaned path; the API only receives `/v1/*` and `/healthz`); revisit when the Caddyfile changes. |
+| P3-6 `IdentitiesOnly` hint | accepted | Documentation nicety; no safety impact. |
+| P3-7 `AbbHostingBackupNeverRan` clock reset | accepted | It still fires eventually; noted here. |
+| P3-8 drill container RW mount of `artifacts` | accepted | Trust boundary: the tool writes only to its scratch directory; a `:ro` override is not possible with `run -v`. |
+| P3-9 `daemon.json` change restarts Docker | accepted | Bootstrap re-runs after editing `ABB_*` are rare and the guide marks the step; no change. |
+| P3-10 verify spends the address's budgets | accepted | Intended; `--no-flood` exists and the upgrade script uses it. |
+| P3-11 HSTS on Caddy's own 404/413 | accepted | Harmless; `/` carries HSTS. |
