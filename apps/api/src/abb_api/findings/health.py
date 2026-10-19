@@ -2,10 +2,13 @@
 
 Pure and computed at read time from the run's figures, its findings and the findings state. The
 dimensions that depend on findings are `no_data` unless the analysis is `current`, so a run no
-detector has looked at never reads `ok`. `overall` is the worst status as a word.
+detector has looked at never reads `ok`. One exception (KI-097, ADR-174): while a newer analysis is
+queued (`processing`) and an earlier completed one of the current rules exists, that earlier result
+is read and the dimension says so (`stale`, `as_of`). `overall` is the worst status as a word.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -41,6 +44,17 @@ class Dimension:
     inputs: dict[str, object]
     rule: str
     finding_ids: tuple[str, ...] = ()
+    # Set on the dimensions that read findings, when they did: the completion time of the analysis
+    # they read, and whether newer events are still being analysed.
+    as_of: datetime | None = None
+    stale: bool = False
+
+
+STALE_NOTE = " Based on an earlier analysis; newer events are still being analysed."
+
+
+def _from_analysis(d: Dimension, as_of: datetime | None, stale: bool) -> Dimension:
+    return replace(d, as_of=as_of, stale=stale, rule=d.rule + (STALE_NOTE if stale else ""))
 
 
 @dataclass(frozen=True)
@@ -144,15 +158,26 @@ def _by_findings(
     return Dimension(name, "ok", inputs, ok_rule, ids)
 
 
-def health(facts: RunFacts, findings: list[FindingRef], state: FindingsState) -> Health:
-    dimensions = (
+def health(
+    facts: RunFacts,
+    findings: list[FindingRef],
+    state: FindingsState,
+    *,
+    as_of: datetime | None = None,
+) -> Health:
+    """`as_of` is when the stored analysis completed. It is only used when that analysis is
+    `current`, or `processing` with a result of the current rules to fall back on (the caller
+    passes it only then); every other state keeps its `no_data`."""
+    stale = state == "processing" and as_of is not None
+    reading: FindingsState = "current" if stale else state
+    dimensions = [
         _reliability(facts),
         _tool_reliability(facts),
-        _cost_efficiency(facts, [f for f in findings if f.finding_type == "cost_spike"], state),
+        _cost_efficiency(facts, [f for f in findings if f.finding_type == "cost_spike"], reading),
         _by_findings(
             "loops",
             [f for f in findings if f.finding_type in LOOP_TYPES],
-            state,
+            reading,
             "No loop or identical requests were found.",
             "A probable loop, a reported loop or identical requests were found.",
             "A long loop or many identical requests were found.",
@@ -161,12 +186,20 @@ def health(facts: RunFacts, findings: list[FindingRef], state: FindingsState) ->
         _by_findings(
             "context",
             [f for f in findings if f.finding_type == "context_growth"],
-            state,
+            reading,
             "The context did not grow unusually (or only slightly).",
             "The context grew fast and is large.",
             "The context grew very large.",
             info_is_ok=True,
         ),
-    )
+    ]
+    if reading == "current":
+        for i, d in enumerate(dimensions):
+            # Cost efficiency reads the analysis only for its spike check, and only when it has a
+            # priced cost to judge at all.
+            if d.name in ("loops", "context") or (
+                d.name == "cost_efficiency" and d.status != "no_data"
+            ):
+                dimensions[i] = _from_analysis(d, as_of, stale)
     overall = max((d.status for d in dimensions), key=_RANK.__getitem__)
-    return Health(overall=overall, dimensions=dimensions)
+    return Health(overall=overall, dimensions=tuple(dimensions))

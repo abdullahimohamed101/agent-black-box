@@ -33,7 +33,7 @@ export ABB_WEB_ORIGIN="http://localhost:3210"        # fixed: playwright.config.
 export ABB_ENVIRONMENT=development                   # http issuers, dev sessions and the test network file exist only here and in test
 export ABB_OIDC_ISSUER="http://localhost:$OIDC_PORT"
 export ABB_OIDC_CLIENT_ID="abb-dev"
-export ABB_SUMMARY_DEBOUNCE_SECONDS=1 ABB_FINDINGS_DELAY_SECONDS=1
+export ABB_SUMMARY_DEBOUNCE_SECONDS=1 ABB_FINDINGS_DELAY_SECONDS=1 ABB_FINDINGS_MIN_INTERVAL_SECONDS=0
 export ABB_RATE_LIMIT_EVENTS_PER_SECOND=1000000      # the benchmark measures the pipeline, not the default throttle
 export ABB_POLICY_DECIDE_PER_MINUTE_KEY=1000000 ABB_POLICY_DECIDE_PER_MINUTE_WORKSPACE=1000000 ABB_POLICY_WRITES_PER_MINUTE=1000
 export ABB_AUDIT_DENIALS_PER_MINUTE=1000             # the authorization probes would otherwise outrun the audit throttle

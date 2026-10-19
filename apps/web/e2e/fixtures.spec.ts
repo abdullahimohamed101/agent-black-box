@@ -213,6 +213,27 @@ test("analysis states are stated: processing and not analysed", async ({ page })
   await expect(page.getByTestId("health")).toHaveCount(0);
 });
 
+test("a live run with a queued analysis shows the last one as of its age, not nothing (KI-097)", async ({
+  page,
+}) => {
+  // The fixture API never has a completed analysis for a running run, so the response is made from the
+  // real one: processing, with an earlier analysis that completed 12 s before the server's clock.
+  await page.route(`**/v1/runs/${RUN(4)}/findings`, async (route) => {
+    const body = await (await route.fetch()).json();
+    const served = Date.parse(body.server_time);
+    const state = { ...body.state, status: "processing", computed_at: new Date(served - 12_000) };
+    await route.fulfill({
+      json: { ...body, state: { ...state, computed_at: state.computed_at.toISOString() } },
+    });
+  });
+  await page.goto(`${BASE}/runs/${RUN(4)}`);
+  await openTab(page, "Findings");
+  const line = page.getByTestId("findings-state");
+  await expect(line).toContainText(/as of \d+ s ago/);
+  await expect(line).toContainText("Newer events are being analysed");
+  await expect(line).not.toContainText("Analysing…");
+});
+
 test("unknown run shows a not-found state", async ({ page }) => {
   await page.goto(`${BASE}/runs/run_00000000000000000000000999`);
   await expect(page.locator('[data-state="error"]')).toContainText("Not found");

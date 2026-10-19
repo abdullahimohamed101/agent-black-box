@@ -44,6 +44,7 @@ UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://abb:x@127.0.0.1:1/abb_test"
 def make_settings(database_url: str, **overrides: object) -> Settings:
     overrides.setdefault("summary_debounce_seconds", 0.0)  # tests summarize immediately
     overrides.setdefault("findings_delay_seconds", 0.0)  # and analyse immediately
+    overrides.setdefault("findings_min_interval_seconds", 0.0)  # with no floor between analyses
     overrides.setdefault("security_reanalyse_cooldown_seconds", 0.0)  # tests change settings often
     # The authorization matrix sends hundreds of policy requests in a minute; the limits have
     # their own tests (tests/policies) that build the service with real numbers.

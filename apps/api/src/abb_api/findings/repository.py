@@ -215,6 +215,24 @@ class FindingsRepository:
         )
         return {r.id: Severity(r.severity).rank for r in rows}
 
+    async def last_computed_at(self, run_id: uuid.UUID) -> tuple[datetime | None, datetime]:
+        """When the run's last analysis completed (None if never) and the database clock now."""
+        row = (
+            await self._conn.execute(
+                select(
+                    select(t.run_findings.c.computed_at)
+                    .where(
+                        t.run_findings.c.workspace_id == self._tenant.workspace_id,
+                        t.run_findings.c.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("computed_at"),
+                    func.now().label("now"),
+                )
+            )
+        ).one()
+        return row.computed_at, row.now
+
     async def for_run(
         self, run_id: uuid.UUID
     ) -> tuple[RunFindingsState | None, list[FindingRecord]]:

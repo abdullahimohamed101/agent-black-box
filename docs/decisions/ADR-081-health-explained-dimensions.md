@@ -35,3 +35,6 @@ across runs is a follow-up on the analytics rollups (KI-090).
 
 ## Revisit conditions
 Users ask to sort or alert on a single number (define one with recorded weights); per-project thresholds are needed (KI-092).
+
+## Amendment (2026-10-18, Phase 20, ADR-174)
+While a newer analysis is queued or running (`processing`) and an earlier completed analysis of the current rules exists, the finding-based dimensions read that analysis and report `as_of` and `stale: true` instead of `no_data`. `none`, `outdated` and `failed` are unchanged.
