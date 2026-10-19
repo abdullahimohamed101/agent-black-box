@@ -33,6 +33,31 @@ Change in v2 (each has a reason in the sections below):
 | MP4 only | MP4 H.264 + WebM VP9 + AV1 MP4 (hero), poster, `.vtt`/`.srt`, transcript, teaser loop, GIF for the README | The landing page is static HTML with `<video>`; the README cannot autoplay a video. |
 | Captions set per scene, same text for the whole scene | Captions have their own timeline inside a beat | A 10 s scene with one caption wastes 7 s of reading time. |
 
+### 0.1 Amendments of the polish pass (owner review of draft 1, 2026-10-19); they win over sections 2 and 3 where they differ
+
+The shot list in 2.1 is the draft-1 arc. The recorder (`scripts/record-demo.mjs`, the `MAIN` table) now follows this arc, 68 s:
+
+1. **Hook** (0-4 s): the film opens on the failed run page in a 1.6x frame of its headline and the red first-error line (no table),
+   caption 1 from 0.15 s, the camera pulls back at 1.9 s. 2. headline and detail line lit together. 3. the red line. 4. `e` and the
+   inspector. 5. model call and retry rows. 6. Findings and Show evidence. 7. Waterfall (Lanes). 8. Review: the waiting approval.
+   9. Review: Security findings. 10. Analytics. 11. the Runs list in the light scheme. 12. closing card. The old beats "open the
+   failed run from the Runs list" and "spend after the first error" are gone (the 1.6x hook and the spotlight carry the headline; the
+   Analytics beat carries the money).
+2. **Section changes are dips, not cursor travel.** Between sections 6/7, 7/8, 9/10 and 10/11 the recorder dips to the canvas for
+   about 0.5 s (150 ms in, the click happens under it, 220 ms out) and places the cursor at its resting place for free. Inside a
+   section the brief's travel numbers (3.3) stand; captions start while the cursor is still moving.
+3. **The camera never cuts text mid-glyph (3.1 amended).** The zoom level is "the largest of 1.6 down to 1.3 at which no viewport edge
+   runs through a line of text" (`fitZoom` in `record-demo-lib.mjs`: the page's text lines are measured, the window is slid within
+   the page until its edges fall in gaps). The window is no longer pinned to the focus's edge. The settled state of every zoom is
+   measured again in the recording and logged to `meta.json` (`zoomStates`); `video-qa.mjs` fails on any cut line.
+4. **The caption box is placed, not fixed (4 amended).** It starts at the usual place (box bottom 84 px above the frame bottom) and
+   moves down (to the 5 % safe line) or up, 6 px at a time, to the first band that covers no text line and none of the focus rects
+   (a spotlight, a zoom target, what the cursor points at). When the camera is zoomed the page is all text, so the box only has to keep
+   off the focus. `video-qa.mjs` fails when a caption sits on the focus, or on text at normal scale.
+5. **Dark to light is a cross-fade** (650 ms): the recorder lays a screenshot of the dark page on top, changes the scheme under it and
+   fades the screenshot away. `video-qa.mjs` fails on any frame-to-frame brightness step above 40 of 255 (draft 1 had 185).
+6. **Wordmark:** the app now says "Agent BlackBox" in the top bar; the recorder fails on the three-word form anywhere on screen.
+
 ---
 
 ## 1. Thesis and arc
