@@ -205,6 +205,28 @@ class EveryCheck(unittest.TestCase):
         code, out = run(planted(**{"README.md": "Real-model mode (--live) is available, untested by the project.\n"}), "claims")
         self.assertEqual(code, 0, out)
 
+    def test_claim_qualifiers_must_sit_in_the_same_sentence_or_block(self) -> None:
+        # The qualifier "untested" elsewhere in the file used to excuse an unqualified --live claim, and "offline"
+        # anywhere in the file excused any "works with <adapter>" line.
+        far_live = "Run it with --live today.\n\nThe examples are untested by the project in other ways.\n"
+        code, out = run(planted(**{"README.md": far_live}), "claims")
+        self.assertEqual(code, 1, out)
+        wrapped = "Real-model mode (--live)\nis available, untested by the project.\n"
+        code, out = run(planted(**{"README.md": wrapped}), "claims")
+        self.assertEqual(code, 0, out)
+        far_adapter = "Works with LangGraph.\n\nOther things run offline.\n"
+        code, out = run(planted(**{"README.md": far_adapter}), "claims")
+        self.assertEqual(code, 1, out)
+        near_adapter = "Works with LangGraph, tested offline.\n"
+        code, out = run(planted(**{"README.md": near_adapter}), "claims")
+        self.assertEqual(code, 0, out)
+
+    def test_claims_survive_look_alike_characters(self) -> None:
+        for text in ("Real\u2011model mode is ready.", "Real\u00a0model\u00a0mode is ready.", "It is production\u2011ready.",
+                     "It is pro\u00adduction-ready.", "A Saa&shy;S you can trust.", "1,234&nbsp;tests pass."):
+            code, out = run(planted(**{"README.md": text + "\n"}), "claims")
+            self.assertEqual(code, 1, text)
+
     def test_links(self) -> None:
         code, out = run(planted(**{"docs/a.md": "[gone](missing.md)\n"}), "links")
         self.assertEqual(code, 1, out)

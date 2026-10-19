@@ -23,10 +23,12 @@ stack is not scripted here (see docs/KNOWN_ISSUES.md).
 from __future__ import annotations
 
 import fnmatch
+import html
 import os
 import re
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -399,20 +401,71 @@ CLAIM_RULES = (
 CLAIM_FILES = ("README.md", "site/src/*", "docs/quickstart.md", "docs/deployment.md")
 
 
+_INVISIBLE = re.compile("[\u00ad\u200b-\u200d\u2060\ufeff]")
+_HYPHENS = re.compile("[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]")
+LIVE_RE = re.compile(r"--live|real[\s-]*model[\s-]*mode", re.I)
+LIVE_OK = re.compile(r"untested|not tested|(?:never|not) been run|your own key|your key", re.I)
+ADAPTER_RE = re.compile(r"works with .*(langgraph|openai|anthropic|mcp)", re.I)
+ADAPTER_OK = re.compile(r"offline|contract|conformance|not against", re.I)
+
+
+def visible_text(text: str) -> str:
+    """What a reader sees: entities decoded, NFKC, soft hyphens and zero-width characters gone, Unicode hyphens folded."""
+    text = unicodedata.normalize("NFKC", html.unescape(text))
+    return _HYPHENS.sub("-", _INVISIBLE.sub("", text))
+
+
+def _paragraphs(lines: list[str]) -> list[tuple[int, list[str]]]:
+    """(first line number, normalised lines) per blank-line-separated block."""
+    blocks: list[tuple[int, list[str]]] = []
+    current: list[str] = []
+    start = 1
+    for number, raw in enumerate(lines, 1):
+        if raw.strip():
+            if not current:
+                start = number
+            current.append(visible_text(raw))
+        elif current:
+            blocks.append((start, current))
+            current = []
+    if current:
+        blocks.append((start, current))
+    return blocks
+
+
+def _unqualified(block: list[str], start: int, claim: re.Pattern[str], qualifier: re.Pattern[str], whole_block: bool) -> int | None:
+    """The line of a claim whose qualifier is not in the same sentence (or, for `whole_block`, the same paragraph)."""
+    text = " ".join(block)
+    if whole_block:
+        sentences = [text] if claim.search(text) else []
+    else:
+        sentences = [x for x in re.split(r"(?<=[.!?])\s+", text) if claim.search(x)]
+    for sentence in sentences:
+        if not qualifier.search(sentence):
+            for offset, line in enumerate(block):
+                if claim.search(line):
+                    return start + offset
+            return start
+    return None
+
+
 def check_claims(tree: Tree) -> list[Hit]:
     """The README/site claims table (plan 'Claims to verify'): forbidden claims absent, qualified claims qualified."""
     hits = []
     for rel in tree.select(*CLAIM_FILES):
-        text = "\n".join(tree.lines(rel))
+        lines = tree.lines(rel)
+        text = visible_text("\n".join(lines))
         for what, pattern in CLAIM_RULES:
             for match in pattern.finditer(text):
                 number = text[: match.start()].count("\n") + 1
                 hits.append(Hit("claims", rel, number, f"README/site must not state {what}"))
-        for number, line in enumerate(tree.lines(rel), 1):
-            if re.search(r"--live|real model mode", line, re.I) and not re.search(r"untested|not tested|never been run|your own key|your key", line, re.I):
-                hits.append(Hit("claims", rel, number, "real-model mode (KI-044) must be worded 'available, untested by the project'"))
-            if re.search(r"works with .*(langgraph|openai|anthropic|mcp)", line, re.I) and not re.search(r"offline|contract|conformance|not against", "\n".join(tree.lines(rel)), re.I):
-                hits.append(Hit("claims", rel, number, "adapter claim without the 'tested offline' qualifier"))
+        for start, block in _paragraphs(lines):
+            number = _unqualified(block, start, LIVE_RE, LIVE_OK, whole_block=True)
+            if number:
+                hits.append(Hit("claims", rel, number, "real-model mode (KI-044) must be worded 'available, untested by the project' in the same paragraph"))
+            number = _unqualified(block, start, ADAPTER_RE, ADAPTER_OK, whole_block=True)
+            if number:
+                hits.append(Hit("claims", rel, number, "adapter claim without the 'tested offline' qualifier in the same paragraph"))
     readme = tree.root / "README.md"
     if readme.exists() and re.search(r"open[- ]source", readme.read_text(encoding="utf-8"), re.I) and not (tree.root / "LICENSE").exists():
         hits.append(Hit("claims", "README.md", 0, "'open source' claimed but LICENSE is missing"))
