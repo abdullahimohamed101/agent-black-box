@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 ROUTES = ("decide", "wait", "consume", "cancel", "failmodes")
 

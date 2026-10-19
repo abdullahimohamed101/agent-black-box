@@ -8,7 +8,7 @@ import threading
 import time
 from pathlib import Path
 
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 from tests.helpers import start_stub, stop_stub
 
 
@@ -109,7 +109,7 @@ def test_events_are_flushed_at_interpreter_exit(tmp_path: Path) -> None:
     stub = start_stub()
     script = textwrap.dedent(
         f"""
-        from blackbox import BlackBox
+        from agent_blackbox import BlackBox
         bb = BlackBox(api_key="k", endpoint="{stub.url}", flush_interval=30)
         with bb.run("exit-test") as run:
             run.event("custom.last")
@@ -128,7 +128,7 @@ def test_a_crash_inside_the_agent_still_records_the_failure(tmp_path: Path) -> N
     stub = start_stub()
     script = textwrap.dedent(
         f"""
-        from blackbox import BlackBox
+        from agent_blackbox import BlackBox
         bb = BlackBox(api_key="k", endpoint="{stub.url}", flush_interval=30)
         with bb.run("crash") as run:
             raise RuntimeError("agent bug")

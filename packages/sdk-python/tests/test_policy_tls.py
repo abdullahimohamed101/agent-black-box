@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from blackbox import BlackBox, PolicyDenied, PolicyUnavailable
+from agent_blackbox import BlackBox, PolicyDenied, PolicyUnavailable
 from tests.policy_server import PolicyServer, deny
 
 pytestmark = pytest.mark.skipif(shutil.which("openssl") is None, reason="needs the openssl CLI")

@@ -118,6 +118,29 @@ class EveryCheck(unittest.TestCase):
         code, out = run(planted(**{"docs/a.md": "use ~/Projects or /home/runner/work\n"}), "paths")
         self.assertEqual(code, 0, out)
 
+    def test_imports_flags_the_old_sdk_import_name_outside_history(self) -> None:
+        old = "blackbox"  # assembled so this file is not itself a violation
+        for rel, text in (
+            ("examples/a.py", f"from {old} import BlackBox\n"),
+            ("scripts/b.py", f"import {old}\n"),
+            ("docs/quickstart.md", f"    from {old}.coding import CodingRecorder\n"),
+            ("packages/sdk-python/pyproject.toml", f'packages = ["src/{old}"]\n'),
+        ):
+            code, out = run(planted(**{rel: text}), "imports")
+            self.assertEqual(code, 1, rel)
+            self.assertIn(f"{rel}:", out)
+        fine = f"from agent_{old} import BlackBox\nfrom {old}_openai import instrument\nimport {old}_mcp\n"
+        code, out = run(planted(**{"examples/a.py": fine}), "imports")
+        self.assertEqual(code, 0, out)
+
+    def test_imports_exempts_history_only(self) -> None:
+        old = "blackbox"
+        for rel in ("docs/decisions/ADR-001-x.md", "docs/plans/completed/phase-3-x.md", "docs/architecture/agent-black-box-spec.md"):
+            code, out = run(planted(**{rel: f"from {old} import BlackBox\n"}), "imports")
+            self.assertEqual(code, 0, f"{rel}: {out}")
+        code, out = run(planted(**{"docs/plans/active/phase-9.md": f"from {old} import BlackBox\n"}), "imports")
+        self.assertEqual(code, 1)
+
     def test_paths_allow_list_entry_is_exact_and_goes_stale(self) -> None:
         mac = "/" + "Users/alice/x"
         allow = "paths | docs/design/launch/qa.md | * | rewritten by the video branch at merge\n"
@@ -131,7 +154,7 @@ class EveryCheck(unittest.TestCase):
     def test_debug_logging(self) -> None:
         cases = {
             "apps/api/src/abb_api/a.py": "def f(x):\n    print(x)\n",
-            "packages/sdk-python/src/blackbox/b.py": "breakpoint()\n",
+            "packages/sdk-python/src/agent_blackbox/b.py": "breakpoint()\n",
             "integrations/openai/src/blackbox_openai/c.py": "log.debug('sent %s', payload)\n",
             "apps/web/src/components/D.tsx": "export const d = () => { console.log('x'); };\n",
             "apps/web/src/lib/e.ts": "function e() {\n  debugger;\n}\n",

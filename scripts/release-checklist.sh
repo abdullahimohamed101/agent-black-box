@@ -11,6 +11,7 @@
 #   claims         README/site contain none of the claims the plan forbids
 #   links          relative links and anchors in README, docs, site resolve
 #   paths          no /Users/<name>/ or C:\Users\<name> home-directory path in any tracked text file
+#   imports        no import of the old SDK name `blackbox` (it is `agent_blackbox`, ADR-177) outside historical records
 #   all            every check above (the default)
 # `--release` makes the gated markers ([CONFIRM ...], CONFIRM AFTER ..., [RELEASE_CLAIM ...]) fail. Rules and
 # allow-list: scripts/release_checklist.py, scripts/release-checklist-allow.txt.
@@ -71,6 +72,6 @@ case "${1:-}" in
     check_licenses || rc=1
     run_static "$@" || rc=1
     exit $rc ;;
-  placeholders | debug | secrets | charts | routes | network | shots | claims | links | paths) run_static "$@" ;;
-  *) echo "usage: $0 [licenses|placeholders|debug|secrets|charts|routes|network|shots|claims|links|paths|all] [--release]" >&2; exit 2 ;;
+  placeholders | debug | secrets | charts | routes | network | shots | claims | links | paths | imports) run_static "$@" ;;
+  *) echo "usage: $0 [licenses|placeholders|debug|secrets|charts|routes|network|shots|claims|links|paths|imports|all] [--release]" >&2; exit 2 ;;
 esac

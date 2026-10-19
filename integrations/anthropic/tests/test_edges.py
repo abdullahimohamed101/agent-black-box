@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from abb_conformance import capture
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 from blackbox_anthropic import instrument
 from blackbox_anthropic._util import count, number, preview
@@ -140,7 +140,7 @@ def test_close_ends_the_span_immediately() -> None:
 def test_bookkeeping_exceptions_never_reach_the_host(
     monkeypatch: pytest.MonkeyPatch, target: str
 ) -> None:
-    from blackbox import LlmCall
+    from agent_blackbox import LlmCall
 
     import blackbox_anthropic.wrap as wrap
     from tests.fakes import FakeStream, chat_usage

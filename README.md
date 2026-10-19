@@ -70,7 +70,7 @@ delete and changes nothing unless you pass `CONFIRM=1`.
 Trace your own agent. Install the SDK from this checkout (it has no runtime dependencies), then:
 
 ```python
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 bb = BlackBox(api_key=..., endpoint="http://localhost:8000", project="demo")
 with bb.run("Fix OAuth timeout") as run:

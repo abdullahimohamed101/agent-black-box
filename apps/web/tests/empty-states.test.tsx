@@ -107,7 +107,7 @@ describe("SetupGuide", () => {
     expect(document.body.textContent).toContain("pip install ./packages/sdk-python");
     expect(document.body.textContent).not.toContain("pip install agent-black-box");
     expect(document.body.textContent).toMatch(/No package is published yet/);
-    expect(document.body.textContent).toContain("from blackbox import BlackBox");
+    expect(document.body.textContent).toContain("from agent_blackbox import BlackBox");
     expect(screen.getByRole("link", { name: /API keys|Create a key/ })).toHaveAttribute(
       "href",
       "/w/demo/settings/api-keys",

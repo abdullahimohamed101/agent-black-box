@@ -11,8 +11,8 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-import blackbox.events
-from blackbox import BlackBox, PayloadMode, trace_context_from_env
+import agent_blackbox.events
+from agent_blackbox import BlackBox, PayloadMode, trace_context_from_env
 
 
 def skew_clock(skew_ms: float) -> None:
@@ -20,7 +20,7 @@ def skew_clock(skew_ms: float) -> None:
         moment = datetime.now(timezone.utc) - timedelta(milliseconds=skew_ms)
         return moment.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
-    blackbox.events.now_rfc3339 = behind
+    agent_blackbox.events.now_rfc3339 = behind
 
 
 def main(argv: list[str] | None = None) -> int:

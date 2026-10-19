@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from blackbox.policy_glob import compile_glob
-from blackbox.policy_intent import (
+from agent_blackbox.policy_glob import compile_glob
+from agent_blackbox.policy_intent import (
     MAX_CANONICAL_BYTES,
     IntentRejected,
     build_intent,

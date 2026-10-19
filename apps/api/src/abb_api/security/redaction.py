@@ -63,8 +63,8 @@ MAX_EVENT_SCAN_CHARS = 2 * 1024 * 1024  # all strings of one event (the event it
 MAX_PAYLOAD_NODES = 5000
 MAX_LABEL_CHARS = 1024  # an artifact name is at most 128 characters; a little room for markers
 
-# The SDK's default deny list (blackbox.redaction.DEFAULT_DENY_KEYS): a string under such a key of
-# a structured payload is replaced whatever it looks like.
+# The SDK's default deny list (agent_blackbox.redaction.DEFAULT_DENY_KEYS): a string under such
+# a key of a structured payload is replaced whatever it looks like.
 DENY_KEYS: tuple[str, ...] = (
     "password", "passwd", "secret", "token", "api_key", "apikey", "api-key", "authorization",
     "cookie", "credential", "private_key", "access_key",

@@ -20,7 +20,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-log = logging.getLogger("blackbox")
+log = logging.getLogger("agent_blackbox")
 
 TRACE_CONTEXT_ENV = "BLACKBOX_TRACE_CONTEXT"
 TRACE_CONTEXT_HEADER = "X-Blackbox-Trace-Context"

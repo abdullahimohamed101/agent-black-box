@@ -131,7 +131,7 @@ pip install ./packages/sdk-python
 Then wrap what your agent does:
 
 ```python
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 bb = BlackBox(api_key=..., endpoint="http://localhost:8000", project="demo")
 with bb.run("Fix OAuth timeout") as run:

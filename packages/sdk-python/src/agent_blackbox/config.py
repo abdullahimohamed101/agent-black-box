@@ -8,12 +8,12 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
-from blackbox.events import as_strings
-from blackbox.policy_failmodes import MODES as FAIL_MODES
-from blackbox.policy_failmodes import parse_modes
-from blackbox.redaction import DEFAULT_DENY_KEYS, Callback, PayloadMode
+from agent_blackbox.events import as_strings
+from agent_blackbox.policy_failmodes import MODES as FAIL_MODES
+from agent_blackbox.policy_failmodes import parse_modes
+from agent_blackbox.redaction import DEFAULT_DENY_KEYS, Callback, PayloadMode
 
-log = logging.getLogger("blackbox")
+log = logging.getLogger("agent_blackbox")
 
 MODES = ("http", "local", "offline", "disabled")
 POLICY_MODES = ("off", "enforce")

@@ -18,11 +18,11 @@ import weakref
 from collections.abc import Callable
 from typing import Any
 
-from blackbox import BlackBox, LlmCall, Run, current_run
+from agent_blackbox import BlackBox, LlmCall, Run, current_run
 
 from blackbox_anthropic._util import count, get, number, preview, text
 
-log = logging.getLogger("blackbox.anthropic")
+log = logging.getLogger("agent_blackbox.anthropic")
 
 CostFn = Callable[[str, str, int | None, int | None, int | None], float | None]
 _TARGETS = (("messages", "create"),)

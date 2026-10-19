@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from blackbox.policy_spool import REASON_DROPPED, WarningSpool
-from blackbox.stats import Stats
+from agent_blackbox.policy_spool import REASON_DROPPED, WarningSpool
+from agent_blackbox.stats import Stats
 from tests.policy_server import PolicyServer, R, make_client
 
 

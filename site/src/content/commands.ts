@@ -18,7 +18,7 @@ export const QUICKSTART_LINES = shell(COMMANDS);
 export const ONE_LINE = COMMANDS.map((c) => c.cmd).join(" && ");
 
 /** The README's SDK snippet, verbatim. */
-export const SDK_SNIPPET = python(`from blackbox import BlackBox
+export const SDK_SNIPPET = python(`from agent_blackbox import BlackBox
 
 bb = BlackBox(api_key=..., project="coding-agent")
 with bb.run("Fix OAuth timeout") as run:

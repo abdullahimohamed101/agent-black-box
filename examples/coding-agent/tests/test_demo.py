@@ -8,8 +8,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from blackbox import BlackBox, PayloadMode
-from blackbox.coding import CodingRecorder
+from agent_blackbox import BlackBox, PayloadMode
+from agent_blackbox.coding import CodingRecorder
 
 from coding_agent.agent import run_agent
 from coding_agent.models import Reply, ScriptedModel, ToolCall
@@ -180,8 +180,8 @@ def test_search_masks_secrets_and_does_not_follow_links_to_secret_files(tmp_path
     """Regression (third review): `search` returned file lines to the model unmasked, also via symlinks."""
     import subprocess
 
-    from blackbox import BlackBox, PayloadMode
-    from blackbox.coding import CodingRecorder
+    from agent_blackbox import BlackBox, PayloadMode
+    from agent_blackbox.coding import CodingRecorder
 
     from coding_agent.tools import Toolbox
 

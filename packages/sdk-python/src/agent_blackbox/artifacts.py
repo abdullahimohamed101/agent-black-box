@@ -16,11 +16,11 @@ from collections import deque
 from dataclasses import dataclass
 from urllib.parse import quote, urlsplit
 
-from blackbox.config import Config
-from blackbox.exporter import _RETRYABLE_STATUS, parse_retry_after
-from blackbox.stats import Stats
+from agent_blackbox.config import Config
+from agent_blackbox.exporter import _RETRYABLE_STATUS, parse_retry_after
+from agent_blackbox.stats import Stats
 
-log = logging.getLogger("blackbox")
+log = logging.getLogger("agent_blackbox")
 
 MAX_ARTIFACT_BYTES = 8 * 1024 * 1024  # the server's default cap (ABB_ARTIFACT_MAX_BYTES)
 MAX_QUEUE_ITEMS = 64

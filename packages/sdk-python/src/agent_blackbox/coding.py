@@ -31,9 +31,9 @@ from itertools import pairwise
 from pathlib import Path
 from typing import IO
 
-from blackbox.client import BlackBox, Run
-from blackbox.policy_intent import RISK_CLASSES
-from blackbox.secretscan import (
+from agent_blackbox.client import BlackBox, Run
+from agent_blackbox.policy_intent import RISK_CLASSES
+from agent_blackbox.secretscan import (
     SecretFiles,
     command_may_reach_secrets,
     git_excludes,
@@ -1208,7 +1208,7 @@ class CodingRecorder:
             self._file_secrets = self._files.refresh()
             if self._files.incomplete and not self._warned_incomplete:
                 self._warned_incomplete = True  # once, value-free: some secret files may be unknown
-                logging.getLogger("blackbox").warning(
+                logging.getLogger("agent_blackbox").warning(
                     "blackbox: secret scan hit its time budget; some secret files may not be masked"
                 )
         except (

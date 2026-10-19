@@ -5,7 +5,7 @@ cd packages/sdk-python && BLACKBOX_API_KEY=... uv run python ../../examples/pyth
 
 import os
 
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 bb = BlackBox(api_key=os.environ["BLACKBOX_API_KEY"], endpoint=os.environ.get("BLACKBOX_ENDPOINT"))
 with bb.run("Fix OAuth timeout", metadata={"issue": 1842}) as run:

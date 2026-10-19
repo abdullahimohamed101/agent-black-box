@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from blackbox import BlackBox, PolicyDenied, guarded
+from agent_blackbox import BlackBox, PolicyDenied, guarded
 
 
 class PolicyStub:

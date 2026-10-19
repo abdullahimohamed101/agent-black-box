@@ -12,7 +12,7 @@ import "../app/setup-guide.css";
 // (docs/quickstart.md, "Trace your own agent"). Do not show a registry name here until it is published and checked.
 const INSTALL = "pip install ./packages/sdk-python";
 // `BlackBox()` reads BLACKBOX_API_KEY and BLACKBOX_ENDPOINT (default http://localhost:8000); an atexit hook flushes.
-const SNIPPET = `from blackbox import BlackBox
+const SNIPPET = `from agent_blackbox import BlackBox
 bb = BlackBox()
 with bb.run("My first run"): pass`;
 

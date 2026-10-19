@@ -18,7 +18,7 @@ Two things follow, both reasons to decide before the first publication:
 1. **Import-name clash.** Our SDK is imported as `blackbox`. A user who has the PyPI `blackbox` package installed in the same
    environment would have two distributions writing the same top-level module. Renaming the import package (for example to
    `agent_blackbox`) is a breaking change to the SDK, the examples, integrations, docs and tests; it is cheap now (nothing is
-   published) and expensive later. Recommended: rename before any package is published.
+   published) and expensive later. Recommended: rename before any package is published. **Decided and done 2026-10-19: the import package is `agent_blackbox` (ADR-177).**
 2. **Name closeness.** `agentblackbox` on PyPI describes itself with almost our tagline. This is not a legal finding; it means
    people may confuse the two, so the README and site should keep leading with what ours records and how it is run, and the
    repository name stays the distinguishing one.

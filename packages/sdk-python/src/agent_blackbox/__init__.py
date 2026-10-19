@@ -7,9 +7,9 @@ with bb.run("fix bug") as run:
 bb.shutdown()
 """
 
-from blackbox.client import AgentSpan, BlackBox, LlmCall, Run, Span
-from blackbox.context import bind, current_run, current_span
-from blackbox.policy import (
+from agent_blackbox.client import AgentSpan, BlackBox, LlmCall, Run, Span
+from agent_blackbox.context import bind, current_run, current_span
+from agent_blackbox.policy import (
     ApprovalDenied,
     ApprovalExpired,
     ApprovalPending,
@@ -21,14 +21,14 @@ from blackbox.policy import (
     guard,
     guarded,
 )
-from blackbox.propagation import (
+from agent_blackbox.propagation import (
     TRACE_CONTEXT_ENV,
     TRACE_CONTEXT_HEADER,
     TraceContext,
     trace_context_from_env,
 )
-from blackbox.redaction import PayloadMode
-from blackbox.version import __version__
+from agent_blackbox.redaction import PayloadMode
+from agent_blackbox.version import __version__
 
 __all__ = [
     "TRACE_CONTEXT_ENV",

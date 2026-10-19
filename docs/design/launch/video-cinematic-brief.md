@@ -375,7 +375,7 @@ How the class gets to the screen (read in the phase-20 worktree):
   **"Unclassified"**. The approvals API (`apps/api/src/abb_api/approvals/intent.py`) accepts `risk_class: RiskClass | None`
   on any intent ("The SDK classifier's class"); `policies/mapping.py` only derives a class from `shell.risk_class` attributes
   when mapping events, and `approvals/service.py` uses the class for the fail mode default (R3/R4 closed).
-- The SDK (`packages/sdk-python/src/blackbox/coding.py`): `guard_command()` sends the classifier's class for `shell.execute`
+- The SDK (`packages/sdk-python/src/agent_blackbox/coding.py`): `guard_command()` sends the classifier's class for `shell.execute`
   (a plain `git push` classifies **R2**, "git push"; `--force`, `--force-with-lease`, `--delete`, `--mirror` or a `+ref` classify
   **R3**, "force/delete push"). `guard_push()` sends `github.push` with resource `<remote> <branch>`, argument `branch` and
   **`risk_class=None`**. `git_push()` calls `guard_push()` first and then the shell command is guarded too.
@@ -486,4 +486,4 @@ Not in scope: music, voice-over, `--live`, a vignette, window moves, any UI draw
 - Lower-third safe areas at 1080p: https://www.techsmith.com/blog/edit-videos-lower-thirds/
 - Launch-week practice (Resend, video reach): https://resend.com/blog/launch-week-behind-the-scenes
 - Everything in the v2 brief's source list (Playwright screencast, Netflix/BBC reading speeds, VP9/AV1 settings, xfade, WCAG 1.2.1): `docs/design/launch/video-brief.md`
-- Product: `docs/design/pass-2/01-direction.md`; ADR-166; `docs/design/launch/positioning-brief.md`; `docs/design/launch/landing-site-brief.md`; `docs/design/launch/video-qa-report.md`; `scripts/record-demo.mjs`; `scripts/record-demo-lib.mjs`; `apps/web/design-tokens/tokens.json`; `packages/sdk-python/src/blackbox/coding.py`; `apps/web/src/lib/policy.ts`; `apps/api/src/abb_api/approvals/intent.py`; `examples/coding-agent/policies/demo.yaml`; `scripts/demo.sh`
+- Product: `docs/design/pass-2/01-direction.md`; ADR-166; `docs/design/launch/positioning-brief.md`; `docs/design/launch/landing-site-brief.md`; `docs/design/launch/video-qa-report.md`; `scripts/record-demo.mjs`; `scripts/record-demo-lib.mjs`; `apps/web/design-tokens/tokens.json`; `packages/sdk-python/src/agent_blackbox/coding.py`; `apps/web/src/lib/policy.ts`; `apps/api/src/abb_api/approvals/intent.py`; `examples/coding-agent/policies/demo.yaml`; `scripts/demo.sh`

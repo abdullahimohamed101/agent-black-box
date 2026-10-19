@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from abb_event_schema.event import EventIn
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 
 def new_client(**options: Any) -> BlackBox:

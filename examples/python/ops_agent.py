@@ -21,8 +21,8 @@ import tempfile
 import time
 from pathlib import Path
 
-from blackbox import BlackBox, PayloadMode, Run
-from blackbox.coding import CodingRecorder
+from agent_blackbox import BlackBox, PayloadMode, Run
+from agent_blackbox.coding import CodingRecorder
 
 from demo_clock import SCRIPTED_PRICES, DemoClock, hours, latency_seconds, scripted_cost
 

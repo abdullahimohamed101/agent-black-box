@@ -26,9 +26,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))  # demo_clock.py
 
-from blackbox import BlackBox, PayloadMode
-from blackbox.coding import CodingRecorder
-from blackbox.policy import ApprovalPending
+from agent_blackbox import BlackBox, PayloadMode
+from agent_blackbox.coding import CodingRecorder
+from agent_blackbox.policy import ApprovalPending
 from demo_clock import DemoClock, LatentModel, hours
 
 from coding_agent.agent import AgentResult, run_agent

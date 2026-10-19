@@ -16,9 +16,9 @@ import threading
 from collections import deque
 from typing import Any
 
-from blackbox import ids
-from blackbox.events import now_rfc3339
-from blackbox.stats import Stats
+from agent_blackbox import ids
+from agent_blackbox.events import now_rfc3339
+from agent_blackbox.stats import Stats
 
 CAP = 1000
 WARNING_TYPE = "policy.warning"

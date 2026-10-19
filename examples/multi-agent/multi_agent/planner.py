@@ -5,7 +5,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
-from blackbox import BlackBox, bind
+from agent_blackbox import BlackBox, bind
 
 from multi_agent import workers
 from multi_agent.fake_model import FakeModel

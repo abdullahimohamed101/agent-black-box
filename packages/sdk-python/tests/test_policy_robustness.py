@@ -11,8 +11,8 @@ from typing import Any
 
 import pytest
 
-import blackbox
-from blackbox import (
+import agent_blackbox
+from agent_blackbox import (
     BlackBox,
     Decision,
     PolicyDenied,
@@ -20,11 +20,11 @@ from blackbox import (
     PolicyUnavailable,
     policy_transport,
 )
-from blackbox import policy as policy_module
-from blackbox.policy import WARNING_REASONS, PolicyGuard
+from agent_blackbox import policy as policy_module
+from agent_blackbox.policy import WARNING_REASONS, PolicyGuard
 from tests.policy_server import PolicyServer, R, deny, make_client, require, state, warnings_of
 
-SRC = Path(blackbox.__file__).parent
+SRC = Path(agent_blackbox.__file__).parent
 SENTINEL = "SENTINEL-sk-live-0123456789abcdef"
 
 
@@ -65,7 +65,7 @@ def test_policy_modules_import_only_the_standard_library() -> None:
                 names = [node.module]
             for name in names:
                 top = name.split(".")[0]
-                assert top == "blackbox" or top in sys.stdlib_module_names, (file.name, name)
+                assert top == "agent_blackbox" or top in sys.stdlib_module_names, (file.name, name)
 
 
 def test_the_package_still_declares_no_runtime_dependency() -> None:
@@ -325,7 +325,7 @@ def test_a_run_from_another_thread_is_not_required(srv: PolicyServer) -> None:
 
 
 def test_the_timestamp_parser_reads_what_the_server_writes() -> None:
-    from blackbox.policy import parse_timestamp
+    from agent_blackbox.policy import parse_timestamp
 
     assert parse_timestamp("2026-10-13T12:00:00Z") == 1791892800.0
     assert parse_timestamp("2026-10-13T12:00:00.5Z") == 1791892800.5

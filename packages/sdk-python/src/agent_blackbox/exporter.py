@@ -22,13 +22,13 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
-from blackbox import ids
-from blackbox.buffer import EventBuffer
-from blackbox.config import Config
-from blackbox.events import MAX_EVENT_BYTES
-from blackbox.stats import Stats
+from agent_blackbox import ids
+from agent_blackbox.buffer import EventBuffer
+from agent_blackbox.config import Config
+from agent_blackbox.events import MAX_EVENT_BYTES
+from agent_blackbox.stats import Stats
 
-log = logging.getLogger("blackbox")
+log = logging.getLogger("agent_blackbox")
 Event = dict[str, Any]
 _RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 

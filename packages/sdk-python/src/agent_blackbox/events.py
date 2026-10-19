@@ -12,8 +12,8 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any
 
-from blackbox import ids
-from blackbox.stats import Stats
+from agent_blackbox import ids
+from agent_blackbox.stats import Stats
 
 SCHEMA_VERSION = "1.0"
 

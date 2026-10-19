@@ -1,7 +1,7 @@
 # agent-black-box-mcp
 
-MCP client instrumentation for Agent BlackBox (spec 18, 70; ADR-050..052). Runtime dependency: `agent-black-box` only;
-`pip install agent-black-box-mcp[mcp]` adds the MCP SDK.
+MCP client instrumentation for Agent BlackBox (spec 18, 70; ADR-050..052). Runtime dependency: `agent-black-box` only.
+No package is published yet: from a checkout, `pip install ./packages/sdk-python ./integrations/mcp` installs it, and `pip install mcp` adds the MCP SDK.
 
 ```python
 from blackbox_mcp import instrument

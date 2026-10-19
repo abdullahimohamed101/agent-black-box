@@ -3,9 +3,9 @@
 The SDK stamps every event with the wall clock and measures spans with a monotonic clock; it has no clock setting. The scripted
 agents therefore patch their OWN process's two clock functions (the precedent is examples/multi-agent/multi_agent/tester_proc.py):
 
-* `blackbox.events.now_rfc3339` gives each event's `occurred_at`: here, "`started_ago` seconds ago" plus real elapsed time plus
+* `agent_blackbox.events.now_rfc3339` gives each event's `occurred_at`: here, "`started_ago` seconds ago" plus real elapsed time plus
   every virtual pause so far;
-* `blackbox.client.time` is shadowed by a shim whose `monotonic()` includes the same pauses, so span and run durations agree.
+* `agent_blackbox.client.time` is shadowed by a shim whose `monotonic()` includes the same pauses, so span and run durations agree.
 
 Everything is still sent through the SDK and the ingestion API like any other run. Nothing is written to the database
 directly. The agent calls `clock.advance(seconds)` where a real agent would be waiting for a model or a tool.
@@ -16,8 +16,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
-import blackbox.client
-import blackbox.events
+import agent_blackbox.client
+import agent_blackbox.events
 
 # Made-up prices (USD per million tokens: input, output) for the scripted models. Not any provider's rate.
 SCRIPTED_PRICES: dict[str, tuple[float, float]] = {
@@ -56,8 +56,8 @@ class DemoClock:
         self.offset = 0.0
         self._real0 = time.time()
         self._base = self._real0 - started_ago
-        blackbox.events.now_rfc3339 = self._rfc3339
-        blackbox.client.time = _TimeShim(self)  # type: ignore[assignment]
+        agent_blackbox.events.now_rfc3339 = self._rfc3339
+        agent_blackbox.client.time = _TimeShim(self)  # type: ignore[assignment]
 
     def now(self) -> float:
         return self._base + (time.time() - self._real0) + self.offset

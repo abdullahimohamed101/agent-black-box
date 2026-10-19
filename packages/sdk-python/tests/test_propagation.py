@@ -15,8 +15,8 @@ from typing import Any
 import pytest
 from abb_event_schema.parse import parse_event_in
 
-import blackbox
-from blackbox import (
+import agent_blackbox
+from agent_blackbox import (
     TRACE_CONTEXT_ENV,
     TRACE_CONTEXT_HEADER,
     BlackBox,
@@ -101,7 +101,7 @@ def test_malformed_contexts_parse_to_none_quickly_without_echoing_the_value(
     value: str, caplog: pytest.LogCaptureFixture
 ) -> None:
     started = time.perf_counter()
-    with caplog.at_level(logging.DEBUG, logger="blackbox"):
+    with caplog.at_level(logging.DEBUG, logger="agent_blackbox"):
         assert TraceContext.parse(value) is None
     assert time.perf_counter() - started < 0.5
     assert "evil" not in caplog.text and RUN not in caplog.text
@@ -170,7 +170,7 @@ def test_trace_context_alone_emits_nothing() -> None:
 # ------------------------------------------------------------------------------ continue_run
 
 
-def child_run(bb: BlackBox, **kw: Any) -> blackbox.Run:
+def child_run(bb: BlackBox, **kw: Any) -> agent_blackbox.Run:
     return bb.continue_run(TraceContext(RUN, TRACE, SPAN, "tester"), **kw)
 
 
@@ -277,15 +277,15 @@ def test_a_thread_through_bind_and_an_asyncio_task_share_the_run_and_the_current
     seen: dict[str, Any] = {}
 
     async def in_task() -> None:
-        run = blackbox.current_run()
-        seen["task"] = (run, blackbox.current_span())
+        run = agent_blackbox.current_run()
+        seen["task"] = (run, agent_blackbox.current_span())
         assert run is not None
         run.event("custom.in_task")
 
     def in_thread() -> None:
-        seen["thread"] = (blackbox.current_run(), blackbox.current_span())
-        assert blackbox.current_run() is not None
-        blackbox.current_run().event("custom.in_thread")  # type: ignore[union-attr]
+        seen["thread"] = (agent_blackbox.current_run(), agent_blackbox.current_span())
+        assert agent_blackbox.current_run() is not None
+        agent_blackbox.current_run().event("custom.in_thread")  # type: ignore[union-attr]
 
     with bb.run("job") as run, run.agent("worker") as worker:
         t = threading.Thread(target=bind(in_thread))
@@ -335,10 +335,10 @@ def test_a_forked_child_that_keeps_using_the_parents_run_omits_sequence(tmp_path
 CHILD = textwrap.dedent(
     """
     import sys
-    import blackbox
+    import agent_blackbox
 
-    bb = blackbox.BlackBox(mode="local", local_path=sys.argv[1], flush_interval=0.02)
-    with bb.continue_run(blackbox.trace_context_from_env()) as run:
+    bb = agent_blackbox.BlackBox(mode="local", local_path=sys.argv[1], flush_interval=0.02)
+    with bb.continue_run(agent_blackbox.trace_context_from_env()) as run:
         with run.span("pytest", kind="shell"):
             pass
     bb.shutdown(5)

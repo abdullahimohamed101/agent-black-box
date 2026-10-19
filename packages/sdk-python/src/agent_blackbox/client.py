@@ -19,12 +19,12 @@ from collections.abc import Callable
 from types import TracebackType
 from typing import Any, TypeVar, cast, overload
 
-from blackbox import ids
-from blackbox.artifacts import KINDS, ArtifactUploader, _Upload
-from blackbox.buffer import EventBuffer
-from blackbox.config import Config, agent_slug
-from blackbox.context import _current_run, _current_span
-from blackbox.events import (
+from agent_blackbox import ids
+from agent_blackbox.artifacts import KINDS, ArtifactUploader, _Upload
+from agent_blackbox.buffer import EventBuffer
+from agent_blackbox.config import Config, agent_slug
+from agent_blackbox.context import _current_run, _current_span
+from agent_blackbox.events import (
     EVENT_TYPE_RE,
     as_mapping,
     as_strings,
@@ -37,15 +37,15 @@ from blackbox.events import (
     span_kind,
     without_nul,
 )
-from blackbox.exporter import Exporter, HttpSink, LocalSink, Sink
-from blackbox.policy import DISABLED, Decision, PolicyGuard, _run_guard
-from blackbox.policy_spool import WarningSpool
-from blackbox.propagation import TraceContext
-from blackbox.redaction import PayloadMode, Redactor
-from blackbox.stats import Stats
-from blackbox.version import __version__
+from agent_blackbox.exporter import Exporter, HttpSink, LocalSink, Sink
+from agent_blackbox.policy import DISABLED, Decision, PolicyGuard, _run_guard
+from agent_blackbox.policy_spool import WarningSpool
+from agent_blackbox.propagation import TraceContext
+from agent_blackbox.redaction import PayloadMode, Redactor
+from agent_blackbox.stats import Stats
+from agent_blackbox.version import __version__
 
-log = logging.getLogger("blackbox")
+log = logging.getLogger("agent_blackbox")
 F = TypeVar("F", bound=Callable[..., Any])
 _S = TypeVar("_S", bound="Span")
 
@@ -852,7 +852,7 @@ class BlackBox:
         `ApprovalDenied`, `ApprovalExpired`) when it must not, and `PolicyUnavailable` when the
         service cannot be asked and the fail mode is closed. Raises nothing else (INV-4). With
         `policy_mode="off"` (the default) it returns at once with `via="disabled"` and makes no
-        network call. See `blackbox.policy` for the contract.
+        network call. See `agent_blackbox.policy` for the contract.
         """
         if self.config.policy_mode != "enforce":
             return DISABLED

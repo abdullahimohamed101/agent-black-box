@@ -2,7 +2,7 @@ import fixture from "../../fixtures/migrate-billing-schema.json";
 import { json, python } from "../lib/code";
 import { CommandBlock } from "./CommandBlock";
 
-const AGENT = python(`from blackbox import BlackBox
+const AGENT = python(`from agent_blackbox import BlackBox
 
 bb = BlackBox(api_key=..., project="billing-agent")
 with bb.run("Migrate billing schema") as run:

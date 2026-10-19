@@ -8,7 +8,7 @@ import statistics
 import sys
 import time
 
-from blackbox import BlackBox, PayloadMode
+from agent_blackbox import BlackBox, PayloadMode
 from tests.helpers import start_stub, stop_stub
 
 N = 20_000

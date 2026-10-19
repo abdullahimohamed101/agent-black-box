@@ -224,7 +224,7 @@ def check_debug(tree: Tree) -> list[Hit]:
 
 # --- secrets ------------------------------------------------------------------------------------------------
 
-# The key shapes the SDK redactor already knows (packages/sdk-python/src/blackbox/redaction.py) plus the
+# The key shapes the SDK redactor already knows (packages/sdk-python/src/agent_blackbox/redaction.py) plus the
 # gitleaks-style generic ones. Bounded quantifiers: no catastrophic backtracking on hostile files.
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
     (kind, re.compile(p))
@@ -292,6 +292,27 @@ def check_paths(tree: Tree) -> list[Hit]:
         for number, line in enumerate(tree.lines(rel), 1):
             if LOCAL_PATH.search(line[:4000]):
                 hits.append(Hit("paths", rel, number, "a local home-directory path (/Users/<name>/ or C:\\Users\\<name>)"))
+    return hits
+
+
+# --- the SDK import name -----------------------------------------------------------------------------------
+
+# The SDK is imported as `agent_blackbox` (ADR-177): the bare name belongs to an unrelated PyPI project. The pattern is
+# written so this file does not match itself.
+OLD_IMPORT = re.compile(r"\bfrom\s+blackbox(?:\.\w+)*\s+import\b|\bimport\s+blackbox\b|\bsrc/blackbox\b")
+# Historical records keep what was true when they were written (ADRs and finished plans amend nothing retroactively).
+IMPORT_HISTORY = (
+    "docs/decisions/*", "docs/plans/completed/*", "docs/architecture/agent-black-box-spec.md",
+    "docs/design/launch/landing-concepts/*", "docs/design/launch/package-names.md",
+)  # fmt: skip
+
+
+def check_imports(tree: Tree) -> list[Hit]:
+    hits = []
+    for rel in tree.select("*", exclude=IMPORT_HISTORY, tests=True):
+        for number, line in enumerate(tree.lines(rel), 1):
+            if OLD_IMPORT.search(line[:4000]):
+                hits.append(Hit("imports", rel, number, "the old SDK import name (use agent_blackbox, ADR-177)"))
     return hits
 
 
@@ -566,6 +587,7 @@ CHECKS = {
     "claims": check_claims,
     "links": check_links,
     "paths": check_paths,
+    "imports": check_imports,
 }
 # `links` shells out to check_docs_links.py (and resolves paths against the real root), `claims` is about the
 # README text; both are part of `all`.

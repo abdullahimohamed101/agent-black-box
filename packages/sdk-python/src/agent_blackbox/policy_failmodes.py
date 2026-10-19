@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from blackbox.policy_glob import Glob, compile_glob
+from agent_blackbox.policy_glob import Glob, compile_glob
 
 OPEN, CLOSED = "open", "closed"
 MODES = (OPEN, CLOSED)

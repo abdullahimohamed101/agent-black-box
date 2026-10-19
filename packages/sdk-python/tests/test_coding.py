@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from blackbox import BlackBox, PayloadMode
-from blackbox.coding import (
+from agent_blackbox import BlackBox, PayloadMode
+from agent_blackbox.coding import (
     Classification,
     CodingRecorder,
     classify_command,
@@ -17,7 +17,7 @@ from blackbox.coding import (
     safe_environment,
     secret_env_values,
 )
-from blackbox.secretscan import is_sensitive_path
+from agent_blackbox.secretscan import is_sensitive_path
 from tests.helpers import events_of, types_of
 from tests.test_artifacts import ArtifactServer, server  # noqa: F401  (fixture)
 

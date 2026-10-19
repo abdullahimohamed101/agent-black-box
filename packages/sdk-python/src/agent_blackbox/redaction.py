@@ -21,7 +21,7 @@ from collections.abc import Callable, Iterable
 from enum import Enum
 from typing import Any
 
-from blackbox.stats import Stats
+from agent_blackbox.stats import Stats
 
 MAX_DEPTH = 16
 MAX_NODES = 5000  # values visited per event: a huge wide payload must not stall the caller

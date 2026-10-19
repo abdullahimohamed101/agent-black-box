@@ -1,6 +1,6 @@
 """LangChain / LangGraph callback handler that records canonical Agent BlackBox events (ADR-052).
 
-    from blackbox import BlackBox
+    from agent_blackbox import BlackBox
     from blackbox_langgraph import BlackBoxCallback
 
     graph.invoke(state, config={"callbacks": [BlackBoxCallback(BlackBox(...))]})
@@ -19,7 +19,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from blackbox import BlackBox, Run, Span, current_run
+from agent_blackbox import BlackBox, Run, Span, current_run
 
 from blackbox_langgraph._extract import (
     llm_identity,
@@ -36,7 +36,7 @@ try:  # the framework is optional (ADR-050)
 except ImportError:  # pragma: no cover - exercised by the fake-driver tests
     _Base = object  # type: ignore[assignment,misc]
 
-log = logging.getLogger("blackbox.langgraph")
+log = logging.getLogger("agent_blackbox.langgraph")
 F = TypeVar("F", bound=Callable[..., Any])
 
 FRAMEWORK = "langgraph"

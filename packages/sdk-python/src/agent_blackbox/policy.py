@@ -38,32 +38,32 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
-from blackbox.context import _current_run, _current_span
-from blackbox.policy_failmodes import (
+from agent_blackbox.context import _current_run, _current_span
+from agent_blackbox.policy_failmodes import (
     CLOSED,
     MODES,
     FailModeTable,
     default_mode,
     override_for,
 )
-from blackbox.policy_intent import (
+from agent_blackbox.policy_intent import (
     REASON_INVALID,
     IntentRejected,
     build_intent,
 )
-from blackbox.policy_transport import (
+from agent_blackbox.policy_transport import (
     REASON_ERROR,
     PolicyTransport,
     Reply,
     TransportFailure,
 )
-from blackbox.stats import Stats
+from agent_blackbox.stats import Stats
 
 if TYPE_CHECKING:
-    from blackbox.client import BlackBox, Run
-    from blackbox.config import Config
+    from agent_blackbox.client import BlackBox, Run
+    from agent_blackbox.config import Config
 
-log = logging.getLogger("blackbox")
+log = logging.getLogger("agent_blackbox")
 F = TypeVar("F", bound=Callable[..., Any])
 
 # The closed vocabulary of `policy.warning` reasons. Never content, never error text.

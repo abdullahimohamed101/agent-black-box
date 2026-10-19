@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 
-from blackbox import BlackBox, PolicyDenied, PolicyUnavailable
-from blackbox import policy as policy_module
-from blackbox.coding import CodingRecorder, classify_command, executable_of
-from blackbox.policy import PolicyGuard
+from agent_blackbox import BlackBox, PolicyDenied, PolicyUnavailable
+from agent_blackbox import policy as policy_module
+from agent_blackbox.coding import CodingRecorder, classify_command, executable_of
+from agent_blackbox.policy import PolicyGuard
 from tests.policy_server import (
     PolicyServer,
     R,
@@ -311,7 +311,7 @@ def test_hosts_can_ask_before_acting_themselves(srv: PolicyServer, tmp_path: Pat
 def test_a_custom_classifier_with_an_unknown_class_is_sent_unclassified(
     srv: PolicyServer, tmp_path: Path
 ) -> None:
-    from blackbox.coding import Classification
+    from agent_blackbox.coding import Classification
 
     bb = make_client(srv, policy_timeout=0.5)
     rec = CodingRecorder(
@@ -381,7 +381,7 @@ def test_guard_push_force_flag_only_changes_the_class(srv: PolicyServer, tmp_pat
 def test_a_custom_classifier_decides_the_push_class_and_a_broken_one_cannot_break_it(
     srv: PolicyServer, tmp_path: Path
 ) -> None:
-    from blackbox.coding import Classification
+    from agent_blackbox.coding import Classification
 
     bb, rec = recorder(srv, tmp_path)
     rec._classifier = lambda command: Classification("R1", "custom", ("test",))

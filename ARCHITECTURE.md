@@ -75,7 +75,7 @@ A hand-written metrics registry with a closed vocabulary and hard series ceiling
 
 ### Python SDK (`packages/sdk-python`)
 Instrumentation API -> context manager -> builder/sanitizer -> bounded buffer -> exporter.
-Never raises into the host agent. Status: implemented (Phase 3; `blackbox.coding` in Phase 6; SDK 0.2.0 in Phase 8).
+Never raises into the host agent. Status: implemented (Phase 3; `agent_blackbox.coding` in Phase 6; SDK 0.2.0 in Phase 8).
 
 ### Web (`apps/web`)
 Next.js App Router. Server-fetched page data; client-side trace viewers (timeline, waterfall,

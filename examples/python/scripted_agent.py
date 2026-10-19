@@ -24,7 +24,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from blackbox import BlackBox, PayloadMode, Run
+from agent_blackbox import BlackBox, PayloadMode, Run
 
 from demo_clock import SCRIPTED_PRICES, DemoClock, LatentModel, hours
 

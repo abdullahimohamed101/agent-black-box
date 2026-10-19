@@ -11,7 +11,7 @@ import threading
 from collections import deque
 from typing import Any
 
-from blackbox.stats import Stats
+from agent_blackbox.stats import Stats
 
 Event = dict[str, Any]
 

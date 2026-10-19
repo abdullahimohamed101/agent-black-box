@@ -9,7 +9,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
-    from blackbox.client import Run, Span
+    from agent_blackbox.client import Run, Span
 
 T = TypeVar("T")
 

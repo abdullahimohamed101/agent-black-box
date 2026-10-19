@@ -20,8 +20,8 @@ def test_offline_run_records_a_secret_read_and_two_classified_commands(
 
 
 def test_the_two_harmful_commands_are_classified_high_risk() -> None:
-    from blackbox import BlackBox
-    from blackbox.coding import CodingRecorder
+    from agent_blackbox import BlackBox
+    from agent_blackbox.coding import CodingRecorder
 
     with __import__("tempfile").TemporaryDirectory() as scratch:
         root = ops_agent.workspace(Path(scratch))

@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from blackbox import BlackBox, PayloadMode
-from blackbox.coding import CodingRecorder, parse_test_output
-from blackbox.secretscan import SecretFiles, extract_values, is_harmless_plain
+from agent_blackbox import BlackBox, PayloadMode
+from agent_blackbox.coding import CodingRecorder, parse_test_output
+from agent_blackbox.secretscan import SecretFiles, extract_values, is_harmless_plain
 from tests.test_artifacts import ArtifactServer, server  # noqa: F401  (fixture)
 from tests.test_secret_leaks import everything, git, make
 
@@ -291,12 +291,12 @@ def test_file_paths_and_git_refs_in_events_are_sanitized(plain: Path) -> None:
 def test_an_incomplete_secret_scan_is_reported_once_without_values(
     plain: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    import blackbox.secretscan as ss
+    import agent_blackbox.secretscan as ss
 
     (plain / ".env").write_text("SVC_KEY=budget-secret-value-4417\n")
     monkeypatch.setattr(ss, "SCAN_BUDGET_SECONDS", -1.0)  # already over budget when the walk starts
     bb = BlackBox(mode="offline", project="d", payload_mode=PayloadMode.FULL)
-    with bb.run("r") as run, caplog.at_level("WARNING", logger="blackbox"):
+    with bb.run("r") as run, caplog.at_level("WARNING", logger="agent_blackbox"):
         rec = CodingRecorder(bb, run, plain)
         rec.run_command("echo one", timeout=10)
         rec.run_command("echo two", timeout=10)
@@ -425,7 +425,7 @@ def test_a_bom_does_not_hide_the_first_key() -> None:
 
 
 def test_a_secret_file_over_the_size_cap_marks_the_scan_incomplete(tmp_path: Path) -> None:
-    from blackbox.secretscan import MAX_FILE_BYTES
+    from agent_blackbox.secretscan import MAX_FILE_BYTES
 
     (tmp_path / ".env").write_text("A_KEY=" + "y" * (MAX_FILE_BYTES + 10) + "\n")
     scan = SecretFiles(tmp_path)
@@ -490,7 +490,7 @@ def test_comparisons_without_a_secret_literal_are_untouched(code: str) -> None:
 def test_host_env_values_shaped_like_webhooks_or_token_paths_are_masked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from blackbox.coding import secret_env_values
+    from agent_blackbox.coding import secret_env_values
 
     monkeypatch.setenv("ZZ_URL", "https://hooks.example.com/services/T0/B0/q1w2e3r4t5y6")
     monkeypatch.setenv("ZZ_PATH", "./relative-secret-9917")

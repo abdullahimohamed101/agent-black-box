@@ -31,8 +31,8 @@ import asyncio, threading, operator
 from typing import Annotated, TypedDict
 from langchain_core.callbacks import BaseCallbackHandler
 from langgraph.graph import StateGraph, START, END
-from blackbox import BlackBox
-from blackbox.context import _current_span
+from agent_blackbox import BlackBox
+from agent_blackbox.context import _current_span
 
 bb = BlackBox(api_key="abb_live_k.s", mode="offline", project="p")
 rows = []

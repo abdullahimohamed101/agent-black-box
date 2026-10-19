@@ -4,14 +4,14 @@
 
 Environment: E2E_SDK_ENDPOINT, E2E_SDK_KEY (a well-formed key with a wrong secret; not a real credential), E2E_SDK_PROJECT.
 It records far more events than the SDK queue holds, then shuts down with a deadline. The host must finish, in bounded time, with a
-bounded queue; every event is either dropped and counted or never sent. Prints one JSON line. Standard library plus `blackbox` only.
+bounded queue; every event is either dropped and counted or never sent. Prints one JSON line. Standard library plus `agent_blackbox` only.
 """
 
 import json
 import os
 import time
 
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 MAX_QUEUE = 200
 started = time.monotonic()

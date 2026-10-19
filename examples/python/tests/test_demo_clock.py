@@ -10,9 +10,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import blackbox.client
-import blackbox.events
-from blackbox import BlackBox
+import agent_blackbox.client
+import agent_blackbox.events
+from agent_blackbox import BlackBox
 
 import scripted_agent
 from demo_clock import DemoClock, hours
@@ -20,9 +20,9 @@ from demo_clock import DemoClock, hours
 
 @pytest.fixture(autouse=True)
 def restore_clocks() -> Any:
-    now, shim = blackbox.events.now_rfc3339, blackbox.client.time
+    now, shim = agent_blackbox.events.now_rfc3339, agent_blackbox.client.time
     yield
-    blackbox.events.now_rfc3339, blackbox.client.time = now, shim
+    agent_blackbox.events.now_rfc3339, agent_blackbox.client.time = now, shim
 
 
 def play() -> list[dict[str, Any]]:

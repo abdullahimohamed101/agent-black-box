@@ -3,7 +3,7 @@
 from typing import Any
 
 import pytest
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 from abb_conformance import SCENARIOS, ScenarioError, check_scenario
 from abb_conformance.scenarios import (

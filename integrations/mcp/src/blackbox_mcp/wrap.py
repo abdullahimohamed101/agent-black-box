@@ -28,9 +28,9 @@ import re
 from types import SimpleNamespace
 from typing import Any
 
-from blackbox import BlackBox, PolicyDenied, PolicyError, Run, Span, current_run
+from agent_blackbox import BlackBox, PolicyDenied, PolicyError, Run, Span, current_run
 
-log = logging.getLogger("blackbox.mcp")
+log = logging.getLogger("agent_blackbox.mcp")
 _MARK = "_abb_wrapped"
 _UNSAFE_CAPABILITY_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
 MAX_CAPABILITY_NAME = 120
