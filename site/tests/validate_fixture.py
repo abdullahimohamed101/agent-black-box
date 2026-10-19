@@ -1,7 +1,7 @@
 """Validates site/fixtures/migrate-billing-schema.json against the event contract (packages/event-schema) and recomputes the
 figures the hero shows from the events themselves, so the page cannot drift from the contract or from its own arithmetic.
 
-  uv run --project packages/event-schema python -I site/tests/validate_fixture.py
+  uv run --project packages/event-schema python -I site/tests/validate_fixture.py [FIXTURE.json]
 """
 
 import json
@@ -10,7 +10,8 @@ from pathlib import Path
 
 from abb_event_schema.parse import parse_event_in
 
-doc = json.loads((Path(__file__).resolve().parents[1] / "fixtures/migrate-billing-schema.json").read_text())
+path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1] / "fixtures/migrate-billing-schema.json"
+doc = json.loads(path.read_text())
 events = [parse_event_in(e) for e in doc["events"]]  # raises EventValidationError on any contract violation
 problems: list[str] = []
 

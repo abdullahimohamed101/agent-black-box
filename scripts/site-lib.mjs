@@ -2,6 +2,7 @@
 // Serves a static export on a loopback port under a base path, launches Chromium, collects failures. Reuses apps/web's Playwright
 // and axe: no dependency of its own.
 import { createServer } from "node:http";
+import { gzipSync } from "node:zlib";
 import { readFile, mkdir, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -31,8 +32,15 @@ export async function serve(dir, base = "/agent-black-box") {
     if (!file.startsWith(dir)) return void res.writeHead(404).end();
     try {
       if ((await stat(file)).isDirectory()) file = path.join(file, "index.html");
-      const body = await readFile(file);
-      res.writeHead(200, { "content-type": TYPES[path.extname(file)] ?? "application/octet-stream", "cache-control": "no-store" }).end(body);
+      let body = await readFile(file);
+      const type = TYPES[path.extname(file)] ?? "application/octet-stream";
+      const headers = { "content-type": type, "cache-control": "no-store" };
+      // GitHub Pages serves text compressed; so does this server, or every throttled measurement would be wrong by 3x.
+      if (/text\/|javascript|json|svg/.test(type) && /gzip/.test(req.headers["accept-encoding"] ?? "")) {
+        body = gzipSync(body, { level: 9 });
+        headers["content-encoding"] = "gzip";
+      }
+      res.writeHead(200, headers).end(body);
     } catch {
       res.writeHead(404).end("not found");
     }
@@ -63,6 +71,7 @@ export class Report {
   fact(msg) { this.facts.push(msg); }
   finish(name) {
     if (this.failures.length) {
+      for (const f of this.facts) console.log(`  ${f}`);
       for (const f of [...new Set(this.failures)]) console.error(`FAIL [${name}]: ${f}`);
       process.exit(1);
     }

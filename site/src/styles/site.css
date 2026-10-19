@@ -80,6 +80,8 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: 0; }
 
 section.band { padding: var(--section) 0; }
 section.band + section.band { border-top: 1px solid var(--color-border-subtle); }
+/* Below the first screen, skip rendering until a section is near the viewport (the DOM is all there for search, anchors and no-JS). */
+section.band:not(#why) { content-visibility: auto; contain-intrinsic-size: auto 40rem; }
 
 /* Status grammar, product-identical: glyph + word. Red is the failed word and the fault line, nowhere else. */
 .fail { color: var(--fault); font-weight: 600; }

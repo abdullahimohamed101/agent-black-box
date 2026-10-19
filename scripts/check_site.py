@@ -15,11 +15,15 @@ Fails (exit 1) on:
     that path ("" means the export is for a domain root), and is then resolved with the prefix removed;
   * a relative link or asset that does not resolve to a file under the site directory, or a #fragment with no id;
   * a total size over --budget-kb (default 250, fonts excluded; pass 0 to disable).
-`[CONFIRM]` markers are listed as warnings; with --release they fail.
+  * an inline event handler attribute (onclick, ...), or a dead "#" link;
+  * motion outside the opt-in: an @keyframes, animation or transition (other than none or 0s) that is not inside
+    @media (prefers-reduced-motion: no-preference) (brief section 7);
+`[CONFIRM ...]` markers (in text, attributes or CSS) are listed as warnings; with --release they fail.
 """
 
 from __future__ import annotations
 
+import html as htmllib
 import re
 import sys
 from html.parser import HTMLParser
@@ -54,6 +58,10 @@ class Page(HTMLParser):
             self.err(f"<{tag}> repeats an attribute")
         for name, value in attrs:
             value = value or ""
+            if name.startswith("on") and len(name) > 2 and name[2:].isalpha():
+                self.err(f"<{tag}> has the inline event handler {name}=")
+            if name == "href" and tag == "a" and value.strip() in ("#", ""):
+                self.err(f"<a> has a dead href {value!r}")
             if name == "id":
                 if value in self.ids:
                     self.err(f"duplicate id {value!r}")
@@ -87,6 +95,42 @@ class Page(HTMLParser):
 def is_external(value: str) -> bool:
     parts = urlsplit(value)
     return bool(parts.scheme) or value.startswith("//")
+
+
+MOTION_PROP = re.compile(r"(?:^|;|\{)\s*(animation(?:-name|-duration)?|transition(?:-property|-duration)?)\s*:\s*([^;}]*)", re.I)
+
+
+def motion_problems(css: Path) -> list[str]:
+    """Walks a stylesheet with a brace stack; reports motion that is not under @media (prefers-reduced-motion: no-preference)."""
+    body = re.sub(r"/\*.*?\*/", "", css.read_text(encoding="utf-8"), flags=re.S)
+    out: list[str] = []
+    stack: list[str] = []
+    i = 0
+    start = 0
+    while i < len(body):
+        c = body[i]
+        if c == "{":
+            stack.append(body[start:i].strip())
+            start = i + 1
+        elif c == "}":
+            block = body[start:i]
+            ok = any("prefers-reduced-motion" in s and "no-preference" in s for s in stack)
+            if stack and stack[-1].startswith("@keyframes") and not ok:
+                out.append(f"{css.name}: {stack[-1]} is outside @media (prefers-reduced-motion: no-preference)")
+            for m in MOTION_PROP.finditer(block):
+                value = m.group(2).strip().lower()
+                if value in ("none", "0s", "0ms", "none 0s", "all 0s") or value.startswith("none"):
+                    continue
+                reduced_only = any("prefers-reduced-motion" in s and "reduce" in s and "no-preference" not in s for s in stack)
+                if not ok and not reduced_only:
+                    out.append(f"{css.name}: {m.group(1)}: {m.group(2).strip()[:60]} in {stack[-1][:50] if stack else 'top level'} is outside the no-preference media query")
+            if stack:
+                stack.pop()
+            start = i + 1
+        elif c == ";" and (not stack or True):
+            pass
+        i += 1
+    return out
 
 
 def main(argv: list[str]) -> int:
@@ -192,9 +236,12 @@ def main(argv: list[str]) -> int:
         problems.append(f"site is {total} bytes excluding fonts; the budget is {budget}")
 
     for p in [index, *css_files]:
-        for n, content in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
-            if "[CONFIRM]" in content:
-                warnings.append(f"{p.name} line {n}: {content.strip()[:110]}")
+        found = sorted(set(htmllib.unescape(m) for m in re.findall(r"\[CONFIRM[^\]]*\]", p.read_text(encoding="utf-8"))))
+        warnings += [f"{p.name}: {m[:140]}" for m in found]
+
+    # Motion is opt-in: every animation and transition lives inside prefers-reduced-motion: no-preference.
+    for css in css_files:
+        problems += motion_problems(css)
 
     for w in warnings:
         print(f"warning: [CONFIRM] {w}")
