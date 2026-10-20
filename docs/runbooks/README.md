@@ -23,8 +23,8 @@ honest) and the dashboard rows are in `deploy/observability/grafana/dashboards/a
 | Alert-key rotation failed | [Secrets](secrets.md#monitoring-rotation) | `AbbRotationRunFailed` | Retention and backups |
 | Database role too privileged | [Security operations](security-operations.md#privileged-database-role) | `AbbPrivilegedDatabaseRole` | Database and dependencies |
 | Suspicious keys, roles, approvals, detections | [Security operations](security-operations.md) | none yet (KI-242) | Controls |
-| Hosted instance: disk, memory, a container restarting, certificate, site down, host metrics stale | [Hosting operations](hosting-operations.md) | `HostDiskUsageHigh`, `HostDiskUsageCritical`, `HostMemoryLow`, `AbbContainerRestarting`, `AbbContainerOOMKilled`, `AbbPublicProbeFailing`, `AbbCertificateExpiring`, `AbbHostScrapeDown` | host alerts (Prometheus) |
-| Hosted instance: backup late, never ran or failing; restore drill old | [Hosting operations](hosting-operations.md#the-backup-is-late-or-failing) | `AbbHostingBackupTooOld`, `AbbHostingBackupNeverRan`, `AbbHostingOffsiteTooOld`, `AbbHostingRestoreDrillOld` | host alerts (Prometheus) |
+| Hosted instance: disk, memory, a container restarting, certificate, site down, host metrics stale | [Hosting operations](hosting-operations.md) | `HostDiskUsageHigh`, `HostDiskUsageCritical`, `HostMemoryLow`, `AbbContainerRestarting`, `AbbContainerOOMKilled`, `AbbPublicProbeFailing`, `AbbCertificateExpiring`, `AbbHostScrapeDown` | none yet (KI-314) |
+| Hosted instance: backup late, never ran or failing; restore drill old | [Hosting operations](hosting-operations.md#the-backup-is-late-or-failing) | `AbbHostingBackupTooOld`, `AbbHostingBackupNeverRan`, `AbbHostingOffsiteTooOld`, `AbbHostingRestoreDrillOld` | none yet (KI-314) |
 | Metrics or targets missing | [below](#metrics-are-missing-or-stale) | `AbbTargetDown` | Overview and SLO |
 | A process restarts again and again | [below](#a-process-keeps-restarting) | `AbbProcessRestartLoop` | Database and dependencies |
 | Traces are missing | [below](#traces-are-missing) | `AbbOtelExportFailing` | Alerts and streams |
