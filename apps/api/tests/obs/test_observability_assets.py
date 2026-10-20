@@ -65,8 +65,11 @@ def _alerts() -> list[dict[str, Any]]:
 
 
 def _host_alert_names() -> set[str]:
-    """Alerts of the hosting recipe (deploy/hosting/rules): runbooks name them, but their expressions read host and
-    container series that this API does not export, so the other checks here stay on the API's own rules."""
+    """Alerts of the hosting recipe (deploy/hosting/rules).
+
+    Runbooks name them, but their expressions read host and container series that this API
+    does not export, so the other checks here stay on the API's own rules.
+    """
     names: set[str] = set()
     for path in sorted((ROOT / "deploy" / "hosting" / "rules").glob("*.yml")):
         if path.name.endswith(".test.yml"):
@@ -432,7 +435,8 @@ def test_dashboard_references_every_alert_signal_row() -> None:
         for cell in [line.rstrip().rstrip("|").rsplit("|", 1)[-1]]
     }
     named -= {"Dashboard row", "---"}
-    named = {n for n in named if not n.startswith("none yet")}  # a signal with no dashboard row says so, like its alert
+    # A signal with no dashboard row says so, like its alert does.
+    named = {n for n in named if not n.startswith("none yet")}
     short_rows = {r.split(":")[0] for r in rows}
     assert named, "no dashboard rows found in the index"
     assert named <= short_rows, f"index names rows that do not exist: {named - short_rows}"
