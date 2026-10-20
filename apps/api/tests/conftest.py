@@ -11,6 +11,7 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncIterator, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -107,8 +108,19 @@ async def _ensure_runtime_role() -> None:
         await engine.dispose()
 
 
+def _ensure_runtime_role_sync() -> None:
+    """Provision from sync code; some tests call `alembic()` inside a running event loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(_ensure_runtime_role())
+        return
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(asyncio.run, _ensure_runtime_role()).result()
+
+
 def alembic(database_url: str, *args: str) -> None:
-    asyncio.run(_ensure_runtime_role())
+    _ensure_runtime_role_sync()
     subprocess.run(  # noqa: S603
         [sys.executable, "-m", "alembic", "-x", f"url={database_url}", *args],
         cwd=API_DIR,

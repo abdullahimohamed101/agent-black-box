@@ -44,7 +44,7 @@ services:
   # Data lives in tmpfs and durability is off on purpose: the suite is bound by fsync waits in the
   # Docker VM, not by CPU. Never point the dev stack at it; its data is gone on every restart.
   testdb:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     profiles: ["testdb"]
     container_name: abb-pg-test
     command: >
