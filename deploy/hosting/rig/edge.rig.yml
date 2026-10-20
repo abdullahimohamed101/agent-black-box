@@ -1,0 +1,9 @@
+# Local rig overlay for the edge project: Caddy answers to the rig's names inside the Docker network too, so the API (which is
+# not on the host) reaches the fake issuer at the same https URL a browser uses.
+services:
+  caddy:
+    networks:
+      edge:
+        aliases:
+          - abb.localhost
+          - oidc.abb.localhost

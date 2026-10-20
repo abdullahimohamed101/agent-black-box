@@ -1,0 +1,13 @@
+# Test overlay for scripts/hosting-backup-e2e.sh (Phase 23, step 7); never exists on a real server. Merged over docker-compose.yml
+# and deploy/hosting/compose.production.yml:
+#   * the images carry the rig's own tag (a developer's agent-black-box-api:local tag is never moved or removed);
+#   * the API is published on one loopback port so the test can seed events and an artifact through the real ingestion path.
+services:
+  migrate: { image: abb-hosting-bk-api:local }
+  worker: { image: abb-hosting-bk-api:local }
+  retention: { image: abb-hosting-bk-api:local }
+  backup: { image: abb-hosting-bk-api:local }
+  api:
+    image: abb-hosting-bk-api:local
+    ports:
+      - "127.0.0.1:${ABB_BK_API_PORT:?}:8000"

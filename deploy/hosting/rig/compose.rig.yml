@@ -1,0 +1,40 @@
+# Local rig overlay (scripts/hosting-e2e.sh): merged over docker-compose.yml and deploy/hosting/compose.production.yml.
+# It never exists on a real server. It makes the production-mode stack able to sign someone in against a fake https issuer:
+#   * the images carry their own tag, so a build here can never move the `agent-black-box-api:local` tag of a developer's stack;
+#   * the API gets a CA bundle (its normal certifi bundle plus Caddy's local root) mounted over certifi's file: the OIDC client
+#     ignores SSL_CERT_FILE by design (trust_env=False), so replacing the bundle is the only way to trust a local CA without
+#     changing code;
+#   * rig-oidc is the development fake provider, reachable only through the edge network (the production overlay's
+#     `fake-oidc` stays unstarted).
+services:
+  migrate: { image: abb-hosting-rig-api:local }
+  worker: { image: abb-hosting-rig-api:local }
+  retention: { image: abb-hosting-rig-api:local }
+  backup: { image: abb-hosting-rig-api:local }
+  api:
+    image: abb-hosting-rig-api:local
+    volumes:
+      - artifacts:/data/artifacts
+      - ${ABB_RIG_CA_BUNDLE:?}:${ABB_RIG_CERTIFI_PATH:?}:ro
+  rig-oidc:
+    image: abb-hosting-rig-api:local
+    profiles: ["app"]
+    working_dir: /repo/apps/api
+    environment:
+      # The fake refuses to start in production, and this container is not the product.
+      ABB_ENVIRONMENT: development
+    volumes:
+      - ./apps/api/tests/fake_oidc.py:/repo/apps/api/fake_oidc.py:ro
+    command:
+      - python
+      - fake_oidc.py
+      - --host=0.0.0.0
+      - --port=8900
+      - --issuer=${ABB_OIDC_ISSUER:?}
+      - --client-id=${ABB_OIDC_CLIENT_ID:?}
+      - --redirect-uri=${ABB_PUBLIC_ORIGIN:?}/api/auth/callback
+    networks:
+      edge:
+        aliases: [rig-oidc]
+    restart: "no"
+    mem_limit: 128m

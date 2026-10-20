@@ -1,0 +1,332 @@
+# promtool test rules deploy/hosting/rules/host.test.yml   (scripts/hosting-obs-e2e.sh runs it in the pinned Prometheus image)
+# The backup and restore-drill alerts span days and are tested in host.long.test.yml (evaluated every 4 minutes to keep the run short).
+# Each alert has a case that makes it FIRE and a case that proves it stays SILENT on a healthy host. The checks query the ALERTS series,
+# so they pin the alert name, its state and its labels (severity included) without repeating annotation text. scripts/tests/test_hosting_rules.py
+# fails if an alert in host.yml has no firing case or no silent case here.
+rule_files:
+  - host.yml
+evaluation_interval: 1m
+
+tests:
+  # ---- disk ---------------------------------------------------------------------------------------------------------------------
+  - name: disk 85% used for 20 minutes -> ticket; 70% -> silent
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_size_bytes{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '100000x30'
+      - series: 'node_filesystem_avail_bytes{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '15000x30'
+      - series: 'node_filesystem_size_bytes{mountpoint="/var/lib/docker",fstype="ext4",instance="h"}'
+        values: '100000x30'
+      - series: 'node_filesystem_avail_bytes{mountpoint="/var/lib/docker",fstype="ext4",instance="h"}'
+        values: '30000x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="HostDiskUsageHigh", alertstate="firing"}
+        eval_time: 20m
+        exp_samples:
+          - labels: 'ALERTS{alertname="HostDiskUsageHigh", alertstate="firing", severity="ticket", mountpoint="/", fstype="ext4", instance="h"}'
+            value: 1
+      - expr: ALERTS{alertname="HostDiskUsageCritical", alertstate="firing"}
+        eval_time: 20m
+        exp_samples: []
+  - name: disk 95% used for 6 minutes -> page; 15 minutes of 89% -> not critical
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_size_bytes{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '100000x30'
+      - series: 'node_filesystem_avail_bytes{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '5000x30'
+      - series: 'node_filesystem_size_bytes{mountpoint="/var/lib/docker",fstype="ext4",instance="h"}'
+        values: '100000x30'
+      - series: 'node_filesystem_avail_bytes{mountpoint="/var/lib/docker",fstype="ext4",instance="h"}'
+        values: '11000x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="HostDiskUsageCritical", alertstate="firing"}
+        eval_time: 10m
+        exp_samples:
+          - labels: 'ALERTS{alertname="HostDiskUsageCritical", alertstate="firing", severity="page", mountpoint="/", fstype="ext4", instance="h"}'
+            value: 1
+      - expr: ALERTS{alertname="HostDiskUsageCritical", alertstate="firing", mountpoint="/var/lib/docker"}
+        eval_time: 20m
+        exp_samples: []
+  - name: tmpfs and overlay filesystems are ignored however full they are
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_size_bytes{mountpoint="/",fstype="overlay",instance="h"}'
+        values: '100000x30'
+      - series: 'node_filesystem_avail_bytes{mountpoint="/",fstype="overlay",instance="h"}'
+        values: '1000x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname=~"HostDisk.*", alertstate="firing"}
+        eval_time: 20m
+        exp_samples: []
+  - name: inodes 95% used -> ticket; 40% -> silent
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_files{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '1000000x30'
+      - series: 'node_filesystem_files_free{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '50000x30'
+      - series: 'node_filesystem_files{mountpoint="/var/lib/docker",fstype="ext4",instance="h"}'
+        values: '1000000x30'
+      - series: 'node_filesystem_files_free{mountpoint="/var/lib/docker",fstype="ext4",instance="h"}'
+        values: '600000x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="HostInodesLow", alertstate="firing"}
+        eval_time: 20m
+        exp_samples:
+          - labels: 'ALERTS{alertname="HostInodesLow", alertstate="firing", severity="ticket", mountpoint="/", fstype="ext4", instance="h"}'
+            value: 1
+      - expr: ALERTS{alertname="HostInodesLow", alertstate="firing", mountpoint="/var/lib/docker"}
+        eval_time: 20m
+        exp_samples: []
+  - name: free space falling 1 GB per hour from 30% -> fills within a day -> ticket; flat 30% -> silent
+    interval: 4m
+    input_series:
+      - series: 'node_filesystem_size_bytes{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '40000000000x120'
+      - series: 'node_filesystem_avail_bytes{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '12000000000-66700000x120'
+      - series: 'node_filesystem_size_bytes{mountpoint="/var/lib/docker",fstype="ext4",instance="h"}'
+        values: '40000000000x120'
+      - series: 'node_filesystem_avail_bytes{mountpoint="/var/lib/docker",fstype="ext4",instance="h"}'
+        values: '12000000000x120'
+    promql_expr_test:
+      - expr: ALERTS{alertname="HostDiskFillingFast", alertstate="firing"}
+        eval_time: 7h
+        exp_samples:
+          - labels: 'ALERTS{alertname="HostDiskFillingFast", alertstate="firing", severity="ticket", mountpoint="/", fstype="ext4", instance="h"}'
+            value: 1
+      - expr: ALERTS{alertname="HostDiskFillingFast", alertstate="firing", mountpoint="/var/lib/docker"}
+        eval_time: 7h
+        exp_samples: []
+  - name: a fast fall on a mostly empty disk (a big pull from 80% free, still 57% free) does not raise HostDiskFillingFast
+    interval: 4m
+    input_series:
+      - series: 'node_filesystem_size_bytes{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '40000000000x60'
+      - series: 'node_filesystem_avail_bytes{mountpoint="/",fstype="ext4",instance="h"}'
+        values: '32000000000-300000000x60'
+    promql_expr_test:
+      - expr: ALERTS{alertname="HostDiskFillingFast", alertstate="firing"}
+        eval_time: 2h
+        exp_samples: []
+
+  # ---- memory -------------------------------------------------------------------------------------------------------------------
+  - name: 5% of memory available for 15 minutes -> ticket; 40% -> silent
+    interval: 1m
+    input_series:
+      - series: 'node_memory_MemTotal_bytes{instance="h"}'
+        values: '4000000000x30'
+      - series: 'node_memory_MemAvailable_bytes{instance="h"}'
+        values: '200000000x30'
+      - series: 'node_memory_MemTotal_bytes{instance="ok"}'
+        values: '4000000000x30'
+      - series: 'node_memory_MemAvailable_bytes{instance="ok"}'
+        values: '1600000000x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="HostMemoryLow", alertstate="firing"}
+        eval_time: 15m
+        exp_samples:
+          - labels: 'ALERTS{alertname="HostMemoryLow", alertstate="firing", severity="ticket", instance="h"}'
+            value: 1
+  - name: low memory for only 5 minutes is a spike, not an alert
+    interval: 1m
+    input_series:
+      - series: 'node_memory_MemTotal_bytes{instance="h"}'
+        values: '4000000000x30'
+      - series: 'node_memory_MemAvailable_bytes{instance="h"}'
+        values: '200000000x5 1600000000x25'
+    promql_expr_test:
+      - expr: ALERTS{alertname="HostMemoryLow", alertstate="firing"}
+        eval_time: 20m
+        exp_samples: []
+  - name: 80% of swap used for 40 minutes -> ticket; 10% used, and no swap at all -> silent
+    interval: 1m
+    input_series:
+      - series: 'node_memory_SwapTotal_bytes{instance="h"}'
+        values: '2000000000x60'
+      - series: 'node_memory_SwapFree_bytes{instance="h"}'
+        values: '400000000x60'
+      - series: 'node_memory_SwapTotal_bytes{instance="light"}'
+        values: '2000000000x60'
+      - series: 'node_memory_SwapFree_bytes{instance="light"}'
+        values: '1800000000x60'
+      - series: 'node_memory_SwapTotal_bytes{instance="none"}'
+        values: '0x60'
+      - series: 'node_memory_SwapFree_bytes{instance="none"}'
+        values: '0x60'
+    promql_expr_test:
+      - expr: ALERTS{alertname="HostSwapHeavilyUsed", alertstate="firing"}
+        eval_time: 45m
+        exp_samples:
+          - labels: 'ALERTS{alertname="HostSwapHeavilyUsed", alertstate="firing", severity="ticket", instance="h"}'
+            value: 1
+
+      - expr: ALERTS{alertname="HostSwapHeavilyUsed", alertstate="firing", instance=~"light|none"}
+        eval_time: 45m
+        exp_samples: []
+  # ---- containers ---------------------------------------------------------------------------------------------------------------
+  - name: a container restarting every 5 minutes -> ticket; a single restart (a deploy) and a steady count -> silent
+    interval: 1m
+    input_series:
+      - series: 'abb_hosting_container_restart_count{name="api"}'
+        values: '0+1x4 4+0x25'
+      - series: 'abb_hosting_container_restart_count{name="web"}'
+        values: '0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'abb_hosting_container_restart_count{name="postgres"}'
+        values: '7x30'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbContainerRestarting", alertstate="firing"}
+        eval_time: 6m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbContainerRestarting", alertstate="firing", severity="ticket", name="api"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbContainerRestarting", alertstate="firing", name=~"web|postgres"}
+        eval_time: 25m
+        exp_samples: []
+  - name: an OOM-killed container pages immediately; a clean one does not
+    interval: 1m
+    input_series:
+      - series: 'abb_hosting_container_oom_killed{name="postgres"}'
+        values: '0 0 1 1 1'
+      - series: 'abb_hosting_container_oom_killed{name="api"}'
+        values: '0x5'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing", severity="page", name="postgres"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing"}
+        eval_time: 1m
+        exp_samples: []
+  - name: an OOM kill that Docker's restart already reset (events only) still pages
+    interval: 1m
+    input_series:
+      - series: 'abb_hosting_container_oom_killed{name="worker"}'
+        values: '0x5'
+      - series: 'abb_hosting_container_oom_events{name="worker"}'
+        values: '0 0 2 2 0'
+      - series: 'abb_hosting_container_oom_events{name="api"}'
+        values: '0x5'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing"}
+        eval_time: 3m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing", severity="page", name="worker"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbContainerOOMKilled", alertstate="firing", name="api"}
+        eval_time: 3m
+        exp_samples: []
+  - name: a container that is not running for 6 minutes pages; 3 minutes of not running (a restart) does not
+    interval: 1m
+    input_series:
+      - series: 'abb_hosting_container_running{name="worker"}'
+        values: '1 1 0x10'
+      - series: 'abb_hosting_container_running{name="web"}'
+        values: '1 1 0 0 0 1 1 1 1 1 1 1'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbContainerNotRunning", alertstate="firing"}
+        eval_time: 9m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbContainerNotRunning", alertstate="firing", severity="page", name="worker"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbContainerNotRunning", alertstate="firing", name="web"}
+        eval_time: 9m
+        exp_samples: []
+  - name: container metrics file not refreshed for 20 minutes -> ticket; refreshed every minute -> silent
+    interval: 1m
+    input_series:
+      - series: 'abb_hosting_container_metrics_timestamp_seconds{}'
+        values: '0x2 120 180 240 300 360 420 480 540 600 660 720 780 840 900 960 1020 1080 1140 1200 1260 1320 1380 1440'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbHostMetricsStale", alertstate="firing"}
+        eval_time: 22m
+        exp_samples: []
+  - name: container metrics stale (timestamp stops advancing) -> ticket
+    interval: 1m
+    input_series:
+      - series: 'abb_hosting_container_metrics_timestamp_seconds{}'
+        values: '0 60 120 180 240 300 300x40'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbHostMetricsStale", alertstate="firing"}
+        eval_time: 30m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbHostMetricsStale", alertstate="firing", severity="ticket"}'
+            value: 1
+
+  # ---- public probe and certificate -----------------------------------------------------------------------------------------------
+  - name: probe failing for 8 minutes -> page; succeeding -> silent
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="abb-https",instance="https://abb.example.org/healthz"}'
+        values: '1 1 0x20'
+      - series: 'probe_success{job="abb-https",instance="https://ok.example.org/healthz"}'
+        values: '1x22'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbPublicProbeFailing", alertstate="firing"}
+        eval_time: 12m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbPublicProbeFailing", alertstate="firing", severity="page", job="abb-https", instance="https://abb.example.org/healthz"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbPublicProbeFailing", alertstate="firing", instance="https://ok.example.org/healthz"}
+        eval_time: 12m
+        exp_samples: []
+  - name: certificate with 10 days left -> ticket; 2 days left -> ticket and page; 60 days left -> silent
+    interval: 1m
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="abb-https",instance="ten"}'
+        values: '864000x200'
+      - series: 'probe_ssl_earliest_cert_expiry{job="abb-https",instance="two"}'
+        values: '172800x200'
+      - series: 'probe_ssl_earliest_cert_expiry{job="abb-https",instance="sixty"}'
+        values: '5184000x200'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbCertificateExpiring", alertstate="firing", instance="ten"}
+        eval_time: 90m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbCertificateExpiring", alertstate="firing", severity="ticket", job="abb-https", instance="ten"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbCertificateExpiringSoon", alertstate="firing", instance="ten"}
+        eval_time: 90m
+        exp_samples: []
+      - expr: ALERTS{alertname="AbbCertificateExpiringSoon", alertstate="firing", instance="two"}
+        eval_time: 90m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbCertificateExpiringSoon", alertstate="firing", severity="page", job="abb-https", instance="two"}'
+            value: 1
+      - expr: ALERTS{alertname=~"AbbCertificate.*", alertstate="firing", instance="sixty"}
+        eval_time: 90m
+        exp_samples: []
+
+  # ---- monitoring itself ----------------------------------------------------------------------------------------------------------
+  - name: a down monitoring component -> ticket; the application targets are not this alert's business
+    interval: 1m
+    input_series:
+      - series: 'up{job="node",instance="node-exporter:9100"}'
+        values: '1 1 0x10'
+      - series: 'up{job="prometheus",instance="localhost:9090"}'
+        values: '1x12'
+      - series: 'up{job="abb-api",instance="api:8000"}'
+        values: '0x12'
+    promql_expr_test:
+      - expr: ALERTS{alertname="AbbHostScrapeDown", alertstate="firing"}
+        eval_time: 8m
+        exp_samples:
+          - labels: 'ALERTS{alertname="AbbHostScrapeDown", alertstate="firing", severity="ticket", job="node", instance="node-exporter:9100"}'
+            value: 1
+      - expr: ALERTS{alertname="AbbHostScrapeDown", alertstate="firing", job=~"prometheus|abb-api"}
+        eval_time: 8m
+        exp_samples: []
+  - name: the Watchdog heartbeat always fires
+    interval: 1m
+    input_series:
+      - series: 'up{job="prometheus"}'
+        values: '1x5'
+    promql_expr_test:
+      - expr: ALERTS{alertname="Watchdog", alertstate="firing"}
+        eval_time: 2m
+        exp_samples:
+          - labels: 'ALERTS{alertname="Watchdog", alertstate="firing", severity="none"}'
+            value: 1

@@ -527,6 +527,14 @@ SELECT pid, state, backend_start FROM pg_stat_activity WHERE application_name = 
 SELECT id, job_type, attempt_count, left(last_error, 120) FROM outbox_jobs WHERE status = 'dead_letter';
 ```
 
+## Hosting on one server (Phase 23, ADR-178)
+
+`docs/hosting-guide.md` is the end-to-end recipe (server, DNS, Google sign-in, Caddy, secrets, first deploy, monitoring, backups, upgrades, a second app). The pieces: `deploy/hosting/compose.production.yml` (no published ports,
+`ABB_ENVIRONMENT=production`, PostgreSQL 17, memory ceilings), `deploy/hosting/edge/` (the shared Caddy), `deploy/hosting/compose.observability.yml` with `deploy/hosting/rules/host.yml` (disk, memory, backup, certificate alerts),
+`scripts/hosting-bootstrap.sh`, `hosting-secrets.sh`, `hosting-upgrade.sh`, `hosting-backup.sh`, `hosting-restore-drill.sh` and `hosting-verify.sh` (which also runs against any URL, `--server` on the host, `--server-probe` from outside).
+Local rigs: `make hosting-e2e`, `hosting-backup-e2e`, `hosting-upgrade-e2e`, `hosting-bootstrap-e2e`, `hosting-obs-e2e`. Operating it: [runbooks/hosting-operations.md](runbooks/hosting-operations.md).
+Live issuance, real sign-in, the real second provider and the server's own firewall and sshd are `UNVERIFIED (env)` until the owner's gated run.
+
 ## Runbooks
 
 - [Security observability](runbooks/security-observability.md): capture modes (the default is METADATA_ONLY; how to set FULL), scan budgets, settings changes and re-analysis, what is not scrubbed
@@ -545,6 +553,7 @@ SELECT id, job_type, attempt_count, left(last_error, 120) FROM outbox_jobs WHERE
 - [Backup and restore](runbooks/backup-restore.md): the bundle, scheduling, verifying, the restore procedure and exit codes, the restore drill
 - [Migrations](runbooks/migrations.md): the safe upgrade, rolling back each class, per-migration notes
 - [Secrets](runbooks/secrets.md): every secret and how it rotates (the event-id key does not)
+- [Operating a hosted instance](runbooks/hosting-operations.md): routine care, disk, memory, restarts, backups, certificates, upgrade and rollback, restoring onto a new server, rotating secrets, incident basics (Phase 23)
 
 The index by symptom, alert and dashboard row is [runbooks/README.md](runbooks/README.md).
 Recovery targets: with the backup tool above, RPO = the backup interval and RTO = the measured restore time (Phase 19b step 6). The spec §122 targets (RPO <= 15 min, RTO <= 4 h) need managed PostgreSQL with point-in-time recovery, which is not built.

@@ -1,0 +1,91 @@
+# Agent BlackBox behind the shared Caddy (Phase 23, ADR-178 decisions 2 and 6). Copy to sites/abb.caddy.
+# {$ABB_SITE_ADDRESS} is the public host name (abb.example.org); the apps are reached over the Docker network `edge`
+# by the aliases abb-api and abb-web, so a second app with its own `api` or `web` cannot be reached by mistake.
+#
+# What the proxy owns: TLS and the http-to-https redirect (automatic), the body limit, timeouts, compression, no response
+# buffering for event streams, the client address in X-Forwarded-For, and which paths exist publicly.
+# What it must NOT touch: the apps' security headers. The nonce Content-Security-Policy, HSTS, nosniff and frame denial
+# come from the applications (ADR-155); this file neither adds nor removes them, so the two can never disagree.
+{$ABB_SITE_ADDRESS} {
+	# Compressed text only, from a list: text/event-stream is also text/* and must never be encoded (an encoder holds an
+	# event stream back until its buffer fills).
+	encode {
+		zstd
+		gzip
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type text/plain*
+			header Content-Type text/javascript*
+			header Content-Type application/javascript*
+			header Content-Type application/json*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# The ceiling for an upload is 8 MiB (the API's own artifact ceiling). Two guards, because Caddy's `request_body` only
+	# fires when something READS the body: an upstream that answers early (a 401 for a bad key, never reading the body) would
+	# let any size through. So a declared Content-Length over the limit is refused here first (found by scripts/hosting-e2e.sh:
+	# max_size alone let a 9 MiB request through), and max_size still bounds chunked bodies, which declare no length.
+	request_body {
+		max_size 8MiB
+	}
+	@oversize expression `{http.request.header.Content-Length}.matches('^[0-9]+$') && int({http.request.header.Content-Length}) > 8388608`
+	handle @oversize {
+		respond 413
+	}
+
+	# Reveal nothing about the proxy.
+	header -Server
+
+	# One line per request: method, host, path, status, size, duration and remote address. Never headers (cookies,
+	# Authorization), never a query string, never a body. Rotated by size.
+	log {
+		output file /var/log/caddy/abb-access.log {
+			roll_size 20MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format filter {
+			wrap json
+			request>headers delete
+			resp_headers delete
+			request>uri regexp \?.* ""
+		}
+	}
+
+	# Not served publicly. Readiness is probed inside the network, /metrics is scraped inside the network (KI-220, KI-222),
+	# and the API documentation is off in production anyway.
+	@closed path /metrics /metrics/* /readyz /readyz/* /docs /docs/* /redoc /redoc/* /openapi.json
+	handle @closed {
+		respond 404
+	}
+
+	# The ingestion API and its liveness probe.
+	@api path /v1/* /healthz
+	handle @api {
+		reverse_proxy abb-api:8000 {
+			# -1: flush every write at once. A live run stream must arrive event by event.
+			flush_interval -1
+			lb_try_duration 5s
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 60s
+			}
+			header_down -Via
+		}
+	}
+
+	# Everything else is the dashboard.
+	handle {
+		reverse_proxy abb-web:3000 {
+			flush_interval -1
+			lb_try_duration 5s
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 60s
+			}
+			header_down -Via
+		}
+	}
+}

@@ -1,0 +1,9 @@
+# Negative control for scripts/hosting-e2e.sh (HOSTING_E2E_NEGATIVE=1): the mistakes an operator could make. The verifier must
+# FAIL on every one of them against the real stack, otherwise a green run proves nothing.
+services:
+  api:
+    environment:
+      ABB_TRUST_PROXY: "0"
+  web:
+    environment:
+      ABB_TRUST_PROXY: "0"

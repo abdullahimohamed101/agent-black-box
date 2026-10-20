@@ -1,0 +1,11 @@
+[Unit]
+Description=Every minute: Agent BlackBox container metrics
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=abb-container-metrics.service
+
+[Install]
+WantedBy=timers.target

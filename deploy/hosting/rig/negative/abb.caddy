@@ -1,0 +1,12 @@
+# Negative control: a naive proxy. Routes the private paths to the API, compresses everything (event streams too), limits no
+# body, and flushes nothing early. Never used outside scripts/hosting-e2e.sh with HOSTING_E2E_NEGATIVE=1.
+{$ABB_SITE_ADDRESS} {
+	encode gzip
+	@api path /v1/* /healthz /metrics /readyz /docs /redoc /openapi.json
+	handle @api {
+		reverse_proxy abb-api:8000
+	}
+	handle {
+		reverse_proxy abb-web:3000
+	}
+}

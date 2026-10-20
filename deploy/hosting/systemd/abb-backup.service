@@ -1,0 +1,31 @@
+# Nightly encrypted backup with an off-site copy (Phase 23). Installed by scripts/hosting-bootstrap.sh into /etc/systemd/system.
+# Runs as the deploy user (who is in the docker group and so can run the compose `backup` service); /etc/abb/backup.env is
+# 0600 and holds the settings, /etc/abb/backup.pass the passphrase, /etc/abb/rclone.conf the provider key.
+[Unit]
+Description=Agent BlackBox encrypted backup and off-site copy
+Wants=docker.service network-online.target
+After=docker.service network-online.target
+# A failed run is visible in `systemctl status` and in the age alert; there is no automatic retry loop on purpose.
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+Environment=ABB_BACKUP_ENV=/etc/abb/backup.env
+Environment=RCLONE_CONFIG=/etc/abb/rclone.conf
+ExecStart=/opt/abb/scripts/hosting-backup.sh
+# A backup that hangs must not hold the lock for ever (the next night's run would refuse to start).
+TimeoutStartSec=3h
+Nice=10
+IOSchedulingClass=idle
+# The unit needs the Docker socket and /opt/abb; it needs nothing else writable except the textfile directory.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/abb/backups /var/lib/node_exporter/textfile
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes

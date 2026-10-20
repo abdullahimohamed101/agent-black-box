@@ -1,0 +1,18 @@
+# Container restart / OOM / running metrics for node_exporter's textfile collector (Phase 23). Installed by scripts/hosting-bootstrap.sh.
+[Unit]
+Description=Agent BlackBox container metrics for Prometheus
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+Environment=ABB_BACKUP_ENV=/etc/abb/backup.env
+ExecStart=/opt/abb/scripts/hosting-container-metrics.sh
+TimeoutStartSec=60
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/node_exporter/textfile

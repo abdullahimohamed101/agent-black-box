@@ -2,7 +2,7 @@
 """Keep the command blocks in the user-facing docs honest (Phase 20, D14).
 
 usage: docs_commands_check.py [--no-run] [FILE ...]
-       (default FILES: docs/README.md docs/quickstart.md docs/deployment.md docs/troubleshooting.md)
+       (default FILES: docs/README.md docs/quickstart.md docs/deployment.md docs/troubleshooting.md docs/hosting-guide.md)
 
 Every fenced `bash`/`sh`/`console` block is checked by what precedes it:
 
@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_FILES = ["docs/README.md", "docs/quickstart.md", "docs/deployment.md", "docs/troubleshooting.md"]
+DEFAULT_FILES = ["docs/README.md", "docs/quickstart.md", "docs/deployment.md", "docs/troubleshooting.md", "docs/hosting-guide.md"]
 LANGS = {"bash", "sh", "shell", "console"}
 CONFIRM = "[CONFIRM AFTER STEP 10]"
 CONFIRM_TARGETS = {"demo", "demo-reset"}
@@ -52,7 +52,7 @@ PATH_PREFIXES = ("scripts/", "examples/", "docs/", "apps/", "packages/", "integr
                  "infrastructure/")
 PATH_NAMES = {".env.example", "docker-compose.yml", "Makefile"}
 
-LINT_FILES = {"docs/README.md", "docs/quickstart.md", "docs/deployment.md", "docs/troubleshooting.md"}
+LINT_FILES = {"docs/README.md", "docs/quickstart.md", "docs/deployment.md", "docs/troubleshooting.md", "docs/hosting-guide.md"}
 LINT_PATTERNS = [
     (re.compile(r"TODO|FIXME|lorem|NEEDS INPUT", re.I), "placeholder"),
     (re.compile(r"production[- ]ready|SOC ?2|enterprise|\bSaaS\b", re.I), "claim the release plan forbids"),
@@ -133,6 +133,11 @@ class Repo:
         cli = (ROOT / "apps/api/src/abb_api/cli.py").read_text(encoding="utf-8")
         self.cli_commands = set(re.findall(r"add_parser\(\s*\"([a-z0-9-]+)\"", cli))
         known = (ROOT / ".env.example").read_text(encoding="utf-8") + compose
+        # The hosting recipe (Phase 23) names variables the development files do not: its template and overlays.
+        for extra in [ROOT / ".env.production.example", *(ROOT / "deploy/hosting").rglob("*.yml"), *(ROOT / "deploy/hosting").rglob("*.example"),
+                      *(ROOT / "deploy/hosting/systemd").glob("*"), *(ROOT / "scripts").glob("hosting-*.sh")]:
+            if extra.is_file():
+                known += extra.read_text(encoding="utf-8", errors="replace")
         for source in (ROOT / "apps/api/src").rglob("*.py"):
             known += source.read_text(encoding="utf-8", errors="replace")
         self.env_names = set(re.findall(r"ABB_[A-Z0-9_]+", known))
