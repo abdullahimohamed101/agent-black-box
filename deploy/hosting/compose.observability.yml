@@ -37,7 +37,7 @@ services:
   # Renders the configuration that needs the public origin and the runbook base URL, and hands the data volumes to the deploy user.
   # busybox only (sed, chown, printf); no network. Runs to completion before anything else in the profile starts.
   obs-init:
-    image: busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+    image: busybox:1.38@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
     profiles: ["observability"]
     user: "0:0"
     entrypoint: ["sh", "-ec"]
@@ -126,7 +126,7 @@ services:
     logging: *logging
 
   node-exporter:
-    image: prom/node-exporter:v1.9.1@sha256:d00a542e409ee618a4edc67da14dd48c5da66726bbd5537ab2af9c1dfc442c8a
+    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
     profiles: ["observability"]
     # pid: host is what the upstream compose example uses so that the mount table read is the host's, not the container's.
     pid: host
@@ -145,7 +145,7 @@ services:
     logging: *logging
 
   alertmanager:
-    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
     profiles: ["observability"]
     user: *obs-user
     command:
@@ -169,7 +169,7 @@ services:
     logging: *logging
 
   blackbox:
-    image: prom/blackbox-exporter:v0.26.0@sha256:92e05d5fe0df01d3980518dc42f07b778a8997048b57392ebc7f7391ebd7bb06
+    image: prom/blackbox-exporter:v0.29.0@sha256:9613f2884689b6fad9f1939f6a3b0388c93a022cfaededb19545b329b5c83dea
     profiles: ["observability"]
     command:
       - --config.file=/etc/blackbox/blackbox.yml
