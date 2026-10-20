@@ -182,9 +182,17 @@ async def test_the_scrape_serves_database_gauges_and_every_new_family_parses(
     assert (await api.post_batch([])).status_code == 400
     # A job is pending (the summarizer has not run): the scrape reports it, from the database.
     assert (await api.post_batch([wire_event(run, 1)])).status_code == 202
-    reply = await api.client.get("/metrics", headers={"Authorization": f"Bearer {TOKEN}"})
-    assert reply.status_code == 200
-    families = parse(reply.text)
+    # The scrape waits a short, fixed time for the database sample and serves the previous values
+    # when it is slower (a loaded machine, parallel workers); the sample still finishes in the
+    # background, so a later scrape inside the cache window sees it. Poll, bounded, instead of
+    # assuming the first scrape was fast enough.
+    for _ in range(100):
+        reply = await api.client.get("/metrics", headers={"Authorization": f"Bearer {TOKEN}"})
+        assert reply.status_code == 200
+        families = parse(reply.text)
+        if sample_value(families, "worker_jobs_pending", type="summarize_run") is not None:
+            break
+        await asyncio.sleep(0.1)
     assert sample_value(families, "abb_scrape_database_up") == 1
     assert sample_value(families, "worker_jobs_pending", type="summarize_run") == 1
     lag = sample_value(families, "worker_job_lag_seconds", type="summarize_run")
