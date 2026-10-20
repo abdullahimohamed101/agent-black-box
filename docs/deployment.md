@@ -7,12 +7,14 @@ Compose file in the repository. Read the [quickstart](quickstart.md) first: it i
 
 This page covers one machine, one Compose project, one PostgreSQL. It does **not** cover:
 
-- a domain name, TLS certificates or a reverse proxy beyond the notes [below](#behind-a-reverse-proxy);
+- a domain name, TLS certificates or a reverse proxy beyond the notes [below](#behind-a-reverse-proxy) (the [hosting guide](hosting-guide.md) covers them for one server);
 - setting up an identity provider (the sign-in runbook covers the settings; you bring the provider);
 - more than one machine, a managed database, high availability or autoscaling;
 - hosting a service for other organisations. Nothing in the project is operated for you.
 
-A fuller hosting guide is planned as a separate piece of work; it does not exist yet and this page does not replace it.
+For a rented server with a domain, automatic HTTPS, Google sign-in, off-site backups and monitoring, follow the [hosting guide](hosting-guide.md) instead: it is the end-to-end
+recipe (Phase 23, [ADR-178](decisions/ADR-178-private-hosting-topology.md)) and its proxy chain is exercised locally by `make hosting-e2e`. This page remains the shorter reference for running
+the stack behind a proxy you operate yourself.
 
 **What has been verified.** The settings, commands and file names on this page are checked against the repository by
 `scripts/docs-commands-check.sh` (every variable, `make` target, Compose profile and path exists). The Compose stack itself runs
@@ -184,7 +186,7 @@ The stack speaks plain HTTP on loopback; terminate TLS at a proxy you run. The e
 
 ## Not covered
 
-Domain and DNS, certificate issuance and renewal, choosing and configuring an identity provider, high availability, and
-monitoring beyond the shipped Prometheus rules and dashboard are yours to arrange. The planned hosting guide is intended to
-cover them; until it exists, use [operations](OPERATIONS.md), the [runbooks](runbooks/README.md) and
+High availability, more than one machine and a managed database are not covered. Domain and DNS, certificate issuance, Google sign-in and host monitoring for one
+server are in the [hosting guide](hosting-guide.md); its live parts (Let's Encrypt, Google, the second backup provider, the server's firewall) are `UNVERIFIED (env)` until you
+have run them. Another identity provider, or a different proxy, is yours to arrange with [operations](OPERATIONS.md), the [runbooks](runbooks/README.md) and
 [security](SECURITY.md) as the reference.

@@ -64,6 +64,21 @@ def _alerts() -> list[dict[str, Any]]:
     return [r for _, r in _rules() if "alert" in r]
 
 
+def _host_alert_names() -> set[str]:
+    """Alerts of the hosting recipe (deploy/hosting/rules).
+
+    Runbooks name them, but their expressions read host and container series that this API
+    does not export, so the other checks here stay on the API's own rules.
+    """
+    names: set[str] = set()
+    for path in sorted((ROOT / "deploy" / "hosting" / "rules").glob("*.yml")):
+        if path.name.endswith(".test.yml"):
+            continue
+        for group in _load_yaml(path)["groups"]:
+            names.update(r["alert"] for r in group["rules"] if "alert" in r)
+    return names
+
+
 class Analysis:
     """The identifiers of one PromQL expression, split into metric names and label names."""
 
@@ -333,7 +348,7 @@ def test_runbook_links_resolve_and_anchors_exist() -> None:
 
 
 def test_metric_and_alert_names_in_runbooks_exist() -> None:
-    alert_names = {a["alert"] for a in _alerts()}
+    alert_names = {a["alert"] for a in _alerts()} | _host_alert_names()
     prefixes = _prefixes()
     problems: list[str] = []
     for path in _runbook_files():
@@ -420,6 +435,8 @@ def test_dashboard_references_every_alert_signal_row() -> None:
         for cell in [line.rstrip().rstrip("|").rsplit("|", 1)[-1]]
     }
     named -= {"Dashboard row", "---"}
+    # A signal with no dashboard row says so, like its alert does.
+    named = {n for n in named if not n.startswith("none yet")}
     short_rows = {r.split(":")[0] for r in rows}
     assert named, "no dashboard rows found in the index"
     assert named <= short_rows, f"index names rows that do not exist: {named - short_rows}"

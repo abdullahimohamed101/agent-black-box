@@ -1,0 +1,289 @@
+# Host, container, backup and certificate alerts for a hosted Agent BlackBox (Phase 23, ADR-178). Loaded next to the application
+# rules in deploy/observability/prometheus/rules (AbbTargetDown covers abb-api and abb-worker). Unit-tested with promtool in
+# deploy/hosting/rules/host.test.yml: every alert has a test that makes it fire and a test that proves it stays silent when healthy.
+#
+# Severity follows the application rules: `page` = look now, `ticket` = look within a working day. Route on the label in Alertmanager.
+# Thresholds are defaults for ONE small server (2 vCPU, 4 GB, 40 GB disk) shared with a second app; each states why. Tune the number and
+# the `for:` here, nothing else.
+#
+# Metric sources: node_exporter (node_*), blackbox_exporter (probe_*), and the textfile collector, which reads
+#   abb_backup.prom            written by scripts/hosting-backup.sh  (abb_hosting_backup_*)
+#   abb_restore_drill.prom     written by scripts/hosting-restore-drill.sh
+#   abb_containers.prom        written by scripts/hosting-container-metrics.sh every minute (abb_hosting_container_*)
+
+groups:
+  - name: abb-host-disk
+    rules:
+      - alert: HostDiskUsageHigh
+        expr: |
+          100 - 100 * node_filesystem_avail_bytes{mountpoint=~"/|/var/lib/docker",fstype!~"tmpfs|overlay|squashfs|ramfs"}
+                    / node_filesystem_size_bytes{mountpoint=~"/|/var/lib/docker",fstype!~"tmpfs|overlay|squashfs|ramfs"} > 80
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} is over 80% full"
+          description: >-
+            {{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | printf "%.0f" }}% used. The Docker data directory is on
+            the same disk unless it has its own mount, so images, container logs (rotated at 3 x 10 MB each), volumes and backups
+            all count. 80% for 15 minutes is a trend, not a build in progress: there is still room to act before 90%.
+          runbook_url: docs/runbooks/hosting-operations.md#disk-is-filling-up
+
+      - alert: HostDiskUsageCritical
+        expr: |
+          100 - 100 * node_filesystem_avail_bytes{mountpoint=~"/|/var/lib/docker",fstype!~"tmpfs|overlay|squashfs|ramfs"}
+                    / node_filesystem_size_bytes{mountpoint=~"/|/var/lib/docker",fstype!~"tmpfs|overlay|squashfs|ramfs"} > 90
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} is over 90% full"
+          description: >-
+            {{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | printf "%.0f" }}% used. PostgreSQL stops accepting writes
+            when its disk is full, and a full disk can corrupt a half-written backup. 5 minutes filters a momentary spike.
+          runbook_url: docs/runbooks/hosting-operations.md#disk-is-filling-up
+
+      - alert: HostInodesLow
+        expr: |
+          100 - 100 * node_filesystem_files_free{mountpoint=~"/|/var/lib/docker",fstype!~"tmpfs|overlay|squashfs|ramfs"}
+                    / node_filesystem_files{mountpoint=~"/|/var/lib/docker",fstype!~"tmpfs|overlay|squashfs|ramfs"} > 90
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Inodes on {{ $labels.mountpoint }} are over 90% used"
+          description: >-
+            {{ $labels.mountpoint }} on {{ $labels.instance }} has used {{ $value | printf "%.0f" }}% of its inodes (many small files:
+            image layers, artifacts). The disk can be nearly empty and still refuse to create a file.
+          runbook_url: docs/runbooks/hosting-operations.md#disk-is-filling-up
+
+      - alert: HostDiskFillingFast
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{mountpoint=~"/|/var/lib/docker",fstype!~"tmpfs|overlay|squashfs|ramfs"}[6h], 24 * 3600) < 0
+          and
+          node_filesystem_avail_bytes{mountpoint=~"/|/var/lib/docker",fstype!~"tmpfs|overlay|squashfs|ramfs"}
+            / node_filesystem_size_bytes{mountpoint=~"/|/var/lib/docker",fstype!~"tmpfs|overlay|squashfs|ramfs"} < 0.4
+        for: 30m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} is projected to fill within 24 hours"
+          description: >-
+            At the rate of the last 6 hours {{ $labels.mountpoint }} on {{ $labels.instance }} runs out of space within a day. It only
+            fires when under 40% is free, so a big image pull on an empty disk does not raise it. 30 minutes of a sustained slope
+            avoids a single large write (an upgrade build) being extrapolated.
+          runbook_url: docs/runbooks/hosting-operations.md#disk-is-filling-up
+
+  - name: abb-host-memory
+    rules:
+      - alert: HostMemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Under 10% of memory is available"
+          description: >-
+            {{ $labels.instance }} has {{ $value | humanizePercentage }} of its memory available (MemAvailable includes reclaimable
+            cache). On a 4 GB server shared by two apps this is the step before the kernel or Docker kills a container. 10 minutes
+            skips a build or a backup spike.
+          runbook_url: docs/runbooks/hosting-operations.md#memory-is-low
+
+      - alert: HostSwapHeavilyUsed
+        expr: (node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes) / node_memory_SwapTotal_bytes > 0.5 and node_memory_SwapTotal_bytes > 0
+        for: 30m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "More than half of the swap is in use"
+          description: >-
+            {{ $labels.instance }} has used {{ $value | humanizePercentage }} of its swap for half an hour. The 2 GiB swapfile is a
+            safety net; living in it makes PostgreSQL and the API slow. Time to resize the server (docs/hosting-guide.md).
+          runbook_url: docs/runbooks/hosting-operations.md#memory-is-low
+
+  - name: abb-host-containers
+    rules:
+      - alert: AbbContainerRestarting
+        expr: increase(abb_hosting_container_restart_count[30m]) >= 3
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Container {{ $labels.name }} restarted 3 or more times in 30 minutes"
+          description: >-
+            Docker restarted {{ $labels.name }} {{ $value | printf "%.0f" }} times in half an hour (restart: unless-stopped hides a crash
+            loop behind a running status). One restart is a deploy; three is a crash loop or an out-of-memory kill.
+          runbook_url: docs/runbooks/hosting-operations.md#a-container-keeps-restarting
+
+      - alert: AbbContainerOOMKilled
+        expr: abb_hosting_container_oom_killed == 1 or abb_hosting_container_oom_events > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "Container {{ $labels.name }} was killed for exceeding its memory limit"
+          description: >-
+            The last stop of {{ $labels.name }} was an out-of-memory kill (its mem_limit, or the host ran out). It restarts by itself,
+            but it will be killed again until the limit or the server is changed. Docker resets the flag when it restarts the container, so the alert also reads the daemon's oom events of the last 15 minutes (abb_hosting_container_oom_events).
+          runbook_url: docs/runbooks/hosting-operations.md#a-container-keeps-restarting
+
+      - alert: AbbContainerNotRunning
+        expr: abb_hosting_container_running == 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Container {{ $labels.name }} is not running"
+          description: >-
+            {{ $labels.name }} exists but its state is not running (exited, dead or restarting) for 5 minutes. Containers that should
+            not run (the one-shot migrate job) are not reported.
+          runbook_url: docs/runbooks/hosting-operations.md#a-container-keeps-restarting
+
+      - alert: AbbHostMetricsStale
+        expr: time() - abb_hosting_container_metrics_timestamp_seconds > 600
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The container metrics file has not been refreshed for 10 minutes"
+          description: >-
+            scripts/hosting-container-metrics.sh (abb-container-metrics.timer) writes it every minute. While it is stale the restart,
+            out-of-memory and not-running alerts above are blind.
+          runbook_url: docs/runbooks/hosting-operations.md#the-host-metrics-are-stale
+
+  - name: abb-host-backup
+    rules:
+      - alert: AbbHostingBackupTooOld
+        expr: time() - abb_hosting_backup_last_success_timestamp_seconds > 36 * 3600 and abb_hosting_backup_last_success_timestamp_seconds > 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The last complete backup is over 36 hours old"
+          description: >-
+            A complete backup is created, verified, copied to the second provider and checked there. The newest is {{ $value | humanizeDuration }}
+            old. The timer runs nightly, so 36 hours is one missed night plus slack. RPO is this interval.
+          runbook_url: docs/runbooks/hosting-operations.md#the-backup-is-late-or-failing
+
+      - alert: AbbHostingBackupVeryOld
+        expr: time() - abb_hosting_backup_last_success_timestamp_seconds > 72 * 3600 and abb_hosting_backup_last_success_timestamp_seconds > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "The last complete backup is over 72 hours old"
+          description: >-
+            Three nights without a complete backup: a disk or server loss now costs three days of data. Page.
+          runbook_url: docs/runbooks/hosting-operations.md#the-backup-is-late-or-failing
+
+      - alert: AbbHostingOffsiteTooOld
+        expr: time() - abb_hosting_backup_offsite_last_success_timestamp_seconds > 36 * 3600 and abb_hosting_backup_offsite_last_success_timestamp_seconds > 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The last off-site copy is over 36 hours old"
+          description: >-
+            Backups may still be created on the server, but the second provider has not received one for {{ $value | humanizeDuration }}:
+            a lost server would lose them too. Usually the provider key, the bucket or the network.
+          runbook_url: docs/runbooks/hosting-operations.md#the-backup-is-late-or-failing
+
+      - alert: AbbHostingBackupNeverRan
+        expr: |
+          absent(abb_hosting_backup_last_success_timestamp_seconds)
+          and on() (time() - process_start_time_seconds{job="prometheus"} > 36 * 3600)
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "No backup has ever completed on this server (KI-243)"
+          description: >-
+            Prometheus has been up for over 36 hours and no backup metric exists: the timer was never enabled or the first run always fails.
+            A backup that is not scheduled writes no file, so the age alerts above cannot see it; this is the alert that can.
+          runbook_url: docs/runbooks/hosting-operations.md#the-backup-is-late-or-failing
+
+      - alert: AbbHostingBackupRunFailed
+        expr: abb_hosting_backup_last_run_success == 0
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The most recent backup run failed"
+          description: >-
+            The latest run of scripts/hosting-backup.sh exited with an error (the previous success time is kept, so the age alerts count from
+            it). Read the unit's output with journalctl -u abb-backup.
+          runbook_url: docs/runbooks/hosting-operations.md#the-backup-is-late-or-failing
+
+      - alert: AbbHostingRestoreDrillOld
+        expr: time() - abb_hosting_restore_drill_last_success_timestamp_seconds > 45 * 86400 and abb_hosting_restore_drill_last_success_timestamp_seconds > 0
+        for: 1h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The last successful restore drill is over 45 days old"
+          description: >-
+            A backup nobody has restored is a hope. Run scripts/hosting-restore-drill.sh --latest (it restores into a throwaway database)
+            monthly; it writes this metric on success.
+          runbook_url: docs/runbooks/hosting-operations.md#the-backup-is-late-or-failing
+
+  - name: abb-host-public
+    rules:
+      - alert: AbbPublicProbeFailing
+        expr: probe_success{job="abb-https"} == 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "The public health check {{ $labels.instance }} is failing"
+          description: >-
+            blackbox_exporter cannot fetch {{ $labels.instance }} with a valid certificate and a 200 answer: DNS, the certificate, Caddy,
+            the firewall or the application. This is what a visitor experiences, probed from the server itself. 5 minutes skips a restart.
+          runbook_url: docs/runbooks/hosting-operations.md#the-site-is-down-or-the-certificate-is-wrong
+
+      - alert: AbbCertificateExpiring
+        expr: probe_ssl_earliest_cert_expiry{job="abb-https"} - time() < 14 * 86400
+        for: 1h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The certificate of {{ $labels.instance }} expires in under 14 days"
+          description: >-
+            Caddy renews at about 30 days before expiry, so under 14 days means renewal has been failing for two weeks (port 80/443
+            blocked, DNS changed, Let's Encrypt rate limit). {{ $value | humanizeDuration }} left.
+          runbook_url: docs/runbooks/hosting-operations.md#the-site-is-down-or-the-certificate-is-wrong
+
+      - alert: AbbCertificateExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry{job="abb-https"} - time() < 3 * 86400
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "The certificate of {{ $labels.instance }} expires in under 3 days"
+          description: >-
+            {{ $value | humanizeDuration }} left. Browsers and every SDK will refuse the site when it expires.
+          runbook_url: docs/runbooks/hosting-operations.md#the-site-is-down-or-the-certificate-is-wrong
+
+  - name: abb-host-monitoring
+    rules:
+      - alert: AbbHostScrapeDown
+        expr: up{job=~"node|alertmanager|blackbox|prometheus"} == 0
+        for: 3m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The monitoring component {{ $labels.job }} is down"
+          description: >-
+            Prometheus cannot scrape {{ $labels.job }} on {{ $labels.instance }} (3 minutes is 12 missed scrapes at 15 s). While it is down the
+            alerts that depend on it are blind. The application targets have their own alert, AbbTargetDown.
+          runbook_url: docs/runbooks/hosting-operations.md#the-host-metrics-are-stale
+
+      # Always firing, on purpose. Alertmanager routes it to the dead-man's switch receiver (a Healthchecks.io-style URL), so the absence of
+      # its ping means the alerting pipeline itself is broken. With no receiver configured it goes to the `deadman` receiver, which sends nothing until a dead-man URL file is configured (alertmanager.yml.tmpl).
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting pipeline heartbeat"
+          description: "This alert is always firing. If the dead-man's switch stops hearing it, Prometheus, Alertmanager or the network is down."
+          runbook_url: docs/runbooks/hosting-operations.md#alerts-never-arrive

@@ -1,0 +1,27 @@
+# EXAMPLE ONLY (Phase 23): a second app on the same machine. Never applied by this repository and never committed to the
+# ServerFlow repository. Copy to /opt/edge/sites/serverflow.caddy and edit the host name.
+#
+# The ServerFlow gateway joins the `edge` network from an override file kept on the server (for example
+# /opt/serverflow/compose.edge.yml, passed with -f), with its other loopback ports left as they are or reached by SSH tunnel:
+#
+#   services:
+#     gateway:
+#       networks:
+#         default: {}
+#         edge:
+#           aliases: [serverflow-gateway]
+#   networks:
+#     edge:
+#       external: true
+#
+# Its control plane (:19090), Grafana (:13000), Prometheus (:19091) and Jaeger (:16686) are not routed: use an SSH tunnel.
+sf.example.org {
+	request_body {
+		max_size 8MiB
+	}
+	header -Server
+	reverse_proxy serverflow-gateway:8080 {
+		flush_interval -1
+		header_down -Via
+	}
+}
