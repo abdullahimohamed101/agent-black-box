@@ -7,8 +7,14 @@ import { RunsTable } from "@/components/RunsTable";
 import { fixtureRuns } from "@/fixtures";
 import { withFindings } from "@/fixtures/findings";
 import { cascadeRun, failingChainRun, loopingRun, successRun } from "@/fixtures/runs";
-import type { FindingOut, RunFindingsOut } from "@/lib/api/types";
-import { findingsCell, stateLine, summarizeEvidence } from "@/lib/findings";
+import type { FindingOut, RunFindingsOut, RunOut } from "@/lib/api/types";
+import {
+  analysisAgeSeconds,
+  findingsCell,
+  formatAge,
+  stateLine,
+  summarizeEvidence,
+} from "@/lib/findings";
 import { BASE, renderWithQuery, stubApi } from "./helpers";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -27,7 +33,11 @@ const withState = (
   extra: Partial<RunFindingsOut> = {},
 ): RunFindingsOut => ({ ...base, ...extra, state: { ...base.state, ...state } });
 
-function renderPanel(body: RunFindingsOut | (() => Response), runActive = false) {
+function renderPanel(
+  body: RunFindingsOut | (() => Response),
+  runActive = false,
+  clock?: () => number,
+) {
   const onShowEvent = vi.fn();
   stubApi({ "/findings": typeof body === "function" ? body : reply(body) });
   renderWithQuery(
@@ -36,24 +46,56 @@ function renderPanel(body: RunFindingsOut | (() => Response), runActive = false)
       runActive={runActive}
       summaryProcessing={false}
       onShowEvent={onShowEvent}
+      clock={clock}
     />,
   );
   return onShowEvent;
 }
 
 describe("Findings panel", () => {
-  it("shows loading, then health dimensions with their rule and inputs and the findings", async () => {
+  it("shows loading, then the findings; the health dimensions are not on the page (ADR-166: API only)", async () => {
     renderPanel(looping.findings!);
     expect(screen.getByRole("status")).toHaveTextContent("Loading findings");
-    const health = await screen.findByTestId("health");
-    expect(within(health).getByText("Overall:")).toBeInTheDocument();
-    const loops = health.querySelector('[data-dimension="loops"]') as HTMLElement;
-    expect(loops).toHaveTextContent("Warning");
-    expect(loops).toHaveTextContent("A probable loop, a reported loop or identical requests");
-    expect(loops).toHaveTextContent("findings: 1");
-    expect(health.querySelector('[data-dimension="reliability"]')).toHaveTextContent("OK");
+    expect(await screen.findAllByTestId("finding")).toHaveLength(1);
+    expect(screen.queryByTestId("health")).toBeNull();
+    expect(document.querySelector("[data-dimension], .health-disclosure")).toBeNull();
     // no numeric score anywhere
-    expect(health.textContent).not.toMatch(/\d+\s*\/\s*100/);
+    expect(document.body.textContent).not.toMatch(/\d+\s*\/\s*100/);
+  });
+
+  describe("as-of label for a live run (KI-097)", () => {
+    afterEach(() => vi.useRealTimers());
+    const T0 = Date.parse("2026-10-18T12:00:12Z");
+    const live = (computedAt: string | null) =>
+      withState(
+        looping.findings!,
+        { status: "processing", computed_at: computedAt },
+        { server_time: "2026-10-18T12:00:12Z" },
+      );
+
+    it("reads as of 12 s ago for an injected clock, then keeps counting", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(T0);
+      let now = T0;
+      renderPanel(live("2026-10-18T12:00:00Z"), true, () => now);
+      const line = await screen.findByTestId("findings-state");
+      await waitFor(() => expect(line).toHaveTextContent("as of 12 s ago"));
+      expect(line).not.toHaveTextContent("Analysing…");
+      now = T0 + 5000;
+      await waitFor(() => expect(line).toHaveTextContent("as of 17 s ago"), { timeout: 3000 });
+    });
+
+    it("keeps listing the earlier findings while the new analysis runs", async () => {
+      renderPanel(live("2026-10-18T12:00:00Z"), true);
+      expect(await screen.findAllByTestId("finding")).toHaveLength(1);
+    });
+
+    it("says Analysing for a run that was never analysed, with no age", async () => {
+      renderPanel(live(null), true);
+      const line = await screen.findByTestId("findings-state");
+      expect(line).toHaveTextContent("Analysing…");
+      expect(line).not.toHaveTextContent(/as of/);
+    });
   });
 
   it("labels a heuristic finding Probable in words and a typed fact Observed", async () => {
@@ -100,7 +142,7 @@ describe("Findings panel", () => {
     expect(within(f).getByLabelText("Pattern")).toHaveTextContent("bulk_import");
   });
 
-  it("says No findings for an analysed run without any, and keeps healthy dimensions", async () => {
+  it("says No findings for an analysed run without any", async () => {
     const ok = withFindings(successRun());
     renderPanel(ok.findings!);
     expect(await screen.findByTestId("findings-empty")).toHaveTextContent("Nothing wrong found.");
@@ -127,29 +169,15 @@ describe("Findings panel", () => {
     expect(document.querySelector('[data-state="' + status + '"]')).not.toBeNull();
   });
 
-  it("does not present a failed analysis as healthy: the API's no_data dimensions are shown as such", async () => {
-    const base = looping.findings!;
-    const failed = withState(
-      base,
-      { status: "failed" },
-      {
-        health: {
-          overall: "ok",
-          dimensions: base.health.dimensions.map((d) =>
-            d.name === "loops"
-              ? { ...d, status: "no_data", rule: "The latest analysis failed.", finding_ids: [] }
-              : d,
-          ),
-        },
-      },
+  it("does not present a failed analysis as healthy: it says the analysis failed and lists the last findings", async () => {
+    renderPanel(withState(looping.findings!, { status: "failed" }));
+    expect(await screen.findByTestId("findings-state")).toHaveTextContent(
+      "The latest analysis failed and needs an operator.",
     );
-    renderPanel(failed);
-    const loops = await screen.findByTestId("health");
-    const dim = loops.querySelector('[data-dimension="loops"]') as HTMLElement;
-    expect(dim).toHaveTextContent("No data");
-    expect(dim).toHaveTextContent("The latest analysis failed.");
-    // the previous findings are still listed
+    // the previous findings are still listed, and nothing on the panel calls the run healthy or OK
     expect(screen.getAllByTestId("finding")).toHaveLength(1);
+    expect(screen.queryByTestId("health")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/healthy|\bOK\b/);
   });
 
   it("says when only the first events of a huge run were analysed", async () => {
@@ -205,26 +233,30 @@ describe("Findings panel", () => {
 });
 
 describe("RunDetail with findings", () => {
-  it("is a single panel after the banner; Show evidence selects the event and opens the drawer", async () => {
+  it("Show evidence, from the Findings tab, shows the event in the timeline and opens the drawer", async () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={looping.run.id} base={BASE} live={false} />);
+    await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
     const finding = await screen.findByTestId("finding");
     expect(finding).toHaveTextContent("Probable: the agent may be looping");
-    await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
     await user.click(within(finding).getByRole("button", { name: "Show evidence" }));
     const drawer = await screen.findByRole("dialog");
     expect(drawer).toHaveTextContent("tool.call.completed");
-    expect(screen.getByRole("option", { selected: true })).toHaveTextContent("tool.call.completed");
+    expect(await screen.findByRole("option", { selected: true })).toHaveTextContent(
+      "tool.call.completed",
+    );
   });
 
   it("clears a filter that hides the cited event", async () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={looping.run.id} base={BASE} live={false} />);
-    const finding = await screen.findByTestId("finding");
     await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
     await user.click(screen.getByLabelText("Errors only"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
+    const finding = await screen.findByTestId("finding");
     await user.click(within(finding).getByRole("button", { name: "Show evidence" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByLabelText("Errors only")).not.toBeChecked();
@@ -240,8 +272,9 @@ describe("RunDetail with findings", () => {
     });
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={looping.run.id} base={BASE} live={false} />);
-    const finding = await screen.findByTestId("finding");
     await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("3 of 3"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
+    const finding = await screen.findByTestId("finding");
     await user.click(within(finding).getByRole("button", { name: "Show evidence" }));
     const drawer = await screen.findByRole("dialog");
     expect(drawer).toHaveTextContent("tool.call.completed");
@@ -257,8 +290,9 @@ describe("RunDetail with findings", () => {
     });
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={looping.run.id} base={BASE} live={false} />);
-    const finding = await screen.findByTestId("finding");
     await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
+    const finding = await screen.findByTestId("finding");
     await user.click(within(finding).getByRole("button", { name: "Show evidence" }));
     // loaded events still win: the event is in the timeline, so no notice and a drawer
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
@@ -275,8 +309,9 @@ describe("RunDetail with findings", () => {
     });
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={failing.run.id} base={BASE} live={false} />);
-    const finding = await screen.findByTestId("finding");
     await waitFor(() => expect(screen.getByTestId("progress")).toHaveTextContent("events shown"));
+    await user.click(screen.getByRole("tab", { name: "Findings" }));
+    const finding = await screen.findByTestId("finding");
     await user.click(within(finding).getAllByRole("button", { name: "Show evidence" })[0]!);
     const notice = await screen.findByTestId("event-notice");
     expect(notice).toHaveTextContent("could not be loaded");
@@ -285,11 +320,11 @@ describe("RunDetail with findings", () => {
     expect(screen.queryByTestId("event-notice")).toBeNull();
   });
 
-  it("the first-error Show it button still works through the shared jump", async () => {
+  it("the first-error Go button still works through the shared jump", async () => {
     stubApi();
     const user = userEvent.setup();
     renderWithQuery(<RunDetail runId={failing.run.id} base={BASE} live={false} />);
-    await user.click(await screen.findByRole("button", { name: "Show it" }));
+    await user.click(await screen.findByRole("button", { name: "Go to first error" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 });
@@ -306,11 +341,56 @@ describe("runs list findings column", () => {
     expect(within(rowOf("Fix flaky checkout test")).getByTestId("findings-cell")).toHaveTextContent(
       "2 · critical",
     );
+    // One glyph, one meaning: run findings carry the severity glyph of the Findings tab, never the Security shield.
+    const crit = within(rowOf("Fix flaky checkout test")).getByTestId("findings-cell");
+    expect(crit.querySelector("svg.sec-shield")).toBeNull();
+    expect(within(crit).getByTestId("run-findings")).toHaveTextContent("✕");
     const ok = within(rowOf("Fix login session expiry")).getByTestId("findings-cell");
     expect(ok).toHaveTextContent("No findings");
     expect(ok.querySelector('[aria-hidden="true"]')).toHaveTextContent("—");
     const waiting = within(rowOf("Deploy to staging")).getByTestId("findings-cell");
     expect(waiting).toHaveTextContent("Not analysed yet");
+  });
+});
+
+describe("runs list findings column: security is its own mark", () => {
+  const withSecurity = (sec: RunOut["security_findings"], badge: RunOut["findings"]) => {
+    const run = { ...fixtureRuns()[0]!.run, findings: badge, security_findings: sec };
+    renderWithQuery(<RunsTable runs={[run]} base={BASE} caption="Runs" />);
+    return screen.getByTestId("findings-cell");
+  };
+
+  it("shows run findings and security findings as two distinct, named marks", () => {
+    const cell = withSecurity(
+      { count: 2, max_severity: "high", state: "current" },
+      { count: 3, max_severity: "critical", state: "current" },
+    );
+    const run = within(cell).getByTestId("run-findings");
+    expect(run).toHaveTextContent("3 · critical");
+    expect(run.querySelector("svg")).toBeNull();
+    const sec = within(cell).getByTestId("security-findings");
+    expect(sec.querySelector("svg.sec-shield")).not.toBeNull();
+    expect(sec).toHaveTextContent("2 security findings");
+    expect(cell.querySelectorAll("svg.sec-shield")).toHaveLength(1);
+  });
+
+  it("never draws the shield for run findings alone", () => {
+    const only = withSecurity(
+      { count: 0, max_severity: null, state: "current" },
+      { count: 1, max_severity: "warning", state: "current" },
+    );
+    expect(only.querySelector("svg.sec-shield")).toBeNull();
+    expect(within(only).queryByTestId("security-findings")).toBeNull();
+  });
+
+  it("security findings alone still show the shield with an accessible name", () => {
+    const cell = withSecurity(
+      { count: 1, max_severity: "critical", state: "current" },
+      { count: 0, max_severity: null, state: "current" },
+    );
+    expect(within(cell).queryByTestId("run-findings")).toBeNull();
+    expect(within(cell).getByTestId("security-findings")).toHaveTextContent("1 security finding");
+    expect(cell.querySelector("svg.sec-shield")).not.toBeNull();
   });
 });
 
@@ -327,6 +407,30 @@ describe("findings helpers", () => {
     const stale = findingsCell({ count: 1, max_severity: "info", state: "outdated" });
     expect(stale.visible).toBe("1 · info (outdated)");
     expect(stale.title).toContain("may be outdated");
+  });
+
+  it("formats an analysis age coarsely and measures it on the server's clock", () => {
+    expect(formatAge(12)).toBe("12 s ago");
+    expect(formatAge(0.4)).toBe("0 s ago");
+    expect(formatAge(59.6)).toBe("1 min ago");
+    expect(formatAge(190)).toBe("3 min ago");
+    expect(formatAge(7300)).toBe("2 h ago");
+    const state = { computed_at: "2026-10-18T12:00:00Z" };
+    expect(analysisAgeSeconds(state, "2026-10-18T12:00:12Z", 0)).toBe(12);
+    expect(analysisAgeSeconds(state, "2026-10-18T12:00:12Z", 5000)).toBe(17);
+    expect(analysisAgeSeconds(state, "2026-10-18T11:59:00Z", 0)).toBe(0); // never negative
+    expect(analysisAgeSeconds({ computed_at: null }, "2026-10-18T12:00:12Z", 0)).toBeNull();
+    expect(analysisAgeSeconds(state, undefined, 0)).toBeNull();
+    expect(analysisAgeSeconds({ computed_at: "garbage" }, "2026-10-18T12:00:12Z", 0)).toBeNull();
+  });
+
+  it("a queued analysis shows the last one with its age; only a never-analysed run says Analysing", () => {
+    const base = looping.findings!.state;
+    const queued = { ...base, status: "processing" as const };
+    expect(stateLine(queued, true, 12).text).toBe(
+      "Showing the last analysis, as of 12 s ago over 40 events. Newer events are being analysed.",
+    );
+    expect(stateLine({ ...queued, computed_at: null }, true, null).text).toBe("Analysing…");
   });
 
   it("stateLine never calls a stale or failed analysis current", () => {

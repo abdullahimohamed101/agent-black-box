@@ -1,7 +1,7 @@
 # Coding-agent demo
 
 A real, small coding agent (a model loop with tools) fixes an intentionally broken OAuth session service and every step is
-recorded by Agent Black Box: files read and edited (with syntax-highlighted diffs), model calls, shell commands (cwd, duration,
+recorded by Agent BlackBox: files read and edited (with syntax-highlighted diffs), model calls, shell commands (cwd, duration,
 exit code, risk class, stdout/stderr), semantic test results, a retry, and the Git branch, commit and push.
 
 The scenario (spec §136): the agent reads the code, searches, edits `is_expired`, runs the tests, **one test still fails**,
@@ -64,7 +64,13 @@ after a minute. The run page shows both decisions. The final JSON line lists `bl
 > your files and use your network. Run this only in a disposable VM or container. The flag
 > `--i-understand-this-runs-commands` is required; scripted mode needs no flag and runs only the fixed plan.
 
-`--model anthropic` uses `ANTHROPIC_API_KEY` from your environment with the Messages API. It has not been run by the project (KI-044).
+`--live` (the same as `--model anthropic`) uses `ANTHROPIC_API_KEY` from your environment with the Messages API:
+
+```bash
+ANTHROPIC_API_KEY=... uv run --project packages/sdk-python python examples/coding-agent/run_demo.py --live --i-understand-this-runs-commands
+```
+
+It is available but untested: the project has never run it, not even in CI (KI-044), and `make demo` never passes it. The scripted run is the one that is checked.
 
 ## Layout
 

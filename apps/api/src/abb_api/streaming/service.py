@@ -20,6 +20,7 @@ from abb_api.core.config import Settings
 from abb_api.core.errors import ErrorBody, ErrorCategory
 from abb_api.core.request_context import get_request_id
 from abb_api.ids import parse_public_id
+from abb_api.obs.catalogue import METRICS, Catalogue
 from abb_api.runs.event_queries import EventQueries
 from abb_api.runs.service import RunService, event_out
 from abb_api.streaming import sse
@@ -51,15 +52,20 @@ class StreamService:
         runs: RunService,
         settings: Settings,
         clock: Clock = system_clock,
+        *,
+        metrics: Catalogue = METRICS,
     ) -> None:
         self._clock = clock
+        self._lag = metrics.sse_delivery_lag_seconds
         self._engine = engine
         self._hub = hub
         self._runs = runs
         self._settings = settings
         self.hub = hub
         self._db = asyncio.Semaphore(settings.stream_db_concurrency)
-        self.limiter = StreamLimiter(settings.stream_max_total, settings.stream_max_per_key)
+        self.limiter = StreamLimiter(
+            settings.stream_max_total, settings.stream_max_per_key, metrics
+        )
 
     async def open(
         self, principal: Principal, run_id: str, last_event_id: str | None
@@ -107,7 +113,10 @@ class StreamService:
                 if check:
                     last_check = polled
                 async for batch in self._fresh_pages(stream, cursor, check_window=check):
+                    delivered = self._clock()
                     for event, has_payload in batch:
+                        # Stored-to-sent: how stale the live view is (the freshness SLI).
+                        self._lag.observe(max((delivered - event.received_at).total_seconds(), 0.0))
                         yield sse.frame(
                             "trace_event",
                             event_out(

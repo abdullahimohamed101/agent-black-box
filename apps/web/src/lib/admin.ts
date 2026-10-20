@@ -218,3 +218,69 @@ export const useUpdateSecuritySettings = (projectId: string) => {
     },
   });
 };
+
+// ------------------------------------------------------------------------- Phase 19b: retention
+
+const retentionPath = (workspaceId: string) => ({
+  params: { path: { workspace_id: workspaceId } },
+});
+
+/** The workspace's retention policy and the installation's mode (every member may read it). */
+export const useRetentionPolicy = (workspaceId: string) =>
+  useQuery({
+    queryKey: ["retention", workspaceId],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/workspaces/{workspace_id}/retention", {
+          signal,
+          ...retentionPath(workspaceId),
+        }),
+      ),
+  });
+
+/** The retention job's latest reports for the workspace (counts only). */
+export const useRetentionReports = (workspaceId: string) =>
+  useQuery({
+    queryKey: ["retention-reports", workspaceId],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/v1/workspaces/{workspace_id}/retention/reports", {
+          signal,
+          params: { path: { workspace_id: workspaceId }, query: { limit: 10 } },
+        }),
+      ).items,
+  });
+
+/** Change the policy (owners and admins). The cache takes the API's answer, never a guess. */
+export const useUpdateRetention = (workspaceId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: components["schemas"]["RetentionPolicyIn"]) =>
+      unwrap(
+        await api.PUT("/v1/workspaces/{workspace_id}/retention", {
+          ...retentionPath(workspaceId),
+          body,
+        }),
+      ),
+    onSuccess: async (data) => {
+      client.setQueryData(["retention", workspaceId], data);
+      await client.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+};
+
+/** A preview of a proposed policy: asked for on purpose (a button), never on every keystroke. */
+export const useRetentionPreview = (workspaceId: string) =>
+  useMutation({
+    mutationFn: async (query: {
+      artifacts_days: string;
+      trace_days: string;
+      run_days: string;
+      audit_days: string;
+    }) =>
+      unwrap(
+        await api.GET("/v1/workspaces/{workspace_id}/retention/preview", {
+          params: { path: { workspace_id: workspaceId }, query },
+        }),
+      ),
+  });

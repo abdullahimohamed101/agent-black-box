@@ -32,6 +32,7 @@ def _append_only_tables() -> tuple[str, ...]:
 
 
 APPEND_ONLY_TABLES = _append_only_tables()
+COLUMN_UPDATE_ONLY = ("runs", "projects", "workspaces")  # 0105
 
 
 @pytest.fixture
@@ -76,7 +77,9 @@ async def test_the_runtime_engine_really_is_the_restricted_role(
         "DROP TABLE events",
         "ALTER TABLE events ADD COLUMN x int",
         "CREATE TABLE sneaky (id int)",
-        "SELECT * FROM alembic_version",
+        "UPDATE alembic_version SET version_num = '0001'",  # it may read the revision (0106)
+        "DELETE FROM alembic_version",
+        "INSERT INTO alembic_version (version_num) VALUES ('0001')",
         "ALTER ROLE abb_runtime SUPERUSER",
     ],
 )
@@ -131,12 +134,35 @@ async def test_append_only_tables_are_exactly_the_declared_ones_and_the_rest_are
         False,
         False,
     )
-    # Quota counters and overrides are upserted, never deleted by the application (0100).
+    # What the retention job reports is written by the retention role only (0101): the
+    # application reads it and can neither forge nor erase it.
+    for name in (
+        "retention_reports",
+        "retention_tombstones",
+        "retention_run_progress",
+        "purge_tombstones",  # 0104: the same, for the record of purges
+    ):
+        row = privileges.pop(name)
+        assert (row.can_select, row.can_insert, row.can_update, row.can_delete) == (
+            True,
+            False,
+            False,
+            False,
+        ), name
+    # Quota counters and overrides are upserted, never deleted by the application (0100), and a
+    # retention policy is written but never deleted (0101).
     no_delete = deletes_blocked | {
         "project_quota_overrides",
         "project_usage_daily",
         "project_artifact_usage",
+        "retention_policies",
     }
+    # 0105: UPDATE on these three is by column only (pinned below), so the table-level answer
+    # is False; their DELETE rule is unchanged.
+    for name in COLUMN_UPDATE_ONLY:
+        row = privileges.pop(name)
+        assert not row.can_update, name
+        assert row.can_delete == (name not in no_delete), name
     for name, row in privileges.items():
         assert row.can_update and row.can_delete == (name not in no_delete), name
 
@@ -186,3 +212,70 @@ async def test_runtime_role_cannot_delete_quota_history_but_can_read_and_update_
             {"t": table},
         )
         assert has.scalar_one() is True
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE runs SET trace_state = 'expired'",
+        "UPDATE runs SET trace_state = 'available'",
+        "UPDATE runs SET project_id = project_id",
+        "UPDATE runs SET metadata = metadata",
+        "UPDATE projects SET purge_state = 'active'",
+        "UPDATE projects SET slug = slug",
+        "UPDATE workspaces SET purge_state = 'active'",
+        "UPDATE workspaces SET slug = slug",
+    ],
+)
+async def test_runtime_role_cannot_change_trace_state_or_purge_state(
+    runtime_engine: AsyncEngine, statement: str
+) -> None:
+    """0105 (review P2-4): the application cannot hide a trace from the retention job, spoof
+    `expired`, or un-hide a project or workspace a purge is removing."""
+    with pytest.raises(ProgrammingError, match=r"permission denied"):
+        async with runtime_engine.begin() as conn:
+            await conn.execute(text(statement))
+
+
+async def test_runtime_role_updates_exactly_the_declared_columns(engine: AsyncEngine) -> None:
+    """The column grants are the declared lists and nothing more, and the row-lock column on
+    projects and workspaces is the only UPDATE there."""
+    path = next((API_DIR / "migrations" / "versions").glob("0105_*.py"))
+    spec = importlib.util.spec_from_file_location("migration_0105", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            text(
+                "SELECT c.relname, a.attname FROM pg_attribute a "
+                "JOIN pg_class c ON c.oid = a.attrelid "
+                "WHERE c.relnamespace = 'public'::regnamespace AND c.relname = ANY(:t) "
+                "AND a.attnum > 0 AND NOT a.attisdropped "
+                "AND has_column_privilege('abb_runtime', c.oid, a.attnum, 'UPDATE')"
+            ),
+            {"t": list(COLUMN_UPDATE_ONLY)},
+        )
+        granted: dict[str, set[str]] = {}
+        for table, column in rows:
+            granted.setdefault(table, set()).add(column)
+    assert granted == {
+        "runs": set(module.RUN_COLUMNS),
+        "projects": {"name"},
+        "workspaces": {"name"},
+    }
+    assert "trace_state" not in granted["runs"]
+
+
+async def test_runtime_role_still_updates_the_columns_the_application_writes(
+    engine: AsyncEngine, runtime_engine: AsyncEngine
+) -> None:
+    tenant, run = await make_tenant(engine, "acme"), make_run_ids()
+    await ingest(runtime_engine, tenant, [build_event(tenant, run, n=1)])
+    async with runtime_engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE runs SET status = 'FAILED', summary = '{}'::jsonb, updated_at = now()")
+        )
+        # The row locks the application takes on the parents.
+        await conn.execute(text("SELECT id FROM workspaces FOR NO KEY UPDATE"))
+        await conn.execute(text("SELECT id FROM projects FOR KEY SHARE"))

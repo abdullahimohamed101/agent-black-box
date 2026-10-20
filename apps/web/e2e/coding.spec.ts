@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { settleAnimations } from "./motion";
 import { signIn, workspace, workspaceHeader } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/coding-e2e.sh: the scripted coding agent already wrote its run through the SDK into a
 // real API; the built web server on :3140 reads it through its proxy. The planted secrets come from the script.
@@ -10,11 +11,10 @@ const planted: string[] = JSON.parse(process.env.E2E_CODING_PLANTED ?? "[]");
 test.skip(!runId || planted.length === 0, "needs scripts/coding-e2e.sh");
 test.use({ baseURL: "http://localhost:3140", viewport: { width: 1400, height: 1000 } });
 test.beforeEach(async ({ context, baseURL }) => signIn(context, baseURL!));
-const SHOTS = "../../docs/screenshots/phase-6";
+const SHOTS = shotsDir("phase-6");
 
 const open = async (page: Page) => {
   await page.goto(`/w/${workspace()}/projects/all/runs/${runId}`);
-  await openContext(page); // the context column starts closed (Phase 22 D3)
   await expect(page.getByTestId("story")).toBeVisible();
 };
 const step = (page: Page, name: RegExp) =>

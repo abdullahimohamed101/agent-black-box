@@ -1,0 +1,28 @@
+# Secrets: what exists and how each one rotates
+
+Index of every secret the installation holds or depends on. "Where" says who owns it; rotation commands are in `docs/OPERATIONS.md` and the linked runbooks. Nothing here is logged or returned by the API.
+
+| Secret | Where it lives | How to rotate | Cost / caveat |
+| --- | --- | --- | --- |
+| **Project API keys** (`abb_live_...`) | Stored only as a hash in `api_keys`; the full key is shown once at creation | Create a new key (`python -m abb_api.cli create-key ...` or the keys API), deploy it to the agent, then `revoke-key` the old one | Per key, no downtime if both overlap. A leaked key: revoke at once; failed-auth throttling (ADR-153) limits guessing |
+| **Sessions** (browser login cookies) | Random tokens, stored hashed in `sessions`; no server signing secret to rotate | End one in Settings, Sessions; to end all: `UPDATE sessions SET revoked_at = now() WHERE revoked_at IS NULL` as the owner | Everyone signs in again through the identity provider |
+| **Alert encryption key** (`server_secrets`, name `alerts-encryption`) | Append-only table in the database; seals destination targets and webhook signing secrets (ADR-150) | `python -m abb_api.rotate alerts --new-key`, restart API and worker, run `python -m abb_api.rotate alerts` again until it reports `verdict=old_keys_can_be_retired` | Resumable and idempotent; delivery keeps working throughout; old key rows are retired by hand only after the report says zero |
+| **Webhook signing secrets** (per destination) | Sealed in `alert_destinations` | `rotate_signing_secret` on the destination (returns the new secret once); give it to the receiver | Receivers must accept the new secret; unrelated to the key above |
+| **Event-id key** (`server_secrets`, name `event-id`) | Same table; derives the ids of server-written `policy.*` and `approval.*` events with HMAC (ADR-141 amendment 2) | **Not rotatable without breaking dedupe**: a new row changes the id derived for the same material, so a retried decision or approval event would be stored twice. Stored events keep their ids | If it leaks (an agent could pre-claim ids): rotate in a quiet period (`INSERT INTO server_secrets (name, secret) VALUES ('event-id', decode('<64 hex from openssl rand -hex 32>', 'hex'))` as the owner, restart API and worker) and accept possible duplicates of in-flight retries. Back up first |
+| **OIDC client secret** (`ABB_OIDC_CLIENT_SECRET`) | Operator-managed: environment or secret store; never in the database | Create a new secret at the identity provider, set the variable, restart the API, then delete the old secret at the provider | Operator procedure; sign-ins in flight fail once |
+| **SMTP password** (`ABB_SMTP_PASSWORD`) | Operator-managed: environment | Change at the mail provider, set the variable, restart API and worker | Email alerts fail until restarted |
+| **Runtime role password** (`abb_runtime`, `ABB_RUNTIME_DB_PASSWORD`) | Operator-managed; set on the role by `alembic upgrade head` | Set a new `ABB_RUNTIME_DB_PASSWORD`, run `alembic upgrade head` (`make migrate`; applies it to the role), update `ABB_DATABASE_URL`, restart API and worker | Brief connection errors between the two steps; do them together |
+| **Retention role password** (`abb_retention`, `ABB_RETENTION_DB_PASSWORD`) | Operator-managed | Same as above with `ABB_RETENTION_DATABASE_URL`; restart the retention process | Only the retention process holds it |
+| **Owner / migration credentials** (`ABB_MIGRATION_DATABASE_URL`) | Operator-managed | `ALTER ROLE ... PASSWORD` in PostgreSQL; update the operator environment | Used by migrations, backup, restore and rotation only; never give to the API |
+| **Backup passphrase** | Operator-managed: a 0600 file, a secret store, or an environment variable name | Use a new passphrase for new bundles (`--passphrase-file`); keep the old one for as long as old encrypted bundles must stay restorable | There is no re-encryption tool; a lost passphrase makes that bundle unreadable (by design) |
+
+Notes.
+
+- `server_secrets` rows are included in every backup bundle and in any copy of the database: **a bundle plus its passphrase is the keys to the installation**. Encrypt bundles at rest.
+- After restoring a backup the alert key row comes back with it, so destinations still open (tested in `tests/backup/test_drill.py`). A backup taken *before* a rotation restores an installation whose blobs are under the old key and whose key table has that row; that is consistent. Do not delete an old alert key row until every backup you may restore from is newer than the rotation, or accept that those backups cannot be used for alerting.
+- The secrets that live outside the database are the operator's to back up; the bundle does not contain them (ADR-162, "not covered").
+
+## Monitoring rotation
+
+Alert `AbbRotationRunFailed` (dashboard row **Retention and backups**): `rotation_runs_total{outcome="failed"}` grew in the last day, written by `python -m abb_api.rotate alerts --metrics-textfile PATH` for node_exporter.
+Rotation is resumable and idempotent, so run it again until it reports `verdict=old_keys_can_be_retired`; delivery keeps working meanwhile. `rotation_last_success_timestamp_seconds` is the time of the last good run.

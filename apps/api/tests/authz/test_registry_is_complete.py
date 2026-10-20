@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from abb_api.core.config import Settings
 from abb_api.main import create_app
 from abb_api.openapi import build_document
-from tests.authz.registry import CASES, PUBLIC, SESSION_ONLY
+from tests.authz.registry import CASES, OPERATOR_ONLY, PUBLIC, SESSION_ONLY
 from tests.authz.routes import enumerate_routes
 
 # Counted by hand when the registry was written; a mismatch means the walker or the registry moved.
@@ -16,8 +16,9 @@ from tests.authz.routes import enumerate_routes
 # (current, versions, one version, diff, validate, publish, dry-run), plus Phase 14 step 2's nine
 # (decide, fail-modes, wait, consume, cancel, list, pending count, detail, decision), plus Phase 17
 # step 1's twelve (5 destination, 6 rule including the preview, 1 history) and step 2's send-test,
-# plus Phase 19a step 3's two project quota routes (usage GET, overrides PUT).
-EXPECTED_V1_OPERATIONS = 32 + 15 + 1 + 4 + 7 + 9 + 12 + 1 + 2
+# plus Phase 19a step 3's two project quota routes (usage GET, overrides PUT), plus Phase 19b
+# step 1's four retention routes (policy GET and PUT, preview, reports).
+EXPECTED_V1_OPERATIONS = 32 + 15 + 1 + 4 + 7 + 9 + 12 + 1 + 2 + 4
 
 
 def _app() -> FastAPI:
@@ -38,6 +39,12 @@ def problems(app: FastAPI) -> list[str]:
         if route.key in SESSION_ONLY:
             if not route.requires_session or route.required_actions:
                 found.append(f"{route.describe()}: listed SESSION_ONLY but not guarded that way")
+            continue
+        if route.key in OPERATOR_ONLY:
+            if route.required_actions or route.requires_session or route.in_schema:
+                found.append(
+                    f"{route.describe()}: an operator route must be bearer-only and hidden"
+                )
             continue
         if route.key in PUBLIC:
             if route.required_actions or route.requires_session:
@@ -64,6 +71,21 @@ def problems(app: FastAPI) -> list[str]:
 
 def test_every_route_has_an_authorization_case() -> None:
     assert problems(_app()) == []
+
+
+def test_the_metrics_route_exists_only_with_a_token_and_is_accounted_for() -> None:
+    token = "t" * 32
+    with_token = create_app(
+        Settings(
+            database_url="postgresql+asyncpg://x:x@127.0.0.1:1/x",
+            environment="test",
+            metrics_token=token,  # type: ignore[arg-type]
+        )
+    )
+    assert ("GET", "/metrics") in {r.key for r in enumerate_routes(with_token)}
+    assert problems(with_token) == []
+    assert ("GET", "/metrics") not in {r.key for r in enumerate_routes(_app())}
+    assert "/metrics" not in with_token.openapi()["paths"]
 
 
 def test_an_unregistered_route_is_reported_even_when_hidden_from_openapi() -> None:

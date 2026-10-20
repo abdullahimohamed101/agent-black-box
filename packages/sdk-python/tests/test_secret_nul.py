@@ -11,9 +11,9 @@ from typing import Any
 
 import pytest
 
-from blackbox import BlackBox
-from blackbox.coding import CodingRecorder
-from blackbox.redaction import PayloadMode
+from agent_blackbox import BlackBox
+from agent_blackbox.coding import CodingRecorder
+from agent_blackbox.redaction import PayloadMode
 from tests.helpers import events_of, offline
 
 AWS = "AKIAIOSFODNN7EXAMPLE"

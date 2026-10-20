@@ -23,6 +23,9 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Iterable
 
+from abb_api.obs.catalogue import METRICS, Catalogue
+from abb_api.obs.metrics import Counter, Gauge
+
 logger = logging.getLogger(__name__)
 
 Loader = Callable[[int], Awaitable[Iterable[str]]]
@@ -40,7 +43,14 @@ class ActiveKeyIds:
         cap: int = 100_000,
         timeout_seconds: float = LOAD_TIMEOUT_SECONDS,
         retry_seconds: float = RETRY_SECONDS,
+        metrics: Catalogue = METRICS,
+        size_gauge: Gauge | None = None,
+        failure_counter: Counter | None = None,
     ) -> None:
+        # The same mechanism holds the active session hints (auth/session_throttle.py), which
+        # report to their own series.
+        self._size = size_gauge or metrics.auth_active_keys
+        self._failed = failure_counter or metrics.auth_active_key_refresh_failures_total
         self._load = load
         self._refresh = refresh_seconds
         self._cap = cap
@@ -69,6 +79,7 @@ class ActiveKeyIds:
         """A key was created (and committed) by this process: usable at once."""
         if len(self._ids) < self._cap:
             self._ids.add(key_id)
+            self._size.set(len(self._ids))
         if self._added_during_load is not None:
             self._added_during_load.add(key_id)
 
@@ -80,10 +91,9 @@ class ActiveKeyIds:
                 got = list(await self._load(self._cap + 1))
         except Exception as exc:
             self.failures += 1
+            self._failed.inc()
             # Class name only; the loop retries, and the old set (if any) keeps serving.
-            logger.warning(
-                "active key ids not refreshed", extra={"error_class": type(exc).__name__}
-            )
+            logger.warning("active key ids not refreshed", extra={"error_type": type(exc).__name__})
             return False
         finally:
             added, self._added_during_load = self._added_during_load or set(), None
@@ -100,6 +110,7 @@ class ActiveKeyIds:
         self._ids = set(got) | added
         self._loaded = True
         self.refreshes += 1
+        self._size.set(len(self._ids))
         return True
 
     def nudge(self) -> None:

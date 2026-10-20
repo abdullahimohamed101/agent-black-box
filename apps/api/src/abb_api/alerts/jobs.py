@@ -33,7 +33,7 @@ from abb_api.alerts.repository import NotificationRepository, RuleRepository
 from abb_api.alerts.schedule import ensure_prune, request_delivery, schedule_retry
 from abb_api.clock import system_clock
 from abb_api.core.config import Settings
-from abb_api.jobs.context import job_settings
+from abb_api.jobs.context import job_metrics, job_settings
 from abb_api.jobs.outbox import ALERT_PRUNE, ALERT_SWEEP, EVALUATE_ALERTS, Job, OutboxRepository
 from abb_api.tenancy import TenantContext
 
@@ -133,7 +133,12 @@ async def deliver_alerts(job: Job, conn: AsyncConnection) -> None:
 async def _deliver_tick(conn: AsyncConnection, tenant: TenantContext, settings: Settings) -> None:
     now = system_clock()
     result = await deliver_due(
-        conn, tenant, now=now, settings=settings, registry=registry_for(settings)
+        conn,
+        tenant,
+        now=now,
+        settings=settings,
+        registry=registry_for(settings),
+        metrics=job_metrics(),
     )
     outbox = OutboxRepository(conn, tenant)
     next_at = await NotificationRepository(conn, tenant).next_pending_at()

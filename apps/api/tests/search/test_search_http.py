@@ -1,5 +1,7 @@
 """`GET /v1/runs?q=` end to end (AC-3 HTTP half, AC-7 statement counts): the public contract."""
 
+import json
+
 import pytest
 
 from tests.api_fixtures import Api
@@ -181,7 +183,10 @@ async def test_a_bad_query_is_a_422_with_a_position_that_depends_only_on_the_tex
     error = response.json()["error"]
     assert error["code"] == "QUERY_INVALID" and error["details"]["position"] == 18
     assert error["details"]["reason"]
-    assert "abc" not in response.text.replace("cost:>abc", "")  # the reason never quotes data
+    # The reason never quotes data. Only the message and details are checked: the body also
+    # carries a random hex request id, which contains "abc" by chance in about 1 of 250 responses.
+    quoted = json.dumps({"message": error.get("message"), "details": error["details"]})
+    assert "abc" not in quoted.replace("cost:>abc", "")
 
 
 async def test_a_content_field_is_allowed_for_a_key_with_payload_read(

@@ -5,12 +5,12 @@ product and architecture knowledge lives in `/docs`.
 
 ## Mission
 
-Build Agent Black Box: a flight recorder, observability, debugging, evaluation and
+Build Agent BlackBox: a flight recorder, observability, debugging, evaluation and
 (eventually) control plane for AI agents. Produce correct, maintainable, testable
 software that satisfies the specification while preserving the architecture.
 Correctness and maintainability beat minimizing lines changed.
 
-> Developers must first trust that Agent Black Box accurately shows what their agents
+> Developers must first trust that Agent BlackBox accurately shows what their agents
 > did. Everything else depends on that trust.
 
 ## Session Start Protocol
@@ -59,7 +59,7 @@ plan-change  ->  implement-change  ->  verify-change  ->  review-change
 
 ## Architectural Invariants (spec §62 - never violate without an ADR)
 
-- INV-1 Accepted events are immutable. Corrections are new events or derived records.
+- INV-1 Accepted events are immutable until expired by the retention job (ADR-159). Corrections are new events or derived records.
 - INV-2 Derived state (summaries, costs, findings, aggregates) is rebuildable from events.
 - INV-3 Every tenant-data operation carries workspace context. No repository method
   reads tenant data without it.

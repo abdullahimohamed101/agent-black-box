@@ -16,12 +16,13 @@ from abb_api.alerts.jobs import (
     evaluate_alerts,
 )
 from abb_api.alerts.model import RUN_FAIL_STATUSES, RUN_FAILED
-from abb_api.analytics.rollup import refresh_day
+from abb_api.analytics.dirty import mark_dirty, refresh_with_marker
 from abb_api.approvals.job import expire_approval
 from abb_api.cost.engine import CostEngine
 from abb_api.cost.repository import CostRepository
 from abb_api.evaluations.job import evaluate_run as run_evaluations
-from abb_api.findings.job import detect_delay, detect_run
+from abb_api.findings.job import detect_enqueue_delay, detect_run
+from abb_api.findings.repository import FindingsRepository
 from abb_api.ingestion.store import PgEventStore
 from abb_api.jobs.context import job_settings
 from abb_api.jobs.outbox import (
@@ -101,6 +102,9 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
         # Both the day the run was in and the day it is in now need their rollup rewritten.
         outbox = OutboxRepository(conn, tenant)
         for day in {derived.started_at.date(), *([before.date()] if before else [])}:
+            # Bumped in this transaction, so a refresh already running cannot miss the change
+            # that this job's coalescing would otherwise swallow (KI-057).
+            await mark_dirty(conn, tenant, day)
             await outbox.enqueue(
                 job_type=REFRESH_ANALYTICS_DAY,
                 dedupe_key=f"{tenant.workspace_id}:{day.isoformat()}",
@@ -112,7 +116,7 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
                 "spans left untouched: ids already belong to another run",
                 extra={"run_id": str(run_id), "skipped": skipped},
             )
-        await _enqueue_detect(outbox, tenant, run_id, len(events))
+        await enqueue_detect(conn, tenant, run_id, len(events), terminal=derived.status.is_terminal)
         if derived.status.value in RUN_FAIL_STATUSES and derived.status.value != status_before:
             # One small INSERT; the alert rules are matched by the `evaluate_alerts` job (ADR-150).
             # Only the transition into a failed status asks: a summary that repeats the status
@@ -120,22 +124,52 @@ async def summarize_run(job: Job, conn: AsyncConnection) -> None:
             await enqueue_event(outbox, RUN_FAILED, run_id)
 
 
-async def _enqueue_detect(
-    outbox: OutboxRepository, tenant: TenantContext, run_id: uuid.UUID, event_count: int
+async def enqueue_detect(
+    conn: AsyncConnection,
+    tenant: TenantContext,
+    run_id: uuid.UUID,
+    event_count: int,
+    *,
+    terminal: bool,
 ) -> None:
     """Ask for the run's findings. Always, even when the event count is unchanged: a cost rebuild
-    changes an input of the cost-spike detector (ADR-080 (6)). Coalesces per run."""
-    await outbox.enqueue(
+    changes an input of the cost-spike detector (ADR-080 (6)). Coalesces per run.
+
+    While the run is active the job is held back to the per-run minimum interval since the last
+    analysis (KI-097, ADR-174). When the run has ended the floor does not apply, and a job that is
+    already queued behind it is brought forward, so the final analysis is not left waiting."""
+    settings = job_settings()
+    computed_at, db_now = await FindingsRepository(conn, tenant).last_computed_at(run_id)
+    await OutboxRepository(conn, tenant).enqueue(
         job_type=DETECT_FINDINGS,
         dedupe_key=summarize_key(tenant.workspace_id, run_id),
         payload={"run_id": str(run_id)},
-        delay=detect_delay(job_settings().findings_delay_seconds, event_count),
+        delay=detect_enqueue_delay(
+            base_seconds=settings.findings_delay_seconds,
+            event_count=event_count,
+            min_interval_seconds=settings.findings_min_interval_seconds,
+            computed_at=computed_at,
+            db_now=db_now,
+            terminal=terminal,
+        ),
+        advance=terminal,
     )
 
 
 async def refresh_analytics_day(job: Job, conn: AsyncConnection) -> None:
-    """Rewrite one workspace-day of analytics rollups from the derived tables (idempotent)."""
-    await refresh_day(conn, TenantContext(job.workspace_id), date.fromisoformat(job.payload["day"]))
+    """Rewrite one workspace-day of analytics rollups from the derived tables (idempotent).
+
+    A writer that committed while this ran leaves the day dirty (KI-057): ask for another refresh.
+    """
+    tenant = TenantContext(job.workspace_id)
+    day = date.fromisoformat(job.payload["day"])
+    if await refresh_with_marker(conn, tenant, day):
+        await OutboxRepository(conn, tenant).enqueue(
+            job_type=REFRESH_ANALYTICS_DAY,
+            dedupe_key=job.dedupe_key,
+            payload=job.payload,
+            delay=refresh_delay(),
+        )
 
 
 async def detect_findings(job: Job, conn: AsyncConnection) -> None:

@@ -1,26 +1,163 @@
-/* Runs list (Phase 22 step 7, plan D8): failure lines, the facet column, compare mode. Colour only ever means a problem. */
+/* Runs home (design pass 2 step 5a, ADR-166): title line, one sentence, one filter field with chips, a facet column and a
+   dense table. The facet column and `.runs-body` are shared with the Security findings page until the Review batch.
+   Tokens only. Red appears twice: the miniature dash before a failure sentence and the status word (globals.css .badge).
+   Breakpoints: 79.9375rem = below 1280 px, 56.1875rem = below 900 px, 37.4375rem = below 600 px. */
 
-.page-head .page-actions {
+.runs-home .page-title {
   display: flex;
-  gap: 0.4rem;
-  margin-left: auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-1);
+}
+.runs-home .page-title h1 {
+  margin: 0;
 }
 button.toggle {
-  font-size: 0.8rem;
-  padding: 0.2rem 0.7rem;
+  padding: var(--space-1) var(--space-3);
 }
 button.toggle[aria-pressed="true"] {
-  background: var(--accent-bg);
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: 600;
+  background: var(--color-bg-wash);
+  border-color: var(--color-interactive-default);
+  font-weight: var(--weight-strong);
 }
 
-/* Facet column to the left, results to the right; one column on a phone. */
+/* The 7-day sentence. Its height is reserved so the field below does not jump when the numbers arrive. */
+.runs-lede {
+  min-height: var(--type-body-lg-line);
+  max-width: var(--measure);
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-lg-size);
+  line-height: var(--type-body-lg-line);
+}
+
+/* The one filter field. */
+.search {
+  margin: 0;
+}
+.search-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.search-form > label {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.search-form input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--layout-control);
+  padding: 0 var(--space-3);
+  font: var(--type-mono-weight) var(--type-mono-size) / var(--type-mono-line) var(--font-mono);
+  color: var(--color-text-primary);
+  background: var(--color-bg-canvas);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
+}
+.search-form input[type="search"]::placeholder {
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+}
+.search-help-button {
+  flex: none;
+  width: var(--layout-control);
+  height: var(--layout-control);
+  padding: 0;
+  color: var(--color-text-secondary);
+}
+.search-help-button[aria-expanded="true"] {
+  background: var(--color-bg-wash);
+}
+.search-help {
+  max-width: var(--measure);
+  margin: var(--space-2) 0 0;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+.search-help p {
+  margin: 0 0 var(--space-2);
+}
+.search-fields {
+  columns: 2 16rem;
+  margin: 0;
+  padding-left: var(--space-4);
+}
+.search-problem {
+  padding: var(--space-3) 0;
+  margin: var(--space-3) 0;
+}
+.search-problem p {
+  margin: var(--space-1) 0;
+}
+.search-caret {
+  margin: var(--space-2) 0 0;
+  overflow-x: auto;
+  background: none;
+  padding: var(--space-1) 0;
+}
+
+/* Chips and the count: outline chips, no fill. */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  min-height: var(--layout-control);
+  margin: var(--space-2) 0 var(--space-3);
+}
+.chip-row-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: auto;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}
+.query-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.query-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 1.5rem;
+  max-width: 100%;
+  padding: 0 0 0 var(--space-2);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-control);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  overflow-wrap: anywhere;
+}
+.query-chip > span:first-child {
+  font-family: var(--font-mono);
+}
+.query-chip button {
+  align-self: stretch;
+  min-width: 1.5rem;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+}
+
+/* Facet column to the left, results to the right; one column below 900 px. */
 .runs-body {
   display: grid;
-  grid-template-columns: 13rem minmax(0, 1fr);
-  gap: 0 1.25rem;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 0 var(--space-6);
   align-items: start;
 }
 .runs-main {
@@ -32,30 +169,36 @@ button.toggle[aria-pressed="true"] {
   padding: 0;
   border: 0;
   position: sticky;
-  top: calc(var(--top-h) + 0.5rem);
-  max-height: calc(100dvh - var(--top-h) - 1rem);
+  top: calc(var(--layout-topbar) + var(--space-4));
+  max-height: calc(100dvh - var(--layout-topbar) - var(--space-8));
   overflow-y: auto;
-  font-size: 0.8rem;
 }
 .facets-box > summary {
-  display: none; /* wide screens: the column is simply there */
+  display: none; /* a wide screen: the column is simply there */
   cursor: pointer;
-  color: var(--accent);
-  padding: 0.25rem 0;
+  color: var(--color-text-link);
+  padding: var(--space-1) 0;
 }
 .runs-body .facet {
   display: block;
-  margin: 0 0 0.75rem;
+  margin: 0 0 var(--space-4);
 }
 .runs-body .facet h3 {
-  margin: 0 0 0.2rem;
-  font: 600 0.75rem/1.4 var(--cond);
+  margin: 0 0 var(--space-1);
+  padding: 0 var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  font-weight: var(--weight-strong);
   letter-spacing: 0;
   text-transform: none;
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .runs-body .facet ul {
   display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 .runs-body .facet li {
   margin: 0;
@@ -64,116 +207,206 @@ button.toggle[aria-pressed="true"] {
   display: flex;
   width: 100%;
   justify-content: space-between;
-  gap: 0.5rem;
-  min-height: 24px;
+  gap: var(--space-2);
+  min-height: 1.5rem;
   align-items: center;
-  padding: 0.1rem 0.4rem;
+  padding: var(--space-1) var(--space-2);
   border: 0;
-  border-radius: 3px;
-  font-size: 0.8rem;
+  border-radius: var(--radius-control);
+  background: none;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
   text-align: left;
 }
 .runs-body .facet-button:hover {
-  background: var(--surface);
+  background: color-mix(in srgb, var(--color-bg-wash) 50%, transparent);
 }
 .runs-body .facet-button[aria-pressed="true"] {
-  background: var(--accent-bg);
-  color: var(--accent);
-  font-weight: 600;
+  background: var(--color-bg-wash);
+  box-shadow: inset 2px 0 0 var(--color-interactive-default);
+  font-weight: var(--weight-strong);
 }
 .runs-body .facet-button:disabled {
-  opacity: 0.6;
+  color: var(--color-text-disabled);
   cursor: default;
 }
 .runs-body .facet li > span {
   display: block;
-  padding: 0.1rem 0.4rem;
-  color: var(--muted);
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-secondary);
 }
 .facets-more > summary {
   cursor: pointer;
-  color: var(--accent);
-  margin-bottom: 0.4rem;
+  color: var(--color-text-link);
+  margin-bottom: var(--space-2);
+}
+.load-more {
+  margin-top: var(--space-4);
 }
 
-/* The run cell: name on the first line, the failure sentence on the second. Clean runs stay one line. */
+/* The table. Rows are 32 px; a run that needs attention has a second line (the dash is the only red besides the status). */
+.runs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+.runs-table th {
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-strong);
+}
+.runs-table td {
+  height: 2rem;
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  vertical-align: middle;
+}
+.runs-table th.num,
+.runs-table td.num {
+  text-align: right;
+}
+.runs-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-bg-wash) 50%, transparent);
+}
+.runs-table tbody tr[data-picked="true"] {
+  background: var(--color-bg-wash);
+  box-shadow: none;
+}
+.runs-table tbody tr[data-picked="true"] td:first-child {
+  box-shadow: inset 2px 0 0 var(--color-interactive-default);
+}
 .runs-table td.name {
   min-width: 14rem;
+}
+/* globals.css gives "the second cell" a 12 rem minimum (it was the name); in compare mode the second cell is the status. */
+.runs-table td:nth-child(2):not(.name) {
+  min-width: 0;
+  white-space: nowrap;
+}
+.runs-table tr[data-attention="true"] td {
+  vertical-align: top;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
 }
 .run-line {
   display: flex;
   align-items: baseline;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 .run-line a {
   min-width: 0;
   overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+.run-line a[data-failed="true"] {
+  font-weight: var(--weight-strong);
+}
+.run-line a:hover,
+.run-line a:focus-visible {
+  color: var(--color-text-link);
+  text-decoration: underline;
 }
 .row-more {
-  min-width: 24px; /* WCAG 2.2 AA target size (2.5.8) */
-  min-height: 24px;
+  min-width: 1.5rem; /* WCAG 2.2 AA target size (2.5.8) */
+  min-height: 1.5rem;
   margin-left: auto;
-  padding: 0 0.3rem;
+  padding: 0 var(--space-1);
   border: 0;
-  color: var(--muted);
-  font-size: 0.85rem;
-  line-height: 1.4;
+  color: var(--color-text-secondary);
 }
 .runs-table tbody tr:not(:hover) .row-more:not(:focus-visible) {
-  opacity: 0.55;
+  color: var(--color-text-secondary);
+}
+.run-trace {
+  margin: 0;
 }
 .run-fail {
-  margin: 0.05rem 0 0.15rem;
-  font-size: 0.78rem;
-  line-height: 1.35;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
 }
-.run-fail-sentence {
-  color: var(--fail);
-  font-weight: 600;
+/* The miniature fault line: 16 x 2 px, before the failure sentence. */
+.run-fail-dash {
+  display: inline-block;
+  width: var(--space-4);
+  border-top: 2px solid var(--color-status-fault);
+  margin-right: var(--space-2);
+  vertical-align: middle;
 }
 .run-fail-detail {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 0.74rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-small-size);
 }
-.runs-table tr[data-attention="true"] td {
-  padding-top: 0.3rem;
-  padding-bottom: 0.3rem;
-  vertical-align: top;
+.run-meta {
+  display: none;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}
+.finding-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.finding-count[data-tone="bad"] {
+  font-weight: var(--weight-strong);
 }
 .row-detail td {
   height: auto;
-  padding: 0.1rem 0.6rem 0.5rem;
-  background: var(--surface-2);
+  padding: var(--space-1) var(--space-3) var(--space-3);
 }
 .row-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 1.5rem;
+  gap: var(--space-1) var(--space-6);
   margin: 0;
-  font-size: 0.78rem;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
 }
 .row-facts div {
   display: flex;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 .row-facts dt {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .row-facts dd {
   margin: 0;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
 }
 
-@media (max-width: 52rem) {
+/* Below 1280 px Duration drops (it is in the row's details). */
+@media (max-width: 79.9375rem) {
+  .runs-table .c-dur {
+    display: none;
+  }
+  .runs-body {
+    grid-template-columns: 10rem minmax(0, 1fr);
+    gap: 0 var(--space-4);
+  }
+}
+
+/* Below 900 px: the facets become a disclosure above the list and Agent moves under the name. */
+@media (max-width: 56.1875rem) {
   .runs-body {
     display: block;
   }
   .runs-body > .facets {
     position: static;
     max-height: none;
-    margin: 0 0 0.5rem;
-    border-bottom: 1px solid var(--border);
+    margin: 0 0 var(--space-3);
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   .facets-box > summary {
     display: block;
@@ -181,14 +414,107 @@ button.toggle[aria-pressed="true"] {
   .runs-body .facet ul {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.2rem;
+    gap: var(--space-1);
   }
   .runs-body .facet-button {
     width: auto;
-    border: 1px solid var(--border);
+    border: 1px solid var(--color-border-control);
   }
-  .page-head .page-actions {
+  .runs-table .c-agent {
+    display: none;
+  }
+  .run-meta {
+    display: block;
+  }
+}
+
+/* A phone: every run is a block of two to four lines, the status word first so the scanning column survives. */
+@media (max-width: 37.4375rem) {
+  .runs-lede .opt {
+    display: none;
+  }
+  .runs-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .runs-table,
+  .runs-table tbody {
+    display: block;
+  }
+  .runs-table tbody tr {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    column-gap: var(--space-2);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .runs-table tbody tr td {
+    display: block;
+    height: auto;
+    padding: 0;
+    border: 0;
+  }
+  .runs-table .c-status {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .runs-table .c-started {
+    grid-column: 2;
+    grid-row: 1;
+    color: var(--color-text-secondary);
+  }
+  .runs-table .c-started::before {
+    content: "· " / "";
+  }
+  .runs-table .c-cost {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .runs-table .c-run {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+  }
+  .runs-table .c-find {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+  .runs-table .c-find:not(:has(.finding-count)) {
+    display: none;
+  }
+  .runs-table .c-match {
+    display: none;
+  }
+  .runs-table .c-pick {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+    align-self: start;
+    width: var(--layout-touch);
+    text-align: right;
+  }
+  .runs-table tbody tr:has(.c-pick) .c-run {
+    padding-right: var(--layout-touch);
+  }
+  .runs-table .row-more {
+    min-width: var(--layout-touch);
+    min-height: var(--layout-touch);
+    margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-2)) calc(-1 * var(--space-3)) auto;
+  }
+  .runs-table tr[data-attention="true"] td {
+    padding: 0;
+  }
+  .row-detail td {
+    padding: var(--space-2) 0;
+  }
+  .chip-row-end {
     margin-left: 0;
-    width: 100%;
   }
+}
+.finding-security {
+  display: flex;
 }

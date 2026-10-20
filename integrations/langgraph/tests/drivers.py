@@ -7,7 +7,7 @@ from typing import Annotated, Any, TypedDict
 
 from abb_conformance import SECRET, ScenarioError
 from abb_conformance.scenarios import CONCURRENCY, PASSWORD_ASSIGNMENT, TOOL_NAME
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 from langchain_core.runnables import RunnableConfig
 
 from blackbox_langgraph import BlackBoxCallback

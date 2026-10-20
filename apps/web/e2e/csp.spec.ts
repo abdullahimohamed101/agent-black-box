@@ -34,14 +34,17 @@ function pageDirectories(dir: string, parts: string[] = []): string[][] {
 function routes(): string[] {
   return pageDirectories(APP)
     .map((parts) => {
-      const segments = parts.map((part) => {
-        const param = /^\[(\w+)\]$/.exec(part);
-        if (!param) return part;
-        const value = PARAMS[param[1]!];
-        if (!value)
-          throw new Error(`csp.spec.ts: give the route parameter [${param[1]}] a fixture value`);
-        return value;
-      });
+      // A route group such as `(review)` shares a layout and adds no path segment.
+      const segments = parts
+        .filter((part) => !/^\(.+\)$/.test(part))
+        .map((part) => {
+          const param = /^\[(\w+)\]$/.exec(part);
+          if (!param) return part;
+          const value = PARAMS[param[1]!];
+          if (!value)
+            throw new Error(`csp.spec.ts: give the route parameter [${param[1]}] a fixture value`);
+          return value;
+        });
       return `/${segments.join("/")}`;
     })
     .sort();

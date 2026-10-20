@@ -28,11 +28,19 @@ class Scope(StrEnum):
     ALERT_WRITE = "alert_write"
     ALERT_PREVIEW = "alert_preview"
     ALERT_TEST = "alert_test"
+    # Retention policy changes and the preview of what a policy would delete (ADR-159).
+    RETENTION_WRITE = "retention_write"
+    RETENTION_PREVIEW = "retention_preview"
     # Failed API-key authentication (ADR-153). Counted before any tenant is known, so these are
     # global scopes keyed by a pseudonymous client address, a presented key id, or one fixed key.
     AUTH_FAIL_ADDRESS = "auth_fail_address"
     AUTH_FAIL_CREDENTIAL = "auth_fail_credential"
     AUTH_FAIL_GLOBAL = "auth_fail_global"
+    # Failed session cookies (ADR-169, KI-176): the same shape, keyed by a pseudonymous client
+    # address or one fixed key. No per-credential scope: a session token is 256 random bits, so
+    # a per-token budget bounds nothing (a memory cache of recent failures does).
+    SESSION_FAIL_ADDRESS = "session_fail_address"
+    SESSION_FAIL_GLOBAL = "session_fail_global"
     # At most one "throttled" audit row per workspace per window; tenant-scoped.
     AUTH_THROTTLE_AUDIT = "auth_throttle_audit"
 
@@ -48,6 +56,8 @@ _GLOBAL_SCOPES = frozenset(
         Scope.AUTH_FAIL_ADDRESS,
         Scope.AUTH_FAIL_CREDENTIAL,
         Scope.AUTH_FAIL_GLOBAL,
+        Scope.SESSION_FAIL_ADDRESS,
+        Scope.SESSION_FAIL_GLOBAL,
     }
 )
 

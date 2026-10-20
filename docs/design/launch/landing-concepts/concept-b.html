@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Concept B: The rule (Agent BlackBox landing)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<style>
+/* ---------- Concept B: centered hero; the fault line is a literal page-wide rule that breaks the hero ---------- */
+.hero { padding: 6rem 0 0; text-align: center; }
+.hero .hero-h { margin: 0 auto; max-width: 18ch; }
+.hero .lede { margin-left: auto; margin-right: auto; }
+.actions { display: flex; gap: .75rem; justify-content: center; margin-top: 2rem; flex-wrap: wrap; }
+.facts { margin: 1rem 0 0; font: var(--type-small-size)/var(--type-small-line) var(--font-mono); color: var(--color-text-secondary); }
+.facts span + span::before { content: " · "; }
+/* The rule: full-bleed 2 px line with the label sitting on it, like the product's fault line. */
+.rule { position: relative; margin: 5rem 0 0; height: 2px; background: var(--fault); transform-origin: left; }
+.rule .lbl { position: absolute; left: 50%; transform: translate(-50%, -50%); top: 50%; background: var(--color-bg-canvas); padding: 0 .75rem;
+             font: 600 var(--type-small-size)/1rem var(--font-sans); color: var(--fault); white-space: nowrap; }
+@media (prefers-reduced-motion: no-preference) {
+  .rule { animation: draw 280ms cubic-bezier(.2,0,0,1) both 500ms; }
+  .rule .lbl { animation: appear 200ms both 780ms; }
+  @keyframes draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+}
+/* Below the rule: the two halves of the promise, before/after. */
+.halves { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; padding: 3rem 0 0; text-align: left; }
+.halves h2 { font-size: 1.25rem; line-height: 1.75rem; }
+.halves p { color: var(--color-text-secondary); margin: .5rem 0 0; max-width: 40ch; }
+.halves .mono-list { list-style: none; margin: 1rem 0 0; padding: 0; font: var(--type-mono-size)/1.75rem var(--font-mono); }
+.halves .mono-list li { border-top: 1px solid var(--color-border-subtle); padding: .125rem 0; display: flex; justify-content: space-between; gap: 1rem; }
+.halves .mono-list li:last-child { border-bottom: 1px solid var(--color-border-subtle); }
+.halves .mono-list .q { color: var(--color-text-secondary); font-family: var(--font-sans); }
+@media (max-width: 599px) { .halves { grid-template-columns: 1fr; gap: 2rem; } }
+
+/* Quickstart right under the hero (install-first, like a runtime's page). */
+.quick { padding: 4rem 0 0; display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 3rem; align-items: start; text-align: left; }
+.quick h2 { font-size: 1.25rem; line-height: 1.75rem; } .quick p { color: var(--color-text-secondary); margin: .5rem 0 0; }
+.quick .req { font: var(--type-small-size)/var(--type-small-line) var(--font-mono); margin-top: 1rem; }
+@media (max-width: 1023px) { .quick { grid-template-columns: 1fr; gap: 1.5rem; } }
+
+/* ---------- Proof section: real screenshots, device-less, cropped to the insight, with callouts ---------- */
+.gallery { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 3rem; align-items: start; }
+.tabs { display: grid; gap: 0; border-top: 1px solid var(--color-border-subtle); }
+.tabs label { display: block; padding: .875rem 0; border-bottom: 1px solid var(--color-border-subtle); cursor: pointer; }
+.tabs label b { display: block; font-weight: 600; } .tabs label span { color: var(--color-text-secondary); font-size: var(--type-body-lg-size); }
+.tabs { position: relative; } .tabs input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+.tabs input:checked + label { box-shadow: inset 2px 0 0 var(--color-interactive-default); padding-left: .75rem; }
+.tabs input:focus-visible + label { outline: 2px solid var(--color-interactive-default); outline-offset: -2px; }
+.panel { display: none; }
+.shot { position: relative; aspect-ratio: 16 / 10; border: 1px solid var(--color-border-strong); overflow: hidden; background: var(--color-bg-raised); border-radius: 4px;
+        container-type: size; --zoom: 125; --oy: 60; /* show the screenshot at 125 % of the box width, scrolled 60 source px down */
+        --px: calc(var(--zoom) * 1cqw / 1440); /* one source pixel, in container width units: exact at every viewport width */ }
+.shot img { position: absolute; left: 0; top: calc(-1 * var(--oy) * var(--px)); width: calc(var(--zoom) * 1%); height: auto; display: block; }
+.co { left: calc(var(--x) * var(--px)); top: calc((var(--y) - var(--oy)) * var(--px)); width: calc(var(--w) * var(--px)); height: calc(var(--h) * var(--px)); }
+/* Callout: a 1 px hairline box and a numbered tag; never red. */
+.co { position: absolute; border: 1px solid var(--color-interactive-default); box-shadow: 0 0 0 2px var(--color-bg-raised); pointer-events: none; }
+.co i { position: absolute; left: -1px; top: -1.5rem; height: 1.25rem; min-width: 1.25rem; padding: 0 .375rem; border-radius: 4px; background: var(--color-interactive-default); color: var(--color-text-inverse);
+        font: 600 var(--type-small-size)/1.25rem var(--font-mono); font-style: normal; }
+.notes { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; font-size: var(--type-body-lg-size); line-height: var(--type-body-lg-line); color: var(--color-text-secondary); }
+.notes li { display: grid; grid-template-columns: 1.5rem 1fr; gap: .5rem; }
+.notes i { font: 600 var(--type-small-size)/1.25rem var(--font-mono); font-style: normal; color: var(--color-text-primary); }
+figcaption { font: var(--type-small-size)/var(--type-small-line) var(--font-sans); color: var(--color-text-secondary); margin-top: .75rem; }
+@media (max-width: 1023px) { .gallery { grid-template-columns: 1fr; gap: 1.5rem; } .tabs { display: flex; overflow-x: auto; border-top: 0; gap: 1.5rem; }
+  .tabs label { white-space: nowrap; border-bottom: 2px solid transparent; padding: .5rem 0; } .tabs label span { display: none; }
+  .tabs input:checked + label { box-shadow: none; padding-left: 0; border-bottom-color: var(--color-interactive-default); } .notes { grid-template-columns: 1fr; } .shot { aspect-ratio: 4 / 3; --zoom: 160; } }
+.gallery:has(#t1:checked) .p1, .gallery:has(#t2:checked) .p2, .gallery:has(#t3:checked) .p3 { display: block; }
+@media (prefers-reduced-motion: no-preference) { @supports (animation-timeline: view()) {
+  .gallery { animation: rise linear both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
+  @keyframes rise { from { opacity: .3; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+} }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap top-row">
+  <a class="brand" href="./" aria-label="Agent BlackBox, home">
+    <svg class="mark" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 13h3.5l2.5-7 3.5 12 2.5-5"/><path d="M18 13h4"/><path class="cut" d="M15.5 19.5l1-13" stroke-width="1.5"/></svg>
+    <span>Agent BlackBox</span>
+  </a>
+  <nav class="nav" aria-label="Page"><a href="#how">How it works</a><a href="#screens">Screens</a><a href="#self-host">Self-host</a><a href="#docs">Docs</a><a class="gh" href="#repo">GitHub</a></nav>
+</div></header>
+
+<main id="main">
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">A flight recorder for AI agents</p>
+    <h1 class="hero-h">Your agent failed at step 7. Here is why.</h1>
+    <p class="lede">Agent BlackBox records what an agent actually did, as typed events, and shows the run with one red line at the first error. Open source, Apache-2.0, runs on your machine.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="#self-host">Run the demo locally</a>
+      <a class="btn btn-secondary" href="#repo">Read the source</a>
+    </div>
+    <p class="facts"><span>No API key to try it</span><span>No third-party requests</span><span>Secrets redacted before upload</span></p>
+  </div>
+  <div class="rule" role="presentation"><span class="lbl">First error, step 7</span></div>
+  <div class="wrap">
+    <div class="halves">
+      <div>
+        <h2>Before the line: what the agent did</h2>
+        <p>Model calls with tokens and cost, tool calls with arguments, shell commands with their output, file edits with diffs. In order, with timestamps.</p>
+        <ul class="mono-list"><li><span>llm.request.completed</span><span class="q">2,300 in · $0.0189</span></li><li><span>file.read</span><span class="q">0042_billing.sql</span></li><li><span>tool.call.started</span><span class="q">run_migration</span></li></ul>
+      </div>
+      <div>
+        <h2>After the line: what it cost you</h2>
+        <p>Two retries, 8.2 s and $0.0167 spent after the first error, a finding that names the cause, and an approval you could have required.</p>
+        <ul class="mono-list"><li><span class="fail">tool.call.failed</span><span class="q">ConnectionTimeout</span></li><li><span class="caution">retry.attempted</span><span class="q">#1, #2</span></li><li><span class="fail">run.failed</span><span class="q">+14.4 s · $0.0356 total</span></li></ul>
+      </div>
+    </div>
+
+    <div class="quick" id="self-host">
+      <div>
+        <h2>Four commands, your machine</h2>
+        <p>The demo runs a scripted agent with a deliberate failure and a retry. Same trace every time; no key, no network.</p>
+        <p class="req">Python 3.12 · Node 22 · Docker</p>
+      </div>
+      <figure class="code"><div class="code-head"><span>shell</span><button type="button">Copy</button></div>
+<pre><span class="p">$ </span>git clone https://github.com/abdullahimohamed101/agent-black-box.git
+<span class="p">$ </span>cd agent-black-box
+<span class="p">$ </span>make setup <span class="c"># Python env, JS deps, Postgres in Docker, migrations</span>
+<span class="p">$ </span>make demo  <span class="c"># starts the stack and runs three scripted agents</span></pre></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="screens"><div class="wrap">
+  <p class="eyebrow">Screens</p>
+  <h2 class="h2">The product, not a mockup of it.</h2>
+  <p class="lede" style="font-size:var(--site-body-size);line-height:var(--site-body-line);margin-bottom:3rem">Every image on this page is a screenshot of the dashboard on the demo data, regenerated by script.</p>
+  <div class="gallery">
+    <div class="tabs">
+    <input type="radio" name="t" id="t1" checked><label for="t1"><b>A failed run</b><span>Headline, fault line, inspector</span></label>
+    <input type="radio" name="t" id="t2"><label for="t2"><b>Runs</b><span>Status, cost, findings per run</span></label>
+    <input type="radio" name="t" id="t3"><label for="t3"><b>Waterfall</b><span>One lane per agent, first error marked</span></label>
+    </div>
+    <div class="panels">
+      <figure class="panel p1">
+        <div class="shot">
+          <picture><source srcset="../../../screenshots/pass-2/step5b-failed-inspector-1440-dark.png" media="(prefers-color-scheme: dark)"><img src="../../../screenshots/pass-2/step5b-failed-inspector-1440-light.png" width="1440" height="900" alt="A failed run: the headline sentence names the failing tool, the timeline shows a red fault line at step 7, and the inspector shows the tool call's error payload." loading="lazy"></picture>
+          <span class="co" style="--x:18;--y:104;--w:720;--h:40"><i>1</i></span>
+          <span class="co" style="--x:0;--y:494;--w:1024;--h:36"><i>2</i></span>
+          <span class="co" style="--x:1030;--y:252;--w:400;--h:230"><i>3</i></span>
+        </div>
+        <ul class="notes"><li><i>1</i>The headline sentence: what failed, at which step, after how long.</li><li><i>2</i>The fault line, the only red on the page. Rows above are quiet.</li><li><i>3</i>The inspector: the event's payload, identifiers and timing.</li></ul>
+        <figcaption>Run page, timeline tab, demo project. 1440 px, light and dark follow your system.</figcaption>
+      </figure>
+      <figure class="panel p2">
+        <div class="shot">
+          <picture><source srcset="../../../screenshots/pass-2/step5d-sweep-runs-1440-dark.png" media="(prefers-color-scheme: dark)"><img src="../../../screenshots/pass-2/step5d-sweep-runs-1440-light.png" width="1440" height="900" alt="The runs list: one row per run with status, agent, duration, cost and findings; failed runs carry a short red dash and the step they failed at." loading="lazy"></picture>
+          <span class="co" style="--x:226;--y:422;--w:600;--h:48"><i>1</i></span>
+          <span class="co" style="--x:20;--y:228;--w:140;--h:150"><i>2</i></span>
+        </div>
+        <ul class="notes"><li><i>1</i>A failed run says where it failed and what the retries cost, in the list.</li><li><i>2</i>Narrow to what needs attention: failed, timed out, blocked, awaiting approval.</li></ul>
+        <figcaption>Runs, 18 demo runs.</figcaption>
+      </figure>
+      <figure class="panel p3">
+        <div class="shot">
+          <picture><source srcset="../../../screenshots/pass-2/step5b-failed-waterfall-1440-dark.png" media="(prefers-color-scheme: dark)"><img src="../../../screenshots/pass-2/step5b-failed-waterfall-1440-light.png" width="1440" height="900" alt="The waterfall: spans per agent on a time axis, the critical path drawn thicker, a vertical red fault line at the first error." loading="lazy"></picture>
+          <span class="co" style="--x:728;--y:336;--w:130;--h:220"><i>1</i></span>
+          <span class="co" style="--x:452;--y:362;--w:668;--h:24"><i>2</i></span>
+        </div>
+        <ul class="notes"><li><i>1</i>The same fault line, vertical, across every lane.</li><li><i>2</i>The critical path drawn thicker; a hatched span has no end recorded.</li></ul>
+        <figcaption>Waterfall, tree view.</figcaption>
+      </figure>
+    </div>
+  </div>
+</div></section>
+</main>
+
+<footer><div class="wrap cols">
+  <div><a class="brand" href="./"><svg class="mark" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 13h3.5l2.5-7 3.5 12 2.5-5"/><path d="M18 13h4"/><path class="cut" d="M15.5 19.5l1-13" stroke-width="1.5"/></svg>Agent BlackBox</a><p>Apache-2.0. Fonts: IBM Plex, SIL OFL 1.1.<br>This page makes no third-party request.</p></div>
+  <div><h3>Product</h3><a href="#how">How it works</a><a href="#screens">Screens</a><a href="#self-host">Self-host</a></div>
+  <div><h3>Project</h3><a href="#repo">Source</a><a href="#docs">Docs</a><a href="#license">License</a></div>
+  <div><h3>Community</h3><a href="#contrib">Contributing</a><a href="#security">Security policy</a><a href="#coc">Code of conduct</a></div>
+</div></footer>
+</body>
+</html>

@@ -47,6 +47,7 @@ UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://abb:x@127.0.0.1:1/abb_test"
 def make_settings(database_url: str, **overrides: object) -> Settings:
     overrides.setdefault("summary_debounce_seconds", 0.0)  # tests summarize immediately
     overrides.setdefault("findings_delay_seconds", 0.0)  # and analyse immediately
+    overrides.setdefault("findings_min_interval_seconds", 0.0)  # with no floor between analyses
     overrides.setdefault("security_reanalyse_cooldown_seconds", 0.0)  # tests change settings often
     # The authorization matrix sends hundreds of policy requests in a minute; the limits have
     # their own tests (tests/policies) that build the service with real numbers.
@@ -69,6 +70,10 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
     overrides.setdefault("auth_fail_per_credential", 1_000_000)
     overrides.setdefault("auth_fail_per_address", 1_000_000)
     overrides.setdefault("auth_fail_global", 1_000_000)
+    # Same for the failed-session throttle (ADR-169): the matrix presents expired and revoked
+    # cookies by the hundred. tests/test_session_throttle.py sets real numbers.
+    overrides.setdefault("session_fail_per_address", 1_000_000)
+    overrides.setdefault("session_fail_global", 1_000_000)
     return Settings(
         environment="test",
         log_level="WARNING",

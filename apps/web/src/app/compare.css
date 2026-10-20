@@ -5,14 +5,12 @@
 .evaluation-list {
   list-style: none;
   padding: 0;
-  margin: 0.5rem 0;
+  margin: var(--space-2) 0;
   display: grid;
-  gap: 0.5rem;
 }
 .evaluation {
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.6rem 0.8rem;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border-subtle);
 }
 .evaluation-head {
   display: flex;
@@ -22,7 +20,7 @@
 }
 .evaluation-head h4 {
   margin: 0;
-  font-size: 1rem;
+  font: var(--type-h3-weight) var(--type-h3-size) / var(--type-h3-line) var(--font-sans);
   overflow-wrap: anywhere;
 }
 .evaluation-result,
@@ -35,15 +33,12 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.evaluation-error {
-  color: var(--bad);
-}
 .evaluation-facts {
   margin: 0.25rem 0;
 }
 .evaluation-foot {
   margin: 0.35rem 0 0;
-  font-size: 0.85rem;
+  font-size: var(--type-body-size);
 }
 .evaluation-history {
   margin: 0.5rem 0;
@@ -83,81 +78,94 @@
   gap: 0.25rem 1rem;
   align-items: center;
   margin: 0 0 0.35rem;
-  font-size: 0.78rem;
-  color: var(--muted);
+  font-size: var(--type-small-size);
+  color: var(--color-text-secondary);
 }
 .compare-pick {
   width: 2rem;
 }
 tr[data-picked="true"] {
-  background: var(--sel);
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--color-bg-wash);
+  box-shadow: inset 3px 0 0 var(--color-interactive-default);
 }
 .button-link {
-  border: 1px solid var(--accent);
-  border-radius: 4px;
+  border: 1px solid var(--color-interactive-default);
+  border-radius: var(--radius-control);
   padding: 0.2rem 0.6rem;
 }
 
-/* Compare page and experiments. */
+/* Compare page (design pass 2, batch 5b): one headline sentence, a delta line, two cells (A and B) with a hairline between,
+   the aligned steps with a 2 px ink rule where the runs part (a divergence is a fork, not a failure, so it is not red), then
+   the sections. Hairlines and type weight, no left bars, no tinted rows. Tokens only. */
+.compare .title-line {
+  margin: 0 0 var(--space-4);
+}
 .compare-runs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: 0.5rem 0.75rem;
-  margin: 0 0 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 var(--space-4);
+  border-top: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
-/* Two header cells, one per run: a small-caps side label over the id and status. */
-.compare-runs p {
+.compare-cell {
+  min-width: 0;
+  padding: var(--space-3) var(--space-4) var(--space-3) 0;
+}
+.compare-cell + .compare-cell {
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--color-border-subtle);
+}
+.compare-cell p {
+  margin: 0;
+}
+.compare-cell-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.6rem;
-  margin: 0;
-  padding: 0.45rem 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  border-radius: 4px;
-  min-width: 0;
+  align-items: baseline;
+  gap: 0 var(--space-3);
 }
-.compare-runs [data-testid="right-run"] {
-  border-left-color: var(--border-strong);
-}
-.compare-runs .muted {
-  font: 500 var(--fs-small) / 1.3 var(--cond);
-}
-.compare-runs a {
-  font: 400 0.8rem/1.3 var(--mono);
+.compare-cell-head a {
+  font-weight: var(--weight-strong);
   text-decoration: none;
   overflow-wrap: anywhere;
 }
-.compare-runs a:hover,
-.compare-runs a:focus-visible {
+.compare-cell-head a:hover,
+.compare-cell-head a:focus-visible {
   text-decoration: underline;
+}
+.compare-side {
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-strong);
+}
+.compare-cell-meta {
+  overflow-wrap: anywhere;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
 }
 .compare-notices {
   display: grid;
-  gap: 0.5rem;
-  margin: 0.75rem 0;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
 }
 .compare-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 0.5rem 0;
+  margin: var(--space-2) 0;
 }
 .compare-table th,
 .compare-table td {
   text-align: left;
   vertical-align: top;
-  padding: 0.35rem 0.6rem;
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
   overflow-wrap: anywhere;
 }
-.compare-table .delta[data-tone="bad"] {
-  color: var(--bad);
+.compare-table th:last-child,
+.compare-table td:last-child {
+  padding-right: 0;
 }
-.compare-table .delta[data-tone="ok"] {
-  color: var(--ok);
+.compare-table .delta[data-tone="bad"] {
+  font-weight: var(--weight-strong);
 }
 .table-scroll {
   overflow-x: auto;
@@ -166,22 +174,26 @@ tr[data-picked="true"] {
 .aligned-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2) var(--space-3);
   align-items: center;
+}
+.aligned-hint {
+  margin: var(--space-2) 0;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
 }
 .aligned-head,
 .aligned-row {
   display: grid;
   grid-template-columns: minmax(7rem, 11rem) 1fr 1fr;
-  gap: 0.5rem;
+  gap: var(--space-3);
 }
 .aligned-head {
-  padding: 0.35rem 0.5rem;
-  font: 600 0.66rem/1.3 var(--cond);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border-strong);
+  padding: var(--space-1) 0;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-strong);
 }
 .aligned-list {
   list-style: none;
@@ -189,16 +201,14 @@ tr[data-picked="true"] {
   padding: 0;
 }
 .aligned-row {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.8rem;
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
-/* Equal rows are muted by having no highlight, not by opacity: opacity would break the text contrast. */
-.aligned-row[data-relation="changed"] {
-  background: color-mix(in srgb, var(--fg) 5%, transparent);
+/* A row that differs is heavier on both sides; an equal row is plain. No fill (opacity would break the text contrast too). */
+.aligned-row[data-relation="changed"] .step-cell {
+  font-weight: var(--weight-strong);
 }
-/* The fault-line cut (Phase 22 D12): one ink rule across the top of the row where the runs part, and a faint tint on every
-   row after it. Ink, not red: a divergence is a fork, not necessarily a failure. */
+/* The divergence: one ink rule across the top of the row where the runs part. */
 .aligned-row[data-divergence="true"] {
   position: relative;
 }
@@ -207,67 +217,66 @@ tr[data-picked="true"] {
   position: absolute;
   inset: -1px 0 auto 0;
   height: 2px;
-  background: var(--fg);
-}
-.aligned-row[data-after-divergence="true"]:not([data-relation="changed"]) {
-  background: color-mix(in srgb, var(--fg) 3%, transparent);
+  background: var(--color-text-primary);
 }
 .compare-lead {
   display: grid;
-  gap: 0.35rem;
-  margin: 0 0 1rem;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
   max-width: 60rem;
 }
 .compare-lead p {
   margin: 0;
 }
-/* The headline sentence: the one serif place on this page, like the run's failure line. */
+/* The headline sentence: 18/24 600 ink (an analysis, not an incident, so it is smaller than a run's headline). */
 .page .compare-lead .compare-divergence {
-  font: 500 var(--fs-headline) / 1.3 var(--serif);
+  font: var(--type-h2-weight) var(--type-h2-size) / var(--type-h2-line) var(--font-sans);
   overflow-wrap: anywhere;
 }
 .compare-divergence .divergence-name {
-  font: 500 0.82em / 1.3 var(--mono);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0 0.3em;
+  font: var(--type-mono-weight) var(--type-body-lg-size) / var(--type-body-lg-line) var(--font-mono);
 }
 .compare-deltas {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.15rem 1.25rem;
-  font: 400 0.8rem / 1.5 var(--mono);
-  font-variant-numeric: tabular-nums;
+  gap: 0 var(--space-4);
+  font: var(--type-mono-weight) var(--type-mono-size) / var(--type-mono-line) var(--font-mono);
 }
 .compare-delta-label {
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .compare-measures > summary {
   cursor: pointer;
-  color: var(--accent);
+  color: var(--color-interactive-default);
   width: fit-content;
-  padding: 0.2rem 0;
+  padding: var(--space-1) 0;
 }
-.compare-measures > summary:focus-visible {
-  outline: 2px solid var(--info);
+.compare-measures > summary:focus-visible,
+.aligned-row:focus-visible {
+  outline: 2px solid var(--color-interactive-default);
   outline-offset: 2px;
 }
 .aligned-row:focus-visible {
-  outline: 2px solid var(--info);
   outline-offset: -2px;
+}
+.aligned-row > * {
+  min-width: 0;
+}
+.aligned-flags .badge {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .aligned-flags {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
-  align-items: flex-start;
+  gap: var(--space-1) var(--space-2);
+  align-items: baseline;
 }
 .step-cell {
   overflow-wrap: anywhere;
 }
 .step-label {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
 }
 .file-sets {
   display: grid;
@@ -279,16 +288,19 @@ tr[data-picked="true"] {
   padding: 0;
   margin: 0.25rem 0;
 }
-.experiment-form {
-  margin: 1rem 0;
-  display: grid;
-  /* One shrinkable column: an option with a long run id must not widen the form past a phone. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.6rem;
-  max-width: 36rem;
-}
-.experiment-form select {
-  max-width: 100%;
+@media (max-width: 52rem) {
+  /* A and B stack on a tablet and a phone; a step is a block: the step number line, then A, then B. */
+  .compare-runs {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .compare-cell,
+  .compare-cell + .compare-cell {
+    padding: var(--space-3) 0;
+    border-left: 0;
+  }
+  .compare-cell + .compare-cell {
+    border-top: 1px solid var(--color-border-subtle);
+  }
 }
 @media (max-width: 40rem) {
   .aligned-head,
@@ -298,9 +310,42 @@ tr[data-picked="true"] {
   .aligned-head {
     display: none;
   }
+  .aligned-row {
+    padding: var(--space-2) 0;
+  }
+  .aligned-toolbar {
+    position: sticky;
+    top: var(--layout-topbar);
+    z-index: 2;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: var(--space-1) 0;
+    background: var(--color-bg-canvas);
+    scrollbar-width: none;
+  }
+  .aligned-toolbar > span,
+  .aligned-hint {
+    display: none;
+  }
+  .aligned-toolbar button {
+    flex: none;
+    min-height: var(--layout-touch);
+  }
+  /* A step is a block: its number line, then "A  ..." and "B  ...". */
+  .step-cell[data-side]::before {
+    content: attr(data-label) "  ";
+    color: var(--color-text-secondary);
+    font-weight: var(--weight-strong);
+  }
 }
 
 /* The leading rows that are the same in both runs fold into one button, so the cut is near the top of the steps. */
 .aligned-earlier {
-  margin: 0.4rem 0 0.25rem;
+  margin: var(--space-1) 0;
+  padding: var(--space-1) 0;
+  border: 0;
+  color: var(--color-interactive-default);
+}
+.aligned-earlier:hover {
+  text-decoration: underline;
 }

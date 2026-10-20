@@ -3,7 +3,7 @@
 from typing import Any
 
 from abb_conformance import check_guarded_tool
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 from blackbox_openai import instrument
 from tests.fakes import fake_client

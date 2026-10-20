@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from blackbox import BlackBox
-from blackbox.exporter import parse_retry_after
+from agent_blackbox import BlackBox
+from agent_blackbox.exporter import parse_retry_after
 from tests.helpers import StubServer, offline, start_stub, stop_stub
 
 KEY = "abb_live_test.secret"
@@ -305,9 +305,9 @@ def test_each_batch_gets_its_own_batch_id(stub: StubServer) -> None:
 
 
 def test_backoff_grows_exponentially_with_full_jitter_and_is_capped() -> None:
-    from blackbox.config import Config
-    from blackbox.exporter import HttpSink
-    from blackbox.stats import Stats
+    from agent_blackbox.config import Config
+    from agent_blackbox.exporter import HttpSink
+    from agent_blackbox.stats import Stats
 
     config = Config.build(api_key="k", backoff_base=0.5, backoff_max=3.0)
     sink = HttpSink(config, Stats())
@@ -333,10 +333,10 @@ def test_flush_on_an_idle_or_offline_client_returns_immediately() -> None:
 def test_flush_cannot_return_while_a_batch_is_between_the_buffer_and_the_sink() -> None:
     import threading as th
 
-    from blackbox.buffer import EventBuffer
-    from blackbox.config import Config
-    from blackbox.exporter import Exporter
-    from blackbox.stats import Stats
+    from agent_blackbox.buffer import EventBuffer
+    from agent_blackbox.config import Config
+    from agent_blackbox.exporter import Exporter
+    from agent_blackbox.stats import Stats
 
     stats = Stats()
     taken, release = th.Event(), th.Event()
@@ -402,7 +402,7 @@ def test_quota_refusals_inside_a_202_are_dropped_counted_and_never_retried(
     stub = start_stub(respond=respond)
     try:
         bb = client(stub, batch_size=5)
-        with caplog.at_level("WARNING", logger="blackbox"):
+        with caplog.at_level("WARNING", logger="agent_blackbox"):
             emit(bb, 40)
             assert bb.shutdown(5)
         stats = bb.stats()

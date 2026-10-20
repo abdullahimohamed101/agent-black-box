@@ -7,8 +7,8 @@ Standard library only (ADR-013). See `docs/architecture/sdk-python.md` in the re
 Off by default. `BlackBox(policy_mode="enforce")` or `BLACKBOX_POLICY=enforce` turns it on; the project key needs the scope `policy:check` or `events:write`.
 
 ```python
-import blackbox
-from blackbox import PolicyDenied, PolicyUnavailable, guarded
+import agent_blackbox
+from agent_blackbox import PolicyDenied, PolicyUnavailable, guarded
 
 with bb.run("deploy"):
     try:
@@ -57,12 +57,13 @@ with bb.run("Ship feature") as run:
 
 ```python
 # in the child process (it needs a key of the same project)
-with bb.continue_run(blackbox.trace_context_from_env()) as run:  # no run.started / run.completed
+# no run.started / run.completed
+with bb.continue_run(agent_blackbox.trace_context_from_env()) as run:
     with run.span("pytest", kind="shell"):
         ...
 ```
 
-- Threads do not inherit context: wrap callables with `blackbox.bind`. asyncio tasks inherit it.
+- Threads do not inherit context: wrap callables with `agent_blackbox.bind`. asyncio tasks inherit it.
 - A continued run (and a forked child that keeps using its parent's `Run`) sends no `sequence`; the run is then ordered by time.
   Under clock skew the chronological list interleaves processes by their own clocks; the waterfall nests by parentage.
 - An invalid context gives an inert run and a warning that never echoes the value. The context is not a credential, only an address.

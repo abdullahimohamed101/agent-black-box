@@ -54,7 +54,7 @@ handler that raises `SystemExit` so a wait is withdrawn.
 ## 4. Writing your own guards
 
 ```python
-from blackbox import BlackBox, PolicyDenied, guarded
+from agent_blackbox import BlackBox, PolicyDenied, guarded
 
 bb = BlackBox(policy_mode="enforce")
 

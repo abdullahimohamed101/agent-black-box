@@ -2,17 +2,17 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { runs as t } from "@/copy/runs";
 import { runPath, type Base } from "@/lib/routes";
 import { TraceLine } from "./illustrations";
 import { useCan } from "./WorkspaceProvider";
 import "../app/setup-guide.css";
 
-// The real package and import names (packages/sdk-python/pyproject.toml, docs/architecture/sdk-python.md). Whether the
-// package is published to a public index is not verified here, so the checkout form is shown under it.
-const INSTALL = "pip install agent-black-box";
-const FROM_CHECKOUT = "pip install ./packages/sdk-python";
+// No package is published to a public index yet, so the only install line that works is the from-checkout one
+// (docs/quickstart.md, "Trace your own agent"). Do not show a registry name here until it is published and checked.
+const INSTALL = "pip install ./packages/sdk-python";
 // `BlackBox()` reads BLACKBOX_API_KEY and BLACKBOX_ENDPOINT (default http://localhost:8000); an atexit hook flushes.
-const SNIPPET = `from blackbox import BlackBox
+const SNIPPET = `from agent_blackbox import BlackBox
 bb = BlackBox()
 with bb.run("My first run"): pass`;
 
@@ -36,14 +36,10 @@ function CopyBlock({ text, label }: { text: string; label: string }) {
         <code>{text}</code>
       </pre>
       <button type="button" onClick={() => void copy()} aria-label={label}>
-        {state === "copied" ? "Copied" : "Copy"}
+        {state === "copied" ? t.guide.copied : t.guide.copy}
       </button>
       <span className="sr-only" role="status" aria-live="polite">
-        {state === "copied"
-          ? "Copied"
-          : state === "failed"
-            ? "Could not copy; select the text"
-            : ""}
+        {state === "copied" ? t.guide.copied : state === "failed" ? t.guide.copyFailed : ""}
       </span>
     </div>
   );
@@ -68,60 +64,57 @@ export function SetupGuide({
     <section className="setup" aria-labelledby="setup-h" data-testid="setup-guide">
       <TraceLine className="illus-lg" />
       <h2 id="setup-h" className="setup-headline">
-        No runs yet
+        {t.guide.title}
       </h2>
-      <p className="setup-lede">
-        Record one agent run in three steps. This page switches to it when the first event arrives.
-      </p>
+      <p className="setup-lede">{t.guide.lede}</p>
       <ol className="setup-steps">
         <li>
-          <h3>Create an API key</h3>
+          <h3>{t.guide.keyTitle}</h3>
           <p>
             {canCreateKey ? (
               <>
-                <Link href={keysHref}>Create a key in settings</Link> and copy it at once: the token
-                is shown only once.
+                <Link href={keysHref}>{t.guide.keyAllowed}</Link> {t.guide.keyAllowedAfter}
               </>
             ) : (
               <>
-                Ask a workspace owner or admin for a key (<Link href={keysHref}>API keys</Link>
-                ). The token is shown only once, when it is created.
+                {t.guide.keyDeniedBefore}
+                <Link href={keysHref}>{t.guide.keyDeniedLink}</Link>
+                {t.guide.keyDeniedAfter}
               </>
             )}
           </p>
         </li>
         <li>
-          <h3>Install the SDK</h3>
+          <h3>{t.guide.installTitle}</h3>
           <CopyBlock text={INSTALL} label="Copy the install command" />
-          <p className="muted">
-            Working from a checkout of this repository? Run <code>{FROM_CHECKOUT}</code>.
-          </p>
+          <p className="muted">{t.guide.checkout}</p>
         </li>
         <li>
-          <h3>Record a run</h3>
+          <h3>{t.guide.recordTitle}</h3>
           <p>
-            Set <code>BLACKBOX_API_KEY</code> to your key (and <code>BLACKBOX_ENDPOINT</code> if the
-            API is not on <code>http://localhost:8000</code>), then run:
+            {t.guide.recordBefore} <code>BLACKBOX_API_KEY</code> {t.guide.recordMid}{" "}
+            <code>BLACKBOX_ENDPOINT</code> {t.guide.recordMid2} <code>http://localhost:8000</code>
+            {t.guide.recordAfter}
           </p>
           <CopyBlock text={SNIPPET} label="Copy the example code" />
         </li>
       </ol>
       {arrivedRunId ? (
         <div className="setup-status" role="status" data-testid="setup-arrived" data-tone="ok">
-          <span>Your first run arrived.</span>
+          <span>{t.guide.arrived}</span>
           <Link href={runPath(base, arrivedRunId)} className="button-link">
-            Open the run
+            {t.guide.open}
           </Link>
           {onDismiss && (
             <button type="button" onClick={onDismiss}>
-              Show all runs
+              {t.guide.showAll}
             </button>
           )}
         </div>
       ) : (
         <p className="setup-status" role="status" data-testid="setup-waiting">
           <span className="setup-dot" aria-hidden="true" />
-          Waiting for your first event
+          {t.guide.waiting}
         </p>
       )}
     </section>

@@ -8,8 +8,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from blackbox import BlackBox, PayloadMode
-from blackbox.coding import CodingRecorder
+from agent_blackbox import BlackBox, PayloadMode
+from agent_blackbox.coding import CodingRecorder
 
 from coding_agent.agent import run_agent
 from coding_agent.models import Reply, ScriptedModel, ToolCall
@@ -180,8 +180,8 @@ def test_search_masks_secrets_and_does_not_follow_links_to_secret_files(tmp_path
     """Regression (third review): `search` returned file lines to the model unmasked, also via symlinks."""
     import subprocess
 
-    from blackbox import BlackBox, PayloadMode
-    from blackbox.coding import CodingRecorder
+    from agent_blackbox import BlackBox, PayloadMode
+    from agent_blackbox.coding import CodingRecorder
 
     from coding_agent.tools import Toolbox
 
@@ -280,3 +280,22 @@ def test_a_variant_needs_the_scripted_model() -> None:
     with pytest.raises(SystemExit) as exc:
         run_demo.main(["--model", "anthropic", "--variant", "wrong-fix", "--offline"])
     assert exc.value.code == 2
+
+
+def test_live_flag_needs_the_acknowledgement_and_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--live` is `--model anthropic`: refused without the shell-access acknowledgement, and never reached
+    in scripted mode. No key or network is used here (KI-044: the project has not run real-model mode)."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "run_demo", Path(__file__).resolve().parent.parent / "run_demo.py"
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(SystemExit) as refused:
+        module.main(["--live", "--offline"])
+    assert refused.value.code == 2
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+        module.main(["--live", "--offline", "--i-understand-this-runs-commands"])

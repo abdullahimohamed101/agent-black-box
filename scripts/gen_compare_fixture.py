@@ -45,8 +45,8 @@ def _ulid(seed: str) -> str:
 
 def _run_example(variant: str, same_file_edit: bool) -> list[Event]:
     """The raw events of one scripted run of the example, in sequence order."""
-    from blackbox import BlackBox, PayloadMode
-    from blackbox.coding import CodingRecorder
+    from agent_blackbox import BlackBox, PayloadMode
+    from agent_blackbox.coding import CodingRecorder
     from coding_agent.agent import run_agent
     from coding_agent.models import ScriptedModel
     from coding_agent.workspace import prepare_workspace

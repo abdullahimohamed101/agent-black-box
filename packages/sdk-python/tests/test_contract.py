@@ -13,8 +13,8 @@ from abb_event_schema.parse import parse_event_in
 from abb_event_schema.registry import EVENT_TYPES, lookup
 from jsonschema import Draft202012Validator
 
-from blackbox import events, ids
-from blackbox.stats import Stats
+from agent_blackbox import events, ids
+from agent_blackbox.stats import Stats
 from tests.helpers import events_of, offline, types_of
 
 SCHEMA_PATH = Path(abb_event_schema.__file__ or "").parents[2] / "schemas/1.0/event-in.json"

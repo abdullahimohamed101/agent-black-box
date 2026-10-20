@@ -11,9 +11,9 @@ from typing import Any
 
 import pytest
 
-from blackbox import BlackBox, PayloadMode
-from blackbox.coding import CodingRecorder, classify_command
-from blackbox.secretscan import (
+from agent_blackbox import BlackBox, PayloadMode
+from agent_blackbox.coding import CodingRecorder, classify_command
+from agent_blackbox.secretscan import (
     MAX_FILE_BYTES,
     SecretFiles,
     extract_values,

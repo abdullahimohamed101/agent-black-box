@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit setup dev db db-stop migrate test test-api test-api-fast test-db-up test-db-down lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e
+.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test test-api test-api-fast test-db-up test-db-down lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e demo demo-reset demo-e2e site site-check auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -38,6 +38,26 @@ dev: db
 	(cd $(API) && uv run uvicorn abb_api.main:app_from_env --factory --reload --port 8000) & \
 	(pnpm --filter @abb/web dev) & \
 	wait
+
+# Backup and restore (ADR-162; docs/runbooks/backup-restore.md). OUT and BUNDLE are absolute paths.
+#   make backup OUT=/var/backups/abb/2026-10-16 [BACKUP_FLAGS="--encrypt --passphrase-file /etc/abb/backup.pass"]
+#   make backup-verify BUNDLE=/var/backups/abb/2026-10-16 [BACKUP_FLAGS="--passphrase-file ..."]
+#   make restore BUNDLE=/var/backups/abb/2026-10-16 ARTIFACT_DIR=/new/empty/dir [BACKUP_FLAGS=...]  (needs ABB_RESTORE_DATABASE_URL)
+backup:
+	@test -n "$(OUT)" || { echo "usage: make backup OUT=<new directory>"; exit 2; }
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run python -m abb_api.backup create --out "$(OUT)" $(BACKUP_FLAGS)
+
+backup-verify:
+	@test -n "$(BUNDLE)" || { echo "usage: make backup-verify BUNDLE=<directory>"; exit 2; }
+	cd $(API) && uv run python -m abb_api.backup verify "$(BUNDLE)" $(BACKUP_FLAGS)
+
+restore:
+	@test -n "$(BUNDLE)" || { echo "usage: make restore BUNDLE=<directory> ARTIFACT_DIR=<empty directory>"; exit 2; }
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run python -m abb_api.backup restore "$(BUNDLE)" $(if $(ARTIFACT_DIR),--artifact-dir "$(ARTIFACT_DIR)") $(BACKUP_FLAGS)
+
+# Rotate the alert-encryption key and re-seal every destination; ROTATE_FLAGS="--new-key", "--dry-run" or empty to resume.
+rotate-alert-keys:
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run python -m abb_api.rotate alerts $(ROTATE_FLAGS)
 
 test:
 	cd $(SCHEMA) && uv run pytest -q
@@ -91,6 +111,26 @@ typecheck:
 seed:
 	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && ABB_ALLOW_DEV_SESSIONS=1 uv run python -m abb_api.cli seed --key-file $(CURDIR)/.local/dev-api-key
 
+# Record the scripted example agents (coding, custom, multi-agent; no API key) into the running stack (`make dev` or `make up`).
+# Own project `abb-demo`; `make demo-reset` is a dry run, `make demo-reset CONFIRM=1` permanently removes only that project.
+demo:
+	scripts/demo.sh
+
+demo-reset:
+	scripts/demo.sh reset $(if $(CONFIRM),--confirm)
+
+# The demo twice on a throwaway database; the normalised summaries must be identical (docs/TESTING.md "Demo determinism").
+demo-e2e:
+	scripts/demo-e2e.sh
+
+# The landing page (Phase 20): `make site` builds the static export into site/out (deployed under /agent-black-box/);
+# `make site-check` builds it and runs every check (scripts/check-site.sh --help lists them; --only NAME runs one).
+site:
+	pnpm --filter @abb/site build
+
+site-check:
+	scripts/check-site.sh
+
 # Regenerate the committed JSON Schema and TypeScript types from the Pydantic models.
 schema:
 	cd $(SCHEMA) && uv run python -m abb_event_schema.export
@@ -125,10 +165,19 @@ sdk-e2e:
 	scripts/sdk-e2e.sh
 
 # Known-vulnerability scan (spec §111). JS: production dependencies only; dev-only findings are
-# tracked in docs/KNOWN_ISSUES.md. Python: whole locked set.
-audit:
+# tracked in docs/KNOWN_ISSUES.md. Python: every uv.lock (scripts/audit-lockfiles.sh, allow-list in
+# scripts/audit-allowlist.txt). New advisories can fail an unchanged tree.
+audit: audit-pnpm audit-lockfiles
+
+audit-pnpm:
 	pnpm audit --prod
-	cd $(API) && uv export --frozen --no-hashes --no-emit-project -o /tmp/abb-api-requirements.txt >/dev/null && uvx --python 3.12 pip-audit -r /tmp/abb-api-requirements.txt
+
+audit-lockfiles:
+	scripts/audit-lockfiles.sh
+
+# Every GitHub Action pinned by commit sha, every container image by digest (KI-024, spec §127).
+check-pins:
+	scripts/check-pins.sh
 
 quality:
 	scripts/quality.sh quick
@@ -195,6 +244,24 @@ alerts-e2e:
 hardening-e2e:
 	pnpm --filter @abb/web build && scripts/hardening-e2e.sh
 
+# Operability (Phase 19c): a real stack with a metrics token, every catalogue family moved by exactly the traffic driven, readiness and the
+# database breaker against deliberately broken processes, the logs of every process scanned at DEBUG, the shipped Prometheus rules and Grafana
+# dashboard run by the pinned images (an alert really fires), tracing into a local OTLP receiver, and the cost of metrics and tracing.
+# Needs Postgres on 5433, Docker and uv; pulls only the two images pinned in docker-compose.yml (and refuses when the VM has under 3 GB free).
+obs-e2e:
+	scripts/obs-e2e.sh
+
+# Data retention (Phase 19b): a real stack with the retention job as its own database login. Dry run deletes nothing, enforcement removes expired
+# data in order, a crash (SIGKILL) mid-run is finished by a rerun, the kill switch and bounds, privileges, purge commands, a real browser, and the
+# cost of enforcement (informational). Deterministic assertions only (docs/benchmarks/phase-19b-retention-e2e.md).
+retention-e2e:
+	pnpm --filter @abb/web build && scripts/retention-e2e.sh
+
+# The performed restore drill (Phase 19b): seed, back up (module CLI, encrypted, compose service), destroy, restore, serve, upgrade an older bundle,
+# rotate the alert key. Needs pg_dump, pg_restore and openssl on the PATH, and Docker for the compose step (docs/benchmarks/phase-19b-restore-drill.md).
+backup-restore-e2e:
+	scripts/backup-restore-e2e.sh
+
 # Evaluations, comparison and experiments: the coding agent twice (baseline, wrong-fix), owner and viewer in a real browser (Phase 11).
 eval-e2e:
 	pnpm --filter @abb/web build && scripts/eval-e2e.sh
@@ -215,3 +282,21 @@ integrations-test:
 
 integrations-e2e:
 	scripts/integrations-e2e.sh
+
+# Local dashboards (docs/OPERATIONS.md "Local dashboards"): Prometheus on 127.0.0.1:9090, Grafana on 127.0.0.1:3001.
+# The token file is created once (mode 0600, git-ignored) and nothing is printed; it is passed to the API and worker
+# as ABB_METRICS_TOKEN and mounted read-only into Prometheus.
+OBS_TOKEN := .local/metrics-token
+observability-token:
+	@mkdir -p .local && chmod 700 .local
+	@test -s $(OBS_TOKEN) || (umask 077 && openssl rand -hex 24 > $(OBS_TOKEN))
+	@chmod 600 $(OBS_TOKEN)
+
+observability-up: observability-token
+	@ABB_METRICS_TOKEN="$$(cat $(OBS_TOKEN))" ABB_WORKER_METRICS_PORT=9101 ABB_WORKER_METRICS_BIND=0.0.0.0 \
+	  ABB_OBS_UID="$$(id -u)" ABB_OBS_GID="$$(id -g)" \
+	  docker compose --profile app --profile observability up -d --build
+	@echo "Grafana http://127.0.0.1:3001 (user admin), Prometheus http://127.0.0.1:9090"
+
+observability-down:
+	docker compose --profile observability rm -sf prometheus grafana

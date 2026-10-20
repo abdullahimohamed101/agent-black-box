@@ -6,14 +6,14 @@ from typing import Any
 
 import pytest
 
-from blackbox import (
+from agent_blackbox import (
     ApprovalDenied,
     ApprovalExpired,
     PolicyDenied,
     PolicyUnavailable,
 )
-from blackbox import policy as policy_module
-from blackbox.policy import PolicyGuard
+from agent_blackbox import policy as policy_module
+from agent_blackbox.policy import PolicyGuard
 from tests.policy_server import PolicyServer, R, make_client, require, state, warnings_of
 
 

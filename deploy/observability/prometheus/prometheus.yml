@@ -1,0 +1,53 @@
+# Prometheus configuration for Agent BlackBox (Phase 19c, ADR-171, docs/OPERATIONS.md "Local dashboards").
+#
+# The metrics token is read from a FILE (credentials_file), never written here. In the compose
+# profile the file is `.local/metrics-token` (created by `make observability-token`) mounted read-only
+# at /etc/prometheus/abb-metrics-token. In your own deployment point credentials_file at the file that
+# holds the same value as ABB_METRICS_TOKEN (mode 0600, readable by the Prometheus user only).
+#
+# Targets below are the compose names (api:8000, worker:9101). Replace them with your own; scrape EVERY
+# replica of each, and do not publish either port to the internet (docs/SECURITY.md).
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  # Rule groups evaluate at their own interval (slo.yml uses 30s); this is the default for the rest.
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: abb-api
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/abb-metrics-token
+    static_configs:
+      - targets: ["api:8000"]
+
+  # The worker serves metrics only when ABB_WORKER_METRICS_PORT is set (and, in a container network,
+  # ABB_WORKER_METRICS_BIND=0.0.0.0). `make observability-up` sets both.
+  - job_name: abb-worker
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/abb-metrics-token
+    static_configs:
+      - targets: ["worker:9101"]
+
+  # Backups, key rotation and retention are one-shot or separate processes that write a Prometheus
+  # textfile (OPERATIONS.md, "Backups, key rotation and retention"). node_exporter reads that directory
+  # (--collector.textfile.directory) and Prometheus scrapes node_exporter. There is no node_exporter in
+  # the local profile, so this job is an example: uncomment it, set the target, and the backup_*,
+  # rotation_* and retention_* series appear. Until they do the backup-age alert has nothing to
+  # compare and stays silent: a backup that never ran is not detected by the rules (KI-243).
+  #
+  # - job_name: abb-textfile
+  #   static_configs:
+  #     - targets: ["node-exporter:9100"]
+  #   metric_relabel_configs:
+  #     # keep only what the ABB tools write; drop the node_* host series if you do not want them here
+  #     - source_labels: [__name__]
+  #       regex: "(backup|rotation|retention)_.*"
+  #       action: keep

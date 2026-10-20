@@ -46,7 +46,7 @@ def post(events: list[dict]) -> float:
 
 
 def sdk_agent() -> None:
-    from blackbox import BlackBox
+    from agent_blackbox import BlackBox
 
     bb = BlackBox(api_key=KEY, endpoint=API)
     with bb.run("Live: fix login bug") as run:

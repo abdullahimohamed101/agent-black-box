@@ -1,12 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 17 step 3 (fixtures mode): the Alerts page. The fixture server keeps one in-memory store shared by parallel
 // specs, so tests that write create their own uniquely named items and never depend on counts.
-const PAGE = "/w/demo/alerts";
-const VIEWER = "/w/viewer-only/alerts";
-const SHOTS = "../../docs/screenshots/phase-17";
+// Design pass 2 step 5c: Alerts is a tab of Settings (/settings/alerts); the old /alerts address redirects there and keeps ?tab=.
+const PAGE = "/w/demo/settings/alerts";
+const VIEWER = "/w/viewer-only/settings/alerts";
+const SHOTS = shotsDir("phase-17");
 const uniq = (s: string) =>
   `${s} ${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
@@ -34,13 +36,26 @@ for (const [width, height] of [
   test.describe(`${width} px`, () => {
     test.use({ viewport: { width, height } });
 
-    test("rules tab: table in words, rail entry, no console errors, accessible", async ({
+    test("rules tab: table in words, Alerts in the settings section list, no console errors, accessible", async ({
       page,
     }) => {
       const problems = watch(page);
       await page.goto(PAGE);
       await expect(page.getByRole("heading", { name: "Alerts", level: 1 })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Alerts" }).first()).toBeVisible();
+      // Alerts lives under Settings (Notify): the section list names it, the account menu no longer does (KI-279)
+      const sections = page.getByRole("navigation", { name: "Settings sections" });
+      if (width < 900) await sections.getByRole("button", { name: /^Section: Alerts/ }).click();
+      await expect(sections.getByRole("link", { name: "Alerts" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      await page.goto(PAGE);
+      await page.getByRole("button", { name: "Account" }).click();
+      await expect(page.locator("#person-panel")).toBeVisible();
+      await expect(page.locator("#person-panel").getByRole("link", { name: "Alerts" })).toHaveCount(
+        0,
+      );
+      await page.keyboard.press("Escape");
       await expect(page.getByTestId("rule-row").first()).toBeVisible();
       await expect(page.getByText("ending failed, timed out")).toBeVisible();
       expect(await noSideScroll(page)).toBe(true);
@@ -48,15 +63,17 @@ for (const [width, height] of [
       expect(problems.filter((p) => !/favicon/.test(p))).toEqual([]);
     });
 
-    test("tabs are links, URL-addressable and keyboard reachable", async ({ page }) => {
+    test("the sub-tabs are the shared tab list: URL-addressable, arrow keys move and select", async ({
+      page,
+    }) => {
       await page.goto(`${PAGE}?tab=history`);
-      await expect(page.getByRole("link", { name: "History" })).toHaveAttribute(
-        "aria-current",
-        "page",
+      await expect(page.getByRole("tab", { name: "History" })).toHaveAttribute(
+        "aria-selected",
+        "true",
       );
       await expect(page.getByTestId("history-row").first()).toBeVisible();
-      await page.getByRole("link", { name: "Destinations" }).focus();
-      await page.keyboard.press("Enter");
+      await page.getByRole("tab", { name: "History" }).focus();
+      await page.keyboard.press("ArrowLeft");
       await expect(page).toHaveURL(/tab=destinations$/);
       await expect(page.getByTestId("destination-row").first()).toBeVisible();
       await axe(page);
@@ -131,9 +148,9 @@ for (const [width, height] of [
       await page.goto(VIEWER);
       await expect(page.getByTestId("rule-row").first()).toBeVisible();
       await expect(page.getByRole("button", { name: "Add a rule" })).toHaveCount(0);
-      await page.getByRole("link", { name: "Destinations" }).click();
+      await page.getByRole("tab", { name: "Destinations" }).click();
       await expect(page.getByTestId("destinations-forbidden")).toContainText("owners and admins");
-      await page.getByRole("link", { name: "History" }).click();
+      await page.getByRole("tab", { name: "History" }).click();
       await expect(page.getByText("Hidden for your role").first()).toBeVisible();
       await axe(page);
     });
@@ -150,12 +167,22 @@ for (const [width, height] of [
     });
   });
 
+test("the old /alerts address redirects to the Alerts tab and keeps ?tab=", async ({ page }) => {
+  await page.goto("/w/demo/alerts");
+  await expect(page).toHaveURL(/\/w\/demo\/settings\/alerts$/);
+  await expect(page.getByRole("heading", { name: "Alerts", level: 1 })).toBeVisible();
+  await page.goto("/w/demo/alerts?tab=history");
+  await expect(page).toHaveURL(/\/w\/demo\/settings\/alerts\?tab=history$/);
+  await expect(page.getByRole("tab", { name: "History" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("history-row").first()).toBeVisible();
+});
+
 test("reduced motion: the page is complete and static", async ({ browser }) => {
   const ctx = await browser.newContext({ reducedMotion: "reduce" });
   const page = await ctx.newPage();
   await page.goto(PAGE);
   await expect(page.getByTestId("rule-row").first()).toBeVisible();
-  await page.getByRole("link", { name: "History" }).click();
+  await page.getByRole("tab", { name: "History" }).click();
   await expect(page.getByTestId("history-row").first()).toBeVisible();
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
   await ctx.close();

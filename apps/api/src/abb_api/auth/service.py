@@ -59,6 +59,8 @@ def _rejection_reason(
         return "bad_secret"
     if stored.revoked_at is not None:
         return "revoked"
+    if stored.purging:
+        return "purging"  # ADR-163: the same uniform 401 as every other cause
     if stored.expires_at is not None and stored.expires_at <= now:
         return "expired"
     return None
@@ -97,6 +99,18 @@ _SESSION_TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")  # token_urlsafe(32)
 def hash_session_token(token: str) -> bytes:
     """Sessions are stored and found by this hash; the cookie value itself is never kept."""
     return hashlib.sha256(token.encode("ascii")).digest()
+
+
+def is_session_token(token: str) -> bool:
+    """Whether a cookie value has the shape of a session token (anything else is refused without
+    a lookup)."""
+    return _SESSION_TOKEN.fullmatch(token) is not None
+
+
+def session_handle(token_hash: bytes) -> str:
+    """A hint of a session for the failed-session throttle (ADR-169): 16 bytes of the stored hash.
+    It is only ever compared in memory, never used to find or to authenticate a session."""
+    return token_hash[:16].hex()
 
 
 def session_invalid() -> AppError:

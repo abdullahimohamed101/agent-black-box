@@ -7,7 +7,7 @@ from typing import Any
 
 from abb_conformance import LLM_CACHED, LLM_INPUT, LLM_OUTPUT, SECRET, ScenarioError
 from abb_conformance.scenarios import CONCURRENCY, TOOL_NAME
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 from blackbox_mcp import instrument
 

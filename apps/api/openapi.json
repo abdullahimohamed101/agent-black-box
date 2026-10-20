@@ -1026,6 +1026,37 @@
         "title": "ChangeRole",
         "type": "object"
       },
+      "CheckOut": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A fixed reason code (for example `behind`, `breaker_open`), never error text.",
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "fail",
+              "degraded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason"
+        ],
+        "title": "CheckOut",
+        "type": "object"
+      },
       "ComparisonOut": {
         "properties": {
           "alignment": {
@@ -1458,6 +1489,11 @@
             "title": "By Source",
             "type": "array"
           },
+          "excluded_expired_traces": {
+            "description": "Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (cost by agent, model and source).",
+            "title": "Excluded Expired Traces",
+            "type": "integer"
+          },
           "expensive_runs": {
             "items": {
               "$ref": "#/components/schemas/ExpensiveRun"
@@ -1486,7 +1522,8 @@
           "by_model_other",
           "by_source",
           "by_project",
-          "expensive_runs"
+          "expensive_runs",
+          "excluded_expired_traces"
         ],
         "title": "CostReport",
         "type": "object"
@@ -1564,7 +1601,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
                 "type": "string"
               },
               {
@@ -1581,7 +1617,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
                 "type": "string"
               }
             ],
@@ -1615,7 +1650,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
                 "type": "string"
               }
             ],
@@ -1655,7 +1689,6 @@
                 "type": "number"
               },
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,9}0*$",
                 "type": "string"
               }
             ],
@@ -2456,6 +2489,19 @@
       },
       "DimensionOut": {
         "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set on the dimensions that read findings, when they did: when the analysis they read completed (the state's `computed_at`).",
+            "title": "As Of"
+          },
           "finding_ids": {
             "items": {
               "type": "string"
@@ -2476,6 +2522,12 @@
             "description": "The one sentence that decided the status.",
             "title": "Rule",
             "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "description": "True when `as_of` is the last completed analysis while a newer one is queued or running: events have arrived since.",
+            "title": "Stale",
+            "type": "boolean"
           },
           "status": {
             "enum": [
@@ -5477,6 +5529,40 @@
         "title": "PendingCount",
         "type": "object"
       },
+      "PendingShorteningOut": {
+        "description": "A shortening that has not taken effect: the longer period still applies until then.",
+        "properties": {
+          "current_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The period enforced until then (the longer of the two); null: forever.",
+            "title": "Current Days"
+          },
+          "current_forever": {
+            "title": "Current Forever",
+            "type": "boolean"
+          },
+          "effective_at": {
+            "description": "When the shorter period starts to apply.",
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effective_at",
+          "current_days",
+          "current_forever"
+        ],
+        "title": "PendingShorteningOut",
+        "type": "object"
+      },
       "Percentiles": {
         "description": "Approximate: read from duration histograms with about 10% wide buckets (ADR-043).",
         "properties": {
@@ -5517,6 +5603,11 @@
       },
       "PerformanceReport": {
         "properties": {
+          "excluded_expired_traces": {
+            "description": "Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (model and tool latency).",
+            "title": "Excluded Expired Traces",
+            "type": "integer"
+          },
           "llm": {
             "$ref": "#/components/schemas/Percentiles"
           },
@@ -5542,7 +5633,8 @@
           "run",
           "llm",
           "tool",
-          "slow_operations"
+          "slow_operations",
+          "excluded_expired_traces"
         ],
         "title": "PerformanceReport",
         "type": "object"
@@ -5739,12 +5831,115 @@
         "title": "PreviewDay",
         "type": "object"
       },
+      "PreviewTierOut": {
+        "properties": {
+          "artifact_bytes": {
+            "title": "Artifact Bytes",
+            "type": "integer"
+          },
+          "cutoff": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data that ended before this would be deleted.",
+            "title": "Cutoff"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the shorter period would start to apply; null: at once.",
+            "title": "Effective At"
+          },
+          "enforced_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The period the job applies right now if this policy were saved (the longer of the old and the new while a shortening waits); null: forever. The counts below are for `days`, once the shortening takes effect.",
+            "title": "Enforced Days"
+          },
+          "events": {
+            "title": "Events",
+            "type": "integer"
+          },
+          "forever": {
+            "title": "Forever",
+            "type": "boolean"
+          },
+          "rows": {
+            "description": "Other rows: artifact records, derived rows of the runs, audit entries.",
+            "title": "Rows",
+            "type": "integer"
+          },
+          "runs": {
+            "description": "Runs whose data in this tier would be deleted.",
+            "title": "Runs",
+            "type": "integer"
+          },
+          "tier": {
+            "enum": [
+              "artifacts",
+              "trace",
+              "run",
+              "audit"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "True when a bound was reached: the figures are a lower bound.",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tier",
+          "days",
+          "forever",
+          "enforced_days",
+          "cutoff",
+          "runs",
+          "events",
+          "artifact_bytes",
+          "rows",
+          "truncated"
+        ],
+        "title": "PreviewTierOut",
+        "type": "object"
+      },
       "PriceOut": {
         "properties": {
           "cache_write_1h_per_million": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -5757,7 +5952,6 @@
           "cache_write_per_million": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -5770,7 +5964,6 @@
           "cached_input_per_million": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -5784,7 +5977,6 @@
             "type": "string"
           },
           "input_per_million": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Input Per Million",
             "type": "string"
           },
@@ -5822,7 +6014,6 @@
             "type": "string"
           },
           "output_per_million": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Output Per Million",
             "type": "string"
           },
@@ -5856,7 +6047,6 @@
           "regional_multiplier": {
             "anyOf": [
               {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                 "type": "string"
               },
               {
@@ -5882,7 +6072,6 @@
             "title": "Regional Regions"
           },
           "request_price": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Request Price",
             "type": "string"
           },
@@ -6499,13 +6688,19 @@
       },
       "ReadyResponse": {
         "properties": {
-          "database": {
-            "const": "ok",
-            "title": "Database",
-            "type": "string"
+          "checks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CheckOut"
+            },
+            "description": "`database`, `schema`, `artifacts` and `role` fail readiness; `worker` and `retention` are reported only.",
+            "title": "Checks",
+            "type": "object"
           },
           "status": {
-            "const": "ok",
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -6517,7 +6712,7 @@
         "required": [
           "status",
           "version",
-          "database"
+          "checks"
         ],
         "title": "ReadyResponse",
         "type": "object"
@@ -6588,6 +6783,11 @@
       },
       "ReliabilityReport": {
         "properties": {
+          "excluded_expired_traces": {
+            "description": "Runs in the window whose trace detail the retention policy removed. They still count in the run totals and cost headline but not in the figures built from trace detail (tool reliability).",
+            "title": "Excluded Expired Traces",
+            "type": "integer"
+          },
           "failure_trend": {
             "items": {
               "$ref": "#/components/schemas/FailureDay"
@@ -6636,9 +6836,283 @@
           "failure_trend",
           "tools",
           "tools_other",
-          "retry_heavy_runs"
+          "retry_heavy_runs",
+          "excluded_expired_traces"
         ],
         "title": "ReliabilityReport",
+        "type": "object"
+      },
+      "RetentionPolicyIn": {
+        "additionalProperties": false,
+        "description": "A tier left out stays as it is; a whole number of days sets it; `\"forever\"` keeps it for\ngood; `null` returns it to the environment default.",
+        "properties": {
+          "artifacts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "const": "forever",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifacts"
+          },
+          "audit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "const": "forever",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "const": "forever",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run"
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "const": "forever",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace"
+          }
+        },
+        "title": "RetentionPolicyIn",
+        "type": "object"
+      },
+      "RetentionPolicyOut": {
+        "properties": {
+          "audit_floor_days": {
+            "description": "The audit tier's own minimum (owners only).",
+            "title": "Audit Floor Days",
+            "type": "integer"
+          },
+          "floor_days": {
+            "title": "Floor Days",
+            "type": "integer"
+          },
+          "grace_hours": {
+            "description": "A shortening takes effect after this many hours (0: at once).",
+            "title": "Grace Hours",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "What the retention job does on this installation (`ABB_RETENTION_MODE`): `dry_run` only measures and reports; `enforce` deletes.",
+            "enum": [
+              "off",
+              "dry_run",
+              "enforce"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "tiers": {
+            "items": {
+              "$ref": "#/components/schemas/TierPolicyOut"
+            },
+            "title": "Tiers",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while the workspace has no choices.",
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "required": [
+          "tiers",
+          "mode",
+          "floor_days",
+          "audit_floor_days",
+          "grace_hours",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "RetentionPolicyOut",
+        "type": "object"
+      },
+      "RetentionPreviewOut": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "note": {
+            "description": "Nothing is deleted by a preview. Tiers are counted separately, not added.",
+            "title": "Note",
+            "type": "string"
+          },
+          "proposed": {
+            "description": "True when the query proposed values instead of the saved.",
+            "title": "Proposed",
+            "type": "boolean"
+          },
+          "tiers": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewTierOut"
+            },
+            "title": "Tiers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "as_of",
+          "proposed",
+          "tiers",
+          "note"
+        ],
+        "title": "RetentionPreviewOut",
+        "type": "object"
+      },
+      "RetentionReportOut": {
+        "properties": {
+          "artifact_bytes": {
+            "title": "Artifact Bytes",
+            "type": "integer"
+          },
+          "cutoff_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff At"
+          },
+          "events": {
+            "title": "Events",
+            "type": "integer"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "dry_run",
+              "enforce"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "artifacts",
+              "trace",
+              "run",
+              "audit",
+              "operational",
+              "platform"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "tier",
+          "mode",
+          "runs",
+          "events",
+          "artifact_bytes",
+          "rows",
+          "truncated",
+          "cutoff_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "RetentionReportOut",
+        "type": "object"
+      },
+      "RetentionReportsOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionReportOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RetentionReportsOut",
         "type": "object"
       },
       "RetryBreakdown": {
@@ -7385,12 +7859,19 @@
             "title": "Run Id",
             "type": "string"
           },
+          "server_time": {
+            "description": "The server clock at read time; ages such as `as_of` are measured on it.",
+            "format": "date-time",
+            "title": "Server Time",
+            "type": "string"
+          },
           "state": {
             "$ref": "#/components/schemas/FindingsState"
           }
         },
         "required": [
           "run_id",
+          "server_time",
           "state",
           "health",
           "items"
@@ -7558,6 +8039,17 @@
           },
           "trace_id": {
             "title": "Trace Id",
+            "type": "string"
+          },
+          "trace_state": {
+            "default": "available",
+            "description": "Whether the run's trace detail (events, spans, findings, cost lines) is still stored. `deleting`: the retention job is removing it; `expired`: it is gone and only this record remains. Events, spans and findings are then empty, never partial.",
+            "enum": [
+              "available",
+              "deleting",
+              "expired"
+            ],
+            "title": "Trace State",
             "type": "string"
           },
           "updated_at": {
@@ -8584,6 +9076,77 @@
         "title": "Summary",
         "type": "object"
       },
+      "TierPolicyOut": {
+        "properties": {
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days a run (or audit entry) is kept after it ended, as saved; null: kept forever. While `pending` is set the longer `pending.current_days` is what is enforced.",
+            "title": "Days"
+          },
+          "default_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The environment default (null: forever).",
+            "title": "Default Days"
+          },
+          "forever": {
+            "title": "Forever",
+            "type": "boolean"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingShorteningOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set while a saved shortening waits for its effective time."
+          },
+          "source": {
+            "description": "`workspace` when this workspace chose it, else `default`.",
+            "enum": [
+              "default",
+              "workspace"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "artifacts",
+              "trace",
+              "run",
+              "audit"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "days",
+          "forever",
+          "source",
+          "default_days"
+        ],
+        "title": "TierPolicyOut",
+        "type": "object"
+      },
       "ToolReliability": {
         "properties": {
           "calls": {
@@ -9398,8 +9961,8 @@
     }
   },
   "info": {
-    "description": "Agent Black Box ingestion and query API. SDKs authenticate with a project key: `Authorization: Bearer abb_live_<key_id>.<secret>`. The dashboard authenticates people with a session cookie and names its workspace in `X-ABB-Workspace`.",
-    "title": "Agent Black Box API",
+    "description": "Agent BlackBox ingestion and query API. SDKs authenticate with a project key: `Authorization: Bearer abb_live_<key_id>.<secret>`. The dashboard authenticates people with a session cookie and names its workspace in `X-ABB-Workspace`.",
+    "title": "Agent BlackBox API",
     "version": "0.0.0"
   },
   "openapi": "3.1.0",
@@ -9443,11 +10006,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/ReadyResponse"
                 }
               }
             },
-            "description": "The database is unreachable."
+            "description": "Not ready: see `checks`."
           }
         },
         "summary": "Readyz",
@@ -19604,6 +20167,16 @@
             },
             "description": "A run was not found, or is not visible to this caller (never reveals other tenants)."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "`TRACE_EXPIRED`: a run's trace was removed by retention, so there is nothing to compare."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -19712,7 +20285,7 @@
                 }
               }
             },
-            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+            "description": "A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request."
           },
           "422": {
             "content": {
@@ -19840,7 +20413,7 @@
                 }
               }
             },
-            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+            "description": "A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request."
           },
           "422": {
             "content": {
@@ -20642,7 +21215,7 @@
                 }
               }
             },
-            "description": "A bound, an archived evaluator or the judge configuration conflicts with the request."
+            "description": "A bound, an archived evaluator, the judge configuration or an expired trace (`TRACE_EXPIRED`) conflicts with the request."
           },
           "422": {
             "content": {
@@ -21049,6 +21622,561 @@
         "summary": "List security findings across the workspace",
         "tags": [
           "security"
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/retention": {
+      "get": {
+        "description": "For each tier (artifacts, trace detail, run record, audit log): the days in force (null: kept forever), whether the workspace chose it and the environment default. Every member may read it.",
+        "operationId": "get_retention_v1_workspaces__workspace_id__retention_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace not found, or not the caller's (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A value is outside its range; the message never repeats the value."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests for this workspace; honour Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read a workspace's retention policy",
+        "tags": [
+          "retention"
+        ]
+      },
+      "put": {
+        "description": "Tiers left out stay as they are; a whole number of days (at least 7) sets that tier; `\"forever\"` keeps it for good; `null` returns it to the environment default. Artifacts cannot outlast trace detail, nor trace detail the run record. Owners and admins only. Each changed tier writes one audit entry (`retention.policy.update`: the tier, the old and the new value, and when it takes effect). A shortening takes effect after the grace period (`grace_hours`); until then the longer period is enforced, and saving the previous value again cancels it. Lengthening is immediate. Only an owner may change the audit tier (403 for an admin), whose minimum is `audit_floor_days`. Shortening deletes nothing by itself: the retention job applies the policy, and in dry-run mode (the default) only reports what it would delete.",
+        "operationId": "put_retention_v1_workspaces__workspace_id__retention_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionPolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionPolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace not found, or not the caller's (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A value is outside its range; the message never repeats the value."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests for this workspace; honour Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change a workspace's retention policy",
+        "tags": [
+          "retention"
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/retention/preview": {
+      "get": {
+        "description": "Counts, per tier, the runs, events, artifact bytes and other rows that would be deleted now under the saved policy or a proposed one (`artifacts_days`, `trace_days`, `run_days`, `audit_days`: a number or `forever`; tiers left out use the saved value). Nothing is saved or deleted. Bounded in time and size: `truncated` marks a lower bound. `tiers` limits the tiers measured (comma-separated).",
+        "operationId": "preview_retention_v1_workspaces__workspace_id__retention_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tiers",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tiers"
+            }
+          },
+          {
+            "in": "query",
+            "name": "artifacts_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Artifacts Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trace_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trace Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "audit_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audit Days"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace not found, or not the caller's (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A value is outside its range; the message never repeats the value."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests for this workspace; honour Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The preview took too long; retry later."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Preview what a retention policy would delete",
+        "tags": [
+          "retention"
+        ]
+      }
+    },
+    "/v1/workspaces/{workspace_id}/retention/reports": {
+      "get": {
+        "description": "What the retention job found (dry run) or did (enforce) for this workspace, newest first: counts per tier and tick, never content. Every member may read them.",
+        "operationId": "retention_reports_v1_workspaces__workspace_id__retention_reports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The workspace a signed-in user acts in (`ws_...`). Required with a session cookie on workspace routes; API keys are bound to their workspace and may omit it.",
+            "in": "header",
+            "name": "X-ABB-Workspace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionReportsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Missing or invalid credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The caller's role may not use this route."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workspace not found, or not the caller's (never reveals other tenants)."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A value is outside its range; the message never repeats the value."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests for this workspace; honour Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "A dependency is unavailable; retry with backoff."
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read the retention job's latest reports",
+        "tags": [
+          "retention"
         ]
       }
     }

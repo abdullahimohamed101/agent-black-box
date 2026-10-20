@@ -11,9 +11,11 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 
 step() { printf '\n==> %s\n' "$*"; }
 
+step "release checklist (static): licenses, placeholders, debug logging, secrets, charts, routes, network, shots, claims, links"; scripts/release-checklist.sh
 step "schema: ruff / mypy / pytest"; (cd packages/event-schema && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q)
 step "sdk-python: ruff / mypy / pytest (coverage gate)"; (cd packages/sdk-python && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q --cov --cov-report=term:skip-covered)
 step "examples/coding-agent: ruff / pytest (scripted demo run)"; (cd examples/coding-agent && uv run --project ../../packages/sdk-python ruff check . && uv run --project ../../packages/sdk-python ruff format --check . && cd ../.. && uv run --project packages/sdk-python pytest examples/coding-agent/tests -q -p no:cacheprovider)
+step "examples/python: ruff / pytest (scripted custom agent, offline)"; (cd examples/python && uv run --project ../../packages/sdk-python ruff check . && uv run --project ../../packages/sdk-python ruff format --check . && cd ../.. && uv run --project packages/sdk-python pytest examples/python/tests -q -p no:cacheprovider)
 step "examples/multi-agent: ruff / pytest (threads, asyncio task, subprocess)"; (cd examples/multi-agent && uv run --project ../../packages/sdk-python ruff check . && uv run --project ../../packages/sdk-python ruff format --check . && cd ../.. && uv run --project packages/sdk-python pytest examples/multi-agent/tests -q -p no:cacheprovider)
 for pkg in conformance langgraph openai anthropic mcp; do   # framework adapters: separate environments (ADR-050)
   step "integrations/$pkg: ruff / mypy / pytest (offline)"
@@ -24,6 +26,7 @@ step "api: openapi.json is current"; (cd apps/api && uv run python -m abb_api.op
 step "api: ruff check / format";   (cd apps/api && uv run ruff check . && uv run ruff format --check .)
 step "api: mypy";                  (cd apps/api && uv run mypy)
 step "web: generated API client is current"; pnpm --filter @abb/web gen:api:check
+step "web: design tokens are current (generated css, contrast table)"; pnpm --filter @abb/web tokens:check
 step "web: eslint / prettier";     pnpm --filter @abb/web lint && pnpm --filter @abb/web format:check
 step "web: tsc";                   pnpm --filter @abb/web typecheck
 step "api: pytest";                (cd apps/api && uv run pytest -q)

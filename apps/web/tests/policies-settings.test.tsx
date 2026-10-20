@@ -54,7 +54,7 @@ describe("the Policies settings page", () => {
     mount(<PoliciesSettings />);
     const note = await screen.findByTestId("cooperative-note");
     expect(note).toHaveTextContent(
-      "Policies are enforced for agents that ask Agent Black Box through the SDK guard. They do not stop code that bypasses it.",
+      "Policies are enforced for agents that ask Agent BlackBox through the SDK guard. They do not stop code that bypasses it.",
     );
     expect(document.body.textContent).not.toMatch(/protected/i);
   });

@@ -13,6 +13,8 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from abb_api.core.request_context import get_request_id
+from abb_api.db.breaker import BreakerOpen
+from abb_api.obs.app_errors import count_app_error
 
 logger = logging.getLogger(__name__)
 
@@ -79,21 +81,44 @@ class ErrorEnvelope(BaseModel):
     error: ErrorBody
 
 
-def dependency_unavailable() -> AppError:
+def dependency_unavailable(cause: BaseException | None = None) -> AppError:
+    """503 with a fixed body. An open circuit breaker says when its next probe is due."""
+    retry_after = cause.retry_after_seconds if isinstance(cause, BreakerOpen) else 2
     return AppError(
         "DEPENDENCY_UNAVAILABLE",
         "A required dependency is temporarily unavailable.",
         category=ErrorCategory.DEPENDENCY,
         status_code=503,
         retryable=True,
-        headers={"Retry-After": "2"},
+        headers={"Retry-After": str(retry_after)},
     )
+
+
+def database_timeout() -> AppError:
+    """The default `statement_timeout` cancelled a statement (routes with their own budget map
+    theirs to their own code first). Fixed text: the SQL and its parameters are never shown."""
+    return AppError(
+        "DATABASE_TIMEOUT",
+        "The database took too long to answer. Retry later.",
+        category=ErrorCategory.TIMEOUT,
+        status_code=504,
+        retryable=True,
+    )
+
+
+def is_statement_timeout(exc: BaseException) -> bool:
+    """A statement cancelled by `statement_timeout` (SQLSTATE 57014, query_canceled)."""
+    if not isinstance(exc, DBAPIError):
+        return False
+    state = getattr(exc.orig, "sqlstate", None) or getattr(exc.orig, "pgcode", None)
+    return state == "57014"
 
 
 def is_connectivity_error(exc: BaseException) -> bool:
     """Database trouble we report as 503 (retryable), not as a client or server bug."""
-    # OSError covers socket errors and timeouts; PoolTimeoutError is "no free connection in time"
-    if isinstance(exc, (OperationalError, InterfaceError, OSError, PoolTimeoutError)):
+    # OSError covers socket errors and timeouts; PoolTimeoutError is "no free connection in time";
+    # BreakerOpen is the circuit breaker refusing a checkout it expects to fail.
+    if isinstance(exc, (OperationalError, InterfaceError, OSError, PoolTimeoutError, BreakerOpen)):
         return True
     return isinstance(exc, DBAPIError) and exc.connection_invalidated
 
@@ -119,7 +144,10 @@ def error_response(error: AppError) -> JSONResponse:
 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
-    async def _app_error(_: Request, exc: AppError) -> JSONResponse:
+    async def _app_error(request: Request, exc: AppError) -> JSONResponse:
+        observability = getattr(request.app.state, "observability", None)
+        if observability is not None:  # a refusal that is also a metric (obs/app_errors.py)
+            count_app_error(observability.catalogue, exc.code, exc.details)
         return error_response(exc)
 
     @app.exception_handler(RequestValidationError)
@@ -166,10 +194,32 @@ def install_error_handlers(app: FastAPI) -> None:
             )
         )
 
+    def _mapped(exc: Exception) -> JSONResponse | None:
+        if is_connectivity_error(exc):  # the database went away mid-request: tell clients to retry
+            return error_response(dependency_unavailable(exc))
+        if is_statement_timeout(exc):  # the default deadline; never the SQL
+            logger.warning("statement timeout", extra={"error_type": type(exc).__name__})
+            return error_response(database_timeout())
+        return None
+
+    async def _database_failure(_: Request, exc: Exception) -> JSONResponse:
+        # Registered for the concrete classes, not for Exception: Starlette runs those in the
+        # ExceptionMiddleware, inside the metrics and request-log layers, so the 503 and 504 are
+        # recorded with the status the client saw. A handler for Exception runs outside every
+        # middleware and the response would count as a 500.
+        response = _mapped(exc)
+        if response is None:
+            raise exc  # any other database error is an internal error: the outer handler's 500
+        return response
+
+    for cls in (DBAPIError, OSError, PoolTimeoutError, BreakerOpen):
+        app.add_exception_handler(cls, _database_failure)
+
     @app.exception_handler(Exception)
     async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
-        if is_connectivity_error(exc):  # the database went away mid-request: tell clients to retry
-            return error_response(dependency_unavailable())
+        mapped = _mapped(exc)  # the same mapping for anything that reaches the outer handler
+        if mapped is not None:
+            return mapped
         # Never expose internals to clients; the stack trace is logged by the middleware.
         return error_response(
             AppError(

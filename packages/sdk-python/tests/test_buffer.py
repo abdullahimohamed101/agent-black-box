@@ -2,8 +2,8 @@
 
 import threading
 
-from blackbox.buffer import EventBuffer
-from blackbox.stats import Stats
+from agent_blackbox.buffer import EventBuffer
+from agent_blackbox.stats import Stats
 
 
 def ev(n: int) -> dict[str, int]:

@@ -49,6 +49,9 @@ from abb_api.alerts.repository import (
 )
 from abb_api.audit.repository import AuditEntry, AuditRepository
 from abb_api.core.config import Settings
+from abb_api.core.request_context import set_operation
+from abb_api.obs.catalogue import METRICS, Catalogue
+from abb_api.obs.tracing import span
 from abb_api.tenancy import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -134,7 +137,13 @@ async def deliver_due(
     settings: Settings,
     registry: Registry,
     rng: Callable[[], float] = random.random,
+    metrics: Catalogue = METRICS,
 ) -> TickResult:
+    """One delivery tick. Every notification that reaches a final status or a failed attempt is
+    counted once in ``alert_deliveries_total{status,reason}`` (reason: the fixed error code or skip
+    reason, "none" for a delivery); a deferral spends no attempt and is not counted."""
+    set_operation("alerts.deliver")
+    deliveries = metrics.alert_deliveries_total
     notifications = NotificationRepository(conn, tenant)
     destinations = DestinationRepository(conn, tenant)
     result = TickResult()
@@ -155,14 +164,17 @@ async def deliver_due(
         destination = known.get(item.destination_id) if item.destination_id else None
         if destination is None:
             await notifications.mark_skipped(item.id, "destination_deleted")
+            deliveries.inc("skipped", "destination_deleted")
             result.skipped += 1
             continue
         if item.rule_id is None or item.rule_id not in live_rules:
             await notifications.mark_skipped(item.id, "rule_deleted")
+            deliveries.inc("skipped", "rule_deleted")
             result.skipped += 1
             continue
         if destination.state == m.PAUSED:
             await notifications.mark_skipped(item.id, "destination_paused")
+            deliveries.inc("skipped", "destination_paused")
             result.skipped += 1
             continue
         if destination.id not in sent_day:
@@ -174,10 +186,12 @@ async def deliver_due(
             )
         if sent_day[destination.id] >= settings.alerts_daily_cap:
             await notifications.mark_skipped(item.id, "daily_cap")
+            deliveries.inc("skipped", "daily_cap")
             result.skipped += 1
             continue
         if sent_minute[destination.id] >= settings.alerts_rate_per_minute:
             await notifications.mark_skipped(item.id, "rate_limited")
+            deliveries.inc("skipped", "rate_limited")
             result.skipped += 1
             continue
         if destination.id in failed_now:
@@ -192,6 +206,7 @@ async def deliver_due(
         stats = health.setdefault(destination.id, _Health())
         if outcome.ok:
             await notifications.mark_delivered(item.id, attempt, now)
+            deliveries.inc("delivered", "none")
             stats.reset, stats.failures = True, 0
             sent_minute[destination.id] += 1
             sent_day[destination.id] += 1
@@ -204,9 +219,11 @@ async def deliver_due(
             await notifications.mark_retry(
                 item.id, attempt, code, now + backoff_for(attempt, settings, rng)
             )
+            deliveries.inc("failed", code)
             result.retried += 1
         else:
             await notifications.mark_dead(item.id, attempt, code)
+            deliveries.inc("dead", code)
             result.dead += 1
             logger.warning(
                 "alert dead-lettered",
@@ -262,7 +279,10 @@ async def _attempt(
         attempt=attempt,
         web_origin=settings.web_origin_normalised,
     )
-    return await send_opened(registry, opened, alert)
+    with span("alerts.attempt", destination_type=destination.type) as traced:
+        result = await send_opened(registry, opened, alert)
+        traced.set(outcome="delivered" if result.ok else "failed")
+    return result
 
 
 # ---------------------------------------------------------------- the registry a worker uses

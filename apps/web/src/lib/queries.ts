@@ -100,11 +100,15 @@ const MAX_STALE_RESETS = 3;
  * run's events are immutable (INV-1) and never refetched; an active run is refetched by the caller only when its
  * event_count or status changes. A `409 CURSOR_STALE` (ordering mode changed mid-paging) resets the query so paging
  * restarts from page 1, at most MAX_STALE_RESETS times.
+ *
+ * `enabled` goes false once the run says its trace is not stored (`trace_state` is not `available`): while retention
+ * removes it the endpoint returns partial data (KI-198), so the page stops requesting and shows none of it.
  */
-export function useRunEvents(runId: string, active: boolean) {
+export function useRunEvents(runId: string, active: boolean, enabled = true) {
   const client = useQueryClient();
   const resets = useRef(0);
   const q = useInfiniteQuery({
+    enabled,
     queryKey: ["run-events", runId],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam, signal }) =>
@@ -141,8 +145,9 @@ export function useRunEvents(runId: string, active: boolean) {
  * active or the analysis is in flight, and is never refetched once `current` on a finished run (findings are a
  * function of immutable events, INV-1/2).
  */
-export function useRunFindings(runId: string, poll: boolean) {
+export function useRunFindings(runId: string, poll: boolean, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["run-findings", runId],
     queryFn: async ({ signal }) =>
       unwrap(

@@ -7,11 +7,19 @@
                               resolves, titles say "Probable:" iff probable, a VIEWER sees the same bytes as the OWNER
     snapshot FILE             store (id, created_at, fingerprint, evidence ...) of every finding and each run's computed_at
     compare FILE              the current findings equal the snapshot (a rebuild reproduces them, ids and created_at too)
+    live start|mid|end|verify FILE
+                              KI-097 / ADR-174, one live run through a worker whose minimum analysis interval is 600 s
+                              (so nothing here depends on a wall clock): `start` posts the first events and waits for
+                              the first analysis; `mid` posts more and asserts the earlier analysis is read, labelled
+                              stale with `as_of` = its `computed_at`; `end` posts the terminal events and waits for the
+                              final analysis (no longer stale); `verify` (after `rebuild-findings`) asserts the findings
+                              equal a from-scratch rebuild (INV-2) and that no event row changed (INV-1)
 
 Environment: E2E_API, E2E_WORKSPACE (slug), E2E_READ_KEY (runs:read), E2E_OWNER_SESSION, E2E_VIEWER_SESSION and
 E2E_FIXTURES (the directory of `*.ndjson` / `*.expected.json`). Nothing here prints a credential or event content.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -272,6 +280,189 @@ def cmd_compare(path: str) -> None:
     )
 
 
+# ----------------------------------------------------------------------------- live run (KI-097)
+
+LIVE_STEPS = (
+    (1, 69),
+    (70, 87),
+    (88, 89),
+)  # events by sequence: through the reported loop, more, the end
+POLL_SECONDS, POLL_STEP = 30.0, 0.2
+ID = re.compile(r"\b(?:evt|run|trc|spn)_[0-9A-Z]{26}\b")
+
+
+def poll(what: str, ready: Any) -> Any:
+    """The only waiting in this stage: a bounded poll of an API-visible condition (never a fixed sleep)."""
+    deadline = time.monotonic() + POLL_SECONDS
+    while True:
+        got = ready()
+        if got:
+            return got
+        if time.monotonic() > deadline:
+            fail(f"live: timed out after {POLL_SECONDS:.0f} s waiting for {what}")
+        time.sleep(POLL_STEP)
+
+
+def live_wires() -> list[dict[str, Any]]:
+    """The committed `looping` run under fresh, deterministic ids, so it cannot collide with the shuffled one."""
+    from abb_event_schema.ids import IdGenerator, IdKind
+
+    text = (FIXTURES / "looping.ndjson").read_text()
+    kinds = {"evt": IdKind.EVENT, "run": IdKind.RUN, "trc": IdKind.TRACE, "spn": IdKind.SPAN}
+    mapping: dict[str, str] = {}
+    for old in sorted(set(ID.findall(text))):
+        digest = hashlib.sha256(f"live:{old}".encode()).digest()
+        gen = IdGenerator(clock_ms=lambda: 1_760_000_000_000, entropy=lambda n, d=digest: d[:n])
+        mapping[old] = gen.new_id(kinds[old.split("_")[0]])
+    return [json.loads(ID.sub(lambda m: mapping[m.group(0)], line)) for line in text.splitlines()]
+
+
+def live_post(wires: list[dict[str, Any]]) -> None:
+    key = Path(os.environ["E2E_WRITE_KEY_FILE"]).read_text().strip()
+    response = httpx.post(
+        f"{API}/v1/events/batch",
+        json={"events": wires},
+        headers={"Authorization": f"Bearer {key}"},
+        timeout=60,
+    )
+    if response.status_code >= 300:
+        fail(f"live: ingest answered {response.status_code}")
+
+
+def live_slice(wires: list[dict[str, Any]], step: int) -> list[dict[str, Any]]:
+    lo, hi = LIVE_STEPS[step]
+    return [w for w in wires if lo <= w["sequence"] <= hi]
+
+
+def live_dims(body: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {d["name"]: d for d in body["health"]["dimensions"]}
+
+
+def event_hash(run_id: str) -> str:
+    """One digest over the run's event rows as stored (INV-1: nothing may change them)."""
+    import asyncio
+
+    import asyncpg
+    from abb_event_schema.ids import to_uuid
+
+    async def go() -> str:
+        url = os.environ["ABB_DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
+        conn = await asyncpg.connect(url)
+        try:
+            value = await conn.fetchval(
+                "select md5(string_agg(e::text, '' order by e.event_id)) from events e where e.run_id = $1",
+                to_uuid(run_id),
+            )
+        finally:
+            await conn.close()
+        return str(value)
+
+    return asyncio.run(go())
+
+
+def keyed_items(items: list[dict[str, Any]]) -> list[tuple[str, ...]]:
+    return sorted(
+        (
+            f["detector"],
+            f["finding_type"],
+            f["fingerprint"],
+            f["id"],
+            f["created_at"],
+            json.dumps(f["evidence"], sort_keys=True),
+        )
+        for f in items
+    )
+
+
+def cmd_live(step: str, path: str) -> None:
+    wires = live_wires()
+    run_id = wires[0]["run_id"]
+    client = reader("key")
+    state_file = Path(path)
+    saved: dict[str, Any] = json.loads(state_file.read_text()) if state_file.exists() else {}
+    if step == "start":
+        live_post(live_slice(wires, 0))
+        body = poll(
+            "the first analysis",
+            lambda: (lambda b: b if b["state"]["computed_at"] else None)(findings(client, run_id)),
+        )
+        saved = {"first": body["state"]["computed_at"]}
+        print("live: first analysis exists (the run is still active)")
+    elif step == "mid":
+        live_post(live_slice(wires, 1))
+        body = poll(
+            "the newer analysis to be queued",
+            lambda: (lambda b: b if b["state"]["status"] == "processing" else None)(
+                findings(client, run_id)
+            ),
+        )
+        dims = live_dims(body)
+        for name in ("loops", "context"):
+            d = dims[name]
+            if d["status"] == "no_data":
+                fail(f"live: {name} reads no_data while an earlier analysis exists")
+            if d["stale"] is not True or d["as_of"] != saved["first"]:
+                fail(f"live: {name} is not labelled with the earlier analysis (stale/as_of)")
+        if body["state"]["computed_at"] != saved["first"]:
+            fail("live: the interval floor did not hold (a second analysis ran)")
+        if dims["reliability"]["stale"] or dims["reliability"]["as_of"] is not None:
+            fail("live: reliability does not read findings and must not carry an age")
+        print(
+            f"live: loops={dims['loops']['status']} stale as of the first analysis; no second analysis"
+        )
+    elif step == "end":
+        live_post(live_slice(wires, 2))
+
+        def finished() -> dict[str, Any] | None:
+            b = findings(client, run_id)
+            s = b["state"]
+            if s["status"] == "current" and s["computed_at"] > saved["first"]:
+                return b
+            return None
+
+        body = poll("the final analysis after the run ended", finished)
+        if body["state"]["event_count_seen"] != len(wires):
+            fail("live: the final analysis did not read every event")
+        dims = live_dims(body)
+        if any(d["stale"] for d in dims.values()):
+            fail("live: a dimension is still stale after the final analysis")
+        if (
+            dims["loops"]["status"] == "no_data"
+            or dims["loops"]["as_of"] != body["state"]["computed_at"]
+        ):
+            fail("live: loops is not read from the final analysis")
+        saved.update(
+            final=body["state"]["computed_at"],
+            items=body["items"],
+            events=event_hash(run_id),
+        )
+        print(
+            f"live: the final analysis ran without waiting out the interval ({len(body['items'])} findings)"
+        )
+    elif step == "verify":
+        body = poll(
+            "the rebuilt analysis",
+            lambda: (
+                lambda b: (
+                    b
+                    if b["state"]["status"] == "current"
+                    and b["state"]["computed_at"] > saved["final"]
+                    else None
+                )
+            )(findings(client, run_id)),
+        )
+        if keyed_items(body["items"]) != keyed_items(saved["items"]):
+            fail("live: a from-scratch rebuild changed the findings (INV-2)")
+        if event_hash(run_id) != saved["events"]:
+            fail("live: event rows changed during the stage (INV-1)")
+        print(
+            f"live: a from-scratch rebuild reproduced {len(body['items'])} findings; event rows unchanged"
+        )
+    else:
+        fail(f"live: unknown step {step}")
+    state_file.write_text(json.dumps(saved))
+
+
 def main() -> int:
     cmd, *rest = sys.argv[1:] or ["?"]
     if cmd == "runs":
@@ -284,6 +475,8 @@ def main() -> int:
         cmd_snapshot(rest[0])
     elif cmd == "compare":
         cmd_compare(rest[0])
+    elif cmd == "live":
+        cmd_live(rest[0], rest[1])
     else:
         print(__doc__)
         return 2

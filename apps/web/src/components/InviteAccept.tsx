@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiRequestError, unwrap } from "@/lib/api/client";
+import { auth } from "@/copy/auth";
 import { forgetInviteToken, takeInviteToken } from "@/lib/invite";
 
 type Phase =
@@ -54,10 +55,10 @@ export function InviteAccept() {
     try {
       const done = unwrap(await api.POST("/v1/invitations/accept", { body: { token } }));
       forgetInviteToken();
-      router.push(`/w/${encodeURIComponent(done.workspace.slug)}/projects/all`);
+      router.push(`/w/${encodeURIComponent(done.workspace.slug)}/projects/all/runs`);
     } catch (e) {
       if (e instanceof ApiRequestError && e.status !== 503) forgetInviteToken(); // a used or wrong link stays unusable
-      setFailure(e instanceof Error ? e.message : "The invitation could not be accepted.");
+      setFailure(e instanceof Error ? e.message : auth.invite.failed);
       setBusy(false);
     }
   }
@@ -65,38 +66,32 @@ export function InviteAccept() {
   if (phase.kind === "reading")
     return (
       <p role="status" className="auth-context">
-        Checking your invitation…
+        {auth.invite.reading}
       </p>
     );
   if (phase.kind === "unavailable")
     return (
       <p role="alert" className="notice">
-        The service is unavailable. Reload to try again.
+        {auth.invite.unavailable}
       </p>
     );
-  if (phase.kind === "no-token")
-    return (
-      <p className="muted">
-        This page needs an invitation link from a workspace owner. Open the full link you were sent.
-      </p>
-    );
+  if (phase.kind === "no-token") return <p className="muted">{auth.invite.noToken}</p>;
   if (phase.kind === "signed-out")
     return (
       <>
-        <p className="auth-context">An invitation to a workspace is waiting for you.</p>
-        <p>Sign in with the email address the invitation was sent to, then accept it.</p>
+        <p className="auth-context">{auth.invite.waiting}</p>
+        <p>{auth.invite.signedOutHelp}</p>
         {/* A plain link, not next/link: prefetching it would start a sign-in. */}
         <a className="button" href={`/api/auth/login?return_to=${encodeURIComponent("/invite")}`}>
-          Sign in
+          {auth.signIn}
         </a>
       </>
     );
   return (
     <>
-      <p className="auth-context">An invitation to a workspace is waiting for you.</p>
+      <p className="auth-context">{auth.invite.waiting}</p>
       <p>
-        You are signed in as <strong>{phase.email}</strong>. The invitation only works for the email
-        address it was sent to.
+        {auth.invite.signedInAs} <strong>{phase.email}</strong>. {auth.invite.emailRule}
       </p>
       {failure && (
         <p role="alert" className="notice">
@@ -104,7 +99,7 @@ export function InviteAccept() {
         </p>
       )}
       <button type="button" className="primary" onClick={accept} disabled={busy}>
-        {busy ? "Accepting…" : "Accept invitation"}
+        {busy ? auth.invite.accepting : auth.invite.accept}
       </button>
     </>
   );

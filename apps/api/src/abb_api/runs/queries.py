@@ -75,6 +75,7 @@ class RunRecord:
     metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    trace_state: str = "available"
     search: SearchRowData | None = None
 
 
@@ -107,6 +108,7 @@ _COLUMNS = (
     t.runs.c.metadata,
     t.runs.c.created_at,
     t.runs.c.updated_at,
+    t.runs.c.trace_state,
 )
 
 
@@ -129,8 +131,19 @@ class RunQueries:
         self._tenant = tenant
         self._scope = project_scope
 
+    def _not_purging(self) -> Any:
+        """Runs of a project that is being purged are not found, like the project (ADR-163)."""
+        p = t.projects.c
+        return t.runs.c.project_id.not_in(
+            select(p.id).where(
+                p.workspace_id == self._tenant.workspace_id, p.purge_state == "purging"
+            )
+        )
+
     def _base(self) -> Select[Any]:
-        statement = select(*_COLUMNS).where(t.runs.c.workspace_id == self._tenant.workspace_id)
+        statement = select(*_COLUMNS).where(
+            t.runs.c.workspace_id == self._tenant.workspace_id, self._not_purging()
+        )
         if self._scope is not None:
             statement = statement.where(t.runs.c.project_id == self._scope)
         return statement
@@ -140,6 +153,7 @@ class RunQueries:
         return _record(row) if row else None
 
     def _filtered(self, statement: Select[Any], f: _Filters) -> Select[Any]:
+        statement = statement.where(self._not_purging())
         if f.statuses:
             statement = statement.where(t.runs.c.status.in_(list(f.statuses)))
         if f.agent_slug is not None:

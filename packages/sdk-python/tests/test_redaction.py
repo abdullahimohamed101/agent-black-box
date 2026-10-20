@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from blackbox import PayloadMode
-from blackbox.redaction import Redactor
-from blackbox.stats import Stats
+from agent_blackbox import PayloadMode
+from agent_blackbox.redaction import Redactor
+from agent_blackbox.stats import Stats
 from tests.helpers import events_of, offline
 
 SECRETS = {

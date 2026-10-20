@@ -65,8 +65,8 @@ def test_every_v1_operation_is_authenticated_and_described() -> None:
     # Phase 14's seven policy routes, and step 2's nine (decide, fail-modes, wait, consume, cancel,
     # list, pending count, detail, decision), and Phase 17's thirteen alerting routes (step 1's
     # twelve, step 2's send-test), Phase 19a step 3's two project quota routes, and step 5's
-    # three session routes
-    assert seen == 37 + 15 + 1 + 4 + 7 + 9 + 13 + 2 + 3
+    # three session routes, and Phase 19b step 1's four retention routes
+    assert seen == 37 + 15 + 1 + 4 + 7 + 9 + 13 + 2 + 3 + 4
 
 
 def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
@@ -77,6 +77,11 @@ def test_error_responses_use_the_real_envelope_not_fastapis_default() -> None:
         for status, response in op["responses"].items():
             if int(status) >= 400:
                 schema = response["content"]["application/json"]["schema"]
+                if (method, path, status) == ("get", "/readyz", "503"):
+                    # Not ready answers with the per-check body (ADR-169): the reason codes are
+                    # the content, and it carries no error text.
+                    assert schema == {"$ref": "#/components/schemas/ReadyResponse"}
+                    continue
                 assert schema == {"$ref": "#/components/schemas/ErrorEnvelope"}, (
                     method,
                     path,
@@ -127,6 +132,10 @@ def test_the_public_surface_is_exactly_what_the_plan_promises() -> None:
         ("PUT", "/v1/projects/{project_id}/security-settings"),
         ("GET", "/v1/projects/{project_id}/quotas"),
         ("PUT", "/v1/projects/{project_id}/quotas"),
+        ("GET", "/v1/workspaces/{workspace_id}/retention"),
+        ("PUT", "/v1/workspaces/{workspace_id}/retention"),
+        ("GET", "/v1/workspaces/{workspace_id}/retention/preview"),
+        ("GET", "/v1/workspaces/{workspace_id}/retention/reports"),
         ("GET", "/v1/policies/current"),
         ("GET", "/v1/policies/versions"),
         ("GET", "/v1/policies/versions/{version}"),

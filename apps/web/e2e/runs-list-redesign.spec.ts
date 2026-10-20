@@ -1,12 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { shotsDir } from "./shots-dir";
 
 // Phase 22 step 7: the runs list shows which runs need you, facets and the top-bar search edit one query string.
 const BASE = "/w/demo/projects/all";
 // Fixture runs: ten earlier ones, the two coding-agent runs (Phase 11) and the blocked run (Phase 22 review P1-3). Phase 13 adds three security runs.
 const RUN_COUNT = 18;
 
-const SHOTS = "../../docs/screenshots/phase-22/step-7";
+const SHOTS = shotsDir("phase-22/step-7");
 
 async function axe(page: Page) {
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
@@ -113,7 +114,7 @@ test.describe("facet column", () => {
     await page.goto(`${BASE}/runs`);
     const region = page.getByRole("region", { name: "Narrow the results" });
     await expect(region).toBeVisible();
-    const box = page.getByRole("searchbox", { name: "Search" });
+    const box = page.getByRole("searchbox", { name: "Search runs" });
     await region.getByRole("button", { name: "Failed" }).click();
     await expect(box).toHaveValue("status:failed");
     await expect(page).toHaveURL(/q=status%3Afailed/);
@@ -189,7 +190,9 @@ test.describe("top-bar search", () => {
   test("opens with /, lists matches, and works from the keyboard alone", async ({ page }) => {
     await page.goto(`${BASE}`);
     const combo = page.getByRole("combobox", { name: "Search all runs" });
-    await expect(page.locator(".topbar-search-hint")).toBeVisible();
+    // the bar holds one icon button; the field opens in the bar's place (design pass 2: no drawn key cap)
+    await expect(page.getByRole("button", { name: "Search runs", exact: true })).toBeVisible();
+    await expect(combo).toBeHidden();
     await pressSlash(page);
     await expect(combo).toBeFocused();
     await page.keyboard.type("status:failed");
@@ -208,11 +211,11 @@ test.describe("top-bar search", () => {
     await expect(page).toHaveURL(/\/runs\/run_\w+$/);
     // `/` does nothing while typing in a field
     await page.goto(`${BASE}/runs`);
-    const box = page.getByRole("searchbox", { name: "Search" });
+    const box = page.getByRole("searchbox", { name: "Search runs" });
     await box.focus();
     await page.keyboard.type("a/b");
     await expect(box).toHaveValue("a/b");
-    await expect(combo).not.toBeFocused();
+    await expect(combo).toBeHidden(); // the bar's field stays closed: the key was typed, not taken
   });
 
   test("Enter goes to the runs list with ?q=, also from the runs list itself", async ({ page }) => {
@@ -221,7 +224,9 @@ test.describe("top-bar search", () => {
     await page.keyboard.type("tool:run_migration");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/runs\?q=tool%3Arun_migration/);
-    await expect(page.getByRole("searchbox", { name: "Search" })).toHaveValue("tool:run_migration");
+    await expect(page.getByRole("searchbox", { name: "Search runs" })).toHaveValue(
+      "tool:run_migration",
+    );
     await expect(rows(page)).toHaveCount(1);
     // from the list: the page adopts the new query
     await page.keyboard.press("Escape");
@@ -229,7 +234,7 @@ test.describe("top-bar search", () => {
     await page.keyboard.type("status:failed");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/q=status%3Afailed/);
-    await expect(page.getByRole("searchbox", { name: "Search" })).toHaveValue("status:failed");
+    await expect(page.getByRole("searchbox", { name: "Search runs" })).toHaveValue("status:failed");
     await expect(rows(page)).toHaveCount(3);
   });
 
@@ -255,7 +260,7 @@ test.describe("top-bar search", () => {
 test.describe("phone", () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
-  test("search collapses to an icon, facets fold, nothing overflows", async ({ page }) => {
+  test("the search is an icon at every width, facets fold, nothing overflows", async ({ page }) => {
     await page.goto(`${BASE}/runs`);
     await expect(rows(page)).toHaveCount(RUN_COUNT);
     const icon = page.getByRole("button", { name: "Search runs" });
@@ -271,9 +276,10 @@ test.describe("phone", () => {
     await expect(facets.getByRole("button", { name: "Failed" })).toBeVisible();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: `${SHOTS}/facets-375-light.png`, fullPage: true });
+    await expect(facets.getByRole("button", { name: "Needs attention" })).toBeVisible();
     await facets.getByText("Narrow results").click();
-    // "Needs attention" stays on the surface
-    await expect(page.getByRole("button", { name: "Needs attention" })).toBeVisible();
+    // "Needs attention" is the first facet (design pass 2): it folds away with the rest on a phone
+    await expect(facets.getByRole("button", { name: "Needs attention" })).toBeHidden();
     await icon.click();
     const combo = page.getByRole("combobox", { name: "Search all runs" });
     await expect(combo).toBeFocused();
@@ -300,6 +306,7 @@ for (const [scheme, width, height] of [
     await expect(rows(page)).toHaveCount(RUN_COUNT);
     await page.evaluate(() => document.fonts.ready);
     await page.screenshot({ path: `${SHOTS}/runs-list-${width}-${scheme}.png`, fullPage: true });
+    if (width < 700) await page.getByText("Narrow results").click();
     await page.getByRole("button", { name: "Needs attention" }).click();
     await expect(page.getByTestId("failure-line").first()).toBeVisible();
     await page.screenshot({

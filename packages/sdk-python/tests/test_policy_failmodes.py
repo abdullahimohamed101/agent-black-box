@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from blackbox import BlackBox, PolicyUnavailable
-from blackbox.config import Config
-from blackbox.policy import WARNING_REASONS
+from agent_blackbox import BlackBox, PolicyUnavailable
+from agent_blackbox.config import Config
+from agent_blackbox.policy import WARNING_REASONS
 from tests.policy_server import (
     PolicyServer,
     R,
@@ -203,7 +203,7 @@ def test_override_from_the_environment_and_precedence(
 
 
 def test_the_exact_override_beats_a_prefix_and_the_longest_prefix_wins() -> None:
-    from blackbox.policy_failmodes import override_for
+    from agent_blackbox.policy_failmodes import override_for
 
     modes = {"tool.*": "closed", "tool.search.*": "open", "tool.search.web": "closed"}
     assert override_for(modes, "tool.search.web") == "closed"

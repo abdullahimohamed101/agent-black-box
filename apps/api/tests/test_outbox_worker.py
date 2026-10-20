@@ -1,7 +1,11 @@
 """The outbox queue and worker: claiming, leases, retries, dead letters, shutdown."""
 
 import asyncio
+import inspect
+import logging
 import uuid
+from collections import Counter
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -18,6 +22,17 @@ from tests.factories import make_workspace
 
 T0 = datetime(2026, 10, 7, 12, 0, 0, tzinfo=UTC)
 LEASE = timedelta(seconds=60)
+LEASE_SECONDS = 0.9  # injected-clock lease tests: real heartbeat every 0.3 s
+STEP = timedelta(seconds=0.3)  # the injected clock moves one third of a lease per heartbeat
+
+
+def due(ago: float = 0) -> datetime:
+    """A time that is already past on the database's clock whatever its drift from this host's.
+
+    The database runs in a VM whose clock drifts and steps by seconds under load (KI-309: measured
+    up to 13 s); a job written as "now" by the host can be "not yet due" there. Hence the hour.
+    """
+    return datetime.now(UTC) - timedelta(hours=1, seconds=ago)
 
 
 async def add_job(
@@ -332,7 +347,7 @@ async def test_the_loop_processes_new_jobs_and_stops_promptly(
     task = asyncio.create_task(worker.run_forever(stop))
     await asyncio.sleep(0.2)  # idle for a few polls
     async with engine.begin() as conn:
-        job_id = await add_job(conn, ws, available_at=datetime.now(UTC))
+        job_id = await add_job(conn, ws, available_at=due())
     for _ in range(100):
         if handled:
             break
@@ -365,7 +380,7 @@ async def test_the_loop_survives_an_error_and_keeps_working(
 
     monkeypatch.setattr(Worker, "run_once", flaky)
     async with engine.begin() as conn:
-        await add_job(conn, ws, available_at=datetime.now(UTC))
+        await add_job(conn, ws, available_at=due())
     stop = asyncio.Event()
     task = asyncio.create_task(worker.run_forever(stop))
     for _ in range(100):
@@ -392,7 +407,7 @@ async def test_the_worker_process_starts_processes_jobs_and_exits_cleanly_on_sig
     async with engine.begin() as conn:  # a summarize job for a run that does not exist: a no-op
         job_id = await add_job(
             conn, ws, job_type="summarize_run", payload={"run_id": str(run_id)},
-            available_at=datetime.now(UTC),
+            available_at=due(),
         )  # fmt: skip
     env = {
         **os.environ,
@@ -428,80 +443,202 @@ async def test_the_worker_process_starts_processes_jobs_and_exits_cleanly_on_sig
 # ------------------------------------------------------------------ leases and poison pills
 
 
-async def test_a_slow_job_keeps_its_lease_and_runs_exactly_once(
-    engine: AsyncEngine, database_url: str
+async def until(condition: Callable[[], Any], *, ceiling: float = 30.0) -> None:
+    """Wait for an observed fact. The ceiling only bounds a hang; it is not a timing assertion."""
+    async with asyncio.timeout(ceiling):
+        while not await _truthy(condition()):  # noqa: ASYNC110 - polls database state
+            await asyncio.sleep(0.02)
+
+
+async def _truthy(value: Any) -> bool:
+    return bool(await value) if inspect.isawaitable(value) else bool(value)
+
+
+@pytest.fixture
+def extensions(monkeypatch: pytest.MonkeyPatch) -> Counter[uuid.UUID]:
+    """How many times each job's lease was extended (successfully) by a heartbeat."""
+    counts: Counter[uuid.UUID] = Counter()
+    real = JobQueue.extend_lease
+
+    async def counting(
+        self: JobQueue, job: Job, lease: timedelta, now: datetime | None = None
+    ) -> bool:
+        extended = await real(self, job, lease, now)
+        if extended:
+            counts[job.id] += 1
+        return extended
+
+    monkeypatch.setattr(JobQueue, "extend_lease", counting)
+    return counts
+
+
+async def advance_while_extended(
+    clock: Tick,
+    extensions: Counter[uuid.UUID],
+    job_ids: list[uuid.UUID],
+    *,
+    until_after: datetime,
+    gave_up: Callable[[], bool],
 ) -> None:
-    """Found by review: without a heartbeat a job outliving its lease ran 8 times (limit 5)."""
+    """Move the injected clock past `until_after` in small steps, one heartbeat per step.
+
+    The workers schedule by this clock, so a lease expires only when the test advances it, never
+    because the machine is slow. Each step waits until every job's lease was extended again, so
+    the lease always stays ahead of the clock by the heartbeat's own doing: with no heartbeat the
+    wait never ends (the test fails on its ceiling) and, if a lease did lapse, `gave_up` ends it
+    early so the assertions can report the duplicate run.
+    """
+    while clock.now <= until_after:
+        seen = {job_id: extensions[job_id] for job_id in job_ids}
+        clock.now += STEP
+
+        def extended_or_gave_up(seen: dict[uuid.UUID, int] = seen) -> bool:
+            return gave_up() or all(extensions[j] > seen[j] for j in job_ids)
+
+        try:
+            await until(extended_or_gave_up, ceiling=20)
+        except TimeoutError:
+            pytest.fail("no heartbeat extended the lease of a job that is still running")
+        if gave_up():
+            return
+
+
+async def test_a_slow_job_keeps_its_lease_and_runs_exactly_once(
+    engine: AsyncEngine, database_url: str, extensions: Counter[uuid.UUID]
+) -> None:
+    """Found by review: without a heartbeat a job outliving its lease ran 8 times (limit 5).
+
+    Time is injected (`Worker(clock=...)`): the handler is held while the test moves the clock
+    past the lease the claim granted, one heartbeat at a time, with idle workers polling. Nothing
+    depends on how fast the machine is (KI-309: the old sleeps did, and the database's own clock
+    stepped by seconds under load).
+    """
+    clock = Tick(T0)
     ws = await workspace(engine)
     async with engine.begin() as conn:
-        job_id = await add_job(conn, ws, job_type="slow", available_at=datetime.now(UTC))
+        job_id = await add_job(conn, ws, job_type="slow", available_at=T0 - timedelta(seconds=1))
     runs: list[str] = []
+    release = asyncio.Event()
 
     async def slow(job: Job, conn: AsyncConnection) -> None:
-        await asyncio.sleep(2.5)  # more than twice the lease
         runs.append(job.lease_owner)
+        await release.wait()
 
     settings = make_settings(
-        database_url, worker_lease_seconds=1.0, worker_poll_interval_seconds=0.05
+        database_url, worker_lease_seconds=LEASE_SECONDS, worker_poll_interval_seconds=0.05
     )
-    workers = [Worker(engine, {"slow": slow}, settings, owner=f"w{i}") for i in range(3)]
+    workers = [
+        Worker(engine, {"slow": slow}, settings, clock=clock, owner=f"w{i}") for i in range(3)
+    ]
+    polls = {w.owner: 0 for w in workers}
+    for w in workers:
+        w.run_once = _counting(w, polls)  # type: ignore[method-assign]
     stop = asyncio.Event()
     tasks = [asyncio.create_task(w.run_forever(stop)) for w in workers]
-    await asyncio.sleep(5)
-    stop.set()
-    await asyncio.gather(*tasks)
+    try:
+        await until(lambda: runs)
+        original = (await job_row(engine, job_id)).lease_expires_at
+        await advance_while_extended(
+            clock, extensions, [job_id], until_after=original, gave_up=lambda: len(runs) > 1
+        )
+        # The clock is past the original lease. Give the idle workers a few more polls (a count
+        # of their loops, not a duration) to try to take the job.
+        idle = [w.owner for w in workers if w.owner != runs[0]]  # the runner is inside its job
+        floor = {owner: polls[owner] for owner in idle}
+        await until(lambda: len(runs) > 1 or all(polls[o] >= floor[o] + 3 for o in idle))
+    finally:
+        release.set()
+        await until(lambda: _is_done(engine, job_id))
+        stop.set()
+        await asyncio.gather(*tasks)
     row = await job_row(engine, job_id)
     assert len(runs) == 1 and row.status == "done" and row.attempt_count == 1
+    assert clock.now > original and extensions[job_id] >= 3  # it outlived its first lease
+
+
+def _counting(worker: Worker, polls: dict[str, int]) -> Callable[[], Any]:
+    """`worker.run_once` that counts how many times the worker looked for work."""
+    real = worker.run_once
+
+    async def counted() -> int:
+        polls[worker.owner] += 1
+        return int(await real())
+
+    return counted
+
+
+async def _is_done(engine: AsyncEngine, job_id: uuid.UUID) -> bool:
+    return bool((await job_row(engine, job_id)).status == "done")
 
 
 async def test_jobs_claimed_in_the_same_batch_keep_their_leases_while_an_earlier_one_runs(
-    engine: AsyncEngine, database_url: str
+    engine: AsyncEngine, database_url: str, extensions: Counter[uuid.UUID]
 ) -> None:
     """Review P2-2: a worker runs its batch one job after another and used to extend only the
     running job's lease; the claimed one behind a slow job (a delivery tick) expired and was run
-    a second time by another worker."""
+    a second time by another worker.
+
+    The first job is held while the injected clock moves past the lease the second one was
+    granted; the batch keeper must extend it meanwhile, with a second worker polling.
+    """
+    clock = Tick(T0)
     ws = await workspace(engine)
     async with engine.begin() as conn:
         ids = [
-            await add_job(
-                conn, ws, job_type="slow", available_at=datetime.now(UTC) - timedelta(seconds=1)
-            )
-            for _ in range(2)
-        ]
+            await add_job(conn, ws, job_type="slow", available_at=T0 - timedelta(seconds=2 - n))
+            for n in range(2)
+        ]  # the first id is the older, so it runs first
     runs: list[str] = []
+    release = asyncio.Event()
 
     async def slow(job: Job, conn: AsyncConnection) -> None:
-        await asyncio.sleep(2.5)  # two and a half leases
         runs.append(str(job.id))
+        await release.wait()
 
     settings = make_settings(
         database_url,
-        worker_lease_seconds=1.0,
+        worker_lease_seconds=LEASE_SECONDS,
         worker_poll_interval_seconds=0.05,
         worker_batch_size=2,
     )
-    first = Worker(engine, {"slow": slow}, settings, owner="first")
+    first = Worker(engine, {"slow": slow}, settings, clock=clock, owner="first")
+    other = Worker(engine, {"slow": slow}, settings, clock=clock, owner="other")
+    polls = {"other": 0}
+    other.run_once = _counting(other, polls)  # type: ignore[method-assign]
     claiming = asyncio.create_task(first.run_once())  # takes both and runs them in turn
-    await asyncio.sleep(0.3)
-    other = Worker(engine, {"slow": slow}, settings, owner="other")
     stop = asyncio.Event()
-    watching = asyncio.create_task(other.run_forever(stop))
-    await claiming
-    await asyncio.sleep(0.5)
-    stop.set()
-    await watching
+    watching: asyncio.Task[None] | None = None
+    try:
+        await until(lambda: runs)  # the first job runs; the second waits, claimed, behind it
+        assert runs == [str(ids[0])]
+        original = (await job_row(engine, ids[1])).lease_expires_at
+        watching = asyncio.create_task(other.run_forever(stop))
+        await advance_while_extended(
+            clock, extensions, ids, until_after=original, gave_up=lambda: len(runs) > 1
+        )
+        floor = polls["other"]
+        # It had its chances to steal the job (or did: a second run, which the assertions report).
+        await until(lambda: len(runs) > 1 or polls["other"] >= floor + 3)
+    finally:
+        release.set()
+        await claiming
+        stop.set()
+        if watching is not None:
+            await watching
     assert sorted(runs) == sorted(str(i) for i in ids)  # each exactly once
+    assert clock.now > original and extensions[ids[1]] >= 3  # kept alive while it waited
     for job_id in ids:
         row = await job_row(engine, job_id)
         assert row.status == "done" and row.attempt_count == 1
 
 
 async def test_the_heartbeat_stops_with_the_job_and_reports_a_lost_lease(
-    engine: AsyncEngine, database_url: str
+    engine: AsyncEngine, database_url: str, caplog: pytest.LogCaptureFixture
 ) -> None:
+    caplog.set_level(logging.WARNING, logger="abb_api.jobs.worker")
     ws = await workspace(engine)
     async with engine.begin() as conn:
-        await add_job(conn, ws, job_type="quick", available_at=datetime.now(UTC))
+        await add_job(conn, ws, job_type="quick", available_at=due())
 
     async def quick(job: Job, conn: AsyncConnection) -> None:
         return None
@@ -518,9 +655,38 @@ async def test_the_heartbeat_stops_with_the_job_and_reports_a_lost_lease(
         assert not await JobQueue(conn).extend_lease(impostor, LEASE)
         assert await JobQueue(conn).extend_lease(job, LEASE)
 
+    # A lease taken over mid-run (set directly in the database, not waited out): the heartbeat
+    # reports it and stops, and the job is left to its new owner.
+    async with engine.begin() as conn:
+        stolen = await add_job(conn, ws, job_type="stolen", available_at=due())
+
+    async def takeover(job: Job, conn: AsyncConnection) -> None:
+        if job.id != stolen:
+            return
+        async with engine.begin() as other:
+            await other.execute(
+                update(t.outbox_jobs)
+                .where(t.outbox_jobs.c.id == stolen)
+                .values(lease_owner="thief", lease_expires_at=datetime.now(UTC) + LEASE)
+            )
+        await until(lambda: any("lease lost while running" in r.message for r in caplog.records))
+
+    thief_worker = Worker(
+        engine,
+        {"stolen": takeover},
+        make_settings(database_url, worker_lease_seconds=0.3),
+        owner="w3",
+    )
+    await thief_worker.run_once()
+    row = await job_row(engine, stolen)
+    assert row.status == "running" and row.lease_owner == "thief"  # not completed by the loser
+    assert any("lease lost; leaving the job" in r.message for r in caplog.records)
+    leftover = [task for task in asyncio.all_tasks() if "_keep_lease" in repr(task.get_coro())]
+    assert leftover == []
+
 
 async def _claim_fresh(conn: AsyncConnection, ws: uuid.UUID) -> list[Job]:
-    await add_job(conn, ws, available_at=datetime.now(UTC) - timedelta(seconds=1))
+    await add_job(conn, ws, available_at=due(1))
     return await JobQueue(conn).claim(owner="w2", limit=1, lease=LEASE)
 
 

@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { settleAnimations } from "./motion";
 import { signIn, workspace } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/stream-e2e.sh: a real API + worker, the built web server on :3103, and a driver process
 // (the Python SDK, or plain HTTP) that writes the run while the browser is already watching it.
@@ -15,7 +16,7 @@ test.skip(!writeKey || !apiUrl, "needs scripts/stream-e2e.sh");
 test.use({ baseURL: "http://localhost:3103" });
 test.beforeEach(async ({ context, baseURL }) => signIn(context, baseURL!));
 test.describe.configure({ mode: "serial" }); // one writer at a time keeps the latency numbers honest
-const SHOTS = "../../docs/screenshots/phase-5";
+const SHOTS = shotsDir("phase-5");
 
 type Driver = {
   runId: string;

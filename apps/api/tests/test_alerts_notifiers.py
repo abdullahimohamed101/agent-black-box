@@ -170,7 +170,7 @@ async def test_slack_names_cannot_form_links_mentions_or_formatting(name: str) -
     assert message["blocks"][0]["text"]["text"] == text
     # The only angle-bracket construct left is our own link.
     stripped = text.replace(
-        f"<{ORIGIN}/w/acme/projects/alpha/runs/run_x|Open in Agent Black Box>", ""
+        f"<{ORIGIN}/w/acme/projects/alpha/runs/run_x|Open in Agent BlackBox>", ""
     )
     assert "<" not in stripped and ">" not in stripped
     for token in ("<!", "<@", "<#", "```", BIDI, ZW, "\r"):
@@ -233,13 +233,13 @@ async def test_email_is_plain_text_with_a_small_html_alternative_to_every_recipi
     assert result == n.SendResult(True)
     assert sink.envelopes == [("<abb@example.com>", ["<a@example.com>", "<b@example.org>"])]
     message = parse(sink.messages[0])
-    assert message["Subject"] == "[Agent Black Box] Run failed: Alpha"
+    assert message["Subject"] == "[Agent BlackBox] Run failed: Alpha"
     assert message["From"] == "abb@example.com" and "a@example.com" in message["To"]
     assert message["X-ABB-Alert-Id"] == sent.alert_id
     assert sent.alert_id in message["Message-ID"]
     text = message.get_body(("plain",)).get_content()  # type: ignore[union-attr]
     html_part = message.get_body(("html",)).get_content()  # type: ignore[union-attr]
-    assert f"Open in Agent Black Box: {ORIGIN}/w/acme/projects/alpha/runs/run_x" in text
+    assert f"Open in Agent BlackBox: {ORIGIN}/w/acme/projects/alpha/runs/run_x" in text
     assert "Project: Alpha" in text and "Agent: Coding agent" in text
     assert f'href="{ORIGIN}/w/acme/projects/alpha/runs/run_x"' in html_part
 

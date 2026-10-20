@@ -1,16 +1,18 @@
 # Setup
 
+For a first look at the product rather than a development environment, use the [quickstart](../quickstart.md); the [documentation index](../README.md) lists everything else.
+
 ## Required tooling
-| Tool | Version | Purpose | Present now? |
-| --- | --- | --- | --- |
-| Python | 3.12 | API, SDK, tests | yes (managed by `uv`) |
-| uv | 0.12+ | Python env + lockfile | yes |
-| Node.js | 22+ | web app | yes |
-| pnpm | 12 | JS workspace | yes |
-| PostgreSQL | 16 | system of record | yes, via Compose (host port 5433); `postgresql@16` is also installed natively but unused |
-| Docker + Compose | recent | reproducible stack | yes (Colima VM: `colima start`) |
-| Git | any | VCS | yes |
-| GitHub CLI (`gh`) | any | PRs (only with approval) | yes |
+| Tool | Version | Purpose |
+| --- | --- | --- |
+| Python | 3.12 (the SDK alone supports 3.10 and later) | API, SDK, tests; installed and managed by `uv` |
+| uv | 0.12+ | Python env + lockfile |
+| Node.js | 22+ (`.nvmrc`) | web app |
+| pnpm | 12 (`packageManager` in `package.json`) | JS workspace |
+| PostgreSQL | 16 (15 or later is supported) | system of record; `make db` runs it in Compose on host port 5433 |
+| Docker + Compose | recent | reproducible stack (on macOS, Colima works: `colima start`) |
+| Git | any | VCS |
+| GitHub CLI (`gh`) | any | pull requests (optional) |
 
 ## First-time setup
 ```bash
@@ -20,7 +22,7 @@ cp .env.example .env && make setup
 (`docker compose up -d --wait postgres`) and applies migrations.
 
 ## macOS notes
-- Docker runs through Colima: `colima start --cpu 2 --memory 4` once per boot (installed 2026-10-07).
+- Docker can run through Colima: `colima start --cpu 2 --memory 4` once per boot.
   Compose needs `"cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]` in `~/.docker/config.json`.
 - Dev Postgres is published on 5433 so it never clashes with a native Postgres on 5432.
 - pnpm 12 fails installs on unreviewed dependency build scripts; decisions are in `pnpm-workspace.yaml` (`allowBuilds`).
@@ -34,11 +36,15 @@ cp .env.example .env && make setup
 | Background worker natively | `cd apps/api && uv run python -m abb_api.worker` (needs `.env` exported) |
 | Everything in containers | `make up`, then `make smoke` |
 | Provision a tenant and key | `make seed` (local dev key; the dev project captures FULL payloads) or `python -m abb_api.cli --help` |
+| See traces with no model API key | `make demo` (needs the stack from `make dev` or `make up`): records twelve scripted runs into its own project `abb-demo` (one agent stays waiting for an approval: that run needs `ABB_ALLOW_DEV_SESSIONS=1` on the API, otherwise `make demo` says so and skips only it); `make demo-reset` (dry run) and `make demo-reset CONFIRM=1` remove only that project |
 | Latency baseline | `make seed && make bench` (read `docs/benchmarks/phase-2-ingestion.md` first) |
+| Check the docs (links, command blocks) | `python3 scripts/check_docs_links.py` and `scripts/docs-commands-check.sh` (CI job `docs`) |
 
 Database roles: Compose runs `migrate` as the owner (`abb`) and the API/worker as `abb_runtime` (cannot UPDATE/DELETE `events`). The native
 `.env` keeps using the owner for convenience; to try the restricted role natively, export `ABB_RUNTIME_DB_PASSWORD`, run `make migrate`, and point
 `ABB_DATABASE_URL` at `abb_runtime` (see `.env.example`), keeping `ABB_MIGRATION_DATABASE_URL` on the owner.
+
+Retention (ADR-159): compose also runs a `retention` service as the `abb_retention` role (dry run: it only writes reports). Natively, `ABB_RETENTION_DATABASE_URL` (or, in development, the owner URL the migrations use) lets `python -m abb_api.cli retention run-once` run one tick; `ABB_RETENTION_DB_PASSWORD` at `make migrate` gives the role a login.
 
 Native `make dev` does not start the worker, so runs stay `processing` unless you start one (or use `make up`).
 
@@ -73,3 +79,5 @@ prompts, tool results, diffs and terminal output in a project, set it to `FULL` 
 `python -m abb_api.cli create-project ... --capture-mode full` or `python -m abb_api.cli set-capture-mode --workspace W --project P --mode full`
 (audited). `make seed` sets the local demo project to `FULL`; the e2e scripts create their projects with `--capture-mode full`. Tests that need payloads
 use `make_tenant`, whose projects are `FULL` unless told otherwise.
+
+Migrations (ADR-162): every new migration must be classified `reversible` or `forward-only` in `apps/api/migrations/safety.json` in the same commit (`tests/test_migration_safety.py` fails otherwise); see `docs/runbooks/migrations.md`. Backup, restore and key rotation: `make backup OUT=...`, `make restore BUNDLE=... ARTIFACT_DIR=...`, `make rotate-alert-keys` (`docs/runbooks/backup-restore.md`). They need `pg_dump`/`pg_restore` (and `openssl` for `--encrypt`) on the PATH, at least as new as the server.

@@ -1,0 +1,78 @@
+# ADR-169: Readiness semantics, the database circuit breaker, default statement timeout, role re-check, and the failed-session throttle
+
+Status: Accepted (Phase 19c, step 3). Implements D5 of the Phase 19c plan; the choices below were made by the assistant under the standing instruction and are listed so they can be reversed.
+Builds on ADR-152/153 (shared limiter, failed-auth throttle), ADR-155 (startup role check), ADR-165/168 (metrics), INV-4.
+Date: 2026-10-16
+Phase: 19c
+
+## Context
+
+`/readyz` only asked the database `SELECT 1`. A process deployed before its migration, an unwritable artifact directory or a role that gained privilege after start all read as ready; a database outage made every request wait 3 to 5 seconds for the connect or pool timeout before its 503, so the event loop filled with waiters; the API had no default statement deadline; nothing proved that every outbound call was bounded; and a flood of bad session cookies cost one lookup each (KI-176).
+
+## Decision
+
+### 1. Readiness: a closed set of checks with fixed reason codes
+
+`/healthz` stays liveness with no I/O. `/readyz` answers `{status: ready|not_ready, version, checks: {name: {status: ok|fail|degraded, reason}}}`, 200 or 503 (`Retry-After: 2`). Reasons are fixed codes, never error text, a path or a host. **Failing** checks: `database` (`down`, `timeout`, `breaker_open`; `degraded`/`pool_saturated` when every pool connection is checked out), `schema` (`behind`, `unreadable`, `unchecked`), `artifacts` (`missing`, `not_writable`, `timeout`), `role` (`privileged_role`, production only). **Reported only**: `worker` (`worker_lag` when the oldest due job has waited over 60 s) and `retention` (the configured mode). The body schema is part of the OpenAPI contract (it replaces the old `{database: ok}` and the error envelope on 503; nothing in the repository consumed either).
+
+- **Ahead is ready.** A database whose revision the code does not know (newer) is `degraded`/`ahead` and the process stays ready: rolling deploys migrate first, and the old processes must keep serving until they are replaced (migrations between releases are additive). A database *behind* the code is not ready, so a process started before its migration receives no traffic. If the code cannot find its migrations the check is `degraded`/`head_unknown` rather than failing every probe.
+- **Migration 0106** grants the runtime role `SELECT` on `alembic_version` (0007 had revoked everything on it). Read only: the role still cannot insert, update or delete, so it cannot make the migrations believe a step ran; a revision id is not sensitive. Without the grant the check would be blind; the alternatives (a `SECURITY DEFINER` function, or a second connection string with owner rights in the API) are worse. `test_runtime_role` changed accordingly: reading is allowed, writing is still denied. Until 0106 itself has run the check reports `schema: unreadable`, which is correct: the process is behind.
+- **Cheap to hit:** one evaluation is shared by concurrent callers (single flight) and cached for 2 s; the artifact probe (write and remove a tiny file; the directory is created if absent, as the store would on first write) is cached for 5 s. The database check, schema check and worker line share one connection and a 2 s statement timeout, under a 2.5 s deadline that includes the pool wait. Gauges `readiness_check{check}` (1/0) and `readiness_flaps_total` move when it evaluates.
+- An injected artifact store (tests) is not probed; only the local-directory store is.
+
+### 2. Periodic role check (KI-183)
+
+`RoleMonitor` (db/role_check.py) re-runs the ADR-155 question every `ABB_ROLE_CHECK_INTERVAL_SECONDS` (default 300, 0 = off, otherwise at least 5) in the API and the worker, single flight, 5 s bound, keeping the previous finding if it cannot run. A role that became privileged: **production** fails the `role` readiness check (it never crashes a running process: that would turn a configuration mistake into an outage and lose in-flight work) and logs one error with the fixed reason names; other environments log one warning per change and the check is `degraded` (local development runs as the owner, so failing there would make the dev stack permanently unready). `ABB_ALLOW_PRIVILEGED_DB_ROLE=1` keeps it ready, as at startup. The gauge `db_role_privileged{reason}` is 1 per active reason. The CLIs are still not covered (short-lived; they check nothing at start): remains in KI-183's tail.
+
+### 3. Default statement timeout
+
+`ABB_DB_STATEMENT_TIMEOUT_SECONDS` (default 30, 0 = off, at most 3600) is sent as a startup parameter of every connection of the **API** engine only. Routes with their own budget (search, analytics, alert preview, retention preview, policy dry run, quota lock waits) use `SET LOCAL statement_timeout`, which overrides it inside their transaction (tested). The worker has its own `ABB_WORKER_DB_STATEMENT_TIMEOUT_SECONDS` (default 0: its jobs are long and run bounded by leases); migrations, retention, backup and rotation build their own engines and never see it (tested). A cancelled statement not already mapped by a budgeted route is `504 DATABASE_TIMEOUT` with a fixed body (the SQL is never shown). Not set as asyncpg `command_timeout`: that is client side and would also kill a legitimate long COPY. A transaction-mode pooler may reject startup parameters: set the setting to 0 and use `ALTER ROLE abb_runtime SET statement_timeout`.
+
+### 4. Circuit breaker on database connectivity
+
+In `TimedPool.connect` (the one entry point of every checkout): after `ABB_DB_BREAKER_THRESHOLD` (5) consecutive checkout failures within `ABB_DB_BREAKER_WINDOW_SECONDS` (30) the breaker opens for `ABB_DB_BREAKER_OPEN_SECONDS` (5): a checkout then raises `BreakerOpen` *before* touching the pool (no pool wait, no connect attempt), mapped to the existing `503 DEPENDENCY_UNAVAILABLE` with `Retry-After` set to the time to the next probe. After the open period one probe checkout is let through (half-open; a probe that never reports is replaced after one more period); success closes, failure reopens. Only checkout failures count: slow queries, statement timeouts and application errors happen after a connection was handed out and never do (tested), and a late success or failure from a request that started before it opened is ignored. A saturated pool (pool timeout) does **not** count (amended below): the breaker means "the database is unreachable". `/healthz` is untouched; `/readyz` reports `database: fail/breaker_open` without touching the pool. Per process and in memory (each process learns from its own traffic within five requests; sharing it through the database would need the database). `ABB_DB_BREAKER_ENABLED=0` is the kill switch. The streaming hub's own listener connection and the worker are not behind it. Metrics `db_breaker_state` (0/1/2) and `db_breaker_trips_total`.
+
+### 5. Failed-session throttle (KI-176)
+
+`auth/session_throttle.py` mirrors ADR-153 with the shared limiter and two closed scopes, `session_fail_address` (only with `ABB_TRUST_PROXY=1`, the last `X-Forwarded-For` entry) and `session_fail_global`, failures only, fixed windows, fail open to a per-process window. Settings `ABB_SESSION_FAIL_*`. Decisions a reader may question:
+
+- **Refusal is `429 SESSION_THROTTLED` with `Retry-After`, not the uniform 401.** The web app treats `401 SESSION_INVALID` as "sign the person out"; a refusal that never looked at the cookie must not do that to someone whose session is fine. The 429 reveals nothing (it is the same for every throttled caller and is decided before the lookup), so the uniformity that matters (unknown, expired and revoked cookies answer the same 401) is unchanged; all throttled bodies are identical to each other.
+- **No per-credential counter.** A key id is a public enumerable name; a session token is 256 random bits and each junk cookie is a new one, so a per-token counter bounds nothing. What bounds repeated use of one cookie is the known-invalid cache (one lookup per cookie per 30 s per process, still counted as a failure).
+- **A cold valid session is not locked out by a closed window** (the 19a P1, applied): a background-refreshed set of 16-byte prefixes of the stored hashes of usable sessions (the `ActiveKeyIds` mechanism, `session_active_*` metrics) lets a cookie of a session that exists reach its single lookup while the address or global window is closed; a junk cookie is refused from memory. A sign-in committed by this process adds its prefix at once. Residual, accepted: a session created on *another* process within the last refresh period (60 s) is answered 429 (not 401) while a window is closed and succeeds on retry once the set refreshes; when the set is not loaded (startup race, database outage) the gate behaves as without it. Known-valid cookies (authenticated here within 5 min) skip the gate entirely; full authentication still runs on every request, so revocation is immediate (tested).
+- **No audit row.** A failed session names no workspace, and an unauthenticated flood must not be able to write into any tenant's log; there is one log line per scope per window per process. Metric: `session_throttle_blocks_total{kind=address|global}`.
+- Sign-in starts and callbacks carry no session cookie and are not behind this gate.
+
+### 6. Timeouts on every external call, enforced by a test
+
+`tests/test_external_call_timeouts.py` parses `apps/api/src` and the Python SDK with `ast` and fails on an `httpx` client or request function, `urllib` open, `socket.create_connection`, `smtplib`, `http.client`, `asyncpg.connect`, `subprocess.run/call/check_*` without an explicit `timeout`, or an `asyncio.open_connection`, subprocess `Popen`, `asyncio.create_subprocess_*` or raw `socket.socket` that is not lexically inside `asyncio.timeout` / `wait_for`. The reviewed allow-list (each entry names the bounding mechanism; an entry that matches nothing fails) holds the alert sender's opener (bounded by the sender's one total deadline), the SDK's recorded shell command and policy transport (deadline sockets), and the backup/restore tool subprocesses, whose duration is proportional to the data and which are operator CLIs bounded by the operator's or scheduler's deadline (KI-230). The scan found one real gap, fixed: the restore's `alembic upgrade head` subprocess had no timeout (now 30 minutes).
+
+## Consequences
+
+- A rolling deploy can no longer send traffic to a process whose migration has not run, and an outage costs one fast 503 per request after five slow ones instead of a 5 s wait each.
+- Four new operational settings groups; every default preserves behaviour except the 30 s API statement timeout, which can cancel a legitimately slower unbudgeted statement (surfaces as `504 DATABASE_TIMEOUT`; raise or set 0).
+- The readiness body changed shape.
+
+## Amendments (Phase 19c adversarial review)
+
+- **Section 4, what counts (P2-1).** The breaker counts only connectivity failures at checkout
+  (connect refused, DNS, authentication at connect, connect timeout, pre-ping, asyncpg connection
+  errors). It does **not** count `sqlalchemy.exc.TimeoutError` (the pool wait ran out) or statement
+  timeouts. Reason: the first version counted pool timeouts, so a burst of slow queries that held
+  every connection opened the breaker and shed requests that would have been served, and
+  `/readyz` failed and took the instance out of rotation, which moves the load without helping. A
+  pool timeout stays its own per-request 503; a half-open probe that ends in a pool timeout is
+  inconclusive and the next caller probes at once. Pool saturation is diagnosed with
+  `postgres_pool_wait_seconds`. `/readyz` reports `database: degraded/pool_saturated` (ready, not
+  failing) when its own checkout times out while every pool connection is checked out; a timeout
+  with free connections remains `fail/timeout`.
+- **Schema check (P3-5).** A failure to read the code's alembic scripts is `schema: degraded`,
+  `head_unknown`, remembered for 30 s so the scripts are not re-read on every probe; it never
+  reports `database: down`.
+- **Where 503 and 504 are produced (P2-2).** The catch-all `Exception` handler runs in Starlette's
+  outermost layer, outside the metrics and request-log middleware, so a mapped 503/504 was
+  recorded as 500 in `http_requests_total` and in the request log. The mapping is now also
+  registered for the concrete classes (`DBAPIError`, `OSError`, the pool `TimeoutError`,
+  `BreakerOpen`), which Starlette's inner exception middleware handles inside those layers. Bodies
+  and `Retry-After` are unchanged; a database error that is neither connectivity nor a statement
+  timeout is re-raised to the outer handler (500, with the logged traceback).
+

@@ -28,7 +28,7 @@ export ABB_DATABASE_URL="$OWNER_URL"                  # provisioning and migrati
 export ABB_WEB_ORIGIN="http://localhost:$WEB_PORT"     # fixed: the fake provider's redirect URI and the cookie origin
 export ABB_ENVIRONMENT=development                     # http issuers, dev sessions exist only here and in test
 export ABB_OIDC_ISSUER="http://localhost:$OIDC_PORT" ABB_OIDC_CLIENT_ID="abb-dev"
-export ABB_SUMMARY_DEBOUNCE_SECONDS=1 ABB_FINDINGS_DELAY_SECONDS=1 ABB_STREAM_REAUTH_SECONDS=2
+export ABB_SUMMARY_DEBOUNCE_SECONDS=1 ABB_FINDINGS_DELAY_SECONDS=1 ABB_FINDINGS_MIN_INTERVAL_SECONDS=0 ABB_STREAM_REAUTH_SECONDS=2
 export ABB_AUDIT_DENIALS_PER_MINUTE=1000               # the authorization probes would otherwise outrun the audit throttle
 export ABB_ALERTS_DELIVERY_ENABLED=true ABB_ALERTS_SWEEP_INTERVAL_SECONDS=2 ABB_ALERTS_REQUEST_TIMEOUT_SECONDS=2
 # An email destination needs a configured relay to be saved; nothing here sends mail (no rule fires an email).

@@ -1,0 +1,528 @@
+# Operational alert rules (Phase 19c D6, ADR-171). Every metric is declared in
+# apps/api/src/abb_api/obs/catalogue.py; tests/obs/test_observability_assets.py fails if a rule names
+# a metric or label that does not exist, an alert lacks severity/summary/description, or a
+# runbook_url does not resolve to a file and heading under docs/runbooks.
+#
+# SEVERITY. `page` = a person should look now (customers are losing data or the product is down or
+# unsafe). `ticket` = look within a working day. Route on the `severity` label in Alertmanager.
+#
+# THRESHOLDS ARE DEFAULTS, NOT MEASUREMENTS. Each one below states why it was chosen. They are meant
+# for a small installation and will be wrong for yours in one direction or the other: tighten them
+# after a month of your own graphs (the dashboard shows each signal), and loosen any alert that fires
+# without anyone needing to act. Tuning means editing the number and the `for:` in this file; there
+# is nothing else to change.
+#
+# TWO PROCESSES SERVE THE SAME SCRAPE-TIME GAUGES. worker_job_lag_seconds, alert_dead_letters,
+# retention_* and abb_scrape_database_up describe the database and are exported by both the API and
+# the worker, so rules take max/min across series instead of summing.
+
+groups:
+  - name: abb-availability
+    rules:
+      - alert: AbbTargetDown
+        expr: up{job=~"abb-.*"} == 0
+        for: 3m
+        labels:
+          severity: page
+        annotations:
+          summary: "A scrape target of Agent BlackBox is down"
+          description: >-
+            Prometheus cannot scrape {{ $labels.job }} on {{ $labels.instance }} (down, wrong token,
+            or a 429 because the scrape bucket was spent). 3 minutes is 12 missed scrapes at 15 s:
+            not a restart blip. While it lasts every other alert for this target is blind.
+          runbook_url: docs/runbooks/README.md#metrics-are-missing-or-stale
+
+      - alert: AbbReadinessCheckFailing
+        expr: readiness_check == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "A readiness check of the API is failing: {{ $labels.check }}"
+          description: >-
+            /readyz reports {{ $labels.check }} as failing on {{ $labels.instance }}, so a load
+            balancer that gates on it sends no traffic there. The gauge is refreshed whenever /readyz
+            is evaluated, so this needs something probing /readyz (the orchestrator usually does). 1
+            minute outlasts the 2 s probe cache and a single slow answer.
+          runbook_url: docs/runbooks/database-saturation.md#readiness-failures
+
+      - alert: AbbReadinessFlapping
+        expr: increase(readiness_flaps_total[15m]) >= 4
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The API keeps switching between ready and not ready"
+          description: >-
+            readiness_flaps_total grew by 4 or more in 15 minutes on {{ $labels.instance }}: two
+            full ready/not-ready cycles. A flapping dependency (database timing out near its 2.5 s
+            limit, an artifact directory on a slow disk) is worse than a clean outage because load
+            balancers keep re-admitting the instance. 4 changes is the smallest number that is two
+            cycles rather than one incident and its recovery.
+          runbook_url: docs/runbooks/database-saturation.md#readiness-failures
+
+      - alert: AbbProcessRestartLoop
+        expr: changes(process_start_time_seconds{job=~"abb-.*"}[30m]) >= 3
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "{{ $labels.job }} restarted 3 or more times in 30 minutes"
+          description: >-
+            process_start_time_seconds changed 3 or more times on {{ $labels.instance }} in half an
+            hour. One restart is a deploy; three is a crash loop or an out-of-memory kill. Counters
+            reset on every restart, so rate-based alerts under-report while this lasts.
+          runbook_url: docs/runbooks/README.md#a-process-keeps-restarting
+
+      - alert: AbbHttpServerErrors
+        expr: |
+          sum by (job) (rate(http_requests_total{status=~"5.."}[5m]))
+          / sum by (job) (rate(http_requests_total[5m])) > 0.02
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "More than 2% of API responses are server errors"
+          description: >-
+            Over 2% of all API requests (every route, not only ingestion) answered 5xx for 10
+            minutes. Ingestion has its own, stricter burn-rate alerts; this one catches the
+            dashboard, search and streams. 2% is a deliberately loose default: on a quiet installation
+            one failing user session can cross it, so raise `for` if it is noisy.
+          runbook_url: docs/runbooks/database-saturation.md#slow-queries-and-statement-timeouts
+
+  - name: abb-database
+    rules:
+      - alert: AbbDatabaseBreakerOpen
+        expr: db_breaker_state == 2
+        for: 30s
+        labels:
+          severity: page
+        annotations:
+          summary: "The API has stopped using the database (circuit breaker open)"
+          description: >-
+            db_breaker_state is 2 (open) on {{ $labels.instance }}: 5 consecutive connection
+            checkouts failed within 30 s, so database requests are shed with 503 for 5 s at a time.
+            Ingestion is failing here (SDKs buffer and retry). 30 s is longer than one open period
+            (5 s) so a single trip that recovers does not page; repeated trips are the next alert.
+          runbook_url: docs/runbooks/database-saturation.md#database-breaker-open
+
+      - alert: AbbDatabaseBreakerTripping
+        expr: increase(db_breaker_trips_total[30m]) >= 3
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The database circuit breaker opened 3 or more times in 30 minutes"
+          description: >-
+            The breaker on {{ $labels.instance }} opened repeatedly. Each trip is a stretch of shed
+            requests; recurring trips mean the database or the network between them flaps, or the
+            server keeps hitting max_connections, even though each one recovers on its own. A busy
+            pool alone does not trip it.
+          runbook_url: docs/runbooks/database-saturation.md#database-breaker-open
+
+      - alert: AbbPoolWaitHigh
+        expr: |
+          histogram_quantile(0.99, sum by (le, job) (rate(postgres_pool_wait_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Requests wait over a second for a database connection"
+          description: >-
+            The 99th percentile wait for a pooled connection in {{ $labels.job }} is above 1 second
+            (the wait is capped at 5 s, after which the request fails). A healthy pool hands one out in
+            well under 10 ms. Sustained waiting means the pool is too small for the load or a slow
+            statement is holding connections.
+          runbook_url: docs/runbooks/database-saturation.md#connection-pool
+
+      - alert: AbbScrapeDatabaseDown
+        expr: min by (job) (abb_scrape_database_up) == 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Queue, dead-letter and retention gauges are stale"
+          description: >-
+            Every process of {{ $labels.job }} reports that its last scrape-time database sample
+            failed, so worker_job_lag_seconds, alert_dead_letters, retention_* are the cached values
+            (the scrape itself keeps working). 5 minutes is 20 sample periods (15 s); one failed
+            sample is noise. Alerts built on those gauges cannot be trusted until this clears.
+          runbook_url: docs/runbooks/database-saturation.md#scrape-database-down
+
+      - alert: AbbPrivilegedDatabaseRole
+        expr: db_role_privileged == 1
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "The API or worker database role is too privileged ({{ $labels.reason }})"
+          description: >-
+            The periodic role check found that {{ $labels.job }} is connected as a role that could
+            rewrite or delete events or create schema objects (reason {{ $labels.reason }}). That
+            breaks the guarantee that accepted events are immutable. In production the process also
+            stops being ready. 5 minutes only absorbs a grant being corrected right after a deploy.
+          runbook_url: docs/runbooks/security-operations.md#privileged-database-role
+
+  - name: abb-worker
+    rules:
+      - alert: AbbWorkerLagHigh
+        expr: max by (type) (worker_job_lag_seconds) > 120
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Background jobs of type {{ $labels.type }} are waiting more than 2 minutes"
+          description: >-
+            The oldest due job of this type has waited over 120 s for 10 minutes. Runs show
+            `processing` and summaries are stale; events are not affected. The summariser debounce is
+            1 s and a job lease is 60 s, so 120 s is two lease periods (the readiness check already
+            reports `worker_lag` from 60 s). A single huge run can cause it alone.
+          runbook_url: docs/runbooks/worker-lag.md#metrics-and-alerts
+
+      - alert: AbbWorkerLagSevere
+        expr: max by (type) (worker_job_lag_seconds) > 900
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Background jobs of type {{ $labels.type }} have been stuck for over 15 minutes"
+          description: >-
+            The oldest due job of this type has waited over 15 minutes for 10 minutes: the worker is
+            down or not making progress. Alert delivery is also a job, so alert notifications are
+            not leaving. 900 s is long enough that a deploy or a crash recovery has passed.
+          runbook_url: docs/runbooks/worker-lag.md#metrics-and-alerts
+
+      - alert: AbbWorkerJobsDeadLettered
+        expr: sum by (type) (increase(worker_jobs_total{outcome="dead_letter"}[15m])) > 0
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Jobs of type {{ $labels.type }} were dead-lettered"
+          description: >-
+            One or more jobs used all 5 attempts. The run keeps its events but its summary or spans
+            are stale or missing (`summary_state: failed`). Dead letters are never retried
+            automatically, so any is worth a person; 15 minutes is the look-back so a restart of the
+            alert does not lose it.
+          runbook_url: docs/runbooks/dead-letters.md#metrics-and-alerts
+
+      - alert: AbbProcessorFailures
+        expr: sum by (type) (increase(processor_failures_total[15m])) >= 5
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Job handler {{ $labels.type }} failed 5 or more times in 15 minutes"
+          description: >-
+            Handler failures (retried or dead-lettered) for this job type. One failure is usually a
+            transient database error that the retry fixes; 5 in 15 minutes is a pattern, often just
+            before dead letters appear.
+          runbook_url: docs/runbooks/worker-lag.md#metrics-and-alerts
+
+  - name: abb-ingestion
+    rules:
+      - alert: AbbIngestionRejectionsHigh
+        expr: |
+          sum(rate(ingest_acks_total{outcome="rejected"}[15m]))
+          / sum(rate(ingest_acks_total[15m])) > 0.2
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "More than 20% of ingestion requests are refused"
+          description: >-
+            Over 20% of ingestion requests were refused with a 4xx for 15 minutes (invalid, too large,
+            rate limited, over quota, schema unsupported). These do not spend the error budget, so the
+            SLO alerts stay quiet while customers lose data; this is the alert that sees it.
+            telemetry_events_rejected_total names the reason. 20% is a default: some installations
+            run with a steady rate of invalid batches from one old SDK.
+          runbook_url: docs/runbooks/ingestion-rejections.md#metrics-and-alerts
+
+      - alert: AbbArtifactUploadsFailing
+        expr: |
+          sum(increase(artifact_upload_failures_total{reason=~"store_unavailable|unavailable"}[15m])) > 0
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Artifact uploads failed because of our storage, not the client"
+          description: >-
+            Uploads were refused with store_unavailable or unavailable (disk full, directory not
+            writable, database down). Client-caused reasons (too_large, quota_exceeded, rate_limited)
+            are excluded. Any is worth a look: an upload that fails here is a lost artifact.
+          runbook_url: docs/runbooks/ingestion-rejections.md#metrics-and-alerts
+
+  - name: abb-controls
+    rules:
+      - alert: AbbLimiterFailingOpen
+        expr: sum by (scope) (increase(limiter_fail_open_total[10m])) > 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The shared rate limiter is deciding locally ({{ $labels.scope }})"
+          description: >-
+            The shared limiter could not reach the database and let requests through on a per-process
+            budget for scope {{ $labels.scope }}, for at least 5 minutes. Limits still apply per
+            process but not across processes, so the installation admits up to N times its
+            configured rate. By design (ADR-152) a limiter must not take ingestion down; the cost
+            is weaker abuse protection while the database is unhealthy.
+          runbook_url: docs/runbooks/hardening.md#monitoring-metrics-and-alerts
+
+      - alert: AbbLimiterDatabaseErrors
+        expr: |
+          sum by (job) (rate(limiter_database_calls_total{outcome="error"}[5m]))
+          / sum by (job) (rate(limiter_database_calls_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "More than 5% of limiter database calls fail"
+          description: >-
+            Of the calls the limiter makes to the database, over 5% fail in {{ $labels.job }}. It
+            is the early signal before fail-open decisions start, and shows database trouble that
+            only the limiter path sees.
+          runbook_url: docs/runbooks/database-saturation.md#limiter-database-calls
+
+      - alert: AbbAuthThrottleBlocks
+        expr: sum by (kind) (increase(auth_throttle_blocks_total[10m])) >= 50
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Requests with bad API keys are being throttled ({{ $labels.kind }})"
+          description: >-
+            50 or more requests in 10 minutes were refused by the failed-authentication throttle
+            (kind {{ $labels.kind }}). Someone is presenting wrong keys at a rate: a revoked key still
+            deployed in a fleet, or guessing. kind=global means the whole-installation budget closed.
+            50 is far above a human typo and well below a deliberate flood; adjust to your normal.
+          runbook_url: docs/runbooks/hardening.md#monitoring-metrics-and-alerts
+
+      - alert: AbbSessionThrottleBlocks
+        expr: sum by (kind) (increase(session_throttle_blocks_total[10m])) >= 50
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Requests with bad session cookies are being throttled ({{ $labels.kind }})"
+          description: >-
+            50 or more requests in 10 minutes were answered 429 by the failed-session throttle (kind
+            {{ $labels.kind }}). Expired or forged cookies are being presented at a rate, often a
+            browser tab left open after a sign-out or an attack on the sign-in cookie.
+          runbook_url: docs/runbooks/hardening.md#monitoring-metrics-and-alerts
+
+      - alert: AbbQuotaRefusals
+        expr: sum by (quota) (rate(quota_refusals_total[15m])) > 0.02
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Writes are being refused at a sustained rate by a project quota: {{ $labels.quota }}"
+          description: >-
+            More than 0.02 refusals a second (about 18 in 15 minutes, counted per refused event or
+            upload) for 15 minutes because projects keep hitting their {{ $labels.quota }} quota.
+            A single refusal is the quota doing its job (ADR-154) and does not alert; a sustained
+            rate means an agent is retrying into a closed limit and its data is being dropped until
+            the quota is raised or the agent fixed. Quota refusals are client-class errors and do
+            not spend the SLO error budget. The refusing project is deliberately not a label (see
+            the audit log and Settings, Quotas).
+          runbook_url: docs/runbooks/hardening.md#monitoring-metrics-and-alerts
+
+      - alert: AbbBodyCapRefusals
+        expr: sum by (reason) (increase(body_cap_refusals_total[10m])) > 0
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Requests are refused by the body memory cap ({{ $labels.reason }})"
+          description: >-
+            Requests were refused with 503 BUSY or 408 for 5 minutes because of the in-flight body
+            byte budget (reason {{ $labels.reason }}). Memory protection is doing its job, and
+            ingestion is being turned away. Either the process is too small for the traffic or one
+            client is sending very large bodies slowly.
+          runbook_url: docs/runbooks/hardening.md#monitoring-metrics-and-alerts
+
+      - alert: AbbSearchBusy
+        expr: sum by (reason) (increase(search_busy_total[15m])) >= 10
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Searches are being refused as busy ({{ $labels.reason }})"
+          description: >-
+            10 or more searches in 15 minutes answered SEARCH_BUSY. Search never queues, so users see
+            an error and retry. Occasional single refusals are normal under a small permit count;
+            10 in 15 minutes means people are repeatedly blocked.
+          runbook_url: docs/runbooks/search.md#searches-fail-with-503
+
+  - name: abb-streams-and-alerts
+    rules:
+      - alert: AbbStreamDeliveryLag
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(sse_delivery_lag_seconds_bucket[5m]))) > 5
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Live updates arrive more than 5 seconds after the event is stored"
+          description: >-
+            The 95th percentile delay from an event being stored to its delivery on a stream is over 5
+            seconds for 10 minutes. The fallback poll alone delivers in about 2 s, so 5 s means the
+            listener is down and the database is slow, or the process is overloaded. The data is safe:
+            REST is complete.
+          runbook_url: docs/runbooks/stream-issues.md#metrics-and-alerts
+
+      - alert: AbbStreamConnectionsNearLimit
+        expr: max by (instance) (sse_connections) >= 40
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Open live streams are close to the per-process cap"
+          description: >-
+            {{ $labels.instance }} holds 40 or more open streams; the default cap is 50 per process
+            (ABB_STREAM_MAX_TOTAL), after which new streams get 429 STREAM_LIMIT. If you raised the
+            cap, raise this too. 10 minutes avoids a reconnect storm after a deploy.
+          runbook_url: docs/runbooks/stream-issues.md#metrics-and-alerts
+
+      - alert: AbbAlertDeliveriesFailing
+        expr: sum(increase(alert_deliveries_total{status=~"failed|dead"}[30m])) >= 3
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Alert notifications are failing to deliver"
+          description: >-
+            3 or more alert notifications failed or were dead-lettered in 30 minutes. Customers are
+            not being told about their agents' problems. The history in the app names the fixed
+            reason; the metric breaks it down by reason. Skips (cooldown, caps) are not failures and
+            are excluded.
+          runbook_url: docs/runbooks/alerting.md#monitoring
+
+      - alert: AbbAlertDeadLetters
+        expr: max(alert_dead_letters) > 0
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Alert notifications have exhausted their retries"
+          description: >-
+            alert_dead_letters has been above 0 for 15 minutes: notifications that will not be sent
+            again unless someone acts. The gauge counts the table, so it stays up until the rows are
+            handled or pruned by retention.
+          runbook_url: docs/runbooks/alerting.md#monitoring
+
+      - alert: AbbOtelExportFailing
+        expr: sum by (job) (increase(otel_export_failures_total[15m])) >= 10
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Trace export to the collector is failing"
+          description: >-
+            Tracing is on and 10 or more export attempts failed in 15 minutes ({{ $labels.job }}). A
+            failing collector never affects requests, but traces are being dropped, so debugging a
+            future incident will be harder. The series exists only while tracing is enabled.
+          runbook_url: docs/runbooks/README.md#traces-are-missing
+
+  - name: abb-retention-and-backups
+    rules:
+      - alert: AbbRetentionFailing
+        expr: sum by (code) (increase(retention_failures_total[1h])) > 0
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Retention reported failures ({{ $labels.code }})"
+          description: >-
+            The retention process recorded a failure with code {{ $labels.code }} in the last hour.
+            Failed steps are retried on the next tick, so data is not lost, but it is kept longer than
+            policy promises. This metric comes from the retention textfile, so it is only as fresh as
+            the last tick.
+          runbook_url: docs/runbooks/retention.md#retention-failures
+
+      - alert: AbbRetentionStale
+        expr: |
+          max(retention_seconds_since_last_pass) > 10800
+          unless on () (max(retention_configured_mode{mode="off"}) == 1)
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "No retention pass has been recorded for over 3 hours"
+          description: >-
+            The newest retention report is older than 3 hours while the API or worker is configured
+            with retention on (ABB_RETENTION_MODE is not off). The default tick interval is 1 hour,
+            so 3 hours is three missed ticks. The retention process may be stopped or crashing, and
+            data is being kept beyond policy. It is silent when no report has ever been written (the
+            gauge is NaN) and when the API or worker is configured with the mode off. It trusts
+            that the API, worker and retention process share ABB_RETENTION_MODE: if the retention
+            process alone is switched off, restart the API and worker too, or silence this alert.
+          runbook_url: docs/runbooks/retention.md#retention-is-stale
+
+      - alert: AbbBackupTooOld
+        expr: |
+          (time() - backup_last_success_timestamp_seconds) > 36 * 3600
+          and backup_last_success_timestamp_seconds > 0
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The last successful backup is more than 36 hours old"
+          description: >-
+            No successful backup in 36 hours: a daily schedule has missed more than one run
+            (36 h = 24 h plus a 12 h grace for a long run or a late start). Until a backup succeeds
+            the recovery point is getting worse. Comes from the backup textfile through node_exporter.
+          runbook_url: docs/runbooks/backup-restore.md#monitoring
+
+      - alert: AbbBackupVeryOld
+        expr: |
+          (time() - backup_last_success_timestamp_seconds) > 72 * 3600
+          and backup_last_success_timestamp_seconds > 0
+        for: 0m
+        labels:
+          severity: page
+        annotations:
+          summary: "The last successful backup is more than 3 days old"
+          description: >-
+            No successful backup in 72 hours: the ticket was not acted on or the cause is not simple.
+            Three days of data is at risk if the database is lost.
+          runbook_url: docs/runbooks/backup-restore.md#monitoring
+
+      - alert: AbbBackupNeverSucceeded
+        expr: backup_last_success_timestamp_seconds == 0
+        for: 1h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "The backup textfile exists but records no successful backup"
+          description: >-
+            backup_last_success_timestamp_seconds is 0: the textfile collector sees backup runs but
+            none succeeded (or the file was just created by a failing first run). A backup that is not
+            scheduled at all produces no series and is not detected by this rule.
+          runbook_url: docs/runbooks/backup-restore.md#monitoring
+
+      - alert: AbbBackupRunFailed
+        expr: increase(backup_runs_total{outcome="failed"}[1d]) > 0
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "A backup run failed in the last day"
+          description: >-
+            backup_runs_total counted a failed run. The last good bundle is still the recovery
+            point (a failed run does not erase it). Several in a row reach the age alerts above.
+          runbook_url: docs/runbooks/backup-restore.md#monitoring
+
+      - alert: AbbRotationRunFailed
+        expr: increase(rotation_runs_total{outcome="failed"}[1d]) > 0
+        for: 0m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "An alert-key rotation run failed"
+          description: >-
+            rotation_runs_total counted a failed alert-key rotation. Rotation is resumable and
+            idempotent and delivery keeps working, but the old key cannot be retired until a run
+            reports zero remaining.
+          runbook_url: docs/runbooks/secrets.md#monitoring-rotation

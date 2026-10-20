@@ -8,12 +8,13 @@ The events carry what happened, so each relevant event is turned into the intent
 - `shell.command.started`: capability `shell.execute`, resource the executable name (below).
 - `file.read`: `filesystem.read`, resource `file.path`.
 - `file.created`, `file.modified`, `file.deleted`: `filesystem.write`, resource `file.path`.
-- `git.push`: `github.push`, resource `git.push_target` (`<remote> <branch>`).
+- `git.push`: `github.push`, resource `git.push_target` (`<remote> <branch>`), risk class R2.
 - `tool.call.started`: `tool.<name>`, resource `tool.operation` (empty when absent).
 
 Only `*.started` is mapped for commands and tool calls, so a call is counted once, not again when
-it completes. The risk class is `shell.risk_class` for commands and absent for everything else (a
-rule with `risk_class` never matches an intent without one). Attributes a rule may match:
+it completes. The risk class is `shell.risk_class` for commands, R2 for a push and absent for
+everything else (a rule with `risk_class` never matches an intent without one). Attributes a
+rule may match:
 `shell.execute` has `category` (`shell.category`) and `command` (`shell.command`, the exact
 command, omitted past 4,096 characters, where the SDK refuses to ask at all);
 `filesystem.write` has `operation` (`created`, `modified`, `deleted`); `github.push` has
@@ -95,7 +96,9 @@ def intent_for(event_type: str, attributes: Mapping[str, Any]) -> Intent | None:
         branch = _text(attributes, "git.branch")
         if branch:
             extra["branch"] = branch
-        return Intent("github.push", _text(attributes, "git.push_target") or "", None, extra)
+        # R2 is the SDK classifier's class for a plain `git push` (ADR-176); the event does not
+        # record whether it was forced (R3), so the dry run predicts the plain case.
+        return Intent("github.push", _text(attributes, "git.push_target") or "", "R2", extra)
     if event_type == "tool.call.started":
         name = _UNSAFE_TOOL_CHARS.sub("_", _text(attributes, "tool.name") or "")
         name = name[:MAX_TOOL_CAPABILITY].strip(".")

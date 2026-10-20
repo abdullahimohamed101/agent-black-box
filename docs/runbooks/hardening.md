@@ -16,6 +16,7 @@ PostgreSQL, so every API process shares them; with the database unreachable the 
 | --- | --- | --- | --- | --- |
 | Shared limiter (ADR-152) | ingestion events and bytes per project, artifacts, sign-in starts, policy/approval/alert writes, session revocations, **across API processes** | `429 RATE_LIMITED`, `Retry-After` | `rate_limit_counters` rows; log `shared limiter unavailable; failing open` when the database is the problem | `ABB_RATE_LIMIT_*`, `ABB_POLICY_*`, `ABB_ALERTS_*_PER_MINUTE`, `ABB_LOGIN_GLOBAL_PER_MINUTE`, `ABB_SESSION_WRITES_PER_MINUTE`; `ABB_LIMITS_*` for the mechanism |
 | Failed-auth throttle (ADR-153) | bad API keys: per client address, per presented key id, whole installation | `429 AUTH_THROTTLED`, `Retry-After` (same body for existing and unknown keys) | one `auth.throttled` audit row per window per workspace; log `authentication throttled` with the scope names (`address`, `credential`, `global`) | `ABB_AUTH_FAIL_*`, `ABB_TRUST_PROXY` |
+| Failed-session throttle (ADR-169) | bad session cookies: per client address, whole installation | `429 SESSION_THROTTLED`, `Retry-After` (never the 401 that signs people out) | log `session lookups throttled` with the scope names (`address`, `global`); no audit row | `ABB_SESSION_FAIL_*`, `ABB_TRUST_PROXY` |
 | Project quotas (ADR-154) | distinct agents, runs/day, events/day, artifact bytes per project | `QUOTA_EXCEEDED` naming the quota (per event inside a `202` for batches; `413` for single writes and uploads) | Settings > Quotas; `project.quota.update` audit rows; usage SQL below | per-project override (owner/admin), `ABB_QUOTA_*` defaults, `ABB_QUOTAS_ENABLED` |
 | Body-bytes cap (ADR-155) | request-body bytes held in memory by one API process | `503 BUSY`, `Retry-After: 2`; `408 REQUEST_TIMEOUT`; `413` over 8 MiB | `BUSY` in the request log | `ABB_MAX_BODY_BYTES_IN_FLIGHT`, `ABB_BODY_READ_TIMEOUT_SECONDS` |
 | Startup role check (ADR-155) | API/worker connected as a database role that can rewrite events | production: process exits at start with a fixed message | closed reasons in the log (`events_owner`, `schema_create`, ...), never a role name or URL | connect as `abb_runtime`; `ABB_ALLOW_PRIVILEGED_DB_ROLE=1` accepts knowingly |
@@ -63,6 +64,8 @@ actor can still do is close one *key id's own* window: ten bad secrets for a key
 A key created by the CLI is admitted during a closed window after the next refresh (at most a minute). Missing or malformed keys are neither counted nor gated and
 cost the database nothing (one log line per window, with a count). People's sessions, sign-in and callbacks are never behind this throttle. If a real user is being throttled: check `auth.throttled` audit rows for the key id,
 confirm the key is correct and not revoked, and look for a shared NAT (everyone behind one address shares its budget). The global budget protects the database; raise it only with headroom.
+
+**`429 SESSION_THROTTLED`.** Someone is presenting bad session cookies (or one browser keeps a dead one). Valid sessions are not refused: one that authenticated recently skips the gate, and one that exists is in the refreshed hint set. A person who signed in on another process in the last minute may see one 429 and succeeds on retry (KI-233). Budgets per 60 s: 30 per trusted address, 600 for the installation (`ABB_SESSION_FAIL_PER_ADDRESS`, `ABB_SESSION_FAIL_GLOBAL`); `session_throttle_blocks_total{kind}` shows which scope closed. `ABB_SESSION_FAIL_ENABLED=0` turns it off.
 
 **`QUOTA_EXCEEDED`.** A project hit one of its four quotas. The item is refused, nothing already stored changes, replays of accepted events are still accepted, and events of existing runs
 and agents keep working (except the daily event cap, which applies to every new event). Look at Settings > Quotas, decide whether the limit or the agent is wrong, and raise the project's override
@@ -150,3 +153,21 @@ Rollback: the migrations downgrade cleanly (tests prove 0097/0098/0099 up and do
 
 Fixed windows allow a burst across a boundary up to twice a limit (KI-174); concurrency caps for streams and approval long polls are per process (KI-017, KI-147); the failed-auth throttle does not cover session cookies (KI-176) or sign-in callbacks (KI-073);
 one project's ingestion is serialised on its quota lock, so a second process stops helping one very hot project (KI-178); the body cap is per process and bounds accounted bytes, not the work after a body is read; a hostile authenticated client can fill the cap with its own legitimate large uploads (KI-182).
+
+## Monitoring (metrics and alerts)
+
+Dashboard row: **Controls: limiter, throttles, quotas, body cap**. Alerts: `AbbLimiterFailingOpen`, `AbbAuthThrottleBlocks`, `AbbSessionThrottleBlocks`, `AbbQuotaRefusals`, `AbbBodyCapRefusals`.
+The counters are aggregate: they say *that* a limit triggered and which kind, never who. For who, use the audit rows and request log lines described above.
+
+| Layer | Metric | Alert |
+| --- | --- | --- |
+| Shared limiter | `limiter_fail_open_total{scope}`, `limiter_database_calls_total{outcome}` | `AbbLimiterFailingOpen` (any fail-open for 5 minutes), `AbbLimiterDatabaseErrors` |
+| Failed-auth throttle | `auth_throttle_blocks_total{kind}` | `AbbAuthThrottleBlocks` (50 in 10 minutes) |
+| Failed-session throttle | `session_throttle_blocks_total{kind}` | `AbbSessionThrottleBlocks` |
+| Project quotas | `quota_refusals_total{quota}` | `AbbQuotaRefusals` (a sustained rate: over 0.02 a second for 15 minutes; one refusal is the quota working, ADR-154) |
+| Body-bytes cap | `body_cap_refusals_total{reason}`, `body_bytes_in_flight` | `AbbBodyCapRefusals` |
+| Role check | `db_role_privileged{reason}` | `AbbPrivilegedDatabaseRole` ([security operations](security-operations.md#privileged-database-role)) |
+| Search fair share | `search_busy_total{reason}`, `search_permits_in_use` | `AbbSearchBusy` |
+
+A fail-open decision means the database was unreachable and the limiter fell back to per-process budgets: the fleet admits up to N times the configured rate until it recovers. Look at
+[database saturation](database-saturation.md#limiter-database-calls) first.

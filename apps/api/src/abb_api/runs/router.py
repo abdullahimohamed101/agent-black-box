@@ -60,6 +60,7 @@ def _search_gate(request: Request) -> SearchGate:
         gate = state.search_gate = SearchGate(
             max_concurrent=settings.search_max_concurrent,
             timeout_seconds=settings.search_timeout_seconds,
+            metrics=state.observability.catalogue,
         )
     return gate
 

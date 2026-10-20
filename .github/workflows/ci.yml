@@ -16,7 +16,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - id: diff
@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -55,16 +55,18 @@ jobs:
       ABB_DATABASE_URL: postgresql+asyncpg://abb:abb_dev_password@localhost:5433/abb
       ABB_TEST_DATABASE_URL: postgresql+asyncpg://abb:abb_dev_password@localhost:5433/abb_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - name: Install
         run: |
-          (cd apps/api && uv sync --frozen)
+          # The `otel` extra is installed here so tests/obs/test_tracing_otel.py RUNS in CI instead of skipping (KI-237). `uv run`
+          # syncs without removing it. Local installs stay as they were (extras are opt-in).
+          (cd apps/api && uv sync --frozen --extra otel)
           (cd packages/event-schema && uv sync --frozen)
           (cd packages/sdk-python && uv sync --frozen)
           pnpm install --frozen-lockfile
@@ -72,8 +74,58 @@ jobs:
         run: PGPASSWORD=abb_dev_password psql -h localhost -p 5433 -U abb -d abb -c 'CREATE DATABASE abb_test'
       - name: Quality gate (full)
         run: scripts/quality.sh full
-      - name: Dependency audit
-        run: make audit
+      - name: Dependency audit (JavaScript production dependencies; Python lockfiles run in lockfile-audit)
+        run: make audit-pnpm
+
+  pins:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # KI-024: every action pinned by commit sha, every image by digest (scripts/check_pins.py). Reads files only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/check-pins.sh
+
+  docs:
+    # Phase 20 (D14): relative links and anchors resolve, and the command blocks of the user-facing docs are real (marked
+    # blocks are executed, the rest are reference-checked against the Makefile, compose file and CLI). Runs on every change,
+    # including documentation-only ones, so it does not wait for the `changes` job. No network beyond `uv`.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: python3 -m unittest discover -s scripts/tests -v
+      - run: python3 scripts/check_docs_links.py README.md docs site CONTRIBUTING.md
+      - run: scripts/docs-commands-check.sh
+
+  release-checklist:
+    # Phase 20 (D13, AC14): scripts/release-checklist.sh runs every static release check (licenses, placeholders, debug logging,
+    # secrets, charts, routes, network, screenshot budget, claims, links) and its planted-violation tests prove each one fails on a
+    # violation. Reads files only, so it runs on documentation-only changes too. The gated markers ([CONFIRM ...]) are warnings
+    # here; `--release` (run by the maintainer before publication, gate G2) turns them into failures.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Planted violations are caught
+        run: python3 -m unittest scripts.tests.test_release_checklist -v
+      - name: Release checklist
+        run: scripts/release-checklist.sh
+
+  lockfile-audit:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # KI-060: pip-audit over every uv.lock (scripts/audit-lockfiles.sh). A new advisory can fail an unchanged tree; the same script
+    # also runs weekly in .github/workflows/lockfile-audit.yml so that happens on a schedule, not on someone's pull request.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: scripts/audit-lockfiles.sh
 
   sdk:
     needs: changes
@@ -84,8 +136,8 @@ jobs:
       matrix:
         python: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: |
           cd packages/sdk-python
           uv sync --frozen --python ${{ matrix.python }}
@@ -102,8 +154,8 @@ jobs:
         package: [conformance, langgraph, openai, anthropic, mcp]
         python: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Test ${{ matrix.package }}
         run: |
           cd integrations/${{ matrix.package }}
@@ -118,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -128,10 +180,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # the e2e compares against origin/main
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: Install
         run: |
           (cd apps/api && uv sync --frozen)
@@ -147,7 +199,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -157,10 +209,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -177,7 +229,7 @@ jobs:
         run: scripts/stream-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stream-e2e-results
           path: apps/web/test-results
@@ -190,7 +242,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -200,10 +252,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -220,7 +272,7 @@ jobs:
         run: scripts/analytics-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: analytics-e2e-results
           path: apps/web/test-results
@@ -233,7 +285,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -243,10 +295,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -263,7 +315,7 @@ jobs:
         run: scripts/coding-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coding-e2e-results
           path: apps/web/test-results
@@ -277,7 +329,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -287,10 +339,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -308,7 +360,7 @@ jobs:
         run: scripts/auth-https-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: auth-e2e-results
           path: apps/web/test-results
@@ -322,7 +374,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -332,10 +384,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -351,7 +403,7 @@ jobs:
         run: scripts/findings-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: findings-e2e-results
 
@@ -363,7 +415,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -373,10 +425,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -393,7 +445,7 @@ jobs:
         run: scripts/multiagent-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: multiagent-e2e-results
           path: apps/web/test-results
@@ -407,7 +459,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -417,10 +469,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -437,7 +489,7 @@ jobs:
         run: scripts/eval-e2e.sh
       - name: Keep Playwright output on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: eval-e2e-results
           path: apps/web/test-results
@@ -452,7 +504,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -462,10 +514,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -484,7 +536,7 @@ jobs:
         run: scripts/security-e2e.sh
       - name: Keep Playwright output and server logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: security-e2e-results
           path: |
@@ -503,7 +555,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -513,10 +565,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -535,7 +587,7 @@ jobs:
         run: scripts/policy-e2e.sh
       - name: Keep Playwright output and server logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: policy-e2e-results
           path: |
@@ -555,7 +607,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -565,10 +617,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -587,7 +639,7 @@ jobs:
         run: scripts/alerts-e2e.sh
       - name: Keep Playwright output and server logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: alerts-e2e-results
           path: |
@@ -607,7 +659,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: abb
           POSTGRES_PASSWORD: abb_dev_password
@@ -617,10 +669,10 @@ jobs:
           --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
           --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -639,7 +691,7 @@ jobs:
         run: scripts/hardening-e2e.sh
       - name: Keep Playwright output and server logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hardening-e2e-results
           path: |
@@ -647,12 +699,217 @@ jobs:
             ${{ runner.temp }}/hardening-e2e-logs
           if-no-files-found: ignore
 
+  obs-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Operability (Phase 19c): an API with a metrics token and a worker on a least-privilege role, then every metric family moved by exactly the
+    # traffic driven, readiness and the database breaker against deliberately broken processes (an unreachable database and a proxy outage,
+    # schema behind, an unwritable artifact directory, a production role that became privileged), the logs of every process scanned at DEBUG,
+    # the committed Prometheus configuration and rules and the Grafana dashboard run by the pinned images (promtool, every expression, an
+    # AbbTargetDown alert that really fires), optional tracing into a local OTLP receiver (the otel extra in a separate environment) and the
+    # cost of metrics and tracing (scripts/obs-e2e.sh). Only deterministic facts are asserted. About fifteen minutes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          cp .env.example .env
+      - name: Observability end to end
+        env:
+          OBS_E2E_LOG_DIR: ${{ runner.temp }}/obs-e2e-logs
+        run: scripts/obs-e2e.sh
+      - name: Keep server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: obs-e2e-results
+          path: ${{ runner.temp }}/obs-e2e-logs
+          if-no-files-found: ignore
+
+  retention-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Data retention (Phase 19b): a real stack with the retention job as its own database login. Dry run deletes nothing and reports the right
+    # counts, enforcement removes expired data in the documented order (tombstones, trace states, 409 TRACE_EXPIRED, quota counter, rollups),
+    # SIGKILL while the job waits on a row lock held by the test then a rerun reaches the uninterrupted end state, SIGTERM / the mode file /
+    # the per-tick bounds, privileges over real connections, purge-project and purge-workspace, a real browser (Retention page, run pages in
+    # each trace state) and the cost of enforcement (informational timings) (scripts/retention-e2e.sh). Deterministic assertions only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          pnpm install --frozen-lockfile
+          cp .env.example .env
+      - name: Build the web app
+        run: pnpm --filter @abb/web build
+      - name: Retention end to end
+        env:
+          RETENTION_E2E_LOG_DIR: ${{ runner.temp }}/retention-e2e-logs
+        run: scripts/retention-e2e.sh
+      - name: Keep Playwright output and server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: retention-e2e-results
+          path: |
+            apps/web/test-results
+            ${{ runner.temp }}/retention-e2e-logs
+          if-no-files-found: ignore
+
+  backup-restore-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # The performed restore drill (Phase 19b): seed a real installation (runs, events, artifacts of known bytes, an alert destination with a
+    # sealed signing secret, a retention policy, quota overrides, sessions), back it up (module CLI, an encrypted bundle, and the compose `backup`
+    # service built from the API image), DESTROY the source, restore into a fresh database and directory, then serve it: same runs, byte-identical
+    # artifacts, the alert secret still opens, identical grants, alembic head; a wrong passphrase / tampered bundle / non-empty targets restore
+    # nothing; an older bundle is upgraded on restore; the alert key rotates (scripts/backup-restore-e2e.sh). Times are recorded, never asserted.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          pnpm install --frozen-lockfile
+          cp .env.example .env
+      - name: Tools the drill shells out to
+        run: |
+          pg_dump --version
+          pg_restore --version
+          openssl version
+          docker compose version
+      - name: Backup and restore drill
+        env:
+          BACKUP_RESTORE_E2E_LOG_DIR: ${{ runner.temp }}/backup-restore-e2e-logs
+        run: scripts/backup-restore-e2e.sh
+      - name: Keep server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backup-restore-e2e-results
+          path: ${{ runner.temp }}/backup-restore-e2e-logs
+          if-no-files-found: ignore
+
+  site-check:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # Landing page (Phase 20, AC11, brief section 9): scripts/check-site.sh builds the Next export three ways (under /agent-black-box/,
+    # at the domain root, and with the publication claims on) and runs every subcommand: static rules, fixture and image budgets,
+    # size, claims, then Chrome for nojs, copy, gallery, network (no third-party request), axe, motion and the throttled perf
+    # profile. `shots` writes nothing here (SHOTS_DIR unset). The ubuntu runner's Google Chrome is used, as by apps/web's Playwright.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Site unit tests
+        run: pnpm --filter @abb/site test && pnpm --filter @abb/site typecheck && pnpm --filter @abb/site lint
+      - name: Site check
+        run: scripts/check-site.sh
+      - name: Planted violations are caught
+        run: scripts/check-site.sh --only planted
+
+  demo-e2e:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    # `make demo` determinism (Phase 20, D9): scripts/demo.sh run twice against a throwaway database, API + worker; the normalised
+    # summaries of the two runs must be identical. No web build and no model key: the demo is scripted.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: abb
+          POSTGRES_PASSWORD: abb_dev_password
+          POSTGRES_DB: abb
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U abb -d abb" --health-interval 3s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install
+        run: |
+          (cd apps/api && uv sync --frozen)
+          (cd packages/event-schema && uv sync --frozen)
+          (cd packages/sdk-python && uv sync --frozen)
+          cp .env.example .env
+      - name: Demo twice, normalised diff
+        run: scripts/demo-e2e.sh
+
   containers:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build and start the stack
         run: |
           cp .env.example .env
@@ -661,7 +918,7 @@ jobs:
         run: |
           curl -fsS localhost:3000/ >/dev/null
           scripts/smoke.sh
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - name: SDK end to end (real SDK -> real API -> read back)
         run: |
           (cd packages/sdk-python && uv sync --frozen)

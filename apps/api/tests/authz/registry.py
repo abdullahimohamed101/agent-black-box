@@ -38,6 +38,15 @@ PUBLIC: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+# Operator routes: no tenant data, no workspace, no session, no API key. They carry their own
+# bearer token, exist only when configured, and stay out of the OpenAPI document (ADR-165).
+OPERATOR_ONLY: frozenset[tuple[str, str]] = frozenset(
+    {
+        # Only when ABB_METRICS_TOKEN is set; 404 otherwise.
+        ("GET", "/metrics"),
+    }
+)
+
 # Routes that need a signed-in person but no particular workspace and no action.
 SESSION_ONLY: frozenset[tuple[str, str]] = frozenset(
     {
@@ -128,6 +137,7 @@ def _ids(side: Side, overrides: dict[str, str]) -> dict[str, str]:
         "approval_id": side.approval_id,
         "destination_id": side.destination_id,
         "rule_id": side.rule_id,
+        "workspace_id": side.workspace_id,
         **overrides,
     }
 
@@ -206,6 +216,20 @@ def _quotas(method: str) -> Builder:
         return RequestSpec(
             method, f"/v1/projects/{project}/quotas",
             content=content if method == "PUT" else None,
+            headers=JSON if method == "PUT" else {},
+        )  # fmt: skip
+
+    return build
+
+
+def _retention(method: str, suffix: str = "") -> Builder:
+    def build(side: Side, overrides: dict[str, str]) -> RequestSpec:
+        workspace = overrides.get("workspace_id", side.workspace_id)
+        return RequestSpec(
+            method, f"/v1/workspaces/{workspace}/retention{suffix}",
+            # Not the audit tier: changing it needs `retention.audit.write` (owners only), which
+            # test_policy_grace.py covers.
+            content=json.dumps({"artifacts": 20}).encode() if method == "PUT" else None,
             headers=JSON if method == "PUT" else {},
         )  # fmt: skip
 
@@ -510,6 +534,22 @@ CASES: dict[tuple[str, str], RouteCase] = {
         RouteCase(
             "PUT", "/v1/projects/{project_id}/quotas", actions.PROJECT_WRITE,
             _quotas("PUT"), 200, ("project_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/workspaces/{workspace_id}/retention", actions.RETENTION_READ,
+            _retention("GET"), 200, ("workspace_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "PUT", "/v1/workspaces/{workspace_id}/retention", actions.RETENTION_WRITE,
+            _retention("PUT"), 200, ("workspace_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/workspaces/{workspace_id}/retention/preview", actions.RETENTION_READ,
+            _retention("GET", "/preview"), 200, ("workspace_id",), probe_actors=ADMINS,
+        ),
+        RouteCase(
+            "GET", "/v1/workspaces/{workspace_id}/retention/reports", actions.RETENTION_READ,
+            _retention("GET", "/reports"), 200, ("workspace_id",), probe_actors=ADMINS,
         ),
         RouteCase(
             "GET", "/v1/policies/current", actions.POLICY_READ, _policy_get("/v1/policies/current"),

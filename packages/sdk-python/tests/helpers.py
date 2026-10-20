@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from blackbox import BlackBox
+from agent_blackbox import BlackBox
 
 
 def offline(**options: Any) -> BlackBox:

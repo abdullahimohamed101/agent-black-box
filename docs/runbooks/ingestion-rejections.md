@@ -19,3 +19,14 @@
 2. A conflict count (`conflicting duplicate events ignored` warning) means a client reuses an `event_id` for different
    content: a client bug (for example ids derived from a timestamp). The first copy wins; nothing is overwritten.
 3. Confirm the fix with `make smoke` (stack) or a single `curl` batch.
+
+## Metrics and alerts
+
+Dashboard row: **Ingestion**. Alerts: `AbbIngestionRejectionsHigh` (over 20% of ingestion requests refused with 4xx for 15 minutes, ticket), `AbbArtifactUploadsFailing`; the burn-rate alerts in
+[the SLO runbook](slo-and-burn-rate.md) do **not** fire for 4xx, which is why this one exists.
+
+- `ingest_acks_total{outcome}`: `committed`, `rejected` (4xx), `error` (our fault).
+- `telemetry_events_rejected_total{reason}`: `invalid`, `too_large`, `rate_limited`, `quota_exceeded`, `unauthorized`, `unavailable`, `redaction_failed`, `reserved`, `conflict`, `schema_unsupported`. One count per refused request, or per refused event inside an accepted `202`. This is step 1's status-code breakdown as a rate.
+- Authentication failures are not in these counters (the credential check runs first): `http_requests_total{status="401"}` and `auth_throttle_blocks_total{kind}`.
+- `quota_refusals_total{quota}` and `body_cap_refusals_total{reason}` say which limit; see [hardening](hardening.md#monitoring-metrics-and-alerts).
+- `artifact_upload_failures_total{reason}` for artifact uploads.

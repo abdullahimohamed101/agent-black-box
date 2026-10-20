@@ -1,6 +1,6 @@
 # LLM model reference: Claude, Gemini, OpenAI (read 2026-10-09)
 
-Prices, context windows and limits for the three vendors Agent Black Box is most likely to record. This is
+Prices, context windows and limits for the three vendors Agent BlackBox is most likely to record. This is
 research input for the built-in price table (`apps/api/src/abb_api/cost/builtin.py`, ADR-040, KI-050), not a
 source of truth: prices change, and the table only ever takes rows from a vendor's own page.
 

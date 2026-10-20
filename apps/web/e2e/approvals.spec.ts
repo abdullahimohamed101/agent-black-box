@@ -1,12 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 14 step 4 (fixtures mode): the Approvals page. Every test that decides a request uses a request of its own, so
 // the specs can run in parallel against the one fixture server (state is in memory and resets when it restarts).
 const APR = (n: number) => `apr_${String(n).padStart(26, "0")}`;
 const PAGE = "/w/demo/approvals";
-const SHOTS = "../../docs/screenshots/phase-14";
+const SHOTS = shotsDir("phase-14");
 
 async function axe(page: Page) {
   await settleAnimations(page);
@@ -28,14 +29,19 @@ for (const [width, height] of [
   test.describe(`${width} px`, () => {
     test.use({ viewport: { width, height } });
 
-    test("list: the rail count, the rows, the tabs as URL state and Load more", async ({
+    test("list: the Review count, the rows, the tabs as URL state and Load more", async ({
       page,
     }) => {
       const problems: string[] = [];
       page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
       page.on("pageerror", (e) => problems.push(e.message));
       await page.goto(PAGE);
-      await expect(page.getByRole("heading", { name: "Approvals", level: 1 })).toBeVisible();
+      // Step 5c: the page is Review; Approvals is its first tab and Pending, Decided, All are the state tabs (chip density)
+      await expect(page.getByRole("heading", { name: "Review", level: 1 })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Approvals" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
       await expect(rows(page).first()).toBeVisible();
       expect(await rows(page).count()).toBeGreaterThanOrEqual(1);
       const first = rows(page).first();
@@ -45,14 +51,14 @@ for (const [width, height] of [
       if (width > 800) {
         const count = page.getByTestId("approvals-count");
         await expect(count).toBeVisible();
-        await expect(page.getByRole("link", { name: /^Approvals/ }).first()).toHaveAttribute(
-          "aria-current",
-          "page",
-        );
+        // the Approvals queue is under Review in the top bar (design pass 2): that link is the current page
+        await expect(
+          page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: /^Review/ }),
+        ).toHaveAttribute("aria-current", "page");
       }
       expect(await noSideScroll(page)).toBe(true);
-      // tabs are links that write the URL; back and forward restore it
-      await page.getByRole("link", { name: "Decided" }).click();
+      // the state tabs write the URL; back and forward restore it
+      await page.getByRole("tab", { name: /^Decided/ }).click();
       await expect(page).toHaveURL(/\?state=decided$/);
       await expect(rows(page)).toHaveCount(25);
       for (const state of await rows(page).evaluateAll((els) =>
@@ -61,19 +67,19 @@ for (const [width, height] of [
         expect(state).not.toBe("REQUESTED");
       await page.getByRole("button", { name: "Load more" }).click();
       await expect.poll(() => rows(page).count()).toBeGreaterThan(25);
-      await page.getByRole("link", { name: "All" }).click();
+      await page.getByRole("tab", { name: /^All/ }).click();
       await expect(page).toHaveURL(/\?state=all$/);
       await page.goBack();
       await expect(page).toHaveURL(/\?state=decided$/);
-      await expect(page.getByRole("link", { name: "Decided" })).toHaveAttribute(
-        "aria-current",
-        "page",
+      await expect(page.getByRole("tab", { name: /^Decided/ })).toHaveAttribute(
+        "aria-selected",
+        "true",
       );
       await page.goBack();
       await expect(page).toHaveURL(/\/w\/demo\/approvals$/);
-      await expect(page.getByRole("link", { name: "Pending" })).toHaveAttribute(
-        "aria-current",
-        "page",
+      await expect(page.getByRole("tab", { name: /^Pending/ })).toHaveAttribute(
+        "aria-selected",
+        "true",
       );
       expect(problems.filter((p) => /418|hydrat/i.test(p))).toEqual([]);
     });
@@ -122,7 +128,7 @@ test("keyboard only: open a request, comment, approve with a confirm step", asyn
   // Escape closes the panel and the focus goes back to the row
   await page.keyboard.press("Escape");
   await expect(d).toHaveCount(0);
-  await page.getByRole("link", { name: "Decided" }).click();
+  await page.getByRole("tab", { name: /^Decided/ }).click();
   await expect(page.locator(`#apr-open-${APR(2)}`)).toBeVisible();
 });
 
@@ -217,10 +223,16 @@ test("an error shows a retry", async ({ page }) => {
   await expect(rows(page).first()).toBeVisible();
 });
 
-test("a viewer sees 'Not available for your role' and no rail item", async ({ page }) => {
+test("a viewer sees 'Not available for your role' and a Review link that leads to the security findings, not the queue", async ({
+  page,
+}) => {
   await page.goto("/w/viewer-only/approvals");
   await expect(page.getByText("Not available for your role")).toBeVisible();
-  await expect(page.getByRole("link", { name: /^Approvals/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^Review/ })).toHaveAttribute(
+    "href",
+    "/w/viewer-only/security",
+  );
+  await expect(page.getByTestId("approvals-count")).toHaveCount(0);
   await page.goto("/w/viewer-only/settings/policies");
   await expect(page.getByText("Not available for your role")).toBeVisible();
 });

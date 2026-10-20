@@ -2,12 +2,21 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { run as copy } from "@/copy/run";
 import { isActive, type EventOut } from "@/lib/api/types";
-import { formatCost, formatDuration, formatInt, formatTimestamp, num } from "@/lib/format";
+import {
+  formatCost,
+  formatDuration,
+  formatInt,
+  formatRelative,
+  formatTimestamp,
+  num,
+} from "@/lib/format";
 import { useLiveEvents } from "@/lib/live";
 import { liveStatus } from "@/lib/liveStatus";
 import { useEventDetail, useRun, useRunEvents, useRunFindings } from "@/lib/queries";
 import { useTimers } from "@/lib/useTimers";
+import { traceAvailable } from "@/lib/traceState";
 import { headlineKind, headlineModel, replayHeadline } from "@/lib/runHeadline";
 import { ageSeconds, pendingApproval } from "@/lib/policy";
 import { useApproval } from "@/lib/policyApi";
@@ -23,7 +32,8 @@ import { evidenceRows } from "@/lib/evidence";
 import { agentTreeRows, agentsFromEvents, summaryAgents } from "@/lib/agents";
 import { useSpans } from "@/lib/useSpans";
 import { runBounds } from "@/lib/waterfall";
-import type { Base } from "@/lib/routes";
+import { runsPath, type Base } from "@/lib/routes";
+import { viewFromParam, type RunView } from "@/lib/runView";
 import {
   CLASS_ORDER,
   NO_FILTERS,
@@ -34,6 +44,7 @@ import {
   type EventClass,
   type Filters,
 } from "@/lib/timeline";
+import { buildStory, isCodingRun } from "@/lib/coding";
 import { AgentTree } from "./AgentTree";
 import { CodingSummary } from "./CodingSummary";
 import { FilterMenu } from "./FilterMenu";
@@ -42,39 +53,42 @@ import { EventDrawer } from "./EventDrawer";
 import { InspectorResizer } from "./InspectorResizer";
 import { Evaluations } from "./Evaluations";
 import { Findings } from "./Findings";
-import { ShieldGlyph } from "./SecuritySeverity";
 import { SecurityChip, SecurityFindings, useFindingCounts } from "./SecurityFindings";
-import { contextSummary, securityLine } from "@/lib/security";
+import { securityLine } from "@/lib/security";
 import { ApprovalBanner } from "./ApprovalBanner";
 import { RunHeadline } from "./RunHeadline";
 import { StatusBadge } from "./StatusBadge";
 import { ReplayTransport } from "./ReplayTransport";
 import { ErrorState, Loading } from "./States";
+import { TitleLine } from "./TitleLine";
+import { TraceNotice } from "./TraceNotice";
 import { useCan, useWorkspaceOptional } from "./WorkspaceProvider";
 import { Timeline } from "./Timeline";
-import { ViewSwitch, type RunView } from "./ViewSwitch";
+import { Tabs, tabIds } from "./Tabs";
 import { Waterfall } from "./Waterfall";
-import "../app/run-context.css";
+import "../app/run-layout.css";
+import "../app/run-panels.css";
 import "../app/run-motion.css";
 import "../app/run-replay.css";
 
 function Metric({
   label,
   value,
-  tone,
   note,
   hint,
+  extra,
 }: {
+  /** Drops out of the line on a phone (it is in Details there): tokens first, then retries (03). */
+  extra?: boolean;
   label: string;
   value: string;
-  tone?: "warn" | "bad";
-  /** Why the value is not exact (replay: "3 calls unpriced"); shown under it. */
+  /** Why the value is not exact (replay: "3 calls unpriced"); shown after it. */
   note?: string | null;
-  /** The same caveat for a figure with no room for a line: a tooltip and text for screen readers. */
+  /** The same caveat as a tooltip and text for screen readers. */
   hint?: string | null;
 }) {
   return (
-    <div className="stat" data-tone={tone}>
+    <div className="fig" data-extra={extra || undefined}>
       <dt>{label}</dt>
       <dd title={hint ?? undefined}>
         {value}
@@ -129,70 +143,15 @@ function LiveBar({
   );
 }
 
-/** Below this the rail, an open context column and the inspector leave the pane under ~350 px (KI-126). */
-const SQUEEZED = "(min-width: 833px) and (max-width: 1279px)";
-/** Below 88 rem the inspector is narrowed to 20 rem while the context column is open, so the column never has to fold. */
-const COMPACT = "(max-width: 1407px)";
 /** Motion is decoration: only when the person has not asked for less (and jsdom, which has no matchMedia, gets none). */
 const MOTION = "(prefers-reduced-motion: no-preference)";
+/** The Steps column is a column from 1100 px; narrower it is one strip above the pane (03). */
+const WIDE = "(min-width: 1100px) and (min-height: 576px)";
+/** Below 600 px the first-error facts move into Details so the headline and the line stay in the first screen (03). */
+const PHONE = "(max-width: 599px)";
+const TAB_BASE = "run-tabs";
 const EXIT_MS = 110; // the inspector's exit animation (run-motion.css) is 100 ms
 const INTRO_MS = 340; // the fault line's entrance (run-motion.css) is 280 ms
-
-/**
- * What the folded context column shows: an icon, a vertical label and the counts a reader looks for first. The counts
- * are decoration for sighted users (the button keeps its fixed accessible name; the title spells them out).
- */
-function ContextStripBody({
-  runId,
-  poll,
-  agents,
-}: {
-  runId: string;
-  poll: boolean;
-  agents: number;
-}) {
-  const { reliability: findings, security } = useFindingCounts(runId, poll);
-  return (
-    <span
-      className="strip-body"
-      title={`Run context: ${security ? `${security} security, ` : ""}${findings} finding${findings === 1 ? "" : "s"}${agents ? `, ${agents} agents` : ""}`}
-    >
-      <svg className="strip-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" />
-        <path d="M6 2.5v11" stroke="currentColor" />
-      </svg>
-      <span className="strip-label">Context</span>
-      {security > 0 && (
-        <span className="strip-count" data-security="true" aria-hidden="true">
-          <ShieldGlyph />
-          {security}
-        </span>
-      )}
-      {findings > 0 && (
-        <span className="strip-count" data-tone="warn" aria-hidden="true">
-          {findings}
-        </span>
-      )}
-      {agents > 0 && (
-        <span className="strip-count" aria-hidden="true">
-          {agents}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/** "Context · 2 findings": the closed column still says there is something in it. */
-function ContextSummary({ runId, poll }: { runId: string; poll: boolean }) {
-  const { security, reliability } = useFindingCounts(runId, poll);
-  if (security + reliability === 0) return null;
-  return (
-    <span className="context-summary" data-testid="context-summary">
-      {" · "}
-      {contextSummary(security, reliability)}
-    </span>
-  );
-}
 
 /**
  * The count that drives the timeline's "follow the live edge / N new events" behaviour. Live arrivals feed it as before;
@@ -213,10 +172,12 @@ function useFollowCount(replaying: boolean, shownCount: number, arrived: number)
 }
 
 const NO_IDS: ReadonlySet<string> = new Set();
+const NO_EVENTS: readonly EventOut[] = [];
 const MAX_NEW_IDS = 200;
 
 export function RunDetail({
   runId,
+  base,
   live = true,
 }: {
   runId: string;
@@ -225,9 +186,16 @@ export function RunDetail({
   live?: boolean;
 }) {
   const run = useRun(runId);
+  // The trace detail is shown only when the run says it is stored. While retention removes it the events endpoint answers
+  // with partial data (KI-198) and afterwards with nothing, so once the run says otherwise nothing more is requested
+  // (no paging, polling, stream or context queries) and nothing of it is shown. The first events page is requested
+  // alongside the run, as before, so the header does not wait for a second round trip on every run page.
+  const available = traceAvailable(run.data?.trace_state);
+  // Known not to be stored: the run has loaded and says so. Before that the page behaves as it always did.
+  const traceGone = run.data !== undefined && !available;
   const eventCount = num(run.data?.summary["event_count"]) ?? undefined;
   const active = run.data ? isActive(run.data.status) : true;
-  const ev = useRunEvents(runId, active);
+  const ev = useRunEvents(runId, active, !traceGone);
   const {
     hasNextPage,
     isFetchingNextPage,
@@ -240,20 +208,20 @@ export function RunDetail({
   // pageCount is a dependency so a page that lands without an observed `isFetchingNextPage` toggle still triggers the next.
   const pageCount = ev.data?.pages.length ?? 0;
   useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && !evError) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
+    if (!traceGone && hasNextPage && !isFetchingNextPage && !evError) void fetchNextPage();
+  }, [traceGone, hasNextPage, isFetchingNextPage, evError, fetchNextPage, pageCount]);
 
   const restEvents = useMemo(() => ev.data?.pages.flatMap((p) => p.items) ?? [], [ev.data]);
   const restComplete = ev.isSuccess && !hasNextPage;
   const refetchRun = run.refetch;
   const stream = useLiveEvents(runId, {
-    enabled: live && active && !!run.data,
+    enabled: live && active && available,
     restEvents,
     restComplete,
     reconcile: () => void refetchEvents(),
     onEnd: () => void refetchRun(),
   });
-  const events = stream.events;
+  const events = traceGone ? NO_EVENTS : stream.events;
   const streaming =
     stream.state === "connecting" || stream.state === "live" || stream.state === "reconnecting";
 
@@ -262,7 +230,7 @@ export function RunDetail({
   const seen = useRef<string | null>(null);
   const marker = run.data ? `${eventCount ?? ""}|${run.data.status}` : null;
   useEffect(() => {
-    if (marker == null || streaming) return;
+    if (marker == null || streaming || traceGone) return;
     if (
       seen.current !== null &&
       seen.current !== marker &&
@@ -271,13 +239,12 @@ export function RunDetail({
       void refetchEvents();
     }
     seen.current = marker;
-  }, [marker, active, streaming, refetchEvents, run.data?.status]);
+  }, [marker, active, streaming, traceGone, refetchEvents, run.data?.status]);
 
-  // Timeline or waterfall, kept in the URL (`?view=waterfall`) so a link to the waterfall is shareable.
+  // The tab, kept in the URL (`?view=waterfall`) so a link to it is shareable; the timeline is the absence of the parameter.
   const pathname = usePathname();
   const params = useSearchParams();
-  const wanted = params?.get("view");
-  const paramView: RunView = wanted === "waterfall" || wanted === "evidence" ? wanted : "timeline";
+  const paramView = viewFromParam(params?.get("view"));
   const [chosen, setChosen] = useState({ view: paramView, param: paramView });
   if (chosen.param !== paramView) setChosen({ view: paramView, param: paramView }); // the URL changed under us
   const view = chosen.view;
@@ -298,14 +265,10 @@ export function RunDetail({
   // The inspector eases out for 100 ms after it is closed: keep rendering the last event until then.
   const [leaving, setLeaving] = useState<EventOut | null>(null);
   const timelineWrap = useRef<HTMLDivElement>(null);
-  // Phase 22 D3: the context column (story, agents, findings, evaluations) starts closed; the Context button says what
-  // is in it. Once the person opens it, it stays open beside the inspector (the inspector narrows instead, KI-126);
-  // only in a window too small for rail + column + inspector + pane (below 1280 px) does it fold while the inspector
-  // is open. A click on the strip or the button while it is squeezed "pins" it open until the next toggle.
-  const [contextPref, setContextPref] = useState<"closed" | "open" | "pinned">("closed");
   const [inspectorPx, setInspectorPx] = useState<number | null>(null);
-  const squeezedWindow = useMedia(SQUEEZED);
-  const compactWindow = useMedia(COMPACT);
+  const wide = useMedia(WIDE);
+  const phone = useMedia(PHONE);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   // "last event 3 s ago" ticks while the run is live; a finished run's headline has no clock in it.
   const [now, setNow] = useState(() => Date.now());
@@ -427,22 +390,6 @@ export function RunDetail({
   useEffect(() => {
     inspectorShown.current = inspected != null || drawerId != null;
   });
-  const contextClosed =
-    contextPref === "closed" || (contextPref === "open" && !!inspected && squeezedWindow);
-  const toggleContext = () =>
-    setContextPref(contextClosed ? (squeezedWindow && inspected ? "pinned" : "open") : "closed");
-
-  // Expanding the strip hides the very button that was focused; move focus to the column it opened (it is a tab stop)
-  // rather than let it fall to <body>.
-  const contextRef = useRef<HTMLElement>(null);
-  const focusContext = useRef(false);
-  useEffect(() => {
-    if (!contextClosed && focusContext.current) {
-      focusContext.current = false;
-      contextRef.current?.focus();
-    }
-  }, [contextClosed]);
-
   const evidence = useMemo(() => evidenceRows(events), [events]);
 
   // Motion cues (decoration only; run-motion.css plays them under `prefers-reduced-motion: no-preference` and nowhere
@@ -568,7 +515,10 @@ export function RunDetail({
     } else setDrawerEventId(row.event.event_id);
   };
 
-  const jumpTo = (eventId: string, tone: "error" | "evidence" = "evidence") => {
+  const jumpTo = (eventId: string, tone: "error" | "evidence" = "evidence", stay = false) => {
+    // "Show evidence" from the Findings or Evaluations tab shows the event in the run: the timeline, with the row marked
+    // (a deep link from the workspace Security page stays on Findings and opens the inspector there).
+    if (!stay && (view === "findings" || view === "evaluations")) changeView("timeline");
     // In replay a jump moves the playhead there: the state so far always includes the event being shown.
     if (replay.mode) replay.seekToId(eventId);
     flashLanded(eventId, tone);
@@ -584,13 +534,14 @@ export function RunDetail({
     if (firstErrorId) jumpTo(firstErrorId, "error");
   };
 
-  // The security chip and a `?finding=` link open the context column on the Security group.
+  // The security chip and a `?finding=` link open the Findings tab on the Security group.
   const focusSecurity = useRef(false);
   const openSecurity = () => {
-    if (contextClosed) {
+    if (view === "findings") focusSecurityHeading();
+    else {
       focusSecurity.current = true;
-      setContextPref(squeezedWindow && inspected ? "pinned" : "open");
-    } else focusSecurityHeading();
+      changeView("findings");
+    }
   };
   const focusSecurityHeading = () => {
     const h = document.getElementById("security-h");
@@ -598,23 +549,25 @@ export function RunDetail({
     h?.focus();
   };
   useEffect(() => {
-    if (!contextClosed && focusSecurity.current) {
+    if (view === "findings" && focusSecurity.current) {
       focusSecurity.current = false;
       focusSecurityHeading();
     }
   });
-  // `?finding=<id>` (a row of the workspace Security page): open the column, mark the finding, show its evidence.
+  // `?finding=<id>` (a row of the workspace Security page): open Findings, mark the finding, show its evidence.
   const wantedFinding = params?.get("finding") ?? null;
   const handledFinding = useRef<string | null>(null);
-  const deepFindings = useRunFindings(runId, false).data;
+  const deepFindings = useRunFindings(runId, false, available).data;
   const focusId =
     wantedFinding &&
     deepFindings?.items.some((f) => f.id === wantedFinding && f.category === "security")
       ? wantedFinding
       : null;
   const jumpRef = useRef(jumpTo);
+  const changeViewRef = useRef(changeView);
   useEffect(() => {
     jumpRef.current = jumpTo;
+    changeViewRef.current = changeView;
   });
   useEffect(() => {
     if (!focusId || handledFinding.current === focusId || !deepFindings) return;
@@ -622,8 +575,8 @@ export function RunDetail({
     const hit = deepFindings.items.find((f) => f.id === focusId)!;
     const target = securityLine(hit).target;
     later(() => {
-      setContextPref("pinned");
-      if (target) jumpRef.current(target);
+      changeViewRef.current("findings");
+      if (target) jumpRef.current(target, "evidence", true);
     }, 0);
   }, [focusId, deepFindings, later]);
 
@@ -645,23 +598,37 @@ export function RunDetail({
       return { ...f, classes: cur.size === CLASS_ORDER.length ? null : cur };
     });
 
+  const poll = active || run.data?.summary_state === "processing";
+  const findingCounts = useFindingCounts(runId, poll, available);
+  const story = useMemo(() => buildStory(shown), [shown]);
+  const hasStory = isCodingRun(shown) && story.length > 0;
+
   if (run.isPending)
     return (
       <div className="run-detail app-page">
         <header className="run-head" aria-busy="true">
-          <RunHeadline kind="failed" variant="skeleton" label="Loading run" />
+          <RunHeadline kind="failed" variant="skeleton" label={copy.loading.run} />
         </header>
       </div>
     );
-  if (run.isError) return <ErrorState error={run.error} onRetry={() => void run.refetch()} />;
+  if (run.isError)
+    return (
+      <div className="run-detail app-page">
+        <header className="run-head">
+          <TitleLine href={runsPath(base)} title={copy.untitled} />
+        </header>
+        <ErrorState error={run.error} onRetry={() => void run.refetch()} />
+      </div>
+    );
   const r = run.data;
   const s = r.summary;
+  const gone = r.trace_state !== "available" ? r.trace_state : null;
   const total = Math.max(eventCount ?? 0, events.length);
   const nowDoing = active || stream.state !== "off" ? liveStatus(events) : null;
   const loadingMore = ev.isPending || hasNextPage || isFetchingNextPage;
   const allGroups = groupKeys(buildRows(filtered, new Set()));
 
-  // The header's figures: the whole run, or (in replay) the run as of the playhead.
+  // The figures: the whole run, or (in replay) the run as of the playhead.
   const retries = rs ? rs.counts.retries : (num(s["retry_count"]) ?? 0);
   const errors = rs ? rs.counts.errors : (num(s["error_count"]) ?? 0);
   const models = Array.isArray(s["models"]) ? (s["models"] as string[]) : [];
@@ -682,33 +649,72 @@ export function RunDetail({
   // A failed run whose first error is not known yet (older run, events paging in): hold the frame, say nothing wrong.
   const headlineLoading =
     !rs && !ev.isError && !restComplete && !model.failure && headlineKind(r, false) === "failed";
+  const age = formatRelative(r.started_at, now);
+  const findingsTotal = findingCounts.security + findingCounts.reliability;
+  const failedSteps = story.filter((x) => x.tone === "bad").length;
+  const stepsLabel = hasStory
+    ? `${copy.steps.strip(story.length)}${failedSteps ? ` (${copy.steps.failedOf(failedSteps)})` : ""}`
+    : `Agents · ${agents.length}`;
+  const showSteps = hasStory || multiAgent;
+  const stepsBody = (
+    <>
+      {hasStory && (
+        <CodingSummary
+          events={shown}
+          hideHeading={!wide}
+          onOpen={(id) => {
+            setFilters(NO_FILTERS);
+            setSelected(id);
+            setDrawerEventId(id);
+          }}
+        />
+      )}
+      {multiAgent && (
+        <AgentTree
+          rows={agents}
+          current={rs?.currentAgent ?? null}
+          active={filters.agents ?? null}
+          onToggle={toggleAgent}
+          onClear={() => setFilters((f) => ({ ...f, agents: null }))}
+        />
+      )}
+    </>
+  );
+  const afterLine = phone && shownModel.detail && !shownModel.pending ? shownModel.detail : null;
 
   return (
     <div className="run-detail app-page">
       <header className="run-head">
-        <div className="run-title">
-          <h1>{r.name ?? r.id}</h1>
-          {rs ? (
-            <span className="replay-status" data-testid="replay-status">
-              {rs.statusText} · {STATUS_AS_OF}
-            </span>
-          ) : (
-            <StatusBadge status={r.status} />
-          )}
-          <SecurityChip badge={r.security_findings} onOpen={openSecurity} />
-          <span className="id muted" title={r.id}>
-            {r.id.slice(0, 4)}…{r.id.slice(-6)} · {r.agent_id ?? "—"}
-            {models.length > 0 && <> · {models.join(", ")}</>} · ordered by{" "}
-            {ev.data?.pages[0]?.ordering_mode ?? r.ordering_mode} · started{" "}
-            {formatTimestamp(r.started_at)}
-          </span>
-        </div>
-        {headlineFailed ? (
+        <TitleLine href={runsPath(base)} title={r.name ?? r.id}>
+          <div className="run-status">
+            {rs ? (
+              <span className="replay-status" data-testid="replay-status">
+                {rs.statusText} · {STATUS_AS_OF}
+              </span>
+            ) : (
+              <>
+                <StatusBadge status={r.status} />
+                <span className="run-age muted" data-testid="run-age">
+                  {" · "}
+                  {active ? `started ${age}` : age}
+                </span>
+              </>
+            )}
+            <SecurityChip badge={r.security_findings} onOpen={openSecurity} />
+          </div>
+        </TitleLine>
+        {gone ? null : headlineFailed ? (
           <RunHeadline kind={kind} variant="error" onRetry={() => void refetchEvents()} />
         ) : headlineLoading ? (
           <RunHeadline kind={kind} variant="skeleton" />
         ) : (
-          <RunHeadline kind={kind} variant="ready" model={shownModel} onGo={jumpToError} />
+          <RunHeadline
+            kind={kind}
+            variant="ready"
+            model={shownModel}
+            detailElsewhere={!!afterLine}
+            onGo={jumpToError}
+          />
         )}
         {!rs && r.status === "WAITING_FOR_APPROVAL" && (
           <ApprovalBanner
@@ -719,316 +725,377 @@ export function RunDetail({
             leftSeconds={approvalLeft}
           />
         )}
+        {r.summary_state !== "current" && (
+          <p role="status" className="notice">
+            {r.summary_state === "processing" ? copy.summaryUpdating : copy.summaryFailed}
+          </p>
+        )}
+        <div className="run-figs">
+          <dl className="figures" aria-label={copy.figures.label}>
+            {rs ? (
+              <Metric label={copy.figures.elapsed} value={formatDuration(rs.elapsedMs)} />
+            ) : (
+              <Metric
+                label={copy.figures.duration}
+                value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))}
+              />
+            )}
+            <Metric
+              label={copy.figures.cost}
+              value={rs ? costDisplay(rs).text : formatCost(num(s["estimated_cost_usd"]))}
+              note={rs ? costDisplay(rs).note : null}
+            />
+            <Metric
+              extra
+              label={copy.figures.tokens}
+              value={
+                rs
+                  ? `${formatInt(rs.inputTokens)} in / ${formatInt(rs.outputTokens)} out`
+                  : `${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`
+              }
+            />
+            <Metric extra label={copy.figures.retries} value={formatInt(retries)} />
+            <Metric label={copy.figures.errors} value={formatInt(errors)} />
+          </dl>
+          <button
+            type="button"
+            className="run-details-toggle"
+            aria-expanded={detailsOpen}
+            aria-controls="run-details"
+            onClick={() => setDetailsOpen((o) => !o)}
+          >
+            {copy.details}
+            <span aria-hidden="true"> {detailsOpen ? "▴" : "▾"}</span>
+          </button>
+        </div>
+        <dl
+          id="run-details"
+          className="run-details"
+          hidden={!detailsOpen}
+          aria-label={copy.details}
+        >
+          <div>
+            <dt>{copy.detailsList.id}</dt>
+            <dd className="mono" title={r.id}>
+              {r.id}
+            </dd>
+          </div>
+          <div>
+            <dt>{copy.detailsList.agent}</dt>
+            <dd>{r.agent_id ?? "—"}</dd>
+          </div>
+          {models.length > 0 && (
+            <div>
+              <dt>{copy.detailsList.model}</dt>
+              <dd>{models.join(", ")}</dd>
+            </div>
+          )}
+          <div>
+            <dt>{copy.detailsList.ordering}</dt>
+            <dd>{ev.data?.pages[0]?.ordering_mode ?? r.ordering_mode}</dd>
+          </div>
+          <div>
+            <dt>{copy.detailsList.started}</dt>
+            <dd>{formatTimestamp(r.started_at)}</dd>
+          </div>
+          {phone && (
+            <>
+              <div className="phone-only">
+                <dt>{copy.figures.tokens}</dt>
+                <dd>
+                  {rs
+                    ? `${formatInt(rs.inputTokens)} in / ${formatInt(rs.outputTokens)} out`
+                    : `${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`}
+                </dd>
+              </div>
+              <div className="phone-only">
+                <dt>{copy.figures.retries}</dt>
+                <dd>{formatInt(retries)}</dd>
+              </div>
+            </>
+          )}
+          <div>
+            <dt>{copy.detailsList.modelCalls}</dt>
+            <dd>{formatInt(rs ? rs.counts.modelCalls : num(s["llm_calls"]))}</dd>
+          </div>
+          <div>
+            <dt>{copy.detailsList.toolCalls}</dt>
+            <dd>{formatInt(rs ? rs.counts.toolCalls : num(s["tool_calls"]))}</dd>
+          </div>
+          <div>
+            <dt>{copy.detailsList.files}</dt>
+            <dd title={rs ? (filesDisplay(rs).note ?? undefined) : undefined}>
+              {rs ? filesDisplay(rs).text : formatInt(num(s["files_modified"]))}
+              {rs && filesDisplay(rs).note && (
+                <span className="sr-only"> ({filesDisplay(rs).note})</span>
+              )}
+            </dd>
+          </div>
+          {multiAgent && (
+            <div>
+              <dt>{copy.detailsList.agents}</dt>
+              <dd>{formatInt(agentsSoFar ?? agents.length)}</dd>
+            </div>
+          )}
+          {afterLine && (
+            <div>
+              <dt>{copy.detailsList.after}</dt>
+              <dd data-testid="headline-detail">
+                {afterLine}
+                {shownModel.failure?.withheld && " · details withheld for your role"}
+              </dd>
+            </div>
+          )}
+        </dl>
         {stream.state !== "off" && stream.state !== "ended" && (
           <LiveBar state={stream.state} status={nowDoing} />
         )}
-        {r.summary_state !== "current" && (
-          <p role="status" className="notice">
-            {r.summary_state === "processing"
-              ? "Summary is updating; figures below may lag the timeline."
-              : "Summary failed to update and needs an operator; the timeline is still accurate."}
-          </p>
-        )}
-        <dl className="stats figures" aria-label="Run summary">
-          {rs ? (
-            <Metric label="Elapsed" value={formatDuration(rs.elapsedMs)} />
-          ) : (
-            <Metric
-              label="Duration"
-              value={formatDuration(r.duration_ms ?? num(s["duration_ms"]))}
-            />
-          )}
-          <Metric
-            label="Cost"
-            value={rs ? costDisplay(rs).text : formatCost(num(s["estimated_cost_usd"]))}
-            note={rs ? costDisplay(rs).note : null}
-          />
-          <Metric
-            label="Tokens"
-            value={
-              rs
-                ? `${formatInt(rs.inputTokens)} in / ${formatInt(rs.outputTokens)} out`
-                : `${formatInt(num(s["input_tokens"]))} in / ${formatInt(num(s["output_tokens"]))} out`
-            }
-          />
-          <Metric
-            label="Model calls"
-            value={formatInt(rs ? rs.counts.modelCalls : num(s["llm_calls"]))}
-          />
-          <Metric
-            label="Tool calls"
-            value={formatInt(rs ? rs.counts.toolCalls : num(s["tool_calls"]))}
-          />
-          <Metric
-            label="Retries"
-            value={formatInt(retries)}
-            tone={retries > 0 ? "warn" : undefined}
-          />
-          <Metric label="Errors" value={formatInt(errors)} tone={errors > 0 ? "bad" : undefined} />
-          {multiAgent && <Metric label="Agents" value={formatInt(agentsSoFar ?? agents.length)} />}
-          <Metric
-            label="Files changed"
-            value={rs ? filesDisplay(rs).text : formatInt(num(s["files_modified"]))}
-            hint={rs ? filesDisplay(rs).note : null}
-          />
-        </dl>
       </header>
 
-      <div className="pane-head">
-        <ViewSwitch
-          view={view}
-          onChange={changeView}
-          counts={{
-            timeline: events.length ? formatInt(events.length) : undefined,
-            evidence: evidence.length ? formatInt(evidence.length) : undefined,
-          }}
-        />
-        <div className="pane-actions">
-          <button
-            type="button"
-            className="context-toggle"
-            aria-pressed={!contextClosed}
-            aria-controls="run-context"
-            onClick={toggleContext}
-          >
-            Context
-            <ContextSummary runId={runId} poll={active || r.summary_state === "processing"} />
-          </button>
-          <button
-            ref={replayButton}
-            type="button"
-            className="context-toggle replay-toggle"
-            aria-pressed={replay.mode}
-            aria-keyshortcuts="r"
-            disabled={events.length === 0 && !replay.mode}
-            onClick={replay.toggleMode}
-          >
-            Replay <kbd aria-hidden="true">r</kbd>
-          </button>
-        </div>
-      </div>
-
-      {replay.mode && <ReplayTransport replay={replay} skewed={skewed} />}
-
-      <div
-        className="work"
-        data-inspector={inspected ? "open" : "closed"}
-        data-context={contextClosed ? "closed" : "open"}
-        data-compact={(!contextClosed && !!inspected && compactWindow && !inspectorPx) || undefined}
-        data-fault-intro={faultIntro || undefined}
-        style={
-          inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
-        }
-      >
-        {/* Scrolls on its own, so it takes a tab stop: a scrollable region with nothing focusable in it is unreachable by keyboard. */}
-        <aside
-          id="run-context"
-          className="context"
-          aria-label="Run context"
-          tabIndex={contextClosed ? undefined : 0}
-          ref={contextRef}
-        >
-          <button
-            type="button"
-            className="context-strip"
-            onClick={() => {
-              focusContext.current = true;
-              setContextPref(squeezedWindow && inspected ? "pinned" : "open");
-            }}
-            aria-label="Show run context"
-            aria-expanded="false"
-            aria-controls="run-context"
-            tabIndex={contextClosed ? 0 : -1}
-          >
-            <ContextStripBody
-              runId={runId}
-              poll={active || r.summary_state === "processing"}
-              agents={multiAgent ? agents.length : 0}
+      {gone ? (
+        <TraceNotice state={gone} />
+      ) : (
+        <>
+          <div className="pane-head">
+            <Tabs
+              label={copy.tabs.label}
+              idBase={TAB_BASE}
+              value={view}
+              onChange={changeView}
+              items={[
+                {
+                  id: "timeline",
+                  label: copy.tabs.timeline,
+                  count: events.length ? formatInt(events.length) : undefined,
+                },
+                { id: "waterfall", label: copy.tabs.waterfall },
+                {
+                  id: "evidence",
+                  label: copy.tabs.evidence,
+                  count: evidence.length ? formatInt(evidence.length) : undefined,
+                },
+                {
+                  id: "findings",
+                  label: copy.tabs.findings,
+                  count: findingsTotal ? formatInt(findingsTotal) : undefined,
+                },
+                { id: "evaluations", label: copy.tabs.evaluations },
+              ]}
             />
-          </button>
-          <div className="context-body" inert={contextClosed || undefined}>
-            {replay.mode && (
-              <p className="replay-ctx-note muted" data-testid="replay-context-note">
-                Findings and agent totals reflect the whole run.
-              </p>
-            )}
-            <SecurityFindings
-              runId={runId}
-              projectId={r.project_id}
-              poll={active || r.summary_state === "processing"}
-              focusId={focusId}
-              onShowEvent={jumpTo}
-            />
-            {/* Findings first: they are why the column is opened (D3). */}
-            <Findings
-              runId={runId}
-              runActive={active}
-              summaryProcessing={r.summary_state === "processing"}
-              onShowEvent={jumpTo}
-            />
-
-            <CodingSummary
-              events={shown}
-              onOpen={(id) => {
-                setFilters(NO_FILTERS);
-                setSelected(id);
-                setDrawerEventId(id);
-              }}
-            />
-
-            {multiAgent && (
-              <AgentTree
-                rows={agents}
-                current={rs?.currentAgent ?? null}
-                active={filters.agents ?? null}
-                onToggle={toggleAgent}
-                onClear={() => setFilters((f) => ({ ...f, agents: null }))}
-              />
-            )}
-
-            <Evaluations runId={runId} onShowEvent={jumpTo} />
-          </div>
-        </aside>
-
-        <section aria-labelledby="tl-h" className="pane">
-          <h2 id="tl-h" className="sr-only">
-            {view === "waterfall" ? "Waterfall" : view === "evidence" ? "Evidence" : "Timeline"}
-          </h2>
-          {view === "timeline" && (
-            <div className="toolbar tl-toolbar" role="group" aria-label="Timeline filters">
-              <FilterMenu
-                classes={filters.classes}
-                onToggle={toggleClass}
-                onReset={() => setFilters((f) => ({ ...f, classes: null }))}
-              />
-              <label className="chip">
-                <input
-                  type="checkbox"
-                  checked={filters.errorsOnly}
-                  onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
-                />
-                Errors only
-              </label>
-              <button
-                type="button"
-                disabled={allGroups.length === 0}
-                onClick={() => setCollapsed(collapsed.size ? new Set() : new Set(allGroups))}
-              >
-                {collapsed.size ? "Expand groups" : "Collapse groups"}
-              </button>
-            </div>
-          )}
-          {drawerId && !loadedDrawerEvent && (
-            <p
-              role={remoteDrawer.isError ? "alert" : "status"}
-              className="notice"
-              data-testid="event-notice"
-            >
-              {remoteDrawer.isError
-                ? "That event could not be loaded; it may not exist in this run."
-                : "Loading the event…"}{" "}
-              <button type="button" onClick={() => setDrawerEventId(null)}>
-                Dismiss
-              </button>
-            </p>
-          )}
-          {rs && view === "evidence" && (
-            <p className="notice replay-note" data-testid="replay-evidence-note">
-              Evidence shows the whole run.
-            </p>
-          )}
-          {ev.isError && events.length === 0 ? (
-            <ErrorState error={ev.error} onRetry={() => void ev.refetch()} />
-          ) : events.length === 0 && !ev.isPending ? (
-            <p className="state">This run has no events yet.</p>
-          ) : events.length === 0 ? (
-            <Loading label="Loading events" />
-          ) : view === "timeline" && rows.length === 0 ? (
-            <div className="state" data-state="empty">
-              <p className="state-title">No events match these filters</p>
-              <button type="button" onClick={() => setFilters(NO_FILTERS)}>
-                Clear filters
-              </button>
-            </div>
-          ) : (
-            <div className="pane-body" key={view} ref={timelineWrap}>
-              {view === "evidence" ? (
-                <EvidenceList rows={evidence} t0={t0} selectedEventId={selected} onOpen={jumpTo} />
-              ) : view === "timeline" ? (
-                <Timeline
-                  rows={rows}
-                  t0={t0}
-                  selectedKey={selectedKey}
-                  firstErrorId={reachedFault ? firstErrorId : null}
-                  currentId={currentId}
-                  onSpace={rs ? replay.togglePlay : undefined}
-                  faultStep={model.failure?.step ?? null}
-                  showAgent={multiAgent}
-                  onSelect={setSelected}
-                  onActivate={activate}
-                  onEscape={onEscape}
-                  onJumpToError={jumpToError}
-                  newIds={newIds}
-                  arrived={followCount}
-                  landedId={landed?.id ?? null}
-                  landedTone={landed?.tone}
-                />
-              ) : (
-                <Waterfall
-                  spans={spans}
-                  bounds={bounds}
-                  spanIdOf={spanIdOf}
-                  selectedEventId={selected}
-                  firstErrorId={reachedFault ? firstErrorId : null}
-                  currentEventId={currentId}
-                  replaying={!!rs}
-                  onSpace={rs ? replay.togglePlay : undefined}
-                  faultAtMs={reachedFault && err ? Date.parse(err.occurred_at) : null}
-                  faultStep={model.failure?.step ?? null}
-                  agentFilter={filters.agents ?? null}
-                  onSelect={setSelected}
-                  onActivate={setDrawerEventId}
-                  onEscape={onEscape}
-                  onJumpToError={jumpToError}
-                  newIds={newIds}
-                  landedId={landed?.id ?? null}
-                  landedTone={landed?.tone}
-                />
+            <div className="pane-tools">
+              {view === "timeline" && (
+                <div className="tl-tools" role="group" aria-label={copy.toolbar.label}>
+                  <FilterMenu
+                    classes={filters.classes}
+                    onToggle={toggleClass}
+                    onReset={() => setFilters((f) => ({ ...f, classes: null }))}
+                    groups={{
+                      collapsed: collapsed.size > 0,
+                      disabled: allGroups.length === 0,
+                      onToggle: () => setCollapsed(collapsed.size ? new Set() : new Set(allGroups)),
+                    }}
+                  />
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={filters.errorsOnly}
+                      onChange={(e) => setFilters((f) => ({ ...f, errorsOnly: e.target.checked }))}
+                    />
+                    {copy.toolbar.errorsOnly}
+                  </label>
+                </div>
               )}
+              <button
+                ref={replayButton}
+                type="button"
+                className="replay-toggle"
+                aria-pressed={replay.mode}
+                aria-keyshortcuts="r"
+                title={copy.replayHint}
+                disabled={events.length === 0 && !replay.mode}
+                onClick={replay.toggleMode}
+              >
+                {copy.replay}
+              </button>
             </div>
-          )}
-          <div className="pane-foot">
-            <p className="muted" role="status" aria-live="polite" data-testid="progress">
-              {loadingMore
-                ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
-                : view === "evidence"
-                  ? `${formatInt(evidence.length)} artifact${evidence.length === 1 ? "" : "s"} in ${formatInt(events.length)} events`
-                  : view === "waterfall"
-                    ? rs
-                      ? `${formatInt(shown.length)} of ${formatInt(events.length)} events in ${formatInt(spans.length)} spans, replay`
-                      : `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
-                    : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown${rs ? ", replay" : ""}${playheadHidden ? ", the event at the playhead is hidden by the filters" : ""}`}
-              {ev.isError && " (some events failed to load)"}
-            </p>
-            {view !== "evidence" && (
-              <p className="keys muted" aria-hidden="true">
-                <kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> open · <kbd>e</kbd> first error ·{" "}
-                <kbd>r</kbd> replay · <kbd>esc</kbd> close
-              </p>
+          </div>
+
+          {replay.mode && <ReplayTransport replay={replay} skewed={skewed} />}
+
+          <div
+            className="work"
+            data-inspector={inspected ? "open" : "closed"}
+            data-steps={showSteps ? "open" : "none"}
+            data-fault-intro={faultIntro || undefined}
+            style={
+              inspectorPx ? ({ "--insp-w": `${inspectorPx}px` } as React.CSSProperties) : undefined
+            }
+          >
+            {showSteps && (
+              <aside className="steps" aria-label={hasStory ? copy.steps.heading : "Agents"}>
+                {wide ? (
+                  stepsBody
+                ) : (
+                  <details className="steps-strip">
+                    <summary>{stepsLabel}</summary>
+                    {stepsBody}
+                  </details>
+                )}
+              </aside>
+            )}
+
+            <section {...tabIds(TAB_BASE, view)} role="tabpanel" className="pane">
+              {view === "timeline" || view === "waterfall" || view === "evidence" ? (
+                <h2 id="tl-h" className="sr-only">
+                  {view === "waterfall"
+                    ? copy.tabs.waterfall
+                    : view === "evidence"
+                      ? copy.tabs.evidence
+                      : copy.tabs.timeline}
+                </h2>
+              ) : null}
+              {drawerId && !loadedDrawerEvent && (
+                <p
+                  role={remoteDrawer.isError ? "alert" : "status"}
+                  className="notice"
+                  data-testid="event-notice"
+                >
+                  {remoteDrawer.isError
+                    ? "That event could not be loaded; it may not exist in this run."
+                    : "Loading the event…"}{" "}
+                  <button type="button" onClick={() => setDrawerEventId(null)}>
+                    Dismiss
+                  </button>
+                </p>
+              )}
+              {rs && view === "evidence" && (
+                <p className="notice replay-note" data-testid="replay-evidence-note">
+                  Evidence shows the whole run.
+                </p>
+              )}
+              {view === "findings" ? (
+                <div className="pane-scroll" key={view}>
+                  {replay.mode && (
+                    <p className="replay-ctx-note muted" data-testid="replay-context-note">
+                      Findings and agent totals reflect the whole run.
+                    </p>
+                  )}
+                  <SecurityFindings
+                    runId={runId}
+                    projectId={r.project_id}
+                    poll={poll}
+                    focusId={focusId}
+                    onShowEvent={jumpTo}
+                  />
+                  <Findings
+                    runId={runId}
+                    runActive={active}
+                    summaryProcessing={r.summary_state === "processing"}
+                    onShowEvent={jumpTo}
+                  />
+                </div>
+              ) : view === "evaluations" ? (
+                <div className="pane-scroll" key={view}>
+                  <Evaluations runId={runId} onShowEvent={jumpTo} />
+                </div>
+              ) : ev.isError && events.length === 0 ? (
+                <ErrorState error={ev.error} onRetry={() => void ev.refetch()} />
+              ) : events.length === 0 && !ev.isPending ? (
+                <p className="state">{copy.empty.noEvents}</p>
+              ) : events.length === 0 ? (
+                <Loading label={copy.loading.events} />
+              ) : view === "timeline" && rows.length === 0 ? (
+                <div className="state" data-state="empty">
+                  <p className="state-title">{copy.empty.noMatch}</p>
+                  <button type="button" onClick={() => setFilters(NO_FILTERS)}>
+                    {copy.empty.clear}
+                  </button>
+                </div>
+              ) : (
+                <div className="pane-body" key={view} ref={timelineWrap}>
+                  {view === "evidence" ? (
+                    <EvidenceList
+                      rows={evidence}
+                      t0={t0}
+                      selectedEventId={selected}
+                      onOpen={jumpTo}
+                    />
+                  ) : view === "timeline" ? (
+                    <Timeline
+                      rows={rows}
+                      t0={t0}
+                      selectedKey={selectedKey}
+                      firstErrorId={reachedFault ? firstErrorId : null}
+                      currentId={currentId}
+                      onSpace={rs ? replay.togglePlay : undefined}
+                      faultStep={model.failure?.step ?? null}
+                      showAgent={multiAgent}
+                      onSelect={setSelected}
+                      onActivate={activate}
+                      onEscape={onEscape}
+                      onJumpToError={jumpToError}
+                      newIds={newIds}
+                      arrived={followCount}
+                      landedId={landed?.id ?? null}
+                      landedTone={landed?.tone}
+                    />
+                  ) : (
+                    <Waterfall
+                      spans={spans}
+                      bounds={bounds}
+                      spanIdOf={spanIdOf}
+                      selectedEventId={selected}
+                      firstErrorId={reachedFault ? firstErrorId : null}
+                      currentEventId={currentId}
+                      replaying={!!rs}
+                      onSpace={rs ? replay.togglePlay : undefined}
+                      faultAtMs={reachedFault && err ? Date.parse(err.occurred_at) : null}
+                      faultStep={model.failure?.step ?? null}
+                      agentFilter={filters.agents ?? null}
+                      onSelect={setSelected}
+                      onActivate={setDrawerEventId}
+                      onEscape={onEscape}
+                      onJumpToError={jumpToError}
+                      newIds={newIds}
+                      landedId={landed?.id ?? null}
+                      landedTone={landed?.tone}
+                    />
+                  )}
+                </div>
+              )}
+              <div className="pane-foot">
+                <p className="muted" role="status" aria-live="polite" data-testid="progress">
+                  {loadingMore
+                    ? `Loading events: ${formatInt(events.length)} of ${formatInt(total)}…`
+                    : view === "evidence"
+                      ? `${formatInt(evidence.length)} artifact${evidence.length === 1 ? "" : "s"} in ${formatInt(events.length)} events`
+                      : view === "waterfall"
+                        ? rs
+                          ? `${formatInt(shown.length)} of ${formatInt(events.length)} events in ${formatInt(spans.length)} spans, replay`
+                          : `${formatInt(events.length)} events in ${formatInt(spans.length)} spans`
+                        : `${formatInt(filtered.length)} of ${formatInt(events.length)} events shown${rs ? ", replay" : ""}${playheadHidden ? ", the event at the playhead is hidden by the filters" : ""}`}
+                  {ev.isError && " (some events failed to load)"}
+                </p>
+                {(view === "timeline" || view === "waterfall") && (
+                  <p className="keys muted" aria-hidden="true">
+                    {copy.foot.hints}
+                  </p>
+                )}
+              </div>
+            </section>
+
+            {drawerEvent && <InspectorResizer width={inspectorPx} onChange={setInspectorPx} />}
+            {inspected && (
+              <EventDrawer
+                runId={runId}
+                event={inspected}
+                onClose={closeDrawer}
+                closing={!drawerEvent}
+              />
             )}
           </div>
-        </section>
-
-        {drawerEvent && <InspectorResizer width={inspectorPx} onChange={setInspectorPx} />}
-        {inspected && (
-          <EventDrawer
-            runId={runId}
-            event={inspected}
-            onClose={closeDrawer}
-            closing={!drawerEvent}
-          />
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }

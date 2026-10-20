@@ -1,5 +1,6 @@
 "use client";
 
+import { run } from "@/copy/run";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -377,7 +378,7 @@ export function Waterfall({
               data-side={faultShown > 70 ? "left" : "right"}
               style={{ left: `${faultShown}%` }}
             >
-              first error{faultStep == null ? "" : ` · step ${faultStep}`}
+              {run.fault(faultStep)}
             </span>
           </span>
           <span />
@@ -403,15 +404,6 @@ export function Waterfall({
         onPointerDown={() => scrollRef.current?.removeAttribute("data-nav")}
       >
         <div style={{ height: virt.getTotalSize(), position: "relative" }}>
-          {faultShown != null && (
-            <div className="wf-fault-layer" data-part="region" aria-hidden="true">
-              <span />
-              <span className="wf-fault-track">
-                <span className="wf-fault-region" style={{ left: `${faultShown}%` }} />
-              </span>
-              <span />
-            </div>
-          )}
           {virt.getVirtualItems().map((v) => {
             const row = rows[v.index];
             if (!row) return null;
@@ -566,7 +558,9 @@ export function Waterfall({
                       {n.depth > MAX_INDENT ? ` L${n.depth}` : ""}
                     </span>
                   )}
-                  <span className="wf-name">{label}</span>
+                  <span className="wf-name" title={label}>
+                    {label}
+                  </span>
                   {isAgg && <span className="muted"> (+{row.aggregate.count - 1} spans)</span>}
                 </div>
                 <div role="gridcell" className="wf-track">

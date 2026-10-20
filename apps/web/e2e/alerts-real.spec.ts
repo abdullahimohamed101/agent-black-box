@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 // Phase 17 step 4, API-backed. Runs only through scripts/alerts-e2e.sh: a real API and worker, the DEVELOPMENT-ONLY fake OIDC provider,
 // the built web server on :3210 and local receivers (a signed webhook receiver that verifies the HMAC, a control port). The owner
@@ -16,7 +17,7 @@ const MAIN_PORT = process.env.E2E_MAIN_PORT ?? "8213";
 test.skip(!WS || !EMAIL || !RECV || !TOKEN, "needs scripts/alerts-e2e.sh");
 test.use({ baseURL: "http://localhost:3210", viewport: { width: 1440, height: 900 } });
 test.describe.configure({ mode: "serial" });
-const SHOTS = "../../docs/screenshots/phase-17";
+const SHOTS = shotsDir("phase-17");
 const DESTINATION = "UI webhook";
 const RULE = "UI failed runs";
 
@@ -65,7 +66,7 @@ test("@ui-setup destination with the signing secret shown once, rule with a prev
   page,
 }) => {
   const problems = watch(page);
-  await loginAs(page, EMAIL as string, `/w/${WS}/alerts?tab=destinations`);
+  await loginAs(page, EMAIL as string, `/w/${WS}/settings/alerts?tab=destinations`);
   await expect(page.getByRole("heading", { name: "Alerts", level: 1 })).toBeVisible();
 
   // a target the server refuses is refused on the form, and nothing is stored
@@ -122,7 +123,7 @@ test("@ui-setup destination with the signing secret shown once, rule with a prev
   expect(JSON.parse(String(seen[0]?.body)).kind).toBe("test");
 
   // a rule for failed runs of the ui project, to this destination
-  await page.goto(`/w/${WS}/alerts`);
+  await page.goto(`/w/${WS}/settings/alerts`);
   await page.getByRole("button", { name: "Add a rule" }).click();
   const form = page.getByRole("form", { name: "New rule" });
   await form.getByLabel("Tell me when").selectOption("run_failed");
@@ -145,7 +146,7 @@ test("@ui-history the delivery of the alert that fired is listed with a link to 
   page,
 }) => {
   const problems = watch(page);
-  await loginAs(page, EMAIL as string, `/w/${WS}/alerts?tab=history`);
+  await loginAs(page, EMAIL as string, `/w/${WS}/settings/alerts?tab=history`);
   const row = page
     .getByTestId("history-row")
     .filter({ hasText: RULE })

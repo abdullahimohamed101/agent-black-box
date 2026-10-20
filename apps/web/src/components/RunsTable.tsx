@@ -11,28 +11,55 @@ import {
   num,
 } from "@/lib/format";
 import { COMPARE_PICKS } from "@/lib/compare";
+import { runs as t } from "@/copy/runs";
 import { runPath, type Base } from "@/lib/routes";
 import { matchedLabels, matchedOf } from "@/lib/search";
 import { findingsCell } from "@/lib/findings";
+import { securityCountText, securitySeverityMeta } from "@/lib/security";
 import { failureLine } from "@/lib/runsListRow";
+import { ShieldGlyph } from "./SecuritySeverity";
 import { StatusBadge } from "./StatusBadge";
+import { TraceMarker } from "./TraceNotice";
 
-function FindingsCell({ badge }: { badge: RunOut["findings"] }) {
-  const c = findingsCell(badge);
+/**
+ * Two marks, two meanings. Run findings (loops, retry storms, failure chains) carry the severity glyph of the Findings
+ * tab; the shield means Security findings only, counted from `security_findings`.
+ */
+function FindingsCell({ run }: { run: RunOut }) {
+  const c = findingsCell(run.findings);
+  const sec = run.security_findings;
+  const secCount = sec && sec.count > 0 ? sec.count : 0;
+  const secMeta = securitySeverityMeta(sec?.max_severity ?? "info");
   return (
-    <td data-testid="findings-cell" data-state={c.state} title={c.title}>
+    <td className="c-find" data-testid="findings-cell" data-state={c.state} title={c.title}>
       {c.visible ? (
-        <span className="badge" data-tone={c.tone}>
+        // Severity is carried by weight, never by colour (ADR-131): critical is bold, the rest regular.
+        <span className="finding-count" data-testid="run-findings" data-tone={c.tone}>
           <span aria-hidden="true">{c.glyph}</span> {c.visible}
         </span>
-      ) : (
+      ) : secCount ? null : (
         <span aria-hidden="true">—</span>
       )}
       <span className="sr-only">{c.title}</span>
+      {secCount ? (
+        <span
+          className="finding-count finding-security"
+          data-testid="security-findings"
+          data-tone={secMeta.tone}
+        >
+          <ShieldGlyph filled={secMeta.style === "filled"} /> {securityCountText(secCount)}
+          <span className="sr-only"> (most severe: {secMeta.label})</span>
+        </span>
+      ) : null}
     </td>
   );
 }
 
+/**
+ * The runs table. A row is one line (status, name, agent, started, duration, cost, findings); a run that needs attention
+ * gets a second line with the miniature red dash, the only red besides the status word. Below 900 px the agent and
+ * duration move under the name; below 600 px each row is a block (CSS only, the markup is the same).
+ */
 export function RunsTable({
   runs,
   base,
@@ -69,22 +96,36 @@ export function RunsTable({
         <thead>
           <tr>
             {pickable && (
-              <th scope="col">
-                <span className="sr-only">Pick to compare</span>
+              <th scope="col" className="c-pick">
+                <span className="sr-only">{t.table.pick}</span>
               </th>
             )}
-            <th scope="col">Status</th>
-            <th scope="col">Run</th>
-            <th scope="col">Agent</th>
-            <th scope="col">Started</th>
-            <th scope="col" className="num">
-              Duration
+            <th scope="col" className="c-status">
+              {t.table.status}
             </th>
-            <th scope="col" className="num">
-              Cost
+            <th scope="col" className="c-run">
+              {t.table.run}
             </th>
-            {showMatched && <th scope="col">Matched</th>}
-            <th scope="col">Findings</th>
+            <th scope="col" className="c-agent">
+              {t.table.agent}
+            </th>
+            <th scope="col" className="c-started">
+              {t.table.started}
+            </th>
+            <th scope="col" className="num c-dur">
+              {t.table.duration}
+            </th>
+            <th scope="col" className="num c-cost">
+              {t.table.cost}
+            </th>
+            {showMatched && (
+              <th scope="col" className="c-match">
+                {t.table.matched}
+              </th>
+            )}
+            <th scope="col" className="c-find">
+              {t.table.findings}
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -93,6 +134,7 @@ export function RunsTable({
             const fail = failureLine(r);
             const expanded = open.has(r.id);
             const detailId = `${uid}-${r.id}`;
+            const agent = r.agent_id ?? "—";
             return (
               <Fragment key={r.id}>
                 <tr
@@ -100,7 +142,7 @@ export function RunsTable({
                   data-attention={fail ? "true" : undefined}
                 >
                   {pickable && (
-                    <td className="compare-pick">
+                    <td className="compare-pick c-pick">
                       <input
                         type="checkbox"
                         aria-label={`Compare ${r.name ?? r.id}`}
@@ -110,43 +152,54 @@ export function RunsTable({
                       />
                     </td>
                   )}
-                  <td>
+                  <td className="c-status">
                     <StatusBadge status={r.status} />
                   </td>
-                  <td className="name">
+                  <td className="name c-run">
                     <div className="run-line">
-                      <Link href={runPath(base, r.id)}>{r.name ?? r.id}</Link>
+                      <Link href={runPath(base, r.id)} data-failed={fail ? "true" : undefined}>
+                        {r.name ?? r.id}
+                      </Link>
                       {retries && !fail ? (
-                        <span className="tag">
-                          {retries} retr{retries === 1 ? "y" : "ies"}
-                        </span>
+                        <span className="tag">{t.table.retries(retries)}</span>
                       ) : null}
                       <button
                         type="button"
                         className="row-more"
                         aria-expanded={expanded}
                         aria-controls={detailId}
-                        aria-label={`${expanded ? "Hide" : "Show"} details of ${r.name ?? r.id}`}
+                        aria-label={t.table.details(expanded, r.name ?? r.id)}
                         onClick={() => flip(r.id)}
                       >
                         <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
                       </button>
                     </div>
+                    {r.trace_state !== "available" && (
+                      <p className="run-trace">
+                        <TraceMarker state={r.trace_state} />
+                      </p>
+                    )}
                     {fail && (
                       <p className="run-fail" data-testid="failure-line">
+                        <span className="run-fail-dash" aria-hidden="true" />
                         <span className="run-fail-sentence">{fail.sentence}</span>
                         <span className="run-fail-detail">
                           {fail.detail && ` · ${fail.detail}`}
                         </span>
                       </p>
                     )}
+                    <p className="run-meta">
+                      {agent} · {formatDuration(r.duration_ms)}
+                    </p>
                   </td>
-                  <td>{r.agent_id ?? "—"}</td>
-                  <td title={formatTimestamp(r.started_at)}>{formatRelative(r.started_at, now)}</td>
-                  <td className="num">{formatDuration(r.duration_ms)}</td>
-                  <td className="num">{formatCost(num(r.summary["estimated_cost_usd"]))}</td>
+                  <td className="c-agent">{agent}</td>
+                  <td className="c-started" title={formatTimestamp(r.started_at)}>
+                    {formatRelative(r.started_at, now)}
+                  </td>
+                  <td className="num c-dur">{formatDuration(r.duration_ms)}</td>
+                  <td className="num c-cost">{formatCost(num(r.summary["estimated_cost_usd"]))}</td>
                   {showMatched && <MatchedCell run={r} />}
-                  <FindingsCell badge={r.findings} />
+                  <FindingsCell run={r} />
                 </tr>
                 {expanded && (
                   <tr id={detailId} className="row-detail" data-testid="row-detail">
@@ -195,7 +248,7 @@ function MatchedCell({ run }: { run: RunOut }) {
   const labels = m ? matchedLabels(m) : [];
   const truncated = !!m && (m.metadata_truncated === true || m.content_truncated === true);
   return (
-    <td data-testid="matched">
+    <td className="c-match" data-testid="matched">
       <span className="matched">
         {labels.map((l) => (
           <span key={l} className="tag">

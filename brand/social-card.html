@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Agent BlackBox social card</title>
+<!-- Rendered by scripts/brand.mjs to site/public/assets/social-card.png (1200x630, light scheme only). The double-brace placeholders are replaced with
+     values resolved from apps/web/design-tokens/tokens.json and the Plex files; nothing in this file types a colour. The miniature
+     trace is the hero's: a red fault line, its label and the failed word are the only red. No claim that waits for publication. -->
+<style>
+@font-face{font-family:"Plex";font-weight:600;src:url("{{SANS_600}}") format("woff2")}
+@font-face{font-family:"Plex";font-weight:400;src:url("{{SANS_400}}") format("woff2")}
+@font-face{font-family:"PlexMono";font-weight:400;src:url("{{MONO_400}}") format("woff2")}
+html,body{margin:0;width:1200px;height:630px;background:{{CANVAS}};font-family:"Plex",sans-serif;color:{{INK}}}
+.card{box-sizing:border-box;width:1200px;height:630px;padding:56px 64px;position:relative}
+.top{display:flex;align-items:center;gap:16px;font-weight:600;font-size:28px}
+.top svg{width:44px;height:44px}
+.top .lic{margin-left:auto;font:400 22px "PlexMono",monospace;color:{{INK2}}}
+h1{margin:28px 0 0;font-weight:600;font-size:68px;line-height:76px;letter-spacing:0;max-width:900px}
+.trace{position:absolute;left:64px;right:64px;top:318px;background:{{RAISED}};border-top:2px solid {{BORDER_STRONG}};border-bottom:2px solid {{BORDER_STRONG}};font:400 22px/44px "PlexMono",monospace}
+.row{display:grid;grid-template-columns:120px 1fr 190px;padding:0 24px;height:44px;border-bottom:1px solid {{BORDER}};position:relative}
+.row:last-child{border-bottom:0}
+.row .t,.row .s{color:{{INK2}}}
+.row .s{text-align:right}
+.row.fault{background:{{WASH}};box-shadow:inset 4px 0 0 {{ACCENT}}}
+.row.fault::before{content:"";position:absolute;left:0;right:0;top:-2px;height:4px;background:{{FAULT}}}
+.row.fault::after{content:"First error, step 7";position:absolute;right:24px;top:-34px;font:600 22px/30px "Plex",sans-serif;color:{{FAULT}};background:{{RAISED}};padding:0 10px}
+.row .s.fail,.fail{color:{{FAULT}};font-weight:400}
+.row .s.caution,.caution{color:{{CAUTION}}}
+.sub{position:absolute;left:64px;bottom:44px;font-size:30px;color:{{INK2}}}
+</style>
+<div class="card">
+  <div class="top"><svg viewBox="0 0 24 24" fill="none" stroke="{{INK}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13h3.5l2.5-7 3.5 12 2.5-5"/><path d="M18 13h4"/><path d="M15.5 19.5l1-13" stroke="{{MARK}}" stroke-width="1.5"/></svg>Agent BlackBox<span class="lic">Apache-2.0</span></div>
+  <h1>See what your agent actually did.</h1>
+  <div class="trace">
+    <div class="row"><span class="t">+2.9s</span><span>llm.request.completed</span><span class="s">2.1 s</span></div>
+    <div class="row"><span class="t">+3.1s</span><span>tool.call.started</span><span class="s"></span></div>
+    <div class="row fault"><span class="t">+6.2s</span><span>tool.call.failed</span><span class="s fail">&#10005; error</span></div>
+    <div class="row"><span class="t">+7.2s</span><span>retry.attempted</span><span class="s caution">&#8635; retry</span></div>
+  </div>
+  <div class="sub">A flight recorder for AI agents.</div>
+</div>

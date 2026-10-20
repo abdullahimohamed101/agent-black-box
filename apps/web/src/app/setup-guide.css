@@ -1,70 +1,77 @@
-/* Phase 22 D9: the first-run setup guide. Plex Serif only for the headline. */
+/* The first-run setup guide (Phase 22 D9; restyled in design pass 2 step 5a). One of the two places an illustration stays.
+   The headline is the display step; tokens only. */
 .setup {
   max-width: 40rem;
-  padding: 1.5rem 0 2rem;
+  padding: var(--space-6) 0 var(--space-8);
   display: grid;
-  gap: 0.6rem;
+  gap: var(--space-3);
   justify-items: start;
 }
 .page .setup h2.setup-headline {
   /* outranks the document pages' h2 rule (globals.css) */
-  font-family: var(--serif);
-  font-weight: 500;
-  font-size: var(--fs-headline);
-  line-height: 1.25;
-  margin: 0.25rem 0 0;
+  font-family: var(--font-sans);
+  font-weight: var(--type-display-weight);
+  font-size: var(--type-display-size);
+  line-height: var(--type-display-line);
+  letter-spacing: 0;
+  margin: var(--space-2) 0 0;
 }
 .setup-lede {
   margin: 0;
-  color: var(--muted);
+  color: var(--color-text-secondary);
+  font-size: var(--type-body-lg-size);
+  line-height: var(--type-body-lg-line);
 }
 .setup-steps {
   list-style: none;
   counter-reset: step;
-  margin: 0.5rem 0 0;
+  margin: var(--space-2) 0 0;
   padding: 0;
   display: grid;
-  gap: 1.1rem;
+  gap: var(--space-6);
   width: 100%;
 }
 .setup-steps > li {
   counter-increment: step;
   display: grid;
-  gap: 0.4rem;
-  padding-left: 2rem;
+  gap: var(--space-2);
+  padding-left: var(--space-8);
   position: relative;
   min-width: 0;
 }
 .setup-steps > li::before {
-  content: counter(step);
+  content: counter(step) / "";
   position: absolute;
   left: 0;
   top: 0;
-  width: 1.4rem;
-  height: 1.4rem;
+  width: var(--space-6);
+  height: var(--space-6);
   display: grid;
   place-items: center;
-  font-family: var(--mono);
-  font-size: var(--fs-small);
-  color: var(--accent);
-  border-bottom: 2px solid var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-small-size);
+  color: var(--color-text-link);
+  border-bottom: 2px solid var(--color-interactive-default);
 }
 .setup-steps h3 {
   margin: 0;
-  font-size: var(--fs-body);
-  font-weight: 600;
+  font-family: var(--font-sans);
+  font-size: var(--type-h3-size);
+  line-height: var(--type-h3-line);
+  font-weight: var(--type-h3-weight);
 }
 .setup-steps p {
   margin: 0;
+  font-size: var(--type-body-lg-size);
+  line-height: var(--type-body-lg-line);
 }
 .setup-code {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.5rem 0.6rem;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
   min-width: 0;
 }
 .setup-code pre {
@@ -75,9 +82,9 @@
   margin: 0;
   white-space: pre-wrap; /* wraps instead of scrolling: a scroll region would need its own tab stop */
   overflow-wrap: anywhere;
-  font-family: var(--mono);
-  font-size: var(--fs-small);
-  line-height: 1.5;
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-small-size);
+  line-height: var(--type-mono-small-line);
 }
 .setup-code button {
   flex: none;
@@ -86,20 +93,20 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 0.75rem;
-  margin: 0.5rem 0 0;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
   width: 100%;
-  color: var(--muted);
+  color: var(--color-text-secondary);
 }
 .setup-status[data-tone="ok"] {
-  color: var(--fg);
+  color: var(--color-text-primary);
 }
 .setup-dot {
   display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--accent);
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--color-interactive-default);
 }

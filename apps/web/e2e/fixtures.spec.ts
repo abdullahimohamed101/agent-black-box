@@ -1,13 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { openContext, settleAnimations } from "./motion";
+import { openTab, settleAnimations } from "./motion";
+import { shotsDir } from "./shots-dir";
 
 const BASE = "/w/demo/projects/all";
 // Fixture runs: ten earlier ones, the two coding-agent runs (Phase 11) and the blocked run (Phase 22 review P1-3).
 const RUN_COUNT = 18;
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
-const SHOTS = "../../docs/screenshots/phase-4";
-const SHOTS10 = "../../docs/screenshots/phase-10";
+const SHOTS = shotsDir("phase-4");
+const SHOTS10 = shotsDir("phase-10");
 
 async function axe(page: Page) {
   await settleAnimations(page);
@@ -18,12 +19,15 @@ async function axe(page: Page) {
   );
 }
 
-test("dashboard summarises the project", async ({ page }) => {
+test("the project home is Runs: one sentence for the last 7 days, then the list (Overview is merged, design pass 2)", async ({
+  page,
+}) => {
   await page.goto(BASE);
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  await expect(page.getByText("Success rate")).toBeVisible();
-  await expect(page.getByText("Running agents")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Recent failures" })).toBeVisible();
+  await expect(page).toHaveURL(/\/projects\/all\/runs$/); // the old Overview route redirects
+  await expect(page.getByRole("heading", { name: "Runs", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toHaveCount(0);
+  await expect(page.getByTestId("week-sentence")).toContainText(/Last 7 days: \d+ runs, .* failed/);
+  await expect(page.getByRole("link", { name: "Analytics" }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Migrate billing schema" }).first()).toBeVisible();
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/dashboard.png`, fullPage: true });
@@ -34,11 +38,15 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await expect(page.getByRole("table")).toBeVisible();
   const all = await page.locator("tbody tr").count();
   expect(all).toBe(RUN_COUNT);
-  await page.getByLabel("Failed").check();
-  await expect(page).toHaveURL(/status=FAILED/);
+  await page
+    .getByRole("region", { name: "Narrow the results" })
+    .getByRole("button", { name: /^Failed/ })
+    .click();
+  await expect(page).toHaveURL(/q=status%3Afailed/i);
   await expect(page.locator("tbody tr")).toHaveCount(3); // billing migration, failure chain, wrong fix
   await expect(page.locator("tbody tr").first()).toContainText("Failed");
-  await page.getByLabel("Agent").fill("nobody");
+  await page.getByRole("searchbox", { name: "Search runs" }).fill("agent:nobody");
+  await page.getByRole("searchbox", { name: "Search runs" }).press("Enter");
   await expect(page.getByText("No runs match these filters")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
   await expect(page.locator("tbody tr")).toHaveCount(RUN_COUNT);
@@ -48,6 +56,12 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
   await expect(
     page.locator("tbody tr", { hasText: "Fix login session expiry" }).getByTestId("findings-cell"),
   ).toContainText("No findings");
+  // one glyph, one meaning: the shield appears only beside a security count, never on a run-findings mark
+  await expect(page.getByTestId("run-findings").locator("svg.sec-shield")).toHaveCount(0);
+  await expect(
+    page.getByTestId("security-findings").locator("svg.sec-shield").first(),
+  ).toBeVisible();
+  await expect(page.getByTestId("security-findings").first()).toContainText("security finding");
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/runs-list.png`, fullPage: true });
 });
@@ -55,9 +69,9 @@ test("runs list filters by status and keeps state in the URL", async ({ page }) 
 test("search: chips from the server parse, matched column, facets, refusal and keyboard use (fixtures)", async ({
   page,
 }) => {
-  const SHOTS16 = "../../docs/screenshots/phase-16";
+  const SHOTS16 = shotsDir("phase-16");
   await page.goto(`${BASE}/runs`);
-  const box = page.getByRole("searchbox", { name: "Search" });
+  const box = page.getByRole("searchbox", { name: "Search runs" });
   await box.fill("tool:run_migration");
   await box.press("Enter");
   await expect(page.getByRole("list", { name: "Search terms" })).toContainText(
@@ -110,7 +124,7 @@ test("failed run: headline, first error, drawer, keyboard navigation and focus r
   await page.keyboard.press("e");
   const drawer = page.getByRole("dialog");
   await expect(drawer).toContainText("ConnectionTimeout");
-  await expect(drawer.getByRole("heading", { name: /Error/ })).toBeVisible();
+  await expect(drawer.getByRole("heading", { name: "What went wrong" })).toBeVisible();
   await expect(drawer.getByRole("button", { name: "Close details" })).toBeFocused();
   await axe(page);
   await page.screenshot({ path: `${SHOTS}/run-failed-drawer.png`, fullPage: true });
@@ -126,6 +140,8 @@ test("filters and groups act on the timeline", async ({ page }) => {
   await page.getByLabel("Errors only").check();
   await expect(page.getByRole("option")).toHaveCount(4);
   await page.getByLabel("Errors only").uncheck();
+  // Collapse groups lives in the Filter popover (design pass 2)
+  await page.getByRole("button", { name: /^Filter/ }).click();
   await page.getByRole("button", { name: "Collapse groups" }).click();
   expect(await page.getByRole("option").count()).toBeLessThan(before);
   await page.getByRole("button", { name: "Expand groups" }).click();
@@ -147,14 +163,14 @@ test("successful and in-progress runs read at a glance", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(4)}`);
   await expect(page.getByTestId("headline")).toContainText("Running");
   await page.goto(`${BASE}/runs/${RUN(5)}`);
-  await expect(page.getByTestId("headline")).toContainText("Awaiting approval");
+  await expect(page.getByTestId("headline")).toContainText("Waiting for approval");
 });
 
 test("looping run shows a probable loop finding whose evidence jump selects the event", async ({
   page,
 }) => {
   await page.goto(`${BASE}/runs/${RUN(8)}`);
-  await openContext(page); // Phase 22 D3: findings live in the context panel, closed by default
+  await openTab(page, "Findings"); // design pass 2: findings are a tab, not a column
   const panel = page.getByTestId("findings");
   await expect(panel.getByRole("heading", { name: "Findings" })).toBeVisible();
   await expect(panel.getByTestId("findings-state")).toContainText("Analysis is current");
@@ -168,8 +184,8 @@ test("looping run shows a probable loop finding whose evidence jump selects the 
   await expect(loop.getByLabel("Pattern")).toBeHidden();
   await loop.getByText("Details", { exact: true }).click();
   await expect(loop.getByLabel("Pattern")).toContainText("tool:search_docs");
-  await panel.getByText(/^Health:/).click();
-  await expect(panel.getByTestId("health")).toContainText("Loops");
+  // the health dimensions are not on the page any more (ADR-166); the API and the findings still carry them
+  await expect(page.getByTestId("health")).toHaveCount(0);
   await expect(page.getByTestId("progress")).toContainText("events shown");
   await loop.getByRole("button", { name: "Show evidence" }).click();
   const drawer = page.getByRole("dialog");
@@ -182,7 +198,7 @@ test("looping run shows a probable loop finding whose evidence jump selects the 
 
 test("failed run: the failure chain lists linked events and each one opens", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(10)}`);
-  await openContext(page);
+  await openTab(page, "Findings");
   const chain = page.getByTestId("finding").filter({ hasText: "the run failed" });
   await chain.getByText("Details", { exact: true }).click();
   await expect(chain).toContainText("Observed");
@@ -196,12 +212,33 @@ test("failed run: the failure chain lists linked events and each one opens", asy
 
 test("analysis states are stated: processing and not analysed", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(4)}`);
-  await openContext(page);
+  await openTab(page, "Findings");
   await expect(page.getByTestId("findings-state")).toContainText("Analysing");
   await page.goto(`${BASE}/runs/${RUN(5)}`);
-  await openContext(page);
+  await openTab(page, "Findings");
   await expect(page.getByTestId("findings-state")).toContainText("Not analysed yet");
-  await expect(page.getByTestId("health")).toContainText("No data");
+  await expect(page.getByTestId("health")).toHaveCount(0);
+});
+
+test("a live run with a queued analysis shows the last one as of its age, not nothing (KI-097)", async ({
+  page,
+}) => {
+  // The fixture API never has a completed analysis for a running run, so the response is made from the
+  // real one: processing, with an earlier analysis that completed 12 s before the server's clock.
+  await page.route(`**/v1/runs/${RUN(4)}/findings`, async (route) => {
+    const body = await (await route.fetch()).json();
+    const served = Date.parse(body.server_time);
+    const state = { ...body.state, status: "processing", computed_at: new Date(served - 12_000) };
+    await route.fulfill({
+      json: { ...body, state: { ...state, computed_at: state.computed_at.toISOString() } },
+    });
+  });
+  await page.goto(`${BASE}/runs/${RUN(4)}`);
+  await openTab(page, "Findings");
+  const line = page.getByTestId("findings-state");
+  await expect(line).toContainText(/as of \d+ s ago/);
+  await expect(line).toContainText("Newer events are being analysed");
+  await expect(line).not.toContainText("Analysing…");
 });
 
 test("unknown run shows a not-found state", async ({ page }) => {
@@ -261,15 +298,14 @@ test("security headers are set and the CSP breaks nothing", async ({ page }) => 
 });
 
 // ---- Phase 9: multi-agent waterfall ----------------------------------------------------------------------------------
-const WSHOTS = "../../docs/screenshots/phase-9";
+const WSHOTS = shotsDir("phase-9");
 
 test("multi-agent waterfall: lanes, nesting under skew, critical path, synchronized selection, keyboard", async ({
   page,
 }) => {
   await page.goto(`${BASE}/runs/${RUN(7)}`);
-  await openContext(page);
   await expect(page.getByTestId("agent-tree")).toContainText("Agents (5)");
-  await page.getByRole("radio", { name: "Waterfall" }).check();
+  await page.getByRole("tab", { name: "Waterfall" }).click();
   await expect(page).toHaveURL(/view=waterfall/);
   const grid = page.getByRole("treegrid");
   await expect(grid).toBeVisible();
@@ -311,15 +347,15 @@ test("multi-agent waterfall: lanes, nesting under skew, critical path, synchroni
   const selectedSpanText = await grid
     .locator('[role="row"][aria-selected="true"] .wf-name')
     .innerText();
-  await page.getByRole("radio", { name: "Timeline" }).check();
+  await page.getByRole("tab", { name: "Timeline" }).click();
   await expect(page.getByRole("option", { selected: true })).toBeVisible();
   await expect(page).not.toHaveURL(/view=waterfall/);
   expect(selectedSpanText.length).toBeGreaterThan(0);
   await axe(page);
 
   // the first-error jump lands in whichever view is active
-  await page.getByRole("radio", { name: "Waterfall" }).check();
-  await page.getByRole("button", { name: "Show it" }).click();
+  await page.getByRole("tab", { name: "Waterfall" }).click();
+  await page.getByRole("button", { name: "Go to first error" }).click();
   await expect(page.getByRole("dialog")).toContainText("HttpError");
   await expect(grid.locator('[role="row"][aria-selected="true"]')).toContainText("search_docs");
   await axe(page);
@@ -327,7 +363,6 @@ test("multi-agent waterfall: lanes, nesting under skew, critical path, synchroni
 
 test("agent filter narrows the timeline and dims the waterfall", async ({ page }) => {
   await page.goto(`${BASE}/runs/${RUN(7)}`);
-  await openContext(page);
   await page
     .getByTestId("agent-tree")
     .getByRole("button", { name: /^reviewer/ })
@@ -337,7 +372,7 @@ test("agent filter narrows the timeline and dims the waterfall", async ({ page }
     expect.arrayContaining(["reviewer"]),
   );
   expect(new Set(await page.locator(".tl-agent").allInnerTexts())).toEqual(new Set(["reviewer"]));
-  await page.getByRole("radio", { name: "Waterfall" }).check();
+  await page.getByRole("tab", { name: "Waterfall" }).click();
   expect(await page.locator('[role="row"][data-dim]').count()).toBeGreaterThan(0);
 });
 
@@ -346,7 +381,10 @@ test("a deep link to the waterfall works and the failure run's root span is fini
 }) => {
   await page.goto(`${BASE}/runs/${RUN(2)}?view=waterfall`);
   await expect(page.getByRole("treegrid")).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Waterfall" })).toBeChecked();
+  await expect(page.getByRole("tab", { name: "Waterfall" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByRole("treegrid")).not.toContainText("no end recorded");
   await expect(page.getByRole("treegrid")).toContainText("error");
 });
@@ -394,14 +432,14 @@ test("10,000-event run in the waterfall: bounded rows, auto-collapse, zoom stays
 test("evaluations: every state, the judge badge, hostile text as text, and the viewer's withheld view (fixtures)", async ({
   page,
 }) => {
-  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const SHOTS11 = shotsDir("phase-11");
   const alerts: string[] = [];
   page.on("dialog", (d) => {
     alerts.push(d.message());
     void d.dismiss();
   });
   await page.goto(`${BASE}/runs/${RUN(12)}`);
-  await openContext(page);
+  await openTab(page, "Evaluations");
   const section = page.getByTestId("evaluations");
   await expect(section.getByRole("heading", { name: "Evaluations", level: 2 })).toBeVisible();
   // four latest results and one earlier (failed) one inside "Earlier results"
@@ -420,7 +458,7 @@ test("evaluations: every state, the judge badge, hostile text as text, and the v
 
   // the baseline carries a hostile explanation: it is text, never markup
   await page.goto(`${BASE}/runs/${RUN(11)}`);
-  await openContext(page);
+  await openTab(page, "Evaluations");
   await expect(page.getByTestId("evaluation")).toHaveCount(4);
   await expect(page.getByTestId("explanation").first()).toContainText("<img src=x onerror=");
   expect(await page.locator("[data-testid=evaluations] img").count()).toBe(0);
@@ -432,7 +470,7 @@ test("evaluations: every state, the judge badge, hostile text as text, and the v
 
   // a viewer sees scores and labels, never free text, and no controls
   await page.goto(`/w/viewer-only/projects/all/runs/${RUN(11)}`);
-  await openContext(page);
+  await openTab(page, "Evaluations");
   const viewer = page.getByTestId("evaluations");
   await expect(viewer.getByTestId("evaluation")).toHaveCount(4);
   await expect(viewer.getByTestId("explanation-withheld")).toHaveCount(2);
@@ -472,10 +510,10 @@ test("runs list: pick two runs to compare (fixtures)", async ({ page }) => {
 test("compare: divergence, keyboard, notices and the viewer's metadata-only view (fixtures)", async ({
   page,
 }) => {
-  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const SHOTS11 = shotsDir("phase-11");
   const url = (b: string) => `${b}/runs/compare?left=${RUN(11)}&right=${RUN(12)}`;
   await page.goto(url(BASE));
-  await expect(page.getByRole("heading", { name: "Compare runs", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Compare", level: 1, exact: true })).toBeVisible();
   await expect(page.getByTestId("compare-deltas")).toBeVisible();
   await page.getByText("All measures").click(); // the summary table sits behind a disclosure now
   await expect(page.getByTestId("compare-summary")).toBeVisible();
@@ -518,7 +556,7 @@ test("compare: divergence, keyboard, notices and the viewer's metadata-only view
 test("experiments: list, the control banner, warnings, metrics and forms by role (fixtures)", async ({
   page,
 }) => {
-  const SHOTS11 = "../../docs/screenshots/phase-11";
+  const SHOTS11 = shotsDir("phase-11");
   const alerts: string[] = [];
   page.on("dialog", (d) => {
     alerts.push(d.message());

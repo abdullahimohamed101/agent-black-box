@@ -168,6 +168,7 @@ async def logout(request: Request) -> Response:
                 context = None  # already invalid: still a success, and the cookie is cleared
             if context is not None:
                 await SessionRepository(conn).revoke(context.session.id, request.app.state.clock())
+                request.app.state.observability.catalogue.session_revocations_total.inc("logout")
     response = JSONResponse({"ok": True})
     response.headers["Cache-Control"] = "no-store"
     response.headers.append(

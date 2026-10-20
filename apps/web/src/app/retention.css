@@ -1,0 +1,113 @@
+/* Retention settings (Phase 19b, ADR-159/160; settings pattern, design pass 2 step 5c). Mode and status are a glyph and a word:
+   caution text only for what asks for care (a shortening that waits, a partial pass), never red (red is a failed run,
+   ADR-111; tests/tokens-use.test.ts). Hairline rows, no cards, no left bars. Nothing animates. */
+
+.retention-mode {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  max-width: var(--measure);
+  margin: 0 0 var(--space-4);
+}
+.retention-mode[data-mode="enforce"] .retention-glyph {
+  color: var(--color-status-caution);
+}
+.retention-glyph {
+  flex: none;
+}
+.retention-mode-detail {
+  display: block;
+  margin-top: var(--space-1);
+}
+.retention-list {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+.retention-tier {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.retention-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+}
+.st .retention-head h3 {
+  margin: 0;
+}
+.retention-value {
+  font-weight: var(--weight-strong);
+}
+.retention-removes,
+.retention-note {
+  max-width: var(--measure);
+  margin: var(--space-1) 0 0;
+}
+.retention-field {
+  display: grid;
+  gap: var(--space-1);
+  max-width: 28rem;
+  margin-top: var(--space-3);
+}
+.retention-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.retention-days input {
+  width: 6rem;
+  padding: var(--space-1) var(--space-2);
+}
+.retention-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.retention-preview,
+.retention-confirm {
+  max-width: var(--measure);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+}
+.retention-preview-summary {
+  margin: 0 0 var(--space-1);
+}
+.retention-preview ul,
+.retention-confirm ul {
+  margin: var(--space-1) 0;
+  padding-left: var(--space-4);
+}
+.retention-pass-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.retention-pass-list li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.retention-pass-list p {
+  margin: 0;
+}
+.retention-pass-head {
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+.retention-truncated {
+  color: var(--color-text-primary);
+}
+
+/* A saved shortening that has not taken effect: words and a glyph, never colour alone, never red. */
+.retention-pending {
+  margin: var(--space-2) 0 0;
+  color: var(--color-status-caution);
+}
+.retention-pending button {
+  color: var(--color-text-primary);
+}

@@ -89,6 +89,10 @@ workspaces = Table(
     Column("name", Text, nullable=False),
     Column("slug", Text, nullable=False, unique=True),
     _ts("created_at", nullable=False, default_now=True),
+    # `purging` while an owner-run purge removes the workspace (ADR-163): it reads as not found.
+    Column("purge_state", Text, nullable=False, server_default="active"),
+    CheckConstraint(_in("purge_state", ("active", "purging")), name="ck_workspaces_purge_state"),
+    Index("ix_workspaces_purging", "id", postgresql_where=text("purge_state = 'purging'")),
 )
 
 users = Table(
@@ -238,6 +242,16 @@ projects = Table(
     _ts("created_at", nullable=False, default_now=True),
     PrimaryKeyConstraint("workspace_id", "id"),
     UniqueConstraint("workspace_id", "slug", name="uq_projects_workspace_slug"),
+    # `purging` while an owner-run purge removes the project (ADR-163): keys are refused and the
+    # project reads as not found.
+    Column("purge_state", Text, nullable=False, server_default="active"),
+    CheckConstraint(_in("purge_state", ("active", "purging")), name="ck_projects_purge_state"),
+    Index(
+        "ix_projects_purging",
+        "workspace_id",
+        "id",
+        postgresql_where=text("purge_state = 'purging'"),
+    ),
 )
 
 agents = Table(
@@ -330,9 +344,23 @@ runs = Table(
     Column("tool_spans_ok", Integer, nullable=False, server_default="0"),
     Column("llm_spans_finished", Integer, nullable=False, server_default="0"),
     Column("llm_spans_ok", Integer, nullable=False, server_default="0"),
+    # Whether the run's trace detail (events, spans, findings, ...) is still there: `deleting` while
+    # the retention job removes it, `expired` once it has (the record stays; ADR-160). Written by
+    # the retention role only, in practice (it holds UPDATE on this column alone).
+    Column("trace_state", Text, nullable=False, server_default="available"),
     PrimaryKeyConstraint("workspace_id", "id"),
     ForeignKeyConstraint(["workspace_id", "project_id"], ["projects.workspace_id", "projects.id"]),
     CheckConstraint(_in("status", RUN_STATUSES), name="ck_runs_status"),
+    CheckConstraint(
+        _in("trace_state", ("available", "deleting", "expired")), name="ck_runs_trace_state"
+    ),
+    # The retention job resumes the runs it left half deleted (a handful at most).
+    Index(
+        "ix_runs_trace_deleting",
+        "workspace_id",
+        "id",
+        postgresql_where=text("trace_state = 'deleting'"),
+    ),
     CheckConstraint(_in("ordering_mode", ORDERING_MODES), name="ck_runs_ordering_mode"),
     Index("ix_runs_project_started", "workspace_id", "project_id", text("started_at DESC"), "id"),
     Index("ix_runs_status_started", "workspace_id", "status", text("started_at DESC"), "id"),
@@ -560,6 +588,9 @@ analytics_runs_daily = _daily(
     _bigint("llm_spans_finished"),
     _bigint("llm_spans_ok"),
     _bigint("unrebuilt_runs"),
+    # Runs whose trace detail the retention job removed (ADR-161): the cost-by-model, span and
+    # latency rollups no longer hold them, so reports say how many they leave out.
+    _bigint("expired_trace_runs"),
     key=("agent_slug", "status"),
 )
 
@@ -1508,4 +1539,237 @@ project_artifact_usage = Table(
         ondelete="CASCADE",
     ),
     CheckConstraint("bytes_stored >= 0", name="ck_artifact_usage_bytes"),
+)
+
+
+# ------------------------------------------------------------ data lifecycle (Phase 19b, ADR-159)
+
+RETENTION_POLICY_TIERS = ("artifacts", "trace", "run", "audit")
+# Tiers a retention report can describe: the four the workspace sets, the fixed-window clean-up of
+# a workspace's operational rows, and the install-level clean-up (`workspace_id` NULL).
+RETENTION_REPORT_TIERS = (*RETENTION_POLICY_TIERS, "operational", "platform")
+RETENTION_MODES = ("dry_run", "enforce")
+RETENTION_FLOOR_DAYS = 7
+RETENTION_CEILING_DAYS = 36500
+
+# A workspace's retention policy (migration 0101). A tier's `*_days` NULL means "the environment
+# default"; `*_forever` is the explicit choice to keep that tier for good (then `*_days` is NULL).
+# The runtime role reads, inserts and updates it; the retention job only reads it.
+retention_policies = Table(
+    "retention_policies",
+    metadata,
+    Column(
+        "workspace_id",
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    *[
+        column
+        for tier in RETENTION_POLICY_TIERS
+        for column in (
+            Column(f"{tier}_days", Integer),
+            Column(f"{tier}_forever", Boolean, nullable=False, server_default=text("false")),
+            # The value in force before a shortening and when the shortening takes effect
+            # (migration 0105): until then the longer of the two is enforced. NULL: none pending.
+            Column(f"{tier}_prev_days", Integer),
+            Column(f"{tier}_prev_forever", Boolean, nullable=False, server_default=text("false")),
+            _ts(f"{tier}_effective_at"),
+        )
+    ],
+    _ts("updated_at", nullable=False, default_now=True),
+    Column("updated_by", Text, nullable=False),
+    *[
+        constraint
+        for tier in RETENTION_POLICY_TIERS
+        for constraint in (
+            CheckConstraint(
+                f"{tier}_days IS NULL OR {tier}_days BETWEEN {RETENTION_FLOOR_DAYS} "
+                f"AND {RETENTION_CEILING_DAYS}",
+                name=f"ck_retention_policies_{tier}_days",
+            ),
+            CheckConstraint(
+                f"NOT {tier}_forever OR {tier}_days IS NULL",
+                name=f"ck_retention_policies_{tier}_forever",
+            ),
+            CheckConstraint(
+                f"{tier}_prev_days IS NULL OR {tier}_prev_days BETWEEN {RETENTION_FLOOR_DAYS} "
+                f"AND {RETENTION_CEILING_DAYS}",
+                name=f"ck_retention_policies_{tier}_prev_days",
+            ),
+            CheckConstraint(
+                f"NOT {tier}_prev_forever OR {tier}_prev_days IS NULL",
+                name=f"ck_retention_policies_{tier}_prev_forever",
+            ),
+        )
+    ],
+    CheckConstraint("char_length(updated_by) <= 128", name="ck_retention_policies_updated_by"),
+)
+
+# What one retention tick found (dry run) or did (enforce) for one workspace and tier: counts only,
+# never content. Written by the retention role; the application only reads. `workspace_id` is NULL
+# exactly for the install-level `platform` tier.
+retention_reports = Table(
+    "retention_reports",
+    metadata,
+    Column("id", BigInteger, Identity(always=True), primary_key=True),
+    Column("tick_id", UUID(as_uuid=True), nullable=False),
+    Column("workspace_id", UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE")),
+    Column("tier", Text, nullable=False),
+    Column("mode", Text, nullable=False),
+    Column("runs", BigInteger, nullable=False, server_default="0"),
+    Column("events", BigInteger, nullable=False, server_default="0"),
+    Column("artifact_bytes", BigInteger, nullable=False, server_default="0"),
+    Column("row_count", BigInteger, nullable=False, server_default="0"),
+    Column("truncated", Boolean, nullable=False, server_default=text("false")),
+    _ts("cutoff_at"),
+    _ts("started_at", nullable=False),
+    _ts("finished_at", nullable=False),
+    CheckConstraint(_in("tier", RETENTION_REPORT_TIERS), name="ck_retention_reports_tier"),
+    CheckConstraint(_in("mode", RETENTION_MODES), name="ck_retention_reports_mode"),
+    CheckConstraint(
+        "(workspace_id IS NULL) = (tier = 'platform')", name="ck_retention_reports_scope"
+    ),
+    CheckConstraint(
+        "runs >= 0 AND events >= 0 AND artifact_bytes >= 0 AND row_count >= 0",
+        name="ck_retention_reports_counts",
+    ),
+    Index("ix_retention_reports_workspace", "workspace_id", "tier", text("started_at DESC")),
+)
+
+# One row per run the retention job removed data of (step 2; unused in step 1): the run id, the
+# tier and when. Written by the retention role; the application only reads.
+retention_tombstones = Table(
+    "retention_tombstones",
+    metadata,
+    Column(
+        "workspace_id",
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("tier", Text, nullable=False),
+    Column("mode", Text, nullable=False),
+    _ts("deleted_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "run_id", "tier"),
+    CheckConstraint(
+        _in("tier", ("artifacts", "trace", "run")), name="ck_retention_tombstones_tier"
+    ),
+    CheckConstraint(_in("mode", RETENTION_MODES), name="ck_retention_tombstones_mode"),
+)
+
+
+# Where the retention job is with one run and tier (ADR-160): one row per (run, tier) from the
+# moment the job starts removing it until every backend is done, then the row is deleted (the
+# tombstone stays). A crash at any point leaves the flags that were reached, and the next tick
+# resumes there.
+# `project_id` and `started_day` outlive the run record, so the rollup of the day can still be
+# rebuilt after the record is gone. `failure_code` is a fixed code, never an error text.
+retention_run_progress = Table(
+    "retention_run_progress",
+    metadata,
+    Column(
+        "workspace_id",
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("run_id", UUID(as_uuid=True), nullable=False),
+    Column("tier", Text, nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("started_day", Date),
+    Column("artifacts_done", Boolean, nullable=False, server_default=text("false")),
+    Column("search_done", Boolean, nullable=False, server_default=text("false")),
+    Column("detail_done", Boolean, nullable=False, server_default=text("false")),
+    Column("record_done", Boolean, nullable=False, server_default=text("false")),
+    Column("analytics_done", Boolean, nullable=False, server_default=text("false")),
+    Column("attempts", Integer, nullable=False, server_default=text("0")),
+    Column("failure_code", Text),
+    _ts("created_at", nullable=False, default_now=True),
+    _ts("updated_at", nullable=False, default_now=True),
+    PrimaryKeyConstraint("workspace_id", "run_id", "tier"),
+    CheckConstraint(_in("tier", ("artifacts", "trace", "run")), name="ck_retention_progress_tier"),
+    CheckConstraint("attempts >= 0", name="ck_retention_progress_attempts"),
+    CheckConstraint(
+        "failure_code IS NULL OR "
+        + _in("failure_code", ("artifact_store", "database", "timeout", "internal")),
+        name="ck_retention_progress_failure",
+    ),
+    CheckConstraint(
+        "tier = 'artifacts' OR started_day IS NOT NULL", name="ck_retention_progress_day"
+    ),
+    Index("ix_retention_progress_open", "workspace_id", "tier", "created_at"),
+)
+
+# A change to a workspace-day that its analytics rollup has to absorb (KI-057, ADR-160): the writer
+# bumps `version` in the transaction that changes the data; the refresh job records the version it
+# read before it started and, when it finishes, only marks `refreshed_version` if no writer bumped
+# it meanwhile (compare-and-set). A bump it did not see makes the job queue another refresh.
+analytics_dirty = Table(
+    "analytics_dirty",
+    metadata,
+    Column(
+        "workspace_id",
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("day", Date, nullable=False),
+    Column("version", BigInteger, nullable=False, server_default="0"),
+    Column("refreshed_version", BigInteger, nullable=False, server_default="0"),
+    PrimaryKeyConstraint("workspace_id", "day"),
+    CheckConstraint("refreshed_version <= version", name="ck_analytics_dirty_versions"),
+)
+
+# A platform-level record of each purge request (ADR-163): ids, a hash of the typed slug, counts per
+# table, the steps done. No foreign keys, no names, no content: it outlives the project or
+# workspace it describes, and while `running` it is the resume state of the purge.
+purge_tombstones = Table(
+    "purge_tombstones",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("scope", Text, nullable=False),
+    Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    Column("project_id", UUID(as_uuid=True)),
+    Column("scope_hash", Text, nullable=False),
+    Column("state", Text, nullable=False, server_default="running"),
+    Column("tool_version", Text, nullable=False),
+    Column("steps_done", PG_ARRAY(Text), nullable=False, server_default=text("'{}'")),
+    Column("counts", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column(
+        "user_candidates", PG_ARRAY(UUID(as_uuid=True)), nullable=False, server_default=text("'{}'")
+    ),
+    Column("attempts", Integer, nullable=False, server_default=text("0")),
+    Column("failure_code", Text),
+    _ts("requested_at", nullable=False, default_now=True),
+    _ts("completed_at"),
+    CheckConstraint(_in("scope", ("project", "workspace")), name="ck_purge_tombstones_scope"),
+    CheckConstraint(
+        "(scope = 'project') = (project_id IS NOT NULL)", name="ck_purge_tombstones_project"
+    ),
+    CheckConstraint(_in("state", ("running", "completed")), name="ck_purge_tombstones_state"),
+    CheckConstraint(
+        "(state = 'completed') = (completed_at IS NOT NULL)", name="ck_purge_tombstones_done"
+    ),
+    CheckConstraint(
+        "failure_code IS NULL OR "
+        + _in("failure_code", ("artifact_store", "database", "timeout", "internal")),
+        name="ck_purge_tombstones_failure",
+    ),
+    CheckConstraint("attempts >= 0", name="ck_purge_tombstones_attempts"),
+    Index("ix_purge_tombstones_workspace", "workspace_id"),
+    Index(
+        "uq_purge_running_project",
+        "workspace_id",
+        "project_id",
+        unique=True,
+        postgresql_where=text("state = 'running' AND scope = 'project'"),
+    ),
+    Index(
+        "uq_purge_running_workspace",
+        "workspace_id",
+        unique=True,
+        postgresql_where=text("state = 'running' AND scope = 'workspace'"),
+    ),
 )

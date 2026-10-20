@@ -1,9 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { shotsDir } from "./shots-dir";
 
 // Phase 22 step 8 (D9): the first-run setup guide, the arrival switch, and the trace illustrations on empty/not-found states.
 const BASE = "/w/demo/projects/all";
-const SHOTS = "../../docs/screenshots/phase-22/step-8";
+const SHOTS = shotsDir("phase-22/step-8");
 const RUN = (n: number) => `run_${String(n).padStart(26, "0")}`;
 
 async function axe(page: Page) {
@@ -55,11 +56,13 @@ for (const [w, h] of [
           "Record a run",
         ]);
         await expect(guide.getByTestId("setup-waiting")).toHaveText("Waiting for your first event");
-        // The headline is the one serif place on this page.
+        // The headline is the display step in Plex Sans (design pass 2: the serif is gone from the app).
         const family = await guide
           .getByRole("heading", { level: 2 })
           .evaluate((el) => getComputedStyle(el).fontFamily);
-        expect(family).toMatch(/serif|Plex Serif/i);
+        expect(family).toContain("IBMPlexSans");
+        expect(family).not.toMatch(/IBMPlexSerif|Plex Serif/);
+        await expect(guide.getByRole("heading", { level: 2 })).toHaveCSS("font-size", "32px");
         const btn = guide.getByRole("button", { name: "Copy the example code" });
         await btn.click();
         await expect(btn).toHaveText("Copied");
@@ -69,11 +72,13 @@ for (const [w, h] of [
         await page.screenshot({ path: `${SHOTS}/first-run-${w}-${scheme}.png`, fullPage: true });
       });
 
-      test("no results and the 404 carry a motif; axe clean", async ({ page }) => {
+      test("no results is a sentence with no drawing, the 404 keeps its motif; axe clean", async ({
+        page,
+      }) => {
         await page.goto(`${BASE}/runs?agent=nobody`);
         const empty = page.locator('[data-state="empty"]').first();
         await expect(empty).toContainText("No runs match these filters");
-        await expect(empty.locator("svg.illus")).toHaveAttribute("aria-hidden", "true");
+        await expect(empty.locator("svg.illus")).toHaveCount(0); // ADR-166: drawings only on first-run and not-found
         await axe(page);
         await page.screenshot({ path: `${SHOTS}/no-results-${w}-${scheme}.png` });
 
@@ -116,7 +121,7 @@ test.describe("arrival", () => {
 test.describe("other empty states", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test("top-bar search with no match and a run without evaluations show the motif", async ({
+  test("top-bar search with no match is a sentence; a run without evaluations says so without a drawing", async ({
     page,
   }) => {
     await page.goto(`${BASE}/runs`);
@@ -128,15 +133,16 @@ test.describe("other empty states", () => {
     await combo.fill("zzzznomatch");
     const note = page.locator(".topbar-note-empty");
     await expect(note).toContainText("No runs match this search.");
-    await expect(note.locator("svg.illus")).toHaveCount(1);
+    await expect(note.locator("svg.illus")).toHaveCount(0);
     await page.screenshot({ path: `${SHOTS}/search-no-results-1440-light.png` });
 
     await page.goto(`${BASE}/runs/${RUN(2)}`);
-    // The context column (findings, evaluations) may start closed; open it as a person would.
-    const toggle = page.getByRole("button", { name: /^Context/ });
-    if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+    // Evaluations is a tab now; a routine empty state is a statement with no drawing (ADR-166: drawings stay on the first-run
+    // guide and not-found only).
+    await page.getByRole("tab", { name: "Evaluations" }).click();
     const ev = page.locator('[data-state="empty"]').first();
     await expect(ev).toBeVisible();
-    await expect(ev.locator("svg.illus")).toHaveCount(1);
+    await expect(ev).toContainText("No evaluations yet");
+    await expect(ev.locator("svg.illus")).toHaveCount(0);
   });
 });

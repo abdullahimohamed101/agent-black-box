@@ -3,10 +3,12 @@
 import json
 import logging
 import sys
+import traceback
 from datetime import UTC, datetime
 from typing import Any
 
-from abb_api.core.request_context import get_caller, get_request_id
+from abb_api.core.request_context import get_caller, get_operation, get_request_id
+from abb_api.obs.tracing import current_traceparent
 
 # Attributes every LogRecord has; anything else was passed via `extra=` and is emitted as a field.
 _RESERVED = set(vars(logging.makeLogRecord({}))) | {"message", "asctime", "taskName"}
@@ -26,13 +28,68 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
             "request_id": get_request_id(),
         }
+        operation = get_operation()
+        if operation is not None:
+            entry["operation"] = operation
+        traceparent = current_traceparent()  # None unless tracing is on and a span is open
+        if traceparent is not None:
+            entry["trace_id"] = traceparent[3:35]  # the 32-hex trace id of "00-<trace>-<span>-<f>"
         entry.update(get_caller())
         for key, value in record.__dict__.items():
             if key not in _RESERVED and not key.startswith("_"):
                 entry[key] = value
-        if record.exc_info:
-            entry["exception"] = self.formatException(record.exc_info)
+        if record.exc_info and record.exc_info[1] is not None:
+            # The class, never the message: an exception message can quote a payload value, a
+            # key or an address (a database error echoes the offending row). INV-5.
+            entry.setdefault("error_type", type(record.exc_info[1]).__qualname__)
+            entry["exception"] = safe_traceback(record.exc_info[1])
         return json.dumps(entry, default=str)
+
+
+_MAX_FRAMES = 25
+_MAX_CHAIN = 5
+_MAX_GROUP_MEMBERS = 10
+_MAX_GROUP_DEPTH = 3
+
+
+def _group_members(exc: BaseException, depth: int = 1) -> str:
+    """Class names of an exception group's members, e.g. ``[ValueError, ExceptionGroup[KeyError]]``.
+
+    Bounded in members and depth; never a message (the group's own text and each member's can
+    quote a payload value). A task group failure is otherwise just "ExceptionGroup".
+    """
+    members = getattr(exc, "exceptions", None)
+    if not isinstance(members, tuple):
+        return ""
+    shown = []
+    for member in members[:_MAX_GROUP_MEMBERS]:
+        name = type(member).__qualname__
+        if depth < _MAX_GROUP_DEPTH and isinstance(getattr(member, "exceptions", None), tuple):
+            name += _group_members(member, depth + 1)
+        shown.append(name)
+    more = len(members) - _MAX_GROUP_MEMBERS
+    if more > 0:
+        shown.append(f"+{more} more")
+    return "[" + ", ".join(shown) + "]"
+
+
+def safe_traceback(exc: BaseException) -> str:
+    """Frames (file, line, function, source line) and exception class names; no messages.
+
+    Source lines are our own code. Local variables are not included and the exception text is
+    replaced by its class, for the exception and for everything it was chained from.
+    """
+    parts: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and len(parts) < _MAX_CHAIN and id(current) not in seen:
+        seen.add(id(current))
+        frames = traceback.extract_tb(current.__traceback__)[-_MAX_FRAMES:]
+        text = "".join(traceback.format_list(frames))
+        parts.append(f"{text}{type(current).__qualname__}{_group_members(current)}\n")
+        implicit = None if current.__suppress_context__ else current.__context__
+        current = current.__cause__ or implicit
+    return "\n".join(reversed(parts)).rstrip()
 
 
 def configure_logging(level: str, service: str = "abb-api") -> None:
@@ -46,3 +103,11 @@ def configure_logging(level: str, service: str = "abb-api") -> None:
     # httpx logs full request URLs at INFO; the identity provider calls carry codes and tokens.
     for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    # At DEBUG these log every SQL statement with its parameters (payloads, keys, addresses) and
+    # every wire message. An operator asking for DEBUG must never get the data (INV-5).
+    for data_bearing in ("sqlalchemy", "asyncpg", "asyncio"):
+        logging.getLogger(data_bearing).setLevel(logging.WARNING)
+    # The optional tracing exporter speaks HTTP through requests/urllib3, whose DEBUG lines name
+    # the collector's host, port and path (and a retry warning would quote the full URL).
+    for transport in ("urllib3", "requests"):
+        logging.getLogger(transport).setLevel(logging.ERROR)

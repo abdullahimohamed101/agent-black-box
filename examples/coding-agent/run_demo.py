@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Run the coding-agent demo and record it with Agent Black Box.
+"""Run the coding-agent demo and record it with Agent BlackBox.
 
     uv run --project packages/sdk-python python examples/coding-agent/run_demo.py            # scripted, deterministic
     ANTHROPIC_API_KEY=... uv run --project packages/sdk-python python examples/coding-agent/run_demo.py \\
-        --model anthropic --i-understand-this-runs-commands    # runs arbitrary shell as you: see README
+        --live --i-understand-this-runs-commands    # real model (same as --model anthropic); runs arbitrary
+                                                    # shell as you: see README. Not run by the project (KI-044)
 
 `--policy-demo` runs the policy scenario instead (Phase 14): the agent tries to read `.env` (blocked) and to
 push to main (paused until a person approves). It needs a server, a published policy (see
@@ -23,10 +24,12 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))  # demo_clock.py
 
-from blackbox import BlackBox, PayloadMode
-from blackbox.coding import CodingRecorder
-from blackbox.policy import ApprovalPending
+from agent_blackbox import BlackBox, PayloadMode
+from agent_blackbox.coding import CodingRecorder
+from agent_blackbox.policy import ApprovalPending
+from demo_clock import DemoClock, LatentModel, hours
 
 from coding_agent.agent import AgentResult, run_agent
 from coding_agent.models import ScriptedModel
@@ -72,6 +75,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", choices=["scripted", "anthropic"], default="scripted")
     parser.add_argument(
+        "--live",
+        action="store_true",
+        help="use a real model (same as --model anthropic); needs --i-understand-this-runs-commands "
+        "and ANTHROPIC_API_KEY. Not run by the project (KI-044)",
+    )
+    parser.add_argument(
         "--variant",
         choices=["baseline", "wrong-fix"],
         default="baseline",
@@ -93,6 +102,19 @@ def main(argv: list[str] | None = None) -> int:
         "approval's own expiry)",
     )
     parser.add_argument(
+        "--name",
+        default="Fix OAuth session expiry",
+        help="the run's name in the runs list (`make demo` gives each of its runs its own)",
+    )
+    parser.add_argument(
+        "--started-ago",
+        type=float,
+        default=None,
+        metavar="HOURS",
+        help="scripted model only: record the run as started this many hours ago, with believable model "
+        "latencies (virtual time, nothing waits; see examples/python/demo_clock.py)",
+    )
+    parser.add_argument(
         "--workdir", type=Path, help="where to build the working copy (default: a temp dir)"
     )
     parser.add_argument(
@@ -104,12 +126,16 @@ def main(argv: list[str] | None = None) -> int:
         help="REQUIRED for --model anthropic: a real model runs arbitrary shell commands as you, unsandboxed",
     )
     args = parser.parse_args(argv)
+    if args.live:
+        args.model = "anthropic"
     if args.policy_demo and (
         args.model != "scripted" or args.variant != "baseline" or args.offline
     ):
         parser.error("--policy-demo is the scripted scenario and needs a server (not --offline)")
     if args.approval_timeout is not None and not args.policy_demo:
         parser.error("--approval-timeout only applies to --policy-demo")
+    if args.started_ago is not None and (args.model != "scripted" or args.policy_demo):
+        parser.error("--started-ago is for the scripted model and not for --policy-demo")
     if args.model == "anthropic" and args.variant != "baseline":
         parser.error("--variant only applies to the scripted model")
     if args.model == "anthropic" and not args.i_understand_this_runs_commands:
@@ -127,6 +153,10 @@ def main(argv: list[str] | None = None) -> int:
         model = AnthropicModel()
     else:
         model = ScriptedModel.for_variant("policy" if args.policy_demo else args.variant)
+        if args.started_ago is not None:
+            model = LatentModel(
+                model, DemoClock(hours(args.started_ago)), lambda r: r.output_tokens
+            )
 
     with tempfile.TemporaryDirectory(prefix="abb-coding-demo-") as scratch:
         workdir = args.workdir or Path(scratch)
@@ -146,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         result: AgentResult | None = None
         try:
-            with bb.run("Fix OAuth session expiry", metadata={"model": model.name}) as run:
+            with bb.run(args.name, metadata={"model": model.name}) as run:
                 run_id = run.run_id
                 rec = CodingRecorder(bb, run, root)
                 result = run_agent(bb, run, rec, model)

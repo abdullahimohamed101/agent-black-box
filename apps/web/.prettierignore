@@ -7,3 +7,5 @@ src/lib/api/schema.d.ts
 test-results
 playwright-report
 src/lib/generated
+src/app/tokens.generated.css
+src/app/tokens.aliases.css

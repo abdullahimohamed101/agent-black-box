@@ -15,3 +15,11 @@ summary and spans are stale or missing, and the API says so (`summary_state: "fa
    record; the run's events remain queryable.
 
 Dead letters are never retried automatically: a deterministic failure would loop forever.
+
+## Metrics and alerts
+
+Dashboard row: **Worker and jobs** (Dead letters panel). Alerts: `AbbWorkerJobsDeadLettered` (any job dead-lettered in 15 minutes, ticket), `AbbAlertDeadLetters` (alert notifications that exhausted their retries, ticket).
+
+- `worker_jobs_total{outcome="dead_letter"}` counts jobs by `type` as they are dead-lettered; `processor_failures_total{type}` counts every failed attempt before that. Retried jobs are not dead letters.
+- `alert_dead_letters` is the number of **alert notifications** (not jobs) that gave up; the runbook for those is [alerting](alerting.md#monitoring).
+- The counters count events since the process started; the list of dead-lettered jobs that need a person is still `jobs-list` (step 1).

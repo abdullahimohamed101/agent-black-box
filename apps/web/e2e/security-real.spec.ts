@@ -9,6 +9,7 @@ import {
 } from "@playwright/test";
 import { settleAnimations } from "./motion";
 import { workspaceHeader } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Phase 13 step 4, API-backed. Runs only through scripts/security-e2e.sh: a real API and worker, the DEVELOPMENT-ONLY fake OIDC
 // provider, the built web server on :3190 and a run recorded by the real Python SDK that read a `.env`, printed an AWS-style key
@@ -25,7 +26,7 @@ test.skip(!WS || !RUN || !BENIGN || !OWNER || !VIEWER || !BILLING, "needs script
 test.use({ baseURL: "http://localhost:3190", viewport: { width: 1440, height: 900 } });
 test.describe.configure({ mode: "serial" }); // one owner session builds on the previous step (settings are restored at the end)
 const ORIGIN = "http://localhost:3190";
-const SHOTS = "../../docs/screenshots/phase-13";
+const SHOTS = shotsDir("phase-13");
 const RUN_URL = () => `/w/${WS}/projects/all/runs/${RUN}`;
 const SECRET_STRINGS = () => Object.values(planted); // plant tag, AWS key, PEM body, host, deploy directory
 
@@ -105,6 +106,10 @@ async function personAt(
 }
 
 let owner: Page;
+// Two page loads a second apart print different relative times ("51s ago", "52s ago"): compare the rest.
+const withoutAge = (rows: string[]): string[] =>
+  rows.map((r) => r.replace(/\d+\s*\w+ ago/g, "<age> ago"));
+
 let ownerFindings: string[] = [];
 
 test("owner: the run page shows the chip and the Security group, and the evidence opens with its content", async () => {
@@ -144,7 +149,12 @@ test("owner: the run page shows the chip and the Security group, and the evidenc
 test("owner: the workspace Security page lists the findings with facets, paging and a deep link", async () => {
   const page = owner;
   await page.goto(`/w/${WS}/security`);
-  await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible();
+  // Step 5c: the page is Review, Security findings is its tab.
+  await expect(page.getByRole("heading", { name: "Review", level: 1 })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Security findings" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   const rows = page.getByTestId("security-row");
   await expect(rows).toHaveCount(10); // one page
   const more = page.getByRole("button", { name: "Load more" });
@@ -183,7 +193,9 @@ test("owner: the workspace Security page lists the findings with facets, paging 
 test("owner: the settings page saves a real PUT through the same-origin proxy, a 422 is refused, nothing is echoed", async () => {
   const page = owner;
   await page.goto(`/w/${WS}/settings/security`);
-  await expect(page.getByRole("heading", { name: "Security", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Capture and detectors", level: 1 }),
+  ).toBeVisible();
   await page.getByLabel("Project", { exact: true }).selectOption({ label: "Full" });
   const save = page.getByRole("button", { name: "Save changes" });
   await expect(save).toBeDisabled();
@@ -265,7 +277,7 @@ test("viewer: the same findings, the evidence says content withheld, and no plan
   await page.getByTestId("security-chip").click();
   const lines = page.getByTestId("security-group").getByTestId("security-finding");
   await expect(lines).toHaveCount(6);
-  expect(await lines.allInnerTexts()).toEqual(ownerFindings); // identical to the owner's
+  expect(withoutAge(await lines.allInnerTexts())).toEqual(withoutAge(ownerFindings)); // identical to the owner's
   await lines
     .filter({ hasText: "usually holds secrets" })
     .getByRole("button", { name: "Show evidence" })
@@ -284,7 +296,9 @@ test("viewer: the same findings, the evidence says content withheld, and no plan
   const viewerRows = await page.getByTestId("security-row").allInnerTexts();
   await owner.goto(`/w/${WS}/security`);
   await expect(owner.getByTestId("security-row").first()).toBeVisible();
-  expect(await owner.getByTestId("security-row").allInnerTexts()).toEqual(viewerRows);
+  expect(withoutAge(await owner.getByTestId("security-row").allInnerTexts())).toEqual(
+    withoutAge(viewerRows),
+  );
   await page.goto(`/w/${WS}/projects/all/runs?q=${encodeURIComponent(planted.plant!)}`);
   await page.waitForLoadState("networkidle");
   // (the term is in the search box, because the viewer typed it; what matters is that no run matched it)

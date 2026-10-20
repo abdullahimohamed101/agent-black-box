@@ -1,0 +1,3 @@
+# Reviewed exceptions for scripts/check_pins.py. One per line:   reference | reason
+# `scratch` and names of earlier build stages are recognised without an entry.
+agent-black-box-api:local | built by docker compose from apps/api/Dockerfile; never pulled

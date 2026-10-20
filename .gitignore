@@ -24,3 +24,12 @@ next-env.d.ts
 *.tsbuildinfo
 .local/
 .coverage
+backups/
+video-out/
+site-dist/
+site/out/
+site/out-root/
+site/out-*/
+
+# Regenerable site screenshots (check-site.sh --only shots with SHOTS_DIR=docs/screenshots/site); about 3 MB, not committed
+docs/screenshots/site/

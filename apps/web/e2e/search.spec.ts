@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { signIn } from "./session";
+import { shotsDir } from "./shots-dir";
 
 // Runs only through scripts/auth-e2e.sh (a real API, the built web server on :3160, the worker). The two people are minted
 // development sessions (create-session): a workspace OWNER who holds `payload.read` and a VIEWER who does not. Sign-in itself
@@ -16,7 +17,7 @@ test.skip(
 );
 test.use({ baseURL: "http://localhost:3160" });
 const ORIGIN = "http://localhost:3160";
-const SHOTS = "../../docs/screenshots/phase-16";
+const SHOTS = shotsDir("phase-16");
 const RUNS = () => `/w/${A}/projects/all/runs`;
 
 async function axe(page: Page) {
@@ -44,7 +45,7 @@ async function person(token: string): Promise<Page> {
 }
 
 async function search(page: Page, q: string) {
-  const box = page.getByRole("searchbox", { name: "Search" });
+  const box = page.getByRole("searchbox", { name: "Search runs" });
   await box.fill(q);
   await box.press("Enter");
 }
@@ -73,7 +74,7 @@ test("an owner finds a run by the text of its command and by its file path", asy
   await page.screenshot({ path: `${SHOTS}/owner-content-search.png`, fullPage: true });
 
   // the owner's help lists the content fields
-  await page.getByText("Search help").click();
+  await page.getByRole("button", { name: "Search help" }).click();
   const fields = page.getByRole("list", { name: "Searchable fields" });
   await expect(fields).toContainText("file:");
   await expect(fields).toContainText("command:");
@@ -88,7 +89,7 @@ test("a viewer who types file: or command: is refused, and nothing else changes"
   const page = await person(viewerSession!);
   await page.goto(RUNS());
   await expect(page.getByText("Auth: payload run")).toBeVisible();
-  await page.getByText("Search help").click();
+  await page.getByRole("button", { name: "Search help" }).click();
   const fields = page.getByRole("list", { name: "Searchable fields" });
   await expect(fields).toContainText("status:");
   await expect(fields).not.toContainText("file:"); // never offered
@@ -130,7 +131,9 @@ test("a viewer's search over captured text finds nothing, exactly like a nonsens
     await expect(page.getByRole("list", { name: "Search terms" })).toContainText(q);
     await expect(page.getByRole("link", { name: "Auth: payload run" })).toHaveCount(0);
     await expect(page.getByText("No runs match these filters")).toBeVisible();
-    return page.locator("main, body").first().innerText();
+    // The nav's "Recording" status (a screen-reader-only dot while any run is RUNNING) is live workspace state polled on its own
+    // clock, unrelated to the query: leave it out so the two pages are compared on the search outcome alone.
+    return (await page.locator("main, body").first().innerText()).replace(/^Recording\n/m, "");
   };
   const secret = await outcome("id_rsa");
   const nonsense = await outcome("zzzqqqxxx");
@@ -144,7 +147,7 @@ test("a viewer's search over captured text finds nothing, exactly like a nonsens
 test("a viewer's metadata search works: chips, facets, keyboard only", async () => {
   const page = await person(viewerSession!);
   await page.goto(RUNS());
-  const box = page.getByRole("searchbox", { name: "Search" });
+  const box = page.getByRole("searchbox", { name: "Search runs" });
   await box.focus();
   await page.keyboard.type("status:success agent:auth-agent");
   await page.keyboard.press("Enter");
@@ -166,7 +169,7 @@ test("a viewer's metadata search works: chips, facets, keyboard only", async () 
   await expect(box).toHaveValue("agent:auth-agent");
 
   // help opens from the keyboard
-  await page.getByText("Search help").focus();
+  await page.getByRole("button", { name: "Search help" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("list", { name: "Searchable fields" })).toBeVisible();
 

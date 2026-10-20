@@ -24,7 +24,7 @@ x-api: &api
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     environment:
       POSTGRES_USER: abb
       POSTGRES_PASSWORD: ${ABB_POSTGRES_PASSWORD:-abb_dev_password}
@@ -75,6 +75,8 @@ services:
       <<: *api-env
       ABB_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb
       ABB_RUNTIME_DB_PASSWORD: ${ABB_RUNTIME_DB_PASSWORD:-abb_runtime_dev_password}
+      # Gives the retention role (ADR-159) a login; only the retention service below knows the password.
+      ABB_RETENTION_DB_PASSWORD: ${ABB_RETENTION_DB_PASSWORD:-abb_retention_dev_password}
     restart: "no"
     depends_on:
       postgres:
@@ -91,6 +93,12 @@ services:
       ABB_OIDC_ISSUER: ${ABB_OIDC_ISSUER:-http://localhost:8900}
       ABB_OIDC_CLIENT_ID: ${ABB_OIDC_CLIENT_ID:-abb-dev}
       ABB_OIDC_CLIENT_SECRET: ${ABB_OIDC_CLIENT_SECRET:-}
+      # /metrics exists only when a token (24+ characters) is set (ADR-165). Blank: no endpoint.
+      ABB_METRICS_TOKEN: ${ABB_METRICS_TOKEN:-}
+      # Local development only: lets `cli create-session` mint sign-in sessions (the demo's pending-approval run needs it). Set
+      # ABB_ALLOW_DEV_SESSIONS=1 in .env. The API ignores it unless ABB_ENVIRONMENT is development or test. Default 0, not blank:
+      # a blank value does not parse as a boolean.
+      ABB_ALLOW_DEV_SESSIONS: ${ABB_ALLOW_DEV_SESSIONS:-0}
     ports:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:8900:8900" # the fake provider shares this container's network namespace (see fake-oidc)
@@ -131,10 +139,57 @@ services:
     <<: *api
     profiles: ["app"]
     command: ["python", "-m", "abb_api.worker"]
+    environment:
+      <<: *api-env
+      # The worker serves metrics only when a port is set (needs the token too); no port is published
+      # on purpose. Inside the compose network a scraper container needs ABB_WORKER_METRICS_BIND=0.0.0.0.
+      ABB_METRICS_TOKEN: ${ABB_METRICS_TOKEN:-}
+      ABB_WORKER_METRICS_PORT: ${ABB_WORKER_METRICS_PORT:-}
+      ABB_WORKER_METRICS_BIND: ${ABB_WORKER_METRICS_BIND:-127.0.0.1}
     restart: unless-stopped
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  # Data retention (ADR-159). Its own environment on purpose: the retention role's URL is never given to the
+  # api or the worker, and this service has no ABB_DATABASE_URL. ABB_RETENTION_MODE=dry_run (the default)
+  # only measures and writes reports. ABB_RETENTION_MODE=enforce deletes, permanently (ADR-160): back up first.
+  # Enforcement removes artifact files through the same directory the api writes, so it mounts the same volume.
+  retention:
+    <<: *api
+    profiles: ["app"]
+    command: ["python", "-m", "abb_api.retention", "run"]
+    volumes:
+      - artifacts:/data/artifacts
+    environment:
+      ABB_ENVIRONMENT: development
+      ABB_ARTIFACT_DIR: /data/artifacts
+      ABB_RETENTION_DATABASE_URL: postgresql+asyncpg://abb_retention:${ABB_RETENTION_DB_PASSWORD:-abb_retention_dev_password}@postgres:5432/abb
+      ABB_RETENTION_MODE: ${ABB_RETENTION_MODE:-dry_run}
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Backup and restore (ADR-162), run on demand: docker compose --profile ops run --rm backup create --out /backups/<name>
+  # Connects as the database OWNER (it must read every table, including server_secrets): never give this service to
+  # anything that is reachable. Bundles hold server_secrets and are as sensitive as the database: encrypt them
+  # (--encrypt --passphrase-env/--passphrase-file) and keep ./backups private. Restore needs an EMPTY database and
+  # artifact directory, passed per run (ABB_RESTORE_DATABASE_URL, --artifact-dir); see docs/runbooks/backup-restore.md.
+  backup:
+    <<: *api
+    profiles: ["ops"]
+    entrypoint: ["python", "-m", "abb_api.backup"]
+    volumes:
+      - artifacts:/data/artifacts
+      - ${ABB_BACKUP_DIR:-./backups}:/backups
+    environment:
+      ABB_ENVIRONMENT: development
+      ABB_ARTIFACT_DIR: /data/artifacts
+      ABB_BACKUP_DATABASE_URL: postgresql+asyncpg://abb:${ABB_POSTGRES_PASSWORD:-abb_dev_password}@postgres:5432/abb
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   web:
     profiles: ["app"]
@@ -158,6 +213,56 @@ services:
       timeout: 3s
       retries: 10
 
+  # Local dashboards (Phase 19c, docs/OPERATIONS.md "Local dashboards"): `make observability-up`. Both bind to
+  # loopback only. The metrics token is read from a file (`make observability-token` creates .local/metrics-token,
+  # mode 0600, which is never committed); the stack never has the token in a config file or an argument. Tags are
+  # kept for readability next to the sha256 digest (scripts/check-pins.sh); Dependabot bumps both.
+  prometheus:
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    profiles: ["observability"]
+    # Runs as the invoking user so it can read the 0600 token file (make sets these from `id`). The time series
+    # live in memory (tmpfs) and are gone on `down`: this is a local view, not a monitoring system of record.
+    user: "${ABB_OBS_UID:-65534}:${ABB_OBS_GID:-65534}"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=24h
+      - --web.listen-address=:9090
+    # mode=1777: a recent Docker mounts a tmpfs 0775 root:root, which the non-root user above cannot write (Prometheus then
+    # panics on /prometheus/queries.active). Found by scripts/obs-e2e.sh, the first thing to run this profile for real.
+    tmpfs:
+      - /prometheus:mode=1777
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./deploy/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/prometheus/rules:/etc/prometheus/rules:ro
+      - ./.local/metrics-token:/etc/prometheus/abb-metrics-token:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    profiles: ["observability"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_ADMIN_USER: admin
+      # A development default for a loopback-only port. Set ABB_GRAFANA_ADMIN_PASSWORD for anything else.
+      GF_SECURITY_ADMIN_PASSWORD: ${ABB_GRAFANA_ADMIN_PASSWORD:-abb_grafana_dev_password}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   pgdata:
   artifacts:
+  grafana-data:

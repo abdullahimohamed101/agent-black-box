@@ -14,6 +14,7 @@ The event data itself is safe: streams only read what ingestion already committe
      default 30) and the page asks for a new sign-in instead of reconnecting forever. `403 PERMISSION_DENIED`: the role lost `run.read`.
    - `404`: the run is not visible to that person or key (other project or workspace, or `X-ABB-Workspace` names a workspace they are not in).
    - `429 STREAM_LIMIT`: see step 4.
+   - `429 SESSION_THROTTLED` (with `Retry-After`): not a stream limit. While the failed-session throttle's window is closed, a session created on another API process within the last 60 s is refused once and succeeds on retry (KI-233); the browser's automatic reconnect retries it. Check `session_throttle_blocks_total` and the `session lookups throttled` log line; if it persists, look for a flood of bad cookies (see [hardening](hardening.md)) rather than at the stream settings.
    - `503`/connection refused: API down or database unreachable; fix `/readyz` first, streams resume by themselves.
 3. **Reconnect loop / stream closes every few seconds**: a proxy or load balancer between web and API is buffering or cutting idle
    connections. The API sends a keepalive comment every 15 s (`ABB_STREAM_KEEPALIVE_SECONDS`) and `X-Accel-Buffering: no`; set the proxy's
@@ -41,3 +42,11 @@ The event data itself is safe: streams only read what ingestion already committe
 
 **Do not** add a second consumer that reads events "to feed streams": the stream reads Postgres by design (ADR-022). If many viewers of one
 hot run make the per-stream query a measured cost (see `docs/benchmarks/phase-5-streaming.md`), that is the trigger for a shared fan-out, via an ADR.
+
+## Metrics and alerts
+
+Dashboard row: **Alerts and streams**. Alerts: `AbbStreamDeliveryLag` (95th percentile stored-to-delivered over 5 s for 10 minutes), `AbbStreamConnectionsNearLimit` (40 or more open streams in a process; the cap is 50).
+
+- `sse_connections`: open streams in this process (step 4's cap). A staircase after a deploy is a reconnect storm.
+- `sse_delivery_lag_seconds`: time from an event being stored to its delivery. About 2 s at the tail with the listener down (step 5's fallback poll); more than that means the database or the process is slow.
+- The listener itself is not a metric (KI-234); use the `pg_stat_activity` query in step 5.

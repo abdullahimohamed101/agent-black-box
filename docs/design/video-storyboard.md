@@ -1,45 +1,93 @@
-# Demo video storyboard: Agent Black Box (redesigned app)
+# Demo video storyboard: Agent BlackBox (design pass 2 app)
 
-Length: 75 seconds (range 60-90). Format: 1920×1080 screen capture of the fixtures build after Phase 21, dark theme, no voice-over (captions carry the story), optional quiet music [NEEDS INPUT]. Audience: the owner's portfolio; people who have never seen the product.
+> Superseded by `docs/design/launch/video-cinematic-brief.md`: run names and numbers below predate the renamed demo data (the hero run is now "Answer ticket: invoice shows wrong VAT").
 
-Rules for the captions: plain language, no hype, nothing shown as built that is not built. The Compare tab, the Phase 16 search chips, policies and alerts appear only with the on-screen "Planned" tag, and only in scene 7.
+Status: rewritten 2026-10-18 for the redesigned app (ADR-166: one top bar, Runs as home, the fault line). Replaces the Phase 21
+storyboard, which described the left rail, stat strips and readout bars that no longer exist.
+
+**Superseded in part by the v2 direction (2026-10-19):** the shot list, camera, cursor and caption numbers are now in
+`docs/design/launch/video-brief.md`, and the single source of truth for what is recorded is the `MAIN`, `TEASER` and `SOCIAL`
+beat tables in `scripts/record-demo.mjs` (14 beats, about 85 s, 1920x1080 at 30 fps captured at 2x; the 78 s / 25 fps / ten
+scenes below are the v1 plan). `docs/design/launch/video-qa-report.md` records the take that was checked. The rules for captions
+and claims below still apply unchanged, and the recorder enforces them: captions 25, 26 and 28 and "Open source. Self-hosted."
+need `RELEASE_CLAIMS=1`, which stays off until G2 and AC1/AC12 are VERIFIED.
+
+Length: 78 seconds (range 60-90). Format: 1920x1080, 25 fps, dark theme with a closing light-theme scene. **No voice-over and no
+music (D17).** Captions sit in the lower third and carry the story. Casing in captions is "Agent BlackBox" (D15). Audience:
+people who have never seen the product.
+
+Rules for the captions: plain language, no hype, nothing shown that is not built. Every caption is checked against the claims
+table in `docs/plans/completed/phase-20-release-polish.md` ("Claims to verify"). Specifically:
+
+- "Open source" and "Self-hosted" are **blocked** until G2 (the repository is public) and AC1/AC12 pass. Scene 10 therefore carries
+  a neutral caption now; the blocked line is listed in the scene table and must not be used before G2.
+- Nothing says that `--live` (real model mode) works: the project has never run it (KI-044). The video shows only scripted runs.
+- No "production ready", "hosted", "SaaS", "enterprise", no numbers of tests, phases or checks.
+- Policy enforcement is cooperative (it applies to agents that ask through the SDK guard); the Approvals caption says only what
+  the page says.
+
+## Data
+
+The recording runs against the stack that `make demo` seeds (plan step 10: `scripts/demo.sh`). Step 10 is **not merged into this
+branch yet**, so the names below come from the example sources and are marked **[CONFIRM AFTER STEP 10]**; the recorder reads
+every name from one table (`DATA` in `scripts/record-demo.mjs`) so confirming them is a one-place edit.
+
+| Role in the video | Demo-seeded name (from the examples) | Fixtures build name (dry runs only) |
+| --- | --- | --- |
+| Failed run | "Fix OAuth session expiry" by `coding-agent`, the `--variant wrong-fix` run (ends `run.failed`) [CONFIRM AFTER STEP 10: does `make demo` record the wrong-fix variant?] | "Migrate billing schema" |
+| Multi-agent run | "Ship feature: multi-agent" by `planner`, five lanes, `--skew-ms` run [CONFIRM AFTER STEP 10: skew value used] | "Ship feature: multi-agent" |
+| Run with a retry that succeeds | "Answer support ticket T-1042" by `support-agent` (tool timeout, one retry) | none used |
+| Approvals | the coding example's `--policy-demo` approval (`git push` to `main`) [CONFIRM AFTER STEP 10: only if `make demo` runs the policy scenario; otherwise scene 8 is cut] | "Deploy to staging" pending approvals |
+
+Ids and times differ on every `make demo`; the recorder never types an id, it clicks the run by its visible name.
 
 ## Scenes
 
 | # | Time | On screen | Caption (lower third) | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | 0:00-0:06 | Runs list, dark theme, rail visible. Cursor rests. The REC indicator shows "2 running". | Agent Black Box records what your AI agents actually did. | Static for 2 s before any motion; no entrance animation (the app has none). |
-| 2 | 0:06-0:14 | Cursor moves down the list; the Failed row "Migrate billing schema" is selected (row tint, Findings "High" pill visible). Click. | A failed run. Let's find out why. | Row selection is instant; keep the cursor path short. |
-| 3 | 0:14-0:26 | Run page opens on the Story tab. The header: status Failed, readout strip with Retries 2 (amber) and Errors 4 (red). The headline sentence is read by the viewer. Cursor hovers "Show it". | One sentence says what happened. The readouts say how bad. | Hold 4 s on the header before moving. Zoom (post-production crop) on the readout strip is allowed if ffmpeg is available; otherwise no zoom. |
-| 4 | 0:26-0:40 | Click the High finding "Repeated failure, same arguments". The timeline scrolls to evt_0011, the row gets the landing ring, the inspector opens on the right with the ConnectionTimeout callout and "Retry of evt_0008". | Findings link to the exact events they were built from. | This is the finding-to-evidence jump; it must be the real `jumpTo`, not a cut. |
-| 5 | 0:40-0:50 | Press Escape (inspector closes, focus returns), click the Timeline tab, press `j` a few times, press `e`. The first-error row is outlined and the inspector opens again. | Keyboard first: j, k, Enter, e for the first error. | Show the keys as small on-screen captions (`j` `j` `e`) in the lower right. |
-| 6 | 0:50-0:62 | Back to Runs, open "Ship feature: multi-agent", click the Waterfall tab. Five agent lanes; the hatched error bar; the critical path edges; the tester's clock-skew outline. Click the error bar: inspector shows HttpError 503. | Five agents in one picture. The thick edge is the critical path; the dashed outline is a clock that disagreed. | Use the fixtures multi-agent run; hold 3 s with no cursor movement so viewers read the bars. |
-| 7 | 0:62-0:70 | Runs list again. Cursor hovers the search slot and the rail: the "Planned" tags on Experiments, Policies, Alerts and the search chips are visible. | Coming next: search with filter chips, run comparison, policies and alerts. (Planned) | The word "Planned" must be on screen; do not type into the search slot if Phase 16 has not landed. |
-| 8 | 0:70-0:75 | Light theme switch (system preference) on the waterfall page, then cut to the wordmark on the dark canvas. | Open source. Self-hosted. Your agents' flight recorder. | [NEEDS INPUT: licence and hosting claims must match the README and the private-hosting guide before this caption is used.] |
+| 1 | 0:00-0:07 | Runs, dark, top bar with five items (Runs, Review, Analytics, Experiments, Settings) and the scope control. Under the h1 the one-line sentence "Last 7 days: N runs, ...". Cursor rests. | Agent BlackBox records what your AI agents actually did. | Hold still 2 s. The home page is Runs; there is no Overview. |
+| 2 | 0:07-0:14 | Cursor moves down the table to the failed run; its second line "Failed at step N ..." with the red dash; click it. | One run failed. Open it to see why. | The red dash and the word Failed are the only red. |
+| 3 | 0:14-0:26 | Run page: title line with Failed, the one-sentence headline ("Failed at step N after T: ..."), the figures line, the fault line above the first error row (label "First error, step N"). Cursor stays still. | One sentence says what happened. One red line marks where it went wrong. | Hold 5 s with no motion so the sentence can be read. |
+| 4 | 0:26-0:36 | Click the Findings tab; click Show evidence on the first finding; the timeline opens with the cited event selected and the inspector. | Findings point to the exact events they came from. | Real `Show evidence` jump, not a cut. Skipped by a bounded wait if the run has no finding [CONFIRM AFTER STEP 10: the wrong-fix run's findings]. |
+| 5 | 0:36-0:46 | Close the inspector (Escape), Timeline tab, press `j` twice, then `e`: the first error row is selected and the inspector shows the error. | Keyboard first: j and k move, e jumps to the first error. | No key caps are drawn; the app's foot hint says the same. |
+| 6 | 0:46-0:52 | **Live run health "as of N s ago" (KI-097).** A running run's health label reads "as of 12 s ago" instead of "no data". | While a run is live, health shows the last analysis and its age. | **Disabled in the scene table until plan steps 3-6 are merged and the label's location is known** (the health dimensions are no longer a panel on the run page, ADR-166). It needs a run that is still running while recording; `make demo` must leave one or the recorder must start one. [CONFIRM AFTER STEPS 3-6 AND 10] |
+| 7 | 0:52-1:02 | Back to Runs, open "Ship feature: multi-agent", Waterfall tab: five lanes, the error bar, the critical path, the clock-skew outline if the run has one. Click the error bar: the inspector opens. | Five agents in one picture. The thick edge is the critical path. | Hold 3 s without motion. Show only what the Waterfall draws on the day (see `apps/web/e2e/multiagent.spec.ts`). |
+| 8 | 1:02-1:08 | Review, Approvals tab (Pending): the request row with capability and risk, the panel with Approve and Deny (no click). | When an agent asks to act, a person approves or denies it. | Do not decide. The page foot "Policies apply to agents that ask through the SDK guard." must be in frame [CONFIRM AFTER STEP 10]. |
+| 9 | 1:08-1:13 | Analytics, Cost: the headline sentence ("$X spent in the last 7 days, ..."). | Cost, reliability and speed, each in one sentence. | Reliability and Performance tabs each shown 1 s. |
+| 10 | 1:13-1:18 | The Runs page switches to the light theme (system preference, there is no toggle), then a closing hold. | Agent BlackBox: a flight recorder for AI agents. | **Blocked line:** "Open source. Self-hosted." may replace this caption only after G2 (repository public) and AC1 and AC12 are VERIFIED. Until then the caption above is the one in the table. |
 
-Total: 75 s. If it runs long, cut scene 8 to 3 s and scene 5 to 8 s.
+Total 78 s. If scene 6 is cut the total is 72 s and the other holds may grow by 1 s each. If it runs long, shorten scene 9 first.
 
-## Recording method (Playwright against the fixtures build)
+## Recording method
 
-Playwright records WebM video per browser context; no screen-recording software is needed.
+Playwright records one WebM per browser context; no screen-recording software is needed. The recorder is
+`scripts/record-demo.mjs` and the encode step is `scripts/encode-demo.sh` (needs ffmpeg, installed and approved 2026-10-18).
 
-1. Build and serve the fixtures app on port 3100 exactly as `apps/web/playwright.config.ts` does (`ABB_WEB_DATA_SOURCE=fixtures ABB_WEB_ALLOW_FIXTURES=1`). Keep it in the foreground in one terminal; stop it with Ctrl-C when done (never by killing by name).
-2. A script in this folder's style (`record.mjs`, to be written when Phase 21 lands) does, in one foreground run with a bounded timeout:
-   - `chromium.launch({ channel: "chrome" })`, `newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1, colorScheme: "dark", recordVideo: { dir, size: { width: 1920, height: 1080 } } })`.
-   - For each scene: `page.goto`, real clicks and key presses with `page.mouse.move(x, y, { steps: 30 })` so the cursor path is visible, `page.waitForTimeout` for the holds, and `page.keyboard.press("j")`, `"e"`, `"Escape"` for scene 5.
-   - Captions are injected with `page.evaluate` as a fixed `div` at the bottom (same Plex Sans, 28 px, dark pill) so they are part of the capture and no editor is needed. The "Planned" tag in scene 7 is the app's own.
-   - Scene 8's light switch is `context.emulateMedia({ colorScheme: "light" })` [NEEDS INPUT: if the app ships a toggle instead, click it].
-   - `await context.close()` writes the `.webm`; `await page.video().path()` gives the file.
-3. The result is one WebM at 1920×1080, 25 fps, 75 s. Playwright's recorder cannot draw the cursor, so the cursor is simulated: a small round `div` moved by the same script (`pointermove` listener) so viewers see where the click lands.
+1. Start the stack the video shows: `make demo` against a running stack (see plan step 10), or for a mechanics check the
+   fixtures build of `apps/web` on port 3100 (`ABB_WEB_DATA_SOURCE=fixtures ABB_WEB_ALLOW_FIXTURES=1 pnpm exec next start --port 3100`),
+   foreground, bounded, stopped afterwards.
+2. `ABB_VIDEO_BASE_URL=... node scripts/record-demo.mjs` (sign-in material, if the stack needs it, comes from environment
+   variables named in the script header and is never printed). `--dry-run` records scenes 1-3 only (about 20 s).
+3. `scripts/encode-demo.sh video-out/<file>.webm` writes an H.264 MP4 (yuv420p, faststart) and a poster PNG next to it.
+4. The script is a pure function of the scene table: a UI change means editing selectors in the table, not the driver.
 
-### What is needed and what requires approval
+Context settings: 1920x1080, `deviceScaleFactor` 1, `colorScheme: "dark"`, reduced motion **off** (so the inspector's slide and the
+fault line's single draw show), cursor simulated by an injected round `div` following `pointermove` (Playwright cannot draw the
+real cursor), captions injected as a fixed lower-third `div` in IBM Plex Sans 28 px. Output goes to `video-out/` (gitignored).
 
-- No extra software is needed to produce the WebM.
-- **ffmpeg is not installed on this machine** (`which ffmpeg` returns nothing). It is needed only for: converting WebM to MP4 (H.264) for LinkedIn and most portfolio sites, trimming, concatenating scenes recorded as separate contexts, and the optional zoom in scene 3. Installing it (`brew install ffmpeg`) is system software and requires the owner's approval per AGENTS.md "When to Ask". Alternatives without ffmpeg: upload the WebM directly to YouTube or Vimeo (both accept WebM), or convert with a browser-based tool the owner trusts.
-- Music, if any, also needs ffmpeg to mux, and a licence [NEEDS INPUT].
+## Checklist before the real recording
 
-### Checklist before recording
+- Plan steps 3-6 (KI-097) and 10 (`make demo`) merged, so scene 6 and the data names can be confirmed; replace every
+  [CONFIRM ...] above with the checked fact.
+- Every caption re-read against the claims table; scene 10 stays neutral until G2.
+- No real data: the demo workspace uses `owner@local.test` (the person menu is not opened in the video); no key, token or `.env`
+  content is on screen; the scope control reads `demo`.
+- Look at a frame from every scene as an image (captions not clipped, cursor visible, no text overlap) before publishing.
+- The user approves where the video is published (G2 territory); the recorder never uploads anything.
 
-- Phase 21 merged; fixtures build green; `prefers-reduced-motion` off in the recording context (so the inspector's 180 ms slide shows), captions readable at 1080p.
-- Every caption cross-checked against `docs/IMPLEMENTATION_PLAN.md` for what is built; anything planned carries the tag.
-- No real data: the fixtures use `coding-agent`, `planner`, `researcher`, `coder`, `tester`, `reviewer`, "Ship feature: multi-agent", "Migrate billing schema"; the owner's email in the rail footer is the fixture `owner@local.test`, never a real address.
+## Dry-run evidence (2026-10-18, fixtures build, scenes 1-3 only)
+
+VERIFIED: `ABB_VIDEO_BASE_URL=http://localhost:3100 node scripts/record-demo.mjs --dry-run` then `scripts/encode-demo.sh`. `ffprobe`:
+WebM vp9 1920x1080 yuv420p 25 fps, 18.7 s, 2.5 MB; MP4 h264 1920x1080 yuv420p 25 fps, 18.1 s (0.6 s lead-in trimmed), 0.44 MB.
+Frames extracted and viewed: caption in Plex Sans and not clipped, cursor visible, no overlap with page text. Scenes 4-10 have not
+been exercised yet (they need the demo-seeded stack); their selectors are the first thing to check on the real recording.

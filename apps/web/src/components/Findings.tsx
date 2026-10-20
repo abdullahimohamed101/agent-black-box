@@ -1,12 +1,11 @@
 "use client";
 
-import { RecorderTape } from "./illustrations";
-import { useId } from "react";
-import type { DimensionOut, FindingOut } from "@/lib/api/types";
+import { useEffect, useId, useState } from "react";
+import { run } from "@/copy/run";
+import type { FindingOut } from "@/lib/api/types";
 import {
-  dimensionLabel,
+  analysisAgeSeconds,
   evidenceTarget,
-  healthMeta,
   kindLabel,
   severityMeta,
   sortFindings,
@@ -18,59 +17,6 @@ import { splitFindings } from "@/lib/security";
 import { ErrorState, Loading } from "./States";
 
 const MAX_SHOWN = 200;
-
-function inputsText(inputs: DimensionOut["inputs"]): string {
-  return Object.entries(inputs)
-    .map(([k, v]) => `${k.replace(/_/g, " ")}: ${typeof v === "object" ? "—" : String(v)}`)
-    .join(" · ");
-}
-
-/** Health is the explanation behind the findings, so it sits in a quiet disclosure: one line, the dimensions on request. */
-function Health({ dimensions, overall }: { dimensions: readonly DimensionOut[]; overall: string }) {
-  const o = healthMeta(overall);
-  return (
-    <details className="health-disclosure">
-      <summary>
-        Health:{" "}
-        <span className="badge" data-tone={o.tone}>
-          <span aria-hidden="true">{o.glyph}</span> {o.label}
-        </span>
-      </summary>
-      <div className="health" data-testid="health">
-        <p className="health-overall">
-          Overall:{" "}
-          <span className="badge" data-tone={o.tone} data-status={overall}>
-            <span aria-hidden="true">{o.glyph}</span> {o.label}
-          </span>{" "}
-          <span className="muted">The worst dimension. No score is computed.</span>
-        </p>
-        <dl className="health-dims" aria-label="Health dimensions">
-          {dimensions.map((d) => {
-            const m = healthMeta(d.status);
-            const inputs = inputsText(d.inputs);
-            return (
-              <div
-                key={d.name}
-                className="health-dim"
-                data-dimension={d.name}
-                data-status={d.status}
-              >
-                <dt>{dimensionLabel(d.name)}</dt>
-                <dd>
-                  <span className="badge" data-tone={m.tone}>
-                    <span aria-hidden="true">{m.glyph}</span> {m.label}
-                  </span>
-                  <span className="health-rule">{d.rule}</span>
-                  {inputs && <span className="health-inputs muted">{inputs}</span>}
-                </dd>
-              </div>
-            );
-          })}
-        </dl>
-      </div>
-    </details>
-  );
-}
 
 function Finding({
   finding,
@@ -173,11 +119,14 @@ export function Findings({
   runActive,
   summaryProcessing,
   onShowEvent,
+  clock = Date.now,
 }: {
   runId: string;
   runActive: boolean;
   summaryProcessing: boolean;
   onShowEvent: (eventId: string) => void;
+  /** The browser clock; injected by tests so the "as of" age is exact. */
+  clock?: () => number;
 }) {
   const q = useRunFindings(runId, runActive || summaryProcessing);
   return (
@@ -188,22 +137,49 @@ export function Findings({
       ) : q.isError ? (
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
       ) : (
-        <FindingsBody data={q.data} runActive={runActive} onShowEvent={onShowEvent} />
+        <FindingsBody
+          data={q.data}
+          fetchedAt={q.dataUpdatedAt}
+          clock={clock}
+          runActive={runActive}
+          onShowEvent={onShowEvent}
+        />
       )}
     </section>
   );
 }
 
+/** Re-reads the clock every second while `on`, so an age keeps counting between polls. */
+function useNow(clock: () => number, on: boolean): number {
+  const [now, setNow] = useState(() => clock());
+  useEffect(() => {
+    if (!on) return;
+    const id = setInterval(() => setNow(clock()), 1000);
+    return () => clearInterval(id);
+  }, [clock, on]);
+  return now;
+}
+
 function FindingsBody({
   data,
+  fetchedAt,
+  clock,
   runActive,
   onShowEvent,
 }: {
   data: NonNullable<ReturnType<typeof useRunFindings>["data"]>;
+  fetchedAt: number;
+  clock: () => number;
   runActive: boolean;
   onShowEvent: (eventId: string) => void;
 }) {
-  const line = stateLine(data.state, runActive);
+  const borrowed = data.state.status === "processing" && data.state.computed_at != null;
+  const now = useNow(clock, borrowed);
+  const line = stateLine(
+    data.state,
+    runActive,
+    borrowed ? analysisAgeSeconds(data.state, data.server_time, now - fetchedAt) : null,
+  );
   const items = sortFindings(splitFindings(data.items).reliability);
   const shown = items.slice(0, MAX_SHOWN);
   return (
@@ -220,8 +196,7 @@ function FindingsBody({
       </p>
       {shown.length === 0 ? (
         <p className="findings-empty" data-testid="findings-empty">
-          <RecorderTape className="illus-sm" />
-          {data.state.status === "current" ? "Nothing wrong found." : "No findings yet."}
+          {data.state.status === "current" ? run.empty.noFindings : run.empty.noFindingsYet}
         </p>
       ) : (
         <ul className="finding-list" aria-label="Findings">
@@ -230,7 +205,6 @@ function FindingsBody({
           ))}
         </ul>
       )}
-      <Health dimensions={data.health.dimensions} overall={data.health.overall} />
       {items.length > shown.length && (
         <p className="muted">
           Showing the first {MAX_SHOWN} of {items.length} findings.

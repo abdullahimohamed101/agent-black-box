@@ -9,7 +9,7 @@ it. This file summarizes what is *implemented now*; the spec and
 
 ## System Overview
 
-Agent Black Box records what AI agents do. An SDK (or framework adapter) emits **canonical
+Agent BlackBox records what AI agents do. An SDK (or framework adapter) emits **canonical
 events** describing runs, spans, LLM calls, tool calls, file/Git/shell activity, retries and
 policy decisions. The API ingests them idempotently into PostgreSQL, derives summaries and
 findings asynchronously, streams live updates over SSE, and serves a Next.js UI for
@@ -67,14 +67,23 @@ row lock, debounced and coalesced `summarize_run` jobs; run state is a pure func
 (`runs/summary.py`) so it is rebuildable (ADR-012); that includes the first-error facts (event, retries, time and spend after it, ADR-112). Status: implemented (Phase 2); cost and analytics refresh jobs (Phase 7); the `detect_findings` job (Phase 10: pure detectors over a capped canonical event load, derived findings, ADR-080); the `evaluate_run` job (Phase 11: a budgeted evaluator in a thread, writes only `evaluations`, ADR-090); alert jobs
 arrive in later phases.
 
+### Retention (`abb_api.retention`) - Phase 19b, ADR-159
+A separate process (`python -m abb_api.retention run`, or `python -m abb_api.cli retention run-once`) connecting as the `abb_retention` role, the only role that may DELETE retained tables (INV-1: events are immutable until expired by this job). The API holds the per-workspace policy (`retention_policies`: four tiers, a floor of 7 days (90 for the audit log, which only an owner may change), `forever` explicit, a 24-hour grace period before a shortening is enforced; routes under `/v1/workspaces/{id}/retention`) and reads the job's reports, but cannot start the job, holds no retention credentials, cannot write or erase reports and cannot write `runs.trace_state` or `purge_state` (column-level `UPDATE` since migration 0105). `ABB_RETENTION_MODE` is `off`, `dry_run` (default) or `enforce`. Enforcement (ADR-160) deletes whole runs by tier in a fixed order (`retention/enforce.py`, `tick.py`, `prune.py`): artifacts through the `ArtifactStore`, then trace detail, then the run record, resumable per backend, bounded per pass and stoppable at every batch; the owner-run `purge-project` / `purge-workspace` commands (`retention/purge.py`, ADR-163) remove a scope from every backend, and `python -m abb_api.backup` (ADR-162) creates, verifies and restores bundles. Measurement (`retention/measure.py`) is shared by the preview endpoint and the dry-run tick. Status: implemented and **merged** (Phase 19b, PR #206; backups, restore, rotation and purge included; enforcement stays `dry_run` until an operator sets `ABB_RETENTION_MODE=enforce`).
+
+### Observability and supply chain (`abb_api.obs`, `abb_api.health`, `deploy/observability/`) - Phase 19c, ADR-165, ADR-168 to ADR-171, ADR-173
+A hand-written metrics registry with a closed vocabulary and hard series ceilings (ADR-165) served at `GET /metrics` by the API and by a small server in the worker, only when `ABB_METRICS_TOKEN` is set and with a bearer token; domain metrics increment where the fact happens and scrape-time database gauges are cached (ADR-168); the backup, restore and rotation tools write a textfile. `/healthz` is cheap liveness; `/readyz` checks the database, the schema revision, the artifact store and the role, with fixed reason codes; a per-process database circuit breaker, a 30 s statement timeout and failed-session throttling bound dependency damage (ADR-169). Logs are structured JSON with a fixed field set and a planted-sentinel scrub test; OpenTelemetry is an optional, off-by-default exporter mapped at the boundary (ADR-170, INV-8). `deploy/observability/` ships Prometheus rules, a Grafana dashboard and a compose `observability` profile; runbooks are indexed in `docs/runbooks/README.md` (ADR-171). CI actions are pinned by commit sha, images by digest, lockfiles audited by `scripts/audit-lockfiles.sh` and pins checked by `scripts/check-pins.sh` (ADR-173). Status: implemented and **merged** (Phase 19c, PR #207). The Dependabot configuration is unverified until its first scheduled run (KI-267); metrics are per process (KI-221).
+
 ### Python SDK (`packages/sdk-python`)
 Instrumentation API -> context manager -> builder/sanitizer -> bounded buffer -> exporter.
-Never raises into the host agent. Status: implemented (Phase 3; `blackbox.coding` in Phase 6; SDK 0.2.0 in Phase 8).
+Never raises into the host agent. Status: implemented (Phase 3; `agent_blackbox.coding` in Phase 6; SDK 0.2.0 in Phase 8).
 
 ### Web (`apps/web`)
 Next.js App Router. Server-fetched page data; client-side trace viewers (timeline, waterfall,
 diff, replay) with virtualization. Status: implemented (Phases 4-7, 15): dashboard, runs list, run detail with story, timeline, waterfall (Phase 9: agent lanes, zoom and pan, critical path, derived in the browser, ADR-071), diff and shell panels, live updates, analytics page, sign-in, workspace switcher, settings (members, API keys, pricing, audit log).
 The browser holds only a session cookie; the web server is a same-origin relay with a header allowlist (`apps/web/src/server/`), forwarding the cookie to the API, which decides every request.
+
+### Release assets (`site/`, `examples/`, `brand/`, `scripts/`) - Phase 20, ADR-174 to ADR-177
+`site/` is a Next static export (landing page, no third-party requests; checked by `scripts/check-site.sh`; the Pages workflow is inert until publication). `make demo` runs scripted, deterministic examples into the `abb-demo` project (`scripts/demo.sh`, proven by `scripts/demo-e2e.sh`); `brand/` holds the pulse mark and `scripts/brand.sh` regenerates the site assets; `scripts/screenshots.sh` regenerates `docs/screenshots/release`. `scripts/release-checklist.sh` is the static pre-release gate (placeholders, debug output, secrets, charts, routes, network, claims, links, imports). The repository is Apache-2.0 (ADR-175); the SDK import package is `agent_blackbox` (ADR-177); a live run's health reads the last completed analysis with `as_of`/`stale` (ADR-174). Status: implemented, pending merge; publication is parked and the rendered-app crawl is open (KI-306).
 
 ### Integrations (`integrations/*`), Processors, Examples
 Adapters translate framework callbacks to SDK calls only; processors are pluggable derived-
@@ -111,10 +120,11 @@ api modules: routers -> services -> repositories -> db   (no cross-module table 
 
 | System | Purpose | Phase | Status |
 | --- | --- | --- | --- |
-| PostgreSQL 16 | system of record: tenancy, runs, events, outbox | 0 | running in Compose; migrations through 0047 |
+| PostgreSQL 16 | system of record: tenancy, runs, events, outbox | 0 | running in Compose; migrations through 0106 (Postgres 15+ for backups; CI uses 16) |
 | Docker Compose | reproducible local stack | 0 | implemented (`make up`) |
 | Object storage (S3-compatible) | artifacts at hosted scale | 18 | deferred (trigger) |
-| Redis | cache/pub-sub/rate limits | 18 | deferred (trigger) |
+| Redis | cache/pub-sub/rate limits | 18 | deferred (trigger; the shared limiter is PostgreSQL, ADR-152) |
+| Prometheus, Grafana, Alertmanager | metrics, SLO rules, dashboards | 19c | optional compose `observability` profile; operator-run in production |
 | Kafka | durable event bus | 18 | deferred (trigger, spec §57.5) |
 | ClickHouse | event analytics at scale | 18 | deferred (trigger, spec §57.4) |
 | Kubernetes | orchestration at scale | 18 | deferred (trigger) |

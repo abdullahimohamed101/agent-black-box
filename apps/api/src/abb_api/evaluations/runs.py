@@ -29,7 +29,7 @@ from abb_api.evaluations.service import evaluator_not_found, judge_not_configure
 from abb_api.ids import new_uuid, parse_public_id, public_id
 from abb_api.jobs.outbox import EVALUATE_RUN, OutboxRepository, evaluate_key
 from abb_api.runs.queries import RunQueries, RunRecord
-from abb_api.runs.service import run_not_found
+from abb_api.runs.service import run_not_found, trace_expired
 
 MAX_EVALUATIONS_PER_EVALUATOR = 20  # rows per (run, evaluator), D10
 MAX_VERDICTS_PER_RUN = 50
@@ -173,6 +173,8 @@ class RunEvaluationService:
         """(the evaluation, created). `created` is False for the existing live row of a repeat."""
         async with self._engine.begin() as conn:
             run = await self._run(conn, principal, run_id)
+            if run.trace_state != "available":
+                raise trace_expired()  # nothing to evaluate: the events are gone or going
             evaluator = await self._evaluator(conn, principal, body.evaluator_id, run)
             if evaluator.kind == "human":
                 raise _unprocessable(

@@ -3,6 +3,7 @@ import { isFixtureViewerWorkspace } from "@/fixtures/auth";
 import { fixtureAlertWrite } from "@/fixtures/alerts";
 import { fixturePolicyWrite } from "@/fixtures/policies";
 import { fixtureQuotas } from "@/fixtures/quotas";
+import { fixtureRetention } from "@/fixtures/retention";
 import { fixtureSessions } from "@/fixtures/sessions";
 import { fixtureSecuritySettings } from "@/fixtures/security";
 import {
@@ -66,6 +67,9 @@ const ROUTES: readonly Route[] = [
   route("PATCH", `alerts/(destinations|rules)/${ID}`),
   route("DELETE", `alerts/(destinations|rules)/${ID}`),
   route("PUT", `projects/${ID}/(security-settings|quotas)`),
+  // Phase 19b: a workspace's retention policy, the preview of a proposed one and the job's reports.
+  route("GET", `workspaces/${ID}/retention(/preview|/reports)?`),
+  route("PUT", `workspaces/${ID}/retention`),
   route("PATCH", `members/${ID}`),
   route("DELETE", `(members|invitations|api-keys|evaluators|experiments)/${ID}`),
   route("DELETE", `experiments/${ID}/runs/${ID}`),
@@ -219,6 +223,28 @@ export async function readThrough(
     const fixtureMethod = (options.method ?? "GET").toUpperCase();
     const settings = /^v1\/projects\/([A-Za-z0-9_-]{1,64})\/security-settings$/.exec(path);
     const quotas = /^v1\/projects\/([A-Za-z0-9_-]{1,64})\/quotas$/.exec(path);
+    const retention =
+      /^v1\/workspaces\/([A-Za-z0-9_-]{1,64})\/retention(?:\/(preview|reports))?$/.exec(path);
+    if (fixtureMethod === "PUT" && retention) {
+      const text = await readCapped(options.body, options.headers?.get("content-length") ?? null);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text ?? "");
+      } catch {
+        return envelope(422, "REQUEST_INVALID", "A JSON body is required.");
+      }
+      const r = fixtureRetention(
+        retention[1]!,
+        undefined,
+        search,
+        parsed ?? {},
+        !isFixtureViewerWorkspace(options.headers?.get("x-abb-workspace")),
+      );
+      return Response.json(r.body, {
+        status: r.status,
+        headers: { ...SAFE, "x-request-id": "req_fixture" },
+      });
+    }
     if (fixtureMethod === "PUT" && quotas) {
       // Quota overrides keep in-memory state too, so the Quotas page can be exercised without an API.
       const text = await readCapped(options.body, options.headers?.get("content-length") ?? null);

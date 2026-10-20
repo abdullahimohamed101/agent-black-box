@@ -1,0 +1,85 @@
+# Dependabot version updates (Phase 19c, KI-024). The SHA pins of GitHub Actions and the digest
+# pins of container images are bumped by these pull requests: Dependabot rewrites the commit sha
+# and the trailing "# vX.Y.Z" comment together, and the image digest together with its tag.
+# Minor and patch updates are grouped per ecosystem to keep the noise down; majors arrive alone.
+# Security updates are separate (repository settings) and are not limited by the caps below.
+# scripts/check-pins.sh (CI job `pins`) fails if a bump ever leaves something unpinned.
+# Not handled by Dependabot, bump by hand: the pip-audit pin in scripts/audit-lockfiles.sh and the
+# digest in scripts/obs_e2e_prom.py (see docs/runbooks/bumping-pins.md).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    labels: [dependencies, supply-chain]
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories: [/apps/api, /apps/web]
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    labels: [dependencies, supply-chain]
+    groups:
+      docker-base-images:
+        update-types: [minor, patch]
+    # Runtime majors (python, node) change what the product runs on: upgraded deliberately, with an
+    # ADR and the full test matrix, never by an automatic pull request.
+    ignore:
+      - dependency-name: python
+        update-types: [version-update:semver-major]
+      - dependency-name: node
+        update-types: [version-update:semver-major]
+
+  # docker-compose.yml (postgres, prometheus, grafana). Supported by the docker ecosystem.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    labels: [dependencies, supply-chain]
+    groups:
+      compose-images:
+        update-types: [minor, patch]
+    # postgres majors need a dump/restore of existing volumes; grafana majors change the dashboard
+    # provisioning format. Both are deliberate upgrades.
+    ignore:
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
+      - dependency-name: grafana/grafana
+        update-types: [version-update:semver-major]
+
+  # pnpm workspace: one lockfile at the root covers apps/web and packages/event-schema.
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    labels: [dependencies, javascript]
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    # Toolchain majors are taken when the lint rules and the type checker have been vetted together.
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
+
+  # One uv project (own pyproject.toml and uv.lock) per directory.
+  - package-ecosystem: uv
+    directories:
+      - /apps/api
+      - /packages/event-schema
+      - /packages/sdk-python
+      - /integrations/anthropic
+      - /integrations/conformance
+      - /integrations/langgraph
+      - /integrations/mcp
+      - /integrations/openai
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    labels: [dependencies, python]
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
