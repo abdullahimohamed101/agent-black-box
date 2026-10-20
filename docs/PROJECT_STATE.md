@@ -3,6 +3,10 @@
 Last updated: 2026-10-19 (Phase 20 merged as #300; close-out done; Phase 19 complete: 19a #186, 19b #206, 19c #207; Design pass 2 merged)
 
 
+## API tests in parallel (branch `chore/api-tests-xdist`, worktree `abb-worktrees/test-xdist`; merged with `origin/main` 2026-10-20, not pushed)
+CI's `quality` job and `scripts/quality.sh` now run the API tests on 4 pytest-xdist workers (`ABB_API_TEST_WORKERS`; `0`/`serial` opts out; `make test-api` stays serial), with the service Postgres raised to `max_connections=300`. ADR-164 Amendment 1, `docs/TESTING.md`. VERIFIED locally: 4,357 passed, 1 skipped in every full run; serial 24:50 vs `-n 4` about 9:00 on a 2-CPU VM. **First CI run to watch:** the `quality` job's "Tune Postgres" step (restart of the service container, `SHOW max_connections` prints 300), then "api: pytest (-n 4)" with the same pass count as before (about 4,357 passed plus 1 skipped), and the job duration.
+
+
 ## Phase 20 (demo, docs, release quality): merged as PR #300, 2026-10-19
 Plan with the closing acceptance table: `docs/plans/completed/phase-20-release-polish.md`; PR text: `docs/plans/completed/phase-20-pr-description.md`; adversarial review: `docs/plans/completed/phase-20-review.md`. Merged into `main` as PR #300 (2026-10-19); the build branch and worktree are removed.
 **Delivered:** Apache-2.0 and community files (ADR-175), KI-097 (ADR-174), scripted examples and `make demo` (`demo-e2e.sh`), brand assets, release screenshots, the landing site (Next static export in `site/`, `check-site.sh`), docs (quickstart, deployment, troubleshooting), README, release checklist, the SDK import rename `agent_blackbox` (ADR-177) and the `guard_push` risk class (ADR-176), the demo film design (the video itself is not in git).

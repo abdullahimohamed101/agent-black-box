@@ -27,41 +27,43 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
 - Every test has a 90 s timeout so a deadlock fails fast. Security-relevant logic is **mutation-checked** during review
   (change the code, confirm a test fails); tests that survive a mutant are strengthened, not kept.
 
-### Running the API suite in parallel (opt-in, ADR-164)
+### Running the API suite in parallel (ADR-164)
 
-The default is unchanged: `make test-api` (or `cd apps/api && uv run pytest -q`) runs the whole suite serially against the Compose
-database on port 5433, and CI does the same. Parallel runs are for local feedback only.
+`make test-api` (or `cd apps/api && uv run pytest -q`) is the serial reference run against the Compose database on port 5433.
+CI and `scripts/quality.sh` run the same suite on pytest-xdist workers, one scratch database and role per worker.
+
+`scripts/quality.sh` reads `ABB_API_TEST_WORKERS`: a number, `auto`, or `0`/`serial` (one process; use it on a machine with little
+RAM or to reproduce a failure). The default is 4 when `CI` is set (the GitHub runner has 4 vCPUs) and 2 elsewhere. CI sets it to 4
+and, before the tests, raises the service Postgres to `max_connections=300` with fsync off (4 workers peaked at 65 connections).
+The API suite has no coverage gate, so nothing needs combining.
+
+For fast local feedback use the throwaway server:
 
 ```bash
 make test-db-up          # throwaway Postgres on 127.0.0.1:5434 (tmpfs, fsync off); idempotent
-make test-api-fast       # pytest -n 2 against it; N=3 make test-api-fast to choose another count
+make test-api-fast       # pytest -n 2 against it; N=4 make test-api-fast to choose another count
 make test-db-down        # removes the container and its data
 ```
 
 Or by hand: `ABB_TEST_DATABASE_URL=postgresql+asyncpg://abb:abb_dev_password@localhost:5434/abb_test uv run pytest -q -n 3`
 (`-n auto` is a poor choice on a laptop: it starts one worker per host core, far more than the Docker VM can serve).
 
-**Why a separate database server.** The suite is bound by I/O waits in the Docker VM, not CPU: every test truncates all tables, and
+**Why a separate local database server.** The suite is bound by I/O waits in the Docker VM, not CPU: every test truncates all tables, and
 Postgres spends its time in `DataFileImmediateSync`. The VM here has 2 CPUs and 4 GB. `fsync=off` on tmpfs removes that wait. The
 `testdb` service (compose profile `testdb`, container `abb-pg-test`) has its own tmpfs data and shares nothing with the dev volume;
 its data is lost on every restart by design, it uses up to 2 GB of the VM's memory as tmpfs, and nothing but tests may use it.
-`make test-api-fast` refuses to run (with a message) if it is not up. xdist also works against 5433, but gains less (see below).
+`make test-api-fast` refuses to run (with a message) if it is not up.
 
-**Measurements. PENDING: to be measured on a quiet machine by the maintainer** (serial vs `-n 2/3/4`, three consecutive full
-parallel runs with the same test count as the serial run, and the recommended N; `make test-api-fast` defaults to `N=2`,
-the VM's CPU count, until then). Numbers actually observed so far, all with 3,692 tests, a Colima VM of 2 CPUs / 4 GB, and *other
-suites running on the same VM at the same time* (host load average 4 to 20), so they are indicative only, not a benchmark:
+**Measurements (2026-10-20, 4,357 passed and 1 skipped every time; Colima VM of 2 CPUs / 4 GB, server on :5434, `/private/tmp/abb-heavy.lock` held,
+so no other suite was running; a quiet 4-vCPU runner should do better):**
 
-| Run | Server | Result | Wall (pytest) |
-| --- | --- | --- | --- |
-| serial | 5433 (Compose, durable) | 3,692 passed | 28 min 57 s (load about 4) |
-| `-n 2` | 5433 | 3,691 passed, 1 failed (a timing race, fixed since) | 16 min 3 s |
-| `-n 2` | 5434 (tmpfs, fsync off) | 3,692 passed | 18 min 51 s (heavily shared) |
-| `-n 3` | 5434 | 3,692 passed | 10 min 56 s |
-| `-n 4` | 5434 | collection error (gzip ids, fixed since); not re-run | none |
+| Run | Result | Wall |
+| --- | --- | --- |
+| serial | 4,357 passed, 1 skipped | 24 min 50 s |
+| `-n 3` | 4,357 passed, 1 skipped | 11 min 6 s |
+| `-n 4` (four runs) | 4,357 passed, 1 skipped each | 8 min 49 s, 9 min 17 s, 11 min 23 s, 11 min 24 s (the spread is host load) |
 
-The 5434 `-n 2` run was slowed by neighbours; do not read `-n 3` faster than `-n 2` as a law. The conclusion that holds is that
-the suite is I/O-bound rather than CPU-bound, which is why the fsync-off server exists.
+Earlier, on a durable 5433 server, serial took about 29 minutes (3,692 tests then); the fsync-off server mostly helps parallel runs.
 
 **How workers stay apart.** Each worker is a separate process with its own session fixtures. A worker's scratch database is named
 `abb_test_<worker>_<random>` (`gw0`, `gw1`, ...; `main` for a serial run) and its login role `abb_rt_test_<worker>_<random>`; both
@@ -76,6 +78,8 @@ use `mtime=0`).
 `pg_stat_activity` must filter on `datname = current_database()`. Timing-sensitive tests can still flake on a saturated VM; a
 failure under `-n` should be re-run serially before it is believed or blamed. Up to two suites at once on 5434 are fine
 (`max_connections=300`).
+
+**Failures found only in parallel, fixed in the test** (none weakened): `alembic()` ran an `asyncio.run` for the shared role and so failed when a test called it from inside a running loop (now runs in a worker thread there); `test_the_scrape_serves_database_gauges...` assumed the first scrape beat the sampler's fixed wait (now polls, bounded, for the sample that finishes in the background); the `testdb` compose image was not pinned by digest (`scripts/check-pins.sh`).
 
 **Cleaning leftovers.** A killed run can leave `abb_test_*` databases and `abb_rt_test_*` roles behind. On 5434 `make test-db-down`
 removes everything. On a shared server, list first, then drop only databases of the pattern that have no connections (this
