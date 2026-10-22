@@ -27,3 +27,7 @@ The condition in the Consequences section was met on today's suite (4,357 passed
 * **Switch:** `ABB_API_TEST_WORKERS` is a number, `auto`, or `0`/`serial`. Default 4 when `CI` is set, 2 elsewhere. `make test-api` stays serial and is the reference run.
 * **Coverage:** the API suite has no coverage gate (only the SDK and integrations do, and those stay serial), so there is nothing to combine.
 * The first-run reasoning for keeping CI serial (two cores per runner) no longer holds: GitHub's standard Linux runners have four.
+
+## Amendment 2 (2026-10-22): the fresh-cluster role race
+
+The first CI run (a fresh Postgres service) failed with about a third of the suite in setup errors: migration 0101's `CREATE ROLE abb_retention` raced between workers (unique violation on `pg_authid`, not `duplicate_object`). Amendment 1's local runs never saw it because the throwaway server was long-lived. Test-side fix only (migrations unchanged): an advisory lock around every `alembic()` call plus a session-wide pre-creation of every cluster-global role, a guard test that fails when a migration creates a role the harness does not know, and `scripts/migration-race-check.sh` (fresh containers, N processes at once; 10/10 rounds failed before, 0/10 after). Parallel changes must be verified on a new empty server.
