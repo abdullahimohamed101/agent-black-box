@@ -156,12 +156,14 @@ async def test_facets_are_left_out_when_the_page_used_most_of_the_budget(
 async def test_a_facets_statement_cut_off_by_the_budget_degrades_instead_of_failing(
     make_api: MakeApi, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    api = await make_api(search_timeout_seconds=1.0)
+    # A budget wide enough that the page itself never trips it on a loaded machine; the facets
+    # statement sleeps far past it, so only the facets are cut.
+    api = await make_api(search_timeout_seconds=4.0)
     await ingest_spec(api, TOOL)
     await api.drain()
 
     async def slow_facets(self: RunQueries, search: Any, *, budget: SearchBudget, **kw: Any) -> Any:
-        await budget.run(self._conn, text("SELECT pg_sleep(5)"))
+        await budget.run(self._conn, text("SELECT pg_sleep(30)"))
 
     monkeypatch.setattr(RunQueries, "facets_and_unindexed", slow_facets)
     response = await api.get("/v1/runs", token=READER, q="tool:github")
