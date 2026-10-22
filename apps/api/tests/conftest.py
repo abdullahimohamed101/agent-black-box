@@ -9,9 +9,9 @@ import asyncio
 import os
 import subprocess
 import sys
+import threading
 import uuid
 from collections.abc import AsyncIterator, Iterator
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -83,54 +83,89 @@ def make_settings(database_url: str, **overrides: object) -> Settings:
     )
 
 
-# Cluster-wide objects are shared by every worker and by every other test run on the same server,
-# so the one created by migration 0007 (`abb_runtime`) is provisioned under an advisory lock
-# before any migration runs. Postgres reports a race between two concurrent CREATE ROLE as a
-# unique violation on pg_authid, which the migration's `duplicate_object` handler does not catch.
-_ROLE_LOCK_KEY = 7_303_907_001
+# Cluster-wide objects (roles) are shared by every worker and by every other test run on the same
+# server. Migrations 0007 and 0101 create `abb_runtime` and `abb_retention`; two concurrent
+# CREATE ROLE surface as a unique violation on pg_authid, which the migrations' `duplicate_object`
+# handlers do not catch, and on a fresh cluster (CI) every worker migrates at the same moment. So
+# one session-wide advisory lock is held around every alembic run: migrations take seconds, and
+# serialising them across workers is cheap compared with chasing each cluster-global statement.
+_MIGRATION_LOCK_KEY = 7_303_907_001
 
 
-async def _ensure_runtime_role() -> None:
-    engine = create_async_engine(_admin_url(), isolation_level="AUTOCOMMIT", poolclass=NullPool)
+@contextmanager
+def cluster_migration_lock() -> Iterator[None]:
+    """Hold the advisory lock on the test server for the block (safe inside a running loop)."""
+    ready = threading.Event()
+    release = threading.Event()
+    failure: list[BaseException] = []
+
+    async def hold() -> None:
+        engine = create_async_engine(_admin_url(), isolation_level="AUTOCOMMIT", poolclass=NullPool)
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text(f"SELECT pg_advisory_lock({_MIGRATION_LOCK_KEY})"))
+                ready.set()
+                await asyncio.get_running_loop().run_in_executor(None, release.wait)
+                await conn.execute(text(f"SELECT pg_advisory_unlock({_MIGRATION_LOCK_KEY})"))
+        finally:
+            await engine.dispose()
+
+    def run() -> None:
+        try:
+            asyncio.run(hold())
+        except BaseException as exc:  # reported to the caller below
+            failure.append(exc)
+        finally:
+            ready.set()
+
+    thread = threading.Thread(target=run, name="migration-lock", daemon=True)
+    thread.start()
+    ready.wait()
+    if failure:
+        raise failure[0]
     try:
-        async with engine.connect() as conn:
-            await conn.execute(text(f"SELECT pg_advisory_lock({_ROLE_LOCK_KEY})"))
-            try:
-                await conn.execute(
-                    text(
-                        "DO $$ BEGIN CREATE ROLE abb_runtime NOLOGIN; "
-                        "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
-                    )
-                )
-            finally:
-                await conn.execute(text(f"SELECT pg_advisory_unlock({_ROLE_LOCK_KEY})"))
+        yield
     finally:
-        await engine.dispose()
+        release.set()
+        thread.join()
 
 
-def _ensure_runtime_role_sync() -> None:
-    """Provision from sync code; some tests call `alembic()` inside a running event loop."""
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        asyncio.run(_ensure_runtime_role())
-        return
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        pool.submit(asyncio.run, _ensure_runtime_role()).result()
+# Cluster-global roles migrations create (tests/test_cluster_roles.py keeps this list honest).
+CLUSTER_ROLES = ("abb_runtime", "abb_retention")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cluster_roles() -> None:
+    """Create the shared roles once, serialised, before any test migrates: migrations also run
+    in-process (test_migration_safety) and from the backup restore, outside `alembic()`'s lock."""
+    with cluster_migration_lock():
+        for role in CLUSTER_ROLES:
+            asyncio.run(
+                _admin(
+                    f"DO $$ BEGIN CREATE ROLE {role} NOLOGIN; "
+                    "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+                )
+            )
 
 
 def alembic(database_url: str, *args: str) -> None:
-    _ensure_runtime_role_sync()
-    subprocess.run(  # noqa: S603
-        [sys.executable, "-m", "alembic", "-x", f"url={database_url}", *args],
-        cwd=API_DIR,
-        check=True,
-        capture_output=True,
-        text=True,
-        # Never let a test migration ALTER the shared `abb_runtime` role's password: concurrent
-        # workers would race on it ("tuple concurrently updated") and a dev login would change.
-        env={k: v for k, v in os.environ.items() if k != "ABB_RUNTIME_DB_PASSWORD"},
-    )
+    with cluster_migration_lock():
+        done = subprocess.run(  # noqa: S603
+            [sys.executable, "-m", "alembic", "-x", f"url={database_url}", *args],
+            cwd=API_DIR,
+            check=False,
+            capture_output=True,
+            text=True,
+            # Never let a test migration ALTER the shared `abb_runtime` role's password:
+            # concurrent workers would race on it and a dev login would change.
+            env={k: v for k, v in os.environ.items() if k != "ABB_RUNTIME_DB_PASSWORD"},
+        )
+    if done.returncode != 0:
+        # CalledProcessError hides stderr in CI logs; the migration's own error is what matters.
+        raise RuntimeError(
+            f"alembic {' '.join(args)} failed (exit {done.returncode})\n"
+            f"--- stdout ---\n{done.stdout[-3000:]}\n--- stderr ---\n{done.stderr[-6000:]}"
+        )
 
 
 def _admin_url() -> str:
