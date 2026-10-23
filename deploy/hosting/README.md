@@ -16,4 +16,4 @@ Plan: `docs/plans/completed/phase-23-private-hosting.md`. Decision: `docs/decisi
 | `systemd/` | `abb-backup` (nightly encrypted backup + off-site copy) and `abb-container-metrics` units, `backup.env.example` | `scripts/hosting-backup-e2e.sh` |
 | `rig/` | local test overlays; never used on a server | |
 
-Scripts (all in `scripts/`): `hosting-bootstrap.sh` (fresh Ubuntu 24.04 server), `hosting-secrets.sh`, `hosting-upgrade.sh`, `hosting-backup.sh`, `hosting-restore-drill.sh`, `hosting-container-metrics.sh`, `hosting-verify.sh` (`--server`, `--server-probe`). Each has a rig named after it (`make hosting-bootstrap-e2e`, `hosting-upgrade-e2e`, `hosting-backup-e2e`, `hosting-obs-e2e`, `hosting-e2e`).
+Scripts (all in `scripts/`): `hosting-bootstrap.sh` (fresh Ubuntu 24.04 server), `hosting-secrets.sh`, `hosting-upgrade.sh`, `hosting-backup.sh`, `hosting-restore-drill.sh`, `hosting-container-metrics.sh`, `hosting-verify.sh` (`--server`, `--server-probe`). Each has a rig named after it (`make hosting-bootstrap-e2e`, `hosting-upgrade-e2e`, `hosting-backup-e2e`, `hosting-linux-perms-e2e`, `hosting-obs-e2e`, `hosting-e2e`).
