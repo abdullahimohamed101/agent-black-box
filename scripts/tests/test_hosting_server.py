@@ -73,6 +73,7 @@ class FakeHost(server.Host):
         self.modes: Dict[str, Tuple[int, str]] = {
             "/opt/abb/.env": (0o600, "deploy"), "/etc/abb/backup.pass": (0o600, "deploy"),
             "/opt/abb/secrets": (0o700, "deploy"), "/opt/abb/backups": (0o700, "deploy"),
+            "/etc/abb/rclone.conf": (0o600, "deploy"),
         }
         self.disks: Dict[str, Tuple[float, float]] = {"/": (31.0, 4.0), "/var/lib/docker": (31.0, 4.0)}
         self.mtimes: Dict[str, float] = {}
@@ -192,6 +193,25 @@ class ServerChecks(unittest.TestCase):
         host = FakeHost()
         del host.modes["/opt/abb/.env"]
         self.assertEqual(failing(host), ["secrets.modes"])
+
+    def test_backups_directory_must_stay_0700_even_if_a_workaround_opened_it(self):
+        # The first live install had to chmod 0711 to make the old create step work; the fixed script does not need it, so the
+        # verifier keeps wanting exactly 0700 (the encrypted bundles and .staging are the only content, but least privilege holds).
+        self.planted("secrets.modes", modes={"/opt/abb/backups": (0o711, "deploy")})
+
+    def test_rclone_config_must_be_readable_by_the_service_user(self):
+        # `sudo rclone config` leaves the file root:root 0600; the unit runs as deploy and fails 'permission denied' (live bug 2).
+        host = FakeHost(modes={"/etc/abb/rclone.conf": (0o600, "root")})
+        res = [r for r in server.run_server_checks(host, server.Settings()) if r.check == "backup.rclone"]
+        self.assertEqual([r.status for r in res], ["FAIL"])
+        self.assertIn("not readable by deploy", res[0].detail)
+        self.assertIn("chown deploy:deploy", res[0].detail)
+
+    def test_rclone_config_world_readable_or_missing(self):
+        self.planted("backup.rclone", modes={"/etc/abb/rclone.conf": (0o644, "deploy")})
+        host = FakeHost()
+        del host.modes["/etc/abb/rclone.conf"]
+        self.assertEqual(failing(host), ["backup.rclone"])
 
     def test_backup_timer_missing_and_never_ran_is_a_failure_ki_243(self):
         host = FakeHost(commands={("systemctl", "is-active", "abb-backup.timer"): (3, "inactive\n"), ("systemctl", "is-enabled", "abb-backup.timer"): (1, "disabled\n")})

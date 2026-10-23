@@ -30,11 +30,16 @@ MAX_AGE_HOURS="${ABB_BACKUP_MAX_AGE_HOURS:-36}"
 PROJECT="${ABB_COMPOSE_PROJECT:-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LIB=(python3 "$HERE/hosting_backup_lib.py")
+# shellcheck source=hosting-env.sh
+. "$HERE/hosting-env.sh"
+abb_rclone_default
 
 log() { printf 'hosting-backup: %s\n' "$*"; }
 die() { printf 'hosting-backup: ERROR: %s\n' "$1" >&2; exit "${2:-1}"; }
 
 if [ "${1:-}" = "--check" ]; then
+  # first-run diagnosis: a root-owned rclone.conf makes every night fail with a bare "permission denied" (live bug 2)
+  if ! why="$(abb_rclone_diagnose)"; then die "$why"; fi
   "${LIB[@]}" check --file "$METRICS_FILE" --max-age-hours "$MAX_AGE_HOURS"
   exit $?
 fi
@@ -91,11 +96,15 @@ command -v rclone >/dev/null || die "rclone is not installed (scripts/hosting-bo
 [ -n "$REMOTE" ] || die "ABB_OFFSITE_REMOTE is not set (rclone remote:path of the SECOND provider)" 2
 case "$REMOTE" in /*|.*) die "ABB_OFFSITE_REMOTE must be an rclone remote:path, not a local path (a copy on the same disk is not a backup)" 2 ;; esac
 case "$REMOTE" in *:*) ;; *) die "ABB_OFFSITE_REMOTE must be an rclone remote:path (no colon: rclone would treat it as a local path)" 2 ;; esac
+if ! why="$(abb_rclone_diagnose)"; then die "$why" 2; fi
 [ -r "$PASSFILE" ] || die "the passphrase file $PASSFILE is not readable" 2
 perm="$(stat -c '%a' "$PASSFILE" 2>/dev/null || stat -f '%Lp' "$PASSFILE")"
 [ "$perm" = 600 ] || [ "$perm" = 400 ] || die "the passphrase file must be mode 0600 (is $perm)" 2
 [ "$(wc -c <"$PASSFILE")" -ge 12 ] || die "the passphrase must be at least 12 bytes" 2
 mkdir -p "$BACKUP_DIR"
+# Self-heal: the directory is 0700 (deploy). An install that was loosened by hand (the 0711 workaround for the old create step) or
+# created with a wider umask is put back; the create container no longer needs the mount root to be traversable (see step 1).
+chmod 0700 "$BACKUP_DIR" 2>/dev/null || log "WARNING: could not set $BACKUP_DIR to 0700 (is it owned by $(id -un)?)"
 LOCKDIR="$BACKUP_DIR/.lock"
 abb_lock_acquire "$LOCKDIR" || die "another backup is running (or its lock has no pid file: check ps, then remove $LOCKDIR)" 75
 trap cleanup EXIT
@@ -108,7 +117,12 @@ host_user="$(id -u):$(id -g)"
 log "step=create bundle=$NAME"
 # Orphans of runs that died mid-create (older than a day, so a run in progress is never touched) are removed here.
 root_sh "install -d -o 10001 -g 10001 -m 0700 /backups/$STAGING && find /backups/$STAGING -mindepth 1 -maxdepth 1 -mmin +1440 -exec rm -rf {} + ; rm -rf /backups/$STAGING/$NAME" sh
-dc run --rm -T -e ABB_BACKUP_PASSPHRASE backup create --out "/backups/$STAGING/$NAME" --encrypt --passphrase-env ABB_BACKUP_PASSPHRASE >/dev/null
+# The create container runs as uid 10001 and /opt/abb/backups is 0700 deploy (uid 1000 on the server): uid 10001 cannot walk it, so the
+# tool gets ONLY the .staging directory (0700, uid 10001, made above), mounted by the Docker daemon at /staging. Least privilege: no
+# widening of the backups root (a 0711 would also work but is a looser mode for every file manager on the host). Docker Desktop does
+# not enforce uid/mode on bind mounts, which hid this; scripts/hosting-linux-perms-e2e.sh enforces it with a real Linux container.
+STAGING_HOST="$(cd "$BACKUP_DIR" && pwd)/$STAGING"
+dc run --rm -T -e ABB_BACKUP_PASSPHRASE -v "$STAGING_HOST:/staging" backup create --out "/staging/$NAME" --encrypt --passphrase-env ABB_BACKUP_PASSPHRASE >/dev/null
 root_sh "mv /backups/$STAGING/$NAME /backups/$NAME && chown -R $host_user /backups/$NAME" sh
 bundle="$BACKUP_DIR/$NAME"
 bytes="$(du -sk "$bundle" | awk '{print $1 * 1024}')"

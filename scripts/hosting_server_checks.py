@@ -85,10 +85,10 @@ class Host:
 class Settings:
     def __init__(self, abb_dir: str = "/opt/abb", deploy_user: str = "deploy", textfile_dir: str = "/var/lib/node_exporter/textfile",
                  backup_pass: str = "/etc/abb/backup.pass", http3: bool = False, disk_limit: int = DISK_LIMIT,
-                 backup_max_age_hours: float = 36.0, docker_root: str = "/var/lib/docker") -> None:
+                 backup_max_age_hours: float = 36.0, docker_root: str = "/var/lib/docker", rclone_conf: str = "/etc/abb/rclone.conf") -> None:
         self.abb_dir, self.deploy_user, self.textfile_dir = abb_dir, deploy_user, textfile_dir
         self.backup_pass, self.http3, self.disk_limit = backup_pass, http3, disk_limit
-        self.backup_max_age_hours, self.docker_root = backup_max_age_hours, docker_root
+        self.backup_max_age_hours, self.docker_root, self.rclone_conf = backup_max_age_hours, docker_root, rclone_conf
 
 
 def _needs_root(check: str, rc: int, what: str) -> Optional[Result]:
@@ -296,6 +296,23 @@ def check_file_modes(h: Host, s: Settings) -> List[Result]:
     return [verdict("secrets.modes", not wrong and not missing, "secrets are 0600/0700 and owned by the deploy user", "; ".join(wrong + missing))]
 
 
+def check_rclone_conf(h: Host, s: Settings) -> List[Result]:
+    """The unit runs as the deploy user. A config made with `sudo rclone config` is root:root 0600 and every run fails 'permission denied'."""
+    info = h.mode_owner(s.rclone_conf)
+    if info is None:
+        return [bad("backup.rclone", f"{s.rclone_conf} is missing (as the deploy user: rclone --config {s.rclone_conf} config)")]
+    mode, owner = info
+    user = s.deploy_user
+    if owner != user and not mode & 0o004:
+        return [bad("backup.rclone", f"{s.rclone_conf} is owned by {owner} with mode {mode:04o}: not readable by {user}, the user the backup service runs as. "
+                                     f"Fix: sudo chown {user}:{user} {s.rclone_conf} && sudo chmod 600 {s.rclone_conf}")]
+    if mode & 0o077:
+        return [bad("backup.rclone", f"{s.rclone_conf} is mode {mode:04o}: it holds the provider key, make it 0600 (sudo chmod 600 {s.rclone_conf})")]
+    if not mode & 0o400:
+        return [bad("backup.rclone", f"{s.rclone_conf} is mode {mode:04o}: the owner cannot read it (sudo chmod 600 {s.rclone_conf})")]
+    return [ok("backup.rclone", f"{s.rclone_conf} is readable by {user} and private")]
+
+
 def check_backup(h: Host, s: Settings) -> List[Result]:
     """KI-243: a backup that was never scheduled writes no file, so the absence of the file is itself the failure."""
     rc, active = h.run(["systemctl", "is-active", "abb-backup.timer"])
@@ -370,7 +387,7 @@ def run_server_checks(h: Optional[Host] = None, s: Optional[Settings] = None) ->
     groups: List[Callable[[], List[Result]]] = [
         lambda: check_ufw(h, s), lambda: check_sshd(h), lambda: check_listeners(h, s), lambda: check_docker_published(h, s),
         lambda: check_unattended(h), lambda: check_disk(h, s), lambda: check_docker_daemon(h), lambda: check_compose_version(h),
-        lambda: check_file_modes(h, s), lambda: check_backup(h, s), lambda: check_fail2ban(h), lambda: check_swap_time(h),
+        lambda: check_file_modes(h, s), lambda: check_rclone_conf(h, s), lambda: check_backup(h, s), lambda: check_fail2ban(h), lambda: check_swap_time(h),
     ]
     for fn in groups:
         try:

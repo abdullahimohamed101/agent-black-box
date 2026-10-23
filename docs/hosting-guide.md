@@ -166,11 +166,13 @@ Use a real git tag for production rather than `main` once you have one; `main` i
 1. Put the **backup passphrase** in your password manager now: `sudo cat /etc/abb/backup.pass` on the server, copy it. If it is lost, every backup is unreadable and no one can help.
 2. Edit `/opt/abb/.env` with an editor and fill `ABB_OIDC_CLIENT_ID` and `ABB_OIDC_CLIENT_SECRET` from step 3. Check `ABB_OIDC_EXTRA_HOSTS` is still `oauth2.googleapis.com,www.googleapis.com`. Leave `ABB_RETENTION_MODE=dry_run`.
 3. Copy the Grafana admin password from `/opt/abb/secrets/grafana_admin_password` into your password manager (you need it for the tunnel in [Grafana](#grafana-over-an-ssh-tunnel)).
-4. Backups: put the B2 key into rclone's configuration and set the remote in `/etc/abb/backup.env`.
+4. Backups: put the B2 key into rclone's configuration and set the remote in `/etc/abb/backup.env`. Run these as `deploy`, **not with `sudo`**: the backup service runs as `deploy`, and a config
+   file made by root is unreadable to it (the run then fails with `Failed to load config file: permission denied`; `hosting-backup.sh --check` and `hosting-verify.sh --server` name this cause).
 
 ```bash
 rclone --config /etc/abb/rclone.conf config        # new remote named b2, type Backblaze B2: it asks for the keyID and applicationKey
 chmod 600 /etc/abb/rclone.conf
+# only if you ever ran the line above with sudo, the file is root-owned: sudo chown deploy:deploy /etc/abb/rclone.conf
 rclone --config /etc/abb/rclone.conf lsd b2:       # lists your bucket if the key works
 nano /etc/abb/backup.env                           # ABB_OFFSITE_REMOTE=b2:YOUR-BUCKET/abb ; ABB_OFFSITE_PRUNE=0 if the key cannot delete
 ```
@@ -277,11 +279,10 @@ prunes old copies (local: 7 days but always the newest 3; off-site: 30 days but 
 
 The bundle plus `/etc/abb/backup.pass` is the keys to the installation. Keep the passphrase and the rclone key in your password manager, and keep them out of the repository.
 
-A backup is only real once it has been restored. The drill restores the newest off-site bundle into a throwaway database next to the real one, compares every table with the manifest, prints `DRILL OK` and removes what it created:
+A backup is only real once it has been restored. The drill reads `/etc/abb/backup.env` itself and uses `/etc/abb/rclone.conf` when `RCLONE_CONFIG` is not set, so no exports are needed. The drill restores the newest off-site bundle into a throwaway database next to the real one, compares every table with the manifest, prints `DRILL OK` and removes what it created:
 
 ```bash
 cd /opt/abb
-set -a; . /etc/abb/backup.env; set +a; export RCLONE_CONFIG=/etc/abb/rclone.conf
 scripts/hosting-restore-drill.sh --latest
 ```
 
