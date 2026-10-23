@@ -166,11 +166,13 @@ Use a real git tag for production rather than `main` once you have one; `main` i
 1. Put the **backup passphrase** in your password manager now: `sudo cat /etc/abb/backup.pass` on the server, copy it. If it is lost, every backup is unreadable and no one can help.
 2. Edit `/opt/abb/.env` with an editor and fill `ABB_OIDC_CLIENT_ID` and `ABB_OIDC_CLIENT_SECRET` from step 3. Check `ABB_OIDC_EXTRA_HOSTS` is still `oauth2.googleapis.com,www.googleapis.com`. Leave `ABB_RETENTION_MODE=dry_run`.
 3. Copy the Grafana admin password from `/opt/abb/secrets/grafana_admin_password` into your password manager (you need it for the tunnel in [Grafana](#grafana-over-an-ssh-tunnel)).
-4. Backups: put the B2 key into rclone's configuration and set the remote in `/etc/abb/backup.env`.
+4. Backups: put the B2 key into rclone's configuration and set the remote in `/etc/abb/backup.env`. Run these as `deploy`, **not with `sudo`**: the backup service runs as `deploy`, and a config
+   file made by root is unreadable to it (the run then fails with `Failed to load config file: permission denied`; `hosting-backup.sh --check` and `hosting-verify.sh --server` name this cause).
 
 ```bash
 rclone --config /etc/abb/rclone.conf config        # new remote named b2, type Backblaze B2: it asks for the keyID and applicationKey
 chmod 600 /etc/abb/rclone.conf
+# only if you ever ran the line above with sudo, the file is root-owned: sudo chown deploy:deploy /etc/abb/rclone.conf
 rclone --config /etc/abb/rclone.conf lsd b2:       # lists your bucket if the key works
 nano /etc/abb/backup.env                           # ABB_OFFSITE_REMOTE=b2:YOUR-BUCKET/abb ; ABB_OFFSITE_PRUNE=0 if the key cannot delete
 ```
@@ -238,8 +240,26 @@ Writing `ABB_OBS_UID` into `.env` is also what tells `hosting-upgrade.sh`, `host
 
 The observability overlay adds Prometheus (30 days, 4 GiB at most), node_exporter, Alertmanager, a probe of your public `/healthz` and certificate, and Grafana, all bound to `127.0.0.1`.
 
-**ACTION NEEDED (you):** choose where alerts go. Alertmanager ships with **no receiver**: alerts are evaluated and visible, and are sent nowhere until you configure one. Edit the `notify` receiver in
-`deploy/hosting/alertmanager/alertmanager.yml.tmpl` (commented email, Slack and webhook examples; keep secrets as files under `/opt/abb/secrets/alertmanager/`), then restart Alertmanager.
+**ACTION NEEDED (you):** choose where alerts go. Alertmanager ships with **no receiver**: alerts are evaluated and visible, and are sent nowhere until you configure one. **Do not edit the tracked file**
+`deploy/hosting/alertmanager/alertmanager.yml.tmpl`: a modified checkout makes `hosting-upgrade.sh` refuse. Put the receiver in an untracked file instead, `/opt/abb/secrets/alertmanager/notify.yml`
+(mode 0600, owner `deploy`, the same directory as the secret files it points to). Its content is the integration blocks of the `notify` receiver. For Gmail (an
+[app password](https://myaccount.google.com/apppasswords), not your account password; put it in `/opt/abb/secrets/alertmanager/smtp_password`, mode 0600):
+
+```yaml
+email_configs:
+  - to: <you>@gmail.com
+    from: <you>@gmail.com
+    smarthost: smtp.gmail.com:587
+    auth_username: <you>@gmail.com
+    auth_password_file: /run/alertmanager-secrets/smtp_password
+    headers:
+      subject: '{{ template "abb.title" . }}'
+    text: '{{ template "abb.text" . }}'
+```
+
+Slack (`slack_configs:` with `api_url_file: /run/alertmanager-secrets/slack_webhook_url`) and webhook (`webhook_configs:` with `url_file: /run/alertmanager-secrets/webhook_url`) examples are in the template's comments.
+Then `$dco up -d` (it re-renders the configuration, `amtool check-config` validates it, and only then is Alertmanager restarted; a malformed file stops there with amtool's message and the running Alertmanager is not replaced).
+The dead-man's-switch receiver works the same way with an optional `deadman.yml` (`webhook_configs:` with `url_file: /run/alertmanager-secrets/deadman_url`).
 Optionally create a dead-man's-switch check (a Healthchecks-style URL, put in a file under that directory) for the always-firing `Watchdog` alert and set `ABB_DEADMAN_URL` in `/etc/abb/backup.env`, so you also hear when the whole pipeline goes quiet.
 Set `ABB_RUNBOOK_BASE_URL` in `.env` to the address where you serve these docs if you want clickable runbook links in notifications.
 
@@ -277,11 +297,10 @@ prunes old copies (local: 7 days but always the newest 3; off-site: 30 days but 
 
 The bundle plus `/etc/abb/backup.pass` is the keys to the installation. Keep the passphrase and the rclone key in your password manager, and keep them out of the repository.
 
-A backup is only real once it has been restored. The drill restores the newest off-site bundle into a throwaway database next to the real one, compares every table with the manifest, prints `DRILL OK` and removes what it created:
+A backup is only real once it has been restored. The drill reads `/etc/abb/backup.env` itself and uses `/etc/abb/rclone.conf` when `RCLONE_CONFIG` is not set, so no exports are needed. The drill restores the newest off-site bundle into a throwaway database next to the real one, compares every table with the manifest, prints `DRILL OK` and removes what it created:
 
 ```bash
 cd /opt/abb
-set -a; . /etc/abb/backup.env; set +a; export RCLONE_CONFIG=/etc/abb/rclone.conf
 scripts/hosting-restore-drill.sh --latest
 ```
 

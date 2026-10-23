@@ -20,7 +20,7 @@ Weekly, five minutes, from your machine and the server:
 4. `sudo journalctl -u unattended-upgrades --since "7 days ago" | tail`, and whether `/var/run/reboot-required` exists (`ls /var/run/reboot-required`). A reboot is safe: every service has `restart: unless-stopped`. Automatic reboots happen at 04:30 only when an update requires one, unless the bootstrap was run with `ABB_AUTO_REBOOT=0`.
 5. The sign-in and invitation state of the product itself (members, keys): [sign-in runbook](auth-and-access.md).
 
-Monthly: the restore drill, `scripts/hosting-restore-drill.sh --latest` (with `/etc/abb/backup.env` exported and `RCLONE_CONFIG=/etc/abb/rclone.conf`), which must print `DRILL OK`. Before enabling `ABB_RETENTION_MODE=enforce` do it first and keep the output.
+Monthly: the restore drill, `scripts/hosting-restore-drill.sh --latest` (run as `deploy` from `/opt/abb`; it reads `/etc/abb/backup.env` and defaults `RCLONE_CONFIG` to `/etc/abb/rclone.conf` when that file exists, so no exports are needed outside systemd), which must print `DRILL OK`. Before enabling `ABB_RETENTION_MODE=enforce` do it first and keep the output.
 Quarterly: read what Dependabot proposed for the pinned images and run `scripts/check-pins.sh` ([bumping pins](bumping-pins.md)); a PostgreSQL major version is never an in-place change.
 
 ## Disk is filling up
@@ -63,7 +63,7 @@ Alerts: `AbbHostingBackupTooOld`, `AbbHostingBackupVeryOld`, `AbbHostingOffsiteT
 
 1. `systemctl list-timers abb-backup.timer`, `systemctl status abb-backup.service`, `journalctl -u abb-backup.service -n 100`. `scripts/hosting-backup.sh --check` prints the same judgement as the alerts.
 2. **Never ran** (`AbbHostingBackupNeverRan`, KI-243): the timer is not enabled, or `/etc/abb/backup.env` is incomplete. `sudo systemctl enable --now abb-backup.timer`, run `sudo systemctl start abb-backup.service` once and read its output. The first scheduled run is part of the setup.
-3. **Failed**: the line `hosting-backup: ERROR:` names the step. Common: the passphrase file is not mode 0600, `rclone` cannot reach the second provider (key, bucket or network: `rclone lsd <remote>:`), or a previous run left `/opt/abb/backups/.lock` after a crash (remove it if no backup is running).
+3. **Failed**: the line `hosting-backup: ERROR:` names the step. Common: the passphrase file is not mode 0600, `rclone` cannot reach the second provider (key, bucket or network: `rclone lsd <remote>:`), or **`Failed to load config file: permission denied`** (`/etc/abb/rclone.conf` was made with `sudo` and is root-owned: `sudo chown deploy:deploy /etc/abb/rclone.conf && sudo chmod 600 /etc/abb/rclone.conf`; `scripts/hosting-backup.sh --check` prints this cause), or a previous run left `/opt/abb/backups/.lock` after a crash (remove it if no backup is running).
 4. **Off-site only**: the local bundle was made and verified but the copy failed; the local bundle is kept. Fix the remote and run the service again.
 5. **Restore drill old**: `scripts/hosting-restore-drill.sh --latest` restores the newest off-site bundle into a throwaway database and prints `DRILL OK`. Do it monthly, and always before enabling `ABB_RETENTION_MODE=enforce`. The restore procedure itself is `backup-restore.md`.
 6. Losing `/etc/abb/backup.pass` makes every bundle unreadable; it must also be in the owner's password manager.
@@ -79,7 +79,17 @@ Alerts: `AbbPublicProbeFailing`, `AbbCertificateExpiring`, `AbbCertificateExpiri
 
 ## Alerts never arrive
 
-Alertmanager ships with the `notify` receiver empty (and a `deadman` receiver for the watchdog): alerts are evaluated and shown in Prometheus and Alertmanager, and sent nowhere, until a receiver is configured (`deploy/hosting/alertmanager/alertmanager.yml.tmpl`, the commented examples; the choice of email, Slack or a webhook is the owner's).
+Alertmanager ships with the `notify` receiver empty (and a `deadman` receiver for the watchdog): alerts are evaluated and shown in Prometheus and Alertmanager, and sent nowhere, until a receiver is configured (the choice of email, Slack or a webhook is the owner's). The receiver lives in the **untracked** file `/opt/abb/secrets/alertmanager/notify.yml` (and `deadman.yml`), never in the tracked template: [hosting guide, step 9](../hosting-guide.md) has the Gmail example (`auth_password_file: /run/alertmanager-secrets/smtp_password`, the app password in `/opt/abb/secrets/alertmanager/smtp_password`). After a change run `$dco up -d`; `obs-check` runs `amtool check-config` first and a malformed file stops there.
+
+**Migrating a server where the template was edited by hand** (the checkout is dirty and `hosting-upgrade.sh` refuses): move the receiver block into `notify.yml` (only the integration keys, for example `email_configs:` and its list, without the `- name: notify` line), then
+
+```bash
+cd /opt/abb
+git diff deploy/hosting/alertmanager/alertmanager.yml.tmpl > ~/alertmanager-tmpl-edit.diff   # keep what you had, to copy from
+git checkout deploy/hosting/alertmanager/alertmanager.yml.tmpl
+$EDITOR secrets/alertmanager/notify.yml && chmod 600 secrets/alertmanager/notify.yml
+scripts/hosting-upgrade.sh <tag>      # or `$dco up -d` first to check the receiver
+```
 
 1. Is the pipeline alive: the always-firing `Watchdog` alert should reach the dead-man's switch URL (`ABB_DEADMAN_URL` style service). If that service reports silence, check Prometheus and Alertmanager (`docker compose ... ps`), then the receiver's own credentials.
 2. Alertmanager's view over an SSH tunnel: `ssh -L 9093:127.0.0.1:9093 deploy@<server>`, then `http://127.0.0.1:9093`. The same for Prometheus (9090) and Grafana (3001): none of them is reachable from the internet.
@@ -106,7 +116,7 @@ Order of the script (its comments are the reference): preflight (clean checkout,
 
 For a lost or damaged server, or a failed upgrade that changed the schema. You need: the backup passphrase (your password manager), the rclone key for the second provider, the Google client secret, and the repository.
 
-1. New server, DNS pointing at it, then the guide's steps 5 to 7 (bootstrap, code, `hosting-secrets.sh`, Caddy), **but not the first deploy**. **Put the saved passphrase back** into `/etc/abb/backup.pass` (mode 0600, owner `deploy`) instead of the newly generated one, and recreate `/etc/abb/rclone.conf` and `ABB_OFFSITE_REMOTE` in `/etc/abb/backup.env`. Check out the release tag you were running (`git checkout --detach <tag>`).
+1. New server, DNS pointing at it, then the guide's steps 5 to 7 (bootstrap, code, `hosting-secrets.sh`, Caddy), **but not the first deploy**. **Put the saved passphrase back** into `/etc/abb/backup.pass` (mode 0600, owner `deploy`) instead of the newly generated one, and recreate `/etc/abb/rclone.conf` (as `deploy`, or `sudo chown deploy:deploy /etc/abb/rclone.conf` afterwards) and `ABB_OFFSITE_REMOTE` in `/etc/abb/backup.env`. Check out the release tag you were running (`git checkout --detach <tag>`).
 2. Fetch the bundle and start only the database. A fresh volume creates an **empty** `abb`; nothing is migrated yet.
 
    ```bash
@@ -142,7 +152,7 @@ The full index is [secrets](secrets.md); the hosted specifics:
 | Metrics token | `.env` (`ABB_METRICS_TOKEN`) and `secrets/metrics_token` (the same value, both) | set a new value in both with an editor, `$dc up -d api worker`, restart Prometheus with the observability overlay |
 | PostgreSQL role passwords | `.env` | PostgreSQL stored the first value when it created the volume; changing `.env` alone does not change the role. Follow [secrets](secrets.md) (`alembic upgrade head` applies the runtime and retention passwords; the owner password needs `ALTER ROLE`) |
 | Backup passphrase | `/etc/abb/backup.pass` and your password manager | a new passphrase applies to new bundles only; keep the old one for as long as old bundles must stay restorable. There is no re-encryption tool |
-| rclone key | `/etc/abb/rclone.conf` | create a new application key at the provider, `rclone --config /etc/abb/rclone.conf config` to update the remote, run `scripts/hosting-backup.sh` once, delete the old key |
+| rclone key | `/etc/abb/rclone.conf` | create a new application key at the provider, `rclone --config /etc/abb/rclone.conf config` as `deploy` (not `sudo`) to update the remote, run `scripts/hosting-backup.sh` once, delete the old key |
 | Alert receiver secrets | files under `secrets/alertmanager/` | replace the file (mode 0600, owner `deploy`), restart Alertmanager |
 | Grafana admin password | `secrets/grafana_admin_password` | Grafana keeps its first password in its own database; change it in Grafana's UI as well as the file |
 | Project API keys | the product | `create-key`, deploy it to the agent, `revoke-key` the old one |

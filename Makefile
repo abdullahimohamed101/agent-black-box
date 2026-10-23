@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test test-api test-api-fast test-db-up test-db-down lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e demo demo-reset demo-e2e site site-check auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e hosting-e2e hosting-verify hosting-backup-e2e hosting-bootstrap-e2e hosting-upgrade-e2e hosting-obs-e2e backup restore backup-verify rotate-alert-keys
+.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test test-api test-api-fast test-db-up test-db-down lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e demo demo-reset demo-e2e site site-check auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e hosting-e2e hosting-verify hosting-backup-e2e hosting-bootstrap-e2e hosting-upgrade-e2e hosting-obs-e2e hosting-linux-perms-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -271,6 +271,9 @@ hosting-e2e:
 # rclone remote; the bootstrap, secrets and --server checks in an Ubuntu 24.04 container; the upgrade and rollback on a real compose stack.
 hosting-backup-e2e:
 	scripts/hosting-backup-e2e.sh
+# uid/mode rules on a real Linux filesystem (a Docker volume), which Docker Desktop bind mounts do not enforce (KI-313).
+hosting-linux-perms-e2e:
+	scripts/hosting-linux-perms-e2e.sh
 hosting-bootstrap-e2e:
 	scripts/hosting-bootstrap-e2e.sh
 hosting-upgrade-e2e:

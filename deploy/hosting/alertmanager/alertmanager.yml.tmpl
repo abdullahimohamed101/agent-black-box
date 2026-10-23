@@ -3,8 +3,11 @@
 #
 # RECEIVER: [NEEDS INPUT]. The owner chooses email, Slack or a webhook. Until one is configured every alert goes to the `notify` receiver,
 # which has no integrations: alerts are evaluated and visible in Prometheus and in Alertmanager (an SSH tunnel to 127.0.0.1:9093) and
-# are sent NOWHERE. Add the integration under `notify` (examples below), keep secrets in FILES under secrets/alertmanager/ (mounted at
-# /run/alertmanager-secrets, mode 0600, owned by the deploy user), then `docker compose ... restart alertmanager`.
+# are sent NOWHERE. DO NOT EDIT THIS TRACKED FILE (a modified checkout makes hosting-upgrade.sh refuse). Put the integration blocks
+# (the examples below, uncommented) in the untracked file secrets/alertmanager/notify.yml; obs-init indents it and splices it in place of
+# the marker comment under `notify`, `amtool check-config` runs on the result (obs-check), then `docker compose ... up -d`. Same for the
+# deadman receiver with secrets/alertmanager/deadman.yml. Keep secrets in FILES in that directory (mounted at /run/alertmanager-secrets,
+# mode 0600, owned by the deploy user). Without those files the markers stay as comments and the config is the "no receiver" one.
 #
 # The always-firing Watchdog alert goes to `deadman`: point it at a dead-man's-switch service (Healthchecks.io style) so that the
 # SILENCE of the pipeline is itself noticed. Same rule: URL in a file.
@@ -42,8 +45,9 @@ inhibit_rules:
     equal: [instance]
 
 receivers:
-  # No integration yet. Replace with one of the examples (uncomment, edit, restart Alertmanager).
+  # No integration yet: secrets/alertmanager/notify.yml replaces the marker below (see the header). Examples of its content:
   - name: notify
+    # __NOTIFY_INTEGRATIONS__
     # -- email (an SMTP account of your own; the password in a file) --
     # email_configs:
     #   - to: you@example.org
@@ -64,6 +68,7 @@ receivers:
     # webhook_configs:
     #   - url_file: /run/alertmanager-secrets/webhook_url
   - name: deadman
+    # __DEADMAN_INTEGRATIONS__
     # webhook_configs:
     #   - url_file: /run/alertmanager-secrets/deadman_url
     #     send_resolved: false

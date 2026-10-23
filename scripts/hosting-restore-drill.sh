@@ -24,6 +24,9 @@ DRILL_DB="${ABB_DRILL_DATABASE:-abb_restore_drill}"
 PROJECT="${ABB_COMPOSE_PROJECT:-}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LIB=(python3 "$HERE/hosting_backup_lib.py")
+# shellcheck source=hosting-env.sh
+. "$HERE/hosting-env.sh"
+abb_rclone_default   # a manual run has no RCLONE_CONFIG (the systemd unit sets it); use /etc/abb/rclone.conf when it exists
 
 log() { printf 'hosting-restore-drill: %s\n' "$*"; }
 usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
@@ -34,6 +37,7 @@ case "$1" in -h|--help) usage ;; esac
 SOURCE="$1"
 case "$DRILL_DB" in *[!a-z0-9_]*|"") fail "ABB_DRILL_DATABASE must be lowercase letters, digits and underscores" ;; esac
 [ "$DRILL_DB" != abb ] || fail "the drill database must not be the production database"
+if ! why="$(abb_rclone_diagnose)"; then echo "$why" >&2; exit 2; fi
 [ -r "$PASSFILE" ] || { echo "the passphrase file $PASSFILE is not readable" >&2; exit 2; }
 perm="$(stat -c '%a' "$PASSFILE" 2>/dev/null || stat -f '%Lp' "$PASSFILE")"
 [ "$perm" = 600 ] || [ "$perm" = 400 ] || { echo "the passphrase file must be mode 0600 (is $perm)" >&2; exit 2; }
