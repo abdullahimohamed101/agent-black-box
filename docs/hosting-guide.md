@@ -16,10 +16,13 @@ Read this before you start, because the guide would otherwise sound more certain
   Caddy using Caddy's own local certificate authority (`make hosting-e2e`); the backup, the off-site copy and the restore drill against a local
   stand-in for the second provider (`make hosting-backup-e2e`); the upgrade and automatic rollback (`make hosting-upgrade-e2e`); the monitoring
   rules with unit tests (`make hosting-obs-e2e`); and the server bootstrap inside a throwaway Ubuntu 24.04 container (`make hosting-bootstrap-e2e`).
-- **UNVERIFIED (env):** everything that needs a real server, a real domain or a real account. That is: Let's Encrypt issuing a certificate,
-  DNS and ports 80/443 being reachable, a real Google sign-in, a real Backblaze upload and restore, the real `ufw`/`fail2ban`/`sshd` behaviour,
-  the Hetzner firewall, a reboot, systemd firing the timers, and a notification arriving at a real receiver. Each of these is checked by
-  the steps below when you run them (`scripts/hosting-verify.sh https://abb.<your-domain> --server`), and until you have run them the project does not claim them.
+- **VERIFIED on a real server (2026-10-22/23, one Hetzner CX23, Ubuntu 24.04):** Let's Encrypt issuing the certificate, DNS and ports 80/443, a real Google sign-in
+  by an invited person, the `ufw` rules, key-only `sshd` with the two-stage lockout test, only Caddy publishing ports, `fail2ban`, unattended upgrades,
+  a real Backblaze B2 backup, off-site copy and a restore drill from it (`DRILL OK`), the monitoring stack, and an alert email reaching a real inbox
+  (`scripts/hosting-verify.sh https://abb.<your-domain>` 22 passed, `--server` 18 passed). Running it also found four bugs that only appear on Linux; they are fixed.
+- **UNVERIFIED (env):** the Hetzner Cloud Firewall (it sits outside the machine), a reboot, the first scheduled (not manual) run of the backup timer,
+  a non-invited Google account being refused on the live site, a restore onto a replacement server (KI-312), and a second application sharing Caddy.
+  The checks above are what you run for your own copy; until you have run them the project does not claim them for it.
 - Prices and plan names below are what the plan was written against. Hetzner and Backblaze change them: **confirm on their pages before you pay.**
 
 No part of this makes Agent BlackBox a managed service or adds compliance claims. You are the operator of this server, and what your agents
