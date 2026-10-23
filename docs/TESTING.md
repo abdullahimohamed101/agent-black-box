@@ -27,6 +27,76 @@ What the Phase 2 suite looks like (all against real PostgreSQL, ~310 API tests):
 - Every test has a 90 s timeout so a deadlock fails fast. Security-relevant logic is **mutation-checked** during review
   (change the code, confirm a test fails); tests that survive a mutant are strengthened, not kept.
 
+### Running the API suite in parallel (ADR-164)
+
+`make test-api` (or `cd apps/api && uv run pytest -q`) is the serial reference run against the Compose database on port 5433.
+CI and `scripts/quality.sh` run the same suite on pytest-xdist workers, one scratch database and role per worker.
+
+`scripts/quality.sh` reads `ABB_API_TEST_WORKERS`: a number, `auto`, or `0`/`serial` (one process; use it on a machine with little
+RAM or to reproduce a failure). The default is 4 when `CI` is set (the GitHub runner has 4 vCPUs) and 2 elsewhere. CI sets it to 4
+and, before the tests, raises the service Postgres to `max_connections=300` with fsync off (4 workers peaked at 65 connections).
+The API suite has no coverage gate, so nothing needs combining.
+
+For fast local feedback use the throwaway server:
+
+```bash
+make test-db-up          # throwaway Postgres on 127.0.0.1:5434 (tmpfs, fsync off); idempotent
+make test-api-fast       # pytest -n 2 against it; N=4 make test-api-fast to choose another count
+make test-db-down        # removes the container and its data
+```
+
+Or by hand: `ABB_TEST_DATABASE_URL=postgresql+asyncpg://abb:abb_dev_password@localhost:5434/abb_test uv run pytest -q -n 3`
+(`-n auto` is a poor choice on a laptop: it starts one worker per host core, far more than the Docker VM can serve).
+
+**Why a separate local database server.** The suite is bound by I/O waits in the Docker VM, not CPU: every test truncates all tables, and
+Postgres spends its time in `DataFileImmediateSync`. The VM here has 2 CPUs and 4 GB. `fsync=off` on tmpfs removes that wait. The
+`testdb` service (compose profile `testdb`, container `abb-pg-test`) has its own tmpfs data and shares nothing with the dev volume;
+its data is lost on every restart by design, it uses up to 2 GB of the VM's memory as tmpfs, and nothing but tests may use it.
+`make test-api-fast` refuses to run (with a message) if it is not up.
+
+**Measurements (2026-10-20, 4,357 passed and 1 skipped every time; Colima VM of 2 CPUs / 4 GB, server on :5434, `/private/tmp/abb-heavy.lock` held,
+so no other suite was running; a quiet 4-vCPU runner should do better):**
+
+| Run | Result | Wall |
+| --- | --- | --- |
+| serial | 4,357 passed, 1 skipped | 24 min 50 s |
+| `-n 3` | 4,357 passed, 1 skipped | 11 min 6 s |
+| `-n 4` (four runs) | 4,357 passed, 1 skipped each | 8 min 49 s, 9 min 17 s, 11 min 23 s, 11 min 24 s (the spread is host load) |
+
+Earlier, on a durable 5433 server, serial took about 29 minutes (3,692 tests then); the fsync-off server mostly helps parallel runs.
+
+**How workers stay apart.** Each worker is a separate process with its own session fixtures. A worker's scratch database is named
+`abb_test_<worker>_<random>` (`gw0`, `gw1`, ...; `main` for a serial run) and its login role `abb_rt_test_<worker>_<random>`; both
+are dropped when the worker finishes. Test servers (TLS receiver, SMTP sink) bind port 0 and temp directories come from `tempfile`,
+so nothing is fixed. The one cluster-wide object, the `abb_runtime` role that migration 0007 creates, is provisioned under a
+Postgres advisory lock before any migration runs (a concurrent `CREATE ROLE` fails with a unique violation the migration does not
+catch), and test migrations are run without `ABB_RUNTIME_DB_PASSWORD` so they never alter that shared role. Test ids must be the
+same in every worker, so parametrized values must not contain the clock or random data (a gzip header carries the current second:
+use `mtime=0`).
+
+**Caveats.** No test is marked `xdist_group`; none needed serialising. Tests that count connections or sessions in
+`pg_stat_activity` must filter on `datname = current_database()`. Timing-sensitive tests can still flake on a saturated VM; a
+failure under `-n` should be re-run serially before it is believed or blamed. Up to two suites at once on 5434 are fine
+(`max_connections=300`).
+
+**The fresh-cluster role race (found by the first CI run).** Migrations 0007 and 0101 each `CREATE ROLE` inside a `duplicate_object` handler, but two concurrent `CREATE ROLE` on a cluster where the role does not exist yet fail with a unique violation on `pg_authid`. A long-lived local server already has the roles and hides it; a CI service container is a fresh cluster, so several workers migrating at once lost the race and every test on that worker errored. The harness now holds one advisory lock around every `alembic()` run and, once per session, creates every cluster-global role (`CLUSTER_ROLES` in `tests/conftest.py`, kept honest by `tests/test_cluster_roles.py`) under the same lock; an alembic failure now carries alembic's own stderr. `scripts/migration-race-check.sh [rounds] [processes]` reproduces it on brand-new Postgres containers: before the fix 10 of 10 rounds failed, after it 10 of 10 pass. Verify parallel changes on a *new empty* server, not a reused one (`docker rm -fv abb-pg-test`, then `make test-db-up`).
+
+**Load-sensitive tests.** On a busy laptop (battery, load average 5 to 8) a full `-n 4` run on a fresh cluster ended with 1 to 2 failures in 4 of 7 runs, a different test each time, all of them timing-dependent and passing alone: `drain()` stopping before a job is claimed (`test_search_index`, `test_detect_cadence`, `test_runs_api` cursor, `test_evaluations_api` dead-letter) and one search budget of 1 s (fixed: the budget is 4 s in that test). The other runs gave 4,358 passed, 1 skipped, no errors. The `drain` family has no diagnosed root cause yet; treat a single failure there under `-n` as a flake to re-run serially, and file it if it appears in CI.
+
+**Failures found only in parallel, fixed in the test** (none weakened): `alembic()` ran an `asyncio.run` for the shared role and so failed when a test called it from inside a running loop (now runs in a worker thread there); `test_the_scrape_serves_database_gauges...` assumed the first scrape beat the sampler's fixed wait (now polls, bounded, for the sample that finishes in the background); the `testdb` compose image was not pinned by digest (`scripts/check-pins.sh`).
+
+**Cleaning leftovers.** A killed run can leave `abb_test_*` databases and `abb_rt_test_*` roles behind. On 5434 `make test-db-down`
+removes everything. On a shared server, list first, then drop only databases of the pattern that have no connections (this
+snippet never touches a database in use, so another person's running suite is safe):
+
+```bash
+psql "postgresql://abb:abb_dev_password@localhost:5433/postgres" -Atc \
+  "SELECT datname FROM pg_database d WHERE (datname ~ '^abb_test_[a-z0-9]+_[0-9a-f]{10}$' OR datname ~ '^abb_test_[0-9a-f]{12}$')
+   AND NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.datname = d.datname)"   # review this list
+# then, for each name you accept:  psql ... -c 'DROP DATABASE "<name>"'   (no WITH (FORCE))
+# roles:  SELECT rolname FROM pg_roles WHERE rolname ~ '^abb_rt_test_' AND NOT EXISTS (SELECT 1 FROM pg_stat_activity WHERE usename = rolname)
+```
+
 ### Web (Phase 4)
 - **Vitest + Testing Library** (`apps/web/tests`): pure timeline/dashboard/format logic, the read proxy (allowlist, key never forwarded
   to the browser, upstream auth failure mapped to 502), the fixture API (cursor paging, filters), and components (run detail, runs list,

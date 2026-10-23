@@ -11,6 +11,16 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 
 step() { printf '\n==> %s\n' "$*"; }
 
+# API tests run in parallel (pytest-xdist, one database per worker; ADR-164). ABB_API_TEST_WORKERS: a number or "auto" = that
+# many workers, "0" or "serial" = one process (the reference run; use it on a machine with little RAM). Default: 4 on CI
+# (4-vCPU runner), 2 elsewhere (the usual Docker VM has 2 CPUs).
+workers="${ABB_API_TEST_WORKERS:-$([ -n "${CI:-}" ] && echo 4 || echo 2)}"
+case "$workers" in
+  0|1|serial) api_pytest_args=() ;;
+  auto|[2-9]|[1-9][0-9]) api_pytest_args=(-n "$workers") ;;
+  *) echo "error: ABB_API_TEST_WORKERS must be a number, auto, 0 or serial (got '$workers')" >&2; exit 2 ;;
+esac
+
 step "release checklist (static): licenses, placeholders, debug logging, secrets, charts, routes, network, shots, claims, links"; scripts/release-checklist.sh
 step "schema: ruff / mypy / pytest"; (cd packages/event-schema && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q)
 step "sdk-python: ruff / mypy / pytest (coverage gate)"; (cd packages/sdk-python && uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest -q --cov --cov-report=term:skip-covered)
@@ -29,7 +39,7 @@ step "web: generated API client is current"; pnpm --filter @abb/web gen:api:chec
 step "web: design tokens are current (generated css, contrast table)"; pnpm --filter @abb/web tokens:check
 step "web: eslint / prettier";     pnpm --filter @abb/web lint && pnpm --filter @abb/web format:check
 step "web: tsc";                   pnpm --filter @abb/web typecheck
-step "api: pytest";                (cd apps/api && uv run pytest -q)
+step "api: pytest (${api_pytest_args[*]:-serial})"; (cd apps/api && uv run pytest -q ${api_pytest_args[@]+"${api_pytest_args[@]}"})
 step "web: vitest";                pnpm --filter @abb/web test
 
 if [ "$mode" = "full" ]; then

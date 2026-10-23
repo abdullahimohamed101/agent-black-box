@@ -1,5 +1,5 @@
 INTEGRATIONS := conformance langgraph openai anthropic mcp
-.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e demo demo-reset demo-e2e site site-check auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e hosting-e2e hosting-verify hosting-backup-e2e hosting-bootstrap-e2e hosting-upgrade-e2e hosting-obs-e2e backup restore backup-verify rotate-alert-keys
+.PHONY: observability-token observability-up observability-down integrations-test integrations-e2e stream-e2e sdk-e2e e2e e2e-real web-client openapi openapi-check smoke bench seed schema schema-check audit audit-pnpm audit-lockfiles check-pins setup dev db db-stop migrate test test-api test-api-fast test-db-up test-db-down lint format typecheck quality quality-full up down clean help analytics-e2e analytics-bench-seed analytics-bench coding-e2e demo demo-reset demo-e2e site site-check auth-e2e auth-https-e2e multiagent-e2e findings-e2e eval-e2e security-e2e policy-e2e alerts-e2e hardening-e2e obs-e2e retention-e2e backup-restore-e2e hosting-e2e hosting-verify hosting-backup-e2e hosting-bootstrap-e2e hosting-upgrade-e2e hosting-obs-e2e backup restore backup-verify rotate-alert-keys
 
 API := apps/api
 SCHEMA := packages/event-schema
@@ -64,6 +64,29 @@ test:
 	cd $(SDK) && uv run pytest -q
 	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run pytest -q
 	pnpm --filter @abb/web test
+
+# API suite only, serial (what CI runs).
+test-api:
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && uv run pytest -q
+
+# Opt-in throwaway Postgres on :5434 (tmpfs, fsync off) for the parallel API suite; the dev
+# database on :5433 is never touched. Idempotent: leaves an already running abb-pg-test alone.
+TEST_DB_URL ?= postgresql+asyncpg://abb:abb_dev_password@localhost:5434/abb_test
+test-db-up:
+	@if [ "$$(docker inspect -f '{{.State.Running}}' abb-pg-test 2>/dev/null)" = "true" ]; then \
+		echo "abb-pg-test already running on 127.0.0.1:5434"; \
+	else docker compose --profile testdb up -d --wait testdb; fi
+
+test-db-down:
+	docker compose --profile testdb rm -fsv testdb
+
+# Opt-in parallel API suite (pytest-xdist, one database per worker) against the throwaway
+# database. N defaults to 2 (the Docker VM has 2 CPUs); see docs/TESTING.md. CI stays serial.
+N ?= 2
+test-api-fast:
+	@docker exec abb-pg-test pg_isready -U abb >/dev/null 2>&1 || { \
+		echo "error: the test database is not running; start it with 'make test-db-up'" >&2; exit 1; }
+	set -a && . ./$(ENV_FILE) && set +a && cd $(API) && ABB_TEST_DATABASE_URL='$(TEST_DB_URL)' uv run pytest -q -n $(N)
 
 lint:
 	cd $(SCHEMA) && uv run ruff check . && uv run ruff format --check .
