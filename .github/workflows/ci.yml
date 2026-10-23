@@ -1,5 +1,8 @@
 name: CI
 
+# Jobs run on ubuntu-24.04, not ubuntu-latest: on 2026-10-23 ubuntu-latest became 26.04 (Python 3.14, a newer PostgreSQL client), which
+# broke the SDK tests and the backup drill (KI-317). Move the pin to 26.04 deliberately, after those are fixed.
+
 on:
   push:
     branches: [main]
@@ -12,7 +15,7 @@ jobs:
   changes:
     # A pull request that touches only documentation skips the heavy jobs below (they report "skipped", which counts as
     # passing). Anything else, including .github/, scripts, code, and every push to main, runs the full set.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       docs_only: ${{ steps.diff.outputs.docs_only }}
     steps:
@@ -39,7 +42,7 @@ jobs:
   quality:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -81,7 +84,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     # KI-024: every action pinned by commit sha, every image by digest (scripts/check_pins.py). Reads files only.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,7 +94,7 @@ jobs:
     # Phase 20 (D14): relative links and anchors resolve, and the command blocks of the user-facing docs are real (marked
     # blocks are executed, the rest are reference-checked against the Makefile, compose file and CLI). Runs on every change,
     # including documentation-only ones, so it does not wait for the `changes` job. No network beyond `uv`.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -105,7 +108,7 @@ jobs:
     # secrets, charts, routes, network, screenshot budget, claims, links) and its planted-violation tests prove each one fails on a
     # violation. Reads files only, so it runs on documentation-only changes too. The gated markers ([CONFIRM ...]) are warnings
     # here; `--release` (run by the maintainer before publication, gate G2) turns them into failures.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -120,7 +123,7 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true'
     # KI-060: pip-audit over every uv.lock (scripts/audit-lockfiles.sh). A new advisory can fail an unchanged tree; the same script
     # also runs weekly in .github/workflows/lockfile-audit.yml so that happens on a schedule, not on someone's pull request.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,7 +134,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     # The SDK promises Python >= 3.10 and no dependencies: test the oldest and a current version.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python: ["3.10", "3.12"]
@@ -147,7 +150,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     # Framework adapters (ADR-050): own environment per package, fakes plus the real framework, no network needed.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -167,7 +170,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     # A LangGraph example through the real API (scripts/integrations-e2e.sh; own database and port).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -196,7 +199,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     # Live streaming in a real browser: API + worker + built web server + Python SDK writer (scripts/stream-e2e.sh).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -239,7 +242,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     # Live streaming in a real browser: API + worker + built web server + Python SDK writer (scripts/analytics-e2e.sh).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -282,7 +285,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     # Coding-agent demo in a real browser: API + worker + artifacts + built web server + scripted agent (scripts/coding-e2e.sh).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -326,7 +329,7 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true'
     # Sign-in through the dev-only fake OIDC provider, workspaces, roles, invitations and stream re-check in a real
     # browser: API + worker + fake provider + built web server (scripts/auth-e2e.sh).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -371,7 +374,7 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true'
     # Pathological runs through ingestion and the worker, findings read in a real browser by an owner and a viewer:
     # API + worker + built web server (scripts/findings-e2e.sh).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -412,7 +415,7 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true'
     # Multi-agent example (threads, asyncio, a subprocess with a skewed clock) in a real browser: API + worker + built web server
     # (scripts/multiagent-e2e.sh).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -456,7 +459,7 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true'
     # Evaluations, run comparison and experiments in a real browser: the coding agent twice through the SDK (baseline and
     # wrong-fix), API + worker + fake judge + built web server, an owner and a viewer (scripts/eval-e2e.sh).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -501,7 +504,7 @@ jobs:
     # Security observability (Phase 13): a planted run through the real SDK, an SDK that skips redaction (scanned database and
     # artifact files), capture modes, rebuild, an ingestion benchmark, and a real browser as owner, viewer and billing: two APIs
     # (one with a tiny scan budget) + worker + fake OIDC provider + built web server (scripts/security-e2e.sh).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -552,7 +555,7 @@ jobs:
     # the state machine under concurrency and illegal SQL as the runtime role, authorization by role, SDK safety, a dry run against an
     # independent evaluation and decision latency: API + second API + worker + fake OIDC provider + built web server
     # (scripts/policy-e2e.sh). About six minutes: the expiry variants wait out a one-minute approval.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -603,7 +606,7 @@ jobs:
     # safety (private, loopback, link-local, metadata, IPv6, HTTP, a name that rebinds, redirects), content-free and secret-free alerts,
     # authorization and tenancy, dedupe / cooldown / rate limit / daily cap, ingestion cost with and without rules, and a real browser:
     # API + worker + local receivers + fake OIDC provider + built web server (scripts/alerts-e2e.sh). About four minutes.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
       postgres:
@@ -655,7 +658,7 @@ jobs:
     # flood is bounded while valid traffic is never refused, quotas hold at the limit through racing batches, the edge (headers, docs per
     # environment, body cap, privileged-role refusal), sessions and invitations, alert ports and search fairness, the cost of all of it, and
     # a real browser (zero CSP violations, quota usage, sessions, the no-access notice). About ten minutes.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
       postgres:
@@ -708,7 +711,7 @@ jobs:
     # the committed Prometheus configuration and rules and the Grafana dashboard run by the pinned images (promtool, every expression, an
     # AbbTargetDown alert that really fires), optional tracing into a local OTLP receiver (the otel extra in a separate environment) and the
     # cost of metrics and tracing (scripts/obs-e2e.sh). Only deterministic facts are asserted. About fifteen minutes.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
       postgres:
@@ -750,7 +753,7 @@ jobs:
     # SIGKILL while the job waits on a row lock held by the test then a rerun reaches the uninterrupted end state, SIGTERM / the mode file /
     # the per-tick bounds, privileges over real connections, purge-project and purge-workspace, a real browser (Retention page, run pages in
     # each trace state) and the cost of enforcement (informational timings) (scripts/retention-e2e.sh). Deterministic assertions only.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
       postgres:
@@ -802,7 +805,7 @@ jobs:
     # service built from the API image), DESTROY the source, restore into a fresh database and directory, then serve it: same runs, byte-identical
     # artifacts, the alert secret still opens, identical grants, alembic head; a wrong passphrase / tampered bundle / non-empty targets restore
     # nothing; an older bundle is upgraded on restore; the alert key rotates (scripts/backup-restore-e2e.sh). Times are recorded, never asserted.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     services:
       postgres:
@@ -855,7 +858,7 @@ jobs:
     # at the domain root, and with the publication claims on) and runs every subcommand: static rules, fixture and image budgets,
     # size, claims, then Chrome for nojs, copy, gallery, network (no third-party request), axe, motion and the throttled perf
     # profile. `shots` writes nothing here (SHOTS_DIR unset). The ubuntu runner's Google Chrome is used, as by apps/web's Playwright.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -879,7 +882,7 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true'
     # `make demo` determinism (Phase 20, D9): scripts/demo.sh run twice against a throwaway database, API + worker; the normalised
     # summaries of the two runs must be identical. No web build and no model key: the demo is scripted.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -907,7 +910,7 @@ jobs:
   containers:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build and start the stack
