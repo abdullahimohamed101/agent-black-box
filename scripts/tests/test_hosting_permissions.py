@@ -132,5 +132,27 @@ class RcloneConfig(unittest.TestCase):
             self.assertIn("chown deploy:deploy /etc/abb/rclone.conf", text, rel)
 
 
+class AlertReceiverFile(unittest.TestCase):
+    """The receiver is configured in an untracked file (a modified tracked file blocks hosting-upgrade.sh)."""
+
+    root = SCRIPTS.parent
+    tmpl = (root / "deploy/hosting/alertmanager/alertmanager.yml.tmpl").read_text()
+    compose = (root / "deploy/hosting/compose.observability.yml").read_text()
+
+    def test_each_marker_appears_once_in_the_template_and_is_spliced_by_obs_init(self):
+        for marker in ("__NOTIFY_INTEGRATIONS__", "__DEADMAN_INTEGRATIONS__"):
+            self.assertEqual(self.tmpl.count(marker), 1, marker)
+            self.assertIn(marker, self.compose)
+
+    def test_alertmanager_waits_for_the_validation(self):
+        self.assertRegex(self.compose, r"alertmanager:\n(?:.*\n)*?    depends_on:\n      obs-check: \{ condition: service_completed_successfully \}")
+
+    def test_the_docs_do_not_tell_the_owner_to_edit_the_tracked_template(self):
+        for rel in ("docs/hosting-guide.md", "docs/runbooks/hosting-operations.md"):
+            text = (self.root / rel).read_text()
+            self.assertIn("notify.yml", text, rel)
+            self.assertNotRegex(text, r"Edit the `notify` receiver in", rel)
+
+
 if __name__ == "__main__":
     unittest.main()

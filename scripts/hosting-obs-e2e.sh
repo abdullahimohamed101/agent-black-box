@@ -206,6 +206,50 @@ case "$checked" in *SUCCESS*) ;; *) fail "amtool check-config did not succeed" ;
 printf 'route:\n  receiver: nobody\nreceivers:\n  - name: other\n' >"$WORK/bad-am.yml"
 if docker run --rm --entrypoint amtool -v "$WORK:/t:ro" "$ALERTMANAGER" check-config /t/bad-am.yml >/dev/null 2>&1; then fail "amtool accepted a broken Alertmanager config"; fi
 echo "  amtool negative control: a route to an undefined receiver is rejected"
+
+step "O5b receiver from an UNTRACKED file: default = no receiver; email, slack, webhook variants pass amtool; a malformed file is refused before Alertmanager starts"
+AMS="$WORK/secrets/alertmanager"
+render() { dc run --rm -T --no-deps obs-init >/dev/null 2>&1 || fail "obs-init failed"; }
+validate() { dc run --rm -T --no-deps obs-check 2>&1; }
+rendered_file() { dc run --rm -T --no-deps --entrypoint cat obs-check /etc/obs-config/alertmanager/alertmanager.yml 2>/dev/null; }
+printf 'hunter2-not-a-real-password' >"$AMS/smtp_password"; printf 'https://hooks.example.test/x' >"$AMS/slack_webhook_url"; printf 'https://ntfy.example.test/abb' >"$AMS/webhook_url"
+chmod 600 "$AMS"/smtp_password "$AMS"/slack_webhook_url "$AMS"/webhook_url
+rm -f "$AMS/notify.yml" "$AMS/deadman.yml"; render
+out="$(validate)" || fail "default (no notify.yml) config rejected: $out"
+rendered_file >"$WORK/am-default.yml"
+grep -q '# __NOTIFY_INTEGRATIONS__' "$WORK/am-default.yml" || fail "the default render lost the marker"
+grep -q '^ *email_configs:' "$WORK/am-default.yml" && fail "the default render has an active email receiver"
+echo "  default: marker kept, no integration, amtool OK"
+variant() { # name, content
+  printf '%s\n' "$2" >"$AMS/notify.yml"; chmod 600 "$AMS/notify.yml"; render
+  out="$(validate)" || fail "$1: amtool rejected the spliced config: $out"
+  rendered_file | grep -q "$3" || fail "$1: the integration is not in the rendered config"
+  rendered_file | grep -q '__NOTIFY_INTEGRATIONS__' && fail "$1: the marker was not replaced"
+  echo "  $1: spliced and accepted by amtool"
+}
+variant email 'email_configs:
+  - to: owner@example.org
+    from: alerts@example.org
+    smarthost: smtp.gmail.com:587
+    auth_username: alerts@example.org
+    auth_password_file: /run/alertmanager-secrets/smtp_password
+    headers:
+      subject: '"'"'{{ template "abb.title" . }}'"'"'
+    text: '"'"'{{ template "abb.text" . }}'"'"'' 'auth_password_file: /run/alertmanager-secrets/smtp_password'
+variant slack 'slack_configs:
+  - api_url_file: /run/alertmanager-secrets/slack_webhook_url
+    channel: "#alerts"' 'api_url_file'
+variant webhook 'webhook_configs:
+  - url_file: /run/alertmanager-secrets/webhook_url' 'url_file: /run/alertmanager-secrets/webhook_url'
+printf 'email_configs:\n  - to: [unclosed\n   bad: : indent\n' >"$AMS/notify.yml"; render
+if out="$(validate)"; then fail "a malformed notify.yml passed the pre-start validation"; fi
+echo "  malformed notify.yml: refused by obs-check (alertmanager depends on it, so it is not started): $(echo "$out" | tail -1)"
+printf 'email_configs:\n  - to: owner@example.org\n    auth_password_file: /run/alertmanager-secrets/missing_file\n' >"$AMS/notify.yml"; render
+if out="$(validate)"; then fail "a notify.yml naming a missing secret file passed"; fi
+echo "  missing secret file: refused too"
+rm -f "$AMS/notify.yml"; render
+validate >/dev/null || fail "the default no longer validates after the variants"
+echo "PASS O5b"
 cat >"$WORK/alert.json" <<'JSON'
 {"receiver":"notify","status":"firing","alerts":[{"status":"firing","labels":{"alertname":"HostDiskUsageHigh","severity":"ticket"},
  "annotations":{"summary":"Disk is full","description":"d","runbook_url":"docs/runbooks/hosting-operations.md#disk-is-filling-up"}}],

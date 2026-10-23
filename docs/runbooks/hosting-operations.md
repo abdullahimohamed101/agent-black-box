@@ -79,7 +79,17 @@ Alerts: `AbbPublicProbeFailing`, `AbbCertificateExpiring`, `AbbCertificateExpiri
 
 ## Alerts never arrive
 
-Alertmanager ships with the `notify` receiver empty (and a `deadman` receiver for the watchdog): alerts are evaluated and shown in Prometheus and Alertmanager, and sent nowhere, until a receiver is configured (`deploy/hosting/alertmanager/alertmanager.yml.tmpl`, the commented examples; the choice of email, Slack or a webhook is the owner's).
+Alertmanager ships with the `notify` receiver empty (and a `deadman` receiver for the watchdog): alerts are evaluated and shown in Prometheus and Alertmanager, and sent nowhere, until a receiver is configured (the choice of email, Slack or a webhook is the owner's). The receiver lives in the **untracked** file `/opt/abb/secrets/alertmanager/notify.yml` (and `deadman.yml`), never in the tracked template: [hosting guide, step 9](../hosting-guide.md) has the Gmail example (`auth_password_file: /run/alertmanager-secrets/smtp_password`, the app password in `/opt/abb/secrets/alertmanager/smtp_password`). After a change run `$dco up -d`; `obs-check` runs `amtool check-config` first and a malformed file stops there.
+
+**Migrating a server where the template was edited by hand** (the checkout is dirty and `hosting-upgrade.sh` refuses): move the receiver block into `notify.yml` (only the integration keys, for example `email_configs:` and its list, without the `- name: notify` line), then
+
+```bash
+cd /opt/abb
+git diff deploy/hosting/alertmanager/alertmanager.yml.tmpl > ~/alertmanager-tmpl-edit.diff   # keep what you had, to copy from
+git checkout deploy/hosting/alertmanager/alertmanager.yml.tmpl
+$EDITOR secrets/alertmanager/notify.yml && chmod 600 secrets/alertmanager/notify.yml
+scripts/hosting-upgrade.sh <tag>      # or `$dco up -d` first to check the receiver
+```
 
 1. Is the pipeline alive: the always-firing `Watchdog` alert should reach the dead-man's switch URL (`ABB_DEADMAN_URL` style service). If that service reports silence, check Prometheus and Alertmanager (`docker compose ... ps`), then the receiver's own credentials.
 2. Alertmanager's view over an SSH tunnel: `ssh -L 9093:127.0.0.1:9093 deploy@<server>`, then `http://127.0.0.1:9093`. The same for Prometheus (9090) and Grafana (3001): none of them is reachable from the internet.

@@ -46,7 +46,17 @@ services:
         base="$${ABB_RUNBOOK_BASE_URL%/}"; [ -z "$$base" ] || base="$$base/"
         mkdir -p /out/prometheus /out/alertmanager
         printf -- '- targets: ["%s/healthz"]\n' "$${ABB_PUBLIC_ORIGIN}" > /out/prometheus/abb-https.yml
-        sed "s#__RUNBOOK_BASE_URL__#$$base#g" /in/alertmanager.yml.tmpl > /out/alertmanager/alertmanager.yml
+        am=/out/alertmanager/alertmanager.yml
+        sed "s#__RUNBOOK_BASE_URL__#$$base#g" /in/alertmanager.yml.tmpl > $$am
+        # Optional receiver integrations live in UNTRACKED files (a modified tracked file makes hosting-upgrade.sh refuse): the file's lines are
+        # indented under the receiver and replace the marker; absent or empty file = the marker stays a comment (no receiver).
+        for pair in notify:__NOTIFY_INTEGRATIONS__ deadman:__DEADMAN_INTEGRATIONS__; do
+          f="/in/secrets/$${pair%%:*}.yml"; m="$${pair#*:}"
+          if [ -s "$$f" ]; then
+            sed 's/^/    /' "$$f" > /tmp/splice
+            sed -i -e "/$$m/{r /tmp/splice" -e 'd;}' $$am
+          fi
+        done
         sed "s#__RUNBOOK_BASE_URL__#$$base#g" /in/templates/abb.tmpl > /out/alertmanager/abb.tmpl
         chown -R "$${ABB_OBS_UID}:$${ABB_OBS_GID}" /out /prometheus /alertmanager /grafana
         chmod -R a+rX /out
@@ -58,6 +68,7 @@ services:
     volumes:
       - ./deploy/hosting/alertmanager/alertmanager.yml.tmpl:/in/alertmanager.yml.tmpl:ro
       - ./deploy/hosting/alertmanager/templates:/in/templates:ro
+      - ${ABB_SECRETS_DIR:-./secrets}/alertmanager:/in/secrets:ro
       - obs-config:/out
       - prometheus-data:/prometheus
       - alertmanager-data:/alertmanager
@@ -144,6 +155,22 @@ services:
     mem_limit: 64m
     logging: *logging
 
+  # Validates the rendered configuration (with the owner's notify.yml spliced in) BEFORE Alertmanager is (re)started: a malformed file fails
+  # `up` here, with amtool's message, instead of leaving Alertmanager in a restart loop.
+  obs-check:
+    image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    profiles: ["observability"]
+    user: *obs-user
+    entrypoint: ["amtool", "check-config", "/etc/obs-config/alertmanager/alertmanager.yml"]
+    volumes:
+      - obs-config:/etc/obs-config:ro
+      - ${ABB_SECRETS_DIR:-./secrets}/alertmanager:/run/alertmanager-secrets:ro
+    depends_on:
+      obs-init: { condition: service_completed_successfully }
+    restart: "no"
+    mem_limit: 64m
+    logging: *logging
+
   alertmanager:
     image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
     profiles: ["observability"]
@@ -160,7 +187,7 @@ services:
       - alertmanager-data:/alertmanager
       - ${ABB_SECRETS_DIR:-./secrets}/alertmanager:/run/alertmanager-secrets:ro
     depends_on:
-      obs-init: { condition: service_completed_successfully }
+      obs-check: { condition: service_completed_successfully }
     healthcheck:
       <<: *wget-health
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/-/ready"]
